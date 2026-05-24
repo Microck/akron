@@ -1,6 +1,6 @@
 ---
 title: Leaderboard-clean
-description: Reference for using Akron Leaderboard-clean ruleset guardrails, proof metadata, and allowed surfaces in submissions.
+description: Reference for the Akron Leaderboard-clean ruleset, covering guardrails, proof metadata, allowed surfaces, and blocked features in competitive submissions.
 ---
 
 `Leaderboard-clean` is the strict public ruleset for attempts where Akron should help avoid accidental policy conflicts.
@@ -26,7 +26,7 @@ Examples of supported clean or proof-oriented surfaces include:
 - Journal snapshot/compare.
 - Screenshake comfort settings.
 
-## Commonly Blocked Or Dirty Surfaces
+## Commonly Blocked or Dirty Surfaces
 
 Do not use these in clean submissions unless the target community explicitly allows them:
 
@@ -37,7 +37,15 @@ Do not use these in clean submissions unless the target community explicitly all
 - Camera offset, cursor zoom, free camera.
 - Input assist shortcuts.
 
-## Before A Run
+<Note>
+  `Leaderboard-clean` also blocks some features that are normally classified as
+  clean in other rulesets, including retry hotkey, chapter reload, mountain
+  viewer, and split helper. These training-oriented features are blocked because
+  they change session state in ways that may conflict with competitive
+  submission requirements.
+</Note>
+
+## Before a Run
 
 <Steps>
   <Step title="Start from the overlay">

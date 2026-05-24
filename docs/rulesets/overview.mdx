@@ -1,32 +1,32 @@
 ---
 title: Rulesets overview
-description: Reference for Akron built-in rulesets, overlay rulesets, active ruleset stack, and how policy changes behavior.
+description: How Akron rulesets shape policy decisions, which built-in rulesets exist, and how overlays interact with the active ruleset stack.
 ---
 
 Rulesets define Akron's policy environment. They decide whether feature use is allowed, blocked, recorded, or presented differently.
 
-This is reference material. Normal player guides should start with the Akron overlay, visible attempt status, and setup packs. Primary rulesets are available through Akron's Everest mod options, debug/automation commands, and imported ruleset data; they are not the main overlay navigation model.
+This is an explanation page. For step-by-step configuration, see the Everest mod options screen or the `akron_ruleset` command. Player-oriented guides should start with the Akron overlay, visible attempt status, and setup packs.
 
-## Built-In Primary Rulesets
+## Built-in primary rulesets
 
 | Ruleset | Purpose |
 |---|---|
-| `Casual` | General play with a broad set of clean and utility surfaces. |
-| `Practice` | Room-lab ruleset for StartPos, HUD review, and routing workflows. |
-| `Leaderboard-clean` | Stricter clean-play guardrails for submitted attempts. |
-| `Sandbox` | Local unrestricted experiments. |
-| `Everest-safe` | Conservative compatibility-oriented policy. |
-| `Map-maker` | Map inspection, capture, and creator-oriented workflows. |
+| `Casual` | QoL-first mode. State-changing features stay opt-in. |
+| `Practice` | Room-lab defaults for StartPos setup, route review, HUD timing, input display, and death stats. |
+| `Leaderboard-clean` | Blocks state-changing features. Akron shows explicit conflict prompts instead of auto-switching. |
+| `Sandbox` | Removes Akron policy blocks. Does not auto-enable features for you. |
+| `Everest-safe` | Conservative on unknown Everest content. Pushes risky compatibility decisions behind explicit overrides. |
+| `Map-maker` | Favors inspection, reload, and debug traversal without automatically turning on overt gameplay cheats. |
 
-## Overlay Rulesets
+## Overlay rulesets
 
 | Overlay state | Purpose |
 |---|---|
-| `Streamer Mode` | User-facing toggle that hides local filesystem paths in Akron-owned UI and proof output. |
-| `Proof-mode` | Proof presentation state enabled by Submission Mode or community rulesets. It is not a standalone first-class player toggle. |
-| `Low-distraction` | Derived state when visual-noise channels are configured for lower distraction. It is not selected directly. |
+| `Streamer Mode` | Hides local filesystem paths by showing only filenames. |
+| `Proof-mode` | Keeps proof surfaces compact and ruleset-aware. Normally enabled indirectly by Submission Mode or imported/community rulesets, not as a first-class player toggle. |
+| `Low-distraction` | Derived state active when all visual-noise channels are disabled (particles, trails, glitch, anxiety, distortion). Not selected directly. |
 
-## Ruleset Stack
+## Ruleset stack
 
 ```mermaid
 flowchart TD
@@ -37,9 +37,9 @@ flowchart TD
   presentation --> ui["UI and proof"]
 ```
 
-Primary rulesets control allowed behavior. Overlay states change presentation or proof output and may be shown in the current stack. Map compatibility overrides can affect risky runtime paths such as StartPos restore.
+Primary rulesets control allowed behavior. Overlay states change presentation or proof output and appear in the current stack when active. Map compatibility overrides can affect risky runtime paths such as StartPos restore.
 
-## Reading A Ruleset
+## Reading a ruleset
 
 For each feature, ask:
 
@@ -49,4 +49,4 @@ For each feature, ask:
 4. Does a map compatibility override change the runtime path?
 5. Does an overlay state hide paths or add proof output?
 
-Use [Feature status reference](/reference/feature-status-reference) for the current feature classifications.
+See [Feature status reference](/reference/feature-status-reference) for the current feature classifications.
