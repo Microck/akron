@@ -17,26 +17,22 @@ Akron is a player-facing utility suite for Celeste that runs inside Everest. it 
 
 the overlay keeps common player tools close to the game instead of scattered across separate menus. players can check the current setup, adjust practice or hud surfaces, capture play, and move back into the level without changing context.
 
-rulesets and status chips make the current setup easier to understand while switching between different ways of playing and practicing. they do not replace Celeste's normal play flow or community rules.
-
 [documentation](https://akron.micr.dev/docs) | [gamebanana](https://gamebanana.com/mods/TODO)
 
 ## quickstart
 
 <p>
   <a href="everest:https://gamebanana.com/mmdl/TODO,Mod,TODO">
-    <img src="docs/images/olympus-one-click-install.png" alt="Olympus 1-click install" width="150">
+    <img src="docs/images/olympus-one-click-install.png" alt="Olympus 1-click install" height="50">
   </a>
   <a href="https://gamebanana.com/mods/download/TODO">
-    <img src="docs/images/raw-download.png" alt="raw download" width="120">
+    <img src="docs/images/raw-download.png" alt="raw download" height="50">
   </a>
 </p>
 
 1. install Akron with Olympus, or download it from [gamebanana](https://gamebanana.com/mods/TODO) and place the downloaded mod archive in your Everest `Mods` folder. do not unzip manual installs unless a release explicitly says to.
 2. launch Celeste through Everest.
 3. press `Tab` to open Akron.
-
-for detailed install help, see the [install guide](https://akron.micr.dev/docs/getting-started/install).
 
 ## what does it include?
 
@@ -46,11 +42,11 @@ the tabbed in-game overlay includes hud widgets for labels, inputs, timers, reso
 
 ### practice and routing
 
-startpos tools, retry and reload helpers, frame and timescale controls, and room-lab utilities are grouped around setup, routing, and quickly returning to the part of a map that needs work.
+startpos tools, retry and reload helpers, frame and timescale controls, and room-lab utilities are grouped around setup, routing, and quickly returning to the part of a map that needs practice.
 
 ### rulesets and status
 
-rulesets and status chips make powerful tool use visible. they do not prove a run or replace community submission rules, but they keep Akron's current setup from being ambiguous.
+rulesets and status chips make feature use visible. they do not prove a run or replace community submission rules, but they keep Akron's current setup from being ambiguous.
 
 ### .akr setup packs
 
@@ -60,18 +56,16 @@ rulesets and status chips make powerful tool use visible. they do not prove a ru
 
 screenshots and internal recording support sharing or reviewing play.
 
-see the [feature guide](https://akron.micr.dev/docs/feature-guide) for the full option list.
+see the [feature guide](https://akron.micr.dev/docs/feature-guide) for the full detailed list.
 
 ## compatibility
 
-Akron requires Celeste with Everest. some overlay rows appear only when related Celeste tools are installed or configured.
+some overlay rows appear only when certain external mods are installed or configured. Akron does not bundle or replace those tools but instead provides a visual gui for ease of use:
 
-Akron does not bundle or replace those tools. it provides a visual gui for the parts Akron knows how to read or drive:
-
-- **[motion smoothing](https://gamebanana.com/mods/514173):** overlay controls for motion smoothing's fps/tps bypass settings and related smoothing options.
-- **[speedrun tool](https://gamebanana.com/tools/6597):** overlay rows for status, save-state slots, capture/restore/clear actions, and room timer export when the tool is loaded.
-- **[celestetas](https://gamebanana.com/tools/6715):** overlay rows for tas status, the configured tas file, and launching that configured tas handoff.
-- **[extended variant mode](https://gamebanana.com/mods/53650):** overlay rows for reset actions, the master switch, randomizer controls, and available variant options exposed by the loaded mod.
+- **[Motion Smoothing](https://gamebanana.com/mods/514173):** controls for motion smoothing's fps/tps bypass settings and related smoothing options.
+- **[Speedrun Tool](https://gamebanana.com/tools/6597):** status, save-state slots, capture/restore/clear actions, and room timer export when the tool is loaded.
+- **[CelesteTAS](https://gamebanana.com/tools/6715):** tas status, the configured tas file, and launching that configured tas handoff.
+- **[Extended Variant Mode](https://gamebanana.com/mods/53650):** available variant options exposed by the mod.
 
 see the [compatibility](https://akron.micr.dev/docs/troubleshooting/compatibility) and [external tools](https://akron.micr.dev/docs/feature-guide/external-tools) docs for details.
 
@@ -88,4 +82,4 @@ read the [contributor docs](https://akron.micr.dev/docs/contributing/development
 
 ## license
 
-Akron is licensed under the [mit license](LICENSE).
+Akron is licensed under the [MIT license](LICENSE).
