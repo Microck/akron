@@ -1,66 +1,66 @@
 ---
 title: Common issues
-description: Fix common Akron install, overlay, hotkey, import, and capture problems.
+description: Fix common Akron installation, overlay, hotkey, import, and capture problems.
 ---
 
-Use this page for quick diagnosis before digging into platform-specific compatibility.
+Use this page to quickly diagnose common problems before exploring platform-specific compatibility.
 
-## Akron Does Not Appear
+## Akron Does Not Load
 
-Check:
+Confirm the following:
 
-- `Akron.zip` is in the active Everest `Mods` directory.
-- The game was launched through the same install whose `Mods` directory you changed.
-- Everest did not disable Akron after a load error.
-- Logs do not show missing dependencies or archive-shape errors.
+- The `Akron.zip` archive is located in the active Everest `Mods` directory.
+- The game was launched using the same installation where you added the mod.
+- Everest has not disabled Akron due to a load error.
+- The Everest logs do not indicate missing dependencies or archive-shape errors.
 
 ## Overlay Does Not Open
 
-Check:
+Confirm the following:
 
-- The overlay hotkey in Everest keyboard/controller settings.
-- Conflicts with Celeste controls or other mods.
-- Whether the overlay is hidden, off-screen, or scaled too small.
+- The overlay hotkey is correctly configured in the Everest keyboard/controller settings.
+- There are no conflicts with Celeste's native controls or other installed mods.
+- The overlay is not hidden, off-screen, or scaled too small to be visible.
 
-For normal player recovery, prefer rebinding through Everest controls and checking the Everest log before using command-line diagnostics.
+If the overlay still does not open, rebind the key through Everest controls and check the Everest log for errors before seeking further diagnostics.
 
-## A Feature Is Blocked
+## Feature Is Blocked
 
-Akron blocks or marks features according to the current policy/status state.
+Akron blocks or marks features based on the current policy and status state.
 
-1. Check the visible policy/status state.
-2. Read the feature's policy badge.
-3. Check popup suboptions for stricter behavior.
-4. Use a non-submission setup if the feature is expected to set the attempt status to Cheat.
+1. Verify the visible policy and status state.
+2. Check the badge associated with the feature's policy.
+3. Inspect the popup sub-options for any strict behavioral constraints.
+4. Use a non-submission setup if the feature is expected to mark the attempt status as "Cheat."
 
-## Import Fails
+## Import Failure
 
-Common `.akr` import failures:
+Common causes for `.akr` import failures:
 
-- The file is not an Akron archive.
-- The archive has missing or extra ZIP entries.
-- The manifest kind or version is unsupported.
-- The payload is too large.
-- The JSON payload is invalid.
-- The payload section does not match the requested import flow.
+- The file is not a valid Akron archive.
+- The archive contains missing or unexpected ZIP entries.
+- The manifest kind or version is not supported.
+- The payload exceeds the size limit.
+- The JSON payload is malformed or invalid.
+- The payload section does not match the requested import workflow.
 
 See [Akron .akr archives](/reference/akr-archives) for the import contract.
 
-## Capture Output Is Wrong
+## Incorrect Capture Output
 
-If a screenshot, room capture, map capture, or recorder output is missing or wrong:
+If a screenshot, room capture, map capture, or recorder output is missing or incorrect:
 
-- Check the output folder and filename template.
-- Confirm the capture mode and resolution.
-- Disable `Streamer Mode` if you need to see path detail.
-- Review whether a timer-freeze or capture suboption changes the expected behavior.
+- Verify the output folder path and filename template.
+- Confirm that the capture mode and resolution are set correctly.
+- Disable `Streamer Mode` if you need to see detailed path information.
+- Check if a timer-freeze or capture sub-option has altered the expected behavior.
 
 ## Community Packs Are Empty
 
-Check:
+Confirm the following:
 
-- You are inside the map whose packs you expect.
-- The catalog URL is reachable.
-- The category filter is not too narrow.
-- Search text is not filtering out the pack.
-- The catalog entry's map SID matches the current map SID.
+- You are currently inside the map for which you expect packs.
+- The catalog URL is reachable and online.
+- The category filter is not overly restrictive.
+- The search text is not filtering out the desired pack.
+- The catalog entry's map SID matches the current map's SID.

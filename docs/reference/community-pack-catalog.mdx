@@ -3,7 +3,7 @@ title: Community pack catalog
 description: Reference for the public JSON catalog consumed by Akron's Community Packs browser.
 ---
 
-Akron's `Community Packs` browser reads a public HTTPS JSON index, filters it to the current map, and imports selected `.akr` packs through the normal importer.
+The Community Packs browser reads a public JSON index, filters entries by the current map, and imports selected `.akr` packs.
 
 ## Catalog URL
 
@@ -13,11 +13,11 @@ Catalog URLs are HTTPS JSON endpoints. Command examples use this placeholder:
 <catalog-url>
 ```
 
-Replace it with the full catalog URL before running a command. Custom catalog URLs are useful for local testing, self-hosted pack sets, and recovery when another catalog is unavailable.
+Replace this placeholder with a full catalog URL. Custom URLs enable local testing, self-hosted packs, or recovery if the primary catalog is unavailable.
 
 ## JSON Shape
 
-The catalog is a public JSON document with this shape. Replace angle-bracket placeholders with real HTTPS URLs before publishing:
+The catalog is a JSON document with the following structure. Replace angle-bracket placeholders with valid HTTPS URLs:
 
 ```json
 {
@@ -59,9 +59,9 @@ The catalog is a public JSON document with this shape. Replace angle-bracket pla
 | `imageUrl` | Optional preview image URL. Use an empty string when unavailable. |
 | `downloadCount` | Display count from the catalog maintainer. |
 | `updatedUtc` | UTC timestamp for the latest catalog update. |
-| `tags` | Search tags for filtering. |
+| `tags` | Search tags used for filtering. |
 
-`section` must be one of:
+The `section` field must be one of the following values:
 
 ```text
 Whole
@@ -74,37 +74,37 @@ Audio
 Hud
 ```
 
-The in-game category buttons focus on the map-specific sharing cases: `All`, `StartPos`, `Auto Kill`, and `Auto Deafen`.
+In-game category buttons primarily focus on map-specific sharing cases: `All`, `StartPos`, `Auto Kill`, and `Auto Deafen`.
 
-## Publishing Requirements
+## Publishing Guidelines
 
-- Each catalog entry points to a `.akr` file for a specific map and sharing scope.
-- Archives are validated before they are added to the catalog.
-- `mapSid` matches the Celeste map SID used by `level.Session.Area.GetSID()`.
-- `downloadUrl` is a stable HTTPS URL for the `.akr` file.
-- Catalog metadata is updated when the pack changes.
+Each catalog entry must point to a `.akr` file for a specific map and sharing scope.
+Validate archives before adding them to the catalog.
+- The `mapSid` must match the Celeste map SID.
+- The `downloadUrl` must be a stable HTTPS URL for the `.akr` file.
+- Update catalog metadata whenever the pack changes.
 
-## Validation Requirements
+## Validation steps
 
-Before publishing a catalog entry, the catalog maintainer should validate that:
+Before publishing, ensure that:
 
-- The archive contains exactly `manifest.json` plus `profile.json`.
-- The manifest kind is `profile`.
-- `profile.json` uses `Format: akron-profile-v1`.
-- The entry `section` matches the profile section unless the catalog maintainer intentionally publishes a different scope.
-- The download URL returns the expected `.akr` file.
+The archive contains exactly `manifest.json` and `profile.json`.
+The manifest `kind` is `profile`.
+- `profile.json` uses the `akron-profile-v1` format.
+The entry `section` matches the profile section, unless a different scope is intended.
+The download URL returns the expected `.akr` archive.
 
 See [Akron .akr archives](/reference/akr-archives) for the full archive contract and import safety rules.
 
-## Runtime Behavior
+## Runtime Logic
 
-Akron filters catalog entries by:
+Akron filters catalog entries using the following criteria:
 
 - Current map SID.
 - Selected category.
 - Search terms against title, description, author, map URL, section label, and tags.
 
-When the player imports a selected pack, Akron downloads it into `Saves/AkronProfiles/community-*.akr` and imports the declared scope through the `.akr` importer.
+When a player imports a pack, Akron downloads it to `Saves/AkronProfiles/community-*.akr` and imports the declared scope.
 
 ## Automation Commands
 
