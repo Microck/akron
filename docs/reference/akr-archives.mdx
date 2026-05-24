@@ -1,13 +1,13 @@
 ---
-title: Akron .akr archives
-description: Reference for Akron archive manifests, payloads, setup sections, and import safety.
+title: .akr Archive Format
+description: Technical specification for the Akron archive format, including manifests, payloads, and import safety rules.
 ---
 
-Akron uses `.akr` files for shareable structured setup data. An `.akr` file is a ZIP archive with a strict manifest plus one payload. This keeps imports explicit and prevents unrelated files from being smuggled into a pack.
+Akron uses `.akr` files to share structured setup data. An `.akr` file is a ZIP archive containing exactly one manifest and one payload. This structure ensures imports remain explicit and prevents unrelated files from being included in a pack.
 
 ## Archive Shape
 
-Every archive must contain exactly two entries:
+An archive must contain exactly two entries:
 
 ```mermaid
 flowchart TD
@@ -17,11 +17,11 @@ flowchart TD
   payload --> data["Kind data"]
 ```
 
-No folders, extra entries, rooted paths, backslashes, or `..` path segments are allowed. The reader rejects archives that do not match the expected payload name and kind.
+The reader rejects archives containing folders, extra entries, rooted paths, backslashes, or `..` path segments, as well as those that do not match the expected payload name and kind.
 
 ## Manifest
 
-`manifest.json` uses this shape:
+The `manifest.json` file uses the following structure:
 
 ```json
 {
@@ -53,7 +53,7 @@ The manifest size limit is 16 KiB.
 
 ## Setup Payload
 
-Akron setup packs use the profile archive contract:
+Setup packs use the `profile` archive contract:
 
 ```text
 Kind: profile
@@ -62,7 +62,7 @@ Payload format: akron-profile-v1
 Directory: Saves/AkronProfiles
 ```
 
-`profile.json` uses this shape:
+The `profile.json` payload uses the following structure:
 
 ```json
 {
@@ -93,11 +93,11 @@ The setup payload size limit is 2 MiB.
 | `Audio` | Audio speed, pitch shift, per-sound volumes/overrides, and audio splitter devices. |
 | `Hud` | HUD widgets, labels, input displays, resource bars, counters, and HUD presentation state. |
 
-Scoped import intentionally merges only the selected section into the current active settings. It should not reset unrelated settings.
+Scoped imports merge only the selected section into the current active settings without resetting unrelated settings.
 
 ## Import Safety Rules
 
-Imports fail closed:
+Imports follow a "fail closed" policy:
 
 ```mermaid
 flowchart TD
@@ -112,13 +112,13 @@ flowchart TD
   payloadCheck -->|Yes| apply["Apply section"]
 ```
 
-Akron rejects unsupported archive formats, unsupported format versions, wrong kinds, missing or extra entries, oversized payloads, invalid JSON, and unsupported payload formats.
+Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats.
 
-After a failed import, current settings should remain unchanged and Akron should show a short toast. Detailed errors belong in logs rather than user-facing toast text.
+If an import fails, current settings remain unchanged and a short toast notification is shown. Detailed errors are written to the logs rather than the user-facing toast.
 
 ## Maintenance Requirements
 
-Settings that travel through `.akr` setup packs require:
+Settings included in `.akr` setup packs must meet these requirements:
 
 - A field in `AkronProfileState`.
 - Capture from `AkronModuleSettings`.
@@ -126,9 +126,9 @@ Settings that travel through `.akr` setup packs require:
 - Scoped-section copy behavior when the setting belongs to `StartPos`, `AutoKill`, `AutoDeafen`, `Recorder`, `Audio`, or `Hud`.
 - Tests proving whole import/export and scoped import/export preserve the intended state.
 
-Do not add compatibility shims for old local packs unless that support is explicitly required. Akron's current policy prefers one canonical contract and clear import errors.
+Avoid adding compatibility shims for old local packs unless explicitly required. Akron maintains a single canonical contract to ensure clear import errors.
 
-New archive kinds are for payloads that are not setup/profile sections.
+New archive kinds are used for payloads that are not setup/profile sections.
 
 New archive kinds require:
 
@@ -139,7 +139,7 @@ New archive kinds require:
 - Tests for round-trip, wrong kind, extra entries, oversized payload, and missing manifest.
 - Documentation on this page.
 
-Do not put several unrelated payloads in one `.akr` archive. The current archive contract is one kind, one manifest, one payload.
+Do not include multiple unrelated payloads in a single `.akr` archive. The current contract requires exactly one kind, one manifest, and one payload.
 
 Archive tests live in `tests/archive-tests.cs`.
 
