@@ -213,6 +213,21 @@ public sealed class ModuleSettingsTests {
         Assert.Equal(expected, AkronModule.ShouldReleasePauseTimerFreezeStop(stoppedByAkron, freezeTimerEnabled, canFreezeTimer, freezeTimerDuringPause));
     }
 
+    [Fact]
+    public void ModMenuDescriptionsWrapBeforeTheyCanWidenTheMenu() {
+        IReadOnlyList<string> lines = AkronModule.WrapModMenuLine(
+            "Akron menu rows are bindable in the overlay by right-clicking or Shift-clicking them. These native config UIs remain for built-in keyboard/controller bindings.",
+            maxCharacters: 48);
+
+        Assert.All(lines, line => Assert.InRange(line.Length, 1, 48));
+        Assert.Equal(new[] {
+            "Akron menu rows are bindable in the overlay by",
+            "right-clicking or Shift-clicking them. These",
+            "native config UIs remain for built-in",
+            "keyboard/controller bindings."
+        }, lines);
+    }
+
     [Theory]
     [InlineData(-5, 4)]
     [InlineData(0, 4)]
