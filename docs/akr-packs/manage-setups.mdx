@@ -3,26 +3,26 @@ title: Manage .akr setups
 description: Back up, reset, and maintain Akron setup state for different play contexts.
 ---
 
-Akron setup state covers the options, bindings, StartPos slots, and scoped tool settings that can be exported into `.akr` packs. Use setup backups to separate clean-play guardrails, room-lab tools, accessibility settings, and map-making workflows.
+Akron setup state covers the options, bindings, StartPos slots, and scoped tool settings that you can export into `.akr` packs. Use setup backups to separate clean-play guardrails, room-lab tools, accessibility settings, and map-making workflows.
 
-## Start From A Setup
+## Start from a profile
 
-Use `.akr` setup backups to separate workflows. The Akron overlay shows the current policy/status state and supports `.akr` import/export, but player setup should be organized around visible tool groups and scoped packs. Rulesets are advanced policy presets behind some setups, not the main setup-management surface.
+Use Akron profiles and `.akr` setup backups to separate workflows. The Akron overlay shows the current profile and policy/status state, and supports `.akr` import/export. Organize your setups around visible tool groups and scoped packs. Rulesets are advanced policy presets behind some profiles, not the main setup-management surface.
 
-| Setup | Best for |
+| Profile | Best for |
 |---|---|
-| Default setup | Learning Akron and ordinary play. |
-| Room-lab setup | StartPos, reloads, timescale, and route iteration. |
-| Clean-run setup | Attempts where clean classification matters. |
-| Local testing setup | Experiments and unrestricted tool testing. |
-| Map inspection setup | Capture, inspection, and map development workflows. |
-| Accessibility-focused setup | Visual, audio, and comfort settings. |
+| Casual | Learning Akron and ordinary play. |
+| Practice | StartPos, reloads, timescale, and route iteration. |
+| Leaderboard Clean | Attempts where clean classification matters. |
+| Sandbox | Experiments and unrestricted tool testing. |
+| Map Maker | Capture, inspection, and map development workflows. |
+| Accessibility | Visual, audio, and comfort settings. |
 
-## Maintain Setups
+## Maintain setups
 
 <Steps>
-  <Step title="Start from the closest setup">
-    Use an existing setup or export a fresh baseline before changing individual tools for a new workflow.
+  <Step title="Start from the closest profile">
+    Use an existing profile or export a fresh baseline before changing individual tools for a new workflow.
   </Step>
   <Step title="Change one tool group at a time">
     Configure overlay behavior, HUD tools, room-lab tools, visual settings, and interop separately so you can find mistakes.
@@ -31,17 +31,17 @@ Use `.akr` setup backups to separate workflows. The Akron overlay shows the curr
     Export a whole `.akr` setup backup when the setup is stable.
   </Step>
   <Step title="Use scoped imports">
-    Import only the section you need when applying shared StartPos, keybind, Auto Kill, Auto Deafen, recorder, audio, or HUD packs.
+    Import only the section you need when applying shared StartPos, Keybinds, Auto Kill, Auto Deafen, Recorder, Audio, or HUD packs.
   </Step>
 </Steps>
 
-## Reset Strategy
+## Reset strategy
 
 Use reset actions when setup state has drifted too far from the intended use. Prefer exporting a backup first if it contains map-specific StartPos slots or carefully tuned binds.
 
-## Clean Setup Hygiene
+## Clean setup hygiene
 
-- Keep state-changing tools out of `Leaderboard-clean`.
+- Keep state-changing tools out of Leaderboard Clean.
 - Check suboptions, not only parent rows.
-- Avoid importing whole setup packs from untrusted sources into a clean-run setup.
-- Use [Feature status reference](/reference/feature-status-reference) when deciding where a setting belongs.
+- Avoid importing whole setup packs from untrusted sources into a Leaderboard Clean setup.
+- Use the [Feature status reference](/reference/feature-status-reference) when deciding where a setting belongs.
