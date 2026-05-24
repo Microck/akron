@@ -90,6 +90,8 @@ public sealed partial class AkronOverlay : Entity {
     private string bindingCaptureDisplayName = string.Empty;
     private ActionEntry pendingInternalRecorderExperimentalAction;
     private ActionEntry pendingImGuiOptionsPopupEntry;
+    private ActionEntry pendingImGuiTooltipEntry;
+    private Rectangle pendingImGuiTooltipAnchor;
     private bool bindingCaptureOverlayToggle;
     private bool bindingCaptureAutoDeafenHotkey;
     private bool bindingCaptureWaitingForRelease;

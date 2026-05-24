@@ -18,6 +18,8 @@ public sealed partial class AkronOverlay {
         ApplyOverlayThemePreset();
         imguiOptionsPopupAnchorRects.Clear();
         pendingImGuiOptionsPopupEntry = null;
+        pendingImGuiTooltipEntry = null;
+        pendingImGuiTooltipAnchor = Rectangle.Empty;
         suppressImGuiRowPressesThisFrame = imguiPopupBlockedRowsLastFrame;
         imguiPopupBlockedRowsLastFrame = false;
         openedImGuiOptionsPopupThisFrame = false;
@@ -56,8 +58,9 @@ public sealed partial class AkronOverlay {
             columnSectionCounts[columnIndex]++;
         }
 
-        DrawPendingImGuiOptionsPopup();
         DrawCommunityPackBrowserWindow();
+        DrawPendingImGuiOptionsPopup();
+        DrawPendingImGuiActionTooltip();
         DrawImGuiBindingCapturePopup();
         DrawInternalRecorderExperimentalWarningPopup();
     }

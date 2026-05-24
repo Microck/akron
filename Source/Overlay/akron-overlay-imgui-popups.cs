@@ -329,7 +329,7 @@ public sealed partial class AkronOverlay {
     }
 
     private void DrawImGuiActionTooltip(ActionEntry entry, bool rowHovered) {
-        if (!TryGetActionDescription(entry.Label, out string description)) {
+        if (!TryGetActionDescription(entry.Label, out _)) {
             return;
         }
 
@@ -337,22 +337,32 @@ public sealed partial class AkronOverlay {
             NumericsVector2 min = ImGui.GetItemRectMin();
             NumericsVector2 max = ImGui.GetItemRectMax();
             Rectangle anchor = RectCeiling(min.X, min.Y, Math.Max(1f, max.X - min.X), Math.Max(1f, max.Y - min.Y));
-            string tooltipKey = entry.Tab + "\n" + entry.Label;
-            NumericsVector2 cachedSize = imguiTooltipSizes.TryGetValue(tooltipKey, out NumericsVector2 size)
-                ? size
-                : new NumericsVector2(TooltipMaxWidth, 160f);
-            NumericsVector2 actualSize = DrawAnchoredTooltipWindow(anchor, "action_" + entry.Tab + "_" + entry.Label, cachedSize, () => {
-                ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + GetTooltipWrapWidth());
-                ImGui.PushStyleColor(ImGuiCol.Text, AkronImGuiTheme.Accent);
-                ImGui.TextUnformatted(entry.Label);
-                ImGui.PopStyleColor();
-                ImGui.TextUnformatted(DescribeTooltipMeta(entry));
-                ImGui.Separator();
-                ImGui.TextWrapped(description);
-                ImGui.PopTextWrapPos();
-            });
-            imguiTooltipSizes[tooltipKey] = actualSize;
+            pendingImGuiTooltipEntry = entry;
+            pendingImGuiTooltipAnchor = anchor;
         }
+    }
+
+    private void DrawPendingImGuiActionTooltip() {
+        ActionEntry entry = pendingImGuiTooltipEntry;
+        if (entry == null || pendingImGuiTooltipAnchor == Rectangle.Empty || !TryGetActionDescription(entry.Label, out string description)) {
+            return;
+        }
+
+        string tooltipKey = entry.Tab + "\n" + entry.Label;
+        NumericsVector2 cachedSize = imguiTooltipSizes.TryGetValue(tooltipKey, out NumericsVector2 size)
+            ? size
+            : new NumericsVector2(TooltipMaxWidth, 160f);
+        NumericsVector2 actualSize = DrawAnchoredTooltipWindow(pendingImGuiTooltipAnchor, "action_" + entry.Tab + "_" + entry.Label, cachedSize, () => {
+            ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + GetTooltipWrapWidth());
+            ImGui.PushStyleColor(ImGuiCol.Text, AkronImGuiTheme.Accent);
+            ImGui.TextUnformatted(entry.Label);
+            ImGui.PopStyleColor();
+            ImGui.TextUnformatted(DescribeTooltipMeta(entry));
+            ImGui.Separator();
+            ImGui.TextWrapped(description);
+            ImGui.PopTextWrapPos();
+        });
+        imguiTooltipSizes[tooltipKey] = actualSize;
     }
 
     private static NumericsVector2 DrawAnchoredTooltipWindow(Rectangle anchor, string id, NumericsVector2 expectedSize, Action drawContent) {
