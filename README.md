@@ -80,6 +80,10 @@ dotnet test tests/akron-tests.csproj --nologo
 
 read the [contributor docs](https://akron.micr.dev/docs/contributing/development-setup) before changing feature policy, rulesets, setup packs, or public behavior.
 
+## support
+
+if Akron helps with your Celeste practice, routing, captures, or setup sharing, optional support is available on [ko-fi](https://ko-fi.com/microck). no features are or will be locked behind donations or a paywall.
+
 ## license
 
 Akron is licensed under the [MIT license](LICENSE).
