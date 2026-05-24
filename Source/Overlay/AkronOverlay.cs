@@ -428,10 +428,12 @@ public sealed partial class AkronOverlay : Entity {
     }
 
     public void ResetTransientUiState() {
+        ResetTransientUiState(AkronModule.Settings.SearchAutofocus);
+    }
+
+    internal void ResetTransientUiState(bool searchAutofocus) {
         CloseOptionsPopup();
         CancelBindingCapture();
-        ExpandAllWindows();
-        CollapseExternalToolWindowsByDefault();
         imguiPopupBlockedRowsLastFrame = false;
         suppressImGuiRowPressesThisFrame = false;
         openedImGuiOptionsPopupThisFrame = false;
@@ -441,7 +443,7 @@ public sealed partial class AkronOverlay : Entity {
         autoDeafenAreaHasFirstCorner = false;
         valueEditFreezeFrames = 0;
         ClearSearchQuery();
-        if (AkronModule.Settings.SearchAutofocus) {
+        if (searchAutofocus) {
             RequestSearchInputFocus();
         } else {
             ClearSearchInputFocusRequest();
