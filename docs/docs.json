@@ -66,6 +66,13 @@
   "markdown": {
     "schema": true
   },
+  "redirects": [
+    {
+      "source": "/special-thanks",
+      "destination": "/docs/special-thanks",
+      "permanent": true
+    }
+  ],
   "navigation": {
     "groups": [
       {
@@ -166,7 +173,7 @@
       {
         "group": "Project",
         "pages": [
-          "special-thanks"
+          "docs/special-thanks"
         ]
       }
     ]
