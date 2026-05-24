@@ -1,16 +1,18 @@
 ---
 title: Global
-description: Session-wide controls for speed, safety, submission metadata, autosave, and transition behavior.
+description: Session-wide controls for speed, safety, submission metadata, autosave, and transition behavior, including FPS and TPS bypass when Motion Smoothing is loaded.
 ---
 
 The Global tab collects options that affect the whole current Akron session rather than one HUD surface or one room tool.
 
 | Option | Control | What it does | Attempt status |
 |---|---|---|---|
-| Timescale | Number | Open speed controls for decreasing or increasing gameplay timescale. | Cheat |
+| FPS Bypass | Numeric toggle | Raise the frame draw cadence while keeping the configured simulation cadence. Only visible when the Motion Smoothing mod is loaded. | Cheat |
+| TPS Bypass | Numeric toggle | Change the simulation tick cadence. Only visible when the Motion Smoothing mod is loaded. | Cheat |
+| Timescale | Number | Adjust the gameplay timescale multiplier between 0.1× and 2.0×. | Cheat |
 | Safe Mode | Toggle | Safe Mode indicator plus optional local stat guards for deaths, jumps, and best-run fields. | Normal clear |
 | Submission Mode | Toggle | Enable recording metadata defaults and related warning surfaces without changing gameplay by itself. | Goldberry/Hardlist clear |
-| Freeze Attempts | Toggle | Restore the current save slot death counter while Safe Mode is active. | Cheat |
+| Freeze Attempts | Toggle | Restore the current save-slot death counter while Safe Mode is active. | Cheat |
 | Pause Buffering | Toggle | Choose whether configured hotkeys can fire while Celeste is paused. | Cheat |
 | Control Display | Toggle | Display live inputs on a customizable board with editable keys, bindings, colors, and placement. | Goldberry/Hardlist clear |
 | Autosave | Toggle | Save Akron-owned backup state automatically at configured safe points. | Normal clear |
@@ -18,7 +20,7 @@ The Global tab collects options that affect the whole current Akron session rath
 
 ## Option Menus
 
-Rows with a triangle expose the controls listed below.
+Some rows expose additional controls through option popups (the triangle button) or keybind-assignable actions. The controls listed below are available for each option.
 
 | Option | Menu control | What it changes | Status |
 |---|---|---|---|
@@ -26,6 +28,17 @@ Rows with a triangle expose the controls listed below.
 | Timescale | Decrease | Lower the gameplay timescale multiplier. | Cheat |
 | Timescale | Increase | Raise the gameplay timescale multiplier. | Cheat |
 | Timescale | Reset | Return gameplay speed to normal. | Cheat |
+| FPS Bypass | Target FPS | Set the draw frame target while FPS Bypass is enabled. | Cheat |
+| FPS Bypass | Method | Choose between Interval (aligned to physics ticks) and Dynamic (arbitrary FPS) frame timing. | Cheat |
+| FPS Bypass | Smooth Camera | Set the camera smoothing mode: Fancy, Fast, or Off. | Cheat |
+| FPS Bypass | Objects | Set the object smoothing mode: Extrapolate or Interpolate. | Cheat |
+| FPS Bypass | TAS mode | Keep overworld updates locked for TAS compatibility while level gameplay remains controlled by TPS Bypass. | Cheat |
+| FPS Bypass | Subpixel Madeline | Draw Madeline and held items at subpixel render positions. | Cheat |
+| FPS Bypass | Smooth background | High-resolution background compositing in Fancy camera smoothing. | Cheat |
+| FPS Bypass | Smooth foreground | High-resolution foreground compositing in Fancy camera smoothing. | Cheat |
+| FPS Bypass | Hide edge gaps | Slightly zoom the level to hide gaps from fractional camera offsets. | Cheat |
+| FPS Bypass | Silly mode | Unlock bypass rates beyond normal limits. | Cheat |
+| TPS Bypass | Target TPS | Set the simulation update target while TPS Bypass is enabled. | Cheat |
 | Safe Mode | Freeze deaths | Restore the current save-slot death counter while Safe Mode is active. | Cheat |
 | Safe Mode | Freeze jumps | Restore the current save-slot jump counter while Safe Mode is active. | Cheat |
 | Safe Mode | Freeze best run | Restore current best-time fields while Safe Mode is active. | Cheat |
@@ -41,7 +54,7 @@ Rows with a triangle expose the controls listed below.
 | Control Display | Label preset: Keyboard | Apply keyboard-style labels to the existing board keys without moving them. | Goldberry/Hardlist clear |
 | Control Display | Label preset: Arrows | Apply arrow-style labels to the existing board keys without moving them. | Goldberry/Hardlist clear |
 | Control Display | Label preset: Short | Apply compact labels to the existing board keys without moving them. | Goldberry/Hardlist clear |
-| Control Display | Add key | Add a new visible key to the editable input board layout. | Goldberry/Hardlist clear |
+| Control Display | Add key | Add a new visible key to the editable input-board layout. | Goldberry/Hardlist clear |
 | Control Display | Duplicate | Duplicate the selected input-board key. | Goldberry/Hardlist clear |
 | Control Display | Remove | Remove the selected input-board key when more than one key remains. | Goldberry/Hardlist clear |
 | Control Display | Selected | Choose which input-board key is being edited. | Goldberry/Hardlist clear |
@@ -59,5 +72,13 @@ Rows with a triangle expose the controls listed below.
 | Control Display | Stroke | Set the selected key's outline color. | Goldberry/Hardlist clear |
 | Control Display | Text | Set the selected key's label color. | Goldberry/Hardlist clear |
 | Control Display | Outline | Set the selected key's outline width. | Goldberry/Hardlist clear |
-| Autosave | Backup behavior | Configure when Akron-owned backup state is saved. | Normal clear |
-| Transition Speed | Multiplier | Adjust the next room-transition duration multiplier. | Cheat |
+| Autosave | Interval | Set the seconds between automatic save attempts. | Normal clear |
+| Autosave | Minimum delay | Set the cooldown before another automatic save can run. | Normal clear |
+| Autosave | Room load | Save automatically on room load. | Normal clear |
+| Autosave | Spawn update | Save automatically on spawn-point updates. | Normal clear |
+| Autosave | Respawn | Save automatically on respawn. | Normal clear |
+| Autosave | Pause | Save automatically on pause. | Normal clear |
+| Autosave | Avoid gameplay | Prefer saving during non-gameplay moments. | Normal clear |
+| Autosave | Save settings | Include Akron settings in autosave. | Normal clear |
+| Autosave | Hide saving icon | Suppress the saving-indicator icon. | Normal clear |
+| Transition Speed | Speed | Adjust the next room-transition duration multiplier. | Cheat |

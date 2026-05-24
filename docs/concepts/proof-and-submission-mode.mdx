@@ -5,17 +5,17 @@ description: Understand what Akron proof metadata records and what it does not p
 
 Akron can record proof-oriented metadata and guardrails, but it does not make a run legitimate by itself. It records Akron's view of active features, policy state, overrides, and proof settings so a reviewer has more context.
 
-## What Akron Records
+## What Akron records
 
-Proof-oriented surfaces can include:
+Proof-oriented metadata can include:
 
-- Visible policy/status state.
-- Attempt classification.
+- Visible policy and status state.
+- Attempt classification (Goldberry/Hardlist clear, Normal clear, or Cheat).
 - Active-feature list.
 - Pause counts and paused duration.
 - Map and loaded-module version context.
 - End-screen helper settings.
-- Recorder guard state.
+- Recorder guard state (whether recording or replay buffering is armed).
 - Journal snapshot and compare output.
 
 ```mermaid
@@ -28,7 +28,7 @@ flowchart TD
   proof --> review["Review context"]
 ```
 
-## What Akron Does Not Prove
+## What Akron does not prove
 
 Akron does not:
 
@@ -42,17 +42,19 @@ Akron does not:
   Proof metadata is context, not a verdict. Use the target community's submission rules as the authority for whether a run is accepted.
 </Warning>
 
-## Submission Mode
+## Submission mode
 
-Submission Mode enables proof-oriented guardrails and metadata without changing gameplay. It is classified as Goldberry/Hardlist clear in Akron because it records and warns rather than mutating play.
+Submission mode enables proof-oriented guardrails and metadata without changing gameplay. Akron classifies Submission mode as **Goldberry/Hardlist clear** because it records and warns rather than mutating play.
 
-Related proof helpers include recorder guard, end-screen helper, pause tracker, map version stamp, golden start helper, lag pauser, and journal snapshot/compare. Each helper keeps its own policy status; enabling Submission Mode does not make every helper Goldberry/Hardlist clear.
+Related proof helpers include proof recorder guard, end-screen helper, pause tracker, map version stamp, golden start helper, lag pauser, and journal snapshot/compare. Each helper carries its own policy classification; enabling Submission mode does not make every helper Goldberry/Hardlist clear.
 
-## Proof Workflow
+For proof overlay behavior that controls what appears on screen during a run, see [Streamer Mode and proof-mode states](/rulesets/streamer-mode-and-proof-overlays).
+
+## Proof workflow
 
 <Steps>
   <Step title="Start from the intended setup">
-    Use the setup required by the target submission workflow before the attempt starts. If that workflow requires `Leaderboard-clean` or a community ruleset, apply it through Akron's Everest mod options or setup/ruleset import path.
+    Use the setup required by the target submission workflow before the attempt starts. If that workflow requires Leaderboard-clean or a community ruleset, apply it through Akron's Everest mod options or the setup/ruleset import path.
   </Step>
   <Step title="Enable proof helpers">
     Enable only the proof helpers that match the target submission requirements.
@@ -64,6 +66,6 @@ Related proof helpers include recorder guard, end-screen helper, pause tracker, 
     Use proof sidecar, recorder, screenshot, or journal tools according to the target workflow.
   </Step>
   <Step title="Review the output">
-    Inspect the output before submitting. Akron can report what it recorded, but you still need to verify that the package is complete.
+    Inspect the output before submitting. Akron reports what it recorded, but you still need to verify that the package is complete.
   </Step>
 </Steps>
