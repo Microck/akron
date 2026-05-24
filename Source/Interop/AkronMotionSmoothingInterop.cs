@@ -5,8 +5,9 @@ using Celeste.Mod;
 
 namespace Celeste.Mod.Akron;
 
-// Motion Smoothing is an optional external mod. This bridge keeps Akron free of
-// compile-time references while still letting Akron's UI drive the loaded mod.
+// Motion Smoothing is a runtime-detected external integration. This bridge keeps
+// Akron free of compile-time references while still letting Akron's UI drive the
+// loaded mod.
 public static class AkronMotionSmoothingInterop {
     private static Type moduleType;
     private static Type settingsType;

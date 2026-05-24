@@ -58,16 +58,16 @@ screenshots and internal recording support sharing or reviewing play.
 
 see the [feature guide](https://akron.micr.dev/docs/feature-guide) for the full detailed list.
 
-## compatibility
+## external integrations
 
-some overlay rows appear only when certain external mods are installed or configured. Akron does not bundle or replace those tools but instead provides a visual gui for ease of use:
+some overlay rows appear only when certain external mods are installed or configured. Akron does not depend on, bundle, or replace those tools but instead provides a visual gui for ease of use:
 
 - **[Motion Smoothing](https://gamebanana.com/mods/514173):** controls for motion smoothing's fps/tps bypass settings and related smoothing options.
 - **[Speedrun Tool](https://gamebanana.com/tools/6597):** status, save-state slots, capture/restore/clear actions, and room timer export when the tool is loaded.
 - **[CelesteTAS](https://gamebanana.com/tools/6715):** tas status, the configured tas file, and launching that configured tas handoff.
 - **[Extended Variant Mode](https://gamebanana.com/mods/53650):** available variant options exposed by the mod.
 
-see the [compatibility](https://akron.micr.dev/docs/troubleshooting/compatibility) and [external tools](https://akron.micr.dev/docs/feature-guide/external-tools) docs for details.
+see the [compatibility](https://akron.micr.dev/docs/troubleshooting/compatibility) and [external integrations](https://akron.micr.dev/docs/feature-guide/external-tools) docs for details.
 
 ## contributing
 

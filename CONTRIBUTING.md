@@ -42,7 +42,7 @@ Canonical verification commands are documented in the docs site:
 - [Contribution workflow](docs/contributing/contribution-workflow.mdx)
 - [Testing and verification](docs/contributing/testing-and-verification.mdx)
 
-Use live Celeste/Everest verification when behavior depends on rendering, input timing, screen transitions, camera state, hitboxes, overlay layout, capture output, external tools, or map-specific runtime state.
+Use live Celeste/Everest verification when behavior depends on rendering, input timing, screen transitions, camera state, hitboxes, overlay layout, capture output, external integrations, or map-specific runtime state.
 
 ## Pull Requests
 

@@ -1,14 +1,15 @@
 ---
 title: Interop
-description: Use Akron with Speedrun Tool, CelesteTAS, room timers, and external workflows.
+description: Use Akron with Motion Smoothing, Speedrun Tool, CelesteTAS, room timers, and external workflows.
 ---
 
-Akron exposes compatibility surfaces for established Celeste tooling. Interop surfaces should be configured deliberately because some external actions can change attempt status or proof metadata.
+Akron exposes runtime integration surfaces for established Celeste tooling. Interop surfaces should be configured deliberately because some external actions can change attempt status or proof metadata.
 
 ## Supported Interop Areas
 
 | Area | Use it for |
 |---|---|
+| Motion Smoothing | FPS and TPS bypass controls when Motion Smoothing is loaded. |
 | Speedrun Tool | External timing and compatibility surfaces when Speedrun Tool is loaded. |
 | CelesteTAS handoff | Play a configured `.tas` file through a TAS handoff action. |
 | Room timer export | Export or sync room timing with external timing tools. |
