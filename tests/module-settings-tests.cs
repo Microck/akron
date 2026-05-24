@@ -204,6 +204,16 @@ public sealed class ModuleSettingsTests {
     }
 
     [Theory]
+    [InlineData(false, true, true, true, false)]
+    [InlineData(true, true, true, true, false)]
+    [InlineData(true, false, false, true, true)]
+    [InlineData(true, true, false, true, true)]
+    [InlineData(true, true, false, false, true)]
+    public void PauseTimerFreezeOnlyReleasesStopsOwnedByAkron(bool stoppedByAkron, bool freezeTimerEnabled, bool canFreezeTimer, bool freezeTimerDuringPause, bool expected) {
+        Assert.Equal(expected, AkronModule.ShouldReleasePauseTimerFreezeStop(stoppedByAkron, freezeTimerEnabled, canFreezeTimer, freezeTimerDuringPause));
+    }
+
+    [Theory]
     [InlineData(-5, 4)]
     [InlineData(0, 4)]
     [InlineData(1, 1)]

@@ -61,6 +61,7 @@ public partial class AkronModule : EverestModule {
     private static bool cursorZoomApplied;
     private static bool cursorZoomToggleActive;
     private static bool cursorZoomLastBindDown;
+    private static bool pauseTimerFreezeStoppedTimer;
     private static bool startPosPlacementLastLeftDown;
     private static int jumpHackAirJumpsUsed;
     private static readonly Dictionary<PlayerDeadBody, float> respawnTimeElapsed = new Dictionary<PlayerDeadBody, float>();
@@ -400,6 +401,16 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void LevelOnUpdateTime(On.Celeste.Level.orig_UpdateTime orig, Level self) {
+        bool freezeTimerEnabled = Settings.FreezeTimerWhilePaused;
+        bool freezeTimerDuringPause = ShouldFreezeTimerDuringPause(self);
+        bool canFreezeTimer = freezeTimerEnabled &&
+                              freezeTimerDuringPause &&
+                              TryUse(AkronFeatureKind.PauseTimerFreeze);
+        if (ShouldReleasePauseTimerFreezeStop(pauseTimerFreezeStoppedTimer, freezeTimerEnabled, canFreezeTimer, freezeTimerDuringPause)) {
+            self.TimerStopped = false;
+            pauseTimerFreezeStoppedTimer = false;
+        }
+
         long previousSessionTime = self.Session?.Time ?? 0L;
         AreaKey area = self.Session.Area;
         AreaModeStats modeStats = TryGetAreaModeStats(area);
@@ -407,9 +418,7 @@ public partial class AkronModule : EverestModule {
 
         orig(self);
 
-        if (!Settings.FreezeTimerWhilePaused ||
-            !TryUse(AkronFeatureKind.PauseTimerFreeze) ||
-            !ShouldFreezeTimerDuringPause(self)) {
+        if (!canFreezeTimer) {
             return;
         }
 
@@ -419,10 +428,15 @@ public partial class AkronModule : EverestModule {
         }
 
         self.TimerStopped = true;
+        pauseTimerFreezeStoppedTimer = true;
     }
 
     private static bool ShouldFreezeTimerDuringPause(Level level) {
         return level != null && (level.Paused || level.wasPaused);
+    }
+
+    internal static bool ShouldReleasePauseTimerFreezeStop(bool stoppedByAkron, bool freezeTimerEnabled, bool canFreezeTimer, bool freezeTimerDuringPause) {
+        return stoppedByAkron && (!freezeTimerEnabled || !canFreezeTimer || !freezeTimerDuringPause);
     }
 
     private static AreaModeStats TryGetAreaModeStats(AreaKey area) {
