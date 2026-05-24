@@ -3,7 +3,7 @@ title: Sound
 description: Audio routing, low-volume handling, speed, pitch, and per-sound volume overrides.
 ---
 
-The Sound tab changes audio presentation. Per-sound rows come from Akron's current sound override list.
+The Sound tab controls audio presentation and per-sound volume overrides. Per-sound rows correspond to Akron's built-in sound override list.
 
 | Option | Control | What it does | Attempt status |
 |---|---|---|---|
@@ -44,15 +44,14 @@ Rows with a triangle expose the controls listed below.
 
 | Option | Menu control | What it changes | Status |
 |---|---|---|---|
-| Audio Splitter | Refresh devices | Refresh FMOD output devices visible to Celeste. | Normal clear |
+| Audio Splitter | Reload Devices | Refresh FMOD output devices visible to Celeste. | Normal clear |
+| Audio Splitter | Main | Choose the output device for the main audio route. | Normal clear |
 | Audio Splitter | Music | Choose the output device for the music audio route. | Normal clear |
 | Audio Splitter | SFX | Choose the output device for the sound-effects audio route. | Normal clear |
-| Audio Splitter | Ambience | Choose the output device for the ambience audio route. | Normal clear |
-| Audio Splitter | UI | Choose the output device for the UI audio route. | Normal clear |
-| Audio Splitter | Unclassified | Choose the output device for sounds Akron cannot classify into another route. | Normal clear |
-| Allow Low Volume | Music volume | Set forced low music volume. | Normal clear |
-| Allow Low Volume | SFX volume | Set forced low SFX volume. | Normal clear |
+| Allow Low Volume | Music | Set the forced low music volume level. | Normal clear |
+| Allow Low Volume | SFX | Set the forced low SFX volume level. | Normal clear |
 | Audio Speed | Policy: Normal/Sync/Independent | Choose normal speed, Akron timescale sync, or an independent audio speed. | Normal clear |
 | Audio Speed | Speed | Set the independent audio speed multiplier. | Normal clear |
 | Pitch Shift | Policy: Preserve/Follow/Independent | Choose normal pitch, pitch following audio speed, or an independent pitch. | Normal clear |
 | Pitch Shift | Pitch | Set the independent pitch multiplier. | Normal clear |
+| Per-sound row | Volume | Set volume percentage (0–200) for the matching sound event. Only applies while the sound row is enabled. | Normal clear |
