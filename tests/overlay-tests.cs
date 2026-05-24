@@ -98,6 +98,25 @@ public sealed class OverlayTests {
         Assert.Contains("Global", GetCollapsedWindowTitles(overlay));
     }
 
+    [Theory]
+    [InlineData(true, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
+    [InlineData(false, true, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
+    [InlineData(false, false, true, AkronOverlay.OverlayCancelAction.CloseCommunityPackBrowser)]
+    [InlineData(false, false, false, AkronOverlay.OverlayCancelAction.KeepOverlayOpen)]
+    public void CancelInputDoesNotCloseBaseOverlay(bool searchInputActive, bool hasSearchQuery, bool communityPackBrowserOpen, AkronOverlay.OverlayCancelAction expected) {
+        Assert.Equal(expected, AkronOverlay.ResolveCancelAction(searchInputActive, hasSearchQuery, communityPackBrowserOpen));
+    }
+
+    [Theory]
+    [InlineData(true, false, false, false, true)]
+    [InlineData(false, false, false, false, false)]
+    [InlineData(true, true, false, false, false)]
+    [InlineData(true, false, true, false, false)]
+    [InlineData(true, false, false, true, false)]
+    public void OverlayRenderSurfaceIgnoresDeathWipeState(bool visible, bool promptMenuOpen, bool autoKillAreaSelectionActive, bool autoDeafenAreaSelectionActive, bool expected) {
+        Assert.Equal(expected, AkronOverlay.ShouldRenderOverlaySurface(visible, promptMenuOpen, autoKillAreaSelectionActive, autoDeafenAreaSelectionActive));
+    }
+
     [Fact]
     public void StartPosRowUsesSnapshotSlotPopupKey() {
         Dictionary<string, string> popupKeys = BuildOverlayEntryOptionsPopupKeys("StartPos");

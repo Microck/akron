@@ -43,6 +43,12 @@ public sealed partial class AkronOverlay : Entity {
     private const float AkronSmallFontSize = 16f;
     private const string OverlayToggleActionKey = "__akron_overlay_toggle";
     private const string ImGuiActionSearchInputId = "##akron_action_search_input";
+    public enum OverlayCancelAction {
+        KeepOverlayOpen,
+        ClearSearch,
+        CloseCommunityPackBrowser
+    }
+
     private static Color AkronWindowBackground => AkronOverlayThemes.WindowColor();
     private static Color AkronFrameBackground => AkronOverlayThemes.FrameColor();
     private static Color AkronAccent => AkronOverlayThemes.HeaderColor();
@@ -210,21 +216,16 @@ public sealed partial class AkronOverlay : Entity {
         UpdateFallbackScrollWheel();
 
         if (IsCancelPressed(searchInputActive || AkronImGuiRenderer.WantCaptureKeyboard)) {
-            if (searchInputActive || !string.IsNullOrEmpty(searchQuery)) {
+            OverlayCancelAction cancelAction = ResolveCancelAction(searchInputActive, !string.IsNullOrEmpty(searchQuery), communityPackBrowserOpen);
+            if (cancelAction == OverlayCancelAction.ClearSearch) {
                 searchQuery = string.Empty;
                 searchInputActive = false;
                 searchInputUsesImGui = false;
                 ClearSearchInputFocusRequest();
                 selectedActionIndex = 0;
                 actionScrollIndex = 0;
-            } else if (communityPackBrowserOpen) {
+            } else if (cancelAction == OverlayCancelAction.CloseCommunityPackBrowser) {
                 communityPackBrowserOpen = false;
-            } else {
-                Visible = false;
-                Active = false;
-                searchInputActive = false;
-                searchInputUsesImGui = false;
-                ClearSearchInputFocusRequest();
             }
             return;
         }
@@ -238,10 +239,7 @@ public sealed partial class AkronOverlay : Entity {
     }
 
     public bool RenderImGui() {
-        if (AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe() ||
-            AkronPromptMenu.IsOpen ||
-            autoKillAreaSelectionActive ||
-            autoDeafenAreaSelectionActive) {
+        if (!ShouldRenderOverlaySurface(Visible, AkronPromptMenu.IsOpen, autoKillAreaSelectionActive, autoDeafenAreaSelectionActive)) {
             return false;
         }
 
@@ -258,11 +256,7 @@ public sealed partial class AkronOverlay : Entity {
     }
 
     public void RenderSpriteBatchFallback() {
-        if (AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe() ||
-            !Visible ||
-            AkronPromptMenu.IsOpen ||
-            autoKillAreaSelectionActive ||
-            autoDeafenAreaSelectionActive) {
+        if (!ShouldRenderOverlaySurface(Visible, AkronPromptMenu.IsOpen, autoKillAreaSelectionActive, autoDeafenAreaSelectionActive)) {
             return;
         }
 
@@ -776,6 +770,25 @@ public sealed partial class AkronOverlay : Entity {
                Input.Pause.Pressed ||
                IsGamePadPressed(Buttons.B) ||
                IsGamePadPressed(Buttons.Back);
+    }
+
+    internal static OverlayCancelAction ResolveCancelAction(bool searchInputActive, bool hasSearchQuery, bool communityPackBrowserOpen) {
+        if (searchInputActive || hasSearchQuery) {
+            return OverlayCancelAction.ClearSearch;
+        }
+
+        if (communityPackBrowserOpen) {
+            return OverlayCancelAction.CloseCommunityPackBrowser;
+        }
+
+        return OverlayCancelAction.KeepOverlayOpen;
+    }
+
+    internal static bool ShouldRenderOverlaySurface(bool visible, bool promptMenuOpen, bool autoKillAreaSelectionActive, bool autoDeafenAreaSelectionActive) {
+        return visible &&
+               !promptMenuOpen &&
+               !autoKillAreaSelectionActive &&
+               !autoDeafenAreaSelectionActive;
     }
 
     private static bool IsConfirmPressed() {
