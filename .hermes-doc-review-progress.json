@@ -1,7 +1,7 @@
 {
   "started": null,
-  "last_run": "2026-05-25T01:36:06.390781",
-  "runs": 10,
+  "last_run": "2026-05-25T01:36:27.079585",
+  "runs": 11,
   "files_reviewed": [
     "docs/index.mdx",
     "docs/docs.mdx",
@@ -14,11 +14,11 @@
     "docs/concepts/proof-and-submission-mode.mdx",
     "docs/concepts/akr-files-and-setup-state.mdx",
     "docs/player-guide/overlay.mdx",
-    "docs/player-guide/menu-anatomy.mdx"
+    "docs/player-guide/menu-anatomy.mdx",
+    "docs/player-guide/gameplay-tools.mdx",
+    "docs/player-guide/hud-and-input-tools.mdx"
   ],
   "files_pending": [
-    "docs/player-guide/gameplay-tools.mdx",
-    "docs/player-guide/hud-and-input-tools.mdx",
     "docs/player-guide/visual-and-accessibility.mdx",
     "docs/player-guide/capture-and-recording.mdx",
     "docs/player-guide/community-packs.mdx",
@@ -69,6 +69,7 @@
     "64ef5cc",
     "147b374304648b871ce7efb0977e53d63c5817e1",
     "42ded239bb04e1d5bb821e7501807f534c1cf40b",
-    "42ded239bb04e1d5bb821e7501807f534c1cf40b"
+    "42ded239bb04e1d5bb821e7501807f534c1cf40b",
+    "c7ead6d920881e1834993cf5457e1e8b9e74f675"
   ]
 }
