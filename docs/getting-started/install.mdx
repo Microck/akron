@@ -11,17 +11,52 @@ You need:
 
 - Celeste with Everest installed.
 - Access to the Celeste `Mods` directory used by that Everest install.
-- The current Akron release archive from the project's public release page.
+- The current Akron release through Olympus or the project's public release page.
 
 <Warning>
   Install Akron into the same Celeste/Everest environment you intend to launch. A second Steam, Flatpak, or Wine prefix can have a different `Mods` directory.
 </Warning>
 
+## Install With Olympus
+
+Use Olympus as the main install path when possible.
+
+<Steps>
+  <Step title="Close Celeste">
+    Close the game before changing installed mods.
+  </Step>
+  <Step title="Open the Olympus install link">
+    Use the Akron one-click install link:
+
+    ```text
+    everest:https://gamebanana.com/mmdl/TODO,Mod,TODO
+    ```
+  </Step>
+  <Step title="Install Akron">
+    Let Olympus download Akron into the active Everest `Mods` directory.
+  </Step>
+  <Step title="Launch Celeste through Everest">
+    Start the same Celeste install that Olympus targets.
+  </Step>
+  <Step title="Check the mod list">
+    Open Everest's mod list and confirm Akron appears as an enabled mod.
+  </Step>
+</Steps>
+
 ## Install From A Release Archive
+
+Use the archive path when Olympus is unavailable or when you are testing a downloaded release manually.
 
 <Steps>
   <Step title="Close Celeste">
     Close the game before changing files in the `Mods` directory.
+  </Step>
+  <Step title="Download the archive">
+    Download the current Akron archive from the release page:
+
+    ```text
+    https://gamebanana.com/mods/download/TODO
+    ```
   </Step>
   <Step title="Copy the Akron archive">
     Put the Akron release archive, usually named `Akron.zip`, directly inside the Everest `Mods` directory. Do not unzip the archive unless a release explicitly tells you to.

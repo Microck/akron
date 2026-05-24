@@ -46,12 +46,19 @@ Use live Celeste/Everest verification when behavior depends on rendering, input 
 
 ## Pull Requests
 
-- Keep changes scoped to one goal.
-- Update public docs when user-facing behavior changes.
-- Update feature policy docs and registry tests when status classification changes.
-- Add or update tests when behavior, persistence, archive shape, policy, or setup defaults change.
-- Include live verification evidence when unit tests cannot prove the behavior.
-- Avoid committing secrets, local tokens, personal config files, local captures, or machine-specific paths.
+Before submitting, confirm that:
+
+- [ ] The diff is scoped to one goal.
+- [ ] Public docs are updated when user-facing behavior changes.
+- [ ] Feature policy docs and registry tests are updated when status classification changes.
+- [ ] Tests are added or updated when behavior, persistence, archive shape, policy, or setup defaults change.
+- [ ] New options or features include screenshot or video proof when the behavior is visible, input-driven, timing-sensitive, rendering-sensitive, capture-related, or gameplay-facing.
+- [ ] Fixes include after evidence for the corrected behavior when the behavior is visible or runtime-observable.
+- [ ] Fixes include before evidence when practical, especially for visual, overlay, capture, or gameplay regressions.
+- [ ] Live Celeste/Everest verification evidence is included when unit tests cannot prove the behavior.
+- [ ] The pull request does not commit secrets, local tokens, personal config files, local captures, or machine-specific paths.
+
+Screenshots or video should show the smallest surface that proves the change. Use screenshots for static UI, overlay, path, policy, or layout behavior. Use video for animation, input timing, recording, screen transitions, camera movement, hitboxes, or gameplay state changes.
 
 ## AI-Assisted Contributions
 
@@ -92,6 +99,7 @@ Pull requests will not be rejected solely because AI was used. They may be rejec
 - Prefer unit tests, fixtures, and local fake data over live authenticated or network-dependent tests.
 - If a change requires live verification, document the exact map, ruleset, setup state, command, and manual steps in the pull request.
 - Keep screenshots and captures focused on evidence. Do not include unrelated local overlays, usernames, or private paths.
+- New options or features need visual proof when the result is visible to players. Fixes need after evidence for the corrected behavior; before evidence is preferred when it is practical to capture or reproduce.
 
 ## Feature Policy
 

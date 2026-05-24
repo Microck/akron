@@ -40,6 +40,14 @@ dotnet test tests/akron-tests.csproj --nologo --filter ModuleSettingsTests
 dotnet test tests/akron-tests.csproj --nologo --filter ArchiveTests
 ```
 
+## CI Reference Archive
+
+GitHub Actions does not commit `lib-stripped/` into the repository. CI build and test jobs need `AKRON_CELESTE_REFS_URL` to point at a zip or tar.gz archive containing a complete `lib-stripped` reference directory.
+
+Set `AKRON_CELESTE_REFS_TOKEN` only when the archive URL requires bearer-token auth.
+
+CI skips build and test steps until `AKRON_CELESTE_REFS_URL` is configured. Release packaging requires the archive and fails fast when it is missing.
+
 ## Safety
 
 - Do not commit personal Celeste paths, local captures, `.env` files, or tokens.
