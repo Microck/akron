@@ -97,7 +97,7 @@ Pull requests will not be rejected solely because AI was used. They may be rejec
 
 - Do not commit `.env` files, tokens, local session state, personal Celeste paths, or private mod archives.
 - Prefer unit tests, fixtures, and local fake data over live authenticated or network-dependent tests.
-- If a change requires live verification, document the exact map, ruleset, setup state, command, and manual steps in the pull request.
+- If a change requires live verification, document the exact map, visible policy/status state, setup state, command, and manual steps in the pull request.
 - Keep screenshots and captures focused on evidence. Do not include unrelated local overlays, usernames, or private paths.
 - New options or features need visual proof when the result is visible to players. Fixes need after evidence for the corrected behavior; before evidence is preferred when it is practical to capture or reproduce.
 

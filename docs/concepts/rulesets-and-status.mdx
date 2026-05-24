@@ -3,7 +3,7 @@ title: Rulesets and status
 description: Understand how Akron rulesets classify tools as Goldberry/Hardlist clear, Normal clear, or Cheat during a Celeste attempt.
 ---
 
-Akron tracks the active attempt status while rulesets decide whether features are allowed, blocked, or recorded as attempt-changing.
+Akron tracks the active attempt status while its policy settings decide whether features are allowed, blocked, or recorded as attempt-changing. The overlay shows this status during play; detailed ruleset selection is an advanced settings, command, and import path rather than the main overlay workflow.
 
 ## The Three Statuses
 
@@ -31,14 +31,14 @@ Disabling a feature does not undo earlier use. This is intentional: Akron record
 
 ## What Rulesets Do
 
-Rulesets control the current policy environment. A ruleset can:
+Rulesets are Akron's internal policy presets. They control the current policy environment, but most player-facing docs should start from the overlay row or setup pack a user can actually see. A ruleset can:
 
 - Allow a feature.
 - Block a feature before it changes state.
 - Let the feature run while marking the attempt.
 - Add presentation rules such as redaction or proof-focused output.
 
-Rulesets can stack. For example, a primary ruleset can define the clean-play policy while an overlay ruleset hides local filesystem paths from Akron UI and exported proof output.
+Rulesets can stack. For example, a primary ruleset can define the clean-play policy while an overlay state hides local filesystem paths from Akron UI and exported proof output.
 
 ## How To Read Policy Badges
 

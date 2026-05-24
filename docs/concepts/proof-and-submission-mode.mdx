@@ -3,13 +3,13 @@ title: Proof and submission mode
 description: Understand what Akron proof metadata records and what it does not prove.
 ---
 
-Akron can record proof-oriented metadata and guardrails, but it does not make a run legitimate by itself. It records Akron's view of active features, rulesets, overrides, and proof settings so a reviewer has more context.
+Akron can record proof-oriented metadata and guardrails, but it does not make a run legitimate by itself. It records Akron's view of active features, policy state, overrides, and proof settings so a reviewer has more context.
 
 ## What Akron Records
 
 Proof-oriented surfaces can include:
 
-- Active rulesets and overlay rulesets.
+- Visible policy/status state.
 - Attempt classification.
 - Active-feature list.
 - Pause counts and paused duration.
@@ -23,7 +23,7 @@ flowchart TD
   player["Player attempt"] --> akron["Akron runtime"]
   akron --> status["Attempt status"]
   akron --> features["Feature list"]
-  akron --> rulesets["Rulesets"]
+  akron --> policy["Policy state"]
   akron --> proof["Proof JSON"]
   proof --> review["Review context"]
 ```
@@ -51,8 +51,8 @@ Related proof helpers include recorder guard, end-screen helper, pause tracker, 
 ## Proof Workflow
 
 <Steps>
-  <Step title="Set the intended ruleset">
-    Open Everest's mod options for Akron and use `Leaderboard-clean` or the relevant community ruleset before the attempt starts.
+  <Step title="Start from the intended setup">
+    Use the setup required by the target submission workflow before the attempt starts. If that workflow requires `Leaderboard-clean` or a community ruleset, apply it through Akron's Everest mod options or setup/ruleset import path.
   </Step>
   <Step title="Enable proof helpers">
     Enable only the proof helpers that match the target submission requirements.

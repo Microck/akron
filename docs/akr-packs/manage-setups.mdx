@@ -5,24 +5,24 @@ description: Back up, reset, and maintain Akron setup state for different play c
 
 Akron setup state covers the options, bindings, StartPos slots, and scoped tool settings that can be exported into `.akr` packs. Use setup backups to separate clean-play guardrails, room-lab tools, accessibility settings, and map-making workflows.
 
-## Start From A Ruleset
+## Start From A Setup
 
-Open Everest's mod options for Akron and choose the ruleset that matches the current workflow. The Akron overlay shows the active ruleset and supports `.akr` import/export, but player setup should be organized around rulesets and scoped packs.
+Use `.akr` setup backups to separate workflows. The Akron overlay shows the current policy/status state and supports `.akr` import/export, but player setup should be organized around visible tool groups and scoped packs. Rulesets are advanced policy presets behind some setups, not the main setup-management surface.
 
-| Ruleset or setup | Best for |
+| Setup | Best for |
 |---|---|
-| `Casual` | Learning Akron and ordinary play. |
-| `Practice` | StartPos, reloads, timescale, and route iteration. |
-| `Leaderboard-clean` | Attempts where clean classification matters. |
-| `Sandbox` | Local experiments and unrestricted tool testing. |
-| `Map-maker` | Capture, inspection, and map development workflows. |
+| Default setup | Learning Akron and ordinary play. |
+| Room-lab setup | StartPos, reloads, timescale, and route iteration. |
+| Clean-run setup | Attempts where clean classification matters. |
+| Local testing setup | Experiments and unrestricted tool testing. |
+| Map inspection setup | Capture, inspection, and map development workflows. |
 | Accessibility-focused setup | Visual, audio, and comfort settings. |
 
 ## Maintain Setups
 
 <Steps>
-  <Step title="Start from the closest ruleset">
-    Use Everest's mod options to pick the ruleset that matches the workflow before changing individual tools.
+  <Step title="Start from the closest setup">
+    Use an existing setup or export a fresh baseline before changing individual tools for a new workflow.
   </Step>
   <Step title="Change one tool group at a time">
     Configure overlay behavior, HUD tools, room-lab tools, visual settings, and interop separately so you can find mistakes.

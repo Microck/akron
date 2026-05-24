@@ -5,6 +5,8 @@ description: Reference for Akron built-in rulesets, overlay rulesets, active rul
 
 Rulesets define Akron's policy environment. They decide whether feature use is allowed, blocked, recorded, or presented differently.
 
+This is reference material. Normal player guides should start with the Akron overlay, visible attempt status, and setup packs. Primary rulesets are available through Akron's Everest mod options, debug/automation commands, and imported ruleset data; they are not the main overlay navigation model.
+
 ## Built-In Primary Rulesets
 
 | Ruleset | Purpose |
@@ -35,7 +37,7 @@ flowchart TD
   presentation --> ui["UI and proof"]
 ```
 
-Primary rulesets control allowed behavior. Overlay states change presentation or proof output. Map compatibility overrides can affect risky runtime paths such as StartPos restore.
+Primary rulesets control allowed behavior. Overlay states change presentation or proof output and may be shown in the current stack. Map compatibility overrides can affect risky runtime paths such as StartPos restore.
 
 ## Reading A Ruleset
 

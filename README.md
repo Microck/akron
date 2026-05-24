@@ -13,7 +13,7 @@
 
 ## what is Akron?
 
-Akron is a player-facing utility suite for Celeste that runs inside Everest. it centers on an in-game overlay for practice, routing, hud visibility, capture, setup sharing, and ruleset-aware status.
+Akron is a player-facing utility suite for Celeste that runs inside Everest. it centers on an in-game overlay for practice, routing, hud visibility, capture, setup sharing, and visible attempt status.
 
 the overlay keeps common player tools close to the game instead of scattered across separate menus. players can check the current setup, adjust practice or hud surfaces, capture play, and move back into the level without changing context.
 
@@ -44,9 +44,9 @@ the tabbed in-game overlay includes hud widgets for labels, inputs, timers, reso
 
 startpos tools, retry and reload helpers, frame and timescale controls, and room-lab utilities are grouped around setup, routing, and quickly returning to the part of a map that needs practice.
 
-### rulesets and status
+### status and policy
 
-rulesets and status chips make feature use visible. they do not prove a run or replace community submission rules, but they keep Akron's current setup from being ambiguous.
+status chips and policy badges make feature use visible. they do not prove a run or replace community submission rules, but they keep Akron's current setup from being ambiguous.
 
 ### .akr setup packs
 

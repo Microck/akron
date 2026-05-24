@@ -22,7 +22,7 @@ Akron exposes a narrow developer-facing command surface through Everest's consol
 | Command | Purpose |
 |---|---|
 | `akron_status` | Dump current Akron runtime state. |
-| `akron_ruleset <casual/practice/leaderboard-clean/sandbox/everest-safe/map-maker>` | Switch primary ruleset. |
+| `akron_ruleset <casual/practice/leaderboard-clean/sandbox/everest-safe/map-maker>` | Switch the advanced primary ruleset setting for QA or controlled verification. |
 | `akron_overlay <toggle/show/hide/status>` | Control the overlay without a hotkey. |
 | `akron_room_capture <start/stop/status>` | Drive Room Capture. The overlay `Room Capture` row is the normal player-facing path. |
 | `akron_map_capture <start/stop/status>` | Drive Map Capture. The overlay `Map Capture` row is the normal player-facing path. |
@@ -82,7 +82,7 @@ Akron executes one command per frame so structural actions such as load or room 
 Commands support repeatable live verification scenarios:
 
 - Show the overlay before screenshots.
-- Switch rulesets without relying on fragile input.
+- Switch advanced ruleset settings without relying on fragile input.
 - Exercise StartPos, freeze, hitbox, inspector, and proof surfaces.
 - Refresh and import community packs.
 - Capture proof sidecars for comparison.

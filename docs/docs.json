@@ -3,7 +3,11 @@
   "name": "Akron",
   "description": "Akron documentation for players, pack authors, and contributors.",
   "theme": "maple",
-  "logo": "/images/logo.png",
+  "logo": {
+    "light": "/images/logo.png",
+    "dark": "/images/logo.png",
+    "href": "/docs/"
+  },
   "favicon": "/images/favicon.png",
   "colors": {
     "primary": "#A86048",
@@ -67,7 +71,7 @@
       {
         "group": "Start",
         "pages": [
-          "index",
+          "docs",
           "getting-started/install",
           "getting-started/first-run",
           "getting-started/configuration",
@@ -86,6 +90,7 @@
         "group": "Player guide",
         "pages": [
           "player-guide/overlay",
+          "player-guide/menu-anatomy",
           "player-guide/gameplay-tools",
           "player-guide/hud-and-input-tools",
           "player-guide/visual-and-accessibility",
