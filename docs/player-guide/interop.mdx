@@ -1,0 +1,26 @@
+---
+title: Interop
+description: Use Akron with Speedrun Tool, CelesteTAS, room timers, and external workflows.
+---
+
+Akron exposes compatibility surfaces for established Celeste tooling. Interop surfaces should be configured deliberately because some external actions can change attempt status or proof metadata.
+
+## Supported Interop Areas
+
+| Area | Use it for |
+|---|---|
+| Speedrun Tool | External timing and compatibility surfaces when Speedrun Tool is loaded. |
+| CelesteTAS handoff | Play a configured `.tas` file through a TAS handoff action. |
+| Room timer export | Export or sync room timing with external timing tools. |
+
+## Speedrun Tool
+
+Speedrun Tool interop is optional and appears only when Speedrun Tool is loaded. Treat external tool actions as policy-visible and check their row badges before using them in a submitted attempt.
+
+## TAS Handoff
+
+TAS handoff delegates active control to TAS tooling and is Cheat in Akron's policy model. Keep TAS handoff under `Practice`, `Sandbox`, or development-only setups.
+
+## Room Timer Export
+
+Room timer export actions are Normal clear because they export or sync room timing with external timing tools instead of changing live gameplay.

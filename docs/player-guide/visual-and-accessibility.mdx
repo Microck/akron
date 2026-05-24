@@ -1,0 +1,40 @@
+---
+title: Visual and accessibility
+description: Tune visual noise, audio presentation, HUD visibility, screenshake, and Madeline visuals.
+---
+
+Akron includes visual and audio settings for comfort, clarity, and presentation. These settings are usually `Goldberry/Hardlist clear` or `Normal clear` when they do not mutate gameplay or reveal hidden state, but strict submissions may still evaluate presentation changes case by case.
+
+## Visual Noise And Presentation
+
+| Area | Examples |
+|---|---|
+| Reduced visual noise | No particles, no trails, no glitch, no anxiety, no distortion, hidden weather or effects. |
+| Visual tuning | Lighting, bloom, tint, and related presentation values. |
+| HUD visibility | Hide or reduce HUD surfaces. |
+| Pause menu visibility | Hide the pause menu surface without changing pause state. |
+| Death visuals | Suppress post-death particles and wipe presentation. |
+| Respawn animation | Shorten post-death respawn presentation. |
+
+## Audio Presentation
+
+Akron can lower volume beyond normal constraints, split audio routes, change active audio playback speed, or pitch-shift audio. These are presentation/accessibility settings in Akron's current policy when they do not change simulation timing.
+
+<Note>
+  Audio speed changes active audio playback speed. It does not change the game simulation tick rate.
+</Note>
+
+## Madeline Visuals
+
+Akron supports local visual customization such as custom trails, Madeline hair length, and effect sync with active hair color. These change presentation without moving the player or changing collision.
+
+## Screenshake
+
+Screenshake reduction is Goldberry/Hardlist clear because it is an accessibility comfort control that suppresses camera shake without changing gameplay state.
+
+## Configuration Advice
+
+- Keep accessibility and presentation settings in a dedicated accessibility setup when they are your default way to play.
+- Keep camera inspection tools such as free camera, camera offset, and cursor zoom under `Practice` or `Map-maker`.
+- Do not assume a `Goldberry/Hardlist clear` or `Normal clear` presentation feature is accepted by every strict external rule source.
+- Use [Rulesets and status](/concepts/rulesets-and-status) when preparing for a submitted run.

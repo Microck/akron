@@ -1,0 +1,50 @@
+---
+title: Capture and recording
+description: Use screenshots, room capture, map capture, internal recorder, and proof capture surfaces.
+---
+
+Akron capture tools support review, sharing, proof context, and creator workflows. Capture output should not change gameplay unless a specific suboption says otherwise.
+
+## Capture Surfaces
+
+| Surface | Use it for |
+|---|---|
+| Screenshot tool | Capture the current game view for review or sharing. |
+| Room capture | Capture a room view or room marker output. |
+| Map capture | Capture larger map output through scanner workflows. |
+| Internal recorder | Capture local game frames, replay buffer, audio, codec, and clip-trigger output. |
+| Proof sidecar | Export ruleset, classification, active-feature, and proof metadata. |
+
+## Capture Workflow
+
+<Steps>
+  <Step title="Open the capture surface">
+    Use the overlay row or configured shortcut for the capture tool you need.
+  </Step>
+  <Step title="Configure output">
+    For screenshots and room or map capture, set the output folder, filename template, scale, and preview visibility as needed. For recording, configure recorder-specific options such as codec, replay buffer, and clip triggers.
+  </Step>
+  <Step title="Check policy suboptions">
+    Timer-freeze or proof-affecting options can be stricter than the base capture row.
+  </Step>
+  <Step title="Capture and review">
+    Inspect the output before sharing it. Confirm it shows the intended state and does not include unwanted technical details.
+  </Step>
+</Steps>
+
+## Internal Recorder
+
+The internal recorder captures local frames for review without mutating gameplay state. It includes output, audio, replay, codec, clip trigger, preset, CPU, NVIDIA, and AMD configuration surfaces.
+
+For proof-oriented use, combine recorder settings with Submission Mode and proof helpers rather than assuming a video alone contains all context.
+
+## Streamer Mode And Output Paths
+
+If `Streamer Mode` is active, Akron-owned HUD, overlay, and proof surfaces hide local filesystem paths. Streamer Mode does not hide arbitrary game data such as room IDs, flags, entity text, or StartPos coordinates.
+
+## Troubleshooting
+
+- If a capture is blank or cropped, verify the capture mode and output resolution.
+- If output paths are hidden, check whether `Streamer Mode` is active.
+- If proof capture is not armed, enable Proof Recorder Guard or review the recorder settings.
+- If capture freezes timers, check whether a strict suboption is enabled.

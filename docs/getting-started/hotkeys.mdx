@@ -1,0 +1,57 @@
+---
+title: Hotkeys
+description: Configure, test, and recover Akron keyboard, controller, overlay, and action hotkeys in Everest and the in-game UI.
+---
+
+Akron uses Everest's keyboard and controller configuration surfaces for binds. Use those surfaces when possible so bindings stay consistent with the rest of the modded Celeste setup.
+
+## Configure A Bind
+
+<Steps>
+  <Step title="Open Everest controls">
+    From Celeste's mod options, open the Everest keyboard or controller configuration screen.
+  </Step>
+  <Step title="Find the Akron action">
+    Search or scroll to the Akron action you want to change, such as the overlay toggle, retry, StartPos set/load, freeze, hitboxes, or inspector actions.
+  </Step>
+  <Step title="Assign the new input">
+    Bind the key or controller input. Avoid inputs already used by Celeste movement, pause, confirm, or another mod action you need during the same workflow.
+  </Step>
+  <Step title="Test in a non-submission context">
+    Test the bind in casual or room-lab play before using it in a clean or proof-oriented attempt.
+  </Step>
+</Steps>
+
+## Keyboard And Controller Inputs
+
+Akron uses Celeste/Everest binding primitives where possible:
+
+- Built-in Akron hotkeys use Everest `ButtonBinding` settings.
+- Overlay row custom bindings accept keyboard chords such as `Ctrl+Shift+D`.
+- Overlay row custom bindings can also use controller buttons, stored with an explicit value such as `Button:LeftShoulder`.
+
+The binding capture popup accepts a keyboard key or a controller button. It waits for the input that opened capture to be released so a held button does not bind itself accidentally.
+
+Controller bindings are displayed with controller-facing names such as `LB`, `RB`, and `DPad Left` where Akron has a formatter. Multi-button controller combinations are not part of the current binding model.
+
+## Bind Recovery
+
+If the overlay bind is unknown:
+
+- Open Everest controls from Celeste's menus and search for Akron actions.
+- Temporarily disable other mods if a bind conflict prevents input from reaching Akron.
+- Check Everest logs if the bind appears configured but Akron never receives it.
+
+## Recommended Binding Strategy
+
+| Workflow | Binding advice |
+|---|---|
+| Overlay | Use a single key or controller button that does not overlap with movement. |
+| Retry/reload | Keep separate from vanilla restart and quit actions. |
+| StartPos set/load | Keep set and load far enough apart to avoid accidental restores. |
+| Freeze/frame tools | Use nearby keys only under `Practice` or `Sandbox` rulesets. |
+| Debug tools | Bind only when actively inspecting maps or runtime state. |
+
+<Warning>
+  Some shortcut actions are policy-visible. A convenient bind can still mark the active attempt if it uses a Cheat feature.
+</Warning>

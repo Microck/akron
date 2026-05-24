@@ -1,0 +1,90 @@
+---
+title: Debug commands
+description: Reference for Akron DebugRC, Everest console commands, file-backed automation, command outputs, and QA workflows.
+---
+
+Akron exposes a narrow developer-facing command surface through Everest's console and DebugRC. The commands route into Akron's normal runtime services and exist for QA, live verification, and automation.
+
+<Warning>
+  Debug commands are not a second end-user UI. Player-facing docs document overlay rows and Everest mod options first. Commands are for development, testing, and controlled verification contexts.
+</Warning>
+
+## Exposure Levels
+
+| Level | Meaning |
+|---|---|
+| UI mirror | Command wraps an overlay row or Everest mod option. UI docs are the normal player-facing path. |
+| Automation | Command exists so QA can drive the UI or runtime repeatably. |
+| Command-only | No first-class player UI. Treat as developer, QA, or controlled review tooling. |
+
+## Common UI Mirrors
+
+| Command | Purpose |
+|---|---|
+| `akron_status` | Dump current Akron runtime state. |
+| `akron_ruleset <casual/practice/leaderboard-clean/sandbox/everest-safe/map-maker>` | Switch primary ruleset. |
+| `akron_overlay <toggle/show/hide/status>` | Control the overlay without a hotkey. |
+| `akron_room_capture <start/stop/status>` | Drive Room Capture. The overlay `Room Capture` row is the normal player-facing path. |
+| `akron_map_capture <start/stop/status>` | Drive Map Capture. The overlay `Map Capture` row is the normal player-facing path. |
+| `akron_startpos slot <n>` | Set the active StartPos slot. |
+| `akron_save [slot]` | Capture StartPos state into the current or specified slot. |
+| `akron_load [slot]` | Restore StartPos state from the current or specified slot. |
+| `akron_freeze <toggle/on/off/status>` | Control gameplay freeze. |
+| `akron_hitboxes <toggle/on/off/status>` | Control the hitbox overlay. |
+| `akron_inspector <toggle/on/off/status>` | Control the entity inspector. |
+| `akron_timescale <value/reset>` | Set absolute timescale using invariant-culture parsing. |
+| `akron_proof [event-name]` | Export a proof sidecar JSON file. |
+| `akron_community_packs subcommand` | Configure and exercise the community `.akr` catalog. |
+
+## Command-Only Or Automation-First
+
+| Command | Scope |
+|---|---|
+| `akron_overlay_move`, `akron_overlay_select`, `akron_overlay_options`, `akron_overlay_exec`, `akron_overlay_search`, `akron_overlay_state`, `akron_overlay_collapse` | Automation controls for driving the overlay without synthetic input. |
+| `akron_perf <status/reset>` | Developer performance telemetry for overlay/render diagnostics. |
+| `akron_feature name [on/off/toggle/status]` | Low-level wrapper over many toggles. Document the concrete overlay row first. |
+| `akron_qa_*`, `akron_player_state`, `akron_input_state` | QA state setup and telemetry for live verification. |
+| `akron_position x y` | Command-only position setter for controlled map debugging. StartPos and room-warp UI flows are the player-facing paths. |
+| `akron_debug_snapshot [tag]` | Diagnostic JSON artifact for bug reports and automation. |
+| `akron_editable_flag` | Console mirror for the Everest `Editable Flag Name` setting; the flag inspector remains developer/map-inspection tooling. |
+| `akron_tas_file` | Console mirror for the Everest `TAS File Path` setting; the overlay can show/play the configured file. |
+| `akron_broker_prompt`, `akron_prompt_state`, `akron_prompt_select` | Prompt automation for tests and live verification. |
+| `akron_toggle_force_broker`, `akron_toggle_unsafe_native_override`, `akron_toggle_everest_safe_override` | Per-map compatibility override commands. Everest's Akron mod options are the normal manual testing path. |
+
+## Community Pack Commands
+
+```text
+akron_community_packs status
+akron_community_packs url <catalog-url>
+akron_community_packs refresh
+akron_community_packs category StartPos
+akron_community_packs search beginner lobby
+akron_community_packs list
+akron_community_packs import 0
+```
+
+`list` prints the currently filtered zero-based entries. `import` downloads the selected `.akr` and imports it through the same scoped path as the in-game button.
+
+## File-Backed Automation Queue
+
+When DebugRC's `/console` endpoint is unreliable, Akron can process a file-backed queue on the game thread.
+
+| File | Purpose |
+|---|---|
+| `Saves/AkronAutomation/command.txt` | Newline-delimited commands to run. |
+| `Saves/AkronAutomation/last-command.txt` | Consumed input. |
+| `Saves/AkronAutomation/last-result.txt` | Plain-text result with pending/complete status. |
+
+Akron executes one command per frame so structural actions such as load or room transitions do not stack unsafely inside a single update.
+
+## Verification Scenarios
+
+Commands support repeatable live verification scenarios:
+
+- Show the overlay before screenshots.
+- Switch rulesets without relying on fragile input.
+- Exercise StartPos, freeze, hitbox, inspector, and proof surfaces.
+- Refresh and import community packs.
+- Capture proof sidecars for comparison.
+
+Command-only controls should not appear in player tutorials unless a normal UI path exists first.

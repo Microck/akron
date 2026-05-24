@@ -1,0 +1,48 @@
+---
+title: Install Akron
+description: Install Akron into an Everest Celeste setup, place the mod archive correctly, and confirm the mod loads.
+---
+
+This tutorial gets Akron into an existing Celeste + Everest setup and confirms that the mod is loadable.
+
+## Before You Start
+
+You need:
+
+- Celeste with Everest installed.
+- Access to the Celeste `Mods` directory used by that Everest install.
+- The current Akron release archive from the project's public release page.
+
+<Warning>
+  Install Akron into the same Celeste/Everest environment you intend to launch. A second Steam, Flatpak, or Wine prefix can have a different `Mods` directory.
+</Warning>
+
+## Install From A Release Archive
+
+<Steps>
+  <Step title="Close Celeste">
+    Close the game before changing files in the `Mods` directory.
+  </Step>
+  <Step title="Copy the Akron archive">
+    Put the Akron release archive, usually named `Akron.zip`, directly inside the Everest `Mods` directory. Do not unzip the archive unless a release explicitly tells you to.
+  </Step>
+  <Step title="Launch Celeste through Everest">
+    Start the same Celeste install that owns the `Mods` directory you changed.
+  </Step>
+  <Step title="Check the mod list">
+    Open Everest's mod list and confirm Akron appears as an enabled mod.
+  </Step>
+</Steps>
+
+## Confirm Akron Loaded
+
+After launch, continue to [First run](/getting-started/first-run). The first-run check confirms that the overlay opens, ruleset status is visible, and Akron can read its settings.
+
+## If Akron Does Not Appear
+
+- Confirm the file is in the active Everest `Mods` directory.
+- Confirm the archive is named like the Akron release archive and contains an `everest.yaml` manifest at the archive root.
+- Check Everest logs for missing dependencies or load errors.
+- If the install uses Steam Flatpak, Wine, or a custom prefix, verify the path you copied into is the path that runtime uses.
+
+See [Compatibility](/troubleshooting/compatibility) for platform-specific diagnosis.

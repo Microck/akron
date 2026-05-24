@@ -1,0 +1,48 @@
+---
+title: Practice and sandbox
+description: Reference for permissive Akron rulesets used for room-lab routing, testing, and experimentation.
+---
+
+`Practice` and `Sandbox` rulesets are for workflows where learning, routing, testing, or inspection matters more than clean-submission status.
+
+`Practice` and `Sandbox` are current Akron rulesets. There is no separate attempt status named Practice; current attempt status is still Goldberry/Hardlist clear, Normal clear, or Cheat.
+
+Switch primary rulesets from Everest's mod options for Akron. The Akron overlay shows the current stack and supports `.akr` import/export.
+
+## Practice
+
+`Practice` is the room-lab workflow. Its defaults enable room-review displays: stamina, speed, dash, input viewer, room timer, and death stats.
+
+Use the `Practice` ruleset for tools such as StartPos restore, room reloads, frame advance, freeze, timescale, Auto Kill, and route triggers. Those state-changing tools still stay off until you enable them.
+
+Using Cheat tools in `Practice` can intentionally mark an attempt as Cheat. That is expected.
+
+## Sandbox
+
+`Sandbox` removes Akron policy blocks. It does not auto-enable features for you.
+
+Use it for:
+
+- Local experimentation.
+- Testing risky combinations.
+- Debugging interactions between tools.
+- Trying map or runtime behavior before committing it to a setup.
+
+Sandbox should not be used as evidence that a feature is clean.
+
+## Map-Maker
+
+Use `Map-maker` for:
+
+- Map capture.
+- Room or entity inspection.
+- Trigger and hitbox visualization.
+- Camera or zoom inspection tools.
+- Map-specific `.akr` pack preparation.
+
+## Good Separation
+
+- Keep clean-run setups small and conservative.
+- Keep `Practice` and sandbox setups explicit.
+- Export scoped packs when sharing map setup.
+- Do not import whole sandbox setups into clean-run contexts.

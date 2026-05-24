@@ -1,0 +1,50 @@
+---
+title: Gameplay tools
+description: Use Akron retry, reload, StartPos, frame, timescale, Auto Kill, Auto Deafen, and routing shortcuts for practice.
+---
+
+Akron's gameplay tools are useful for routing, learning, and map inspection. Many of them are Cheat for submitted clean clears because they change state, timing, position, or execution.
+
+## Common Tools
+
+| Tool | Use it for | Policy shape |
+|---|---|---|
+| Retry hotkey | Restart the current attempt through a shortcut. | Normal clear when it matches the configured allowed behavior. |
+| Room reload | Reset the room outside normal play. | Cheat. |
+| Chapter reload | Reset chapter state. | Normal clear. |
+| StartPos tools | Capture and restore StartPos snapshots. | Cheat. |
+| Frame advance and freeze | Inspect timing one step at a time. | Cheat. |
+| Timescale | Slow down or speed up gameplay updates. | Cheat. |
+| Auto Kill | Kill the player automatically after a timer or region trigger. | Cheat. |
+| Auto Deafen | Press a configured Discord deafen hotkey after a trigger. | Normal clear. |
+
+## Room-Lab Workflow
+
+<Steps>
+  <Step title="Use Practice or Sandbox">
+    Use Everest's Akron mod options to switch to `Practice` or `Sandbox` before enabling state-changing tools.
+  </Step>
+  <Step title="Choose the route tool">
+    Use StartPos for repeated room or state-specific routing. Use Room reload for Cheat reset loops, or Chapter reload when a full chapter restart is the intended clean workflow.
+  </Step>
+  <Step title="Check the status indicator">
+    Expect state-changing tools such as StartPos restore, Room reload, frame tools, and timescale to mark the active attempt as Cheat.
+  </Step>
+  <Step title="Keep exports scoped">
+    Export only the StartPos or relevant section when sharing map-specific setup.
+  </Step>
+</Steps>
+
+## StartPos Safety
+
+StartPos is the public workflow for saving and restoring room positions. It can store position plus selected room state so repeated attempts start from the intended setup.
+
+If StartPos restore is blocked, check the active ruleset, map compatibility policy, and whether the saved StartPos belongs to the current map or room.
+
+See [StartPos recovery](/troubleshooting/startpos-recovery) for recovery guidance.
+
+## Input Shortcut Caution
+
+Shortcuts that synthesize or modify execution inputs are Cheat. This includes input-assist shortcuts such as Neutral Drop and Backboost.
+
+Use the [Feature status reference](/reference/feature-status-reference) before binding a shortcut for submitted-run use.

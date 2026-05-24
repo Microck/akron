@@ -1,0 +1,57 @@
+---
+title: Overlay
+description: Navigate Akron's in-game overlay tabs, policy badges, option rows, streamer controls, and external-tool sections.
+---
+
+The overlay is Akron's primary UI. It is organized into stable in-game tabs. Optional tabs from other mods appear only when those mods are loaded and are documented separately.
+
+![Akron overlay with default-disabled tools and StartPos controls](/images/akron-overlay-overview.png)
+
+## Main Areas
+
+| Area | Use it for |
+|---|---|
+| Global | Current-session controls such as timescale, safe mode, submission mode, control display, and autosave. |
+| Level | Level-scoped tools such as Auto Kill, Auto Deafen, freeze, respawn time, visual noise, hitboxes, triggers, and proof helpers. |
+| StartPos | Start position capture, placement, slot selection, smart matching, and respawn-at-StartPos behavior. |
+| Bypass | Save and completion mutation tools such as instant complete, unlocks, and berry obtain actions. |
+| Keybinds | Overlay, menu, and action bindings. |
+| Player | Player-facing HUD, movement, visual, resource, and assist controls. |
+| Sound | Audio splitter, low-volume bypass, audio speed, pitch shift, and volume controls. |
+| Creator | Map inspection, room capture, map capture, room warp, camera, and export tools. |
+| Interface | Overlay theme, scale, opacity, Streamer Mode, `.akr` import/export, community packs, and search. |
+| Labels | Room labels, input displays, room timer, death stats, custom HUD labels, and label styling. |
+| Shortcuts | Open options, retry, reloads, neutral drop, backboost, and cutscene/dialogue skip. |
+| Internal Recorder | Video capture, replay buffer, completion clips, proof helpers, output, codec, audio, and preset controls. |
+
+See [External tools](/feature-guide/external-tools) for Speedrun Tool, CelesteTAS, and Extended Variant Mode rows that appear only when those mods are loaded.
+
+## Search And Popups
+
+Use overlay search when you know the option name. Many rows have a popup or tooltip with configuration values. Changing a popup value stores the setting; the parent row still controls whether that behavior is enabled.
+
+## Policy Badges
+
+Rows can show policy status. Read the badge and any popup suboption badges before enabling a feature.
+
+<Warning>
+  A clean parent row can contain a stricter suboption. For example, a capture feature can be clean while a timer-freeze suboption is Cheat.
+</Warning>
+
+## Safe Overlay Habits
+
+- Choose the intended ruleset from Everest's Akron mod options before an attempt.
+- Check the active ruleset stack before enabling features. Ruleset changes also live in Everest's Akron mod options.
+- Keep attempt-changing tools under `Practice` or `Sandbox`.
+- Use search to find the exact row instead of changing adjacent settings by mistake.
+- Export a `.akr` backup before importing shared packs or making broad changes.
+
+## Troubleshooting
+
+If the overlay does not open:
+
+- Check the overlay hotkey in Everest controls.
+- Confirm Akron loaded in the mod list.
+- Try a different bind if another mod consumes the same input.
+
+If the overlay still does not open, collect the active bind, loaded mod list, and any Everest log errors before reporting the issue.

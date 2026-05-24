@@ -1,0 +1,45 @@
+---
+title: Community packs
+description: Browse, filter, inspect, and import community .akr setup packs for the current Celeste map.
+---
+
+Community Packs opens a standalone browser window that reads a JSON catalog, filters entries for the current map SID, and imports selected `.akr` packs through Akron's importer.
+
+## Catalog URL
+
+Akron reads the configured community pack catalog URL from its Community Packs settings. The catalog can contain map-specific StartPos, Auto Kill, Auto Deafen, and other scoped `.akr` packs. Akron filters entries by current map, selected category, and search terms.
+
+## Import A Pack
+
+<Steps>
+  <Step title="Open the target map">
+    Community packs are filtered by the current map SID, so enter the map you want a pack for.
+  </Step>
+  <Step title="Open Community Packs">
+    Open Akron's overlay, go to `Interface`, and choose `Community Packs`.
+  </Step>
+  <Step title="Refresh the catalog">
+    Click `Refresh` to load the current catalog index.
+  </Step>
+  <Step title="Filter entries">
+    Choose a category and search by title, description, author, map URL, section label, or tags.
+  </Step>
+  <Step title="Import the selected pack">
+    Akron downloads the selected `.akr` file into `Saves/AkronProfiles/community-*.akr` and imports the declared scope.
+  </Step>
+</Steps>
+
+## Pack Safety
+
+Community packs use the same `.akr` import path as local exports.
+
+- Keep a backup export before importing.
+- Check the section before importing.
+- Treat imported attempt-changing settings as policy-visible when used.
+- Prefer scoped imports over whole-setup imports when sharing map setup.
+
+## Catalog Contract
+
+Catalog entries point to `.akr` downloads and identify the section, map SID, title, author, tags, and update time. See [Community pack catalog](/reference/community-pack-catalog) for the JSON contract and [Akron .akr archives](/reference/akr-archives) for archive validation rules.
+
+Catalog maintainers should validate pack metadata, scopes, and download URLs before publishing a shared catalog.

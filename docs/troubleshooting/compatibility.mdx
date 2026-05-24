@@ -1,0 +1,43 @@
+---
+title: Compatibility
+description: Diagnose Everest, platform, map, and external-tool compatibility issues.
+---
+
+Akron runs inside an Everest Celeste environment. Compatibility problems usually come from the active install path, map-specific runtime behavior, external-tool availability, or platform-specific file locations.
+
+## Install And Prefix Issues
+
+If files appear to be in the right place but Akron does not load, confirm the active runtime:
+
+- Steam and Steam Flatpak can use different filesystem roots.
+- Wine or Proton prefixes can isolate Celeste data.
+- Portable installs can carry their own `Mods` and `Saves` directories.
+- A copied mod archive may be in a different install than the one being launched.
+
+## Map Compatibility
+
+Some maps require conservative StartPos restore behavior. Akron can use per-map compatibility overrides when normal StartPos restore is unsafe for a specific map.
+
+Per-map compatibility overrides live in Everest's Akron mod options under `Current Map Compatibility`. They are controlled-testing escape hatches, not normal recovery steps.
+
+If StartPos restore is blocked:
+
+1. Check the active ruleset.
+2. Check map compatibility policy.
+3. Confirm the saved StartPos belongs to the current map and room.
+4. Avoid unsafe restore overrides unless you are intentionally testing that path under `Practice` or `Sandbox`.
+
+## External Tool Compatibility
+
+| Tool | Compatibility note |
+|---|---|
+| Speedrun Tool | External timing and compatibility surfaces can be present when the mod is loaded. |
+| CelesteTAS | TAS handoff delegates active control and is Cheat. |
+| External timers | Room timer export/sync is supported as a room timing workflow. |
+| Discord deafen | Auto Deafen presses the configured hotkey; it does not own Discord state. |
+
+## Rendering And Capture
+
+Visual verification is required for rendering-sensitive behavior such as overlays, hitboxes, camera, zoom, death transitions, room capture, map capture, and screenshots.
+
+If a rendering feature behaves differently across hosts, capture the host, platform, map SID, ruleset, Akron setup, and screenshot evidence before filing an issue.

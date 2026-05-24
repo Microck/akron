@@ -1,0 +1,229 @@
+---
+title: Labels
+description: HUD label visibility, room labels, status labels, input panels, counters, and custom labels.
+---
+
+The Labels tab controls label-style HUD surfaces. It includes a master visibility gate plus individual rows that keep their own enabled state.
+
+| Option | Control | What it does | Attempt status |
+|---|---|---|---|
+| Visible | Toggle | Master visibility gate for label-style HUD surfaces. Individual label options keep their enabled state while this is off. | Normal clear |
+| Player Overlap | Toggle | Fade or move HUD labels when Madeline overlaps them. | Normal clear |
+| Death Stats | Toggle | Show a configurable death counter in the Akron HUD with visibility controls. | Goldberry/Hardlist clear |
+| Room | Toggle | Show the current map and room label in the Akron HUD. | Normal clear |
+| Status | Toggle | Show compact HUD labels for the active profile, ruleset stack, and attempt status. | Normal clear |
+| Toasts | Toggle | Show option feedback messages as plain label-style text instead of a centered background panel. | Normal clear |
+| Cheat Indicator | Toggle | Configure the dedicated attempt-status indicator alignment, scale, opacity, and only-flagged behavior. | Normal clear |
+| Input History | Toggle | Show the current input chord and an optional plain-text input history panel. | Goldberry/Hardlist clear |
+| Inputs per second | Toggle | Display rolling input presses per second, total presses, and max rate. | Normal clear |
+| Dash Stats | Toggle | Show dash-count statistics in the label system. | Normal clear |
+| Jump Stats | Toggle | Show jump-count statistics in the label system. | Normal clear |
+| StartPos HUD | Toggle | Show, hide, and style the HUD label that displays the active StartPos index. | Cheat |
+| Room Timer | Toggle | Show current room timing information in the Akron HUD. | Normal clear |
+| Room Stat Tracker | Toggle | Show configurable room name, deaths, timer, berry count, and alive-time lines in the label HUD. | Normal clear |
+| Attempts | Toggle | Show total attempt count in the label system. | Goldberry/Hardlist clear |
+| No Short Numbers | Toggle | Show full HUD numbers instead of compact K/M formatting. | Goldberry/Hardlist clear |
+| + Custom | Action | Add a new custom HUD label row. | Normal clear |
+
+## Option Menus
+
+Rows with a triangle expose the controls listed below.
+
+| Option | Menu control | What it changes | Status |
+|---|---|---|---|
+| Visible | Offset X | Bulk-edit horizontal offset for every label row. | Normal clear |
+| Visible | Offset Y | Bulk-edit vertical offset for every label row. | Normal clear |
+| Visible | Scale | Bulk-edit text scale for every label row. | Normal clear |
+| Visible | Opacity | Bulk-edit opacity for every label row. | Normal clear |
+| Visible | Line spacing | Bulk-edit multiline spacing for every label row. | Normal clear |
+| Visible | Shadow | Bulk-edit shadow visibility for every label row. | Normal clear |
+| Visible | Shadow opacity | Bulk-edit shadow opacity for every label row. | Normal clear |
+| Visible | Shadow X | Bulk-edit shadow horizontal offset for every label row. | Normal clear |
+| Visible | Shadow Y | Bulk-edit shadow vertical offset for every label row. | Normal clear |
+| Visible | Shadow color | Bulk-edit shadow color for every label row. | Normal clear |
+| Player Overlap | Mode: Fade/Move | Choose whether overlapped labels fade or move away from Madeline. | Normal clear |
+| Player Overlap | Only current label | Apply overlap behavior only to the label Madeline overlaps. | Normal clear |
+| Player Overlap | Padding | Add extra HUD pixels around each text label for overlap detection. | Normal clear |
+| Player Overlap | Opacity | Set label opacity while Madeline overlaps it in Fade mode. | Normal clear |
+| Player Overlap | Top left | Move overlapped labels to the top-left anchor in Move mode. | Normal clear |
+| Player Overlap | Top center | Move overlapped labels to the top-center anchor in Move mode. | Normal clear |
+| Player Overlap | Top right | Move overlapped labels to the top-right anchor in Move mode. | Normal clear |
+| Player Overlap | Middle left | Move overlapped labels to the middle-left anchor in Move mode. | Normal clear |
+| Player Overlap | Center | Move overlapped labels to the center anchor in Move mode. | Normal clear |
+| Player Overlap | Middle right | Move overlapped labels to the middle-right anchor in Move mode. | Normal clear |
+| Player Overlap | Bottom left | Move overlapped labels to the bottom-left anchor in Move mode. | Normal clear |
+| Player Overlap | Bottom center | Move overlapped labels to the bottom-center anchor in Move mode. | Normal clear |
+| Player Overlap | Bottom right | Move overlapped labels to the bottom-right anchor in Move mode. | Normal clear |
+| Player Overlap | Offset X | Set horizontal offset from the move anchor. | Normal clear |
+| Player Overlap | Offset Y | Set vertical offset from the move anchor. | Normal clear |
+| Death Stats | Format | Configure death-stat text tokens. | Goldberry/Hardlist clear |
+| Death Stats | Disabled | Hide the death-stat label. | Goldberry/Hardlist clear |
+| Death Stats | After death | Show death stats after death. | Goldberry/Hardlist clear |
+| Death Stats | Pause menu | Show death stats in the pause menu. | Goldberry/Hardlist clear |
+| Death Stats | Death + menu | Show death stats after death and in the pause menu. | Goldberry/Hardlist clear |
+| Death Stats | Always | Always show the death-stat label. | Goldberry/Hardlist clear |
+| Death Stats | PB loss prompt | Show a restart prompt when the current death PB is no longer possible. | Normal clear |
+| Death Stats | Color | Set death-stat label text color. | Goldberry/Hardlist clear |
+| Death Stats | Offset X | Move the death-stat label horizontally from its anchor. | Goldberry/Hardlist clear |
+| Death Stats | Offset Y | Move the death-stat label vertically from its anchor. | Goldberry/Hardlist clear |
+| Death Stats | Scale | Set death-stat label text scale. | Goldberry/Hardlist clear |
+| Death Stats | Opacity | Set death-stat label opacity. | Goldberry/Hardlist clear |
+| Death Stats | Line spacing | Set death-stat label multiline spacing. | Goldberry/Hardlist clear |
+| Death Stats | Shadow | Draw a black outline plus offset shadow behind the death-stat label. | Goldberry/Hardlist clear |
+| Death Stats | Shadow opacity | Set death-stat label shadow opacity. | Goldberry/Hardlist clear |
+| Death Stats | Shadow X | Set death-stat label shadow horizontal offset. | Goldberry/Hardlist clear |
+| Death Stats | Shadow Y | Set death-stat label shadow vertical offset. | Goldberry/Hardlist clear |
+| Death Stats | Shadow color | Set death-stat label shadow color. | Goldberry/Hardlist clear |
+| Room | Color | Set room label text color. | Normal clear |
+| Room | Offset X | Move the room label horizontally from its anchor. | Normal clear |
+| Room | Offset Y | Move the room label vertically from its anchor. | Normal clear |
+| Room | Scale | Set room label text scale. | Normal clear |
+| Room | Opacity | Set room label opacity. | Normal clear |
+| Room | Line spacing | Set room label multiline spacing. | Normal clear |
+| Room | Shadow | Draw a black outline plus offset shadow behind the room label. | Normal clear |
+| Room | Shadow opacity | Set room label shadow opacity. | Normal clear |
+| Room | Shadow X | Set room label shadow horizontal offset. | Normal clear |
+| Room | Shadow Y | Set room label shadow vertical offset. | Normal clear |
+| Room | Shadow color | Set room label shadow color. | Normal clear |
+| Status | Color | Set status label text color. | Normal clear |
+| Status | Offset X | Move the status label horizontally from its anchor. | Normal clear |
+| Status | Offset Y | Move the status label vertically from its anchor. | Normal clear |
+| Status | Scale | Set status label text scale. | Normal clear |
+| Status | Opacity | Set status label opacity. | Normal clear |
+| Status | Line spacing | Set status label multiline spacing. | Normal clear |
+| Status | Shadow | Draw a black outline plus offset shadow behind the status label. | Normal clear |
+| Status | Shadow opacity | Set status label shadow opacity. | Normal clear |
+| Status | Shadow X | Set status label shadow horizontal offset. | Normal clear |
+| Status | Shadow Y | Set status label shadow vertical offset. | Normal clear |
+| Status | Shadow color | Set status label shadow color. | Normal clear |
+| Toasts | Color | Set toast text color. | Normal clear |
+| Toasts | Anchor | Choose the screen position for option feedback messages. | Normal clear |
+| Toasts | Offset X | Move toast messages horizontally from their anchor. | Normal clear |
+| Toasts | Offset Y | Move toast messages vertically from their anchor. | Normal clear |
+| Toasts | Scale | Set toast text scale. | Normal clear |
+| Toasts | Opacity | Set toast opacity. | Normal clear |
+| Toasts | Line spacing | Set toast multiline spacing. | Normal clear |
+| Toasts | Shadow | Draw a black outline plus offset shadow behind toasts. | Normal clear |
+| Toasts | Shadow opacity | Set toast shadow opacity. | Normal clear |
+| Toasts | Shadow X | Set toast shadow horizontal offset. | Normal clear |
+| Toasts | Shadow Y | Set toast shadow vertical offset. | Normal clear |
+| Toasts | Shadow color | Set toast shadow color. | Normal clear |
+| Cheat Indicator | Only cheating | Hide the indicator until the attempt status differs from the initial status. | Normal clear |
+| Cheat Indicator | Anchor | Choose the status indicator screen alignment. | Normal clear |
+| Cheat Indicator | Style: Text/Dot | Choose text badge or single status dot. | Normal clear |
+| Cheat Indicator | Scale | Set indicator scale percentage. | Normal clear |
+| Cheat Indicator | Opacity | Set indicator opacity percentage. | Normal clear |
+| Input History | Current inputs | Show the current movement, jump, dash, and grab input chord. | Normal clear |
+| Input History | Input history | Show a rolling list of recent input chords and held-frame counts. | Normal clear |
+| Input History | Rows | Set how many input-history rows stay visible. | Normal clear |
+| Input History | Placement | Move input history between the left HUD column and right side. | Normal clear |
+| Input History | Opacity | Set input-history panel opacity. | Normal clear |
+| Input History | Compact rows | Use tighter input-history rows. | Normal clear |
+| Input History | Pin on death | Freeze latest input rows after death until the next fresh input. | Normal clear |
+| Input History | Show on death | Temporarily show input history after death even when the panel is off. | Normal clear |
+| Input History | Transition rows | Insert a marker row when moving between rooms. | Normal clear |
+| Input History | Text color | Set input history text color. | Normal clear |
+| Input History | Event color | Set input history event marker color. | Normal clear |
+| Input History | Offset X | Move the input history panel horizontally from its anchor. | Normal clear |
+| Input History | Offset Y | Move the input history panel vertically from its anchor. | Normal clear |
+| Input History | Scale | Set input history text scale. | Normal clear |
+| Input History | Line spacing | Set input history multiline spacing. | Normal clear |
+| Input History | Shadow | Draw a black outline plus offset shadow behind input history. | Normal clear |
+| Inputs per second | Placement | Choose the screen side for the inputs-per-second counter. | Normal clear |
+| Inputs per second | Scale | Set counter scale percentage. | Normal clear |
+| Inputs per second | Opacity | Set counter opacity percentage. | Normal clear |
+| Inputs per second | Show total | Show total counted input presses since level entry or last death. | Normal clear |
+| Inputs per second | Show max | Show the highest rolling inputs-per-second value since level entry or last death. | Normal clear |
+| Inputs per second | Count movement | Count left, right, up, and down rising-edge presses. | Normal clear |
+| Inputs per second | Count actions | Count jump, dash, grab, crouch dash, and talk rising-edge presses. | Normal clear |
+| Inputs per second | Count menu | Also count confirm, cancel, and pause/menu rising-edge presses. | Normal clear |
+| Inputs per second | Reset counter | Clear current, total, and max input counts. | Normal clear |
+| Inputs per second | Text | Set counter text color. | Normal clear |
+| Inputs per second | Offset X | Move the counter horizontally from its anchor. | Normal clear |
+| Inputs per second | Offset Y | Move the counter vertically from its anchor. | Normal clear |
+| Inputs per second | Line spacing | Set counter multiline spacing. | Normal clear |
+| Inputs per second | Shadow | Draw a black outline plus offset shadow behind the counter. | Normal clear |
+| StartPos HUD | Color | Set the text color for the StartPos label. | Cheat |
+| StartPos HUD | Anchor | Choose the screen position for the StartPos HUD label. | Cheat |
+| StartPos HUD | Format | Choose full, compact, or slot plus count label text. | Cheat |
+| StartPos HUD | Offset X | Move the StartPos label horizontally from its anchor. | Cheat |
+| StartPos HUD | Offset Y | Move the StartPos label vertically from its anchor. | Cheat |
+| StartPos HUD | Scale | Set the StartPos label text scale. | Cheat |
+| StartPos HUD | Opacity | Set the StartPos label opacity. | Cheat |
+| StartPos HUD | Line spacing | Set multiline spacing for the StartPos label. | Cheat |
+| StartPos HUD | Shadow | Draw a black outline plus offset shadow behind the StartPos label. | Cheat |
+| StartPos HUD | Shadow opacity | Set the StartPos label shadow opacity. | Cheat |
+| StartPos HUD | Shadow X | Set the StartPos label shadow horizontal offset. | Cheat |
+| StartPos HUD | Shadow Y | Set the StartPos label shadow vertical offset. | Cheat |
+| StartPos HUD | Shadow color | Set the StartPos label shadow color. | Cheat |
+| Room Timer | Color | Set room timer text color. | Normal clear |
+| Room Timer | Offset X | Move the room timer horizontally from its anchor. | Normal clear |
+| Room Timer | Offset Y | Move the room timer vertically from its anchor. | Normal clear |
+| Room Timer | Scale | Set room timer text scale. | Normal clear |
+| Room Timer | Opacity | Set room timer opacity. | Normal clear |
+| Room Timer | Line spacing | Set room timer multiline spacing. | Normal clear |
+| Room Timer | Shadow | Draw a black outline plus offset shadow behind the room timer. | Normal clear |
+| Room Timer | Shadow opacity | Set room timer shadow opacity. | Normal clear |
+| Room Timer | Shadow X | Set room timer shadow horizontal offset. | Normal clear |
+| Room Timer | Shadow Y | Set room timer shadow vertical offset. | Normal clear |
+| Room Timer | Shadow color | Set room timer shadow color. | Normal clear |
+| Room Stat Tracker | Color | Set room stat tracker text color. | Normal clear |
+| Room Stat Tracker | Room name | Include the current room name. | Normal clear |
+| Room Stat Tracker | Deaths | Include deaths since entering the current room. | Normal clear |
+| Room Stat Tracker | In-game time | Include elapsed room time. | Normal clear |
+| Room Stat Tracker | Strawberries | Include strawberries collected in this room visit. | Normal clear |
+| Room Stat Tracker | Alive time | Include time since the latest respawn. | Normal clear |
+| Room Stat Tracker | Hide if golden | Hide the room stat tracker during golden berry attempts. | Normal clear |
+| Room Stat Tracker | Freeze mode | Choose how timer display freezes. | Normal clear |
+| Room Stat Tracker | Offset X | Move the room stat tracker horizontally from its anchor. | Normal clear |
+| Room Stat Tracker | Offset Y | Move the room stat tracker vertically from its anchor. | Normal clear |
+| Room Stat Tracker | Scale | Set room stat tracker text scale. | Normal clear |
+| Room Stat Tracker | Opacity | Set room stat tracker opacity. | Normal clear |
+| Room Stat Tracker | Line spacing | Set room stat tracker multiline spacing. | Normal clear |
+| Room Stat Tracker | Shadow | Draw a black outline plus offset shadow behind the room stat tracker. | Normal clear |
+| Room Stat Tracker | Shadow opacity | Set room stat tracker shadow opacity. | Normal clear |
+| Room Stat Tracker | Shadow X | Set room stat tracker shadow horizontal offset. | Normal clear |
+| Room Stat Tracker | Shadow Y | Set room stat tracker shadow vertical offset. | Normal clear |
+| Room Stat Tracker | Shadow color | Set room stat tracker shadow color. | Normal clear |
+| Attempts | Color | Set attempts label text color. | Goldberry/Hardlist clear |
+| Attempts | Offset X | Move the attempts label horizontally from its anchor. | Goldberry/Hardlist clear |
+| Attempts | Offset Y | Move the attempts label vertically from its anchor. | Goldberry/Hardlist clear |
+| Attempts | Scale | Set attempts label text scale. | Goldberry/Hardlist clear |
+| Attempts | Opacity | Set attempts label opacity. | Goldberry/Hardlist clear |
+| Attempts | Line spacing | Set attempts label multiline spacing. | Goldberry/Hardlist clear |
+| Attempts | Shadow | Draw a black outline plus offset shadow behind the attempts label. | Goldberry/Hardlist clear |
+| Attempts | Shadow opacity | Set attempts label shadow opacity. | Goldberry/Hardlist clear |
+| Attempts | Shadow X | Set attempts label shadow horizontal offset. | Goldberry/Hardlist clear |
+| Attempts | Shadow Y | Set attempts label shadow vertical offset. | Goldberry/Hardlist clear |
+| Attempts | Shadow color | Set attempts label shadow color. | Goldberry/Hardlist clear |
+| + Custom | Visible | Show this custom label when its event condition passes. | Normal clear |
+| + Custom | Name | Set the custom label's human-readable name. | Normal clear |
+| + Custom | Text | Set template text with variables such as room, room time, status, FPS, speed, and conditionals. | Normal clear |
+| + Custom | Anchor | Choose the custom label's screen alignment. | Normal clear |
+| + Custom | Absolute position | Use exact HUD coordinates instead of the shared anchored label container. | Normal clear |
+| + Custom | Screen X | Set the custom label's absolute HUD X coordinate. | Normal clear |
+| + Custom | Screen Y | Set the custom label's absolute HUD Y coordinate. | Normal clear |
+| + Custom | Offset X | Move the custom label horizontally from its anchor or absolute point. | Normal clear |
+| + Custom | Offset Y | Move the custom label vertically from its anchor or absolute point. | Normal clear |
+| + Custom | Scale | Set custom label text scale. | Normal clear |
+| + Custom | Opacity | Set custom label opacity. | Normal clear |
+| + Custom | Line spacing | Set custom label multiline spacing. | Normal clear |
+| + Custom | Color | Set custom label text color. | Normal clear |
+| + Custom | Text align | Align text inside the label's measured line. | Normal clear |
+| + Custom | Font | Choose a preset text size for the label. | Normal clear |
+| + Custom | Shadow | Draw a black outline plus offset shadow behind the custom label. | Normal clear |
+| + Custom | Shadow opacity | Set custom label shadow opacity. | Normal clear |
+| + Custom | Shadow X | Set custom label shadow horizontal offset. | Normal clear |
+| + Custom | Shadow Y | Set custom label shadow vertical offset. | Normal clear |
+| + Custom | Shadow color | Set custom label shadow color. | Normal clear |
+| + Custom | Event | Choose when the label is visible: always, on death, while buttons are held, or on noclip death markers. | Normal clear |
+| + Custom | Delay | Set delay before event labels appear. | Normal clear |
+| + Custom | Duration | Set how long event labels remain visible. | Normal clear |
+| + Custom | Event style override | Temporarily use event scale, color, and opacity while the event is active. | Normal clear |
+| + Custom | Event scale | Set event override scale. | Normal clear |
+| + Custom | Event opacity | Set event override opacity. | Normal clear |
+| + Custom | Event color | Set event override color. | Normal clear |
+| + Custom | Duplicate | Duplicate the active custom label. | Normal clear |
+| + Custom | Delete | Delete the active custom label after confirmation. | Normal clear |
+| + Custom | Export .akr | Export custom labels as a `.akr` pack. | Normal clear |
+| + Custom | Import Latest .akr | Import the latest saved custom-label `.akr` pack from Saves/AkronHudLabels. | Normal clear |

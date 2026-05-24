@@ -1,0 +1,49 @@
+---
+title: HUD and input tools
+description: Configure HUD widgets, input displays, timers, room stats, and custom labels.
+---
+
+Akron HUD tools display local state and review information. Some are Goldberry/Hardlist clear, some are Normal clear, and some are Cheat because they expose precise resources or hidden information.
+
+## HUD Surfaces
+
+| Surface | Use it for | Notes |
+|---|---|---|
+| Room labels | Show passive room information. | Normal clear. |
+| Input viewer | Show current local inputs. | Goldberry/Hardlist clear. |
+| Input history | Review recent input state. | Goldberry/Hardlist clear for the base feature. |
+| Room timer | Show timing information for the current room. | Normal clear. |
+| Death stats | Show death counters. | Goldberry/Hardlist clear for the base feature. |
+| Custom HUD labels | Show configured local status labels. | Normal clear. |
+| Stamina, dash, speed resources | Show exact resource state. | Cheat. |
+
+## Configure HUD Output
+
+<Steps>
+  <Step title="Check the active ruleset">
+    Use Everest's Akron mod options to keep submission-oriented displays under `Leaderboard-clean` and attempt-changing tools under `Practice` or `Sandbox`.
+  </Step>
+  <Step title="Enable one surface at a time">
+    Turn on the base row first, then open the popup or tooltip to configure rows, labels, colors, or display limits.
+  </Step>
+  <Step title="Check suboptions">
+    Read any suboption policy badges. Extra history, pinning, timer freeze, and similar behavior can have a different status from the parent.
+  </Step>
+  <Step title="Test in a room">
+    Close the overlay and confirm the widget appears where expected without covering gameplay-critical information.
+  </Step>
+</Steps>
+
+## Input Tools
+
+Use input viewer when you want current input state. Use input history when you need recent input review after movement, death, or a routed attempt.
+
+Input displays should show local inputs without changing gameplay. Anything that synthesizes or redirects inputs sets the attempt status to Cheat.
+
+## Room Stats And Labels
+
+Room Stat Tracker can show room name, deaths, timers, berry count, and alive-time lines in the label HUD. Its freeze behavior belongs to the tracker configuration and should be evaluated separately from the base label.
+
+## Streamer Mode
+
+`Streamer Mode` hides local filesystem paths in Akron-owned UI and proof output. It is a presentation overlay ruleset, not a gameplay mutation or general privacy mode.

@@ -1,0 +1,50 @@
+---
+title: StartPos recovery
+description: Recover from blocked, mismatched, unsafe, or map-specific Akron StartPos behavior without hiding restore risks.
+---
+
+StartPos is Akron's public position and room-state restore workflow. It is designed to avoid silently applying risky or mismatched restores.
+
+## Current StartPos Shape
+
+StartPos can capture a position, room, map SID, facing, dash count, stamina, idle/grab state, and Akron-managed restore data when Akron can safely preserve it.
+
+Use the `StartPos` tab for public player workflows: set, load, clear, choose a slot, place with the mouse, and configure respawn-at-StartPos behavior.
+
+## Why A StartPos May Be Blocked
+
+Akron may block or refuse a StartPos restore when:
+
+- The current ruleset does not allow the action.
+- The saved StartPos belongs to a different map SID or room.
+- The saved runtime state is unavailable or unsafe for the current map.
+- The current player state cannot be restored safely.
+- The action is state-changing and is blocked or marked under the active clean/submission ruleset.
+
+## Recovery Steps
+
+<Steps>
+  <Step title="Check the ruleset stack">
+    Confirm no clean-run ruleset is blocking StartPos restore or other state-changing tools.
+  </Step>
+  <Step title="Use Practice or Sandbox when intended">
+    Switch to `Practice` or `Sandbox` only when the goal is room-lab routing, testing, or another Cheat workflow.
+  </Step>
+  <Step title="Check the StartPos slot">
+    Confirm the active StartPos slot is set, belongs to the current map, and was captured in the intended room.
+  </Step>
+  <Step title="Check map policy">
+    If a map is known risky, keep the safe map policy instead of forcing unsafe restore behavior.
+  </Step>
+  <Step title="Capture evidence">
+    If behavior still looks wrong, record the map SID, ruleset, Akron setup, StartPos slot, logs, and screenshots.
+  </Step>
+</Steps>
+
+<Warning>
+  Unsafe restore overrides bypass risk blocking and are Cheat. Use them only under `Practice` or `Sandbox`; do not use them for submitted attempts.
+</Warning>
+
+## Safe Mode Stat Guards
+
+Safe Mode stat guards prevent selected local stat fields from being dirtied by guarded Akron sessions. Suboptions that freeze deaths, jumps, or best-run stats are Cheat because they mutate or protect tracked stats.

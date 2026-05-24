@@ -1,0 +1,56 @@
+---
+title: Configuration
+description: Configure Akron rulesets, overlay behavior, safety defaults, proof settings, and player setup for first use.
+---
+
+Akron configuration is organized around rulesets, overlay settings, and feature-specific options. Configure the broad context first, then tune individual tools.
+
+## Configuration Order
+
+<Steps>
+  <Step title="Pick the ruleset">
+    Open Everest's mod options for Akron and choose the ruleset that matches what you are doing: casual play, room-lab routing, Leaderboard-clean attempts, Sandbox work, or map-making.
+  </Step>
+  <Step title="Confirm the ruleset">
+    Check the active ruleset stack before enabling features. Rulesets decide whether features are allowed, blocked, or status-escalating.
+  </Step>
+  <Step title="Set overlay behavior">
+    Configure overlay scale, opacity, pause behavior, search behavior, and visual defaults so the UI is usable in your setup.
+  </Step>
+  <Step title="Enable specific tools">
+    Enable only the tools needed for the current workflow. Keep state-changing tools under `Practice` or `Sandbox` rulesets, not submitted-run setups.
+  </Step>
+  <Step title="Export a backup">
+    Export a `.akr` backup once the setup is stable, especially before sharing settings or experimenting with attempt-changing features.
+  </Step>
+</Steps>
+
+## Rulesets
+
+Rulesets are active policy layers. They control what Akron permits or records, not just what appears in the menu.
+
+| Ruleset | Use it for |
+|---|---|
+| `Casual` | Ordinary play and exploration. |
+| `Practice` | Room-lab workflow with StartPos and HUD defaults; state-changing tools still stay off until enabled. |
+| `Leaderboard-clean` | Stricter clean-play guardrails. |
+| `Sandbox` | Local experiments with Akron policy blocks removed; tools still stay off until enabled. |
+| `Everest-safe` | Conservative compatibility policy for avoiding risky runtime paths. |
+| `Map-maker` | Map inspection, capture, and creator workflows. |
+
+See [Rulesets and status](/concepts/rulesets-and-status) before configuring Akron for a run you might submit.
+
+## Import And Export
+
+Use `.akr` files for backup and sharing. You can export the whole Akron setup or a scoped section such as StartPos, keybinds, Auto Kill, Auto Deafen, recorder settings, audio settings, or HUD settings.
+
+See [Import and export .akr packs](/akr-packs/import-export) for the workflow and [Akron .akr archives](/reference/akr-archives) for the reference contract.
+
+## Safety Defaults
+
+Keep these defaults unless you know why you need a different setup:
+
+- Keep submission-oriented workflows in `Leaderboard-clean` or proof-specific setups.
+- Keep StartPos restore, warps, hitboxes, entity inspection, and timescale inside `Practice` or `Sandbox` rulesets.
+- Export a `.akr` backup before importing community packs.
+- Treat Cheat feature use as attempt-changing even if the feature is later disabled.

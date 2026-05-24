@@ -1,0 +1,122 @@
+---
+title: Community pack catalog
+description: Reference for the public JSON catalog consumed by Akron's Community Packs browser.
+---
+
+Akron's `Community Packs` browser reads a public HTTPS JSON index, filters it to the current map, and imports selected `.akr` packs through the normal importer.
+
+## Catalog URL
+
+Catalog URLs are HTTPS JSON endpoints. Command examples use this placeholder:
+
+```text
+<catalog-url>
+```
+
+Replace it with the full catalog URL before running a command. Custom catalog URLs are useful for local testing, self-hosted pack sets, and recovery when another catalog is unavailable.
+
+## JSON Shape
+
+The catalog is a public JSON document with this shape. Replace angle-bracket placeholders with real HTTPS URLs before publishing:
+
+```json
+{
+  "format": "akron-community-pack-index-v1",
+  "version": 1,
+  "packs": [
+    {
+      "id": "spring-collab-beginner-startpos-v1",
+      "title": "Beginner Lobby StartPos Set",
+      "description": "StartPos slots for common Beginner lobby rooms.",
+      "section": "StartPos",
+      "mapSid": "SpringCollab2020/1-Beginner",
+      "mapUrl": "https://gamebanana.com/mods/150453",
+      "downloadUrl": "<direct .akr HTTPS URL>",
+      "authorName": "Display Name",
+      "authorAvatarUrl": "",
+      "imageUrl": "<preview image HTTPS URL>",
+      "downloadCount": 42,
+      "updatedUtc": "2026-05-20T00:00:00Z",
+      "tags": ["startpos", "beginner", "lobby"]
+    }
+  ]
+}
+```
+
+## Pack Fields
+
+| Field | Meaning |
+|---|---|
+| `id` | Stable catalog identifier for this pack entry. |
+| `title` | Reader-facing pack name. |
+| `description` | Short description shown in the browser and matched by search. |
+| `section` | `.akr` import scope. Must match one of the supported section values. |
+| `mapSid` | Celeste map SID used for map filtering. |
+| `mapUrl` | Public page for the target map when available. |
+| `downloadUrl` | Direct HTTPS URL for the `.akr` archive. |
+| `authorName` | Display name for the pack author. |
+| `authorAvatarUrl` | Optional avatar URL. Use an empty string when unavailable. |
+| `imageUrl` | Optional preview image URL. Use an empty string when unavailable. |
+| `downloadCount` | Display count from the catalog maintainer. |
+| `updatedUtc` | UTC timestamp for the latest catalog update. |
+| `tags` | Search tags for filtering. |
+
+`section` must be one of:
+
+```text
+Whole
+StartPos
+Keybinds
+AutoKill
+AutoDeafen
+Recorder
+Audio
+Hud
+```
+
+The in-game category buttons focus on the map-specific sharing cases: `All`, `StartPos`, `Auto Kill`, and `Auto Deafen`.
+
+## Publishing Requirements
+
+- Each catalog entry points to a `.akr` file for a specific map and sharing scope.
+- Archives are validated before they are added to the catalog.
+- `mapSid` matches the Celeste map SID used by `level.Session.Area.GetSID()`.
+- `downloadUrl` is a stable HTTPS URL for the `.akr` file.
+- Catalog metadata is updated when the pack changes.
+
+## Validation Requirements
+
+Before publishing a catalog entry, the catalog maintainer should validate that:
+
+- The archive contains exactly `manifest.json` plus `profile.json`.
+- The manifest kind is `profile`.
+- `profile.json` uses `Format: akron-profile-v1`.
+- The entry `section` matches the profile section unless the catalog maintainer intentionally publishes a different scope.
+- The download URL returns the expected `.akr` file.
+
+See [Akron .akr archives](/reference/akr-archives) for the full archive contract and import safety rules.
+
+## Runtime Behavior
+
+Akron filters catalog entries by:
+
+- Current map SID.
+- Selected category.
+- Search terms against title, description, author, map URL, section label, and tags.
+
+When the player imports a selected pack, Akron downloads it into `Saves/AkronProfiles/community-*.akr` and imports the declared scope through the `.akr` importer.
+
+## Automation Commands
+
+Debug and live verification can drive the same browser flow:
+
+```text
+akron_community_packs url <catalog-url>
+akron_community_packs refresh
+akron_community_packs category StartPos
+akron_community_packs search beginner lobby
+akron_community_packs list
+akron_community_packs import 0
+```
+
+`list` prints the currently filtered zero-based entries. `import` uses the same download and scoped import path as the in-game button.

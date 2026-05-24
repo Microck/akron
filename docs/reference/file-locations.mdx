@@ -1,0 +1,45 @@
+---
+title: File locations
+description: User-facing Akron paths for `.akr` packs, rulesets, captures, and exports.
+---
+
+Paths are relative to the active Celeste/Everest save or mod environment. The exact root can differ across Steam, Flatpak, Wine, portable installs, and custom prefixes.
+
+## User Data
+
+| Path | Contains |
+|---|---|
+| `Saves/AkronProfiles` | Exported and imported `.akr` setup packs. |
+| `Saves/AkronRulesets` | Local imported community ruleset manifests. |
+| `Saves/AkronAutomation` | Command automation queue input and result files. Normal player workflows do not need this path. |
+
+Akron resolves automation under `Everest.PathGame`, not under the per-user save-data directory. For a Flatpak-based Steam install, that commonly means a path like:
+
+`~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Celeste/Saves/AkronAutomation`
+
+## Mod Data
+
+| Path | Contains |
+|---|---|
+| `Rulesets/*.json` | Bundled data-only community ruleset manifests. |
+| `Source/Resources` | Akron resources included with the mod source. |
+
+## Capture And Proof Output
+
+Capture and proof paths depend on active recorder, screenshot, room capture, map capture, and proof settings. If `Streamer Mode` is active, Akron-owned UI shows only the filename or final folder name instead of local filesystem paths.
+
+## Active Root Signals
+
+| Signal | Meaning |
+|---|---|
+| Running install | The Celeste/Everest installation that loaded Akron owns the active mod root. |
+| Save directory | Steam, Flatpak, Wine, and portable installs can each resolve a different save directory. |
+| Akron output | Exported `.akr` packs, captures, and proof output show the root Akron is using for that runtime. |
+
+## Shareable Files
+
+| File type | Sharing note |
+|---|---|
+| `.akr` files | Setup packs intended for backup or sharing. |
+| Catalog JSON | Community-pack index data maintained for shared catalog browsing. |
+| Runtime-managed files | Not intended for manual editing unless a troubleshooting page gives exact recovery steps. |

@@ -1,0 +1,66 @@
+---
+title: Import and export .akr packs
+description: Export, import, and share whole or scoped Akron .akr setup packs for backups, map-specific workflows, and safe profile transfer.
+---
+
+Akron uses `.akr` files for setup backup and sharing. You can export the whole Akron setup or a scoped section.
+
+![Akron .akr export scope picker in the Akron overlay](/images/akr-export-scope.png)
+
+## Export An .akr Pack
+
+<Steps>
+  <Step title="Open the Interface tab">
+    Open the Akron overlay, go to `Interface`, and choose `Export Profile`.
+  </Step>
+  <Step title="Choose the section">
+    Select `Whole` for a full backup, or choose a scoped section such as StartPos, Keybinds, Auto Kill, Auto Deafen, Recorder, Audio, or HUD.
+  </Step>
+  <Step title="Export the pack">
+    Write the `.akr` file to the Akron pack export location.
+  </Step>
+  <Step title="Review before sharing">
+    Confirm the file name, section, and intended map or context before sending it to someone else.
+  </Step>
+</Steps>
+
+## Import An .akr Pack
+
+<Steps>
+  <Step title="Back up current settings">
+    Export your current setup before importing a shared pack.
+  </Step>
+  <Step title="Open the import flow">
+    Open the Akron overlay, go to `Interface`, and choose `Import Profile`.
+  </Step>
+  <Step title="Choose the import section">
+    Select `Whole` only for a full setup import. For scoped packs, choose the intended section before selecting the `.akr` file.
+  </Step>
+  <Step title="Check the section">
+    Select the `.akr` file and confirm the imported section matches the intended change.
+  </Step>
+  <Step title="Apply and test">
+    Apply the import, then test the changed settings in a non-submission context.
+  </Step>
+</Steps>
+
+## Section Behavior
+
+| Section | Import behavior |
+|---|---|
+| `Whole` | Replaces the active Akron setup state plus bindings and slots. |
+| `StartPos` | Merges StartPos settings and saved slots. |
+| `Keybinds` | Merges Everest button bindings and Akron menu action bindings. |
+| `AutoKill` | Merges Auto Kill trigger and area state. |
+| `AutoDeafen` | Merges Auto Deafen trigger, hotkey, and area state. |
+| `Recorder` | Merges recorder output, replay, trigger, audio, codec, and preset state. |
+| `Audio` | Merges audio speed, pitch, volume, override, and device state. |
+| `Hud` | Merges HUD widgets, labels, input displays, resource bars, counters, and HUD presentation state. |
+
+Scoped imports should not reset unrelated settings.
+
+<Warning>
+  Importing configuration does not make Cheat behavior clean. Imported Cheat options can mark an attempt when used.
+</Warning>
+
+See [Akron .akr archives](/reference/akr-archives) for the archive format.

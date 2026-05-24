@@ -1,0 +1,66 @@
+---
+title: Common issues
+description: Fix common Akron install, overlay, hotkey, import, and capture problems.
+---
+
+Use this page for quick diagnosis before digging into platform-specific compatibility.
+
+## Akron Does Not Appear
+
+Check:
+
+- `Akron.zip` is in the active Everest `Mods` directory.
+- The game was launched through the same install whose `Mods` directory you changed.
+- Everest did not disable Akron after a load error.
+- Logs do not show missing dependencies or archive-shape errors.
+
+## Overlay Does Not Open
+
+Check:
+
+- The overlay hotkey in Everest keyboard/controller settings.
+- Conflicts with Celeste controls or other mods.
+- Whether the overlay is hidden, off-screen, or scaled too small.
+
+For normal player recovery, prefer rebinding through Everest controls and checking the Everest log before using command-line diagnostics.
+
+## A Feature Is Blocked
+
+Akron blocks or marks features according to the active ruleset.
+
+1. Check the current ruleset stack.
+2. Read the feature's policy badge.
+3. Check popup suboptions for stricter behavior.
+4. Open Everest's mod options for Akron and switch to `Practice` or `Sandbox` if the feature is expected to set the attempt status to Cheat.
+
+## Import Fails
+
+Common `.akr` import failures:
+
+- The file is not an Akron archive.
+- The archive has missing or extra ZIP entries.
+- The manifest kind or version is unsupported.
+- The payload is too large.
+- The JSON payload is invalid.
+- The payload section does not match the requested import flow.
+
+See [Akron .akr archives](/reference/akr-archives) for the import contract.
+
+## Capture Output Is Wrong
+
+If a screenshot, room capture, map capture, or recorder output is missing or wrong:
+
+- Check the output folder and filename template.
+- Confirm the capture mode and resolution.
+- Disable `Streamer Mode` if you need to see path detail.
+- Review whether a timer-freeze or capture suboption changes the expected behavior.
+
+## Community Packs Are Empty
+
+Check:
+
+- You are inside the map whose packs you expect.
+- The catalog URL is reachable.
+- The category filter is not too narrow.
+- Search text is not filtering out the pack.
+- The catalog entry's map SID matches the current map SID.

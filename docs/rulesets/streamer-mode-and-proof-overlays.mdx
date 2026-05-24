@@ -1,0 +1,37 @@
+---
+title: Streamer Mode and Proof-mode states
+description: Reference for Streamer Mode, low-distraction state, and proof overlay behavior.
+---
+
+Overlay states change presentation and proof output without replacing the primary gameplay policy.
+
+## Streamer Mode
+
+`Streamer Mode` hides local filesystem paths in Akron-owned UI and proof output. When it is active, Akron displays only the filename or final folder name instead of the full path.
+
+Use it for streams, videos, screenshots, or public proof packages where local capture or export paths should not be exposed.
+
+`Streamer Mode` is not a general privacy mode. It does not inspect every other mod, external overlay, visible game room data, or arbitrary text on screen.
+
+## Proof-mode
+
+`Proof-mode` keeps proof surfaces compact and ruleset-aware. It is normally enabled by `Submission Mode` or by imported/community ruleset data.
+
+It does not:
+
+- Certify legitimacy.
+- Spoof completion.
+- Change save stats.
+- Replace moderator review.
+
+## Low-Distraction State
+
+Low-distraction behavior is derived when configured visual-noise channels are enabled. It is a presentation state, not a selectable ruleset or separate proof authority.
+
+## When To Use These Overlays
+
+| State | Use it when |
+|---|---|
+| Streamer Mode | Sharing screenshots, video, streams, or proof artifacts that should hide local filesystem paths. |
+| Proof-mode | Submission Mode or community rulesets need compact proof metadata. |
+| Low-distraction | Visual-noise settings already form a lower-noise setup across play sessions. |

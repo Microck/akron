@@ -1,0 +1,67 @@
+---
+title: Development setup
+description: Set up an Akron checkout, build the Everest Celeste mod locally, and run the first focused verification commands.
+---
+
+This tutorial gets a contributor from a checkout to a local build and targeted test run.
+
+## Requirements
+
+- .NET SDK compatible with the Akron project.
+- A Celeste/Everest install for live verification.
+- Access to this repository checkout.
+- Celeste references available through the normal Everest mod layout or an explicit `CelestePrefix`.
+
+## Build
+
+```bash
+dotnet build Source/Akron.csproj
+```
+
+Set `CelestePrefix` if the mod is not inside a normal Everest `Mods/Akron/Source` layout or if references live elsewhere.
+
+```bash
+dotnet build Source/Akron.csproj -p:CelestePrefix=/path/to/Celeste
+```
+
+## Run Tests
+
+Use the focused test for the change when possible:
+
+```bash
+dotnet test tests/akron-tests.csproj --nologo
+```
+
+Targeted examples:
+
+```bash
+dotnet test tests/akron-tests.csproj --nologo --filter FeatureRegistryTests
+dotnet test tests/akron-tests.csproj --nologo --filter ModuleSettingsTests
+dotnet test tests/akron-tests.csproj --nologo --filter ArchiveTests
+```
+
+## Safety
+
+- Do not commit personal Celeste paths, local captures, `.env` files, or tokens.
+- Use fixtures and focused tests before reaching for live host state.
+- When live verification is required, record the map, ruleset, setup state, command or interaction, and what the evidence proves.
+
+## First Contribution Loop
+
+<Steps>
+  <Step title="Read the relevant public docs">
+    Start with the user-facing page for the behavior you are changing.
+  </Step>
+  <Step title="Find the source layer">
+    Identify whether the change touches policy, overlay rows, settings, runtime behavior, persisted setup state, `.akr` import/export, archive contracts, or tests.
+  </Step>
+  <Step title="Add or update tests">
+    Add focused tests for classification, defaults, clamps, archive shape, or non-trivial behavior.
+  </Step>
+  <Step title="Build and verify">
+    Run targeted tests, build, and live verification when the behavior is visual, timing-sensitive, input-driven, or map-dependent.
+  </Step>
+  <Step title="Update docs">
+    Update user-facing docs and contributor architecture notes when behavior, policy, or contracts change.
+  </Step>
+</Steps>

@@ -1,0 +1,47 @@
+---
+title: Manage .akr setups
+description: Back up, reset, and maintain Akron setup state for different play contexts.
+---
+
+Akron setup state covers the options, bindings, StartPos slots, and scoped tool settings that can be exported into `.akr` packs. Use setup backups to separate clean-play guardrails, room-lab tools, accessibility settings, and map-making workflows.
+
+## Start From A Ruleset
+
+Open Everest's mod options for Akron and choose the ruleset that matches the current workflow. The Akron overlay shows the active ruleset and supports `.akr` import/export, but player setup should be organized around rulesets and scoped packs.
+
+| Ruleset or setup | Best for |
+|---|---|
+| `Casual` | Learning Akron and ordinary play. |
+| `Practice` | StartPos, reloads, timescale, and route iteration. |
+| `Leaderboard-clean` | Attempts where clean classification matters. |
+| `Sandbox` | Local experiments and unrestricted tool testing. |
+| `Map-maker` | Capture, inspection, and map development workflows. |
+| Accessibility-focused setup | Visual, audio, and comfort settings. |
+
+## Maintain Setups
+
+<Steps>
+  <Step title="Start from the closest ruleset">
+    Use Everest's mod options to pick the ruleset that matches the workflow before changing individual tools.
+  </Step>
+  <Step title="Change one tool group at a time">
+    Configure overlay behavior, HUD tools, room-lab tools, visual settings, and interop separately so you can find mistakes.
+  </Step>
+  <Step title="Export a backup">
+    Export a whole `.akr` setup backup when the setup is stable.
+  </Step>
+  <Step title="Use scoped imports">
+    Import only the section you need when applying shared StartPos, keybind, Auto Kill, Auto Deafen, recorder, audio, or HUD packs.
+  </Step>
+</Steps>
+
+## Reset Strategy
+
+Use reset actions when setup state has drifted too far from the intended use. Prefer exporting a backup first if it contains map-specific StartPos slots or carefully tuned binds.
+
+## Clean Setup Hygiene
+
+- Keep state-changing tools out of `Leaderboard-clean`.
+- Check suboptions, not only parent rows.
+- Avoid importing whole setup packs from untrusted sources into a clean-run setup.
+- Use [Feature status reference](/reference/feature-status-reference) when deciding where a setting belongs.
