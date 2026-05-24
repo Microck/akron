@@ -3,7 +3,7 @@ title: Menu anatomy
 description: Name Akron overlay parts consistently when reporting issues, requesting features, or describing a workflow.
 ---
 
-Use these terms when describing Akron in issues, suggestions, screenshots, or setup notes. They match the way Akron's overlay is organized in player-facing docs.
+Use these terms when describing Akron in issues, suggestions, screenshots, or setup notes. They match the overlay's own layout and labels.
 
 ![Annotated Akron menu anatomy showing column, row, feature, submenu, toggle, and input box](/images/akron-menu-anatomy.png)
 
@@ -16,10 +16,10 @@ Use these terms when describing Akron in issues, suggestions, screenshots, or se
 | Row | One horizontal line in a column. A row can display text, a current value, a toggle, or a submenu marker. | `120 FPS`, `Safe Mode`, `Submission Mode`. |
 | Feature | The named Akron behavior controlled or described by a row. The feature name is usually the label on the row. | `Safe Mode`, `FPS Bypass`, `Timescale`. |
 | Submenu | The small angled triangle marker on the right side of a row. It means that row opens more controls instead of only toggling or editing a value. | The marker on `FPS Bypass`, `Control Display`, `Autosave`, or `Transition Speed`. |
-| Toggle | A boolean on/off control. In the overlay, a highlighted row with a right-side indicator can show the currently focused toggle. | `Safe Mode`. |
+| Toggle | A boolean on/off control. When a toggle row has focus, it appears highlighted in the column. | `Safe Mode`. |
 | Input box | An editable value field inside a row. Use this term when the row accepts typed numeric or text input. | `120 FPS`. |
 
-## How To Describe A Problem
+## How to Describe a Problem
 
 Start with the broad location, then narrow down to the exact row and control type.
 
@@ -39,12 +39,12 @@ In Global > 120 FPS, editing the input box accepts the value but the row still s
 In Global > FPS Bypass, opening the submenu works, but the triangle marker stays highlighted after I back out.
 ```
 
-## What To Include In Issues
+## What to Include in Issues
 
 - The tab name and column, if the screenshot shows more than one column.
 - The exact row label.
 - Whether the control is a toggle, input box, submenu, button, slider, or status row.
-- The visible attempt status or policy/status state if the behavior is blocked or marked.
+- The visible attempt status or policy state, if the behavior is blocked or marked.
 - The map SID when the behavior depends on the current map.
 - A screenshot or short clip when the issue is visual, input-driven, or timing-sensitive.
 
@@ -53,7 +53,7 @@ In Global > FPS Bypass, opening the submenu works, but the triangle marker stays
 | Term | Use it when |
 |---|---|
 | Popup | A temporary configuration panel opened from a row with a submenu marker. |
-| Policy badge | The visible status marker that says whether a row is Goldberry/Hardlist clear, Normal clear, or Cheat. |
+| Policy badge | The visible status marker that says whether a row is Goldberry/Hardlist Clean, Regular Clean, or Cheat. |
 | Status row | A row that reports state instead of changing it directly. |
 | Focus | The row or control currently selected for keyboard or controller input. |
 
