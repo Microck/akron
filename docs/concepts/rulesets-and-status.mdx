@@ -9,8 +9,8 @@ Akron tracks the active attempt status while its policy settings decide whether 
 
 | Status | Meaning | Typical use |
 |---|---|---|
-| Goldberry/Hardlist clear | Strict clean state for features Akron treats as allowed under the strictest supported contexts. | Input display, proof capture settings, simple comfort controls. |
-| Normal clear | Normal clear for ordinary play, but not necessarily approved for stricter Goldberry/Hardlist contexts. | Visual presentation, audio routing, room labels, workflow helpers. |
+| Goldberry/Hardlist clean | Strict clean state for features Akron treats as allowed under the strictest supported contexts. | Input display, proof capture settings, simple comfort controls. |
+| Regular clean | Normal clear for ordinary play, but not necessarily approved for stricter Goldberry/Hardlist contexts. | Visual presentation, audio routing, room labels, workflow helpers. |
 | Cheat | The feature mutates gameplay, exposes hidden information, changes proof assumptions, or manipulates state. | StartPos restore, warps, hitboxes, timescale, noclip, infinite resources. |
 
 Akron does not use Yellow, Practice, or any extra room-lab status. State-changing tools can be useful and still be Cheat for submitted clean clears.
@@ -65,9 +65,9 @@ Policy badges describe the smallest tracked behavior Akron knows about. A clean 
 
 | Behavior | Status | Why |
 |---|---|---|
-| Simple input display | Goldberry/Hardlist clear | Displays local inputs without changing gameplay. |
-| Room labels | Normal clear | Shows local room information, but strict submissions may evaluate overlays case by case. |
-| Audio speed or pitch | Normal clear | Presentation/accessibility setting that does not change simulation timing. |
+| Simple input display | Goldberry/Hardlist clean | Displays local inputs without changing gameplay. |
+| Room labels | Regular clean | Shows local room information, but strict submissions may evaluate overlays case by case. |
+| Audio speed or pitch | Regular clean | Presentation/accessibility setting that does not change simulation timing. |
 | StartPos restore | Cheat | Restoring a saved StartPos changes player state or position. |
 | Hitbox viewer | Cheat | Reveals internal collision information. |
 | FPS/TPS bypass | Cheat | Changes draw or simulation targets and invalidates normal proof assumptions. |
