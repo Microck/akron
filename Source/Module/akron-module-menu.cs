@@ -12,9 +12,10 @@ public partial class AkronModule {
         CreateModMenuSectionHeader(menu, inGame, snapshot);
 
         menu.Add(new TextMenu.SubHeader("Rulesets", topPadding: false));
-        menu.Add(new TextMenu.Button("Current Stack: " + Settings.DescribeRulesetStack()) { Selectable = false });
-        menu.Add(new TextMenu.SubHeader(Settings.DescribePrimaryRulesetBehavior(), topPadding: false));
-        menu.Add(new TextMenu.SubHeader(Settings.DescribeOverlayBehavior(), topPadding: false));
+        menu.Add(new TextMenu.SubHeader("Current Stack", topPadding: false));
+        AddWrappedModMenuSubHeaders(menu, Settings.DescribeRulesetStack(), topPadding: false);
+        AddWrappedModMenuSubHeaders(menu, Settings.DescribePrimaryRulesetBehavior(), topPadding: false);
+        AddWrappedModMenuSubHeaders(menu, Settings.DescribeOverlayBehavior(), topPadding: false);
 
         Settings.CreateActiveProfileEntry(menu, inGame);
         menu.Add(new TextMenu.Button("Primary Ruleset: " + AkronModuleSettings.FormatPrimaryRuleset(Settings.PrimaryRuleset)) { Selectable = false });
@@ -99,7 +100,8 @@ public partial class AkronModule {
         menu.Add(new TextMenu.SubHeader("Community Rulesets"));
         IReadOnlyList<AkronCommunityRulesetManifest> communityRulesets = AkronCommunityRulesets.LoadAvailable();
         if (communityRulesets.Count == 0) {
-            menu.Add(new TextMenu.Button("No manifests found. Bundle JSON in Rulesets/ or place local imports in Saves/AkronRulesets.") { Selectable = false });
+            menu.Add(new TextMenu.Button("No manifests found.") { Selectable = false });
+            AddWrappedModMenuSubHeaders(menu, "Bundle JSON in Rulesets/ or place local imports in Saves/AkronRulesets.", topPadding: false);
         } else {
             foreach (AkronCommunityRulesetManifest manifest in communityRulesets) {
                 menu.Add(new TextMenu.Button("Apply " + manifest.Label).Pressed(() => {
@@ -113,7 +115,7 @@ public partial class AkronModule {
         }
 
         menu.Add(new TextMenu.SubHeader("Native Hotkey Fallbacks"));
-        menu.Add(new TextMenu.SubHeader("Akron menu rows are bindable in the overlay by right-clicking or Shift-clicking them. These native config UIs remain for built-in keyboard/controller bindings.", topPadding: false));
+        AddWrappedModMenuSubHeaders(menu, "Akron menu rows are bindable in the overlay by right-clicking or Shift-clicking them. These native config UIs remain for built-in keyboard/controller bindings.", topPadding: false);
         menu.Add(new TextMenu.Button(Dialog.Clean("options_keyconfig")).Pressed(() => OpenKeyboardConfig(menu)));
         menu.Add(new TextMenu.Button(Dialog.Clean("options_btnconfig")).Pressed(() => OpenButtonConfig(menu)));
         AddHotkeyPreview(menu, "Open Overlay", Settings.ToggleOverlay);
@@ -176,5 +178,44 @@ public partial class AkronModule {
 
     private static AkronCounterDisplayMode NextCounterDisplayMode(AkronCounterDisplayMode mode) {
         return (AkronCounterDisplayMode) (((int) mode + 1) % Enum.GetValues(typeof(AkronCounterDisplayMode)).Length);
+    }
+
+    private static void AddWrappedModMenuSubHeaders(TextMenu menu, string text, bool topPadding = true) {
+        foreach (string line in WrapModMenuLine(text)) {
+            menu.Add(new TextMenu.SubHeader(line, topPadding));
+            topPadding = false;
+        }
+    }
+
+    internal static IReadOnlyList<string> WrapModMenuLine(string text, int maxCharacters = 64) {
+        List<string> lines = new List<string>();
+        foreach (string rawParagraph in (text ?? string.Empty).Split('\n')) {
+            string paragraph = rawParagraph.Trim();
+            if (paragraph.Length == 0) {
+                continue;
+            }
+
+            string current = string.Empty;
+            foreach (string word in paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)) {
+                if (current.Length == 0) {
+                    current = word;
+                    continue;
+                }
+
+                if (current.Length + 1 + word.Length > maxCharacters) {
+                    lines.Add(current);
+                    current = word;
+                    continue;
+                }
+
+                current += " " + word;
+            }
+
+            if (current.Length > 0) {
+                lines.Add(current);
+            }
+        }
+
+        return lines.Count == 0 ? new[] { string.Empty } : lines;
     }
 }
