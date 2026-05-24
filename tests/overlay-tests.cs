@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Celeste.Mod.Akron;
 using Microsoft.Xna.Framework;
 using Xunit;
@@ -84,6 +85,17 @@ public sealed class OverlayTests {
         Assert.Equal("NumericInput", controls["TPS Bypass"]);
         Assert.True(HasOverlayOptionsPopup("FPS Bypass"));
         Assert.False(HasOverlayOptionsPopup("TPS Bypass"));
+    }
+
+    [Fact]
+    public void TransientResetKeepsCollapsedWindowState() {
+        AkronOverlay overlay = CreateOverlayForStateTest();
+
+        Assert.True(overlay.ToggleCollapsedWindow("Global"));
+
+        overlay.ResetTransientUiState(searchAutofocus: false);
+
+        Assert.Contains("Global", GetCollapsedWindowTitles(overlay));
     }
 
     [Fact]
@@ -297,6 +309,24 @@ public sealed class OverlayTests {
     private static bool HasOverlayOptionsPopup(string label) {
         MethodInfo method = typeof(AkronOverlay).GetMethod("HasOptionsPopup", BindingFlags.NonPublic | BindingFlags.Static)!;
         return (bool) method.Invoke(null, new object[] { label })!;
+    }
+
+    private static HashSet<string> GetCollapsedWindowTitles(AkronOverlay overlay) {
+        FieldInfo field = typeof(AkronOverlay).GetField("collapsedWindowTitles", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        return (HashSet<string>) field.GetValue(overlay)!;
+    }
+
+    private static AkronOverlay CreateOverlayForStateTest() {
+        AkronOverlay overlay = (AkronOverlay) RuntimeHelpers.GetUninitializedObject(typeof(AkronOverlay));
+        SetPrivateField(overlay, "collapsedWindowTitles", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        SetPrivateField(overlay, "pendingImGuiCollapseSync", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        overlay.Visible = true;
+        return overlay;
+    }
+
+    private static void SetPrivateField(object target, string fieldName, object value) {
+        FieldInfo field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!;
+        field.SetValue(target, value);
     }
 
 }
