@@ -1,0 +1,150 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - v*
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Git tag to publish, for example v0.1.0.
+        required: true
+        type: string
+      prerelease:
+        description: Mark the GitHub Release as a prerelease.
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Package Akron
+    runs-on: ubuntu-latest
+
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+      IS_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate manual release tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if ! git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Tag '$RELEASE_TAG' does not exist. Create and push the tag before publishing."
+            exit 1
+          fi
+          git checkout "$RELEASE_TAG"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore Celeste references
+        env:
+          AKRON_CELESTE_REFS_URL: ${{ secrets.AKRON_CELESTE_REFS_URL }}
+          AKRON_CELESTE_REFS_TOKEN: ${{ secrets.AKRON_CELESTE_REFS_TOKEN }}
+        run: |
+          if [ -z "$AKRON_CELESTE_REFS_URL" ]; then
+            echo "::error::Missing AKRON_CELESTE_REFS_URL secret. It must point to a zip or tar.gz archive containing a complete lib-stripped reference directory."
+            exit 1
+          fi
+
+          archive_path="$RUNNER_TEMP/akron-celeste-refs"
+          extract_dir="$RUNNER_TEMP/akron-celeste-refs-extract"
+          mkdir -p "$extract_dir" lib-stripped
+
+          curl_args=(-fL --retry 3 --retry-delay 2)
+          if [ -n "$AKRON_CELESTE_REFS_TOKEN" ]; then
+            curl_args+=(-H "Authorization: Bearer $AKRON_CELESTE_REFS_TOKEN")
+          fi
+
+          curl "${curl_args[@]}" "$AKRON_CELESTE_REFS_URL" -o "$archive_path"
+
+          if unzip -tq "$archive_path" >/dev/null 2>&1; then
+            unzip -q "$archive_path" -d "$extract_dir"
+          elif tar -tzf "$archive_path" >/dev/null 2>&1; then
+            tar -xzf "$archive_path" -C "$extract_dir"
+          else
+            echo "::error::AKRON_CELESTE_REFS_URL did not download a valid zip or tar.gz archive."
+            exit 1
+          fi
+
+          celeste_ref="$(find "$extract_dir" -type f -name Celeste.dll | head -n 1)"
+          if [ -z "$celeste_ref" ]; then
+            echo "::error::Celeste reference archive is missing Celeste.dll."
+            exit 1
+          fi
+
+          cp -R "$(dirname "$celeste_ref")/." lib-stripped/
+
+          for dll in Celeste.dll FNA.dll MMHOOK_Celeste.dll MonoMod.Utils.dll; do
+            if [ ! -f "lib-stripped/$dll" ]; then
+              echo "::error::Restored lib-stripped directory is missing $dll."
+              exit 1
+            fi
+          done
+
+      - name: Restore
+        run: dotnet restore Akron.sln --nologo
+
+      - name: Build
+        run: dotnet build Akron.sln --configuration Release --no-restore --nologo
+
+      - name: Test
+        run: dotnet test tests/akron-tests.csproj --configuration Release --no-build --nologo
+
+      - name: Verify package contents
+        run: |
+          test -f Akron.zip
+          unzip -l Akron.zip
+          cp Akron.zip "Akron-${RELEASE_TAG}.zip"
+          sha256sum "Akron-${RELEASE_TAG}.zip" > "Akron-${RELEASE_TAG}.zip.sha256"
+
+      - name: Upload packaged mod artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Akron-${{ env.RELEASE_TAG }}
+          path: |
+            Akron-${{ env.RELEASE_TAG }}.zip
+            Akron-${{ env.RELEASE_TAG }}.zip.sha256
+          if-no-files-found: error
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Akron ${RELEASE_TAG}"
+          notes="$(cat <<EOF
+          Release artifact:
+          - Akron-${RELEASE_TAG}.zip
+          - Akron-${RELEASE_TAG}.zip.sha256
+
+          GameBanana publishing:
+          - Upload this same versioned zip to the Akron GameBanana page after verifying the release build.
+          EOF
+          )"
+
+          prerelease_flag=()
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            prerelease_flag=(--prerelease)
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "Akron-${RELEASE_TAG}.zip" "Akron-${RELEASE_TAG}.zip.sha256" --clobber
+            gh release edit "$RELEASE_TAG" --title "$title" --notes "$notes" "${prerelease_flag[@]}"
+          else
+            gh release create "$RELEASE_TAG" "Akron-${RELEASE_TAG}.zip" "Akron-${RELEASE_TAG}.zip.sha256" --title "$title" --notes "$notes" "${prerelease_flag[@]}"
+          fi

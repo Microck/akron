@@ -30,6 +30,10 @@ dotnet test tests/akron-tests.csproj --nologo --filter ArchiveTests
 
 Set `CelestePrefix` if the checkout is not inside the normal Everest `Mods/Akron/Source` layout or if the Celeste references live elsewhere.
 
+GitHub Actions uses a private reference archive instead of committing `lib-stripped/`. Set `AKRON_CELESTE_REFS_URL` to a zip or tar.gz archive containing a complete `lib-stripped` reference directory. Set `AKRON_CELESTE_REFS_TOKEN` only when the archive URL requires bearer-token auth.
+
+CI skips build/test steps until `AKRON_CELESTE_REFS_URL` is configured. Release packaging requires that archive and fails fast when it is missing.
+
 ## Local Tooling
 
 Canonical verification commands are documented in the docs site:

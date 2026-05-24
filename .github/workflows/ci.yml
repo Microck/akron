@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    env:
+      HAS_CELESTE_REFS: ${{ secrets.AKRON_CELESTE_REFS_URL != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Celeste reference configuration
+        if: env.HAS_CELESTE_REFS != 'true'
+        run: |
+          echo "::warning::Skipping Akron CI because AKRON_CELESTE_REFS_URL is not configured for this repository or event."
+
+      - name: Setup .NET
+        if: env.HAS_CELESTE_REFS == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore Celeste references
+        if: env.HAS_CELESTE_REFS == 'true'
+        env:
+          AKRON_CELESTE_REFS_URL: ${{ secrets.AKRON_CELESTE_REFS_URL }}
+          AKRON_CELESTE_REFS_TOKEN: ${{ secrets.AKRON_CELESTE_REFS_TOKEN }}
+        run: |
+          if [ -z "$AKRON_CELESTE_REFS_URL" ]; then
+            echo "::error::Missing AKRON_CELESTE_REFS_URL secret. It must point to a zip or tar.gz archive containing a complete lib-stripped reference directory."
+            exit 1
+          fi
+
+          archive_path="$RUNNER_TEMP/akron-celeste-refs"
+          extract_dir="$RUNNER_TEMP/akron-celeste-refs-extract"
+          mkdir -p "$extract_dir" lib-stripped
+
+          curl_args=(-fL --retry 3 --retry-delay 2)
+          if [ -n "$AKRON_CELESTE_REFS_TOKEN" ]; then
+            curl_args+=(-H "Authorization: Bearer $AKRON_CELESTE_REFS_TOKEN")
+          fi
+
+          curl "${curl_args[@]}" "$AKRON_CELESTE_REFS_URL" -o "$archive_path"
+
+          if unzip -tq "$archive_path" >/dev/null 2>&1; then
+            unzip -q "$archive_path" -d "$extract_dir"
+          elif tar -tzf "$archive_path" >/dev/null 2>&1; then
+            tar -xzf "$archive_path" -C "$extract_dir"
+          else
+            echo "::error::AKRON_CELESTE_REFS_URL did not download a valid zip or tar.gz archive."
+            exit 1
+          fi
+
+          celeste_ref="$(find "$extract_dir" -type f -name Celeste.dll | head -n 1)"
+          if [ -z "$celeste_ref" ]; then
+            echo "::error::Celeste reference archive is missing Celeste.dll."
+            exit 1
+          fi
+
+          cp -R "$(dirname "$celeste_ref")/." lib-stripped/
+
+          for dll in Celeste.dll FNA.dll MMHOOK_Celeste.dll MonoMod.Utils.dll; do
+            if [ ! -f "lib-stripped/$dll" ]; then
+              echo "::error::Restored lib-stripped directory is missing $dll."
+              exit 1
+            fi
+          done
+
+      - name: Restore
+        if: env.HAS_CELESTE_REFS == 'true'
+        run: dotnet restore Akron.sln --nologo
+
+      - name: Build
+        if: env.HAS_CELESTE_REFS == 'true'
+        run: dotnet build Akron.sln --configuration Release --no-restore --nologo
+
+      - name: Test
+        if: env.HAS_CELESTE_REFS == 'true'
+        run: dotnet test tests/akron-tests.csproj --configuration Release --no-build --nologo
+
+      - name: Verify packaged mod
+        if: env.HAS_CELESTE_REFS == 'true'
+        run: test -f Akron.zip
+
+      - name: Upload packaged mod
+        if: env.HAS_CELESTE_REFS == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Akron
+          path: Akron.zip
+          if-no-files-found: error
