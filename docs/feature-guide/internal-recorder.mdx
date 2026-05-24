@@ -3,7 +3,11 @@ title: Internal Recorder
 description: Recording, replay buffer, completion clips, proof helpers, encoder settings, output, audio, and presets.
 ---
 
-The Internal Recorder tab configures Akron's local FFmpeg-backed recording and proof helper surfaces.
+The Internal Recorder tab configures Akron's built-in FFmpeg-backed video recording and proof helper features.
+
+<Warning>
+Internal Recorder is experimental. Akron shows a confirmation warning the first time you trigger a recording action each session.
+</Warning>
 
 | Option | Control | What it does | Attempt status |
 |---|---|---|---|
@@ -29,16 +33,16 @@ The Internal Recorder tab configures Akron's local FFmpeg-backed recording and p
 | Output | Action | Configure recorder output folder, filename template, container, remuxing, and clip-browser grouping. | Goldberry/Hardlist clear |
 | Audio | Action | Configure game-audio recorder tracks and per-track levels. | Goldberry/Hardlist clear |
 | Clip Triggers | Action | Configure event-based clip saves and pre/post-roll windows. | Goldberry/Hardlist clear |
-| Presets | Action | Apply CPU, NVIDIA, or AMD encoder defaults. | Goldberry/Hardlist clear |
+| Presets | Action | Display the active encoder preset. Use the CPU, NVIDIA, or AMD sub-rows to apply defaults. | Goldberry/Hardlist clear |
 | CPU | Action | Apply CPU encoder defaults to the internal recorder settings. | Goldberry/Hardlist clear |
 | NVIDIA | Action | Apply NVIDIA/NVENC encoder defaults to the internal recorder settings. | Goldberry/Hardlist clear |
 | AMD | Action | Apply AMD/AMF encoder defaults to the internal recorder settings. | Goldberry/Hardlist clear |
 
 ## Option Menus
 
-Rows with a triangle expose the controls listed below.
+Rows marked with a triangle icon open a popup menu with the controls listed below.
 
-| Option | Menu control | What it changes | Status |
+| Option | Menu control | What it changes | Attempt status |
 |---|---|---|---|
 | Codec | Quality | Set simple encoder quality target before fine-tuning bitrate or rate control. | Goldberry/Hardlist clear |
 | Codec | Rate ctrl | Choose encoder rate-control mode for quality, file size, or lossless output. | Goldberry/Hardlist clear |

@@ -1,18 +1,18 @@
 ---
-title: External integrations
-description: Runtime integration options that appear only when Motion Smoothing, Speedrun Tool, CelesteTAS, or Extended Variant Mode is loaded.
+title: External Tools
+description: Options that appear only when Motion Smoothing, Speedrun Tool, CelesteTAS, or Extended Variant Mode is loaded.
 ---
 
-External integration rows are not declared Akron dependencies and are not part of Akron's base overlay tabs. They appear only when the relevant mod is loaded at runtime, and they are documented separately so the main feature pages stay focused on Akron's own options.
+External tool rows are not part of Akron's base overlay tabs. They appear only when the relevant mod is loaded, and they are documented separately so the main feature pages stay focused on Akron's own options.
 
-Motion Smoothing adds FPS and TPS bypass rows to the Global tab. Extended Variant Mode can also expose variant-specific rows at runtime; those dynamic rows are determined by the installed Extended Variant Mode option list.
+Motion Smoothing adds FPS Bypass and TPS Bypass rows to the Global tab. Extended Variant Mode can also expose variant-specific rows at runtime; those dynamic rows depend on the installed Extended Variant Mode option list.
 
 | Tool | Option | Control | What it does | Attempt status |
 |---|---|---|---|---|
 | Motion Smoothing | FPS Bypass | Numeric toggle | Raise the draw cadence while keeping the configured simulation cadence when possible. | Cheat |
 | Motion Smoothing | TPS Bypass | Numeric toggle | Change the simulation tick cadence. | Cheat |
-| Speedrun Tool | SRT Status | Action | Show whether Akron can read Speedrun Tool status, slot state, and room time right now. | Normal clear |
-| Speedrun Tool | SRT Slot | Action | Show the active Akron slot used for Speedrun Tool state capture and restore actions. | Normal clear |
+| Speedrun Tool | SRT Status | Action | Show whether Akron can read Speedrun Tool status, slot state, and room timer right now. | Normal clear |
+| Speedrun Tool | SRT Slot | Action | Show or cycle the active Akron slot used for Speedrun Tool state capture and restore actions. | Normal clear |
 | Speedrun Tool | SRT Capture State | Action | Capture the active Speedrun Tool state slot. | Cheat |
 | Speedrun Tool | SRT Restore State | Action | Restore the active Speedrun Tool state slot. | Cheat |
 | Speedrun Tool | SRT Clear State | Action | Clear the active Speedrun Tool state slot. | Cheat |
@@ -24,7 +24,7 @@ Motion Smoothing adds FPS and TPS bypass rows to the Global tab. Extended Varian
 | Extended Variant Mode | Reset Extended | Action | Reset all non-vanilla external variant settings to their defaults. | Normal clear |
 | Extended Variant Mode | Reset Vanilla | Action | Reset external vanilla variant wrappers to their defaults. | Normal clear |
 | Extended Variant Mode | Extended Variants Master | Toggle | Toggle Extended Variant Mode's master switch when the mod is loaded. | Cheat |
-| Extended Variant Mode | Extended Variants Randomizer | Toggle | Open Extended Variant Mode randomizer controls when the mod is loaded. | Cheat |
+| Extended Variant Mode | Extended Variants Randomizer | Toggle | Toggle and configure Extended Variant Mode's randomizer when the mod is loaded. | Cheat |
 
 ## Option Menus
 
