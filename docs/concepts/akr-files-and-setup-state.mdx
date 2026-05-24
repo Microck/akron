@@ -3,7 +3,7 @@ title: .akr files and setup state
 description: Understand Akron setup state, scoped exports, and shareable archive files.
 ---
 
-Akron setup state stores options, bindings, StartPos slots, and scoped tool settings for the current play context. `.akr` files are the shareable archive format Akron uses for setup packs and other structured Akron data.
+Akron setup state stores options, bindings, StartPos slots, and scoped tool settings for the current play context. `.akr` files are the shareable archive format Akron uses for setup packs and other structured data.
 
 ## Setup State
 
@@ -22,7 +22,7 @@ The Akron overlay shows current policy/status state and tool state. It also supp
 
 ## .akr Files
 
-An `.akr` file is a strict ZIP archive with a manifest and one payload. Current setup packs use a `profile.json` payload because that is the archive contract name.
+An `.akr` file is a strict ZIP archive with a manifest and one payload. Current setup packs use a `profile.json` payload, which is the archive entry name for profile data.
 
 ```mermaid
 flowchart TD
@@ -47,7 +47,7 @@ Akron can export and import a whole setup or a focused section:
 | `Audio` | Audio speed, pitch, per-sound volumes, and device settings. |
 | `Hud` | HUD widgets, labels, input displays, resource bars, counters, and HUD presentation state. |
 
-Scoped imports merge only the selected section into the current active settings. They should not reset unrelated settings.
+Scoped imports merge only the selected section into the current active settings. Unrelated settings are not affected.
 
 ## Sharing Guidance
 
