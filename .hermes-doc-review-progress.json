@@ -1,9 +1,8 @@
 {
   "started": null,
-  "last_run": null,
-  "runs": 0,
-  "files_reviewed": [],
-  "files_pending": [
+  "last_run": "2026-05-24T23:30:56.946102",
+  "runs": 8,
+  "files_reviewed": [
     "docs/index.mdx",
     "docs/docs.mdx",
     "docs/special-thanks.mdx",
@@ -13,7 +12,9 @@
     "docs/getting-started/hotkeys.mdx",
     "docs/concepts/rulesets-and-status.mdx",
     "docs/concepts/proof-and-submission-mode.mdx",
-    "docs/concepts/akr-files-and-setup-state.mdx",
+    "docs/concepts/akr-files-and-setup-state.mdx"
+  ],
+  "files_pending": [
     "docs/player-guide/overlay.mdx",
     "docs/player-guide/menu-anatomy.mdx",
     "docs/player-guide/gameplay-tools.mdx",
@@ -58,5 +59,14 @@
     "docs/contributing/implementation-boundaries.mdx"
   ],
   "total_changes": 0,
-  "commits": []
+  "commits": [
+    "a7b5231df87e03a5c878ac4b32cdc83277d28b17",
+    "30e1ade",
+    "f91bb6f",
+    "a9a6b64",
+    "1aef559",
+    "2767d6d817fd6f254a41ed8a32e9c14030f0a306",
+    "64ef5cc",
+    "147b374304648b871ce7efb0977e53d63c5817e1"
+  ]
 }
