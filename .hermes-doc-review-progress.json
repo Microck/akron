@@ -1,7 +1,7 @@
 {
   "started": null,
-  "last_run": "2026-05-25T12:00:00Z",
-  "runs": 12,
+  "last_run": "2026-05-25T12:10:00Z",
+  "runs": 13,
   "files_reviewed": [
     "docs/index.mdx",
     "docs/docs.mdx",
@@ -17,10 +17,10 @@
     "docs/player-guide/menu-anatomy.mdx",
     "docs/player-guide/gameplay-tools.mdx",
     "docs/player-guide/hud-and-input-tools.mdx",
-    "docs/player-guide/visual-and-accessibility.mdx"
+    "docs/player-guide/visual-and-accessibility.mdx",
+    "docs/player-guide/capture-and-recording.mdx"
   ],
   "files_pending": [
-    "docs/player-guide/capture-and-recording.mdx",
     "docs/player-guide/community-packs.mdx",
     "docs/player-guide/interop.mdx",
     "docs/feature-guide/index.mdx",
@@ -71,6 +71,7 @@
     "42ded239bb04e1d5bb821e7501807f534c1cf40b",
     "42ded239bb04e1d5bb821e7501807f534c1cf40b",
     "c7ead6d920881e1834993cf5457e1e8b9e74f675",
-    "b3f1178ee950e0a5d2cc3996f537847db81d7da3"
+    "b3f1178ee950e0a5d2cc3996f537847db81d7da3",
+    "7e0dec45459e19b8f9441784b31b952516b1de8c"
   ]
 }
