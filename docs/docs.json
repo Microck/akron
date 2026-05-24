@@ -157,6 +157,12 @@
           "contributing/public-architecture",
           "contributing/implementation-boundaries"
         ]
+      },
+      {
+        "group": "Project",
+        "pages": [
+          "special-thanks"
+        ]
       }
     ]
   }
