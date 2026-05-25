@@ -1,7 +1,6 @@
 {
   "cycle": 2,
   "files_pending": [
-    "akr-packs/manage-setups.mdx",
     "akr-packs/import-export.mdx",
     "rulesets/overview.mdx",
     "rulesets/leaderboard-clean.mdx",
@@ -54,6 +53,7 @@
     "player-guide/overlay.mdx",
     "player-guide/interop.mdx",
     "player-guide/visual-and-accessibility.mdx",
-    "player-guide/community-packs.mdx"
+    "player-guide/community-packs.mdx",
+    "akr-packs/manage-setups.mdx"
   ]
 }
