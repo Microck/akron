@@ -41,6 +41,7 @@ jobs:
         env:
           AKRON_CELESTE_REFS_URL: ${{ secrets.AKRON_CELESTE_REFS_URL }}
           AKRON_CELESTE_REFS_TOKEN: ${{ secrets.AKRON_CELESTE_REFS_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           if [ -z "$AKRON_CELESTE_REFS_URL" ]; then
             echo "::error::Missing AKRON_CELESTE_REFS_URL secret. It must point to a zip or tar.gz archive containing a complete lib-stripped reference directory."
@@ -52,8 +53,9 @@ jobs:
           mkdir -p "$extract_dir" lib-stripped
 
           curl_args=(-fL --retry 3 --retry-delay 2)
-          if [ -n "$AKRON_CELESTE_REFS_TOKEN" ]; then
-            curl_args+=(-H "Authorization: Bearer $AKRON_CELESTE_REFS_TOKEN")
+          auth_token="${AKRON_CELESTE_REFS_TOKEN:-${GITHUB_TOKEN:-}}"
+          if [ -n "$auth_token" ]; then
+            curl_args+=(-H "Authorization: Bearer $auth_token")
           fi
           if [[ "$AKRON_CELESTE_REFS_URL" == https://api.github.com/* ]]; then
             curl_args+=(-H "Accept: application/octet-stream")
