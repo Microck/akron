@@ -1,8 +1,6 @@
 {
   "cycle": 1,
   "files_pending": [
-    "docs/images/akr-export-scope.png",
-    "docs/images/akron-menu-anatomy.png",
     "docs/getting-started/hotkeys.mdx",
     "docs/getting-started/configuration.mdx",
     "docs/getting-started/install.mdx",
@@ -67,6 +65,8 @@
     "docs/images/logo.png",
     "docs/images/akron-overlay-overview.png",
     "docs/images/raw-download.png",
-    "docs/images/olympus-one-click-install.png"
+    "docs/images/olympus-one-click-install.png",
+    "docs/images/akr-export-scope.png",
+    "docs/images/akron-menu-anatomy.png"
   ]
 }
