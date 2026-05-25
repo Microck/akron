@@ -3,78 +3,75 @@ title: Internal Recorder
 description: Recording, replay buffer, completion clips, proof helpers, encoder settings, output, audio, and presets.
 ---
 
-The Internal Recorder tab configures Akron's built-in FFmpeg-backed video recording and proof helper features.
+The Internal Recorder tab configures Akron's local FFmpeg-backed recording and proof helper surfaces.
 
-<Warning>
-Internal Recorder is experimental. Akron shows a confirmation warning the first time you trigger a recording action each session.
-</Warning>
-
-| Option | Control | What it does |
-|---|---|---|
-| Start Recording | Action | Start Akron's FFmpeg-backed internal recorder using the configured resolution, framerate, codec, and container. |
-| Stop Recording | Action | Stop the active internal recording and finalize the output file. |
-| Save Replay Buffer | Action | Save the configured replay buffer window when rolling-buffer capture is available. |
-| Arm Completion Clips | Action | Configure Akron to keep a rolling replay buffer and save clear-style clips during long play sessions. |
-| Flag Completion | Action | Save the current replay-buffer window as a completion clip for the final clear video. |
-| Build Clear Video | Action | Stitch saved room-clear, checkpoint-clear, area-clear, and completion-flag clips for the current map into one video. |
-| Proof Recorder Guard | Toggle | Warn when Submission Mode is active but recording or replay buffering is not armed. |
-| End Screen Helper | Toggle | Include end-screen metadata and sidecar output after area completion. |
-| Map Version Stamp | Toggle | Include map, room, mode, and loaded module versions in sidecar output. |
-| Framerate | Number | Recording framerate passed to the internal recorder. |
-| Endscreen Duration | Number | Seconds to keep recording after a clear before stopping event-based captures. |
-| Bitrate | Number | Target video bitrate in megabits per second for bitrate-based rate control. |
-| Resolution X | Number | Horizontal recording resolution. |
-| Resolution Y | Number | Vertical recording resolution. |
-| Hide Preview | Toggle | Keep Akron's recorder from drawing a live capture preview surface while recording. |
-| Codec | Selector | Video encoder used by FFmpeg. |
-| Colorspace Args | Selector | Optional FFmpeg video-filter colorspace argument string. |
-| Replay Settings | Action | Configure the rolling replay buffer length and the save-buffer binding. |
-| Output | Action | Configure recorder output folder, filename template, container, remuxing, and clip-browser grouping. |
-| Audio | Action | Configure game-audio recorder tracks and per-track levels. |
-| Clip Triggers | Action | Configure event-based clip saves and pre/post-roll windows. |
-| Presets | Action | Display the active encoder preset. Use the CPU, NVIDIA, or AMD sub-rows to apply defaults. |
-| CPU | Action | Apply CPU encoder defaults to the internal recorder settings. |
-| NVIDIA | Action | Apply NVIDIA/NVENC encoder defaults to the internal recorder settings. |
-| AMD | Action | Apply AMD/AMF encoder defaults to the internal recorder settings. |
+| Option | Control | What it does | Attempt status |
+|---|---|---|---|
+| Start Recording | Action | Start Akron's FFmpeg-backed internal recorder using the configured resolution, framerate, codec, and container. | Goldberry/Hardlist clear |
+| Stop Recording | Action | Stop the active internal recording and finalize the output file. | Goldberry/Hardlist clear |
+| Save Replay Buffer | Action | Save the configured replay buffer window when rolling-buffer capture is available. | Goldberry/Hardlist clear |
+| Arm Completion Clips | Action | Configure Akron to keep a rolling replay buffer and save clear-style clips during long play sessions. | Goldberry/Hardlist clear |
+| Flag Completion | Action | Save the current replay-buffer window as a completion clip for the final clear video. | Goldberry/Hardlist clear |
+| Build Clear Video | Action | Stitch saved room-clear, checkpoint-clear, area-clear, and completion-flag clips for the current map into one video. | Goldberry/Hardlist clear |
+| Proof Recorder Guard | Toggle | Warn when Submission Mode is active but recording or replay buffering is not armed. | Goldberry/Hardlist clear |
+| End Screen Helper | Toggle | Include end-screen metadata and sidecar output after area completion. | Goldberry/Hardlist clear |
+| Map Version Stamp | Toggle | Include map, room, mode, and loaded module versions in sidecar output. | Goldberry/Hardlist clear |
+| Journal Snapshot / Compare | Action | Write a save-file journal snapshot and compare it with the previous Akron snapshot. | Goldberry/Hardlist clear |
+| Framerate | Number | Recording framerate passed to the internal recorder. | Goldberry/Hardlist clear |
+| Endscreen Duration | Number | Seconds to keep recording after a clear before stopping event-based captures. | Goldberry/Hardlist clear |
+| Bitrate | Number | Target video bitrate in megabits per second for bitrate-based rate control. | Goldberry/Hardlist clear |
+| Resolution X | Number | Horizontal recording resolution. | Goldberry/Hardlist clear |
+| Resolution Y | Number | Vertical recording resolution. | Goldberry/Hardlist clear |
+| Hide Preview | Toggle | Keep Akron's recorder from drawing a live capture preview surface while recording. | Goldberry/Hardlist clear |
+| Codec | Selector | Video encoder used by FFmpeg. | Goldberry/Hardlist clear |
+| Colorspace Args | Selector | Optional FFmpeg video-filter colorspace argument string. | Goldberry/Hardlist clear |
+| Replay Settings | Action | Configure the rolling replay buffer length and the save-buffer binding. | Goldberry/Hardlist clear |
+| Output | Action | Configure recorder output folder, filename template, container, remuxing, and clip-browser grouping. | Goldberry/Hardlist clear |
+| Audio | Action | Configure game-audio recorder tracks and per-track levels. | Goldberry/Hardlist clear |
+| Clip Triggers | Action | Configure event-based clip saves and pre/post-roll windows. | Goldberry/Hardlist clear |
+| Presets | Action | Apply CPU, NVIDIA, or AMD encoder defaults. | Goldberry/Hardlist clear |
+| CPU | Action | Apply CPU encoder defaults to the internal recorder settings. | Goldberry/Hardlist clear |
+| NVIDIA | Action | Apply NVIDIA/NVENC encoder defaults to the internal recorder settings. | Goldberry/Hardlist clear |
+| AMD | Action | Apply AMD/AMF encoder defaults to the internal recorder settings. | Goldberry/Hardlist clear |
 
 ## Option Menus
 
-Rows marked with a triangle icon open a popup menu with the controls listed below.
+Rows with a triangle expose the controls listed below.
 
-| Option | Menu control | What it changes |
-|---|---|---|
-| Codec | Quality | Set simple encoder quality target before fine-tuning bitrate or rate control. |
-| Codec | Rate ctrl | Choose encoder rate-control mode for quality, file size, or lossless output. |
-| Codec | Keyframe | Set seconds between keyframes, or 0 to let the encoder decide. |
-| Codec | Dropped-frame warning | Show a warning when the recorder cannot capture frames at the configured cadence. |
-| Colorspace Args | FFmpeg filter | Set optional FFmpeg video-filter colorspace arguments. |
-| Replay Settings | Start Replay Buffer | Start rolling replay capture for the current game scene. |
-| Replay Settings | Stop | Stop rolling replay capture. |
-| Replay Settings | Save | Save the current replay buffer window. |
-| Replay Settings | Buffer | Set seconds of rolling FFmpeg segments kept available for manual replay saves. |
-| Replay Settings | Auto-start | Choose whether replay capture starts manually, in levels, or everywhere. |
-| Replay Settings | Bind save key | Set the key used to save the replay buffer without opening the overlay. |
-| Replay Settings | Clear | Clear only the custom replay-buffer save binding. |
-| Output | Output folder | Choose where recordings and clips are written. |
-| Output | Filename template | Configure clip filename tokens. |
-| Output | Container | Choose MKV, MP4, MOV, or WebM output container. |
-| Output | Auto remux | Keep the crash-resistant capture target and produce an MP4 share copy after recording. |
-| Output | Sort clips | Set saved clip browser grouping preference. |
-| Output | Filter clips | Set saved clip browser filter preference. |
-| Audio | Full mix track | Record the mixed game-audio track. |
-| Audio | Music track | Record an isolated music track when the backend can provide it. |
-| Audio | SFX track | Record an isolated sound-effects track when the backend can provide it. |
-| Audio | Ambience track | Record an isolated ambience track when the backend can provide it. |
-| Audio | Record muted audio | Capture game audio even when in-game playback is muted, when supported. |
-| Audio | Mix | Set full-mix recording volume percentage. |
-| Audio | Music | Set music track recording volume percentage. |
-| Audio | SFX | Set SFX track recording volume percentage. |
-| Audio | Amb | Set ambience track recording volume percentage. |
-| Clip Triggers | Last death | Auto-save a clip around the latest death trigger. |
-| Clip Triggers | Respawn to death | Auto-save clips from respawn through the next death. |
-| Clip Triggers | Room entry to clear | Auto-save clips from room entry through a clear. |
-| Clip Triggers | Checkpoint clear | Auto-save clips when a checkpoint is cleared. |
-| Clip Triggers | Berry collect | Auto-save clips when a berry is collected. |
-| Clip Triggers | Golden death | Auto-save clips when a golden attempt dies. |
-| Clip Triggers | Pre-roll | Set seconds included before event-based clip triggers. |
-| Clip Triggers | Post-roll | Set seconds included after event-based clip triggers. |
+| Option | Menu control | What it changes | Status |
+|---|---|---|---|
+| Codec | Quality | Set simple encoder quality target before fine-tuning bitrate or rate control. | Goldberry/Hardlist clear |
+| Codec | Rate ctrl | Choose encoder rate-control mode for quality, file size, or lossless output. | Goldberry/Hardlist clear |
+| Codec | Keyframe | Set seconds between keyframes, or 0 to let the encoder decide. | Goldberry/Hardlist clear |
+| Codec | Dropped-frame warning | Show a warning when the recorder cannot capture frames at the configured cadence. | Goldberry/Hardlist clear |
+| Colorspace Args | FFmpeg filter | Set optional FFmpeg video-filter colorspace arguments. | Goldberry/Hardlist clear |
+| Replay Settings | Start Replay Buffer | Start rolling replay capture for the current game scene. | Goldberry/Hardlist clear |
+| Replay Settings | Stop | Stop rolling replay capture. | Goldberry/Hardlist clear |
+| Replay Settings | Save | Save the current replay buffer window. | Goldberry/Hardlist clear |
+| Replay Settings | Buffer | Set seconds of rolling FFmpeg segments kept available for manual replay saves. | Goldberry/Hardlist clear |
+| Replay Settings | Auto-start | Choose whether replay capture starts manually, in levels, or everywhere. | Goldberry/Hardlist clear |
+| Replay Settings | Bind save key | Set the key used to save the replay buffer without opening the overlay. | Goldberry/Hardlist clear |
+| Replay Settings | Clear | Clear only the custom replay-buffer save binding. | Goldberry/Hardlist clear |
+| Output | Output folder | Choose where recordings and clips are written. | Goldberry/Hardlist clear |
+| Output | Filename template | Configure clip filename tokens. | Goldberry/Hardlist clear |
+| Output | Container | Choose MKV, MP4, MOV, or WebM output container. | Goldberry/Hardlist clear |
+| Output | Auto remux | Keep the crash-resistant capture target and produce an MP4 share copy after recording. | Goldberry/Hardlist clear |
+| Output | Sort clips | Set saved clip browser grouping preference. | Goldberry/Hardlist clear |
+| Output | Filter clips | Set saved clip browser filter preference. | Goldberry/Hardlist clear |
+| Audio | Full mix track | Record the mixed game-audio track. | Goldberry/Hardlist clear |
+| Audio | Music track | Record an isolated music track when the backend can provide it. | Goldberry/Hardlist clear |
+| Audio | SFX track | Record an isolated sound-effects track when the backend can provide it. | Goldberry/Hardlist clear |
+| Audio | Ambience track | Record an isolated ambience track when the backend can provide it. | Goldberry/Hardlist clear |
+| Audio | Record muted audio | Capture game audio even when in-game playback is muted, when supported. | Goldberry/Hardlist clear |
+| Audio | Mix | Set full-mix recording volume percentage. | Goldberry/Hardlist clear |
+| Audio | Music | Set music track recording volume percentage. | Goldberry/Hardlist clear |
+| Audio | SFX | Set SFX track recording volume percentage. | Goldberry/Hardlist clear |
+| Audio | Amb | Set ambience track recording volume percentage. | Goldberry/Hardlist clear |
+| Clip Triggers | Last death | Auto-save a clip around the latest death trigger. | Goldberry/Hardlist clear |
+| Clip Triggers | Respawn to death | Auto-save clips from respawn through the next death. | Goldberry/Hardlist clear |
+| Clip Triggers | Room entry to clear | Auto-save clips from room entry through a clear. | Goldberry/Hardlist clear |
+| Clip Triggers | Checkpoint clear | Auto-save clips when a checkpoint is cleared. | Goldberry/Hardlist clear |
+| Clip Triggers | Berry collect | Auto-save clips when a berry is collected. | Goldberry/Hardlist clear |
+| Clip Triggers | Golden death | Auto-save clips when a golden attempt dies. | Goldberry/Hardlist clear |
+| Clip Triggers | Pre-roll | Set seconds included before event-based clip triggers. | Goldberry/Hardlist clear |
+| Clip Triggers | Post-roll | Set seconds included after event-based clip triggers. | Goldberry/Hardlist clear |

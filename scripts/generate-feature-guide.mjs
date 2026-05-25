@@ -206,9 +206,9 @@ const optionMenus = {
     ["Reset", "Return gameplay speed to normal.", "Cheat"]
   ],
   "Safe Mode": [
-    ["Freeze deaths", "Restore the current save-slot death counter while Safe Mode is active.", "Cheat"],
-    ["Freeze jumps", "Restore the current save-slot jump counter while Safe Mode is active.", "Cheat"],
-    ["Freeze best run", "Restore current best-time fields while Safe Mode is active.", "Cheat"]
+    ["Freeze deaths", "Restore the current save slot's death counter while Safe Mode is active.", "Cheat"],
+    ["Freeze jumps", "Restore the current save slot's jump counter while Safe Mode is active.", "Cheat"],
+    ["Freeze best run", "Restore the current save slot's best-run fields while Safe Mode is active.", "Cheat"]
   ],
   "Control Display": [
     ["Corner", "Choose the screen corner used by the input board.", "Goldberry/Hardlist clear"],

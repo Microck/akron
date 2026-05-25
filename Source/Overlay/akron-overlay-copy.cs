@@ -336,7 +336,7 @@ public sealed partial class AkronOverlay {
         ["FPS Bypass"] = "Raise the draw cadence while keeping the configured simulation cadence when possible.",
         ["TPS Bypass"] = "Change the simulation tick cadence.",
         ["Safe Mode"] = "Safe Mode indicator plus optional local stat guards for deaths, jumps, and best-run fields.",
-        ["Freeze Attempts"] = "Restore the current save slot death counter while Safe Mode is active.",
+        ["Freeze Attempts"] = "Restore the current save slot's death counter while Safe Mode is active.",
         ["Instant Complete"] = "Route the current chapter through Celeste's completion flow immediately.",
         ["Unlock A-Sides"] = "Unlock main chapter access through Celeste's native UnlockedAreas field.",
         ["Unlock B-Sides"] = "Mark cassette unlocks for chapters with B-Sides.",
