@@ -1,7 +1,6 @@
 {
   "cycle": 2,
   "files_pending": [
-    "rulesets/overview.mdx",
     "rulesets/leaderboard-clean.mdx",
     "rulesets/practice-and-sandbox.mdx",
     "rulesets/streamer-mode-and-proof-overlays.mdx",
@@ -54,6 +53,7 @@
     "player-guide/visual-and-accessibility.mdx",
     "player-guide/community-packs.mdx",
     "akr-packs/manage-setups.mdx",
-    "akr-packs/import-export.mdx"
+    "akr-packs/import-export.mdx",
+    "rulesets/overview.mdx"
   ]
 }
