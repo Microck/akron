@@ -1,7 +1,7 @@
 {
   "started": null,
   "last_run": "2026-05-25T08:14:11.561638Z",
-  "runs": 34,
+  "runs": 35,
   "files_reviewed": [
     "docs/index.mdx",
     "docs/docs.mdx",
@@ -42,11 +42,11 @@
     "docs/rulesets/practice-and-sandbox.mdx",
     "docs/rulesets/streamer-mode-and-proof-overlays.mdx",
     "docs/reference/feature-status-reference.mdx",
-    "docs/reference/akr-archives.mdx"
+    "docs/reference/akr-archives.mdx",
+    "docs/reference/community-pack-catalog.mdx",
+    "docs/reference/debug-commands.mdx"
   ],
   "files_pending": [
-    "docs/reference/community-pack-catalog.mdx",
-    "docs/reference/debug-commands.mdx",
     "docs/reference/file-locations.mdx",
     "docs/troubleshooting/common-issues.mdx",
     "docs/troubleshooting/compatibility.mdx",
@@ -58,7 +58,7 @@
     "docs/contributing/public-architecture.mdx",
     "docs/contributing/implementation-boundaries.mdx"
   ],
-  "total_changes": 0,
+  "total_changes": 1,
   "commits": [
     "a7b5231df87e03a5c878ac4b32cdc83277d28b17",
     "30e1ade",
