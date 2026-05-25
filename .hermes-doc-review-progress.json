@@ -1,7 +1,6 @@
 {
   "cycle": 3,
   "files_pending": [
-    "feature-guide/index.mdx",
     "feature-guide/global.mdx",
     "feature-guide/level.mdx",
     "feature-guide/keybinds.mdx",
@@ -54,6 +53,7 @@
     "getting-started/hotkeys.mdx",
     "concepts/akr-files-and-setup-state.mdx",
     "concepts/rulesets-and-status.mdx",
-    "concepts/proof-and-submission-mode.mdx"
+    "concepts/proof-and-submission-mode.mdx",
+    "feature-guide/index.mdx"
   ]
 }
