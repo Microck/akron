@@ -19,8 +19,8 @@ const registrySource = fs.readFileSync(registryPath, "utf8");
 const earAidSource = fs.readFileSync(earAidPath, "utf8");
 
 const statusNames = {
-  GoldberryHardlistClean: "Goldberry/Hardlist clear",
-  RegularClean: "Normal clear",
+  GoldberryHardlistClean: "Goldberry/Hardlist clean",
+  RegularClean: "Regular clean",
   Cheat: "Cheat"
 };
 
@@ -185,9 +185,9 @@ const featureKindOverrides = {
 const statusOverrides = {
   "Capture StartPos State": "Cheat",
   "Cursor Zoom": "Cheat",
-  "In-game only": "Normal clear",
-  "Open Menu": "Goldberry/Hardlist clear",
-  "Player Overlap": "Normal clear",
+  "In-game only": "Regular clean",
+  "Open Menu": "Goldberry/Hardlist clean",
+  "Player Overlap": "Regular clean",
   "Restore StartPos State": "Cheat",
   "Show Hitboxes": "Cheat",
   "StartPos Clear": "Cheat",
@@ -211,39 +211,39 @@ const optionMenus = {
     ["Freeze best run", "Restore the current save slot's best-run fields while Safe Mode is active.", "Cheat"]
   ],
   "Control Display": [
-    ["Corner", "Choose the screen corner used by the input board.", "Goldberry/Hardlist clear"],
-    ["Source", "Choose whether keys light from Celeste actions or physical keyboard keys.", "Goldberry/Hardlist clear"],
-    ["Scale", "Set the input-board scale percentage.", "Goldberry/Hardlist clear"],
-    ["Opacity", "Set the input-board opacity percentage.", "Goldberry/Hardlist clear"],
-    ["Compact keyboard", "Replace the layout with a tight WASD-style block with actions attached.", "Goldberry/Hardlist clear"],
-    ["Split clusters", "Replace the layout with separated menu/action and direction clusters.", "Goldberry/Hardlist clear"],
-    ["Save Full .akr", "Export the complete Control Display setup, including layout, labels, keys, colors, and text scale.", "Goldberry/Hardlist clear"],
-    ["Import Latest .akr", "Import the newest full Control Display preset from Saves/AkronControlDisplay.", "Goldberry/Hardlist clear"],
-    ["Label preset: Names", "Apply action-name labels to the existing board keys without moving them.", "Goldberry/Hardlist clear"],
-    ["Label preset: Keyboard", "Apply keyboard-style labels to the existing board keys without moving them.", "Goldberry/Hardlist clear"],
-    ["Label preset: Arrows", "Apply arrow-style labels to the existing board keys without moving them.", "Goldberry/Hardlist clear"],
-    ["Label preset: Short", "Apply compact labels to the existing board keys without moving them.", "Goldberry/Hardlist clear"],
-    ["Add key", "Add a new visible key to the editable input board layout.", "Goldberry/Hardlist clear"],
-    ["Duplicate", "Duplicate the selected input-board key.", "Goldberry/Hardlist clear"],
-    ["Remove", "Remove the selected input-board key when more than one key remains.", "Goldberry/Hardlist clear"],
-    ["Selected", "Choose which input-board key is being edited.", "Goldberry/Hardlist clear"],
-    ["Label", "Set the text shown inside the selected input-board key.", "Goldberry/Hardlist clear"],
-    ["Visible", "Show or hide the selected input-board key.", "Goldberry/Hardlist clear"],
-    ["X", "Set the selected key's horizontal board position.", "Goldberry/Hardlist clear"],
-    ["Y", "Set the selected key's vertical board position.", "Goldberry/Hardlist clear"],
-    ["Width", "Set the selected key's width.", "Goldberry/Hardlist clear"],
-    ["Height", "Set the selected key's height.", "Goldberry/Hardlist clear"],
-    ["Text scale", "Set the selected key's label text scale.", "Goldberry/Hardlist clear"],
-    ["Game action", "Choose the Celeste action used by the selected key when Source is Game Actions.", "Goldberry/Hardlist clear"],
-    ["Keyboard keys", "Set the physical keys used by the selected key when Source is Keyboard Keys.", "Goldberry/Hardlist clear"],
-    ["Fill", "Set the selected key's background color.", "Goldberry/Hardlist clear"],
-    ["Pressed", "Set the selected key's held-input color.", "Goldberry/Hardlist clear"],
-    ["Stroke", "Set the selected key's outline color.", "Goldberry/Hardlist clear"],
-    ["Text", "Set the selected key's label color.", "Goldberry/Hardlist clear"],
-    ["Outline", "Set the selected key's outline width.", "Goldberry/Hardlist clear"]
+    ["Corner", "Choose the screen corner used by the input board.", "Goldberry/Hardlist clean"],
+    ["Source", "Choose whether keys light from Celeste actions or physical keyboard keys.", "Goldberry/Hardlist clean"],
+    ["Scale", "Set the input-board scale percentage.", "Goldberry/Hardlist clean"],
+    ["Opacity", "Set the input-board opacity percentage.", "Goldberry/Hardlist clean"],
+    ["Compact keyboard", "Replace the layout with a tight WASD-style block with actions attached.", "Goldberry/Hardlist clean"],
+    ["Split clusters", "Replace the layout with separated menu/action and direction clusters.", "Goldberry/Hardlist clean"],
+    ["Save Full .akr", "Export the complete Control Display setup, including layout, labels, keys, colors, and text scale.", "Goldberry/Hardlist clean"],
+    ["Import Latest .akr", "Import the newest full Control Display preset from Saves/AkronControlDisplay.", "Goldberry/Hardlist clean"],
+    ["Label preset: Names", "Apply action-name labels to the existing board keys without moving them.", "Goldberry/Hardlist clean"],
+    ["Label preset: Keyboard", "Apply keyboard-style labels to the existing board keys without moving them.", "Goldberry/Hardlist clean"],
+    ["Label preset: Arrows", "Apply arrow-style labels to the existing board keys without moving them.", "Goldberry/Hardlist clean"],
+    ["Label preset: Short", "Apply compact labels to the existing board keys without moving them.", "Goldberry/Hardlist clean"],
+    ["Add key", "Add a new visible key to the editable input board layout.", "Goldberry/Hardlist clean"],
+    ["Duplicate", "Duplicate the selected input-board key.", "Goldberry/Hardlist clean"],
+    ["Remove", "Remove the selected input-board key when more than one key remains.", "Goldberry/Hardlist clean"],
+    ["Selected", "Choose which input-board key is being edited.", "Goldberry/Hardlist clean"],
+    ["Label", "Set the text shown inside the selected input-board key.", "Goldberry/Hardlist clean"],
+    ["Visible", "Show or hide the selected input-board key.", "Goldberry/Hardlist clean"],
+    ["X", "Set the selected key's horizontal board position.", "Goldberry/Hardlist clean"],
+    ["Y", "Set the selected key's vertical board position.", "Goldberry/Hardlist clean"],
+    ["Width", "Set the selected key's width.", "Goldberry/Hardlist clean"],
+    ["Height", "Set the selected key's height.", "Goldberry/Hardlist clean"],
+    ["Text scale", "Set the selected key's label text scale.", "Goldberry/Hardlist clean"],
+    ["Game action", "Choose the Celeste action used by the selected key when Source is Game Actions.", "Goldberry/Hardlist clean"],
+    ["Keyboard keys", "Set the physical keys used by the selected key when Source is Keyboard Keys.", "Goldberry/Hardlist clean"],
+    ["Fill", "Set the selected key's background color.", "Goldberry/Hardlist clean"],
+    ["Pressed", "Set the selected key's held-input color.", "Goldberry/Hardlist clean"],
+    ["Stroke", "Set the selected key's outline color.", "Goldberry/Hardlist clean"],
+    ["Text", "Set the selected key's label color.", "Goldberry/Hardlist clean"],
+    ["Outline", "Set the selected key's outline width.", "Goldberry/Hardlist clean"]
   ],
   "Autosave": [
-    ["Backup behavior", "Configure when Akron-owned backup state is saved.", "Normal clear"]
+    ["Backup behavior", "Configure when Akron-owned backup state is saved.", "Regular clean"]
   ],
   "Transition Speed": [
     ["Multiplier", "Adjust the next room-transition duration multiplier.", "Cheat"]
@@ -255,35 +255,35 @@ const optionMenus = {
     ["Clear areas", "Remove all selected Auto Kill rectangles.", "Cheat"]
   ],
   "Auto Deafen": [
-    ["Hotkey", "Set the Discord Toggle Deafen hotkey Akron will press.", "Normal clear"],
-    ["Test hotkey", "Press the configured hotkey immediately.", "Normal clear"],
-    ["Selected areas", "Trigger deafen when Madeline enters selected rectangles.", "Normal clear"],
-    ["Draw areas", "Draw selected Auto Deafen rectangles below the Akron menu.", "Normal clear"],
-    ["Clear areas", "Remove all selected Auto Deafen rectangles and restore if Akron believes Discord is deafened.", "Normal clear"]
+    ["Hotkey", "Set the Discord Toggle Deafen hotkey Akron will press.", "Regular clean"],
+    ["Test hotkey", "Press the configured hotkey immediately.", "Regular clean"],
+    ["Selected areas", "Trigger deafen when Madeline enters selected rectangles.", "Regular clean"],
+    ["Draw areas", "Draw selected Auto Deafen rectangles below the Akron menu.", "Regular clean"],
+    ["Clear areas", "Remove all selected Auto Deafen rectangles and restore if Akron believes Discord is deafened.", "Regular clean"]
   ],
   "Respawn Time": [
-    ["Seconds", "Configure the post-death respawn delay.", "Normal clear"],
-    ["Real time", "Use real elapsed time so Akron timescale does not stretch or shrink the delay.", "Normal clear"]
+    ["Seconds", "Configure the post-death respawn delay.", "Regular clean"],
+    ["Real time", "Use real elapsed time so Akron timescale does not stretch or shrink the delay.", "Regular clean"]
   ],
   "Pause Timer": [
     ["Seconds", "Configure how long gameplay is held after unpausing.", "Cheat"],
     ["Remove pause darkening", "Remove Celeste's leftover pause darkening during the countdown.", "Cheat"]
   ],
   "Lag Pauser": [
-    ["Threshold ms", "Set the frame-time spike threshold that triggers the pause.", "Goldberry/Hardlist clear"],
-    ["Triggers", "Show how many frame-time spikes triggered Lag Pauser.", "Goldberry/Hardlist clear"],
-    ["Last spike", "Show the duration of the most recent frame-time spike.", "Goldberry/Hardlist clear"],
-    ["Reset threshold", "Restore the default spike threshold.", "Goldberry/Hardlist clear"]
+    ["Threshold ms", "Set the frame-time spike threshold that triggers the pause.", "Goldberry/Hardlist clean"],
+    ["Triggers", "Show how many frame-time spikes triggered Lag Pauser.", "Goldberry/Hardlist clean"],
+    ["Last spike", "Show the duration of the most recent frame-time spike.", "Goldberry/Hardlist clean"],
+    ["Reset threshold", "Restore the default spike threshold.", "Goldberry/Hardlist clean"]
   ],
   "Light Level": [
-    ["Percent", "Set the lighting override percentage while Light Level is enabled.", "Normal clear"]
+    ["Percent", "Set the lighting override percentage while Light Level is enabled.", "Regular clean"]
   ],
   "Bloom Level": [
-    ["Percent", "Set bloom suppression or amplification while Bloom Level is enabled.", "Normal clear"]
+    ["Percent", "Set bloom suppression or amplification while Bloom Level is enabled.", "Regular clean"]
   ],
   "Screen Tint": [
-    ["Opacity", "Set screen tint opacity.", "Normal clear"],
-    ["Tint", "Choose the screen tint color.", "Normal clear"]
+    ["Opacity", "Set screen tint opacity.", "Regular clean"],
+    ["Tint", "Choose the screen tint color.", "Regular clean"]
   ],
   "Deload Spinners": [
     ["Seconds before deload", "Configure spinner deload simulation timing.", "Cheat"]
@@ -313,10 +313,10 @@ const optionMenus = {
     ["Opacity", "Set hitbox trail opacity.", "Cheat"]
   ],
   "Show Hitboxes On Death": [
-    ["All hitboxes", "During the death window, draw the regular hitbox set using Show Hitboxes settings.", "Normal clear"],
-    ["Player marker", "Mark Madeline's recorded death position even when all hitboxes or Hide player is on.", "Normal clear"],
-    ["Death object", "Set the last recorded death-object hitbox color.", "Normal clear"],
-    ["Player marker color", "Set the last recorded player-position marker color.", "Normal clear"]
+    ["All hitboxes", "During the death window, draw the regular hitbox set using Show Hitboxes settings.", "Regular clean"],
+    ["Player marker", "Mark Madeline's recorded death position even when all hitboxes or Hide player is on.", "Regular clean"],
+    ["Death object", "Set the last recorded death-object hitbox color.", "Regular clean"],
+    ["Player marker color", "Set the last recorded player-position marker color.", "Regular clean"]
   ],
   "Smart StartPos": [
     ["Smart StartPos mode", "Use nearby stored StartPos data automatically when respawning.", "Cheat"]
@@ -364,18 +364,18 @@ const optionMenus = {
     ["Shadow color", "Set the StartPos label shadow color.", "Cheat"]
   ],
   "Berry Obtain Options": [
-    ["Regular berries", "Include normal and winged red strawberries in obtain actions.", "Normal clear"],
-    ["Golden berries", "Include golden berry entities and the 1A winged golden memorial berry.", "Normal clear"],
-    ["Moon berry", "Include Farewell's moon berry when present.", "Normal clear"]
+    ["Regular berries", "Include normal and winged red strawberries in obtain actions.", "Regular clean"],
+    ["Golden berries", "Include golden berry entities and the 1A winged golden memorial berry.", "Regular clean"],
+    ["Moon berry", "Include Farewell's moon berry when present.", "Regular clean"]
   ],
   "Air Jumps": [
     ["Infinite", "Allow every unhandled airborne jump press to trigger another normal jump.", "Cheat"],
     ["Extra jumps", "Configure a limited number of extra airborne jumps.", "Cheat"]
   ],
   "Grab Mode": [
-    ["Hold", "Use Celeste's normal hold-to-grab behavior.", "Normal clear"],
-    ["Toggle", "Toggle grab state from the configured control.", "Normal clear"],
-    ["Invert", "Invert the grab input behavior.", "Normal clear"]
+    ["Hold", "Use Celeste's normal hold-to-grab behavior.", "Regular clean"],
+    ["Toggle", "Toggle grab state from the configured control.", "Regular clean"],
+    ["Invert", "Invert the grab input behavior.", "Regular clean"]
   ],
   "Noclip": [
     ["Speed", "Configure noclip movement speed.", "Cheat"],
@@ -398,11 +398,11 @@ const optionMenus = {
     ["Multiplier", "Set lookout camera speed while the hold bind is pressed.", "Cheat"]
   ],
   "Golden Start": [
-    ["Run Golden Start", "Run Celeste's give_golden helper when Akron detects the first-room start context.", "Goldberry/Hardlist clear"]
+    ["Run Golden Start", "Run Celeste's give_golden helper when Akron detects the first-room start context.", "Goldberry/Hardlist clean"]
   ],
   "Golden Transparency": [
-    ["Opacity", "Set golden berry and follower opacity.", "Normal clear"],
-    ["Reset opacity", "Restore the default golden transparency opacity.", "Normal clear"]
+    ["Opacity", "Set golden berry and follower opacity.", "Regular clean"],
+    ["Reset opacity", "Restore the default golden transparency opacity.", "Regular clean"]
   ],
   "Ground Refills": [
     ["Dash refill", "Allow ground contact to restore dash charges.", "Cheat"],
@@ -493,38 +493,38 @@ const optionMenus = {
     ["Color", "Set the speed number text color.", "Cheat"]
   ],
   "Madeline Colors": [
-    ["No dash", "Customize depleted-dash blue hair.", "Normal clear"],
-    ["One dash", "Customize normal dash-available hair.", "Normal clear"],
-    ["Two dash", "Customize two-dash pink hair.", "Normal clear"],
-    ["Three dash", "Customize hair when Madeline has three dashes.", "Normal clear"],
-    ["Four dash", "Customize hair when Madeline has four dashes.", "Normal clear"],
-    ["Five dash", "Customize hair when Madeline has five or more dashes.", "Normal clear"],
-    ["Gradient", "Animate customized states between Gradient A and Gradient B.", "Normal clear"],
-    ["Gradient A", "Set the gradient start color.", "Normal clear"],
-    ["Gradient B", "Set the gradient end color.", "Normal clear"]
+    ["No dash", "Customize depleted-dash blue hair.", "Regular clean"],
+    ["One dash", "Customize normal dash-available hair.", "Regular clean"],
+    ["Two dash", "Customize two-dash pink hair.", "Regular clean"],
+    ["Three dash", "Customize hair when Madeline has three dashes.", "Regular clean"],
+    ["Four dash", "Customize hair when Madeline has four dashes.", "Regular clean"],
+    ["Five dash", "Customize hair when Madeline has five or more dashes.", "Regular clean"],
+    ["Gradient", "Animate customized states between Gradient A and Gradient B.", "Regular clean"],
+    ["Gradient A", "Set the gradient start color.", "Regular clean"],
+    ["Gradient B", "Set the gradient end color.", "Regular clean"]
   ],
   "Madeline Hair Length": [
-    ["No dash", "Set hair segment count when Madeline has no dash.", "Normal clear"],
-    ["One dash", "Set hair segment count when Madeline has one dash.", "Normal clear"],
-    ["Two dash", "Set hair segment count when Madeline has two dashes.", "Normal clear"],
-    ["Three dash", "Set hair segment count when Madeline has three dashes.", "Normal clear"],
-    ["Four dash", "Set hair segment count when Madeline has four dashes.", "Normal clear"],
-    ["Five dash", "Set hair segment count when Madeline has five or more dashes.", "Normal clear"]
+    ["No dash", "Set hair segment count when Madeline has no dash.", "Regular clean"],
+    ["One dash", "Set hair segment count when Madeline has one dash.", "Regular clean"],
+    ["Two dash", "Set hair segment count when Madeline has two dashes.", "Regular clean"],
+    ["Three dash", "Set hair segment count when Madeline has three dashes.", "Regular clean"],
+    ["Four dash", "Set hair segment count when Madeline has four dashes.", "Regular clean"],
+    ["Five dash", "Set hair segment count when Madeline has five or more dashes.", "Regular clean"]
   ],
   "Madeline Effect Sync": [
-    ["Dash particles", "Match dash burst particles to the active hair color.", "Normal clear"],
-    ["Dash trail", "Match custom trail color to the active hair color.", "Normal clear"],
-    ["Death effect", "Match the death burst effect to the active hair color.", "Normal clear"],
-    ["Feather color", "Allow Madeline Colors to keep coloring feather-state hair.", "Normal clear"],
-    ["Crown color", "Match compatible crown sprites to the active hair color.", "Normal clear"]
+    ["Dash particles", "Match dash burst particles to the active hair color.", "Regular clean"],
+    ["Dash trail", "Match custom trail color to the active hair color.", "Regular clean"],
+    ["Death effect", "Match the death burst effect to the active hair color.", "Regular clean"],
+    ["Feather color", "Allow Madeline Colors to keep coloring feather-state hair.", "Regular clean"],
+    ["Crown color", "Match compatible crown sprites to the active hair color.", "Regular clean"]
   ],
   "Custom Trail": [
-    ["Mode: Fixed/Rainbow", "Choose fixed color or rainbow color cycling for custom trails.", "Normal clear"],
-    ["Pulse", "Pulse custom trail brightness over time.", "Normal clear"],
-    ["Cut rate", "Emit one custom trail every N frames.", "Normal clear"],
-    ["Opacity", "Set custom trail opacity percentage.", "Normal clear"],
-    ["Rainbow", "Set rainbow cycle speed.", "Normal clear"],
-    ["Color", "Set the fixed custom trail color.", "Normal clear"]
+    ["Mode: Fixed/Rainbow", "Choose fixed color or rainbow color cycling for custom trails.", "Regular clean"],
+    ["Pulse", "Pulse custom trail brightness over time.", "Regular clean"],
+    ["Cut rate", "Emit one custom trail every N frames.", "Regular clean"],
+    ["Opacity", "Set custom trail opacity percentage.", "Regular clean"],
+    ["Rainbow", "Set rainbow cycle speed.", "Regular clean"],
+    ["Color", "Set the fixed custom trail color.", "Regular clean"]
   ],
   "Prevent Down Dash Redirects": [
     ["Normal", "Restore pure down when no horizontal input is held.", "Cheat"],
@@ -569,349 +569,349 @@ const optionMenus = {
     ["Reset zoom", "Return the level camera to neutral 1.0x without changing whether Cursor Zoom is enabled.", "Cheat"]
   ],
   "Room Capture": [
-    ["Capture Room", "Capture overlapping tiles across the current room.", "Goldberry/Hardlist clear"],
-    ["Stop Scan", "Stop the active room capture scan.", "Goldberry/Hardlist clear"],
-    ["Export path", "Set the export path relative to the Celeste install folder.", "Goldberry/Hardlist clear"],
-    ["Format", "Choose the room capture image format.", "Goldberry/Hardlist clear"],
-    ["Wait", "Set frames to wait before each tile capture.", "Goldberry/Hardlist clear"],
-    ["Horizontal", "Set the horizontal tile offset between captures.", "Goldberry/Hardlist clear"],
-    ["Vertical", "Set the vertical tile offset between captures.", "Goldberry/Hardlist clear"],
-    ["Export markers", "Draw StartPos, Auto Kill, and Auto Deafen overlays into exported image tiles.", "Goldberry/Hardlist clear"],
-    ["StartPos markers", "Include all saved StartPos slots for each captured room when Export markers is on.", "Goldberry/Hardlist clear"],
-    ["Auto Kill areas", "Include configured Auto Kill areas when Export markers is on.", "Goldberry/Hardlist clear"],
-    ["Auto Deafen areas", "Include configured Auto Deafen areas when Export markers is on.", "Goldberry/Hardlist clear"],
+    ["Capture Room", "Capture overlapping tiles across the current room.", "Goldberry/Hardlist clean"],
+    ["Stop Scan", "Stop the active room capture scan.", "Goldberry/Hardlist clean"],
+    ["Export path", "Set the export path relative to the Celeste install folder.", "Goldberry/Hardlist clean"],
+    ["Format", "Choose the room capture image format.", "Goldberry/Hardlist clean"],
+    ["Wait", "Set frames to wait before each tile capture.", "Goldberry/Hardlist clean"],
+    ["Horizontal", "Set the horizontal tile offset between captures.", "Goldberry/Hardlist clean"],
+    ["Vertical", "Set the vertical tile offset between captures.", "Goldberry/Hardlist clean"],
+    ["Export markers", "Draw StartPos, Auto Kill, and Auto Deafen overlays into exported image tiles.", "Goldberry/Hardlist clean"],
+    ["StartPos markers", "Include all saved StartPos slots for each captured room when Export markers is on.", "Goldberry/Hardlist clean"],
+    ["Auto Kill areas", "Include configured Auto Kill areas when Export markers is on.", "Goldberry/Hardlist clean"],
+    ["Auto Deafen areas", "Include configured Auto Deafen areas when Export markers is on.", "Goldberry/Hardlist clean"],
     ["Freeze timers", "Keep level timers pinned while capture camera positions settle.", "Cheat"],
     ["Noclip + hide Madeline", "During capture, put Madeline in a dummy non-collidable hidden state.", "Cheat"],
-    ["Remove background", "Exclude background layers from captured tiles.", "Goldberry/Hardlist clear"],
-    ["Remove foreground", "Exclude foreground layers from captured tiles.", "Goldberry/Hardlist clear"]
+    ["Remove background", "Exclude background layers from captured tiles.", "Goldberry/Hardlist clean"],
+    ["Remove foreground", "Exclude foreground layers from captured tiles.", "Goldberry/Hardlist clean"]
   ],
   "Map Capture": [
-    ["Capture Map", "Capture each room in the current map.", "Goldberry/Hardlist clear"],
-    ["Stop Scan", "Stop the active map capture scan.", "Goldberry/Hardlist clear"],
-    ["Export path", "Set the export path relative to the Celeste install folder.", "Goldberry/Hardlist clear"],
-    ["Format", "Choose the map capture image format.", "Goldberry/Hardlist clear"],
-    ["Wait", "Set frames to wait before each tile capture.", "Goldberry/Hardlist clear"],
-    ["Horizontal", "Set the horizontal tile offset between captures.", "Goldberry/Hardlist clear"],
-    ["Vertical", "Set the vertical tile offset between captures.", "Goldberry/Hardlist clear"],
-    ["Export markers", "Draw configured markers into exported image tiles.", "Goldberry/Hardlist clear"],
-    ["StartPos markers", "Include all saved StartPos slots for each captured room when Export markers is on.", "Goldberry/Hardlist clear"],
-    ["Auto Kill areas", "Include configured Auto Kill areas when Export markers is on.", "Goldberry/Hardlist clear"],
-    ["Auto Deafen areas", "Include configured Auto Deafen areas when Export markers is on.", "Goldberry/Hardlist clear"],
+    ["Capture Map", "Capture each room in the current map.", "Goldberry/Hardlist clean"],
+    ["Stop Scan", "Stop the active map capture scan.", "Goldberry/Hardlist clean"],
+    ["Export path", "Set the export path relative to the Celeste install folder.", "Goldberry/Hardlist clean"],
+    ["Format", "Choose the map capture image format.", "Goldberry/Hardlist clean"],
+    ["Wait", "Set frames to wait before each tile capture.", "Goldberry/Hardlist clean"],
+    ["Horizontal", "Set the horizontal tile offset between captures.", "Goldberry/Hardlist clean"],
+    ["Vertical", "Set the vertical tile offset between captures.", "Goldberry/Hardlist clean"],
+    ["Export markers", "Draw configured markers into exported image tiles.", "Goldberry/Hardlist clean"],
+    ["StartPos markers", "Include all saved StartPos slots for each captured room when Export markers is on.", "Goldberry/Hardlist clean"],
+    ["Auto Kill areas", "Include configured Auto Kill areas when Export markers is on.", "Goldberry/Hardlist clean"],
+    ["Auto Deafen areas", "Include configured Auto Deafen areas when Export markers is on.", "Goldberry/Hardlist clean"],
     ["Freeze timers", "Keep level timers pinned while capture camera positions settle.", "Cheat"],
     ["Noclip + hide Madeline", "During capture, put Madeline in a dummy non-collidable hidden state.", "Cheat"],
-    ["Remove background", "Exclude background layers from captured tiles.", "Goldberry/Hardlist clear"],
-    ["Remove foreground", "Exclude foreground layers from captured tiles.", "Goldberry/Hardlist clear"]
+    ["Remove background", "Exclude background layers from captured tiles.", "Goldberry/Hardlist clean"],
+    ["Remove foreground", "Exclude foreground layers from captured tiles.", "Goldberry/Hardlist clean"]
   ],
   "Theme": [
-    ["Theme", "Cycle Akron's built-in themes and the custom theme slot.", "Normal clear"],
-    ["Copy to Custom", "Copy the current theme colors and presentation values into the editable Custom slot.", "Normal clear"],
-    ["Export .akr", "Export the current overlay theme as a single-purpose `.akr` theme pack.", "Normal clear"],
-    ["Import Latest .akr", "Import the newest `.akr` theme pack from Saves/AkronThemes.", "Normal clear"],
-    ["Custom name", "Set the name shown for the custom theme and exported theme pack.", "Normal clear"],
-    ["Window", "Set the custom theme window/background color.", "Normal clear"],
-    ["Header", "Set the custom theme header color.", "Normal clear"],
-    ["Header hover", "Set the custom theme hovered header and active UI color.", "Normal clear"],
-    ["Frame", "Set the custom theme input/value box color.", "Normal clear"],
-    ["Text", "Set the custom theme main text color.", "Normal clear"],
-    ["Muted", "Set the custom theme inactive indicator color.", "Normal clear"],
-    ["Disabled", "Set the custom theme disabled-row text color.", "Normal clear"],
-    ["Opacity", "Set overlay background opacity.", "Normal clear"],
-    ["UI scale", "Scale ImGui overlay windows for DPI and readability.", "Normal clear"],
-    ["Blur", "Store the overlay blur presentation amount.", "Normal clear"],
-    ["Anim ms", "Set stored overlay animation duration.", "Normal clear"],
-    ["Floating button", "Enable floating activation-button settings for non-keyboard workflows.", "Normal clear"],
-    ["Button %", "Set the floating activation button scale.", "Normal clear"],
-    ["Button alpha", "Set the floating activation button opacity.", "Normal clear"],
-    ["Button in levels", "Allow the floating activation button in active levels.", "Normal clear"],
-    ["Button in menus", "Allow the floating activation button outside active levels.", "Normal clear"],
-    ["Search autofocus", "Focus Akron search automatically when the overlay opens.", "Normal clear"]
+    ["Theme", "Cycle Akron's built-in themes and the custom theme slot.", "Regular clean"],
+    ["Copy to Custom", "Copy the current theme colors and presentation values into the editable Custom slot.", "Regular clean"],
+    ["Export .akr", "Export the current overlay theme as a single-purpose `.akr` theme pack.", "Regular clean"],
+    ["Import Latest .akr", "Import the newest `.akr` theme pack from Saves/AkronThemes.", "Regular clean"],
+    ["Custom name", "Set the name shown for the custom theme and exported theme pack.", "Regular clean"],
+    ["Window", "Set the custom theme window/background color.", "Regular clean"],
+    ["Header", "Set the custom theme header color.", "Regular clean"],
+    ["Header hover", "Set the custom theme hovered header and active UI color.", "Regular clean"],
+    ["Frame", "Set the custom theme input/value box color.", "Regular clean"],
+    ["Text", "Set the custom theme main text color.", "Regular clean"],
+    ["Muted", "Set the custom theme inactive indicator color.", "Regular clean"],
+    ["Disabled", "Set the custom theme disabled-row text color.", "Regular clean"],
+    ["Opacity", "Set overlay background opacity.", "Regular clean"],
+    ["UI scale", "Scale ImGui overlay windows for DPI and readability.", "Regular clean"],
+    ["Blur", "Store the overlay blur presentation amount.", "Regular clean"],
+    ["Anim ms", "Set stored overlay animation duration.", "Regular clean"],
+    ["Floating button", "Enable floating activation-button settings for non-keyboard workflows.", "Regular clean"],
+    ["Button %", "Set the floating activation button scale.", "Regular clean"],
+    ["Button alpha", "Set the floating activation button opacity.", "Regular clean"],
+    ["Button in levels", "Allow the floating activation button in active levels.", "Regular clean"],
+    ["Button in menus", "Allow the floating activation button outside active levels.", "Regular clean"],
+    ["Search autofocus", "Focus Akron search automatically when the overlay opens.", "Regular clean"]
   ],
   "Export Profile": [
-    ["Name", "Set the exported `.akr` profile pack name.", "Normal clear"],
-    ["Whole", "Export every supported profile section into one `.akr` profile pack.", "Normal clear"],
-    ["StartPos", "Export only StartPos profile data into the `.akr` profile pack.", "Normal clear"],
-    ["Keybinds", "Export only Akron menu keybind profile data into the `.akr` profile pack.", "Normal clear"],
-    ["Auto Kill", "Export only Auto Kill profile data into the `.akr` profile pack.", "Normal clear"],
-    ["Auto Deafen", "Export only Auto Deafen profile data into the `.akr` profile pack.", "Normal clear"],
-    ["Recorder", "Export only Internal Recorder profile data into the `.akr` profile pack.", "Normal clear"],
-    ["Audio", "Export only audio profile data into the `.akr` profile pack.", "Normal clear"],
-    ["HUD", "Export only HUD profile data into the `.akr` profile pack.", "Normal clear"]
+    ["Name", "Set the exported `.akr` profile pack name.", "Regular clean"],
+    ["Whole", "Export every supported profile section into one `.akr` profile pack.", "Regular clean"],
+    ["StartPos", "Export only StartPos profile data into the `.akr` profile pack.", "Regular clean"],
+    ["Keybinds", "Export only Akron menu keybind profile data into the `.akr` profile pack.", "Regular clean"],
+    ["Auto Kill", "Export only Auto Kill profile data into the `.akr` profile pack.", "Regular clean"],
+    ["Auto Deafen", "Export only Auto Deafen profile data into the `.akr` profile pack.", "Regular clean"],
+    ["Recorder", "Export only Internal Recorder profile data into the `.akr` profile pack.", "Regular clean"],
+    ["Audio", "Export only audio profile data into the `.akr` profile pack.", "Regular clean"],
+    ["HUD", "Export only HUD profile data into the `.akr` profile pack.", "Regular clean"]
   ],
   "Import Profile": [
-    ["Whole", "Import every supported profile section from the selected `.akr` profile pack.", "Normal clear"],
-    ["StartPos", "Import only StartPos profile data from the selected `.akr` profile pack.", "Normal clear"],
-    ["Keybinds", "Import only Akron menu keybind profile data from the selected `.akr` profile pack.", "Normal clear"],
-    ["Auto Kill", "Import only Auto Kill profile data from the selected `.akr` profile pack.", "Normal clear"],
-    ["Auto Deafen", "Import only Auto Deafen profile data from the selected `.akr` profile pack.", "Normal clear"],
-    ["Recorder", "Import only Internal Recorder profile data from the selected `.akr` profile pack.", "Normal clear"],
-    ["Audio", "Import only audio profile data from the selected `.akr` profile pack.", "Normal clear"],
-    ["HUD", "Import only HUD profile data from the selected `.akr` profile pack.", "Normal clear"]
+    ["Whole", "Import every supported profile section from the selected `.akr` profile pack.", "Regular clean"],
+    ["StartPos", "Import only StartPos profile data from the selected `.akr` profile pack.", "Regular clean"],
+    ["Keybinds", "Import only Akron menu keybind profile data from the selected `.akr` profile pack.", "Regular clean"],
+    ["Auto Kill", "Import only Auto Kill profile data from the selected `.akr` profile pack.", "Regular clean"],
+    ["Auto Deafen", "Import only Auto Deafen profile data from the selected `.akr` profile pack.", "Regular clean"],
+    ["Recorder", "Import only Internal Recorder profile data from the selected `.akr` profile pack.", "Regular clean"],
+    ["Audio", "Import only audio profile data from the selected `.akr` profile pack.", "Regular clean"],
+    ["HUD", "Import only HUD profile data from the selected `.akr` profile pack.", "Regular clean"]
   ],
   "Community Packs": [
-    ["Catalog", "Connect to the configured community pack index and reload map-specific packs.", "Normal clear"],
-    ["Import", "Download and import the selected `.akr` pack.", "Normal clear"]
+    ["Catalog", "Connect to the configured community pack index and reload map-specific packs.", "Regular clean"],
+    ["Import", "Download and import the selected `.akr` pack.", "Regular clean"]
   ],
   "Visible": [
-    ["Offset X", "Bulk-edit horizontal offset for every label row.", "Normal clear"],
-    ["Offset Y", "Bulk-edit vertical offset for every label row.", "Normal clear"],
-    ["Scale", "Bulk-edit text scale for every label row.", "Normal clear"],
-    ["Opacity", "Bulk-edit opacity for every label row.", "Normal clear"],
-    ["Line spacing", "Bulk-edit multiline spacing for every label row.", "Normal clear"],
-    ["Shadow", "Bulk-edit shadow visibility for every label row.", "Normal clear"],
-    ["Shadow opacity", "Bulk-edit shadow opacity for every label row.", "Normal clear"],
-    ["Shadow X", "Bulk-edit shadow horizontal offset for every label row.", "Normal clear"],
-    ["Shadow Y", "Bulk-edit shadow vertical offset for every label row.", "Normal clear"],
-    ["Shadow color", "Bulk-edit shadow color for every label row.", "Normal clear"]
+    ["Offset X", "Bulk-edit horizontal offset for every label row.", "Regular clean"],
+    ["Offset Y", "Bulk-edit vertical offset for every label row.", "Regular clean"],
+    ["Scale", "Bulk-edit text scale for every label row.", "Regular clean"],
+    ["Opacity", "Bulk-edit opacity for every label row.", "Regular clean"],
+    ["Line spacing", "Bulk-edit multiline spacing for every label row.", "Regular clean"],
+    ["Shadow", "Bulk-edit shadow visibility for every label row.", "Regular clean"],
+    ["Shadow opacity", "Bulk-edit shadow opacity for every label row.", "Regular clean"],
+    ["Shadow X", "Bulk-edit shadow horizontal offset for every label row.", "Regular clean"],
+    ["Shadow Y", "Bulk-edit shadow vertical offset for every label row.", "Regular clean"],
+    ["Shadow color", "Bulk-edit shadow color for every label row.", "Regular clean"]
   ],
   "Player Overlap": [
-    ["Mode: Fade/Move", "Choose whether overlapped labels fade or move away from Madeline.", "Normal clear"],
-    ["Only current label", "Apply overlap behavior only to the label Madeline overlaps.", "Normal clear"],
-    ["Padding", "Add extra HUD pixels around each text label for overlap detection.", "Normal clear"],
-    ["Opacity", "Set label opacity while Madeline overlaps it in Fade mode.", "Normal clear"],
-    ["Top left", "Move overlapped labels to the top-left anchor in Move mode.", "Normal clear"],
-    ["Top center", "Move overlapped labels to the top-center anchor in Move mode.", "Normal clear"],
-    ["Top right", "Move overlapped labels to the top-right anchor in Move mode.", "Normal clear"],
-    ["Middle left", "Move overlapped labels to the middle-left anchor in Move mode.", "Normal clear"],
-    ["Center", "Move overlapped labels to the center anchor in Move mode.", "Normal clear"],
-    ["Middle right", "Move overlapped labels to the middle-right anchor in Move mode.", "Normal clear"],
-    ["Bottom left", "Move overlapped labels to the bottom-left anchor in Move mode.", "Normal clear"],
-    ["Bottom center", "Move overlapped labels to the bottom-center anchor in Move mode.", "Normal clear"],
-    ["Bottom right", "Move overlapped labels to the bottom-right anchor in Move mode.", "Normal clear"],
-    ["Offset X", "Set horizontal offset from the move anchor.", "Normal clear"],
-    ["Offset Y", "Set vertical offset from the move anchor.", "Normal clear"]
+    ["Mode: Fade/Move", "Choose whether overlapped labels fade or move away from Madeline.", "Regular clean"],
+    ["Only current label", "Apply overlap behavior only to the label Madeline overlaps.", "Regular clean"],
+    ["Padding", "Add extra HUD pixels around each text label for overlap detection.", "Regular clean"],
+    ["Opacity", "Set label opacity while Madeline overlaps it in Fade mode.", "Regular clean"],
+    ["Top left", "Move overlapped labels to the top-left anchor in Move mode.", "Regular clean"],
+    ["Top center", "Move overlapped labels to the top-center anchor in Move mode.", "Regular clean"],
+    ["Top right", "Move overlapped labels to the top-right anchor in Move mode.", "Regular clean"],
+    ["Middle left", "Move overlapped labels to the middle-left anchor in Move mode.", "Regular clean"],
+    ["Center", "Move overlapped labels to the center anchor in Move mode.", "Regular clean"],
+    ["Middle right", "Move overlapped labels to the middle-right anchor in Move mode.", "Regular clean"],
+    ["Bottom left", "Move overlapped labels to the bottom-left anchor in Move mode.", "Regular clean"],
+    ["Bottom center", "Move overlapped labels to the bottom-center anchor in Move mode.", "Regular clean"],
+    ["Bottom right", "Move overlapped labels to the bottom-right anchor in Move mode.", "Regular clean"],
+    ["Offset X", "Set horizontal offset from the move anchor.", "Regular clean"],
+    ["Offset Y", "Set vertical offset from the move anchor.", "Regular clean"]
   ],
   "Room": [
-    ["Color", "Set room label text color.", "Normal clear"],
-    ["Offset X", "Move the room label horizontally from its anchor.", "Normal clear"],
-    ["Offset Y", "Move the room label vertically from its anchor.", "Normal clear"],
-    ["Scale", "Set room label text scale.", "Normal clear"],
-    ["Opacity", "Set room label opacity.", "Normal clear"],
-    ["Line spacing", "Set room label multiline spacing.", "Normal clear"],
-    ["Shadow", "Draw a black outline plus offset shadow behind the room label.", "Normal clear"],
-    ["Shadow opacity", "Set room label shadow opacity.", "Normal clear"],
-    ["Shadow X", "Set room label shadow horizontal offset.", "Normal clear"],
-    ["Shadow Y", "Set room label shadow vertical offset.", "Normal clear"],
-    ["Shadow color", "Set room label shadow color.", "Normal clear"]
+    ["Color", "Set room label text color.", "Regular clean"],
+    ["Offset X", "Move the room label horizontally from its anchor.", "Regular clean"],
+    ["Offset Y", "Move the room label vertically from its anchor.", "Regular clean"],
+    ["Scale", "Set room label text scale.", "Regular clean"],
+    ["Opacity", "Set room label opacity.", "Regular clean"],
+    ["Line spacing", "Set room label multiline spacing.", "Regular clean"],
+    ["Shadow", "Draw a black outline plus offset shadow behind the room label.", "Regular clean"],
+    ["Shadow opacity", "Set room label shadow opacity.", "Regular clean"],
+    ["Shadow X", "Set room label shadow horizontal offset.", "Regular clean"],
+    ["Shadow Y", "Set room label shadow vertical offset.", "Regular clean"],
+    ["Shadow color", "Set room label shadow color.", "Regular clean"]
   ],
   "Death Stats": [
-    ["Format", "Configure death-stat text tokens.", "Goldberry/Hardlist clear"],
-    ["Disabled", "Hide the death-stat label.", "Goldberry/Hardlist clear"],
-    ["After death", "Show death stats after death.", "Goldberry/Hardlist clear"],
-    ["Pause menu", "Show death stats in the pause menu.", "Goldberry/Hardlist clear"],
-    ["Death + menu", "Show death stats after death and in the pause menu.", "Goldberry/Hardlist clear"],
-    ["Always", "Always show the death-stat label.", "Goldberry/Hardlist clear"],
-    ["PB loss prompt", "Show a restart prompt when the current death PB is no longer possible.", "Normal clear"],
-    ["Color", "Set death-stat label text color.", "Goldberry/Hardlist clear"],
-    ["Offset X", "Move the death-stat label horizontally from its anchor.", "Goldberry/Hardlist clear"],
-    ["Offset Y", "Move the death-stat label vertically from its anchor.", "Goldberry/Hardlist clear"],
-    ["Scale", "Set death-stat label text scale.", "Goldberry/Hardlist clear"],
-    ["Opacity", "Set death-stat label opacity.", "Goldberry/Hardlist clear"],
-    ["Line spacing", "Set death-stat label multiline spacing.", "Goldberry/Hardlist clear"],
-    ["Shadow", "Draw a black outline plus offset shadow behind the death-stat label.", "Goldberry/Hardlist clear"],
-    ["Shadow opacity", "Set death-stat label shadow opacity.", "Goldberry/Hardlist clear"],
-    ["Shadow X", "Set death-stat label shadow horizontal offset.", "Goldberry/Hardlist clear"],
-    ["Shadow Y", "Set death-stat label shadow vertical offset.", "Goldberry/Hardlist clear"],
-    ["Shadow color", "Set death-stat label shadow color.", "Goldberry/Hardlist clear"]
+    ["Format", "Configure death-stat text tokens.", "Goldberry/Hardlist clean"],
+    ["Disabled", "Hide the death-stat label.", "Goldberry/Hardlist clean"],
+    ["After death", "Show death stats after death.", "Goldberry/Hardlist clean"],
+    ["Pause menu", "Show death stats in the pause menu.", "Goldberry/Hardlist clean"],
+    ["Death + menu", "Show death stats after death and in the pause menu.", "Goldberry/Hardlist clean"],
+    ["Always", "Always show the death-stat label.", "Goldberry/Hardlist clean"],
+    ["PB loss prompt", "Show a restart prompt when the current death PB is no longer possible.", "Regular clean"],
+    ["Color", "Set death-stat label text color.", "Goldberry/Hardlist clean"],
+    ["Offset X", "Move the death-stat label horizontally from its anchor.", "Goldberry/Hardlist clean"],
+    ["Offset Y", "Move the death-stat label vertically from its anchor.", "Goldberry/Hardlist clean"],
+    ["Scale", "Set death-stat label text scale.", "Goldberry/Hardlist clean"],
+    ["Opacity", "Set death-stat label opacity.", "Goldberry/Hardlist clean"],
+    ["Line spacing", "Set death-stat label multiline spacing.", "Goldberry/Hardlist clean"],
+    ["Shadow", "Draw a black outline plus offset shadow behind the death-stat label.", "Goldberry/Hardlist clean"],
+    ["Shadow opacity", "Set death-stat label shadow opacity.", "Goldberry/Hardlist clean"],
+    ["Shadow X", "Set death-stat label shadow horizontal offset.", "Goldberry/Hardlist clean"],
+    ["Shadow Y", "Set death-stat label shadow vertical offset.", "Goldberry/Hardlist clean"],
+    ["Shadow color", "Set death-stat label shadow color.", "Goldberry/Hardlist clean"]
   ],
   "Input History": [
-    ["Current inputs", "Show the current movement, jump, dash, and grab input chord.", "Normal clear"],
-    ["Input history", "Show a rolling list of recent input chords and held-frame counts.", "Normal clear"],
-    ["Rows", "Set how many input-history rows stay visible.", "Normal clear"],
-    ["Placement", "Move input history between the left HUD column and right side.", "Normal clear"],
-    ["Opacity", "Set input-history panel opacity.", "Normal clear"],
-    ["Compact rows", "Use tighter input-history rows.", "Normal clear"],
-    ["Pin on death", "Freeze latest input rows after death until the next fresh input.", "Normal clear"],
-    ["Show on death", "Temporarily show input history after death even when the panel is off.", "Normal clear"],
-    ["Transition rows", "Insert a marker row when moving between rooms.", "Normal clear"],
-    ["Text color", "Set input history text color.", "Normal clear"],
-    ["Event color", "Set input history event marker color.", "Normal clear"],
-    ["Offset X", "Move the input history panel horizontally from its anchor.", "Normal clear"],
-    ["Offset Y", "Move the input history panel vertically from its anchor.", "Normal clear"],
-    ["Scale", "Set input history text scale.", "Normal clear"],
-    ["Line spacing", "Set input history multiline spacing.", "Normal clear"],
-    ["Shadow", "Draw a black outline plus offset shadow behind input history.", "Normal clear"]
+    ["Current inputs", "Show the current movement, jump, dash, and grab input chord.", "Regular clean"],
+    ["Input history", "Show a rolling list of recent input chords and held-frame counts.", "Regular clean"],
+    ["Rows", "Set how many input-history rows stay visible.", "Regular clean"],
+    ["Placement", "Move input history between the left HUD column and right side.", "Regular clean"],
+    ["Opacity", "Set input-history panel opacity.", "Regular clean"],
+    ["Compact rows", "Use tighter input-history rows.", "Regular clean"],
+    ["Pin on death", "Freeze latest input rows after death until the next fresh input.", "Regular clean"],
+    ["Show on death", "Temporarily show input history after death even when the panel is off.", "Regular clean"],
+    ["Transition rows", "Insert a marker row when moving between rooms.", "Regular clean"],
+    ["Text color", "Set input history text color.", "Regular clean"],
+    ["Event color", "Set input history event marker color.", "Regular clean"],
+    ["Offset X", "Move the input history panel horizontally from its anchor.", "Regular clean"],
+    ["Offset Y", "Move the input history panel vertically from its anchor.", "Regular clean"],
+    ["Scale", "Set input history text scale.", "Regular clean"],
+    ["Line spacing", "Set input history multiline spacing.", "Regular clean"],
+    ["Shadow", "Draw a black outline plus offset shadow behind input history.", "Regular clean"]
   ],
   "Inputs per second": [
-    ["Placement", "Choose the screen side for the inputs-per-second counter.", "Normal clear"],
-    ["Scale", "Set counter scale percentage.", "Normal clear"],
-    ["Opacity", "Set counter opacity percentage.", "Normal clear"],
-    ["Show total", "Show total counted input presses since level entry or last death.", "Normal clear"],
-    ["Show max", "Show the highest rolling inputs-per-second value since level entry or last death.", "Normal clear"],
-    ["Count movement", "Count left, right, up, and down rising-edge presses.", "Normal clear"],
-    ["Count actions", "Count jump, dash, grab, crouch dash, and talk rising-edge presses.", "Normal clear"],
-    ["Count menu", "Also count confirm, cancel, and pause/menu rising-edge presses.", "Normal clear"],
-    ["Reset counter", "Clear current, total, and max input counts.", "Normal clear"],
-    ["Text", "Set counter text color.", "Normal clear"],
-    ["Offset X", "Move the counter horizontally from its anchor.", "Normal clear"],
-    ["Offset Y", "Move the counter vertically from its anchor.", "Normal clear"],
-    ["Line spacing", "Set counter multiline spacing.", "Normal clear"],
-    ["Shadow", "Draw a black outline plus offset shadow behind the counter.", "Normal clear"]
+    ["Placement", "Choose the screen side for the inputs-per-second counter.", "Regular clean"],
+    ["Scale", "Set counter scale percentage.", "Regular clean"],
+    ["Opacity", "Set counter opacity percentage.", "Regular clean"],
+    ["Show total", "Show total counted input presses since level entry or last death.", "Regular clean"],
+    ["Show max", "Show the highest rolling inputs-per-second value since level entry or last death.", "Regular clean"],
+    ["Count movement", "Count left, right, up, and down rising-edge presses.", "Regular clean"],
+    ["Count actions", "Count jump, dash, grab, crouch dash, and talk rising-edge presses.", "Regular clean"],
+    ["Count menu", "Also count confirm, cancel, and pause/menu rising-edge presses.", "Regular clean"],
+    ["Reset counter", "Clear current, total, and max input counts.", "Regular clean"],
+    ["Text", "Set counter text color.", "Regular clean"],
+    ["Offset X", "Move the counter horizontally from its anchor.", "Regular clean"],
+    ["Offset Y", "Move the counter vertically from its anchor.", "Regular clean"],
+    ["Line spacing", "Set counter multiline spacing.", "Regular clean"],
+    ["Shadow", "Draw a black outline plus offset shadow behind the counter.", "Regular clean"]
   ],
   "Room Timer": [
-    ["Color", "Set room timer text color.", "Normal clear"],
-    ["Offset X", "Move the room timer horizontally from its anchor.", "Normal clear"],
-    ["Offset Y", "Move the room timer vertically from its anchor.", "Normal clear"],
-    ["Scale", "Set room timer text scale.", "Normal clear"],
-    ["Opacity", "Set room timer opacity.", "Normal clear"],
-    ["Line spacing", "Set room timer multiline spacing.", "Normal clear"],
-    ["Shadow", "Draw a black outline plus offset shadow behind the room timer.", "Normal clear"],
-    ["Shadow opacity", "Set room timer shadow opacity.", "Normal clear"],
-    ["Shadow X", "Set room timer shadow horizontal offset.", "Normal clear"],
-    ["Shadow Y", "Set room timer shadow vertical offset.", "Normal clear"],
-    ["Shadow color", "Set room timer shadow color.", "Normal clear"]
+    ["Color", "Set room timer text color.", "Regular clean"],
+    ["Offset X", "Move the room timer horizontally from its anchor.", "Regular clean"],
+    ["Offset Y", "Move the room timer vertically from its anchor.", "Regular clean"],
+    ["Scale", "Set room timer text scale.", "Regular clean"],
+    ["Opacity", "Set room timer opacity.", "Regular clean"],
+    ["Line spacing", "Set room timer multiline spacing.", "Regular clean"],
+    ["Shadow", "Draw a black outline plus offset shadow behind the room timer.", "Regular clean"],
+    ["Shadow opacity", "Set room timer shadow opacity.", "Regular clean"],
+    ["Shadow X", "Set room timer shadow horizontal offset.", "Regular clean"],
+    ["Shadow Y", "Set room timer shadow vertical offset.", "Regular clean"],
+    ["Shadow color", "Set room timer shadow color.", "Regular clean"]
   ],
   "Room Stat Tracker": [
-    ["Color", "Set room stat tracker text color.", "Normal clear"],
-    ["Room name", "Include the current room name.", "Normal clear"],
-    ["Deaths", "Include deaths since entering the current room.", "Normal clear"],
-    ["In-game time", "Include elapsed room time.", "Normal clear"],
-    ["Strawberries", "Include strawberries collected in this room visit.", "Normal clear"],
-    ["Alive time", "Include time since the latest respawn.", "Normal clear"],
-    ["Hide if golden", "Hide the room stat tracker during golden berry attempts.", "Normal clear"],
-    ["Freeze mode", "Choose how timer display freezes.", "Normal clear"],
-    ["Offset X", "Move the room stat tracker horizontally from its anchor.", "Normal clear"],
-    ["Offset Y", "Move the room stat tracker vertically from its anchor.", "Normal clear"],
-    ["Scale", "Set room stat tracker text scale.", "Normal clear"],
-    ["Opacity", "Set room stat tracker opacity.", "Normal clear"],
-    ["Line spacing", "Set room stat tracker multiline spacing.", "Normal clear"],
-    ["Shadow", "Draw a black outline plus offset shadow behind the room stat tracker.", "Normal clear"],
-    ["Shadow opacity", "Set room stat tracker shadow opacity.", "Normal clear"],
-    ["Shadow X", "Set room stat tracker shadow horizontal offset.", "Normal clear"],
-    ["Shadow Y", "Set room stat tracker shadow vertical offset.", "Normal clear"],
-    ["Shadow color", "Set room stat tracker shadow color.", "Normal clear"]
+    ["Color", "Set room stat tracker text color.", "Regular clean"],
+    ["Room name", "Include the current room name.", "Regular clean"],
+    ["Deaths", "Include deaths since entering the current room.", "Regular clean"],
+    ["In-game time", "Include elapsed room time.", "Regular clean"],
+    ["Strawberries", "Include strawberries collected in this room visit.", "Regular clean"],
+    ["Alive time", "Include time since the latest respawn.", "Regular clean"],
+    ["Hide if golden", "Hide the room stat tracker during golden berry attempts.", "Regular clean"],
+    ["Freeze mode", "Choose how timer display freezes.", "Regular clean"],
+    ["Offset X", "Move the room stat tracker horizontally from its anchor.", "Regular clean"],
+    ["Offset Y", "Move the room stat tracker vertically from its anchor.", "Regular clean"],
+    ["Scale", "Set room stat tracker text scale.", "Regular clean"],
+    ["Opacity", "Set room stat tracker opacity.", "Regular clean"],
+    ["Line spacing", "Set room stat tracker multiline spacing.", "Regular clean"],
+    ["Shadow", "Draw a black outline plus offset shadow behind the room stat tracker.", "Regular clean"],
+    ["Shadow opacity", "Set room stat tracker shadow opacity.", "Regular clean"],
+    ["Shadow X", "Set room stat tracker shadow horizontal offset.", "Regular clean"],
+    ["Shadow Y", "Set room stat tracker shadow vertical offset.", "Regular clean"],
+    ["Shadow color", "Set room stat tracker shadow color.", "Regular clean"]
   ],
   "Attempts": [
-    ["Color", "Set attempts label text color.", "Goldberry/Hardlist clear"],
-    ["Offset X", "Move the attempts label horizontally from its anchor.", "Goldberry/Hardlist clear"],
-    ["Offset Y", "Move the attempts label vertically from its anchor.", "Goldberry/Hardlist clear"],
-    ["Scale", "Set attempts label text scale.", "Goldberry/Hardlist clear"],
-    ["Opacity", "Set attempts label opacity.", "Goldberry/Hardlist clear"],
-    ["Line spacing", "Set attempts label multiline spacing.", "Goldberry/Hardlist clear"],
-    ["Shadow", "Draw a black outline plus offset shadow behind the attempts label.", "Goldberry/Hardlist clear"],
-    ["Shadow opacity", "Set attempts label shadow opacity.", "Goldberry/Hardlist clear"],
-    ["Shadow X", "Set attempts label shadow horizontal offset.", "Goldberry/Hardlist clear"],
-    ["Shadow Y", "Set attempts label shadow vertical offset.", "Goldberry/Hardlist clear"],
-    ["Shadow color", "Set attempts label shadow color.", "Goldberry/Hardlist clear"]
+    ["Color", "Set attempts label text color.", "Goldberry/Hardlist clean"],
+    ["Offset X", "Move the attempts label horizontally from its anchor.", "Goldberry/Hardlist clean"],
+    ["Offset Y", "Move the attempts label vertically from its anchor.", "Goldberry/Hardlist clean"],
+    ["Scale", "Set attempts label text scale.", "Goldberry/Hardlist clean"],
+    ["Opacity", "Set attempts label opacity.", "Goldberry/Hardlist clean"],
+    ["Line spacing", "Set attempts label multiline spacing.", "Goldberry/Hardlist clean"],
+    ["Shadow", "Draw a black outline plus offset shadow behind the attempts label.", "Goldberry/Hardlist clean"],
+    ["Shadow opacity", "Set attempts label shadow opacity.", "Goldberry/Hardlist clean"],
+    ["Shadow X", "Set attempts label shadow horizontal offset.", "Goldberry/Hardlist clean"],
+    ["Shadow Y", "Set attempts label shadow vertical offset.", "Goldberry/Hardlist clean"],
+    ["Shadow color", "Set attempts label shadow color.", "Goldberry/Hardlist clean"]
   ],
   "Status": [
-    ["Color", "Set status label text color.", "Normal clear"],
-    ["Offset X", "Move the status label horizontally from its anchor.", "Normal clear"],
-    ["Offset Y", "Move the status label vertically from its anchor.", "Normal clear"],
-    ["Scale", "Set status label text scale.", "Normal clear"],
-    ["Opacity", "Set status label opacity.", "Normal clear"],
-    ["Line spacing", "Set status label multiline spacing.", "Normal clear"],
-    ["Shadow", "Draw a black outline plus offset shadow behind the status label.", "Normal clear"],
-    ["Shadow opacity", "Set status label shadow opacity.", "Normal clear"],
-    ["Shadow X", "Set status label shadow horizontal offset.", "Normal clear"],
-    ["Shadow Y", "Set status label shadow vertical offset.", "Normal clear"],
-    ["Shadow color", "Set status label shadow color.", "Normal clear"]
+    ["Color", "Set status label text color.", "Regular clean"],
+    ["Offset X", "Move the status label horizontally from its anchor.", "Regular clean"],
+    ["Offset Y", "Move the status label vertically from its anchor.", "Regular clean"],
+    ["Scale", "Set status label text scale.", "Regular clean"],
+    ["Opacity", "Set status label opacity.", "Regular clean"],
+    ["Line spacing", "Set status label multiline spacing.", "Regular clean"],
+    ["Shadow", "Draw a black outline plus offset shadow behind the status label.", "Regular clean"],
+    ["Shadow opacity", "Set status label shadow opacity.", "Regular clean"],
+    ["Shadow X", "Set status label shadow horizontal offset.", "Regular clean"],
+    ["Shadow Y", "Set status label shadow vertical offset.", "Regular clean"],
+    ["Shadow color", "Set status label shadow color.", "Regular clean"]
   ],
   "Toasts": [
-    ["Color", "Set toast text color.", "Normal clear"],
-    ["Anchor", "Choose the screen position for option feedback messages.", "Normal clear"],
-    ["Offset X", "Move toast messages horizontally from their anchor.", "Normal clear"],
-    ["Offset Y", "Move toast messages vertically from their anchor.", "Normal clear"],
-    ["Scale", "Set toast text scale.", "Normal clear"],
-    ["Opacity", "Set toast opacity.", "Normal clear"],
-    ["Line spacing", "Set toast multiline spacing.", "Normal clear"],
-    ["Shadow", "Draw a black outline plus offset shadow behind toasts.", "Normal clear"],
-    ["Shadow opacity", "Set toast shadow opacity.", "Normal clear"],
-    ["Shadow X", "Set toast shadow horizontal offset.", "Normal clear"],
-    ["Shadow Y", "Set toast shadow vertical offset.", "Normal clear"],
-    ["Shadow color", "Set toast shadow color.", "Normal clear"]
+    ["Color", "Set toast text color.", "Regular clean"],
+    ["Anchor", "Choose the screen position for option feedback messages.", "Regular clean"],
+    ["Offset X", "Move toast messages horizontally from their anchor.", "Regular clean"],
+    ["Offset Y", "Move toast messages vertically from their anchor.", "Regular clean"],
+    ["Scale", "Set toast text scale.", "Regular clean"],
+    ["Opacity", "Set toast opacity.", "Regular clean"],
+    ["Line spacing", "Set toast multiline spacing.", "Regular clean"],
+    ["Shadow", "Draw a black outline plus offset shadow behind toasts.", "Regular clean"],
+    ["Shadow opacity", "Set toast shadow opacity.", "Regular clean"],
+    ["Shadow X", "Set toast shadow horizontal offset.", "Regular clean"],
+    ["Shadow Y", "Set toast shadow vertical offset.", "Regular clean"],
+    ["Shadow color", "Set toast shadow color.", "Regular clean"]
   ],
   "Cheat Indicator": [
-    ["Only cheating", "Hide the indicator until the attempt status differs from the initial status.", "Normal clear"],
-    ["Anchor", "Choose the status indicator screen alignment.", "Normal clear"],
-    ["Style: Text/Dot", "Choose text badge or single status dot.", "Normal clear"],
-    ["Scale", "Set indicator scale percentage.", "Normal clear"],
-    ["Opacity", "Set indicator opacity percentage.", "Normal clear"]
+    ["Only cheating", "Hide the indicator until the attempt status differs from the initial status.", "Regular clean"],
+    ["Anchor", "Choose the status indicator screen alignment.", "Regular clean"],
+    ["Style: Text/Dot", "Choose text badge or single status dot.", "Regular clean"],
+    ["Scale", "Set indicator scale percentage.", "Regular clean"],
+    ["Opacity", "Set indicator opacity percentage.", "Regular clean"]
   ],
   "+ Custom": [
-    ["Visible", "Show this custom label when its event condition passes.", "Normal clear"],
-    ["Name", "Set the custom label's human-readable name.", "Normal clear"],
-    ["Text", "Set template text with variables such as room, room time, status, FPS, speed, and conditionals.", "Normal clear"],
-    ["Anchor", "Choose the custom label's screen alignment.", "Normal clear"],
-    ["Absolute position", "Use exact HUD coordinates instead of the shared anchored label container.", "Normal clear"],
-    ["Screen X", "Set the custom label's absolute HUD X coordinate.", "Normal clear"],
-    ["Screen Y", "Set the custom label's absolute HUD Y coordinate.", "Normal clear"],
-    ["Offset X", "Move the custom label horizontally from its anchor or absolute point.", "Normal clear"],
-    ["Offset Y", "Move the custom label vertically from its anchor or absolute point.", "Normal clear"],
-    ["Scale", "Set custom label text scale.", "Normal clear"],
-    ["Opacity", "Set custom label opacity.", "Normal clear"],
-    ["Line spacing", "Set custom label multiline spacing.", "Normal clear"],
-    ["Color", "Set custom label text color.", "Normal clear"],
-    ["Text align", "Align text inside the label's measured line.", "Normal clear"],
-    ["Font", "Choose a preset text size for the label.", "Normal clear"],
-    ["Shadow", "Draw a black outline plus offset shadow behind the custom label.", "Normal clear"],
-    ["Shadow opacity", "Set custom label shadow opacity.", "Normal clear"],
-    ["Shadow X", "Set custom label shadow horizontal offset.", "Normal clear"],
-    ["Shadow Y", "Set custom label shadow vertical offset.", "Normal clear"],
-    ["Shadow color", "Set custom label shadow color.", "Normal clear"],
-    ["Event", "Choose when the label is visible: always, on death, while buttons are held, or on noclip death markers.", "Normal clear"],
-    ["Delay", "Set delay before event labels appear.", "Normal clear"],
-    ["Duration", "Set how long event labels remain visible.", "Normal clear"],
-    ["Event style override", "Temporarily use event scale, color, and opacity while the event is active.", "Normal clear"],
-    ["Event scale", "Set event override scale.", "Normal clear"],
-    ["Event opacity", "Set event override opacity.", "Normal clear"],
-    ["Event color", "Set event override color.", "Normal clear"],
-    ["Duplicate", "Duplicate the active custom label.", "Normal clear"],
-    ["Delete", "Delete the active custom label after confirmation.", "Normal clear"],
-    ["Export .akr", "Export custom labels as a `.akr` pack.", "Normal clear"],
-    ["Import Latest .akr", "Import the latest saved custom-label `.akr` pack from Saves/AkronHudLabels.", "Normal clear"]
+    ["Visible", "Show this custom label when its event condition passes.", "Regular clean"],
+    ["Name", "Set the custom label's human-readable name.", "Regular clean"],
+    ["Text", "Set template text with variables such as room, room time, status, FPS, speed, and conditionals.", "Regular clean"],
+    ["Anchor", "Choose the custom label's screen alignment.", "Regular clean"],
+    ["Absolute position", "Use exact HUD coordinates instead of the shared anchored label container.", "Regular clean"],
+    ["Screen X", "Set the custom label's absolute HUD X coordinate.", "Regular clean"],
+    ["Screen Y", "Set the custom label's absolute HUD Y coordinate.", "Regular clean"],
+    ["Offset X", "Move the custom label horizontally from its anchor or absolute point.", "Regular clean"],
+    ["Offset Y", "Move the custom label vertically from its anchor or absolute point.", "Regular clean"],
+    ["Scale", "Set custom label text scale.", "Regular clean"],
+    ["Opacity", "Set custom label opacity.", "Regular clean"],
+    ["Line spacing", "Set custom label multiline spacing.", "Regular clean"],
+    ["Color", "Set custom label text color.", "Regular clean"],
+    ["Text align", "Align text inside the label's measured line.", "Regular clean"],
+    ["Font", "Choose a preset text size for the label.", "Regular clean"],
+    ["Shadow", "Draw a black outline plus offset shadow behind the custom label.", "Regular clean"],
+    ["Shadow opacity", "Set custom label shadow opacity.", "Regular clean"],
+    ["Shadow X", "Set custom label shadow horizontal offset.", "Regular clean"],
+    ["Shadow Y", "Set custom label shadow vertical offset.", "Regular clean"],
+    ["Shadow color", "Set custom label shadow color.", "Regular clean"],
+    ["Event", "Choose when the label is visible: always, on death, while buttons are held, or on noclip death markers.", "Regular clean"],
+    ["Delay", "Set delay before event labels appear.", "Regular clean"],
+    ["Duration", "Set how long event labels remain visible.", "Regular clean"],
+    ["Event style override", "Temporarily use event scale, color, and opacity while the event is active.", "Regular clean"],
+    ["Event scale", "Set event override scale.", "Regular clean"],
+    ["Event opacity", "Set event override opacity.", "Regular clean"],
+    ["Event color", "Set event override color.", "Regular clean"],
+    ["Duplicate", "Duplicate the active custom label.", "Regular clean"],
+    ["Delete", "Delete the active custom label after confirmation.", "Regular clean"],
+    ["Export .akr", "Export custom labels as a `.akr` pack.", "Regular clean"],
+    ["Import Latest .akr", "Import the latest saved custom-label `.akr` pack from Saves/AkronHudLabels.", "Regular clean"]
   ],
   "Replay Settings": [
-    ["Start Replay Buffer", "Start rolling replay capture for the current game scene.", "Goldberry/Hardlist clear"],
-    ["Stop", "Stop rolling replay capture.", "Goldberry/Hardlist clear"],
-    ["Save", "Save the current replay buffer window.", "Goldberry/Hardlist clear"],
-    ["Buffer", "Set seconds of rolling FFmpeg segments kept available for manual replay saves.", "Goldberry/Hardlist clear"],
-    ["Auto-start", "Choose whether replay capture starts manually, in levels, or everywhere.", "Goldberry/Hardlist clear"],
-    ["Bind save key", "Set the key used to save the replay buffer without opening the overlay.", "Goldberry/Hardlist clear"],
-    ["Clear", "Clear only the custom replay-buffer save binding.", "Goldberry/Hardlist clear"]
+    ["Start Replay Buffer", "Start rolling replay capture for the current game scene.", "Goldberry/Hardlist clean"],
+    ["Stop", "Stop rolling replay capture.", "Goldberry/Hardlist clean"],
+    ["Save", "Save the current replay buffer window.", "Goldberry/Hardlist clean"],
+    ["Buffer", "Set seconds of rolling FFmpeg segments kept available for manual replay saves.", "Goldberry/Hardlist clean"],
+    ["Auto-start", "Choose whether replay capture starts manually, in levels, or everywhere.", "Goldberry/Hardlist clean"],
+    ["Bind save key", "Set the key used to save the replay buffer without opening the overlay.", "Goldberry/Hardlist clean"],
+    ["Clear", "Clear only the custom replay-buffer save binding.", "Goldberry/Hardlist clean"]
   ],
   "Output": [
-    ["Output folder", "Choose where recordings and clips are written.", "Goldberry/Hardlist clear"],
-    ["Filename template", "Configure clip filename tokens.", "Goldberry/Hardlist clear"],
-    ["Container", "Choose MKV, MP4, MOV, or WebM output container.", "Goldberry/Hardlist clear"],
-    ["Auto remux", "Keep the crash-resistant capture target and produce an MP4 share copy after recording.", "Goldberry/Hardlist clear"],
-    ["Sort clips", "Set saved clip browser grouping preference.", "Goldberry/Hardlist clear"],
-    ["Filter clips", "Set saved clip browser filter preference.", "Goldberry/Hardlist clear"]
+    ["Output folder", "Choose where recordings and clips are written.", "Goldberry/Hardlist clean"],
+    ["Filename template", "Configure clip filename tokens.", "Goldberry/Hardlist clean"],
+    ["Container", "Choose MKV, MP4, MOV, or WebM output container.", "Goldberry/Hardlist clean"],
+    ["Auto remux", "Keep the crash-resistant capture target and produce an MP4 share copy after recording.", "Goldberry/Hardlist clean"],
+    ["Sort clips", "Set saved clip browser grouping preference.", "Goldberry/Hardlist clean"],
+    ["Filter clips", "Set saved clip browser filter preference.", "Goldberry/Hardlist clean"]
   ],
   "Codec": [
-    ["Quality", "Set simple encoder quality target before fine-tuning bitrate or rate control.", "Goldberry/Hardlist clear"],
-    ["Rate ctrl", "Choose encoder rate-control mode for quality, file size, or lossless output.", "Goldberry/Hardlist clear"],
-    ["Keyframe", "Set seconds between keyframes, or 0 to let the encoder decide.", "Goldberry/Hardlist clear"],
-    ["Dropped-frame warning", "Show a warning when the recorder cannot capture frames at the configured cadence.", "Goldberry/Hardlist clear"]
+    ["Quality", "Set simple encoder quality target before fine-tuning bitrate or rate control.", "Goldberry/Hardlist clean"],
+    ["Rate ctrl", "Choose encoder rate-control mode for quality, file size, or lossless output.", "Goldberry/Hardlist clean"],
+    ["Keyframe", "Set seconds between keyframes, or 0 to let the encoder decide.", "Goldberry/Hardlist clean"],
+    ["Dropped-frame warning", "Show a warning when the recorder cannot capture frames at the configured cadence.", "Goldberry/Hardlist clean"]
   ],
   "Audio": [
-    ["Full mix track", "Record the mixed game-audio track.", "Goldberry/Hardlist clear"],
-    ["Music track", "Record an isolated music track when the backend can provide it.", "Goldberry/Hardlist clear"],
-    ["SFX track", "Record an isolated sound-effects track when the backend can provide it.", "Goldberry/Hardlist clear"],
-    ["Ambience track", "Record an isolated ambience track when the backend can provide it.", "Goldberry/Hardlist clear"],
-    ["Record muted audio", "Capture game audio even when in-game playback is muted, when supported.", "Goldberry/Hardlist clear"],
-    ["Mix", "Set full-mix recording volume percentage.", "Goldberry/Hardlist clear"],
-    ["Music", "Set music track recording volume percentage.", "Goldberry/Hardlist clear"],
-    ["SFX", "Set SFX track recording volume percentage.", "Goldberry/Hardlist clear"],
-    ["Amb", "Set ambience track recording volume percentage.", "Goldberry/Hardlist clear"]
+    ["Full mix track", "Record the mixed game-audio track.", "Goldberry/Hardlist clean"],
+    ["Music track", "Record an isolated music track when the backend can provide it.", "Goldberry/Hardlist clean"],
+    ["SFX track", "Record an isolated sound-effects track when the backend can provide it.", "Goldberry/Hardlist clean"],
+    ["Ambience track", "Record an isolated ambience track when the backend can provide it.", "Goldberry/Hardlist clean"],
+    ["Record muted audio", "Capture game audio even when in-game playback is muted, when supported.", "Goldberry/Hardlist clean"],
+    ["Mix", "Set full-mix recording volume percentage.", "Goldberry/Hardlist clean"],
+    ["Music", "Set music track recording volume percentage.", "Goldberry/Hardlist clean"],
+    ["SFX", "Set SFX track recording volume percentage.", "Goldberry/Hardlist clean"],
+    ["Amb", "Set ambience track recording volume percentage.", "Goldberry/Hardlist clean"]
   ],
   "Clip Triggers": [
-    ["Last death", "Auto-save a clip around the latest death trigger.", "Goldberry/Hardlist clear"],
-    ["Respawn to death", "Auto-save clips from respawn through the next death.", "Goldberry/Hardlist clear"],
-    ["Room entry to clear", "Auto-save clips from room entry through a clear.", "Goldberry/Hardlist clear"],
-    ["Checkpoint clear", "Auto-save clips when a checkpoint is cleared.", "Goldberry/Hardlist clear"],
-    ["Berry collect", "Auto-save clips when a berry is collected.", "Goldberry/Hardlist clear"],
-    ["Golden death", "Auto-save clips when a golden attempt dies.", "Goldberry/Hardlist clear"],
-    ["Pre-roll", "Set seconds included before event-based clip triggers.", "Goldberry/Hardlist clear"],
-    ["Post-roll", "Set seconds included after event-based clip triggers.", "Goldberry/Hardlist clear"]
+    ["Last death", "Auto-save a clip around the latest death trigger.", "Goldberry/Hardlist clean"],
+    ["Respawn to death", "Auto-save clips from respawn through the next death.", "Goldberry/Hardlist clean"],
+    ["Room entry to clear", "Auto-save clips from room entry through a clear.", "Goldberry/Hardlist clean"],
+    ["Checkpoint clear", "Auto-save clips when a checkpoint is cleared.", "Goldberry/Hardlist clean"],
+    ["Berry collect", "Auto-save clips when a berry is collected.", "Goldberry/Hardlist clean"],
+    ["Golden death", "Auto-save clips when a golden attempt dies.", "Goldberry/Hardlist clean"],
+    ["Pre-roll", "Set seconds included before event-based clip triggers.", "Goldberry/Hardlist clean"],
+    ["Post-roll", "Set seconds included after event-based clip triggers.", "Goldberry/Hardlist clean"]
   ],
   "Output Folder": [
-    ["Path", "Set the recorder output folder. Empty uses Saves/AkronRecordings.", "Goldberry/Hardlist clear"]
+    ["Path", "Set the recorder output folder. Empty uses Saves/AkronRecordings.", "Goldberry/Hardlist clean"]
   ],
   "Filename Template": [
-    ["Template", "Use tokens such as chapter, room, timestamp, death, and attempt.", "Goldberry/Hardlist clear"]
+    ["Template", "Use tokens such as chapter, room, timestamp, death, and attempt.", "Goldberry/Hardlist clean"]
   ],
   "Colorspace Args": [
-    ["FFmpeg filter", "Set optional FFmpeg video-filter colorspace arguments.", "Goldberry/Hardlist clear"]
+    ["FFmpeg filter", "Set optional FFmpeg video-filter colorspace arguments.", "Goldberry/Hardlist clean"]
   ],
   "FPS Bypass": [
     ["Target FPS", "Set the draw target while FPS Bypass is enabled.", "Cheat"],
@@ -1160,7 +1160,7 @@ function statusFor(row) {
   }
 
   if (soundLabels().includes(row.label)) {
-    return "Normal clear";
+    return "Regular clean";
   }
 
   return "Not individually classified";
@@ -1245,7 +1245,7 @@ function menusTableFor(rows) {
   }
 
   return `\n## Option Menus\n\nRows with a triangle expose the controls listed below.\n\n${[
-    "| Option | Menu control | What it changes | Status |",
+    "| Option | Menu control | What it changes | Attempt status |",
     "|---|---|---|---|",
     ...menuRows.map((row) => `| ${mdEscape(row.option)} | ${mdEscape(row.suboption)} | ${mdEscape(row.description)} | ${mdEscape(row.status)} |`)
   ].join("\n")}\n`;
