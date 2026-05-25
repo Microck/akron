@@ -1,7 +1,6 @@
 {
   "cycle": 3,
   "files_pending": [
-    "getting-started/hotkeys.mdx",
     "concepts/akr-files-and-setup-state.mdx",
     "concepts/rulesets-and-status.mdx",
     "concepts/proof-and-submission-mode.mdx",
@@ -54,6 +53,7 @@
     "docs/docs/special-thanks.mdx",
     "getting-started/install.mdx",
     "getting-started/first-run.mdx",
-    "getting-started/configuration.mdx"
+    "getting-started/configuration.mdx",
+    "getting-started/hotkeys.mdx"
   ]
 }
