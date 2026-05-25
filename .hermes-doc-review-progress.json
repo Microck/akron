@@ -1,7 +1,6 @@
 {
   "cycle": 2,
   "files_pending": [
-    "reference/feature-status-reference.mdx",
     "reference/akr-archives.mdx",
     "reference/community-pack-catalog.mdx",
     "troubleshooting/common-issues.mdx",
@@ -54,6 +53,7 @@
     "rulesets/leaderboard-clean.mdx",
     "rulesets/practice-and-sandbox.mdx",
     "rulesets/streamer-mode-and-proof-overlays.mdx",
-    "reference/debug-commands.mdx"
+    "reference/debug-commands.mdx",
+    "reference/feature-status-reference.mdx"
   ]
 }
