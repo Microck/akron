@@ -229,6 +229,22 @@ public sealed class ModuleSettingsTests {
     }
 
     [Theory]
+    [InlineData(960, 2200, 1920, 0.5f, 1196)]
+    [InlineData(960, 800, 1920, 0.5f, 960)]
+    [InlineData(1700, 600, 1920, 0.5f, 1524)]
+    [InlineData(50, 400, 1920, 0f, 96)]
+    public void NativeTextMenuClampKeepsReadableEdgeInsideViewport(
+        float currentX,
+        float menuWidth,
+        float displayWidth,
+        float justifyX,
+        float expectedX) {
+        Assert.Equal(
+            expectedX,
+            AkronModule.CalculateSafeTextMenuX(currentX, menuWidth, displayWidth, justifyX));
+    }
+
+    [Theory]
     [InlineData(-5, 4)]
     [InlineData(0, 4)]
     [InlineData(1, 1)]

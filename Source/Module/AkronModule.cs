@@ -617,11 +617,49 @@ public partial class AkronModule : EverestModule {
     private static void TextMenuOnUpdate(On.Celeste.TextMenu.orig_Update orig, TextMenu self) {
         ReplacePauseMenuButtonActionIfNeeded(self?.Current as TextMenu.Button);
         orig(self);
+        KeepNativeTextMenuInsideViewport(self);
     }
 
     private static void TextMenuButtonOnConfirmPressed(On.Celeste.TextMenu.Button.orig_ConfirmPressed orig, TextMenu.Button self) {
         ReplacePauseMenuButtonActionIfNeeded(self);
         orig(self);
+    }
+
+    private static void KeepNativeTextMenuInsideViewport(TextMenu menu) {
+        if (menu == null || !menu.Visible || menu.Width <= 0f || Engine.Width <= 0) {
+            return;
+        }
+
+        // Everest/native TextMenu pages can be wider than the current window scale allows.
+        // Preserve their native layout and only move the anchor far enough to keep the
+        // readable left edge on screen.
+        menu.X = CalculateSafeTextMenuX(menu.X, menu.Width, Engine.Width, menu.Justify.X);
+    }
+
+    internal static float CalculateSafeTextMenuX(
+        float currentX,
+        float menuWidth,
+        float displayWidth,
+        float justifyX,
+        float margin = 96f) {
+        if (menuWidth <= 0f || displayWidth <= 0f) {
+            return currentX;
+        }
+
+        float clampedJustify = Math.Min(1f, Math.Max(0f, justifyX));
+        float safeMargin = Math.Min(Math.Max(0f, margin), Math.Max(0f, (displayWidth / 2f) - 1f));
+        float left = currentX - (menuWidth * clampedJustify);
+        if (left < safeMargin) {
+            return safeMargin + (menuWidth * clampedJustify);
+        }
+
+        float right = currentX + (menuWidth * (1f - clampedJustify));
+        float rightLimit = displayWidth - safeMargin;
+        if (menuWidth <= displayWidth - (safeMargin * 2f) && right > rightLimit) {
+            return rightLimit - (menuWidth * (1f - clampedJustify));
+        }
+
+        return currentX;
     }
 
     private static void AutoSavingNoticeOnRender(On.Celeste.AutoSavingNotice.orig_Render orig, AutoSavingNotice self, Scene scene) {
