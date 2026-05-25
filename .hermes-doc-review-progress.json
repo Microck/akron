@@ -1,7 +1,6 @@
 {
   "cycle": 1,
   "files_pending": [
-    "docs/images/logo.png",
     "docs/images/akron-overlay-overview.png",
     "docs/images/raw-download.png",
     "docs/images/olympus-one-click-install.png",
@@ -67,6 +66,7 @@
     "docs/concepts/akr-files-and-setup-state.mdx",
     "docs/docs.json",
     "docs/images/logo-horizontal.png",
-    "docs/images/favicon.png"
+    "docs/images/favicon.png",
+    "docs/images/logo.png"
   ]
 }
