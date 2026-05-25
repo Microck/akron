@@ -1,7 +1,6 @@
 {
   "cycle": 2,
   "files_pending": [
-    "docs.mdx",
     "docs/docs/special-thanks.mdx",
     "getting-started/install.mdx",
     "getting-started/first-run.mdx",
@@ -54,6 +53,7 @@
     "contributing/testing-and-verification.mdx"
   ],
   "files_reviewed": [
-    "index.mdx"
+    "index.mdx",
+    "docs.mdx"
   ]
 }
