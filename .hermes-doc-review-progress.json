@@ -1,7 +1,7 @@
 {
   "started": null,
-  "last_run": "2026-05-25T03:18:23.238451Z",
-  "runs": 24,
+  "last_run": "2026-05-25T03:29:34.687403Z",
+  "runs": 28,
   "files_reviewed": [
     "docs/index.mdx",
     "docs/docs.mdx",
@@ -32,13 +32,13 @@
     "docs/feature-guide/creator.mdx",
     "docs/feature-guide/interface.mdx",
     "docs/feature-guide/labels.mdx",
-    "docs/feature-guide/shortcuts.mdx"
-  ],
-  "files_pending": [
+    "docs/feature-guide/shortcuts.mdx",
     "docs/feature-guide/internal-recorder.mdx",
     "docs/feature-guide/external-tools.mdx",
     "docs/akr-packs/manage-setups.mdx",
-    "docs/akr-packs/import-export.mdx",
+    "docs/akr-packs/import-export.mdx"
+  ],
+  "files_pending": [
     "docs/rulesets/overview.mdx",
     "docs/rulesets/leaderboard-clean.mdx",
     "docs/rulesets/practice-and-sandbox.mdx",
@@ -80,6 +80,8 @@
     "7f588b057c0fda18ace1adc273131b75fd283a27",
     "7f588b057c0fda18ace1adc273131b75fd283a27",
     "d982ec9a047022c39868071114d2b566efd56f48",
-    "3aa315d"
+    "3aa315d",
+    "ac94b2e33bdfc1c1d62e4f22c9ebe5947daa7db3",
+    "b7e4533"
   ]
 }
