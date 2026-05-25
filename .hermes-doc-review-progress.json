@@ -1,7 +1,6 @@
 {
   "cycle": 2,
   "files_pending": [
-    "troubleshooting/compatibility.mdx",
     "troubleshooting/startpos-recovery.mdx",
     "contributing/public-architecture.mdx",
     "contributing/contribution-workflow.mdx",
@@ -54,6 +53,7 @@
     "reference/feature-status-reference.mdx",
     "reference/akr-archives.mdx",
     "reference/community-pack-catalog.mdx",
-    "troubleshooting/common-issues.mdx"
+    "troubleshooting/common-issues.mdx",
+    "troubleshooting/compatibility.mdx"
   ]
 }

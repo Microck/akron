@@ -12,7 +12,7 @@ If files are in the correct locations but Akron fails to load, verify the active
 - Steam and Steam Flatpak may utilize different filesystem roots.
 - Wine or Proton prefixes may isolate Celeste data.
 - Portable installations may use their own `Mods` and `Saves` directories.
-- A copied mod archive might be located in a different installation than the one currently being launched.
+- Copied mod archives may reside in an installation folder other than the one currently being launched.
 
 ## Map Compatibility
 
@@ -29,7 +29,7 @@ If a StartPos restore is blocked:
 
 ## External Tool Compatibility
 
-| Tool | Compatibility note |
+| Tool | Compatibility Note |
 |---|---|
 | Motion Smoothing | FPS and TPS bypass rows appear when the mod is loaded at runtime. Akron does not declare Motion Smoothing as a formal Everest dependency. |
 | Speedrun Tool | External timing and compatibility interfaces are available when the mod is loaded. |
@@ -42,4 +42,5 @@ If a StartPos restore is blocked:
 
 Visual verification is necessary for rendering-sensitive features, including overlays, hitboxes, camera, zoom, death transitions, room captures, map captures, and screenshots.
 
-If a rendering feature behaves inconsistently across different hosts, please document the host, platform, map SID, visible policy/status state, Akron setup, and provide screenshot evidence before filing an issue.
+If a rendering feature behaves inconsistently across different hosts, please document the host, platform, map SID, visible policy/status state, and Akron setup, and provide screenshot evidence before filing an issue.
+
