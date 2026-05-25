@@ -1,7 +1,6 @@
 {
   "cycle": 2,
   "files_pending": [
-    "reference/file-locations.mdx",
     "reference/debug-commands.mdx",
     "reference/feature-status-reference.mdx",
     "reference/akr-archives.mdx",
@@ -17,6 +16,7 @@
     "contributing/testing-and-verification.mdx"
   ],
   "files_reviewed": [
+    "reference/file-locations.mdx",
     "index.mdx",
     "docs.mdx",
     "docs/docs/special-thanks.mdx",
