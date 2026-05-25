@@ -1,7 +1,6 @@
 {
   "cycle": 2,
   "files_pending": [
-    "feature-guide/internal-recorder.mdx",
     "feature-guide/external-tools.mdx",
     "player-guide/menu-anatomy.mdx",
     "player-guide/hud-and-input-tools.mdx",
@@ -54,6 +53,7 @@
     "feature-guide/sound.mdx",
     "feature-guide/player.mdx",
     "feature-guide/creator.mdx",
-    "feature-guide/interface.mdx"
+    "feature-guide/interface.mdx",
+    "feature-guide/internal-recorder.mdx"
   ]
 }
