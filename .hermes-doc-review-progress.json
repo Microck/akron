@@ -1,14 +1,6 @@
 {
   "cycle": 1,
   "files_pending": [
-    "docs/index.mdx",
-    "docs/reference/community-pack-catalog.mdx",
-    "docs/reference/feature-status-reference.mdx",
-    "docs/reference/akr-archives.mdx",
-    "docs/reference/debug-commands.mdx",
-    "docs/reference/file-locations.mdx",
-    "docs/concepts/rulesets-and-status.mdx",
-    "docs/concepts/proof-and-submission-mode.mdx",
     "docs/concepts/akr-files-and-setup-state.mdx",
     "docs/docs.json",
     "docs/images/logo-horizontal.png",
@@ -67,6 +59,14 @@
     "docs/feature-guide/bypass.mdx",
     "docs/feature-guide/sound.mdx",
     "docs/feature-guide/keybinds.mdx",
-    "docs/feature-guide/interface.mdx"
+    "docs/feature-guide/interface.mdx",
+    "docs/index.mdx",
+    "docs/reference/community-pack-catalog.mdx",
+    "docs/reference/feature-status-reference.mdx",
+    "docs/reference/akr-archives.mdx",
+    "docs/reference/debug-commands.mdx",
+    "docs/reference/file-locations.mdx",
+    "docs/concepts/rulesets-and-status.mdx",
+    "docs/concepts/proof-and-submission-mode.mdx"
   ]
 }
