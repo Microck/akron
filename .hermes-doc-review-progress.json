@@ -1,7 +1,6 @@
 {
   "cycle": 2,
   "files_pending": [
-    "contributing/feature-policy.mdx",
     "contributing/implementation-boundaries.mdx",
     "contributing/testing-and-verification.mdx"
   ],
@@ -54,6 +53,7 @@
     "troubleshooting/startpos-recovery.mdx",
     "contributing/public-architecture.mdx",
     "contributing/contribution-workflow.mdx",
-    "contributing/development-setup.mdx"
+    "contributing/development-setup.mdx",
+    "contributing/feature-policy.mdx"
   ]
 }
