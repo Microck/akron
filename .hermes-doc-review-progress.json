@@ -1,8 +1,6 @@
 {
   "cycle": 2,
-  "files_pending": [
-    "contributing/testing-and-verification.mdx"
-  ],
+  "files_pending": [],
   "files_reviewed": [
     "reference/file-locations.mdx",
     "index.mdx",
@@ -54,6 +52,7 @@
     "contributing/contribution-workflow.mdx",
     "contributing/development-setup.mdx",
     "contributing/feature-policy.mdx",
-    "contributing/implementation-boundaries.mdx"
+    "contributing/implementation-boundaries.mdx",
+    "contributing/testing-and-verification.mdx"
   ]
 }
