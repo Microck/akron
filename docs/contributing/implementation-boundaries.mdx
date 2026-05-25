@@ -31,6 +31,8 @@ flowchart LR
 | `.akr` import/export | `Source/Profiles/akron-profile-packs.cs`, `Source/Profiles/akron-profile-file-picker.cs`, `Source/Packs/akron-archive.cs` |
 | Debug and automation commands | `Source/Commands/akron-commands.cs`, `Source/Commands/akron-*-commands.cs` |
 | Verification | `tests/feature-registry-tests.cs`, `tests/module-settings-tests.cs`, feature-specific tests |
+| Community packs and rulesets | `Source/Community/akron-community-packs.cs`, `Source/Community/akron-community-pack-browser.cs`, `Source/Community/akron-community-rulesets.cs` |
+| Motion smoothing subsystem | `Source/MotionSmoothing/akron-motion-smoothing-module.cs`, `Source/MotionSmoothing/akron-motion-smoothing-settings.cs`, `Source/MotionSmoothing/akron-motion-smoothing-input-handler.cs` |
 
 ## Adding A Feature
 
@@ -123,6 +125,7 @@ Keep the main settings file focused on persisted properties, menu entries, forma
 | Profile capture | `Source/Profiles/akron-profile-settings.cs` |
 | Profile application | `Source/Profiles/akron-profile-state-apply.cs` |
 | Stored profile slot selection and built-in profile/ruleset catalogs | `Source/Profiles/akron-profile-state-catalog.cs` |
+| Profile state structure and defaults | `Source/Profiles/akron-profile-state.cs` |
 | Ruleset/profile/status formatting, streamer-mode path display, binding labels, low-distraction channels, hitbox style reset, and native menu entries | `Source/Module/akron-module-settings-display.cs` |
 | Overlay-toggle defaults and HUD label row ordering | `Source/Module/akron-module-settings-label-rows.cs` |
 | HUD-facing settings and HUD label style cloning | `Source/Module/akron-module-settings-hud.cs` |
@@ -148,6 +151,8 @@ Keep `Source/SaveLoad/AkronSaveLoad.cs` focused on save/load orchestration and n
 | Data contracts | `Source/SaveLoad/akron-save-load-models.cs` |
 | EntityList, renderer camera, and copied-Level graph repair helpers | `Source/SaveLoad/akron-save-load-graph.cs` |
 | ModInterop export shims | `Source/SaveLoad/akron-save-load-exports.cs` |
+| Native savestate hook patching and Everest compatibility | `Source/SaveLoad/akron-native-savestate-support.cs` |
+| Entity and map risk/safety analysis | `Source/SaveLoad/akron-savestate-risk-analyzer.cs` |
 
 Keep `Source/Hud/AkronHudRenderer.cs` as the high-level HUD orchestration surface.
 
@@ -186,6 +191,7 @@ Keep `Source/Commands/akron-commands.cs` for shared command plumbing. Put focuse
 | Noclip, Hazard Accuracy, visual noise, and visual tuning | `Source/Commands/akron-visual-commands.cs` |
 | Hitbox and entity inspector controls | `Source/Commands/akron-hitbox-commands.cs` |
 | StartPos, state slot, save/load, and StartPos restore | `Source/Commands/akron-startpos-commands.cs` |
+| Profile show, apply, import, export, and sections | `Source/Commands/akron-profile-commands.cs` |
 | Extended Variant Mode | `Source/Commands/akron-extended-variant-commands.cs` |
 | Frame bypass and Motion Smoothing interop | `Source/Commands/akron-frame-bypass-commands.cs` |
 | Camera offset and cursor zoom | `Source/Commands/akron-camera-commands.cs` |
