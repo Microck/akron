@@ -68,8 +68,13 @@
   },
   "redirects": [
     {
-      "source": "/special-thanks",
-      "destination": "/docs/special-thanks",
+      "source": "/docs/special-thanks",
+      "destination": "/special-thanks",
+      "permanent": true
+    },
+    {
+      "source": "/reference/feature-status-reference",
+      "destination": "/concepts/clean-vs-cheat",
       "permanent": true
     }
   ],
@@ -89,6 +94,7 @@
         "group": "Concepts",
         "pages": [
           "concepts/rulesets-and-status",
+          "concepts/clean-vs-cheat",
           "concepts/proof-and-submission-mode",
           "concepts/akr-files-and-setup-state"
         ]
@@ -145,7 +151,6 @@
       {
         "group": "Reference",
         "pages": [
-          "reference/feature-status-reference",
           "reference/akr-archives",
           "reference/community-pack-catalog",
           "reference/debug-commands",
@@ -174,7 +179,7 @@
       {
         "group": "Project",
         "pages": [
-          "docs/special-thanks"
+          "special-thanks"
         ]
       }
     ]
