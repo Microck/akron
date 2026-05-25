@@ -259,7 +259,7 @@ const optionMenus = {
     ["Test hotkey", "Press the configured hotkey immediately.", "Normal clear"],
     ["Selected areas", "Trigger deafen when Madeline enters selected rectangles.", "Normal clear"],
     ["Draw areas", "Draw selected Auto Deafen rectangles below the Akron menu.", "Normal clear"],
-    ["Clear areas", "Remove selected Auto Deafen rectangles and restore if Akron believes Discord is deafened.", "Normal clear"]
+    ["Clear areas", "Remove all selected Auto Deafen rectangles and restore if Akron believes Discord is deafened.", "Normal clear"]
   ],
   "Respawn Time": [
     ["Seconds", "Configure the post-death respawn delay.", "Normal clear"],
