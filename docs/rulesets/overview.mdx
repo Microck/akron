@@ -9,6 +9,8 @@ This is an explanation page. For step-by-step configuration, see the Everest mod
 
 ## Built-in primary rulesets
 
+Primary rulesets are the base policy for a session. They determine the default "legitimacy" of the attempt and which tools are permitted.
+
 | Ruleset | Purpose |
 |---|---|
 | `Casual` | QoL-first mode. State-changing features stay opt-in. |
@@ -20,11 +22,13 @@ This is an explanation page. For step-by-step configuration, see the Everest mod
 
 ## Overlay rulesets
 
+Overlay rulesets are presentation or proof layers that sit on top of the primary ruleset. They do not change what is *allowed*, but change how it is *shown* or *recorded*.
+
 | Overlay state | Purpose |
 |---|---|
 | `Streamer Mode` | Hides local filesystem paths by showing only filenames. |
-| `Proof-mode` | Keeps proof surfaces compact and ruleset-aware. Normally enabled indirectly by Submission Mode or imported/community rulesets, not as a first-class player toggle. |
-| `Low-distraction` | Derived state active when all visual-noise channels are disabled (particles, trails, glitch, anxiety, distortion). Not selected directly. |
+| `Proof-mode` | Keeps proof surfaces compact and ruleset-aware. Normally enabled indirectly by Submission Mode or imported/community rulesets. |
+| `Low-distraction` | A derived state active when all visual-noise channels are disabled (particles, trails, glitch, anxiety, distortion). |
 
 ## Ruleset stack
 
@@ -37,16 +41,16 @@ flowchart TD
   presentation --> ui["UI and proof"]
 ```
 
-Primary rulesets control allowed behavior. Overlay states change presentation or proof output and appear in the current stack when active. Map compatibility overrides can affect risky runtime paths such as StartPos restore.
+Primary rulesets control allowed behavior. Overlay states change presentation or proof output. Map compatibility overrides can affect risky runtime paths, such as StartPos restore, to avoid corruption in specific map versions.
 
 ## Reading a ruleset
 
-For each feature, ask:
+When evaluating a feature's behavior, consider the following:
 
-1. Is the feature allowed in this ruleset?
-2. If allowed, what status does it record?
-3. Does any suboption have stricter behavior?
-4. Does a map compatibility override change the runtime path?
-5. Does an overlay state hide paths or add proof output?
+1. **Permission:** Is the feature allowed in the current primary ruleset?
+2. **Recording:** If allowed, what status (e.g., `RegularClean`, `Cheat`) does its use record?
+3. **Specificity:** Does a sub-option have stricter behavior?
+4. **Overrides:** Does a map compatibility override change the runtime path?
+5. **Presentation:** Does an overlay state hide paths or add proof output?
 
 See [Feature status reference](/reference/feature-status-reference) for the current feature classifications.
