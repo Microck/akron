@@ -82,7 +82,7 @@ The setup payload size limit is 2 MiB.
 
 ## Setup Sections
 
-| Section | Included data |
+| Section | Included Data |
 |---|---|
 | `Whole` | Active setup state, button bindings, menu action bindings, and StartPos slots. |
 | `StartPos` | StartPos settings and saved StartPos slots. |
@@ -120,24 +120,24 @@ If an import fails, current settings remain unchanged and a short toast notifica
 
 Settings included in `.akr` setup packs must meet these requirements:
 
-- A field in `AkronProfileState`.
-- Capture from `AkronModuleSettings`.
-- Apply back to `AkronModuleSettings`.
-- Scoped-section copy behavior when the setting belongs to `StartPos`, `AutoKill`, `AutoDeafen`, `Recorder`, `Audio`, or `Hud`.
-- Tests proving whole import/export and scoped import/export preserve the intended state.
+- Must be defined as a field in `AkronProfileState`.
+- Must support capture from `AkronModuleSettings`.
+- Must support application back to `AkronModuleSettings`.
+- Must implement scoped-section copy behavior when the setting belongs to `StartPos`, `AutoKill`, `AutoDeafen`, `Recorder`, `Audio`, or `Hud`.
+- Must have automated tests proving whole import/export and scoped import/export preserve the intended state.
 
 Avoid adding compatibility shims for old local packs unless explicitly required. Akron maintains a single canonical contract to ensure clear import errors.
 
-New archive kinds are used for payloads that are not setup/profile sections.
+New archive kinds are reserved for payloads that are not setup/profile sections.
 
 New archive kinds require:
 
 - A unique `Kind`, payload entry name, payload format string, and payload size limit.
-- Single-payload archive helpers.
-- Simple payload entry names, such as `labels.json`.
+- Dedicated single-payload archive helper methods.
+- Simple payload entry names (e.g., `labels.json`).
 - Unsupported payload-format rejection before state is applied.
-- Tests for round-trip, wrong kind, extra entries, oversized payload, and missing manifest.
-- Documentation on this page.
+- Comprehensive test coverage for round-trip, wrong kind, extra entries, oversized payload, and missing manifest.
+- Complete technical documentation updated on this page.
 
 Do not include multiple unrelated payloads in a single `.akr` archive. The current contract requires exactly one kind, one manifest, and one payload.
 
