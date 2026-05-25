@@ -55,6 +55,9 @@ jobs:
           if [ -n "$AKRON_CELESTE_REFS_TOKEN" ]; then
             curl_args+=(-H "Authorization: Bearer $AKRON_CELESTE_REFS_TOKEN")
           fi
+          if [[ "$AKRON_CELESTE_REFS_URL" == https://api.github.com/* ]]; then
+            curl_args+=(-H "Accept: application/octet-stream")
+          fi
 
           curl "${curl_args[@]}" "$AKRON_CELESTE_REFS_URL" -o "$archive_path"
 

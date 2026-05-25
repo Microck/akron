@@ -30,7 +30,7 @@ jobs:
 
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
-      IS_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+      IS_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || contains(github.ref_name, '-') }}
 
     steps:
       - name: Checkout
@@ -69,6 +69,9 @@ jobs:
           curl_args=(-fL --retry 3 --retry-delay 2)
           if [ -n "$AKRON_CELESTE_REFS_TOKEN" ]; then
             curl_args+=(-H "Authorization: Bearer $AKRON_CELESTE_REFS_TOKEN")
+          fi
+          if [[ "$AKRON_CELESTE_REFS_URL" == https://api.github.com/* ]]; then
+            curl_args+=(-H "Accept: application/octet-stream")
           fi
 
           curl "${curl_args[@]}" "$AKRON_CELESTE_REFS_URL" -o "$archive_path"
