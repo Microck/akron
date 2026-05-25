@@ -14,9 +14,9 @@ Proof-oriented metadata can include:
 - Active-feature list.
 - Pause counts and paused duration.
 - Map and loaded-module version context (via Map Version Stamp).
-- End-screen helper settings.
-- Recorder guard state (whether recording or replay buffering is armed).
-- Journal snapshot and compare output.
+- End Screen Helper settings.
+- Proof Recorder Guard state (whether recording or replay buffering is armed).
+- Journal Snapshot/Compare output.
 
 ```mermaid
 flowchart TD
@@ -44,9 +44,9 @@ Akron does not:
 
 ## Submission mode
 
-Submission mode enables proof-oriented guardrails and metadata without changing gameplay. Akron classifies Submission mode as **Goldberry/Hardlist clear** because it records and warns rather than mutating play.
+Submission Mode enables proof-oriented guardrails and metadata without changing gameplay. Akron classifies Submission Mode as **Goldberry/Hardlist clear** because it records and warns rather than mutating play.
 
-Related proof helpers include proof recorder guard, end-screen helper, pause tracker, map version stamp, golden start helper, lag pauser, and journal snapshot/compare. Each helper carries its own policy classification; enabling Submission mode does not make every helper Goldberry/Hardlist clear.
+Related proof helpers include Proof Recorder Guard, End Screen Helper, Pause Tracker, Map Version Stamp, Golden Start Helper, Lag Pauser, and Journal Snapshot/Compare. Each helper carries its own policy classification; enabling Submission Mode does not make every helper Goldberry/Hardlist clear.
 
 For proof overlay behavior that controls what appears on screen during a run, see [Streamer Mode and proof-mode states](/rulesets/streamer-mode-and-proof-overlays).
 
