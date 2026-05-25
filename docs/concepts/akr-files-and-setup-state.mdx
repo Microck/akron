@@ -3,11 +3,11 @@ title: .akr files and setup state
 description: Understand Akron setup state, scoped exports, and shareable archive files.
 ---
 
-Akron setup state stores options, bindings, StartPos slots, and scoped tool settings for the current play context. `.akr` files are the shareable archive format Akron uses for setup packs and other structured data.
+Akron setup state stores options, bindings, StartPos slots, and scoped tool settings for the current play context. `.akr` files are the shareable archive format Akron uses for profile packs and other structured data.
 
 ## Setup State
 
-Use separate setup backups for different goals so state-changing tools do not bleed into clean-play or accessibility setups. For most players, the practical choice is the setup pack or overlay section they are importing, not a ruleset name.
+Use separate profile packs for different goals so state-changing tools do not bleed into clean-play or accessibility setups. For most players, the practical choice is the profile pack or overlay section they are importing, not a ruleset name.
 
 The Akron overlay shows current policy/status state and tool state. It also supports `.akr` import/export for backing up or sharing the whole setup or a scoped section.
 
@@ -22,7 +22,7 @@ The Akron overlay shows current policy/status state and tool state. It also supp
 
 ## .akr Files
 
-An `.akr` file is a strict ZIP archive with a manifest and one payload. Current setup packs use a `profile.json` payload, which is the archive entry name for profile data.
+An `.akr` file is a strict ZIP archive with a manifest and one payload. Current profile packs use a `profile.json` payload, which is the archive entry name for profile data.
 
 ```mermaid
 flowchart TD
@@ -52,7 +52,7 @@ Scoped imports merge only the selected section into the current active settings.
 ## Sharing Guidance
 
 - Export only the section needed by the recipient.
-- Prefer scoped StartPos, Auto Kill, Auto Deafen, Recorder, or Audio packs over whole-setup packs for map-specific sharing.
+- Prefer scoped StartPos, Auto Kill, Auto Deafen, Recorder, or Audio packs over whole profile packs for map-specific sharing.
 - Keep a backup export before importing community packs.
 - Treat imported attempt-changing options as policy-visible when used.
 
