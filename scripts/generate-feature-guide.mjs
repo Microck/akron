@@ -1244,7 +1244,7 @@ function menusTableFor(rows) {
     return "";
   }
 
-  return `\n## Option Menus\n\nRows with a triangle expose the controls listed below.\n\n${[
+  return `\n## Option menus\n\nRows with a triangle expose the controls listed below.\n\n${[
     "| Option | Menu control | What it changes | Attempt status |",
     "|---|---|---|---|",
     ...menuRows.map((row) => `| ${mdEscape(row.option)} | ${mdEscape(row.suboption)} | ${mdEscape(row.description)} | ${mdEscape(row.status)} |`)
