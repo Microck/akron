@@ -1,7 +1,6 @@
 {
   "cycle": 1,
   "files_pending": [
-    "docs/getting-started/hotkeys.mdx",
     "docs/getting-started/configuration.mdx",
     "docs/getting-started/install.mdx",
     "docs/getting-started/first-run.mdx",
@@ -67,6 +66,7 @@
     "docs/images/raw-download.png",
     "docs/images/olympus-one-click-install.png",
     "docs/images/akr-export-scope.png",
-    "docs/images/akron-menu-anatomy.png"
+    "docs/images/akron-menu-anatomy.png",
+    "docs/getting-started/hotkeys.mdx"
   ]
 }
