@@ -1,7 +1,6 @@
 {
   "cycle": 2,
   "files_pending": [
-    "player-guide/overlay.mdx",
     "player-guide/interop.mdx",
     "player-guide/visual-and-accessibility.mdx",
     "player-guide/community-packs.mdx",
@@ -54,6 +53,7 @@
     "player-guide/menu-anatomy.mdx",
     "player-guide/hud-and-input-tools.mdx",
     "player-guide/gameplay-tools.mdx",
-    "player-guide/capture-and-recording.mdx"
+    "player-guide/capture-and-recording.mdx",
+    "player-guide/overlay.mdx"
   ]
 }
