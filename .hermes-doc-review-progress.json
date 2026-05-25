@@ -1,7 +1,6 @@
 {
   "cycle": 2,
   "files_pending": [
-    "rulesets/streamer-mode-and-proof-overlays.mdx",
     "reference/file-locations.mdx",
     "reference/debug-commands.mdx",
     "reference/feature-status-reference.mdx",
@@ -54,6 +53,7 @@
     "akr-packs/import-export.mdx",
     "rulesets/overview.mdx",
     "rulesets/leaderboard-clean.mdx",
-    "rulesets/practice-and-sandbox.mdx"
+    "rulesets/practice-and-sandbox.mdx",
+    "rulesets/streamer-mode-and-proof-overlays.mdx"
   ]
 }
