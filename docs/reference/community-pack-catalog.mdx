@@ -15,7 +15,7 @@ Catalog URLs are HTTPS JSON endpoints. Command examples use this placeholder:
 
 Replace this placeholder with a full catalog URL. Custom URLs enable local testing, self-hosted packs, or recovery if the primary catalog is unavailable.
 
-## JSON Shape
+## JSON shape
 
 The catalog is a JSON document with the following structure. Replace angle-bracket placeholders with valid HTTPS URLs:
 
@@ -43,7 +43,7 @@ The catalog is a JSON document with the following structure. Replace angle-brack
 }
 ```
 
-## Pack Fields
+## Pack fields
 
 | Field | Meaning |
 |---|---|
@@ -76,27 +76,28 @@ Hud
 
 In-game category buttons primarily focus on map-specific sharing cases: `All`, `StartPos`, `Auto Kill`, and `Auto Deafen`.
 
-## Publishing Guidelines
+## Publishing guidelines
 
 Each catalog entry must point to a `.akr` file for a specific map and sharing scope.
-Validate archives before adding them to the catalog.
-- The `mapSid` must match the Celeste map SID.
-- The `downloadUrl` must be a stable HTTPS URL for the `.akr` file.
-- Update catalog metadata whenever the pack changes.
+Before adding archives to the catalog, ensure that:
 
-## Validation Steps
+- The `mapSid` matches the Celeste map SID.
+- The `downloadUrl` is a stable HTTPS URL for the `.akr` file.
+- Catalog metadata is updated whenever the pack changes.
 
-Before publishing, ensure that:
+## Validation steps
 
-The archive contains exactly `manifest.json` and `profile.json`.
-The manifest `kind` is `profile`.
-- `profile.json` uses the `akron-profile-v1` format.
-The entry `section` matches the profile section, unless a different scope is intended.
-The download URL returns the expected `.akr` archive.
+Before publishing, perform the following validation steps:
+
+- Verify that the archive contains exactly `manifest.json` and `profile.json`.
+- Verify that the manifest `kind` is `profile`.
+- Ensure that `profile.json` uses the `akron-profile-v1` format.
+- Verify that the entry `section` matches the profile section, unless a different scope is intended.
+- Confirm that the download URL returns the expected `.akr` archive.
 
 See [Akron .akr archives](/reference/akr-archives) for the full archive contract and import safety rules.
 
-## Runtime Logic
+## Runtime logic
 
 Akron filters catalog entries using the following criteria:
 
@@ -106,7 +107,7 @@ Akron filters catalog entries using the following criteria:
 
 When a player imports a pack, Akron downloads it to `Saves/AkronProfiles/community-*.akr` and imports the declared scope.
 
-## Automation Commands
+## Automation commands
 
 Debug and live verification can drive the same browser flow:
 
