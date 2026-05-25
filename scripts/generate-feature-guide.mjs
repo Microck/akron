@@ -531,24 +531,24 @@ const optionMenus = {
     ["Diagonal", "Preserve diagonal down redirects.", "Cheat"]
   ],
   "Audio Splitter": [
-    ["Refresh devices", "Refresh FMOD output devices visible to Celeste.", "Normal clear"],
-    ["Music", "Choose the output device for the music audio route.", "Normal clear"],
-    ["SFX", "Choose the output device for the sound-effects audio route.", "Normal clear"],
-    ["Ambience", "Choose the output device for the ambience audio route.", "Normal clear"],
-    ["UI", "Choose the output device for the UI audio route.", "Normal clear"],
-    ["Unclassified", "Choose the output device for sounds Akron cannot classify into another route.", "Normal clear"]
+    ["Refresh devices", "Refresh FMOD output devices visible to Celeste.", "Regular clean"],
+    ["Music", "Choose the output device for the music audio route.", "Regular clean"],
+    ["SFX", "Choose the output device for the sound effects audio route.", "Regular clean"],
+    ["Ambience", "Choose the output device for the ambience audio route.", "Regular clean"],
+    ["UI", "Choose the output device for the UI audio route.", "Regular clean"],
+    ["Unclassified", "Choose the output device for sounds Akron cannot classify into another route.", "Regular clean"]
   ],
   "Allow Low Volume": [
-    ["Music volume", "Set forced low music volume.", "Normal clear"],
-    ["SFX volume", "Set forced low SFX volume.", "Normal clear"]
+    ["Music volume", "Set forced low music volume.", "Regular clean"],
+    ["SFX volume", "Set forced low SFX volume.", "Regular clean"]
   ],
   "Audio Speed": [
-    ["Policy: Normal/Sync/Independent", "Choose normal speed, Akron timescale sync, or an independent audio speed.", "Normal clear"],
-    ["Speed", "Set the independent audio speed multiplier.", "Normal clear"]
+    ["Policy: Normal/SyncTimescale/Independent", "Choose normal speed, Akron timescale sync, or an independent audio speed.", "Regular clean"],
+    ["Speed", "Set the independent audio speed multiplier.", "Regular clean"]
   ],
   "Pitch Shift": [
-    ["Policy: Preserve/Follow/Independent", "Choose normal pitch, pitch following audio speed, or an independent pitch.", "Normal clear"],
-    ["Pitch", "Set the independent pitch multiplier.", "Normal clear"]
+    ["Policy: Preserve/FollowSpeed/Independent", "Choose normal pitch, pitch following audio speed, or an independent pitch.", "Regular clean"],
+    ["Pitch", "Set the independent pitch multiplier.", "Regular clean"]
   ],
   "Free Camera": [
     ["Speed", "Set camera pan speed in world pixels per second.", "Cheat"],
