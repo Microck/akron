@@ -69,12 +69,12 @@
   "redirects": [
     {
       "source": "/special-thanks",
-      "destination": "/project/special-thanks",
+      "destination": "/docs/project/special-thanks",
       "permanent": true
     },
     {
       "source": "/docs/special-thanks",
-      "destination": "/project/special-thanks",
+      "destination": "/docs/project/special-thanks",
       "permanent": true
     },
     {
@@ -184,7 +184,7 @@
       {
         "group": "Project",
         "pages": [
-          "project/special-thanks"
+          "docs/project/special-thanks"
         ]
       }
     ]
