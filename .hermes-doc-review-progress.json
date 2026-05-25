@@ -1,7 +1,6 @@
 {
   "cycle": 2,
   "files_pending": [
-    "feature-guide/labels.mdx",
     "feature-guide/sound.mdx",
     "feature-guide/player.mdx",
     "feature-guide/creator.mdx",
@@ -54,6 +53,7 @@
     "feature-guide/keybinds.mdx",
     "feature-guide/shortcuts.mdx",
     "feature-guide/startpos.mdx",
-    "feature-guide/bypass.mdx"
+    "feature-guide/bypass.mdx",
+    "feature-guide/labels.mdx"
   ]
 }
