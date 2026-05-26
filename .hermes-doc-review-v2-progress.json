@@ -1,6 +1,5 @@
 {
   "files_remaining": [
-    "/home/ubuntu/workspace/akron/docs/feature-guide/global.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/index.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/interface.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/internal-recorder.mdx",
@@ -37,6 +36,7 @@
     "/home/ubuntu/workspace/akron/docs/troubleshooting/startpos-recovery.mdx"
   ],
   "files_reviewed": [
+    "/home/ubuntu/workspace/akron/docs/feature-guide/global.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/custom-labels.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/external-tools.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/bypass.mdx",

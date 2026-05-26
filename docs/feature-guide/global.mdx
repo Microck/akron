@@ -7,6 +7,8 @@ The Global tab collects options that affect the entire Akron session rather than
 
 | Option | Control | What it does | Attempt status |
 |---|---|---|---|
+| FPS Bypass | Numeric toggle | Raise the draw cadence while keeping the configured simulation cadence when possible. | Cheat |
+| TPS Bypass | Numeric toggle | Change the simulation tick cadence. | Cheat |
 | Timescale | Number | Open speed controls for decreasing or increasing gameplay timescale. | Cheat |
 | Safe Mode | Toggle | Safe Mode indicator plus optional local stat guards for deaths, jumps, and best-run fields. | Regular clean |
 | Submission Mode | Toggle | Enable recording metadata defaults and related warning surfaces without changing gameplay itself. | Goldberry/Hardlist clean |
@@ -22,6 +24,17 @@ Rows with a triangle expose the controls listed below.
 
 | Option | Menu control | What it changes | Attempt status |
 |---|---|---|---|
+| FPS Bypass | Target FPS | Draw target while FPS Bypass is enabled. Interval mode rounds to a clean multiple of TPS. | Cheat |
+| FPS Bypass | Method | Interval keeps render cadence aligned to physics ticks. Dynamic allows arbitrary FPS but is riskier for code that hooks the main tick. | Cheat |
+| FPS Bypass | Smooth Camera | Fancy is highest quality, Fast is cheaper but can jitter backgrounds, Off leaves the camera pixel-locked. | Cheat |
+| FPS Bypass | Objects | Extrapolate predicts between physics frames. Interpolate uses prior frames and can add 1-2 frames of delay. | Cheat |
+| FPS Bypass | TAS mode | Keeps overworld updates locked for TAS compatibility while level gameplay remains controlled by TPS Bypass. | Cheat |
+| FPS Bypass | Subpixel Madeline | Reference option for drawing Madeline and held items at subpixel render positions. | Cheat |
+| FPS Bypass | Smooth background | Reference option for high-resolution background compositing in Fancy camera smoothing. | Cheat |
+| FPS Bypass | Smooth foreground | Reference option for high-resolution foreground compositing in Fancy camera smoothing. | Cheat |
+| FPS Bypass | Hide edge gaps | Reference option: slightly zooms the level to hide gaps introduced by fractional camera offsets. | Cheat |
+| FPS Bypass | Silly mode | Apply an experimental smoothing preset to FPS Bypass rendering. | Cheat |
+| TPS Bypass | Target TPS | Simulation update target while TPS Bypass is enabled. Unlike FPS Bypass, this changes physics cadence. | Cheat |
 | Timescale | Enabled | Toggle gameplay timescale on or off. | Cheat |
 | Timescale | Decrease | Lower the gameplay timescale multiplier. | Cheat |
 | Timescale | Increase | Raise the gameplay timescale multiplier. | Cheat |
@@ -59,5 +72,13 @@ Rows with a triangle expose the controls listed below.
 | Control Display | Stroke | Set the selected key's outline color. | Goldberry/Hardlist clean |
 | Control Display | Text | Set the selected key's label color. | Goldberry/Hardlist clean |
 | Control Display | Outline | Set the selected key's outline width. | Goldberry/Hardlist clean |
-| Autosave | Backup behavior | Configure when Akron-owned backup state is saved. | Regular clean |
+| Autosave | Interval | Seconds between automatic save attempts. | Regular clean |
+| Autosave | Minimum delay | Cooldown before another automatic save can run. | Regular clean |
+| Autosave | Room load | Autosave on room load. | Regular clean |
+| Autosave | Spawn update | Autosave on spawn update. | Regular clean |
+| Autosave | Respawn | Autosave on respawn. | Regular clean |
+| Autosave | Pause | Autosave on pause. | Regular clean |
+| Autosave | Avoid gameplay | Avoid gameplay. | Regular clean |
+| Autosave | Save settings | Save settings. | Regular clean |
+| Autosave | Hide saving icon | Hide saving icon. | Regular clean |
 | Transition Speed | Multiplier | Adjust the next room-transition duration multiplier. | Cheat |
