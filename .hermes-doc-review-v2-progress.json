@@ -1,7 +1,5 @@
 {
   "files_remaining": [
-    "/home/ubuntu/workspace/akron/docs/feature-guide/bypass.mdx",
-    "/home/ubuntu/workspace/akron/docs/feature-guide/creator.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/custom-labels.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/external-tools.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/global.mdx",
@@ -41,6 +39,8 @@
     "/home/ubuntu/workspace/akron/docs/troubleshooting/startpos-recovery.mdx"
   ],
   "files_reviewed": [
+    "/home/ubuntu/workspace/akron/docs/feature-guide/bypass.mdx",
+    "/home/ubuntu/workspace/akron/docs/feature-guide/creator.mdx",
     "/home/ubuntu/workspace/akron/docs/akr-packs/import-export.mdx",
     "/home/ubuntu/workspace/akron/docs/akr-packs/manage-setups.mdx",
     "/home/ubuntu/workspace/akron/docs/concepts/akr-files-and-setup-state.mdx",
