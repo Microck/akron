@@ -33,8 +33,8 @@ Rows with a triangle expose the controls listed below.
 | Cursor Zoom | Allow zoom out | Allow zoom below the normal 100% view. | Cheat |
 | Cursor Zoom | Hold | Apply zoom only while the Cursor Zoom bind is held. | Cheat |
 | Cursor Zoom | Toggle | Press the Cursor Zoom bind to toggle the zoomed view on or off. | Cheat |
-| Cursor Zoom | Reset on deactivate | Reset zoom to 100% when Hold is released or Toggle is turned off. | Cheat |
-| Cursor Zoom | Scroll step | Set percent changed per mouse-wheel notch. | Cheat |
+| Cursor Zoom | Reset on deactivate | Reset the configured zoom back to 100% whenever Hold is released or Toggle is turned off. | Cheat |
+| Cursor Zoom | Scroll step | Percent added or removed for each mouse-wheel notch. | Cheat |
 | Cursor Zoom | Reset zoom | Return the level camera to neutral 1.0x without changing whether Cursor Zoom is enabled. | Cheat |
 | Room Capture | Capture Room | Capture overlapping tiles across the current room. | Goldberry/Hardlist clean |
 | Room Capture | Stop Scan | Stop the active room capture scan. | Goldberry/Hardlist clean |
@@ -43,12 +43,12 @@ Rows with a triangle expose the controls listed below.
 | Room Capture | Wait | Set frames to wait before each tile capture. | Goldberry/Hardlist clean |
 | Room Capture | Horizontal | Set the horizontal tile offset between captures. | Goldberry/Hardlist clean |
 | Room Capture | Vertical | Set the vertical tile offset between captures. | Goldberry/Hardlist clean |
-| Room Capture | Export markers | Draw StartPos, Auto Kill, and Auto Deafen overlays into exported image tiles. | Goldberry/Hardlist clean |
+| Room Capture | Export markers | Draw configured StartPos, Auto Kill, and Auto Deafen overlays into the exported image tiles. | Goldberry/Hardlist clean |
 | Room Capture | StartPos markers | Include all saved StartPos slots for each captured room when Export markers is on. | Goldberry/Hardlist clean |
 | Room Capture | Auto Kill areas | Include configured Auto Kill areas when Export markers is on. | Goldberry/Hardlist clean |
 | Room Capture | Auto Deafen areas | Include configured Auto Deafen areas when Export markers is on. | Goldberry/Hardlist clean |
 | Room Capture | Freeze timers | Keep level timers pinned while capture camera positions settle. | Cheat |
-| Room Capture | Noclip + hide Madeline | During capture, put Madeline in a dummy non-collidable hidden state. | Cheat |
+| Room Capture | Noclip + hide Madeline | During capture, put Madeline in a dummy non-collidable hidden state without changing the global Noclip or Hide Player settings. | Cheat |
 | Room Capture | Remove background | Exclude background layers from captured tiles. | Goldberry/Hardlist clean |
 | Room Capture | Remove foreground | Exclude foreground layers from captured tiles. | Goldberry/Hardlist clean |
 | Map Capture | Capture Map | Capture each room in the current map. | Goldberry/Hardlist clean |
@@ -58,14 +58,14 @@ Rows with a triangle expose the controls listed below.
 | Map Capture | Wait | Set frames to wait before each tile capture. | Goldberry/Hardlist clean |
 | Map Capture | Horizontal | Set the horizontal tile offset between captures. | Goldberry/Hardlist clean |
 | Map Capture | Vertical | Set the vertical tile offset between captures. | Goldberry/Hardlist clean |
-| Map Capture | Export markers | Draw configured markers into exported image tiles. | Goldberry/Hardlist clean |
+| Map Capture | Export markers | Draw configured StartPos, Auto Kill, and Auto Deafen overlays into the exported image tiles. | Goldberry/Hardlist clean |
 | Map Capture | StartPos markers | Include all saved StartPos slots for each captured room when Export markers is on. | Goldberry/Hardlist clean |
 | Map Capture | Auto Kill areas | Include configured Auto Kill areas when Export markers is on. | Goldberry/Hardlist clean |
 | Map Capture | Auto Deafen areas | Include configured Auto Deafen areas when Export markers is on. | Goldberry/Hardlist clean |
 | Map Capture | Freeze timers | Keep level timers pinned while capture camera positions settle. | Cheat |
-| Map Capture | Noclip + hide Madeline | During capture, put Madeline in a dummy non-collidable hidden state. | Cheat |
+| Map Capture | Noclip + hide Madeline | During capture, put Madeline in a dummy non-collidable hidden state without changing the global Noclip or Hide Player settings. | Cheat |
 | Map Capture | Remove background | Exclude background layers from captured tiles. | Goldberry/Hardlist clean |
 | Map Capture | Remove foreground | Exclude foreground layers from captured tiles. | Goldberry/Hardlist clean |
-| Camera Offset | Offset X | Configure current-level horizontal camera offset. | Cheat |
-| Camera Offset | Offset Y | Configure current-level vertical camera offset. | Cheat |
-| Camera Offset | Reset offset | Return the configured offset to 0,0. | Cheat |
+| Camera Offset | Offset X | Configured horizontal camera offset. The level camera only uses this while Camera Offset is toggled on. | Cheat |
+| Camera Offset | Offset Y | Configured vertical camera offset. The level camera only uses this while Camera Offset is toggled on. | Cheat |
+| Camera Offset | Reset offset | Return the configured offset to 0,0 and restore the live camera offset. | Cheat |

@@ -1,7 +1,6 @@
 {
   "cycle": 3,
   "files_pending": [
-    "feature-guide/creator.mdx",
     "feature-guide/interface.mdx",
     "feature-guide/internal-recorder.mdx",
     "feature-guide/external-tools.mdx",
@@ -54,6 +53,7 @@
     "feature-guide/bypass.mdx",
     "feature-guide/labels.mdx",
     "feature-guide/sound.mdx",
-    "feature-guide/player.mdx"
+    "feature-guide/player.mdx",
+    "feature-guide/creator.mdx"
   ]
 }
