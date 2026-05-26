@@ -1,8 +1,5 @@
 {
   "files_remaining": [
-    "/home/ubuntu/workspace/akron/docs/feature-guide/shortcuts.mdx",
-    "/home/ubuntu/workspace/akron/docs/feature-guide/sound.mdx",
-    "/home/ubuntu/workspace/akron/docs/feature-guide/startpos.mdx",
     "/home/ubuntu/workspace/akron/docs/getting-started/configuration.mdx",
     "/home/ubuntu/workspace/akron/docs/getting-started/first-run.mdx",
     "/home/ubuntu/workspace/akron/docs/getting-started/hotkeys.mdx",
@@ -54,6 +51,9 @@
     "/home/ubuntu/workspace/akron/docs/feature-guide/keybinds.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/labels.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/level.mdx",
-    "/home/ubuntu/workspace/akron/docs/feature-guide/player.mdx"
+    "/home/ubuntu/workspace/akron/docs/feature-guide/player.mdx",
+    "/home/ubuntu/workspace/akron/docs/feature-guide/shortcuts.mdx",
+    "/home/ubuntu/workspace/akron/docs/feature-guide/sound.mdx",
+    "/home/ubuntu/workspace/akron/docs/feature-guide/startpos.mdx"
   ]
 }
