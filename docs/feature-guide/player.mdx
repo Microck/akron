@@ -7,13 +7,13 @@ The Player tab covers Madeline-facing controls. Visual-only rows are generally p
 
 | Option | Control | What it does | Attempt status |
 |---|---|---|---|
-| Air Jumps | Toggle | Open controls for extra airborne jumps. | Cheat |
+| Air Jumps | Toggle | Open controls for infinite or limited airborne extra jumps. | Cheat |
 | Always Show Trail | Toggle | Force Madeline's dash trail to render continuously. | Regular clean |
 | Click Teleport | Toggle | Hold the cursor hotkey, then click to teleport to the in-room cursor position. | Cheat |
 | Custom Trail | Toggle | Customize forced trail color, rainbow mode, pulse, opacity, and cut rate. | Regular clean |
-| Dash Bar | Toggle | Show a dash-resource display. | Cheat |
+| Dash Bar | Toggle | Show dash pips as a compact dash resource display. | Cheat |
 | Dash Count | Toggle | Override the active dash count used for room entry, transitions, and dash refills. | Cheat |
-| Dash Number | Toggle | Show the current dash count as a number. | Cheat |
+| Dash Number | Toggle | Show the current dash count as a small number above Madeline. | Cheat |
 | Fast Lookout | Numeric toggle | Speed up vanilla lookout camera movement while holding the configured bind. | Cheat |
 | Frame Stepper | Toggle | Step one frozen frame and configure hold-to-repeat stepping. | Cheat |
 | Golden Start | Action | Run Celeste's first-room golden-start helper. | Goldberry/Hardlist clean |
@@ -37,7 +37,7 @@ The Player tab covers Madeline-facing controls. Visual-only rows are generally p
 | Prevent Down Dash Redirects | Toggle | Keep downward dash input from being converted to horizontal-only redirects. | Cheat |
 | Show Trajectory | Toggle | Draw a short current-velocity movement preview. | Cheat |
 | Speed Number | Toggle | Show current speed as a small number above Madeline. | Cheat |
-| Stamina Bar | Toggle | Show a stamina-resource display. | Cheat |
+| Stamina Bar | Toggle | Open Stamina Meter-style controls for player-attached and HUD stamina bars. | Cheat |
 
 ## Option menus
 
@@ -45,71 +45,83 @@ Rows with a triangle expose the controls listed below.
 
 | Option | Menu control | What it changes | Attempt status |
 |---|---|---|---|
-| Air Jumps | Infinite | Allow every unhandled airborne jump press to trigger another normal jump. | Cheat |
-| Air Jumps | Extra jumps | Configure a limited number of extra airborne jumps. | Cheat |
-| Click Teleport | Cursor action | Hold the cursor hotkey, then click to teleport to the in-room cursor position. | Cheat |
+| Air Jumps | Infinite jumps | Allow every unhandled airborne jump press to trigger another normal jump. | Cheat |
+| Air Jumps | Extra jumps | Configure a limited number of extra airborne jumps. Used when Infinite jumps is off. | Cheat |
 | Custom Trail | Mode: Fixed/Rainbow | Choose fixed color or rainbow color cycling for custom trails. | Regular clean |
 | Custom Trail | Pulse | Pulse custom trail brightness over time. | Regular clean |
-| Custom Trail | Cut rate | Emit one custom trail every N frames. | Regular clean |
+| Custom Trail | Cut rate | Emit one custom trail every N frames. 1 is the densest trail. | Regular clean |
 | Custom Trail | Opacity | Set custom trail opacity percentage. | Regular clean |
 | Custom Trail | Rainbow | Set rainbow cycle speed. | Regular clean |
 | Custom Trail | Color | Set the fixed custom trail color. | Regular clean |
 | Dash Bar | Player bar | Attach the dash bar near Madeline. | Cheat |
-| Dash Bar | Player | Choose the player-attached dash-bar placement relative to Madeline. | Cheat |
-| Dash Bar | Player X | Move the player-attached dash bar horizontally. | Cheat |
-| Dash Bar | Player Y | Move the player-attached dash bar vertically. | Cheat |
-| Dash Bar | Player % | Scale the player-attached dash bar. | Cheat |
+| Dash Bar | Player | Player-attached dash-bar placement relative to Madeline (Above or Below). | Cheat |
+| Dash Bar | Player X | Horizontal offset for the player-attached dash bar. | Cheat |
+| Dash Bar | Player Y | Vertical offset for the player-attached dash bar. | Cheat |
+| Dash Bar | Player % | Scale percentage for the player-attached dash bar. | Cheat |
 | Dash Bar | HUD bar | Show a fixed-position dash resource display. | Cheat |
-| Dash Bar | HUD | Choose the fixed dash display screen position. | Cheat |
-| Dash Bar | Style: Pips/Bar | Choose discrete dash pips or a segmented dash meter. | Cheat |
+| Dash Bar | HUD | Fixed dash display screen position (Left, Right, etc.). | Cheat |
+| Dash Bar | Style: Pips/Bar | Pips show discrete dash charges; Bar uses a segmented meter. | Cheat |
 | Dash Bar | HUD X | Move the fixed HUD dash bar horizontally. | Cheat |
 | Dash Bar | HUD Y | Move the fixed HUD dash bar vertically. | Cheat |
 | Dash Bar | Always visible | Keep the dash display visible even when dashes are full. | Cheat |
-| Dash Bar | Show label | Show the DASH label next to dash pips. | Cheat |
+| Dash Bar | Show label | Show the DASH label next to pips. | Cheat |
 | Dash Bar | Empty pips | Show depleted dash slots instead of only filled charges. | Cheat |
 | Dash Bar | Hide while paused | Hide dash bars while Celeste is paused. | Cheat |
 | Dash Bar | Available | Set the color for available dash charges. | Cheat |
 | Dash Bar | Empty | Set the color for depleted dash charges. | Cheat |
-| Dash Bar | Fill | Set the dash meter background fill color. | Cheat |
-| Dash Bar | Line | Set the dash meter outline color. | Cheat |
 | Dash Bar | Low | Set the no-dash warning color. | Cheat |
+| Dash Bar | Fill | Set the dash meter background fill color. | Cheat |
+| Dash Bar | Line | Set the dash meter outline and separator color. | Cheat |
+| Dash Count | Max | Set the forced maximum dash count used by Dash Count. | Cheat |
 | Dash Count | Refill on room entry | Set current dashes to the configured maximum when Madeline spawns in a room. | Cheat |
 | Dash Count | Refill on transition | Set current dashes to the configured maximum after room transitions. | Cheat |
-| Dash Count | Max | Set the forced maximum dash count used by Dash Count. | Cheat |
-| Dash Number | Offset X | Move the dash number horizontally near Madeline. | Cheat |
-| Dash Number | Offset Y | Move the dash number vertically near Madeline. | Cheat |
-| Dash Number | Color | Set the dash number text color. | Cheat |
+| Dash Number | Offset Y | Vertical offset from Madeline's center. | Cheat |
+| Dash Number | Opacity | Dash number opacity percentage. | Cheat |
+| Dash Number | Text | Dash number text color. | Cheat |
+| Dash Number | Outline | Dash number outline color. | Cheat |
 | Fast Lookout | Multiplier | Set lookout camera speed while the hold bind is pressed. | Cheat |
-| Frame Stepper | Freeze | Toggle frozen gameplay. | Cheat |
-| Frame Stepper | Step once | Advance one frozen frame. | Cheat |
-| Frame Stepper | Hold repeat | Repeat frame stepping while the key is held. | Cheat |
-| Frame Stepper | Delay | Set the initial hold time before repeated frame steps begin. | Cheat |
-| Frame Stepper | Interval | Set time between repeated frame steps while the key is held. | Cheat |
-| Golden Start | Run Golden Start | Run Celeste's give_golden helper when Akron detects the first-room start context. | Goldberry/Hardlist clean |
-| Golden Transparency | Opacity | Set golden berry and follower opacity. | Regular clean |
-| Golden Transparency | Reset opacity | Restore the default golden transparency opacity. | Regular clean |
-| Grab Mode | Hold | Use Celeste's normal hold-to-grab behavior. | Regular clean |
-| Grab Mode | Toggle | Toggle grab state from the configured control. | Regular clean |
-| Grab Mode | Invert | Invert the grab input behavior. | Regular clean |
-| Ground Refills | Dash refill | Allow ground contact to restore dash charges. | Cheat |
-| Ground Refills | Stamina refill | Allow ground contact to restore stamina. | Cheat |
-| Hazard Accuracy | Tint | Tint the gameplay screen when Hazard Accuracy detects invalid contact. | Cheat |
-| Hazard Accuracy | Reset | Restore default tint settings. | Cheat |
+| Frame Stepper | Step once | Advance one frozen frame. Only works while Freeze Gameplay is on. | Cheat |
+| Frame Stepper | Hold key repeats | When enabled, holding the step key advances frames repeatedly. | Cheat |
+| Frame Stepper | Delay | Frames to wait before hold-repeat starts. | Cheat |
+| Frame Stepper | Every | Frames between repeated steps after the delay. | Cheat |
+| Golden Transparency | Opacity | Set golden berry and follower opacity percentage used while Golden Transparency is toggled on. | Regular clean |
+| Golden Transparency | Reset opacity | Restore the default 55% golden transparency opacity. | Regular clean |
+| Grab Mode | Hold | Vanilla grab behavior: hold the grab key to grab. | Regular clean |
+| Grab Mode | Toggle | Press grab once to hold, then press again to release. | Regular clean |
+| Grab Mode | Invert | Hold grab to release instead of to grab. | Regular clean |
+| Ground Refills | Dash refill | Allow ground contact to restore dash charges while Ground Refills is enabled. | Cheat |
+| Ground Refills | Stamina refill | Allow ground contact to restore stamina while Ground Refills is enabled. | Cheat |
+| Hazard Accuracy | Invalid limit | Optional invalid-contact warning threshold. Zero disables the warning. | Cheat |
+| Hazard Accuracy | Screen tint | Tint the gameplay screen when Hazard Accuracy detects invalid contact. | Cheat |
+| Hazard Accuracy | On invalid entry | Flash the tint once when a new invalid contact streak begins. | Cheat |
+| Hazard Accuracy | While touching | Keep refreshing the tint for as long as Madeline overlaps invalid terrain or hazards. | Cheat |
+| Hazard Accuracy | Tint color | Screen tint color used when Hazard Accuracy detects invalid contact. | Cheat |
+| Hazard Accuracy | Tint opacity | Tint opacity percentage. | Cheat |
+| Hazard Accuracy | Tint duration | Tint fade duration in milliseconds after invalid contact stops. | Cheat |
+| Hazard Accuracy | Reset Accuracy | Reset the accumulated hazard accuracy statistics. | Cheat |
+| Hazard Accuracy | Defaults | Restore default tint settings: tint off, red, 90% opacity, and 0 ms duration. | Cheat |
 | Madeline Colors | No-dash color | Customize depleted-dash blue hair. | Regular clean |
-| Madeline Colors | One-dash color | Customize normal dash-available hair. | Regular clean |
+| Madeline Colors | One-dash color | Customize normal dash-available hair. This is the only custom state enabled by default. | Regular clean |
 | Madeline Colors | Two-dash color | Customize two-dash pink hair. | Regular clean |
 | Madeline Colors | Three-dash color | Customize hair when Madeline has three dashes. | Regular clean |
 | Madeline Colors | Four-dash color | Customize hair when Madeline has four dashes. | Regular clean |
 | Madeline Colors | Five-dash color | Customize hair when Madeline has five or more dashes. | Regular clean |
 | Madeline Colors | Gradient | Animate customized states between Gradient A and Gradient B. | Regular clean |
-| Madeline Colors | Gradient A | Set the gradient start color. | Regular clean |
-| Madeline Colors | Gradient B | Set the gradient end color. | Regular clean |
-| Madeline Hair Length | No dash | Set hair segment count when Madeline has no dash. | Regular clean |
-| Madeline Hair Length | One dash | Set hair segment count when Madeline has one dash. | Regular clean |
-| Madeline Hair Length | Two dash | Set hair segment count when Madeline has two dashes. | Regular clean |
-| Madeline Hair Length | Three dash | Set hair segment count when Madeline has three dashes. | Regular clean |
-| Madeline Hair Length | Four dash | Set hair segment count when Madeline has four dashes. | Regular clean |
-| Madeline Hair Length | Five dash | Set hair segment count when Madeline has five or more dashes. | Regular clean |
+| Madeline Colors | Speed | Gradient cycle speed. | Regular clean |
+| Madeline Colors | No dash | Color used when Madeline has no dash. | Regular clean |
+| Madeline Colors | One dash | Color used for baseline dash-available Madeline. | Regular clean |
+| Madeline Colors | Two dash | Color used when Madeline has two dashes. | Regular clean |
+| Madeline Colors | Three dash | Color used when Madeline has three dashes. | Regular clean |
+| Madeline Colors | Four dash | Color used when Madeline has four dashes. | Regular clean |
+| Madeline Colors | Five dash | Color used when Madeline has five or more dashes. | Regular clean |
+| Madeline Colors | Gradient A | Gradient start color. | Regular clean |
+| Madeline Colors | Gradient B | Gradient end color. | Regular clean |
+| Madeline Hair Length | No dash | Hair segment count when Madeline has no dash. | Regular clean |
+| Madeline Hair Length | One dash | Hair segment count when Madeline has one dash. | Regular clean |
+| Madeline Hair Length | Two dash | Hair segment count when Madeline has two dashes. | Regular clean |
+| Madeline Hair Length | Three dash | Hair segment count when Madeline has three dashes. | Regular clean |
+| Madeline Hair Length | Four dash | Hair segment count when Madeline has four dashes. | Regular clean |
+| Madeline Hair Length | Five dash | Hair segment count when Madeline has five or more dashes. | Regular clean |
 | Madeline Effect Sync | Dash particles | Match dash burst particles to the active hair color. | Regular clean |
 | Madeline Effect Sync | Dash trail | Match custom trail color to the active hair color. | Regular clean |
 | Madeline Effect Sync | Death effect | Match the death burst effect to the active hair color. | Regular clean |
@@ -117,17 +129,17 @@ Rows with a triangle expose the controls listed below.
 | Madeline Effect Sync | Crown color | Match compatible crown sprites to the active hair color. | Regular clean |
 | Noclip | Speed | Configure noclip movement speed. | Cheat |
 | Noclip | Grab speed | Configure slower movement while grab is held. | Cheat |
-| Noclip | Draw on top | Render Madeline above most objects while noclip is active. | Cheat |
-| Noclip | Hide player | Hide the player sprite while noclip is active. | Cheat |
+| Noclip | Draw Madeline on top | Render Madeline above most objects while noclip is active. | Cheat |
+| Noclip | Hide Madeline | Hide the player sprite while noclip is active (movement and camera follow still work). | Cheat |
 | Prevent Down Dash Redirects | Normal | Restore pure down when no horizontal input is held. | Cheat |
 | Prevent Down Dash Redirects | Diagonal | Preserve diagonal down redirects. | Cheat |
 | Show Trajectory | Mode: Map-aware/Simple | Choose simple prediction or map-aware truncation at selected map collisions. | Cheat |
-| Show Trajectory | Stop on solids | Stop map-aware prediction at solid collision. | Cheat |
-| Show Trajectory | Stop on hazards | Stop map-aware prediction at spikes or death objects. | Cheat |
-| Show Trajectory | Frames | Set preview length. | Cheat |
+| Show Trajectory | Stop on solids | In map-aware mode, stop the trajectory when it reaches solid map collision. | Cheat |
+| Show Trajectory | Stop on hazards | In map-aware mode, stop the trajectory when it reaches spikes or hazard-style death objects. | Cheat |
+| Show Trajectory | Frames | Preview length. Green estimates jump-held, red estimates jump-released (hidden while Free Camera is active). | Cheat |
 | Show Trajectory | Opacity | Set trajectory opacity percentage. | Cheat |
 | Show Trajectory | Thickness | Set trajectory line thickness in screen pixels. | Cheat |
-| Show Trajectory | Hitbox step | Draw one predicted frame hitbox every N simulated frames. | Cheat |
+| Show Trajectory | Hitbox step | Draw one predicted frame hitbox every N simulated frames when frame hitboxes are visible. | Cheat |
 | Show Trajectory | Path lines | Draw the red and green trajectory path lines. | Cheat |
 | Show Trajectory | Black shadow | Draw black outlines/shadows behind trajectory lines, markers, and hitboxes. | Cheat |
 | Show Trajectory | Point markers | Draw small dots along each predicted path. | Cheat |
@@ -136,22 +148,23 @@ Rows with a triangle expose the controls listed below.
 | Show Trajectory | End hitboxes | Draw predicted final player collider rectangles at the end of each path. | Cheat |
 | Show Trajectory | Hitbox outlines | Draw colored outlines around trajectory frame and end hitboxes. | Cheat |
 | Show Trajectory | Hitbox fill | Fill trajectory frame and end hitboxes with a low-opacity branch color. | Cheat |
-| Show Trajectory | Use hitbox color | Use Show Hitboxes' player color for trajectory end hitboxes. | Cheat |
+| Show Trajectory | Use hitbox color | Use Show Hitboxes' player color for trajectory end hitboxes, matching Akron's source behavior. | Cheat |
 | Show Trajectory | Jump held | Set the path color for jump-pressed/held prediction. | Cheat |
 | Show Trajectory | Jump released | Set the path color for jump-released prediction. | Cheat |
-| Show Trajectory | End hitbox | Set the custom end-hitbox color when not inheriting Show Hitboxes' player color. | Cheat |
+| Show Trajectory | End hitbox | Custom end-hitbox color when not inheriting Show Hitboxes' player color. | Cheat |
 | Speed Number | Mode: Total/Horizontal/Vertical | Choose whether the number uses total, horizontal, or vertical speed. | Cheat |
-| Speed Number | Offset X | Move the speed number horizontally near Madeline. | Cheat |
-| Speed Number | Offset Y | Move the speed number vertically near Madeline. | Cheat |
-| Speed Number | Color | Set the speed number text color. | Cheat |
-| Stamina Bar | Player bar | Attach the small stamina bar to Madeline. | Cheat |
-| Stamina Bar | Player | Choose whether the player-attached stamina bar appears above or below Madeline. | Cheat |
+| Speed Number | Offset Y | Vertical offset from Madeline's center. | Cheat |
+| Speed Number | Opacity | Speed number opacity percentage. | Cheat |
+| Speed Number | Text | Speed number text color. | Cheat |
+| Speed Number | Outline | Speed number outline color. | Cheat |
+| Stamina Bar | Player bar | Attach the small stamina bar to Madeline, matching Stamina Meter's small meter. | Cheat |
+| Stamina Bar | Player | Small meter placement relative to Madeline (Above or Below). | Cheat |
 | Stamina Bar | Player X | Move the player-attached stamina bar horizontally. | Cheat |
 | Stamina Bar | Player Y | Move the player-attached stamina bar vertically. | Cheat |
 | Stamina Bar | Player % | Scale the player-attached stamina bar. | Cheat |
 | Stamina Bar | HUD bar | Show the large fixed-position stamina bar. | Cheat |
-| Stamina Bar | HUD | Choose the large stamina meter screen position. | Cheat |
-| Stamina Bar | Style: Bar/Ring | Choose rectangular bar or circular ring presentation. | Cheat |
+| Stamina Bar | HUD | Large meter screen position. | Cheat |
+| Stamina Bar | Style: Bar/Ring | Choose rectangular bar or circular ring presentation (Ring style follows oatmealine/StaminaBar's idea). | Cheat |
 | Stamina Bar | HUD X | Move the fixed HUD stamina bar horizontally. | Cheat |
 | Stamina Bar | HUD Y | Move the fixed HUD stamina bar vertically. | Cheat |
 | Stamina Bar | Low STA | Set the stamina value where the bar switches to low-stamina color. | Cheat |
