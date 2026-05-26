@@ -87,7 +87,7 @@ if Akron helps with your Celeste practice, routing, captures, or setup sharing, 
 
 <p align="left">
   <a href="https://ko-fi.com/microck">
-    <img src="docs/images/ko-fi-quarzite.gif" alt="Quarzite skin with Ko-fi logo" width="360">
+    <img src="docs/images/ko-fi-quarzite.gif" alt="Quarzite skin with Ko-fi logo" width="160">
   </a>
 </p>
 
