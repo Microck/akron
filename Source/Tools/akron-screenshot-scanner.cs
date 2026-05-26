@@ -216,6 +216,7 @@ public static class AkronScreenshotScanner {
         Level.CameraLockModes previousCameraLockMode = level.CameraLockMode;
         bool suppressMadeline = AkronModule.Settings.ScreenshotScannerNoclipHideMadeline;
         bool freezeTime = AkronModule.Settings.ScreenshotScannerFreezeTime;
+        Entity timeStopEntity = null;
 
         try {
             // Keep capture suppression local. Reusing global Hide Player/Noclip
@@ -227,6 +228,11 @@ public static class AkronScreenshotScanner {
                 player.StateMachine.State = Player.StDummy;
             }
             level.CameraLockMode = Level.CameraLockModes.None;
+            if (freezeTime) {
+                timeStopEntity = new Entity();
+                timeStopEntity.Add(new TimeRateModifier(0f));
+                level.Add(timeStopEntity);
+            }
             if (AkronModule.Settings.ScreenshotScannerRemoveBackground) {
                 level.Background = new BackdropRenderer();
             }
@@ -292,6 +298,7 @@ public static class AkronScreenshotScanner {
             level.Background = previousBackground;
             level.Foreground = previousForeground;
             level.CameraLockMode = previousCameraLockMode;
+            timeStopEntity?.RemoveSelf();
             level.TimeActive = previousTime;
             level.RawTimeActive = previousRawTime;
         }
