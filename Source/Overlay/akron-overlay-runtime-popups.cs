@@ -224,10 +224,12 @@ public sealed partial class AkronOverlay {
         if (ImGui.Checkbox("Remove background##" + popupId, ref removeBg)) {
             AkronModule.Settings.ScreenshotScannerRemoveBackground = removeBg;
         }
+        DrawPopupTooltip("Infer transparent pixels by rendering each tile against black and white backgrounds.");
         bool removeFg = AkronModule.Settings.ScreenshotScannerRemoveForeground;
         if (ImGui.Checkbox("Remove foreground##" + popupId, ref removeFg)) {
             AkronModule.Settings.ScreenshotScannerRemoveForeground = removeFg;
         }
+        DrawPopupTooltip("Hide foreground effects during capture so parallax layers do not smear when tiles are merged.");
     }
 
     private static void DrawScreenshotScannerFormatRow(string popupId) {

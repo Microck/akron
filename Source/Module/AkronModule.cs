@@ -96,6 +96,7 @@ public partial class AkronModule : EverestModule {
         AkronSpeedrunToolBroker.Initialize();
         AkronInterop.Initialize();
         AkronNativeSavestateSupport.Initialize();
+        AkronScreenshotScanner.Load();
         On.Celeste.Level.Begin += LevelOnBegin;
         On.Celeste.Level.UpdateTime += LevelOnUpdateTime;
         On.Celeste.Level.Update += LevelOnUpdate;
@@ -189,6 +190,7 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Unload() {
+        AkronScreenshotScanner.Unload();
         AkronNativeSavestateSupport.Reset();
         AkronSaveLoadService.ClearRuntimeState();
         On.Celeste.Level.Begin -= LevelOnBegin;

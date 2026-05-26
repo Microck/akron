@@ -27,25 +27,14 @@ public static class AkronCapture {
         GraphicsDevice graphicsDevice = Engine.Instance.GraphicsDevice;
         Viewport captureViewport = Engine.Viewport;
         Viewport originalViewport = graphicsDevice.Viewport;
-        Color[] pixels = new Color[captureViewport.Width * captureViewport.Height];
+        Color[] pixels;
         Texture2D texture = null;
         Texture2D scaledTexture = null;
 
         try {
-            level.BeforeRender();
-            graphicsDevice.Viewport = captureViewport;
-            graphicsDevice.SetRenderTarget(null);
-            graphicsDevice.Clear(Engine.ClearColor);
-            IsCapturingGameFrame = true;
-            IsCapturingScannerOverlays = scannerOverlays;
-            try {
-                level.Render();
-            } finally {
-                IsCapturingGameFrame = false;
-                IsCapturingScannerOverlays = false;
-            }
-            level.AfterRender();
-            graphicsDevice.GetBackBufferData(captureViewport.Bounds, pixels, 0, pixels.Length);
+            pixels = AkronModule.Settings.ScreenshotScannerRemoveBackground
+                ? CaptureTransparentBackground(level, graphicsDevice, captureViewport, scannerOverlays)
+                : CaptureFrame(level, graphicsDevice, captureViewport, scannerOverlays, level.BackgroundColor);
 
             texture = new Texture2D(graphicsDevice, captureViewport.Width, captureViewport.Height, false, SurfaceFormat.Color);
             texture.SetData(pixels);
@@ -77,6 +66,97 @@ public static class AkronCapture {
 
         AkronModule.Session.LastScreenshotPath = outputPath;
         return outputPath;
+    }
+
+    private static Color[] CaptureTransparentBackground(Level level, GraphicsDevice graphicsDevice, Viewport captureViewport, bool scannerOverlays) {
+        Color previousBackgroundColor = level.BackgroundColor;
+        float previousBloomStrength = level.Bloom?.Strength ?? 0f;
+
+        try {
+            // ScreenshotTool infers alpha by rendering the same frame over white
+            // and black backgrounds. Dropping bloom from the white pass avoids
+            // counting the same glow twice when the two passes are combined.
+            if (level.Bloom != null) {
+                level.Bloom.Strength = 0f;
+            }
+            Color[] whitePixels = CaptureFrame(level, graphicsDevice, captureViewport, scannerOverlays, Color.White);
+            if (level.Bloom != null) {
+                level.Bloom.Strength = previousBloomStrength;
+            }
+            Color[] blackPixels = CaptureFrame(level, graphicsDevice, captureViewport, scannerOverlays, Color.Black);
+            return InferTransparentPixels(whitePixels, blackPixels);
+        } finally {
+            level.BackgroundColor = previousBackgroundColor;
+            if (level.Bloom != null) {
+                level.Bloom.Strength = previousBloomStrength;
+            }
+        }
+    }
+
+    private static Color[] CaptureFrame(Level level, GraphicsDevice graphicsDevice, Viewport captureViewport, bool scannerOverlays, Color backgroundColor) {
+        Color previousBackgroundColor = level.BackgroundColor;
+        Color[] pixels = new Color[captureViewport.Width * captureViewport.Height];
+        try {
+            level.BackgroundColor = backgroundColor;
+            level.BeforeRender();
+            graphicsDevice.Viewport = captureViewport;
+            graphicsDevice.SetRenderTarget(null);
+            graphicsDevice.Clear(backgroundColor);
+            IsCapturingGameFrame = true;
+            IsCapturingScannerOverlays = scannerOverlays;
+            try {
+                level.Render();
+            } finally {
+                IsCapturingGameFrame = false;
+                IsCapturingScannerOverlays = false;
+            }
+            level.AfterRender();
+            graphicsDevice.GetBackBufferData(captureViewport.Bounds, pixels, 0, pixels.Length);
+            return pixels;
+        } finally {
+            level.BackgroundColor = previousBackgroundColor;
+        }
+    }
+
+    internal static Color[] InferTransparentPixels(Color[] whitePixels, Color[] blackPixels) {
+        Color[] pixels = new Color[blackPixels.Length];
+        for (int i = 0; i < pixels.Length; i++) {
+            UnpackColor(whitePixels[i], out int whiteR, out _, out _, out _);
+            UnpackColor(blackPixels[i], out int blackR, out int blackG, out int blackB, out _);
+            (int r, int g, int b, int a) = InferTransparentChannels(whiteR, blackR, blackG, blackB);
+            pixels[i] = new Color(r, g, b, a);
+        }
+
+        return pixels;
+    }
+
+    internal static (int R, int G, int B, int A) InferTransparentChannels(int whiteR, int blackR, int blackG, int blackB) {
+        int alpha = ClampByte(255 - (whiteR - blackR));
+        if (alpha < 1) {
+            return (0, 0, 0, 0);
+        }
+
+        float multiplier = 255f / alpha;
+        return (
+            ClampByte((int) (blackR * multiplier)),
+            ClampByte((int) (blackG * multiplier)),
+            ClampByte((int) (blackB * multiplier)),
+            alpha);
+    }
+
+    private static int ClampByte(int value) {
+        if (value < 0) {
+            return 0;
+        }
+
+        return value > 255 ? 255 : value;
+    }
+
+    private static void UnpackColor(Color color, out int r, out int g, out int b, out int a) {
+        r = color.R;
+        g = color.G;
+        b = color.B;
+        a = color.A;
     }
 
     public static string CaptureToPath(Level level, string outputPath) {
