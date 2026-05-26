@@ -1,7 +1,5 @@
 {
   "files_remaining": [
-    "/home/ubuntu/workspace/akron/docs/feature-guide/internal-recorder.mdx",
-    "/home/ubuntu/workspace/akron/docs/feature-guide/keybinds.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/labels.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/level.mdx",
     "/home/ubuntu/workspace/akron/docs/feature-guide/player.mdx",
@@ -54,6 +52,8 @@
     "/home/ubuntu/workspace/akron/docs/contributing/public-architecture.mdx",
     "/home/ubuntu/workspace/akron/docs/contributing/testing-and-verification.mdx",
     "/home/ubuntu/workspace/akron/docs/docs.mdx",
-    "/home/ubuntu/workspace/akron/docs/index.mdx"
+    "/home/ubuntu/workspace/akron/docs/index.mdx",
+    "/home/ubuntu/workspace/akron/docs/feature-guide/internal-recorder.mdx",
+    "/home/ubuntu/workspace/akron/docs/feature-guide/keybinds.mdx"
   ]
 }
