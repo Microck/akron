@@ -40,13 +40,27 @@ dotnet test tests/akron-tests.csproj --nologo --filter ModuleSettingsTests
 dotnet test tests/akron-tests.csproj --nologo --filter ArchiveTests
 ```
 
+## Formatting
+
+Format changed C# project files before opening a pull request:
+
+```bash
+dotnet format Akron.sln --include Source/Core/AkronFeatureRegistry.cs tests/feature-registry-tests.cs
+```
+
+Replace the example file paths with the C# files changed by your pull request. Run the full formatter only when intentionally normalizing repository-wide style:
+
+```bash
+dotnet format Akron.sln
+```
+
 ## CI reference archive
 
 GitHub Actions does not commit `lib-stripped/` into the repository. CI build and test jobs need `AKRON_CELESTE_REFS_URL` to point at a zip or tar.gz archive containing a complete `lib-stripped` reference directory.
 
 Set `AKRON_CELESTE_REFS_TOKEN` only when the archive URL requires bearer-token auth.
 
-CI skips build and test steps until `AKRON_CELESTE_REFS_URL` is configured. Release packaging requires the archive and fails fast when it is missing.
+CI fails when `AKRON_CELESTE_REFS_URL` is not configured because a passing run must prove Akron can build and test. Release packaging requires the archive and fails fast when it is missing.
 
 ## Safety
 
@@ -67,7 +81,7 @@ CI skips build and test steps until `AKRON_CELESTE_REFS_URL` is configured. Rele
     Add focused tests for classification, defaults, clamps, archive shape, or non-trivial behavior.
   </Step>
   <Step title="Build and verify">
-    Run targeted tests, build, and [live verification](/contributing/testing-and-verification) when the behavior is visual, timing-sensitive, input-driven, or map-dependent.
+    Run formatting checks, targeted tests, build, and [live verification](/contributing/testing-and-verification) when the behavior is visual, timing-sensitive, input-driven, or map-dependent.
   </Step>
   <Step title="Update docs">
     Update user-facing docs and [contributor architecture notes](/contributing/public-architecture) when behavior, policy, or contracts change.

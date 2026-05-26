@@ -20,6 +20,18 @@ Run the test project:
 dotnet test tests/akron-tests.csproj --nologo
 ```
 
+Format changed C# project files before opening a pull request:
+
+```bash
+dotnet format Akron.sln --include Source/Core/AkronFeatureRegistry.cs tests/feature-registry-tests.cs
+```
+
+Replace the example file paths with the C# files changed by your pull request. Run the full formatter only when intentionally normalizing repository-wide style:
+
+```bash
+dotnet format Akron.sln
+```
+
 Target the smallest useful test when the change is narrow:
 
 ```bash
@@ -32,7 +44,7 @@ Set `CelestePrefix` if the checkout is not inside the normal Everest `Mods/Akron
 
 GitHub Actions uses a private reference archive instead of committing `lib-stripped/`. Set `AKRON_CELESTE_REFS_URL` to a zip or tar.gz archive containing a complete `lib-stripped` reference directory. Set `AKRON_CELESTE_REFS_TOKEN` only when the archive URL requires bearer-token auth.
 
-CI skips build/test steps until `AKRON_CELESTE_REFS_URL` is configured. Release packaging requires that archive and fails fast when it is missing.
+CI fails when `AKRON_CELESTE_REFS_URL` is not configured because a green run must prove the mod can build and test. Release packaging also requires that archive and fails fast when it is missing.
 
 ## Local Tooling
 
@@ -52,6 +64,7 @@ Before submitting, confirm that:
 - [ ] Public docs are updated when user-facing behavior changes.
 - [ ] Feature policy docs and registry tests are updated when status classification changes.
 - [ ] Tests are added or updated when behavior, persistence, archive shape, policy, or setup defaults change.
+- [ ] Changed C# project files were formatted with `dotnet format Akron.sln --include <changed-csharp-files>`.
 - [ ] New options or features include screenshot or video proof when the behavior is visible, input-driven, timing-sensitive, rendering-sensitive, capture-related, or gameplay-facing.
 - [ ] Fixes include after evidence for the corrected behavior when the behavior is visible or runtime-observable.
 - [ ] Fixes include before evidence when practical, especially for visual, overlay, capture, or gameplay regressions.

@@ -26,18 +26,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Check Celeste reference configuration
-        if: env.HAS_CELESTE_REFS != 'true'
         run: |
-          echo "::warning::Skipping Akron CI because AKRON_CELESTE_REFS_URL is not configured for this repository or event."
+          if [ "$HAS_CELESTE_REFS" != "true" ]; then
+            echo "::error::Missing AKRON_CELESTE_REFS_URL secret. CI cannot build or test Akron without the Celeste lib-stripped reference archive."
+            exit 1
+          fi
 
       - name: Setup .NET
-        if: env.HAS_CELESTE_REFS == 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
       - name: Restore Celeste references
-        if: env.HAS_CELESTE_REFS == 'true'
         env:
           AKRON_CELESTE_REFS_URL: ${{ secrets.AKRON_CELESTE_REFS_URL }}
           AKRON_CELESTE_REFS_TOKEN: ${{ secrets.AKRON_CELESTE_REFS_TOKEN }}
@@ -88,23 +88,18 @@ jobs:
           done
 
       - name: Restore
-        if: env.HAS_CELESTE_REFS == 'true'
         run: dotnet restore Akron.sln --nologo
 
       - name: Build
-        if: env.HAS_CELESTE_REFS == 'true'
         run: dotnet build Akron.sln --configuration Release --no-restore --nologo
 
       - name: Test
-        if: env.HAS_CELESTE_REFS == 'true'
         run: dotnet test tests/akron-tests.csproj --configuration Release --no-build --nologo
 
       - name: Verify packaged mod
-        if: env.HAS_CELESTE_REFS == 'true'
         run: test -f Akron.zip
 
       - name: Upload packaged mod
-        if: env.HAS_CELESTE_REFS == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Akron

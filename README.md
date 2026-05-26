@@ -74,6 +74,7 @@ see the [compatibility](https://akron.micr.dev/docs/troubleshooting/compatibilit
 Akron is a .NET Everest mod. for local development:
 
 ```bash
+dotnet format Akron.sln --include Source/Core/AkronFeatureRegistry.cs tests/feature-registry-tests.cs
 dotnet build Source/Akron.csproj
 dotnet test tests/akron-tests.csproj --nologo
 ```

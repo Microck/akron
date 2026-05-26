@@ -12,7 +12,7 @@ Akron changes must move from behavior to policy, then to implementation, and fin
 3. Update source code and tests.
 4. Update public docs if behavior, settings, policy, or file contracts changed.
 5. Update contributor docs if implementation boundaries, policy rules, or verification expectations changed.
-6. Run focused tests and build.
+6. Run formatting checks, focused tests, and build.
 7. Add live verification evidence when required.
 8. Disclose AI assistance when any AI tool materially helped produce the change.
 
@@ -48,6 +48,7 @@ Public docs should explain supported current behavior. Historical research notes
 Provide the smallest evidence that proves the change:
 
 - Test output for unit-level changes.
+- Formatting output from `dotnet format Akron.sln --include <changed-csharp-files>`.
 - Build output for source changes.
 - Screenshot or capture evidence for visual behavior.
 - Live verification notes for input, timing, camera, hitbox, transition, overlay, or map-dependent behavior.
@@ -59,6 +60,7 @@ Use screenshots for static UI, overlay, path, policy, or layout behavior. Use vi
 ## Pull Request Checklist
 
 - [ ] Keep the diff scoped to one goal.
+- [ ] Run `dotnet format Akron.sln --include <changed-csharp-files>` for changed C# project files.
 - [ ] Include the tests or checks that were run.
 - [ ] Include screenshot or video proof for new visible, input-driven, timing-sensitive, rendering-sensitive, capture-related, or gameplay-facing options and features.
 - [ ] Include after evidence for fixes when the corrected behavior is visible or runtime-observable.
