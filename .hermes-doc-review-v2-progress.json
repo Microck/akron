@@ -1,8 +1,5 @@
 {
   "files_remaining": [
-    "/home/ubuntu/workspace/akron/docs/concepts/akr-files-and-setup-state.mdx",
-    "/home/ubuntu/workspace/akron/docs/concepts/clean-vs-cheat.mdx",
-    "/home/ubuntu/workspace/akron/docs/concepts/proof-and-submission-mode.mdx",
     "/home/ubuntu/workspace/akron/docs/concepts/rulesets-and-status.mdx",
     "/home/ubuntu/workspace/akron/docs/contributing/contribution-workflow.mdx",
     "/home/ubuntu/workspace/akron/docs/contributing/development-setup.mdx",
@@ -54,6 +51,9 @@
   ],
   "files_reviewed": [
     "/home/ubuntu/workspace/akron/docs/akr-packs/import-export.mdx",
-    "/home/ubuntu/workspace/akron/docs/akr-packs/manage-setups.mdx"
+    "/home/ubuntu/workspace/akron/docs/akr-packs/manage-setups.mdx",
+    "/home/ubuntu/workspace/akron/docs/concepts/akr-files-and-setup-state.mdx",
+    "/home/ubuntu/workspace/akron/docs/concepts/clean-vs-cheat.mdx",
+    "/home/ubuntu/workspace/akron/docs/concepts/proof-and-submission-mode.mdx"
   ]
 }
