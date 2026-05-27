@@ -10,6 +10,12 @@ public static class AkronSpeedrunToolBroker {
     private static MethodInfo reflectedSaveStateTas;
     private static MethodInfo reflectedLoadStateTas;
     private static MethodInfo reflectedIsSaved;
+    private static Type reflectedRoomTimerType;
+    private static PropertyInfo reflectedSettingsInstance;
+    private static PropertyInfo reflectedEnabledProperty;
+    private static PropertyInfo reflectedRoomTimerTypeProperty;
+    private static object reflectedRoomTimerOffValue;
+    private static bool roomTimerReflectionWarningLogged;
 
     public static void Initialize() {
         EnsureImports();
@@ -80,6 +86,39 @@ public static class AkronSpeedrunToolBroker {
         SpeedrunToolTasImports.ClearState?.Invoke(slotName);
     }
 
+    internal static object SuppressRoomTimerHudForCapture() {
+        if (!TryEnsureRoomTimerReflection()) {
+            return null;
+        }
+
+        object settings = reflectedSettingsInstance?.GetValue(null);
+        if (settings == null ||
+            reflectedRoomTimerTypeProperty == null ||
+            reflectedRoomTimerOffValue == null) {
+            return null;
+        }
+
+        object previousEnabled = reflectedEnabledProperty?.GetValue(settings);
+        object previous = reflectedRoomTimerTypeProperty.GetValue(settings);
+        reflectedEnabledProperty?.SetValue(settings, false);
+        if (!Equals(previous, reflectedRoomTimerOffValue)) {
+            reflectedRoomTimerTypeProperty.SetValue(settings, reflectedRoomTimerOffValue);
+        }
+
+        return new SpeedrunToolRoomTimerState(settings, previousEnabled, previous);
+    }
+
+    internal static void RestoreRoomTimerHudAfterCapture(object state) {
+        if (state is not SpeedrunToolRoomTimerState roomTimerState ||
+            reflectedRoomTimerTypeProperty == null ||
+            roomTimerState.Settings == null) {
+            return;
+        }
+
+        reflectedRoomTimerTypeProperty.SetValue(roomTimerState.Settings, roomTimerState.PreviousRoomTimerType);
+        reflectedEnabledProperty?.SetValue(roomTimerState.Settings, roomTimerState.PreviousEnabled);
+    }
+
     private static bool EnsureImports() {
         typeof(SpeedrunToolTasImports).ModInterop();
         return true;
@@ -111,6 +150,57 @@ public static class AkronSpeedrunToolBroker {
         reflectedSaveStateTas = saveSlotsManagerType.GetMethod("SaveStateTas", BindingFlags.Public | BindingFlags.Static);
         reflectedLoadStateTas = saveSlotsManagerType.GetMethod("LoadStateTas", BindingFlags.Public | BindingFlags.Static);
         reflectedIsSaved = saveSlotsManagerType.GetMethod("IsSaved", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(string) }, null);
+    }
+
+    private static bool TryEnsureRoomTimerReflection() {
+        if (reflectedSettingsInstance != null &&
+            reflectedRoomTimerTypeProperty != null &&
+            reflectedRoomTimerOffValue != null) {
+            return true;
+        }
+
+        try {
+            Assembly speedrunToolAssembly = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(assembly => assembly.GetType("Celeste.Mod.SpeedrunTool.SpeedrunToolSettings") != null);
+            Type settingsType = speedrunToolAssembly?.GetType("Celeste.Mod.SpeedrunTool.SpeedrunToolSettings");
+            reflectedRoomTimerType = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(assembly => assembly.GetType("Celeste.Mod.SpeedrunTool.RoomTimer.RoomTimerType"))
+                .FirstOrDefault(type => type != null);
+            if (settingsType == null || reflectedRoomTimerType == null) {
+                return false;
+            }
+
+            reflectedSettingsInstance = settingsType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
+            reflectedEnabledProperty = settingsType.GetProperty("Enabled", BindingFlags.Public | BindingFlags.Instance);
+            reflectedRoomTimerTypeProperty = settingsType.GetProperty("RoomTimerType", BindingFlags.Public | BindingFlags.Instance);
+            reflectedRoomTimerOffValue = Enum.Parse(reflectedRoomTimerType, "Off");
+            return reflectedSettingsInstance != null &&
+                   reflectedRoomTimerTypeProperty != null &&
+                   reflectedRoomTimerOffValue != null;
+        } catch (Exception exception) {
+            if (!roomTimerReflectionWarningLogged) {
+                Logger.Log(LogLevel.Warn, nameof(AkronSpeedrunToolBroker), "Failed to prepare Speedrun Tool room timer suppression for capture: " + exception);
+                roomTimerReflectionWarningLogged = true;
+            }
+
+            reflectedSettingsInstance = null;
+            reflectedEnabledProperty = null;
+            reflectedRoomTimerTypeProperty = null;
+            reflectedRoomTimerOffValue = null;
+            return false;
+        }
+    }
+
+    private sealed class SpeedrunToolRoomTimerState {
+        public SpeedrunToolRoomTimerState(object settings, object previousEnabled, object previousRoomTimerType) {
+            Settings = settings;
+            PreviousEnabled = previousEnabled;
+            PreviousRoomTimerType = previousRoomTimerType;
+        }
+
+        public object Settings { get; }
+        public object PreviousEnabled { get; }
+        public object PreviousRoomTimerType { get; }
     }
 
     [ModImportName("SpeedrunTool.TasAction")]

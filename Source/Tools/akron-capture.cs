@@ -95,22 +95,29 @@ public static class AkronCapture {
 
     private static Color[] CaptureFrame(Level level, GraphicsDevice graphicsDevice, Viewport captureViewport, bool scannerOverlays, Color backgroundColor) {
         Color previousBackgroundColor = level.BackgroundColor;
+        SpeedrunType previousSpeedrunClock = global::Celeste.Settings.Instance.SpeedrunClock;
+        object speedrunToolRoomTimerState = null;
         Color[] pixels = new Color[captureViewport.Width * captureViewport.Height];
         try {
             level.BackgroundColor = backgroundColor;
-            level.BeforeRender();
-            graphicsDevice.Viewport = captureViewport;
-            graphicsDevice.SetRenderTarget(null);
-            graphicsDevice.Clear(backgroundColor);
             IsCapturingGameFrame = true;
             IsCapturingScannerOverlays = scannerOverlays;
+            AkronModule.EnsureCaptureSuppressionHooks();
+            global::Celeste.Settings.Instance.SpeedrunClock = SpeedrunType.Off;
+            speedrunToolRoomTimerState = AkronSpeedrunToolBroker.SuppressRoomTimerHudForCapture();
             try {
+                level.BeforeRender();
+                graphicsDevice.Viewport = captureViewport;
+                graphicsDevice.SetRenderTarget(null);
+                graphicsDevice.Clear(backgroundColor);
                 level.Render();
+                level.AfterRender();
             } finally {
+                AkronSpeedrunToolBroker.RestoreRoomTimerHudAfterCapture(speedrunToolRoomTimerState);
+                global::Celeste.Settings.Instance.SpeedrunClock = previousSpeedrunClock;
                 IsCapturingGameFrame = false;
                 IsCapturingScannerOverlays = false;
             }
-            level.AfterRender();
             graphicsDevice.GetBackBufferData(captureViewport.Bounds, pixels, 0, pixels.Length);
             return pixels;
         } finally {

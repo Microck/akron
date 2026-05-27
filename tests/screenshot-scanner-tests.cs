@@ -37,6 +37,22 @@ public sealed class ScreenshotScannerTests {
         Assert.Equal(16, tiles.Length);
     }
 
+    [Theory]
+    [InlineData(528, -88, 944, 180, 320f, 180f, 160, 120)]
+    [InlineData(0, 0, 650, 430, 320f, 180f, 160, 120)]
+    [InlineData(-40, 32, 128, 96, 320f, 180f, 160, 120)]
+    public void ScanTilesCoverEveryRoomEdgeWithoutCutoff(int roomLeft, int roomTop, int roomWidth, int roomHeight, float cameraWidth, float cameraHeight, int stepX, int stepY) {
+        AkronScreenshotScanTile[] tiles = AkronScreenshotScanner
+            .BuildScanTiles(roomLeft, roomTop, roomWidth, roomHeight, cameraWidth, cameraHeight, stepX, stepY)
+            .ToArray();
+
+        Assert.NotEmpty(tiles);
+        Assert.True(tiles.Min(tile => tile.CameraX) <= roomLeft);
+        Assert.True(tiles.Min(tile => tile.CameraY) <= roomTop);
+        Assert.True(tiles.Max(tile => tile.CameraX + cameraWidth) >= roomLeft + roomWidth);
+        Assert.True(tiles.Max(tile => tile.CameraY + cameraHeight) >= roomTop + roomHeight);
+    }
+
     [Fact]
     public void RoomMetadataMatchesScreenshotToolShape() {
         string json = AkronScreenshotScanner.BuildRoomMetadataJson(

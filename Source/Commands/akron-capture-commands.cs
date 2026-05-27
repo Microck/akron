@@ -5,7 +5,7 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronCommands {
-    [Command("akron_room_capture", "control Room Capture: start|stop|status|format <png|jpg>|markers <on|off>|startpos <on|off>|autokill <on|off>|autodeafen <on|off>")]
+    [Command("akron_room_capture", "control Room Capture: start|stop|status|format <png|jpg>|markers <on|off>|startpos <on|off>|autokill <on|off>|autodeafen <on|off>|removebg <on|off>|removefg <on|off>|wait <frames>|horizontal <tiles>|vertical <tiles>")]
     public static void RoomCapture(string action = "status", string value = "") {
         Level level = Engine.Scene as Level;
         if (!ApplyScreenshotCaptureSetting(action, value, out bool handled)) {
@@ -33,7 +33,7 @@ public static partial class AkronCommands {
         LogScreenshotCaptureSettings();
     }
 
-    [Command("akron_map_capture", "control Map Capture: start|stop|status|format <png|jpg>|markers <on|off>|startpos <on|off>|autokill <on|off>|autodeafen <on|off>")]
+    [Command("akron_map_capture", "control Map Capture: start|stop|status|format <png|jpg>|markers <on|off>|startpos <on|off>|autokill <on|off>|autodeafen <on|off>|removebg <on|off>|removefg <on|off>|wait <frames>|horizontal <tiles>|vertical <tiles>")]
     public static void MapCapture(string action = "status", string value = "") {
         Level level = Engine.Scene as Level;
         if (!ApplyScreenshotCaptureSetting(action, value, out bool handled)) {
@@ -108,6 +108,50 @@ public static partial class AkronCommands {
                 }
                 AkronModule.Settings.ScreenshotScannerExportAutoDeafenAreas = autoDeafenAreas;
                 return true;
+            case "removebg":
+            case "removebackground":
+            case "background":
+                if (!TryParseBoolean(value, out bool removeBackground)) {
+                    Log("usage: capture removebg <on|off>");
+                    return false;
+                }
+                AkronModule.Settings.ScreenshotScannerRemoveBackground = removeBackground;
+                return true;
+            case "removefg":
+            case "removeforeground":
+            case "foreground":
+                if (!TryParseBoolean(value, out bool removeForeground)) {
+                    Log("usage: capture removefg <on|off>");
+                    return false;
+                }
+                AkronModule.Settings.ScreenshotScannerRemoveForeground = removeForeground;
+                return true;
+            case "wait":
+            case "waitframes":
+                if (!int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int waitFrames)) {
+                    Log("usage: capture wait <frames>");
+                    return false;
+                }
+                AkronModule.Settings.ScreenshotScannerWaitFrames = AkronModuleSettings.ClampScreenshotScannerWaitFrames(waitFrames);
+                return true;
+            case "horizontal":
+            case "h":
+            case "x":
+                if (!int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int horizontalTiles)) {
+                    Log("usage: capture horizontal <tiles>");
+                    return false;
+                }
+                AkronModule.Settings.ScreenshotScannerHorizontalOffsetTiles = AkronModuleSettings.ClampScreenshotScannerOffsetTiles(horizontalTiles);
+                return true;
+            case "vertical":
+            case "v":
+            case "y":
+                if (!int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int verticalTiles)) {
+                    Log("usage: capture vertical <tiles>");
+                    return false;
+                }
+                AkronModule.Settings.ScreenshotScannerVerticalOffsetTiles = AkronModuleSettings.ClampScreenshotScannerOffsetTiles(verticalTiles);
+                return true;
             default:
                 handled = false;
                 return true;
@@ -122,5 +166,10 @@ public static partial class AkronCommands {
         Log("capture-markers-autodeafen: " + AkronModule.Settings.ScreenshotScannerExportAutoDeafenAreas.ToString().ToLowerInvariant());
         Log("capture-freeze-time: " + AkronModule.Settings.ScreenshotScannerFreezeTime.ToString().ToLowerInvariant());
         Log("capture-noclip-hide-madeline: " + AkronModule.Settings.ScreenshotScannerNoclipHideMadeline.ToString().ToLowerInvariant());
+        Log("capture-remove-background: " + AkronModule.Settings.ScreenshotScannerRemoveBackground.ToString().ToLowerInvariant());
+        Log("capture-remove-foreground: " + AkronModule.Settings.ScreenshotScannerRemoveForeground.ToString().ToLowerInvariant());
+        Log("capture-wait-frames: " + AkronModuleSettings.ClampScreenshotScannerWaitFrames(AkronModule.Settings.ScreenshotScannerWaitFrames).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Log("capture-horizontal-tiles: " + AkronModuleSettings.ClampScreenshotScannerOffsetTiles(AkronModule.Settings.ScreenshotScannerHorizontalOffsetTiles).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Log("capture-vertical-tiles: " + AkronModuleSettings.ClampScreenshotScannerOffsetTiles(AkronModule.Settings.ScreenshotScannerVerticalOffsetTiles).ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 }

@@ -62,6 +62,7 @@ public partial class AkronModule : EverestModule {
     private static bool cursorZoomToggleActive;
     private static bool cursorZoomLastBindDown;
     private static bool pauseTimerFreezeStoppedTimer;
+    private static bool captureSuppressionHooksInstalled;
     private static bool startPosPlacementLastLeftDown;
     private static int jumpHackAirJumpsUsed;
     private static readonly Dictionary<PlayerDeadBody, float> respawnTimeElapsed = new Dictionary<PlayerDeadBody, float>();
@@ -104,6 +105,8 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.Render += LevelOnRender;
         On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent += HudRendererOnRenderContent;
+        On.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiOnRender;
+        On.Celeste.MiniTextbox.Render += MiniTextboxOnRender;
         On.Celeste.BackdropRenderer.Render += BackdropRendererOnRender;
         On.Celeste.WaterFall.Render += WaterFallOnRender;
         On.Celeste.WaterFall.RenderDisplacement += WaterFallOnRenderDisplacement;
@@ -200,6 +203,13 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.Render -= LevelOnRender;
         On.Celeste.GameplayRenderer.Render -= GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent -= HudRendererOnRenderContent;
+        On.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiOnRender;
+        On.Celeste.MiniTextbox.Render -= MiniTextboxOnRender;
+        if (captureSuppressionHooksInstalled) {
+            On.Celeste.SpeedrunTimerDisplay.Render -= SpeedrunTimerDisplayOnRender;
+            On.Celeste.SpeedrunTimerDisplay.DrawTime -= SpeedrunTimerDisplayOnDrawTime;
+            captureSuppressionHooksInstalled = false;
+        }
         On.Celeste.BackdropRenderer.Render -= BackdropRendererOnRender;
         On.Celeste.WaterFall.Render -= WaterFallOnRender;
         On.Celeste.WaterFall.RenderDisplacement -= WaterFallOnRenderDisplacement;
@@ -578,6 +588,10 @@ public partial class AkronModule : EverestModule {
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
         try {
             AkronHudRenderer.Render(level, ignoreDeathWipeSuppression);
+            if (AkronCapture.IsCapturingGameFrame) {
+                return;
+            }
+
             AkronHudRenderer.RenderAutomationAreas(level);
             RenderVisualTuningTint();
             RenderNoclipAccuracyTint();
@@ -598,6 +612,10 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void HudRendererOnRenderContent(On.Celeste.HudRenderer.orig_RenderContent orig, HudRenderer self, Scene scene) {
+        if (AkronCapture.IsCapturingGameFrame) {
+            return;
+        }
+
         if (AkronRuntimeOptions.ShouldSuppressPauseHud(scene)) {
             return;
         }
@@ -614,6 +632,64 @@ public partial class AkronModule : EverestModule {
         } finally {
             self.BackgroundFade = backgroundFade;
         }
+    }
+
+    internal static void EnsureCaptureSuppressionHooks() {
+        if (captureSuppressionHooksInstalled) {
+            return;
+        }
+
+        // Speedrun Tool and other late-loading mods can hook timer rendering
+        // after Akron's Load hook runs. Installing this on first capture puts
+        // Akron's capture suppression at the end of the active render chain.
+        using (new DetourConfigContext(new DetourConfig(
+                   "Akron.CaptureSuppression.SpeedrunTimerDisplay",
+                   after: new List<string> { "*" }
+               )).Use()) {
+            On.Celeste.SpeedrunTimerDisplay.Render += SpeedrunTimerDisplayOnRender;
+            On.Celeste.SpeedrunTimerDisplay.DrawTime += SpeedrunTimerDisplayOnDrawTime;
+        }
+        captureSuppressionHooksInstalled = true;
+    }
+
+    private static void SpeedrunTimerDisplayOnRender(On.Celeste.SpeedrunTimerDisplay.orig_Render orig, SpeedrunTimerDisplay self) {
+        if (AkronCapture.IsCapturingGameFrame) {
+            return;
+        }
+
+        orig(self);
+    }
+
+    private static void SpeedrunTimerDisplayOnDrawTime(
+        On.Celeste.SpeedrunTimerDisplay.orig_DrawTime orig,
+        Vector2 position,
+        string timeString,
+        float scale,
+        bool valid,
+        bool finished,
+        bool bestTime,
+        float alpha) {
+        if (AkronCapture.IsCapturingGameFrame) {
+            return;
+        }
+
+        orig(position, timeString, scale, valid, finished, bestTime, alpha);
+    }
+
+    private static void TalkComponentUiOnRender(On.Celeste.TalkComponent.TalkComponentUI.orig_Render orig, TalkComponent.TalkComponentUI self) {
+        if (AkronCapture.IsCapturingGameFrame) {
+            return;
+        }
+
+        orig(self);
+    }
+
+    private static void MiniTextboxOnRender(On.Celeste.MiniTextbox.orig_Render orig, MiniTextbox self) {
+        if (AkronCapture.IsCapturingGameFrame) {
+            return;
+        }
+
+        orig(self);
     }
 
     private static void TextMenuOnUpdate(On.Celeste.TextMenu.orig_Update orig, TextMenu self) {
@@ -665,7 +741,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void AutoSavingNoticeOnRender(On.Celeste.AutoSavingNotice.orig_Render orig, AutoSavingNotice self, Scene scene) {
-        if (Settings.AutosaveHideSavingIcon) {
+        if (AkronCapture.IsCapturingGameFrame || Settings.AutosaveHideSavingIcon) {
             return;
         }
 

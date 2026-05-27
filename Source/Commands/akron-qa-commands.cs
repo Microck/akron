@@ -41,7 +41,7 @@ public static partial class AkronCommands {
 
         AreaKey area = data.ToKey(mode);
         SaveData saveData = CreateQaSaveData(area);
-        AreaStats stats = saveData.GetAreaStatsFor(area) ?? new AreaStats(area.ID);
+        AreaStats stats = EnsureQaAreaStats(saveData, area);
         Session session = new Session(area, null, stats);
         saveData.StartSession(session);
         Engine.Scene = new LevelLoader(session);
@@ -69,11 +69,50 @@ public static partial class AkronCommands {
 
         AreaKey area = data.ToKey(mode);
         SaveData saveData = CreateQaSaveData(area);
-        AreaStats stats = saveData.GetAreaStatsFor(area) ?? new AreaStats(area.ID);
+        AreaStats stats = EnsureQaAreaStats(saveData, area);
         Session session = new Session(area, null, stats);
         saveData.StartSession(session);
         Engine.Scene = new LevelLoader(session);
         Log("qa-enter-map: sid=" + data.SID + ";area=" + area.ID.ToString(CultureInfo.InvariantCulture) + ";mode=" + mode);
+    }
+
+    [Command("akron_qa_warp_room", "warp to a room in the current loaded map for Akron live automation: [room-name]")]
+    public static void QaWarpRoom(string roomName = "") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(roomName)) {
+            Log("qa-warp-room: missing room");
+            return;
+        }
+
+        LevelData room = level.Session.MapData.Get(roomName.Trim());
+        if (room == null) {
+            Log("qa-warp-room: not-found room=" + roomName);
+            return;
+        }
+
+        level.OnEndOfFrame += () => {
+            if (Engine.Scene != level) {
+                return;
+            }
+
+            Vector2 probe = new Vector2(room.Bounds.Left, room.Bounds.Bottom);
+            level.Session.Level = room.Name;
+            level.Session.RespawnPoint = level.Session.GetSpawnPoint(probe);
+            level.StartPosition = null;
+            level.Tracker.GetEntitiesCopy<Player>().ForEach(player => player.RemoveSelf());
+            level.UnloadLevel();
+            level.Completed = false;
+            level.InCutscene = false;
+            level.SkippingCutscene = false;
+            level.LoadLevel(Player.IntroTypes.Respawn);
+            level.Entities.UpdateLists();
+            AkronLevelRenderState.RelinkRendererCameras(level);
+        };
+        Log("qa-warp-room: room=" + room.Name);
     }
 
     private static AreaData GetQaAreaData(int areaId, string commandName) {
@@ -98,18 +137,31 @@ public static partial class AkronCommands {
 
     private static SaveData CreateQaSaveData(AreaKey area) {
         // QA entry must not depend on the user's persisted save or mod-session
-        // files. Those files can be corrupt on remote test hosts, and this
-        // command only needs an in-memory debug save to load a deterministic room.
-        SaveData saveData = new SaveData {
-            DebugMode = true,
-            DoNotSave = true,
-            HasModdedSaveData = true,
-            LastArea = area,
-            LastArea_Safe = area
-        };
-        SaveData.Start(saveData, -1);
+        // files. Celeste's debug initializer still builds the normal area-stat
+        // graph that helper mods expect while keeping the slot non-persistent.
+        SaveData.InitializeDebugMode(loadExisting: false);
+        SaveData saveData = SaveData.Instance ?? new SaveData();
+        saveData.DebugMode = true;
+        saveData.DoNotSave = true;
+        saveData.HasModdedSaveData = true;
+        saveData.LastArea = area;
+        saveData.LastArea_Safe = area;
+        if (SaveData.Instance != saveData) {
+            SaveData.Start(saveData, -1);
+        }
         Log("qa-save-data: transient debug slot for area=" + area.ID.ToString(CultureInfo.InvariantCulture) + ";mode=" + area.Mode);
         return saveData;
+    }
+
+    private static AreaStats EnsureQaAreaStats(SaveData saveData, AreaKey area) {
+        while (saveData.Areas.Count <= area.ID) {
+            saveData.Areas.Add(new AreaStats(saveData.Areas.Count));
+        }
+
+        AreaStats stats = saveData.Areas[area.ID] ?? new AreaStats(area.ID);
+        saveData.Areas[area.ID] = stats;
+        saveData.UnlockedAreas = Math.Max(saveData.UnlockedAreas, area.ID + 1);
+        return stats;
     }
 
     [Command("akron_qa_list_maps", "list loaded map SIDs for Akron live automation")]

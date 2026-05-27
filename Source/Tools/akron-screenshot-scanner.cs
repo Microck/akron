@@ -98,7 +98,8 @@ public static class AkronScreenshotScanner {
 
         isScanning = true;
         scanCancelled = false;
-        if (scannerHost?.Scene == null) {
+        if (scannerHost?.Scene != level) {
+            scannerHost?.RemoveSelf();
             scannerHost = new Entity { Tag = Tags.Persistent };
             level.Add(scannerHost);
         }
