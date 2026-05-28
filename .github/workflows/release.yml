@@ -31,6 +31,8 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
       IS_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || contains(github.ref_name, '-') }}
+      GAMEBANANA_SECTION_SLUG: mods
+      GAMEBANANA_SUBMISSION_ID: ${{ vars.GAMEBANANA_SUBMISSION_ID || '681169' }}
 
     steps:
       - name: Checkout
@@ -118,6 +120,58 @@ jobs:
           cp Akron.zip "Akron-${RELEASE_TAG}.zip"
           sha256sum "Akron-${RELEASE_TAG}.zip" > "Akron-${RELEASE_TAG}.zip.sha256"
 
+      - name: Generate release notes
+        run: |
+          set -euo pipefail
+
+          version="${RELEASE_TAG#v}"
+          awk -v version="$version" '
+            $0 == "## " version { in_section=1; print; next }
+            $0 == "## [" version "]" { in_section=1; print; next }
+            in_section && /^## / { exit }
+            in_section { print }
+          ' CHANGELOG.md > release-notes.md
+
+          if [ ! -s release-notes.md ]; then
+            echo "Failed to extract release notes for ${version} from CHANGELOG.md." >&2
+            echo "Add a CHANGELOG.md section named either '## ${version}' or '## [${version}]'." >&2
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          notes = Path("release-notes.md").read_text(encoding="utf-8")
+          Path("release-notes.json").write_text(
+              json.dumps({"body": notes}),
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Check publishing configuration
+        env:
+          GAMEBANANA_USERNAME: ${{ secrets.GAMEBANANA_USERNAME }}
+          GAMEBANANA_PASSWORD: ${{ secrets.GAMEBANANA_PASSWORD }}
+          AKRON_WEBSITE_TOKEN: ${{ secrets.AKRON_WEBSITE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GAMEBANANA_USERNAME:-}" ] || [ -z "${GAMEBANANA_PASSWORD:-}" ]; then
+            echo "::error::GAMEBANANA_USERNAME and GAMEBANANA_PASSWORD secrets are required."
+            exit 1
+          fi
+
+          if [ -z "${GAMEBANANA_SUBMISSION_ID:-}" ]; then
+            echo "::error::GAMEBANANA_SUBMISSION_ID repository variable is required."
+            exit 1
+          fi
+
+          if [ -z "${AKRON_WEBSITE_TOKEN:-}" ]; then
+            echo "::error::AKRON_WEBSITE_TOKEN secret is required. It must have contents:write access to Microck/akron-website so releases can sync the website fallback GameBanana file ID."
+            exit 1
+          fi
+
       - name: Upload packaged mod artifact
         uses: actions/upload-artifact@v4
         with:
@@ -131,17 +185,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          title="Akron ${RELEASE_TAG}"
-          notes="$(cat <<EOF
-          Release artifact:
-          - Akron-${RELEASE_TAG}.zip
-          - Akron-${RELEASE_TAG}.zip.sha256
+          set -euo pipefail
 
-          GameBanana publishing:
-          - Upload this same versioned zip to the Akron GameBanana page after verifying the release build.
-          - After GameBanana finishes processing the upload, run the "Sync GameBanana README Links" workflow so the README one-click and raw-download buttons point at the newest GameBanana file.
-          EOF
-          )"
+          title="Akron ${RELEASE_TAG}"
 
           prerelease_flag=()
           if [ "$IS_PRERELEASE" = "true" ]; then
@@ -149,8 +195,83 @@ jobs:
           fi
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.id')"
+            gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}" --method PATCH --input release-notes.json
             gh release upload "$RELEASE_TAG" "Akron-${RELEASE_TAG}.zip" "Akron-${RELEASE_TAG}.zip.sha256" --clobber
-            gh release edit "$RELEASE_TAG" --title "$title" --notes "$notes" "${prerelease_flag[@]}"
+            gh release edit "$RELEASE_TAG" --title "$title" "${prerelease_flag[@]}"
           else
-            gh release create "$RELEASE_TAG" "Akron-${RELEASE_TAG}.zip" "Akron-${RELEASE_TAG}.zip.sha256" --title "$title" --notes "$notes" "${prerelease_flag[@]}"
+            gh release create "$RELEASE_TAG" "Akron-${RELEASE_TAG}.zip" "Akron-${RELEASE_TAG}.zip.sha256" --title "$title" --notes-file release-notes.md --verify-tag "${prerelease_flag[@]}"
           fi
+
+      - name: Setup Node for GameBanana publisher
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+
+      - name: Publish to GameBanana
+        id: publish_gamebanana
+        env:
+          GAMEBANANA_USERNAME: ${{ secrets.GAMEBANANA_USERNAME }}
+          GAMEBANANA_PASSWORD: ${{ secrets.GAMEBANANA_PASSWORD }}
+          RELEASE_ASSET: Akron-${{ env.RELEASE_TAG }}.zip
+          RELEASE_NAME: Akron ${{ env.RELEASE_TAG }}
+          RELEASE_NOTES_FILE: release-notes.md
+        run: |
+          set -euo pipefail
+
+          node scripts/publish-gamebanana-release.mjs
+
+      - name: Checkout main for README link sync
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: link-sync/akron
+
+      - name: Sync README GameBanana links
+        run: |
+          set -euo pipefail
+
+          cd link-sync/akron
+          AKRON_GAMEBANANA_FILE_ID="${{ steps.publish_gamebanana.outputs.file_id }}" bash scripts/sync-gamebanana-readme-links.sh
+
+          if git diff --quiet -- README.md; then
+            echo "README already points at the published GameBanana file."
+            exit 0
+          fi
+
+          git config user.name "Microck"
+          git config user.email "contact@micr.dev"
+          git add README.md
+          git commit -m "docs: sync gamebanana readme links"
+          git push
+
+      - name: Checkout Akron website for link sync
+        uses: actions/checkout@v4
+        with:
+          repository: Microck/akron-website
+          token: ${{ secrets.AKRON_WEBSITE_TOKEN }}
+          path: link-sync/akron-website
+
+      - name: Sync Akron website GameBanana links
+        run: |
+          set -euo pipefail
+
+          cd link-sync/akron
+          AKRON_README_PATH= AKRON_WEBSITE_SOURCE_PATH="../akron-website/src/main.tsx" AKRON_GAMEBANANA_FILE_ID="${{ steps.publish_gamebanana.outputs.file_id }}" bash scripts/sync-gamebanana-readme-links.sh
+
+          cd ../akron-website
+          if git diff --quiet -- src/main.tsx; then
+            echo "Akron website already points at the published GameBanana file."
+            exit 0
+          fi
+
+          git config user.name "Microck"
+          git config user.email "contact@micr.dev"
+          git add src/main.tsx
+          git commit -m "docs: sync gamebanana website links"
+          git push
