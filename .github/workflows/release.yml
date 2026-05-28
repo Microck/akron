@@ -139,6 +139,7 @@ jobs:
 
           GameBanana publishing:
           - Upload this same versioned zip to the Akron GameBanana page after verifying the release build.
+          - After GameBanana finishes processing the upload, run the "Sync GameBanana README Links" workflow so the README one-click and raw-download buttons point at the newest GameBanana file.
           EOF
           )"
 

@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://gamebanana.com/mods/TODO"><img src="https://img.shields.io/github/v/release/Microck/akron?display_name=tag&style=flat-square&label=release&color=000000" alt="release badge"></a>
-  <a href="https://gamebanana.com/mods/TODO"><img src="https://img.shields.io/badge/dynamic/json?style=flat-square&label=downloads&color=000000&query=%24%5B0%5D&url=https%3A%2F%2Fapi.gamebanana.com%2FCore%2FItem%2FData%3Fitemtype%3DMod%26itemid%3DTODO%26fields%3Ddownloads" alt="gamebanana downloads badge"></a>
+  <a href="https://gamebanana.com/mods/681169"><img src="https://img.shields.io/github/v/release/Microck/akron?display_name=tag&style=flat-square&label=release&color=000000" alt="release badge"></a>
+  <a href="https://gamebanana.com/mods/681169"><img src="https://img.shields.io/badge/dynamic/json?style=flat-square&label=downloads&color=000000&query=%24%5B0%5D&url=https%3A%2F%2Fapi.gamebanana.com%2FCore%2FItem%2FData%3Fitemtype%3DMod%26itemid%3D681169%26fields%3Ddownloads" alt="gamebanana downloads badge"></a>
   <a href="https://github.com/Microck/akron/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Microck/akron/ci.yml?branch=main&style=flat-square&label=ci&color=000000" alt="ci badge"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-mit-000000?style=flat-square" alt="license badge"></a>
 </p>
@@ -17,20 +17,20 @@ Akron is a player-facing utility suite for Celeste that runs inside Everest. it 
 
 the overlay keeps common player tools close to the game instead of scattered across separate menus. players can check the current setup, adjust practice or hud surfaces, capture play, and move back into the level without changing context.
 
-[documentation](https://akron.micr.dev/docs) | [gamebanana](https://gamebanana.com/mods/TODO)
+[documentation](https://akron.micr.dev/docs) | [gamebanana](https://gamebanana.com/mods/681169)
 
 ## quickstart
 
 <p>
-  <a href="everest:https://gamebanana.com/mmdl/TODO,Mod,TODO">
+  <a href="everest:https://gamebanana.com/mmdl/1713821,Mod,681169">
     <img src="docs/images/olympus-one-click-install.png" alt="Olympus 1-click install" height="50">
   </a>
-  <a href="https://gamebanana.com/mods/download/TODO">
+  <a href="https://gamebanana.com/dl/1713821">
     <img src="docs/images/raw-download.png" alt="raw download" height="50">
   </a>
 </p>
 
-1. install Akron with Olympus, or download it from [gamebanana](https://gamebanana.com/mods/TODO) and place the downloaded mod archive in your Everest `Mods` folder. do not unzip manual installs unless a release explicitly says to.
+1. install Akron with Olympus, or download it from [gamebanana](https://gamebanana.com/mods/681169) and place the downloaded mod archive in your Everest `Mods` folder. do not unzip manual installs unless a release explicitly says to.
 2. launch Celeste through Everest.
 3. press `Tab` to open Akron.
 
