@@ -47,6 +47,6 @@ gzip -9c gamebanana-storage-state.min.json | base64 | tr -d '\n' \
 
 1. Create and push the release tag.
 2. Run the `Release` workflow with `tag_name` set to that tag and `prerelease` set as needed.
-3. The workflow builds, tests, packages `Akron-<tag>.zip`, updates the GitHub Release, uploads the zip to GameBanana, then syncs the README and `Microck/akron-website` GameBanana fallback file ids.
+3. The workflow builds, tests, packages `Akron-<tag>.zip`, uploads the zip to GameBanana, updates the GitHub Release, then syncs the README and `Microck/akron-website` GameBanana fallback file ids.
 
-The workflow checks publishing configuration before creating or updating the GitHub Release. If GameBanana storage auth or the website token is missing, the release stops before producing another partial release.
+The workflow checks publishing configuration before publishing and uploads to GameBanana before creating or updating the GitHub Release. If GameBanana storage auth, edit permission, or the website token is wrong, the release stops before producing another partial GitHub release.

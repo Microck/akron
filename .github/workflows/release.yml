@@ -184,28 +184,6 @@ jobs:
             Akron-${{ env.RELEASE_TAG }}.zip.sha256
           if-no-files-found: error
 
-      - name: Create or update GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          title="Akron ${RELEASE_TAG}"
-
-          prerelease_flag=()
-          if [ "$IS_PRERELEASE" = "true" ]; then
-            prerelease_flag=(--prerelease)
-          fi
-
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.id')"
-            gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}" --method PATCH --input release-notes.json
-            gh release upload "$RELEASE_TAG" "Akron-${RELEASE_TAG}.zip" "Akron-${RELEASE_TAG}.zip.sha256" --clobber
-            gh release edit "$RELEASE_TAG" --title "$title" "${prerelease_flag[@]}"
-          else
-            gh release create "$RELEASE_TAG" "Akron-${RELEASE_TAG}.zip" "Akron-${RELEASE_TAG}.zip.sha256" --title "$title" --notes-file release-notes.md --verify-tag "${prerelease_flag[@]}"
-          fi
-
       - name: Setup Node for GameBanana publisher
         uses: actions/setup-node@v4
         with:
@@ -250,6 +228,28 @@ jobs:
 
           cp release-tools/akron/scripts/publish-gamebanana-release.mjs scripts/publish-gamebanana-release.mjs
           node scripts/publish-gamebanana-release.mjs
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          title="Akron ${RELEASE_TAG}"
+
+          prerelease_flag=()
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            prerelease_flag=(--prerelease)
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.id')"
+            gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}" --method PATCH --input release-notes.json
+            gh release upload "$RELEASE_TAG" "Akron-${RELEASE_TAG}.zip" "Akron-${RELEASE_TAG}.zip.sha256" --clobber
+            gh release edit "$RELEASE_TAG" --title "$title" "${prerelease_flag[@]}"
+          else
+            gh release create "$RELEASE_TAG" "Akron-${RELEASE_TAG}.zip" "Akron-${RELEASE_TAG}.zip.sha256" --title "$title" --notes-file release-notes.md --verify-tag "${prerelease_flag[@]}"
+          fi
 
       - name: Checkout main for README link sync
         uses: actions/checkout@v4
