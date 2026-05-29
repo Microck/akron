@@ -19,6 +19,80 @@ function optionalEnv(name, fallback) {
   return value && value.length > 0 ? value : fallback;
 }
 
+function sameSiteValue(value) {
+  const normalized = String(value ?? "").toLowerCase();
+  if (normalized === "strict") return "Strict";
+  if (normalized === "none" || normalized === "no_restriction") return "None";
+  return "Lax";
+}
+
+function booleanCookieValue(value, fallback) {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === "boolean") return value;
+  return String(value).toLowerCase() === "true";
+}
+
+function normalizeCookie(rawCookie) {
+  if (!rawCookie || typeof rawCookie !== "object") {
+    throw new Error("GAMEBANANA_COOKIES contains a non-object cookie entry.");
+  }
+
+  const name = rawCookie.name;
+  const value = rawCookie.value;
+  if (typeof name !== "string" || typeof value !== "string") {
+    throw new Error("GAMEBANANA_COOKIES cookie entries must include string name and value fields.");
+  }
+
+  const domain = rawCookie.domain ?? rawCookie.host ?? ".gamebanana.com";
+  const path = rawCookie.path ?? "/";
+  const expires = rawCookie.expires ?? rawCookie.expirationDate ?? -1;
+
+  return {
+    name,
+    value,
+    domain: String(domain).replace(/^https?:\/\//, ""),
+    path: String(path),
+    expires: Number.isFinite(Number(expires)) ? Number(expires) : -1,
+    httpOnly: booleanCookieValue(rawCookie.httpOnly ?? rawCookie.http_only, false),
+    secure: booleanCookieValue(rawCookie.secure, true),
+    sameSite: sameSiteValue(rawCookie.sameSite ?? rawCookie.same_site),
+  };
+}
+
+function cookiesFromPayload(payload) {
+  if (Array.isArray(payload)) {
+    return payload.map(normalizeCookie);
+  }
+
+  if (!payload || typeof payload !== "object") {
+    throw new Error("GAMEBANANA_COOKIES must decode to JSON object or array.");
+  }
+
+  if (Array.isArray(payload.cookies)) {
+    return payload.cookies.map(normalizeCookie);
+  }
+
+  return Object.entries(payload).map(([name, value]) =>
+    normalizeCookie({
+      name,
+      value: String(value),
+      domain: ".gamebanana.com",
+    }),
+  );
+}
+
+function decodeCookieBundle(value) {
+  if (!value) {
+    return [];
+  }
+
+  const decoded = Buffer.from(value, "base64").toString("utf8");
+  const payload = JSON.parse(decoded);
+  return cookiesFromPayload(payload).filter((cookie) =>
+    cookie.domain.replace(/^\./, "").endsWith("gamebanana.com"),
+  );
+}
+
 function escapeHtml(value) {
   return value
     .replaceAll("&", "&amp;")
@@ -305,8 +379,10 @@ async function setGithubOutput(name, value) {
 
 async function main() {
   const storageState = optionalEnv("GAMEBANANA_STORAGE_STATE", "");
-  const username = storageState ? optionalEnv("GAMEBANANA_USERNAME", "") : requiredEnv("GAMEBANANA_USERNAME");
-  const password = storageState ? optionalEnv("GAMEBANANA_PASSWORD", "") : requiredEnv("GAMEBANANA_PASSWORD");
+  const cookieBundle = optionalEnv("GAMEBANANA_COOKIES", "");
+  const hasStoredAuth = Boolean(storageState || cookieBundle);
+  const username = hasStoredAuth ? optionalEnv("GAMEBANANA_USERNAME", "") : requiredEnv("GAMEBANANA_USERNAME");
+  const password = hasStoredAuth ? optionalEnv("GAMEBANANA_PASSWORD", "") : requiredEnv("GAMEBANANA_PASSWORD");
   const submissionId = requiredEnv("GAMEBANANA_SUBMISSION_ID");
   const apiSection = optionalEnv("GAMEBANANA_API_SECTION", "Mod");
   const pageSection = optionalEnv("GAMEBANANA_PAGE_SECTION", "mods");
@@ -327,10 +403,15 @@ async function main() {
         }
       : {},
   );
+  const cookies = decodeCookieBundle(cookieBundle);
+  if (cookies.length > 0) {
+    await context.addCookies(cookies);
+    console.log(`Loaded ${cookies.length} GameBanana cookies from GAMEBANANA_COOKIES.`);
+  }
   const page = await context.newPage();
 
   try {
-    if (!storageState) {
+    if (!hasStoredAuth) {
       await logIn(page, username, password);
     }
 
@@ -339,7 +420,7 @@ async function main() {
       await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
     } catch (error) {
       if (
-        storageState &&
+        hasStoredAuth &&
         username &&
         password &&
         error instanceof Error &&

@@ -154,14 +154,15 @@ jobs:
         env:
           GAMEBANANA_USERNAME: ${{ secrets.GAMEBANANA_USERNAME }}
           GAMEBANANA_PASSWORD: ${{ secrets.GAMEBANANA_PASSWORD }}
+          GAMEBANANA_COOKIES: ${{ secrets.GAMEBANANA_COOKIES }}
           GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
           GAMEBANANA_STORAGE_STATE_B64_GZ: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64_GZ }}
           AKRON_WEBSITE_TOKEN: ${{ secrets.AKRON_WEBSITE_TOKEN }}
         run: |
           set -euo pipefail
 
-          if [ -z "${GAMEBANANA_STORAGE_STATE_B64:-}" ] && [ -z "${GAMEBANANA_STORAGE_STATE_B64_GZ:-}" ]; then
-            echo "::error::GAMEBANANA_STORAGE_STATE_B64 or GAMEBANANA_STORAGE_STATE_B64_GZ secret is required. GitHub-hosted runners trigger GameBanana UNKNOWN_DEVICE captcha when using username/password authentication directly."
+          if [ -z "${GAMEBANANA_COOKIES:-}" ] && [ -z "${GAMEBANANA_STORAGE_STATE_B64:-}" ] && [ -z "${GAMEBANANA_STORAGE_STATE_B64_GZ:-}" ]; then
+            echo "::error::GAMEBANANA_COOKIES, GAMEBANANA_STORAGE_STATE_B64, or GAMEBANANA_STORAGE_STATE_B64_GZ secret is required. GitHub-hosted runners trigger GameBanana UNKNOWN_DEVICE captcha when using username/password authentication directly."
             exit 1
           fi
 
@@ -206,6 +207,7 @@ jobs:
         env:
           GAMEBANANA_USERNAME: ${{ secrets.GAMEBANANA_USERNAME }}
           GAMEBANANA_PASSWORD: ${{ secrets.GAMEBANANA_PASSWORD }}
+          GAMEBANANA_COOKIES: ${{ secrets.GAMEBANANA_COOKIES }}
           GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
           GAMEBANANA_STORAGE_STATE_B64_GZ: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64_GZ }}
           RELEASE_ASSET: Akron-${{ env.RELEASE_TAG }}.zip
