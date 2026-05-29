@@ -329,18 +329,19 @@ async function uploadReleaseAsset(page, pageSection, submissionId, assetPath) {
     await mediaTab.click();
   }
 
-  const fileInput = page.locator('input[type="file"]').first();
+  const fileInput = page.locator('#Files input[type="file"]').first();
   await fileInput.waitFor({ state: "attached", timeout: 20_000 });
   await fileInput.setInputFiles(assetPath);
 
-  const selectedFiles = await fileInput.evaluate((input) =>
-    Array.from(input.files ?? []).map((file) => file.name),
+  const assetName = basename(assetPath);
+  await page.waitForFunction(
+    (expectedName) =>
+      Array.from(document.querySelectorAll('#Files [id$="_UploadedFiles"] li')).some((item) =>
+        item.textContent?.toLowerCase().includes(expectedName.toLowerCase()),
+      ),
+    assetName,
+    { timeout: 120_000 },
   );
-  if (!selectedFiles.includes(basename(assetPath))) {
-    throw new Error(
-      `GameBanana file input did not retain selected asset ${basename(assetPath)}.`,
-    );
-  }
 
   const uploadForm = page.locator("form", { has: fileInput }).first();
   const submitButton = uploadForm.locator('button[type="submit"], input[type="submit"]').last();
