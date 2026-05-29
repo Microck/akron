@@ -34,6 +34,8 @@ jobs:
       GAMEBANANA_API_SECTION: Mod
       GAMEBANANA_PAGE_SECTION: mods
       GAMEBANANA_SUBMISSION_ID: ${{ vars.GAMEBANANA_SUBMISSION_ID || '681169' }}
+      TAILSCALE_EXIT_NODE: ${{ vars.TAILSCALE_EXIT_NODE }}
+      TAILSCALE_TAGS: ${{ vars.TAILSCALE_TAGS || 'tag:ci' }}
 
     steps:
       - name: Checkout
@@ -158,6 +160,8 @@ jobs:
           GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
           GAMEBANANA_STORAGE_STATE_B64_GZ: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64_GZ }}
           AKRON_WEBSITE_TOKEN: ${{ secrets.AKRON_WEBSITE_TOKEN }}
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
         run: |
           set -euo pipefail
 
@@ -174,6 +178,13 @@ jobs:
           if [ -z "${AKRON_WEBSITE_TOKEN:-}" ]; then
             echo "::error::AKRON_WEBSITE_TOKEN secret is required. It must have contents:write access to Microck/akron-website so releases can sync the website fallback GameBanana file ID."
             exit 1
+          fi
+
+          if [ -n "${TAILSCALE_EXIT_NODE:-}" ]; then
+            if [ -z "${TS_OAUTH_CLIENT_ID:-}" ] || [ -z "${TS_OAUTH_SECRET:-}" ]; then
+              echo "::error::TAILSCALE_EXIT_NODE is set, so TS_OAUTH_CLIENT_ID and TS_OAUTH_SECRET secrets are required."
+              exit 1
+            fi
           fi
 
       - name: Upload packaged mod artifact
@@ -201,6 +212,24 @@ jobs:
           ref: main
           path: release-tools/akron
           persist-credentials: false
+
+      - name: Route GameBanana publishing through Tailscale
+        if: env.TAILSCALE_EXIT_NODE != ''
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: ${{ env.TAILSCALE_TAGS }}
+          args: --exit-node=${{ env.TAILSCALE_EXIT_NODE }}
+          version: latest
+
+      - name: Verify GameBanana publishing egress
+        if: env.TAILSCALE_EXIT_NODE != ''
+        run: |
+          set -euo pipefail
+          tailscale status
+          curl -fsSL https://ifconfig.me
+          printf '\n'
 
       - name: Publish to GameBanana
         id: publish_gamebanana

@@ -7,6 +7,8 @@ Akron releases are published by `.github/workflows/release.yml`.
 Repository variables:
 
 - `GAMEBANANA_SUBMISSION_ID`: GameBanana mod id. Current value is `681169`.
+- `TAILSCALE_EXIT_NODE`: optional Tailscale exit node name or Tailscale IP used to route GameBanana publishing through a trusted network.
+- `TAILSCALE_TAGS`: optional comma-separated Tailscale tags for the ephemeral Actions node. Defaults to `tag:ci`.
 
 Repository secrets:
 
@@ -17,6 +19,30 @@ Repository secrets:
 - `GAMEBANANA_STORAGE_STATE_B64`: base64-encoded Playwright storage state for a manually verified GameBanana session.
 - `GAMEBANANA_STORAGE_STATE_B64_GZ`: gzip-compressed and base64-encoded Playwright storage state. Use this instead of `GAMEBANANA_STORAGE_STATE_B64` if the plain base64 value exceeds GitHub's 48 KB secret limit.
 - `GAMEBANANA_USERNAME` and `GAMEBANANA_PASSWORD`: fallback credentials for local/manual publisher runs. GitHub-hosted runners currently trigger GameBanana `UNKNOWN_DEVICE` captcha with direct username/password authentication, so automated releases require `GAMEBANANA_STORAGE_STATE_B64`.
+- `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET`: required only when `TAILSCALE_EXIT_NODE` is set. The OAuth client must be allowed to create tagged auth keys for the configured `TAILSCALE_TAGS`.
+
+## Optional Tailscale exit node
+
+Use this when GameBanana accepts the stored session from your machine but rejects the same cookies from GitHub-hosted runner IPs.
+
+On the trusted machine or network that can use the GameBanana session, advertise it as a Tailscale exit node:
+
+```bash
+sudo tailscale up --advertise-exit-node
+```
+
+Approve the advertised exit node in the Tailscale admin console. Disable key expiry for that connector if it is meant to support unattended releases.
+
+Create a Tailscale OAuth client with the writable `auth_keys` scope and a tag such as `tag:ci`. Add a matching ACL tag owner rule in Tailscale if needed, then store the credentials:
+
+```bash
+gh secret set TS_OAUTH_CLIENT_ID -R Microck/Akron
+gh secret set TS_OAUTH_SECRET -R Microck/Akron
+gh variable set TAILSCALE_TAGS -R Microck/Akron --body tag:ci
+gh variable set TAILSCALE_EXIT_NODE -R Microck/Akron --body <exit-node-name-or-100.x.y.z>
+```
+
+The release workflow joins the tailnet before GameBanana publishing, selects `TAILSCALE_EXIT_NODE` with `tailscale up --exit-node=...`, prints `tailscale status`, and prints the public egress IP from `ifconfig.me`. Verify that this IP matches the trusted exit node before treating a release failure as a cookie problem.
 
 ## GameBanana storage state size
 
