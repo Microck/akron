@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.1
+
+- Test the automated release path for GitHub, GameBanana, README links, and website links.
+
 ## 0.1.2-beta
 
 - Add GitHub community templates for issues and pull requests.
