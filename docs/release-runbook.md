@@ -19,6 +19,16 @@ Repository secrets:
 
 ## GameBanana storage state size
 
+Before setting the secret, verify the captured state can open the Akron edit form without a permit or captcha page:
+
+```bash
+npx playwright codegen --browser=chromium \
+  --load-storage=gamebanana-storage-state.json \
+  https://gamebanana.com/mods/edit/681169
+```
+
+Only continue once the loaded browser is visibly authenticated as the Akron owner and can edit the mod. A state that only passes Cloudflare but cannot edit `681169` will still fail in GitHub Actions because direct username/password login triggers GameBanana `UNKNOWN_DEVICE`.
+
 Do not upload a full browser profile state if it is too large for GitHub secrets. Keep only GameBanana cookies first:
 
 ```bash
@@ -32,9 +42,15 @@ jq -c '
   }
 ' gamebanana-storage-state.json > gamebanana-storage-state.min.json
 
+npx playwright codegen --browser=chromium \
+  --load-storage=gamebanana-storage-state.min.json \
+  https://gamebanana.com/mods/edit/681169
+
 base64 < gamebanana-storage-state.min.json | tr -d '\n' \
   | gh secret set GAMEBANANA_STORAGE_STATE_B64 -R Microck/Akron --body-file -
 ```
+
+If the minified state does not open the edit form, do not set it as `GAMEBANANA_STORAGE_STATE_B64`; use the verified full state through the gzip path instead.
 
 If the minimized cookie state is still larger than 48 KB, store the gzip form:
 
