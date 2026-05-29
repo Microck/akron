@@ -34,6 +34,7 @@ jobs:
       GAMEBANANA_API_SECTION: Mod
       GAMEBANANA_PAGE_SECTION: mods
       GAMEBANANA_SUBMISSION_ID: ${{ vars.GAMEBANANA_SUBMISSION_ID || '681169' }}
+      GAMEBANANA_BROWSER: ${{ vars.GAMEBANANA_BROWSER || 'cloakbrowser' }}
       TAILSCALE_EXIT_NODE: ${{ vars.TAILSCALE_EXIT_NODE }}
       TAILSCALE_TAGS: ${{ vars.TAILSCALE_TAGS || 'tag:ci' }}
 
@@ -201,10 +202,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install Playwright
+      - name: Install browser automation dependencies
         run: |
-          npm install --no-save playwright@1.56.1
+          npm install --no-save playwright@1.56.1 playwright-core@1.56.1 cloakbrowser@0.3.31
           npx playwright install --with-deps chromium
+          npx cloakbrowser install
 
       - name: Checkout release tooling
         uses: actions/checkout@v4

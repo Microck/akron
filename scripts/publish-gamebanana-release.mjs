@@ -377,7 +377,42 @@ async function setGithubOutput(name, value) {
   await appendFile(outputPath, `${name}=${value}\n`, "utf8");
 }
 
+async function createBrowserContext(browserName, storageState) {
+  const contextOptions = storageState
+    ? {
+        storageState,
+      }
+    : {};
+
+  if (browserName === "cloakbrowser") {
+    const { launchContext } = await import("cloakbrowser");
+    const context = await launchContext({
+      headless: true,
+      humanize: true,
+      contextOptions,
+    });
+    console.log("Using CloakBrowser for GameBanana publishing.");
+    return {
+      context,
+      close: () => context.close(),
+    };
+  }
+
+  if (browserName !== "chromium") {
+    throw new Error(`Unsupported GAMEBANANA_BROWSER value: ${browserName}`);
+  }
+
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext(contextOptions);
+  console.log("Using Playwright Chromium for GameBanana publishing.");
+  return {
+    context,
+    close: () => browser.close(),
+  };
+}
+
 async function main() {
+  const browserName = optionalEnv("GAMEBANANA_BROWSER", "cloakbrowser");
   const storageState = optionalEnv("GAMEBANANA_STORAGE_STATE", "");
   const cookieBundle = optionalEnv("GAMEBANANA_COOKIES", "");
   const hasStoredAuth = Boolean(storageState || cookieBundle);
@@ -395,14 +430,8 @@ async function main() {
   const releaseNotes = await readFile(releaseNotesFile, "utf8");
   const version = releaseTag.replace(/^v/, "");
 
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext(
-    storageState
-      ? {
-          storageState,
-        }
-      : {},
-  );
+  const browserSession = await createBrowserContext(browserName, storageState);
+  const { context } = browserSession;
   const cookies = storageState ? [] : decodeCookieBundle(cookieBundle);
   if (storageState && cookieBundle) {
     console.log(
@@ -475,7 +504,7 @@ async function main() {
     console.log(`Published ${releaseTag} to GameBanana submission ${submissionId}.`);
     console.log(`GameBanana file ID: ${uploadedFileId}`);
   } finally {
-    await browser.close();
+    await browserSession.close();
   }
 }
 
