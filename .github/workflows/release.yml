@@ -181,6 +181,13 @@ jobs:
             exit 1
           fi
 
+          website_token_login="$(GH_TOKEN="$AKRON_WEBSITE_TOKEN" gh api user --jq '.login' 2>/dev/null || true)"
+          website_token_can_push="$(GH_TOKEN="$AKRON_WEBSITE_TOKEN" gh api repos/Microck/akron-website --jq '.permissions.push // false' 2>/dev/null || true)"
+          if [ "$website_token_can_push" != "true" ]; then
+            echo "::error::AKRON_WEBSITE_TOKEN authenticates as '${website_token_login:-unknown}' and does not have push access to Microck/akron-website."
+            exit 1
+          fi
+
           if [ -n "${TAILSCALE_EXIT_NODE:-}" ]; then
             if [ -z "${TS_OAUTH_CLIENT_ID:-}" ] || [ -z "${TS_OAUTH_SECRET:-}" ]; then
               echo "::error::TAILSCALE_EXIT_NODE is set, so TS_OAUTH_CLIENT_ID and TS_OAUTH_SECRET secrets are required."
