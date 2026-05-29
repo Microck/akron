@@ -160,17 +160,24 @@ async function fetchJson(request, url, options = {}) {
     );
   }
 
+  let payload;
   try {
-    return text ? JSON.parse(text) : {};
+    payload = text ? JSON.parse(text) : {};
   } catch {
     throw new Error(`${url} returned non-JSON response: ${text.slice(0, 500)}`);
   }
+
+  if (payload && typeof payload === "object" && "_sErrorCode" in payload) {
+    throw new Error(`${url} returned GameBanana error: ${JSON.stringify(payload)}`);
+  }
+
+  return payload;
 }
 
-async function getFileRowIds(request, sectionSlug, submissionId) {
+async function getFileRowIds(request, apiSection, submissionId) {
   const files = await fetchJson(
     request,
-    `${gamebananaOrigin}/apiv11/${sectionSlug}/${submissionId}/Files`,
+    `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Files`,
   );
   return collectFileRowIds(files);
 }
@@ -216,8 +223,8 @@ async function logIn(page, username, password) {
   }
 }
 
-async function uploadReleaseAsset(page, sectionSlug, submissionId, assetPath) {
-  await page.goto(`${gamebananaOrigin}/${sectionSlug}/${submissionId}`, {
+async function uploadReleaseAsset(page, pageSection, submissionId, assetPath) {
+  await page.goto(`${gamebananaOrigin}/${pageSection}/${submissionId}`, {
     waitUntil: "domcontentloaded",
   });
 
@@ -259,7 +266,8 @@ async function main() {
   const username = requiredEnv("GAMEBANANA_USERNAME");
   const password = requiredEnv("GAMEBANANA_PASSWORD");
   const submissionId = requiredEnv("GAMEBANANA_SUBMISSION_ID");
-  const sectionSlug = optionalEnv("GAMEBANANA_SECTION_SLUG", "mods");
+  const apiSection = optionalEnv("GAMEBANANA_API_SECTION", "Mod");
+  const pageSection = optionalEnv("GAMEBANANA_PAGE_SECTION", "mods");
   const releaseTag = requiredEnv("RELEASE_TAG");
   const releaseAsset = requiredEnv("RELEASE_ASSET");
   const releaseNotesFile = requiredEnv("RELEASE_NOTES_FILE");
@@ -276,12 +284,12 @@ async function main() {
   try {
     await logIn(page, username, password);
 
-    const beforeIds = await getFileRowIds(context.request, sectionSlug, submissionId);
-    await uploadReleaseAsset(page, sectionSlug, submissionId, releaseAsset);
+    const beforeIds = await getFileRowIds(context.request, apiSection, submissionId);
+    await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
 
     let uploadedFileId = null;
     for (let attempt = 1; attempt <= 12; attempt += 1) {
-      const afterIds = await getFileRowIds(context.request, sectionSlug, submissionId);
+      const afterIds = await getFileRowIds(context.request, apiSection, submissionId);
       const newIds = [...afterIds].filter((id) => !beforeIds.has(id));
       if (newIds.length > 0) {
         uploadedFileId = Math.max(...newIds);
@@ -299,7 +307,7 @@ async function main() {
       throw new Error(`Could not determine GameBanana file row ID for ${basename(releaseAsset)}.`);
     }
 
-    await fetchJson(context.request, `${gamebananaOrigin}/apiv11/${sectionSlug}/${submissionId}/Update`, {
+    await fetchJson(context.request, `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Update`, {
       method: "POST",
       data: {
         _aChangeLog: parseChangeLog(releaseNotes),

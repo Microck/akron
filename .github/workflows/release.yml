@@ -31,7 +31,8 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
       IS_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || contains(github.ref_name, '-') }}
-      GAMEBANANA_SECTION_SLUG: mods
+      GAMEBANANA_API_SECTION: Mod
+      GAMEBANANA_PAGE_SECTION: mods
       GAMEBANANA_SUBMISSION_ID: ${{ vars.GAMEBANANA_SUBMISSION_ID || '681169' }}
 
     steps:
