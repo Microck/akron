@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta
+
 - Add GitHub community templates for issues and pull requests.
 - Document the repository formatting command for contributors.
 - Make CI fail when the Celeste reference archive secret is not configured.
