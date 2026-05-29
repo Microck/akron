@@ -325,6 +325,8 @@ jobs:
           path: link-sync/akron-website
 
       - name: Sync Akron website GameBanana links
+        env:
+          AKRON_WEBSITE_TOKEN: ${{ secrets.AKRON_WEBSITE_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -341,4 +343,5 @@ jobs:
           git config user.email "contact@micr.dev"
           git add src/main.tsx
           git commit -m "docs: sync gamebanana website links"
+          git remote set-url origin "https://x-access-token:${AKRON_WEBSITE_TOKEN}@github.com/Microck/akron-website.git"
           git push
