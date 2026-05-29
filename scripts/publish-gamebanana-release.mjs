@@ -196,21 +196,18 @@ async function logIn(page, username, password) {
     return;
   }
 
-  const passwordInput = page.locator('input[type="password"]').first();
+  const passwordInput = page.getByRole("textbox", { name: /^password$/i }).first();
   await passwordInput.waitFor({ state: "visible", timeout: 20_000 });
 
-  const usernameInput = page
-    .locator(
-      'input[name*="user" i], input[name*="login" i], input[type="text"], input[type="email"]',
-    )
-    .first();
+  const usernameInput = page.getByRole("textbox", { name: /^username$/i }).first();
+  await usernameInput.waitFor({ state: "visible", timeout: 20_000 });
 
   await usernameInput.fill(username);
   await passwordInput.fill(password);
 
   await Promise.all([
     page.waitForLoadState("networkidle").catch(() => undefined),
-    page.locator('button[type="submit"], input[type="submit"]').first().click(),
+    page.getByRole("button", { name: /^login$/i }).first().click(),
   ]);
 
   const stillOnLogin = await page
