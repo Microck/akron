@@ -183,13 +183,22 @@ async function getFileRowIds(request, apiSection, submissionId) {
 }
 
 async function logIn(page, username, password) {
-  await fetchJson(page.context().request, `${gamebananaOrigin}/apiv11/Member/Authenticate`, {
-    method: "POST",
-    data: {
-      _sUsername: username,
-      _sPassword: password,
-    },
-  });
+  try {
+    await fetchJson(page.context().request, `${gamebananaOrigin}/apiv11/Member/Authenticate`, {
+      method: "POST",
+      data: {
+        _sUsername: username,
+        _sPassword: password,
+      },
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("UNKNOWN_DEVICE")) {
+      throw new Error(
+        "GameBanana requires captcha verification for this runner. Set GAMEBANANA_STORAGE_STATE_B64 from a manually authenticated Playwright storage state.",
+      );
+    }
+    throw error;
+  }
 
   await page.goto(`${gamebananaOrigin}/members/account/login`, {
     waitUntil: "domcontentloaded",
@@ -265,8 +274,9 @@ async function setGithubOutput(name, value) {
 }
 
 async function main() {
-  const username = requiredEnv("GAMEBANANA_USERNAME");
-  const password = requiredEnv("GAMEBANANA_PASSWORD");
+  const storageState = optionalEnv("GAMEBANANA_STORAGE_STATE", "");
+  const username = storageState ? "" : requiredEnv("GAMEBANANA_USERNAME");
+  const password = storageState ? "" : requiredEnv("GAMEBANANA_PASSWORD");
   const submissionId = requiredEnv("GAMEBANANA_SUBMISSION_ID");
   const apiSection = optionalEnv("GAMEBANANA_API_SECTION", "Mod");
   const pageSection = optionalEnv("GAMEBANANA_PAGE_SECTION", "mods");
@@ -280,11 +290,19 @@ async function main() {
   const version = releaseTag.replace(/^v/, "");
 
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
+  const context = await browser.newContext(
+    storageState
+      ? {
+          storageState,
+        }
+      : {},
+  );
   const page = await context.newPage();
 
   try {
-    await logIn(page, username, password);
+    if (!storageState) {
+      await logIn(page, username, password);
+    }
 
     const beforeIds = await getFileRowIds(context.request, apiSection, submissionId);
     await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);

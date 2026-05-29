@@ -154,12 +154,13 @@ jobs:
         env:
           GAMEBANANA_USERNAME: ${{ secrets.GAMEBANANA_USERNAME }}
           GAMEBANANA_PASSWORD: ${{ secrets.GAMEBANANA_PASSWORD }}
+          GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
           AKRON_WEBSITE_TOKEN: ${{ secrets.AKRON_WEBSITE_TOKEN }}
         run: |
           set -euo pipefail
 
-          if [ -z "${GAMEBANANA_USERNAME:-}" ] || [ -z "${GAMEBANANA_PASSWORD:-}" ]; then
-            echo "::error::GAMEBANANA_USERNAME and GAMEBANANA_PASSWORD secrets are required."
+          if [ -z "${GAMEBANANA_STORAGE_STATE_B64:-}" ]; then
+            echo "::error::GAMEBANANA_STORAGE_STATE_B64 secret is required. GitHub-hosted runners trigger GameBanana UNKNOWN_DEVICE captcha when using username/password authentication directly."
             exit 1
           fi
 
@@ -219,11 +220,19 @@ jobs:
         env:
           GAMEBANANA_USERNAME: ${{ secrets.GAMEBANANA_USERNAME }}
           GAMEBANANA_PASSWORD: ${{ secrets.GAMEBANANA_PASSWORD }}
+          GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
           RELEASE_ASSET: Akron-${{ env.RELEASE_TAG }}.zip
           RELEASE_NAME: Akron ${{ env.RELEASE_TAG }}
           RELEASE_NOTES_FILE: release-notes.md
         run: |
           set -euo pipefail
+
+          if [ -n "${GAMEBANANA_STORAGE_STATE_B64:-}" ]; then
+            storage_state="$RUNNER_TEMP/gamebanana-storage-state.json"
+            printf '%s' "$GAMEBANANA_STORAGE_STATE_B64" | base64 --decode > "$storage_state"
+            echo "GAMEBANANA_STORAGE_STATE=$storage_state" >> "$GITHUB_ENV"
+            export GAMEBANANA_STORAGE_STATE="$storage_state"
+          fi
 
           node scripts/publish-gamebanana-release.mjs
 
