@@ -267,6 +267,33 @@ async function uploadReleaseAsset(page, pageSection, submissionId, assetPath) {
   ]);
 }
 
+function redactKnownSecrets(value) {
+  let redacted = value;
+  for (const name of ["GAMEBANANA_USERNAME", "GAMEBANANA_PASSWORD"]) {
+    const secret = process.env[name];
+    if (secret) {
+      redacted = redacted.replaceAll(secret, `[${name}]`);
+    }
+  }
+  return redacted;
+}
+
+async function logPageState(page, label) {
+  const [title, hasEditForm, hasFileInput, hasPasswordInput, bodyText] = await Promise.all([
+    page.title().catch(() => ""),
+    page.locator("#EditFormModule").first().isVisible().catch(() => false),
+    page.locator('input[type="file"]').first().isVisible().catch(() => false),
+    page.locator('input[type="password"]').first().isVisible().catch(() => false),
+    page.locator("body").innerText({ timeout: 2_000 }).catch(() => ""),
+  ]);
+
+  const excerpt = redactKnownSecrets(bodyText.replace(/\s+/g, " ").trim()).slice(0, 500);
+  console.log(
+    `${label}: url=${page.url()} title=${JSON.stringify(title)} editForm=${hasEditForm} fileInput=${hasFileInput} passwordInput=${hasPasswordInput}`,
+  );
+  console.log(`${label} body excerpt: ${excerpt}`);
+}
+
 async function setGithubOutput(name, value) {
   const outputPath = process.env.GITHUB_OUTPUT;
   if (!outputPath) {
@@ -318,6 +345,7 @@ async function main() {
         error instanceof Error &&
         error.code === "GAMEBANANA_EDIT_PERMISSION_DENIED"
       ) {
+        await logPageState(page, "Stored GameBanana session edit denial");
         console.log("Stored GameBanana session could not edit the submission; retrying with credentials.");
         await logIn(page, username, password);
         await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
