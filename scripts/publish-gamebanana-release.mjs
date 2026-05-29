@@ -403,7 +403,12 @@ async function main() {
         }
       : {},
   );
-  const cookies = decodeCookieBundle(cookieBundle);
+  const cookies = storageState ? [] : decodeCookieBundle(cookieBundle);
+  if (storageState && cookieBundle) {
+    console.log(
+      "Using GAMEBANANA_STORAGE_STATE; ignoring GAMEBANANA_COOKIES to avoid overriding stored browser auth.",
+    );
+  }
   if (cookies.length > 0) {
     await context.addCookies(cookies);
     console.log(`Loaded ${cookies.length} GameBanana cookies from GAMEBANANA_COOKIES.`);
