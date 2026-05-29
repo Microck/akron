@@ -22,10 +22,10 @@ the overlay keeps common player tools close to the game instead of scattered acr
 ## quickstart
 
 <p>
-  <a href="everest:https://gamebanana.com/mmdl/1714815,Mod,681169">
+  <a href="everest:https://gamebanana.com/mmdl/1714822,Mod,681169">
     <img src="docs/images/olympus-one-click-install.png" alt="Olympus 1-click install" height="50">
   </a>
-  <a href="https://gamebanana.com/dl/1714815">
+  <a href="https://gamebanana.com/dl/1714822">
     <img src="docs/images/raw-download.png" alt="raw download" height="50">
   </a>
 </p>
