@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.3
+
+- Test the automated release path after cleaning release-conflict artifacts.
+
 ## 0.1.2-beta.2
 
 - Test the automated release path after switching GameBanana publishing to the direct edit form.
