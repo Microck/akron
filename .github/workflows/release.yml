@@ -215,6 +215,13 @@ jobs:
           npm install --no-save playwright@1.56.1
           npx playwright install --with-deps chromium
 
+      - name: Checkout release tooling
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: release-tools/akron
+          persist-credentials: false
+
       - name: Publish to GameBanana
         id: publish_gamebanana
         env:
@@ -234,6 +241,7 @@ jobs:
             export GAMEBANANA_STORAGE_STATE="$storage_state"
           fi
 
+          cp release-tools/akron/scripts/publish-gamebanana-release.mjs scripts/publish-gamebanana-release.mjs
           node scripts/publish-gamebanana-release.mjs
 
       - name: Checkout main for README link sync
