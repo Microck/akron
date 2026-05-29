@@ -331,15 +331,14 @@ async function uploadReleaseAsset(page, pageSection, submissionId, assetPath) {
 
   const fileInput = page.locator('#Files input[type="file"]').first();
   await fileInput.waitFor({ state: "attached", timeout: 20_000 });
+  const uploadedFileCount = await page.locator('#Files [id$="_UploadedFiles"] li').count();
   await fileInput.setInputFiles(assetPath);
 
-  const assetName = basename(assetPath);
   await page.waitForFunction(
-    (expectedName) =>
-      Array.from(document.querySelectorAll('#Files [id$="_UploadedFiles"] li')).some((item) =>
-        item.textContent?.toLowerCase().includes(expectedName.toLowerCase()),
-      ),
-    assetName,
+    (previousCount) =>
+      document.querySelectorAll('#Files [id$="_UploadedFiles"] li').length > previousCount &&
+      document.querySelector("#Files .UploadMessage")?.textContent?.includes("Upload complete"),
+    uploadedFileCount,
     { timeout: 120_000 },
   );
 
