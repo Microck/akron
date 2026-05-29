@@ -14,7 +14,34 @@ Repository secrets:
 - `AKRON_CELESTE_REFS_TOKEN`: optional token for the Celeste reference archive.
 - `AKRON_WEBSITE_TOKEN`: token with `contents:write` access to `Microck/akron-website`.
 - `GAMEBANANA_STORAGE_STATE_B64`: base64-encoded Playwright storage state for a manually verified GameBanana session.
+- `GAMEBANANA_STORAGE_STATE_B64_GZ`: gzip-compressed and base64-encoded Playwright storage state. Use this instead of `GAMEBANANA_STORAGE_STATE_B64` if the plain base64 value exceeds GitHub's 48 KB secret limit.
 - `GAMEBANANA_USERNAME` and `GAMEBANANA_PASSWORD`: fallback credentials for local/manual publisher runs. GitHub-hosted runners currently trigger GameBanana `UNKNOWN_DEVICE` captcha with direct username/password authentication, so automated releases require `GAMEBANANA_STORAGE_STATE_B64`.
+
+## GameBanana storage state size
+
+Do not upload a full browser profile state if it is too large for GitHub secrets. Keep only GameBanana cookies first:
+
+```bash
+jq -c '
+  {
+    cookies: [
+      .cookies[]
+      | select((.domain | ltrimstr(".")) | endswith("gamebanana.com"))
+    ],
+    origins: []
+  }
+' gamebanana-storage-state.json > gamebanana-storage-state.min.json
+
+base64 < gamebanana-storage-state.min.json | tr -d '\n' \
+  | gh secret set GAMEBANANA_STORAGE_STATE_B64 -R Microck/Akron --body-file -
+```
+
+If the minimized cookie state is still larger than 48 KB, store the gzip form:
+
+```bash
+gzip -9c gamebanana-storage-state.min.json | base64 | tr -d '\n' \
+  | gh secret set GAMEBANANA_STORAGE_STATE_B64_GZ -R Microck/Akron --body-file -
+```
 
 ## Publish flow
 

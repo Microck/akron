@@ -155,12 +155,13 @@ jobs:
           GAMEBANANA_USERNAME: ${{ secrets.GAMEBANANA_USERNAME }}
           GAMEBANANA_PASSWORD: ${{ secrets.GAMEBANANA_PASSWORD }}
           GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
+          GAMEBANANA_STORAGE_STATE_B64_GZ: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64_GZ }}
           AKRON_WEBSITE_TOKEN: ${{ secrets.AKRON_WEBSITE_TOKEN }}
         run: |
           set -euo pipefail
 
-          if [ -z "${GAMEBANANA_STORAGE_STATE_B64:-}" ]; then
-            echo "::error::GAMEBANANA_STORAGE_STATE_B64 secret is required. GitHub-hosted runners trigger GameBanana UNKNOWN_DEVICE captcha when using username/password authentication directly."
+          if [ -z "${GAMEBANANA_STORAGE_STATE_B64:-}" ] && [ -z "${GAMEBANANA_STORAGE_STATE_B64_GZ:-}" ]; then
+            echo "::error::GAMEBANANA_STORAGE_STATE_B64 or GAMEBANANA_STORAGE_STATE_B64_GZ secret is required. GitHub-hosted runners trigger GameBanana UNKNOWN_DEVICE captcha when using username/password authentication directly."
             exit 1
           fi
 
@@ -228,13 +229,19 @@ jobs:
           GAMEBANANA_USERNAME: ${{ secrets.GAMEBANANA_USERNAME }}
           GAMEBANANA_PASSWORD: ${{ secrets.GAMEBANANA_PASSWORD }}
           GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
+          GAMEBANANA_STORAGE_STATE_B64_GZ: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64_GZ }}
           RELEASE_ASSET: Akron-${{ env.RELEASE_TAG }}.zip
           RELEASE_NAME: Akron ${{ env.RELEASE_TAG }}
           RELEASE_NOTES_FILE: release-notes.md
         run: |
           set -euo pipefail
 
-          if [ -n "${GAMEBANANA_STORAGE_STATE_B64:-}" ]; then
+          if [ -n "${GAMEBANANA_STORAGE_STATE_B64_GZ:-}" ]; then
+            storage_state="$RUNNER_TEMP/gamebanana-storage-state.json"
+            printf '%s' "$GAMEBANANA_STORAGE_STATE_B64_GZ" | base64 --decode | gzip -dc > "$storage_state"
+            echo "GAMEBANANA_STORAGE_STATE=$storage_state" >> "$GITHUB_ENV"
+            export GAMEBANANA_STORAGE_STATE="$storage_state"
+          elif [ -n "${GAMEBANANA_STORAGE_STATE_B64:-}" ]; then
             storage_state="$RUNNER_TEMP/gamebanana-storage-state.json"
             printf '%s' "$GAMEBANANA_STORAGE_STATE_B64" | base64 --decode > "$storage_state"
             echo "GAMEBANANA_STORAGE_STATE=$storage_state" >> "$GITHUB_ENV"
