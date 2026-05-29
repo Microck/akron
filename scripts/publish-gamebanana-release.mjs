@@ -183,6 +183,14 @@ async function getFileRowIds(request, apiSection, submissionId) {
 }
 
 async function logIn(page, username, password) {
+  await fetchJson(page.context().request, `${gamebananaOrigin}/apiv11/Member/Authenticate`, {
+    method: "POST",
+    data: {
+      _sUsername: username,
+      _sPassword: password,
+    },
+  });
+
   await page.goto(`${gamebananaOrigin}/members/account/login`, {
     waitUntil: "domcontentloaded",
   });
