@@ -478,14 +478,11 @@ async function main() {
         break;
       }
 
-      if (afterIds.size > 0) {
-        uploadedFileId = Math.max(...afterIds);
-      }
-
       await page.waitForTimeout(5_000);
     }
 
     if (!uploadedFileId) {
+      await logPageState(page, "GameBanana upload did not create a new file");
       throw new Error(`Could not determine GameBanana file row ID for ${basename(releaseAsset)}.`);
     }
 
