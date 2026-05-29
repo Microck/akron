@@ -244,7 +244,10 @@ async function uploadReleaseAsset(page, pageSection, submissionId, assetPath) {
 
   const permissionMessages = page.locator("#EditFormModule .LogMessages").first();
   if (await permissionMessages.isVisible().catch(() => false)) {
-    throw new Error(`GameBanana edit form is not available: ${await permissionMessages.innerText()}`);
+    const message = await permissionMessages.innerText();
+    const error = new Error(`GameBanana edit form is not available: ${message}`);
+    error.code = "GAMEBANANA_EDIT_PERMISSION_DENIED";
+    throw error;
   }
 
   const mediaTab = page.getByText(/^media$/i).first();
@@ -275,8 +278,8 @@ async function setGithubOutput(name, value) {
 
 async function main() {
   const storageState = optionalEnv("GAMEBANANA_STORAGE_STATE", "");
-  const username = storageState ? "" : requiredEnv("GAMEBANANA_USERNAME");
-  const password = storageState ? "" : requiredEnv("GAMEBANANA_PASSWORD");
+  const username = storageState ? optionalEnv("GAMEBANANA_USERNAME", "") : requiredEnv("GAMEBANANA_USERNAME");
+  const password = storageState ? optionalEnv("GAMEBANANA_PASSWORD", "") : requiredEnv("GAMEBANANA_PASSWORD");
   const submissionId = requiredEnv("GAMEBANANA_SUBMISSION_ID");
   const apiSection = optionalEnv("GAMEBANANA_API_SECTION", "Mod");
   const pageSection = optionalEnv("GAMEBANANA_PAGE_SECTION", "mods");
@@ -305,7 +308,23 @@ async function main() {
     }
 
     const beforeIds = await getFileRowIds(context.request, apiSection, submissionId);
-    await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
+    try {
+      await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
+    } catch (error) {
+      if (
+        storageState &&
+        username &&
+        password &&
+        error instanceof Error &&
+        error.code === "GAMEBANANA_EDIT_PERMISSION_DENIED"
+      ) {
+        console.log("Stored GameBanana session could not edit the submission; retrying with credentials.");
+        await logIn(page, username, password);
+        await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
+      } else {
+        throw error;
+      }
+    }
 
     let uploadedFileId = null;
     for (let attempt = 1; attempt <= 12; attempt += 1) {
