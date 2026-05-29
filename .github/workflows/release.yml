@@ -244,6 +244,7 @@ jobs:
           RELEASE_ASSET: Akron-${{ env.RELEASE_TAG }}.zip
           RELEASE_NAME: Akron ${{ env.RELEASE_TAG }}
           RELEASE_NOTES_FILE: release-notes.md
+          GAMEBANANA_DEBUG_DIR: ${{ runner.temp }}/gamebanana-debug
         run: |
           set -euo pipefail
 
@@ -261,6 +262,14 @@ jobs:
 
           cp release-tools/akron/scripts/publish-gamebanana-release.mjs scripts/publish-gamebanana-release.mjs
           node scripts/publish-gamebanana-release.mjs
+
+      - name: Upload GameBanana debug artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gamebanana-debug-${{ env.RELEASE_TAG }}
+          path: ${{ runner.temp }}/gamebanana-debug
+          if-no-files-found: ignore
 
       - name: Create or update GitHub Release
         env:

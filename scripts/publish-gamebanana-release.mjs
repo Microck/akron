@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { appendFile } from "node:fs/promises";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { readFile, stat } from "node:fs/promises";
 import { basename } from "node:path";
 import { chromium } from "playwright";
@@ -333,11 +333,24 @@ async function uploadReleaseAsset(page, pageSection, submissionId, assetPath) {
   await fileInput.waitFor({ state: "attached", timeout: 20_000 });
   await fileInput.setInputFiles(assetPath);
 
-  await page.waitForTimeout(2_000);
+  const selectedFiles = await fileInput.evaluate((input) =>
+    Array.from(input.files ?? []).map((file) => file.name),
+  );
+  if (!selectedFiles.includes(basename(assetPath))) {
+    throw new Error(
+      `GameBanana file input did not retain selected asset ${basename(assetPath)}.`,
+    );
+  }
+
+  const uploadForm = page.locator("form", { has: fileInput }).first();
+  const submitButton = uploadForm.locator('button[type="submit"], input[type="submit"]').last();
+  await submitButton.waitFor({ state: "visible", timeout: 20_000 });
+
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
 
   await Promise.all([
     page.waitForLoadState("networkidle").catch(() => undefined),
-    page.locator('button[type="submit"], input[type="submit"]').last().click(),
+    submitButton.click(),
   ]);
 }
 
@@ -366,6 +379,58 @@ async function logPageState(page, label) {
     `${label}: url=${page.url()} title=${JSON.stringify(title)} editForm=${hasEditForm} fileInput=${hasFileInput} passwordInput=${hasPasswordInput}`,
   );
   console.log(`${label} body excerpt: ${excerpt}`);
+}
+
+async function captureDebugArtifact(page, label) {
+  const debugDir = process.env.GAMEBANANA_DEBUG_DIR;
+  if (!debugDir) {
+    return;
+  }
+
+  await mkdir(debugDir, { recursive: true });
+  const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const [title, html, forms] = await Promise.all([
+    page.title().catch(() => ""),
+    page.content().catch(() => ""),
+    page.locator("form").evaluateAll((formElements) =>
+      formElements.map((form, formIndex) => ({
+        formIndex,
+        action: form.getAttribute("action"),
+        method: form.getAttribute("method"),
+        fileInputs: Array.from(form.querySelectorAll('input[type="file"]')).map((input) => ({
+          name: input.getAttribute("name"),
+          id: input.getAttribute("id"),
+          files: Array.from(input.files ?? []).map((file) => file.name),
+          visible:
+            input instanceof HTMLElement &&
+            input.offsetParent !== null &&
+            getComputedStyle(input).visibility !== "hidden",
+        })),
+        submitControls: Array.from(
+          form.querySelectorAll('button[type="submit"], input[type="submit"]'),
+        ).map((control) => ({
+          tag: control.tagName.toLowerCase(),
+          type: control.getAttribute("type"),
+          name: control.getAttribute("name"),
+          id: control.getAttribute("id"),
+          value: control.getAttribute("value"),
+          text: control.textContent?.trim() ?? "",
+          visible:
+            control instanceof HTMLElement &&
+            control.offsetParent !== null &&
+            getComputedStyle(control).visibility !== "hidden",
+        })),
+      })),
+    ).catch((error) => [{ error: error instanceof Error ? error.message : String(error) }]),
+  ]);
+
+  await writeFile(
+    `${debugDir}/${slug}-summary.json`,
+    JSON.stringify({ label, url: page.url(), title, forms }, null, 2),
+    "utf8",
+  );
+  await writeFile(`${debugDir}/${slug}.html`, html, "utf8");
+  await page.screenshot({ path: `${debugDir}/${slug}.png`, fullPage: true }).catch(() => undefined);
 }
 
 async function setGithubOutput(name, value) {
@@ -461,10 +526,13 @@ async function main() {
         error.code === "GAMEBANANA_EDIT_PERMISSION_DENIED"
       ) {
         await logPageState(page, "Stored GameBanana session edit denial");
+        await captureDebugArtifact(page, "stored-gamebanana-session-edit-denial");
         console.log("Stored GameBanana session could not edit the submission; retrying with credentials.");
         await logIn(page, username, password);
         await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
       } else {
+        await logPageState(page, "GameBanana upload failed");
+        await captureDebugArtifact(page, "gamebanana-upload-failed");
         throw error;
       }
     }
@@ -483,6 +551,7 @@ async function main() {
 
     if (!uploadedFileId) {
       await logPageState(page, "GameBanana upload did not create a new file");
+      await captureDebugArtifact(page, "gamebanana-upload-did-not-create-a-new-file");
       throw new Error(`Could not determine GameBanana file row ID for ${basename(releaseAsset)}.`);
     }
 
