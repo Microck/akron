@@ -1,0 +1,77 @@
+---
+title: Interface
+description: Overlay appearance, Streamer Mode, `.akr` pack import/export, community packs, and search.
+---
+
+The Interface tab controls the Akron overlay itself and the public `.akr` pack workflows.
+
+| Option | Control | What it does | Attempt status |
+|---|---|---|---|
+| Theme | Selector | Select the Akron overlay color theme. | Normal clear |
+| UI Scale | Number | Scale Akron overlay text and controls. | Normal clear |
+| Opacity | Number | Set Akron overlay background opacity. | Normal clear |
+| Streamer Mode | Toggle | Show filenames instead of full local filesystem paths. | Normal clear |
+| Pause While Open | Toggle | When enabled, opening the Akron menu stops gameplay updates until the menu closes. | Normal clear |
+| Export Profile | Action | Export the selected Whole, StartPos, Keybinds, Auto Kill, Auto Deafen, Recorder, Audio, or HUD profile scope as a `.akr` profile pack. | Normal clear |
+| Import Profile | Action | Open a file browser to import a selected `.akr` profile pack using the selected profile scope. | Normal clear |
+| Community Packs | Action | Search map-linked community `.akr` packs from the configured community pack index. | Normal clear |
+| Search Autofocus | Toggle | Focus Akron search automatically when the overlay opens. | Normal clear |
+| Search | Text input | Filter visible Akron rows by label or search alias. | Normal clear |
+
+## Option menus
+
+Rows with a triangle expose the controls listed below.
+
+| Option | Menu control | What it changes | Attempt status |
+|---|---|---|---|
+| Theme | Theme | Cycle Akron's built-in themes and the custom theme slot. | Normal clear |
+| Theme | Copy to Custom | Copy the current theme colors and presentation values into the editable Custom slot. | Normal clear |
+| Theme | Export .akr | Export the current overlay theme as a single-purpose `.akr` theme pack. | Normal clear |
+| Theme | Import Latest .akr | Import the newest `.akr` theme pack from Saves/AkronThemes. | Normal clear |
+| Theme | Custom name | Set the name shown for the custom theme and exported theme pack. | Normal clear |
+| Theme | Window | Set the custom theme window/background color. | Normal clear |
+| Theme | Header | Set the custom theme header color. | Normal clear |
+| Theme | Header hover | Set the custom theme hovered header and active UI color. | Normal clear |
+| Theme | Frame | Set the custom theme input/value box color. | Normal clear |
+| Theme | Text | Set the custom theme main text color. | Normal clear |
+| Theme | Muted | Set the custom theme inactive indicator color. | Normal clear |
+| Theme | Disabled | Set the custom theme disabled-row text color. | Normal clear |
+| Theme | Opacity | Set overlay background opacity. | Normal clear |
+| Theme | UI scale | Scale ImGui overlay windows for DPI and readability. | Normal clear |
+| Theme | Blur | Store the overlay blur presentation amount. | Normal clear |
+| Theme | Anim ms | Set stored overlay animation duration. | Normal clear |
+| Theme | Floating button | Enable floating activation-button settings for non-keyboard workflows. | Normal clear |
+| Theme | Button % | Set the floating activation button scale. | Normal clear |
+| Theme | Button alpha | Set the floating activation button opacity. | Normal clear |
+| Theme | Button in levels | Allow the floating activation button in active levels. | Normal clear |
+| Theme | Button in menus | Allow the floating activation button outside active levels. | Normal clear |
+| Theme | Search autofocus | Focus Akron search automatically when the overlay opens. | Normal clear |
+| Export Profile | Name | Set the exported `.akr` profile pack name. | Normal clear |
+| Export Profile | Whole | Export every supported profile section into one `.akr` profile pack. | Normal clear |
+| Export Profile | StartPos | Export only StartPos profile data into the `.akr` profile pack. | Normal clear |
+| Export Profile | Keybinds | Export only Akron menu keybind profile data into the `.akr` profile pack. | Normal clear |
+| Export Profile | Auto Kill | Export only Auto Kill profile data into the `.akr` profile pack. | Normal clear |
+| Export Profile | Auto Deafen | Export only Auto Deafen profile data into the `.akr` profile pack. | Normal clear |
+| Export Profile | Recorder | Export only Internal Recorder profile data into the `.akr` profile pack. | Normal clear |
+| Export Profile | Audio | Export only audio profile data into the `.akr` profile pack. | Normal clear |
+| Export Profile | HUD | Export only HUD profile data into the `.akr` profile pack. | Normal clear |
+| Import Profile | Whole | Import every supported profile section from the selected `.akr` profile pack. | Normal clear |
+| Import Profile | StartPos | Import only StartPos profile data from the selected `.akr` profile pack. | Normal clear |
+| Import Profile | Keybinds | Import only Akron menu keybind profile data from the selected `.akr` profile pack. | Normal clear |
+| Import Profile | Auto Kill | Import only Auto Kill profile data from the selected `.akr` profile pack. | Normal clear |
+| Import Profile | Auto Deafen | Import only Auto Deafen profile data from the selected `.akr` profile pack. | Normal clear |
+| Import Profile | Recorder | Import only Internal Recorder profile data from the selected `.akr` profile pack. | Normal clear |
+| Import Profile | Audio | Import only audio profile data from the selected `.akr` profile pack. | Normal clear |
+| Import Profile | HUD | Import only HUD profile data from the selected `.akr` profile pack. | Normal clear |
+
+## Community Packs Browser
+
+Clicking **Community Packs** opens a standalone browser window. This interface allows you to query, refresh, and download community-curated `.akr` packs.
+
+| Control | What it does | Attempt status |
+|---|---|---|
+| Index URL | The catalog repository URL (default is `https://akron.micr.dev/catalog/index.json`). | Normal clear |
+| Search | Filter the catalog of community packs by name or description. | Normal clear |
+| Category | Filter packs by profile scope: All, StartPos, Auto Kill, or Auto Deafen. | Normal clear |
+| Refresh | Connect to the index URL and reload available packs. | Normal clear |
+| Import Selected | Download and import the highlighted community profile pack. | Normal clear |

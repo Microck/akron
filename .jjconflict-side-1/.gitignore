@@ -1,0 +1,22 @@
+bin/
+obj/
+*.zip
+*.user
+*.suo
+.vs/
+.vscode/
+lib-stripped/
+.tmp*/
+.tmp-*
+akron-interface-screenshots*/
+akron-interface-screenshots.zip
+backups/
+autoresearch-state.json
+*.bak-*
+dist/
+live-verification/
+opensrc/
+.residue/
+
+# dora code context index
+.dora/

@@ -1,0 +1,66 @@
+---
+title: Common issues
+description: Fix common Akron installation, overlay, hotkey, import, and capture problems.
+---
+
+Use this page to quickly diagnose common problems before exploring [platform-specific compatibility](/troubleshooting/compatibility).
+
+## Akron Does Not Load
+
+Confirm the following:
+
+- The `Akron.zip` archive is located in the active Everest `Mods` directory.
+- The game was launched using the same installation where you added the mod.
+- Everest has not disabled Akron due to a load error.
+- The Everest logs do not indicate missing dependencies or archive-shape errors.
+
+## Overlay Does Not Open
+
+Confirm the following:
+
+- The overlay hotkey is correctly configured in the Everest keyboard/controller settings.
+- There are no conflicts with Celeste's native controls or other installed mods.
+- The overlay is not hidden, off-screen, or scaled too small to be visible.
+
+If the overlay still does not open, rebind the key through Everest controls and check the Everest log for errors before seeking further diagnostics.
+
+## Feature Is Blocked
+
+Akron blocks or marks features based on the current policy and status state.
+
+1. Verify the visible policy and status state.
+2. Check the badge associated with the feature's policy.
+3. Inspect the popup sub-options for any strict behavioral constraints.
+4. Use a non-submission setup if the feature is expected to mark the attempt status as "Cheat."
+
+## Import Failure
+
+Common causes for `.akr` import failures:
+
+- The file is not a valid Akron archive.
+- The archive contains missing or unexpected ZIP entries.
+- The manifest kind or version is not supported.
+- The payload exceeds the size limit.
+- The JSON payload is malformed or invalid.
+- The payload section does not match the requested import workflow.
+
+See [Akron .akr archives](/reference/akr-archives) for the import contract.
+
+## Incorrect Capture Output
+
+If a screenshot, room capture, map capture, or recorder output is missing or incorrect:
+
+- Verify the output folder path and filename template.
+- Confirm that the capture mode and resolution are set correctly.
+- Disable [Streamer Mode](/rulesets/streamer-mode-and-proof-overlays) if you need to see detailed path information.
+- Check if a timer-freeze or capture sub-option has altered the expected behavior.
+
+## Community Packs Are Empty
+
+Confirm the following:
+
+- You are currently inside the map for which you expect packs.
+- The catalog URL is reachable and online.
+- The category filter is not overly restrictive.
+- The search text is not filtering out the desired pack.
+- The catalog entry's map SID matches the current map's SID.

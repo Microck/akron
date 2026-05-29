@@ -1,0 +1,67 @@
+---
+title: Leaderboard-clean
+description: Reference for the Akron Leaderboard-clean ruleset, covering guardrails, proof metadata, allowed surfaces, and blocked features in competitive submissions.
+---
+
+`Leaderboard-clean` is the strict public ruleset for attempts where Akron should help avoid accidental policy conflicts.
+
+## Expected Use
+
+Use `Leaderboard-clean` when:
+
+- You want clean-run guardrails visible before and during an attempt.
+- You need proof-oriented metadata without gameplay mutation.
+- You want Akron to make accidental Cheat feature use obvious or blocked.
+
+## Commonly Safe Surfaces
+
+Examples of supported clean or proof-oriented surfaces include:
+
+- Simple input display.
+- Confirm prompts for destructive actions.
+- Proof recorder guard.
+- End screen helper.
+- Pause tracker.
+- Map version stamp.
+- Journal snapshot/compare.
+- Screenshake comfort settings.
+
+## Commonly Blocked or Dirty Surfaces
+
+Do not use these in clean submissions unless the target community explicitly allows them:
+
+- StartPos restore.
+- Room warp, room reload, noclip, invincibility, infinite resources.
+- Live hitboxes, triggers, entity inspector, flag inspector.
+- Frame advance, freeze, timescale, FPS/TPS bypass.
+- Camera offset, cursor zoom, free camera.
+- Input assist shortcuts.
+
+<Note>
+  `Leaderboard-clean` blocks some features that are normally classified as
+  clean in other rulesets, including retry hotkey, chapter reload, mountain
+  viewer, and split helper. These training-oriented features are blocked because
+  they change session state in ways that may conflict with competitive
+  submission requirements.
+</Note>
+
+## Before a Run
+
+<Steps>
+  <Step title="Start from the overlay">
+    Open Akron and review the visible attempt status, active tools, and proof surfaces before the attempt starts.
+  </Step>
+  <Step title="Check policy state">
+    Choose `Leaderboard-clean` from Akron's Everest mod options or apply the setup pack that provides it. Confirm the visible policy/status state matches the target submission context.
+  </Step>
+  <Step title="Review active features">
+    Disable Cheat features and inspect feature status if anything is unfamiliar.
+  </Step>
+  <Step title="Arm proof helpers">
+    Enable only the proof surfaces required by the target workflow.
+  </Step>
+</Steps>
+
+<Warning>
+  Akron's clean classification is not a leaderboard ruling. It is Akron's policy and proof context.
+</Warning>

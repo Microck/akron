@@ -1,0 +1,192 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Akron",
+  "description": "Akron documentation for players, pack authors, and contributors.",
+  "theme": "maple",
+  "logo": {
+    "light": "/images/logo.png",
+    "dark": "/images/logo.png",
+    "href": "/docs/"
+  },
+  "favicon": "/images/favicon.png",
+  "colors": {
+    "primary": "#A86048",
+    "light": "#F0D8A8",
+    "dark": "#A86048"
+  },
+  "background": {
+    "color": {
+      "light": "#F8F4EC",
+      "dark": "#1C0F0B"
+    }
+  },
+  "appearance": {
+    "default": "system"
+  },
+  "fonts": {
+    "heading": {
+      "family": "Forma DJR Heading",
+      "weight": 640,
+      "source": "/fonts/forma-djr-heading-tracked.woff",
+      "format": "woff"
+    },
+    "body": {
+      "family": "Forma DJR Variable",
+      "weight": 400,
+      "source": "/fonts/forma-djr-variable.woff",
+      "format": "woff"
+    }
+  },
+  "styling": {
+    "codeblocks": {
+      "theme": {
+        "light": "github-light",
+        "dark": "github-dark"
+      }
+    }
+  },
+  "seo": {
+    "metatags": {
+      "category": "Celeste mod documentation",
+      "color-scheme": "light dark",
+      "googlebot": "index, follow",
+      "keywords": "Akron, Celeste mod, Everest mod, Celeste tools, rulesets, StartPos, .akr packs, proof metadata, practice tools",
+      "og:description": "Install, configure, and contribute to Akron, an Everest utility suite for Celeste.",
+      "og:image": "/images/logo.png",
+      "og:site_name": "Akron",
+      "og:title": "Akron documentation",
+      "robots": "index, follow",
+      "theme-color": "#A86048",
+      "twitter:card": "summary_large_image",
+      "twitter:description": "Install, configure, and contribute to Akron, an Everest utility suite for Celeste.",
+      "twitter:image": "/images/logo.png",
+      "twitter:title": "Akron documentation"
+    }
+  },
+  "markdown": {
+    "schema": true
+  },
+  "redirects": [
+    {
+      "source": "/special-thanks",
+      "destination": "/docs/project/special-thanks",
+      "permanent": true
+    },
+    {
+      "source": "/docs/special-thanks",
+      "destination": "/docs/project/special-thanks",
+      "permanent": true
+    },
+    {
+      "source": "/reference/feature-status-reference",
+      "destination": "/concepts/clean-vs-cheat",
+      "permanent": true
+    }
+  ],
+  "navigation": {
+    "groups": [
+      {
+        "group": "Start",
+        "pages": [
+          "docs",
+          "getting-started/install",
+          "getting-started/first-run",
+          "getting-started/configuration",
+          "getting-started/hotkeys"
+        ]
+      },
+      {
+        "group": "Concepts",
+        "pages": [
+          "concepts/rulesets-and-status",
+          "concepts/clean-vs-cheat",
+          "concepts/proof-and-submission-mode",
+          "concepts/akr-files-and-setup-state"
+        ]
+      },
+      {
+        "group": "Player guide",
+        "pages": [
+          "player-guide/overlay",
+          "player-guide/menu-anatomy",
+          "player-guide/gameplay-tools",
+          "player-guide/hud-and-input-tools",
+          "player-guide/visual-and-accessibility",
+          "player-guide/capture-and-recording",
+          "player-guide/community-packs",
+          "player-guide/interop"
+        ]
+      },
+      {
+        "group": "Feature guide",
+        "pages": [
+          "feature-guide/index",
+          "feature-guide/global",
+          "feature-guide/level",
+          "feature-guide/startpos",
+          "feature-guide/bypass",
+          "feature-guide/keybinds",
+          "feature-guide/player",
+          "feature-guide/sound",
+          "feature-guide/creator",
+          "feature-guide/interface",
+          "feature-guide/labels",
+          "feature-guide/custom-labels",
+          "feature-guide/shortcuts",
+          "feature-guide/internal-recorder",
+          "feature-guide/external-tools"
+        ]
+      },
+      {
+        "group": ".akr Packs",
+        "pages": [
+          "akr-packs/manage-setups",
+          "akr-packs/import-export"
+        ]
+      },
+      {
+        "group": "Rulesets",
+        "pages": [
+          "rulesets/overview",
+          "rulesets/leaderboard-clean",
+          "rulesets/practice-and-sandbox",
+          "rulesets/streamer-mode-and-proof-overlays"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/akr-archives",
+          "reference/community-pack-catalog",
+          "reference/debug-commands",
+          "reference/file-locations"
+        ]
+      },
+      {
+        "group": "Troubleshooting",
+        "pages": [
+          "troubleshooting/common-issues",
+          "troubleshooting/compatibility",
+          "troubleshooting/startpos-recovery"
+        ]
+      },
+      {
+        "group": "Contributing",
+        "pages": [
+          "contributing/development-setup",
+          "contributing/contribution-workflow",
+          "contributing/feature-policy",
+          "contributing/testing-and-verification",
+          "contributing/public-architecture",
+          "contributing/implementation-boundaries"
+        ]
+      },
+      {
+        "group": "Project",
+        "pages": [
+          "docs/project/special-thanks"
+        ]
+      }
+    ]
+  }
+}

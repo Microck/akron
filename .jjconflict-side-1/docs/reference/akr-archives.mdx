@@ -1,0 +1,148 @@
+---
+title: .akr Archive Format
+description: Technical specification for the Akron archive format, including manifests, payloads, and import safety rules.
+---
+
+Akron uses `.akr` files to share structured setup data. An `.akr` file is a ZIP archive containing exactly one manifest and one payload. This structure ensures imports remain explicit and prevents unrelated files from being included in a pack.
+
+## Archive Shape
+
+An archive must contain exactly two entries:
+
+```mermaid
+flowchart TD
+  archive["example.akr"] --> manifest["manifest.json"]
+  archive --> payload["payload JSON"]
+  manifest --> format["Format and target"]
+  payload --> data["Kind data"]
+```
+
+The reader rejects archives containing folders, extra entries, rooted paths, backslashes, or `..` path segments, as well as those that do not match the expected payload name and kind.
+
+## Manifest
+
+The `manifest.json` file uses the following structure:
+
+```json
+{
+  "Format": "akron-archive",
+  "FormatVersion": 1,
+  "Kind": "profile",
+  "KindVersion": 1,
+  "CreatedBy": "Akron",
+  "CreatedAt": "2026-05-14T00:00:00.0000000Z",
+  "Target": {
+    "Game": "Celeste",
+    "MapSid": ""
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `Format` | Must be `akron-archive`. |
+| `FormatVersion` | Current value: `1`. |
+| `Kind` | Payload kind. Setup packs currently use the archive kind `profile`. |
+| `KindVersion` | Version of that payload kind. Must be positive. |
+| `CreatedBy` | Producer label. Defaults to `Akron`. |
+| `CreatedAt` | UTC creation timestamp when available. |
+| `Target.Game` | Target game. Akron setup packs use `Celeste`. |
+| `Target.MapSid` | Optional map SID for map-scoped payloads. |
+
+The manifest size limit is 16 KiB.
+
+## Setup Payload
+
+Setup packs use the `profile` archive contract:
+
+```text
+Kind: profile
+Payload entry: profile.json
+Payload format: akron-profile-v1
+Directory: Saves/AkronProfiles
+```
+
+The `profile.json` payload uses the following structure:
+
+```json
+{
+  "Format": "akron-profile-v1",
+  "Name": "Practice Audio",
+  "CreatedUtc": "2026-05-14T00:00:00.0000000Z",
+  "Section": "Audio",
+  "ActiveProfile": "Practice",
+  "State": {},
+  "ButtonBindings": {},
+  "MenuActionBindings": {},
+  "StartPositions": {}
+}
+```
+
+The setup payload size limit is 2 MiB.
+
+## Setup Sections
+
+| Section | Included Data |
+|---|---|
+| `Whole` | Active setup state, button bindings, menu action bindings, and StartPos slots. |
+| `StartPos` | StartPos settings and saved StartPos slots. |
+| `Keybinds` | Everest `ButtonBinding` properties plus Akron menu action bindings. |
+| `AutoKill` | Auto Kill toggles, timer, area settings, and rectangles. |
+| `AutoDeafen` | Auto Deafen toggle, hotkey, area settings, and rectangles. |
+| `Recorder` | Internal recorder output, replay, trigger, audio capture, codec, and preset settings. |
+| `Audio` | Audio speed, pitch shift, per-sound volumes/overrides, and audio splitter devices. |
+| `Hud` | HUD widgets, labels, input displays, resource bars, counters, and HUD presentation state. |
+
+Scoped imports merge only the selected section into the current active settings without resetting unrelated settings.
+
+## Import Safety Rules
+
+Imports follow a "fail closed" policy:
+
+```mermaid
+flowchart TD
+  open["Open .akr"] --> entries{"Expected entries?"}
+  entries -->|No| reject["Reject import"]
+  entries -->|Yes| manifestCheck{"Manifest valid?"}
+  manifestCheck -->|No| reject
+  manifestCheck -->|Yes| sizeCheck{"Size OK?"}
+  sizeCheck -->|No| reject
+  sizeCheck -->|Yes| payloadCheck{"Payload valid?"}
+  payloadCheck -->|No| reject
+  payloadCheck -->|Yes| apply["Apply section"]
+```
+
+Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats.
+
+If an import fails, current settings remain unchanged and a short toast notification is shown. Detailed errors are written to the logs rather than the user-facing toast.
+
+## Maintenance Requirements
+
+Settings included in `.akr` setup packs must meet these requirements:
+
+- Must be defined as a field in `AkronProfileState`.
+- Must support capture from `AkronModuleSettings`.
+- Must support application back to `AkronModuleSettings`.
+- Must implement scoped-section copy behavior when the setting belongs to `StartPos`, `AutoKill`, `AutoDeafen`, `Recorder`, `Audio`, or `Hud`.
+- Must have automated tests proving whole import/export and scoped import/export preserve the intended state.
+
+Avoid adding compatibility shims for old local packs unless explicitly required. Akron maintains a single canonical contract to ensure clear import errors.
+
+New archive kinds are reserved for payloads that are not setup/profile sections.
+
+New archive kinds require:
+
+- A unique `Kind`, payload entry name, payload format string, and payload size limit.
+- Dedicated single-payload archive helper methods.
+- Simple payload entry names (e.g., `labels.json`).
+- Unsupported payload-format rejection before state is applied.
+- Comprehensive test coverage for round-trip, wrong kind, extra entries, oversized payload, and missing manifest.
+- Complete technical documentation updated on this page.
+
+Do not include multiple unrelated payloads in a single `.akr` archive. The current contract requires exactly one kind, one manifest, and one payload.
+
+Archive tests live in `tests/archive-tests.cs`.
+
+```bash
+dotnet test tests/akron-tests.csproj --nologo --filter ArchiveTests
+```

@@ -1,0 +1,88 @@
+---
+title: Hotkeys
+description: Default keyboard and controller bindings for Akron actions, with overlay bind configuration, input formats, and recovery steps.
+---
+
+Akron uses Everest's keyboard and controller configuration for binds. Use these configuration screens to ensure bindings remain consistent with your modded Celeste setup.
+
+## Default Keybindings
+
+| Action | Keyboard | Controller |
+|---|---|---|
+| Toggle Overlay | `Tab` | — |
+| Fast Lookout Hold | `Left Shift` | — |
+| Retry | `R` | `Y` |
+| Reload Room | `F4` | `LB` |
+| Open Debug Map | `F5` | `RB` |
+| Reload Chapter | `F11` | `Start` |
+| Save State | `F7` | `X` |
+| Load State | `F8` | `B` |
+| Previous Slot | `F9` | `DPad Left` |
+| Next Slot | `F10` | `DPad Right` |
+| Cycle Grab Mode | `G` | `RStick` |
+| Freeze Gameplay | `F1` | — |
+| Step Frame | `F2` | — |
+| Decrease Timescale | `-` | — |
+| Increase Timescale | `+` | — |
+| Set StartPos | — | — |
+| Load StartPos | — | — |
+| Clear StartPos | — | — |
+| Previous StartPos | `Q` | — |
+| Next StartPos | `E` | — |
+| Toggle Hitboxes | `F3` | — |
+| Toggle Entity Inspector | `Home` | — |
+| Click Teleport | `Left Alt` | — |
+| Cursor Zoom | `Left Alt` | — |
+
+Actions with a dash (—) have no default binding on that input type. The Set StartPos, Load StartPos, and Clear StartPos actions start unbound so you can assign them intentionally.
+
+## Configure a Bind
+
+<Steps>
+  <Step title="Open Everest controls">
+    From Celeste's mod options, open the Everest keyboard or controller configuration screen.
+  </Step>
+  <Step title="Find the Akron action">
+    Search or scroll to the Akron action you want to change, such as the overlay toggle, retry, StartPos set/load, freeze, hitboxes, or inspector actions.
+  </Step>
+  <Step title="Assign the new input">
+    Bind the key or controller input. Avoid using inputs already mapped to Celeste movement, pause, confirm, or other critical mod actions.
+  </Step>
+  <Step title="Test in a non-submission context">
+    Test the bind in casual or room-lab play before using it in a clean or proof-oriented attempt.
+  </Step>
+</Steps>
+
+## Keyboard and Controller Inputs
+
+Akron uses Celeste/Everest binding primitives where possible:
+
+- Built-in Akron hotkeys use Everest `ButtonBinding` settings.
+- Overlay row custom bindings accept keyboard chords such as `Ctrl+Shift+D`.
+- Overlay row custom bindings can also use controller buttons, stored with an explicit value such as `Button:LeftShoulder`.
+
+The binding capture popup accepts a keyboard key or a controller button. It waits for the input that opened capture to be released so a held button does not bind itself accidentally.
+
+Controller bindings display with controller-facing names such as `LB`, `RB`, and `DPad Left`. Multi-button controller combinations are not part of the current binding model.
+
+## Bind Recovery
+
+If the overlay bind is unknown:
+
+- Open Everest controls from Celeste's menus and search for Akron actions.
+- Temporarily disable other mods if a bind conflict prevents input from reaching Akron.
+- Check Everest logs if the bind appears configured but Akron never receives it.
+
+## Recommended Binding Strategy
+
+| Workflow | Binding advice |
+|---|---|
+| Overlay | Defaults to `Tab`. Use a single key or controller button that does not overlap with movement. |
+| Retry/reload | Keep separate from vanilla restart and quit actions. |
+| StartPos set/load | Keep set and load far enough apart to avoid accidental restores. |
+| Freeze/frame tools | Use nearby keys only in non-submission room-lab or testing contexts. |
+| Debug tools | Bind only when actively inspecting maps or runtime state. |
+
+<Warning>
+  Some shortcut actions are policy-visible. A convenient bind can still mark the active attempt if it uses a Cheat feature. See [rulesets and status](/concepts/rulesets-and-status) for details.
+</Warning>

@@ -1,0 +1,162 @@
+---
+title: Custom labels
+description: Create custom HUD labels with template variables, event visibility, placement, and shareable label .akr packs.
+---
+
+Custom labels let you add your own text rows to the Akron HUD. Use them for local status, proof context, timers, routing notes, input state, or other passive information that is useful while playing or reviewing a run.
+
+Custom HUD labels are **Normal clear**. They display information and do not change gameplay state.
+
+## Create a custom label
+
+<Steps>
+  <Step title="Open the Labels tab">
+    Open the Akron overlay and go to **Labels**.
+  </Step>
+  <Step title="Add a row">
+    Choose **+ Custom**. Akron creates a new custom label row, enables custom HUD labels, and selects the new row.
+  </Step>
+  <Step title="Open the row options">
+    Open the new custom label row to edit its name, text, placement, style, and event behavior.
+  </Step>
+  <Step title="Write the template">
+    Set **Text** to plain text plus variables in braces, such as `Room {room_time}` or `{profile} / {ruleset} / {status}`.
+  </Step>
+  <Step title="Place and test it">
+    Choose an anchor, tune the offset or absolute position, close the overlay, and verify the label is readable in a room.
+  </Step>
+</Steps>
+
+## Template text
+
+A custom label template is ordinary text with expressions inside `{}`. Unknown variables resolve to an empty string.
+
+| Example | Output intent |
+|---|---|
+| `Room {room_time}` | Show the current room timer. |
+| `{profile} / {ruleset} / {status}` | Show the active Akron profile, ruleset stack, and attempt status. |
+| `XY {player_x}, {player_y}  V {precision(speed, 1)}` | Show player position and speed with one decimal place. |
+| `{upper(status)}: {reason}` | Show an uppercase status label and the current attempt reason. |
+| `{if:cfg.noclip:Noclip on:Noclip off}` | Show one of two strings based on whether noclip is enabled. |
+
+Template expressions are case-insensitive for variable lookup.
+
+## Variables
+
+| Variable | Value |
+|---|---|
+| `app_version` | Akron version string when available. |
+| `profile` | Active Akron profile. |
+| `ruleset` | Active ruleset stack description. |
+| `status` | Current attempt status label. |
+| `reason` | Current attempt status reason. |
+| `chapter` | Current map SID. |
+| `map` | Current map SID. |
+| `room` | Current room name. |
+| `player_x` | Player X position, rounded to a whole number. |
+| `player_y` | Player Y position, rounded to a whole number. |
+| `speed` | Player speed magnitude with one decimal place. |
+| `stamina` | Player stamina, rounded to a whole number. |
+| `dashes` | Current dash count. |
+| `deaths` | Current map death total. |
+| `room_deaths` | Deaths in the current room. |
+| `attempt` | Current map death total plus one. |
+| `room_time` | Current room timer. |
+| `map_time` | Current map timer. |
+| `fps` | Current rendered frames per second. |
+| `tps` | Current target ticks per second. |
+| `inputs` | Current input chord. |
+| `hazard_accuracy` | Current noclip hazard accuracy percentage. |
+| `hazard_invalid` | Current noclip invalid-entry count. |
+| `savestate_slot` | Active Akron savestate slot. |
+| `tas` | `CelesteTAS` when CelesteTAS is loaded, otherwise `No TAS`. |
+| `speedrun_tool` | `Speedrun Tool` when Speedrun Tool is loaded, otherwise `No SRT`. |
+| `clock` | Local clock in `HH:mm:ss` format. |
+| `cfg.safe_mode` | `on` or `off`. |
+| `cfg.noclip` | `on` or `off`. |
+| `cfg.timescale` | Current timescale multiplier. |
+
+<Note>
+  Labels that use level-only variables, such as `room`, `player_x`, `speed`, `deaths`, or timers, are hidden outside active levels unless the label uses absolute positioning. Non-level scenes have no player or room context, so many gameplay variables fall back to placeholder values.
+</Note>
+
+## Expressions
+
+| Expression | What it does |
+|---|---|
+| `{upper:status}` or `{upper(status)}` | Convert a value to uppercase. |
+| `{lower:status}` or `{lower(status)}` | Convert a value to lowercase. |
+| `{round(fps)}` | Round a numeric value to a whole number. |
+| `{round:speed:1}` | Format a numeric value with 1 decimal place. |
+| `{precision(speed, 2)}` | Format a numeric value with 2 decimal places. |
+| `{cfg:noclip}` | Read a `cfg.*` value by short name. |
+| `{if:status:yes:no}` | Return `yes` when the looked-up value is truthy, otherwise `no`. |
+
+For `if`, falsey values are empty text, `0`, `off`, `false`, and `-`.
+
+## Placement and style
+
+Anchored labels share a per-anchor stack. Multiple labels at the same anchor are spaced by the global custom-label gap and padding. Use **Offset X** and **Offset Y** to nudge one label without leaving the shared stack.
+
+Use **Absolute position** when a label needs a fixed HUD coordinate. Absolute labels use **Screen X** and **Screen Y** plus offsets. Right- or center-aligned absolute labels shift from that point based on the measured text width.
+
+| Control | Use it for |
+|---|---|
+| **Anchor** | Choose the screen region, such as TopLeft, TopRight, BottomCenter, or Absolute. |
+| **Text align** | Align multiline text inside the label's measured width. |
+| **Font** | Use a preset size: Tiny, Small, Default, Large, or Huge. Default uses the manual scale value. |
+| **Scale** | Tune text size directly when Font is Default. |
+| **Opacity** | Set label transparency. |
+| **Line spacing** | Change spacing for multiline labels. |
+| **Shadow** | Draw an outline and offset shadow for readability over bright rooms. |
+
+## Event visibility
+
+Each custom label has an **Event** setting that controls when the row is visible.
+
+| Event | Visibility |
+|---|---|
+| `Always` | Show whenever the label is enabled and the scene can render it. |
+| `OnDeath` | Show after the latest recorded death marker, using the label's Delay and Duration values. |
+| `OnButtonHold` | Show while jump, dash, or grab is held. |
+| `OnNoclipDeath` | Show while the latest visible death marker was recorded as a noclip death. |
+
+Enable **Event style override** when the event state should temporarily use a different scale, color, or opacity.
+
+## Player overlap
+
+The Labels tab has a shared **Player Overlap** row for HUD labels. When enabled, Akron checks whether Madeline overlaps a label response area.
+
+| Mode | Behavior |
+|---|---|
+| `Fade` | Reduce label opacity while the overlap is active. |
+| `Move` | Move overlapped labels to the configured fallback anchor. |
+
+Use **Only current label** when only the label that overlaps Madeline should fade or move. When this is off, one overlapped label can apply the response to all labels.
+
+## Duplicate, delete, and share
+
+Use **Duplicate** to copy the active label and edit a variant. Use **Delete** to remove the active label after confirmation. Akron keeps at least one custom label definition.
+
+Use **Export .akr** from a custom label row to write a label pack to `Saves/AkronHudLabels`. Use **Import Latest .akr** to import the newest custom-label pack from that folder. Importing a custom-label pack replaces the current custom label definitions with the labels from the pack.
+
+Custom label packs are separate from whole-profile `.akr` packs. A HUD-scoped profile export also includes custom HUD label settings as part of the broader HUD section.
+
+## Console command
+
+Advanced users can edit the active custom label with `akron_hud_labels`.
+
+```text
+akron_hud_labels on
+akron_hud_labels preset proof
+akron_hud_labels select 1
+akron_hud_labels text {status}: {reason}
+akron_hud_labels anchor top-right
+akron_hud_labels align right
+akron_hud_labels export
+akron_hud_labels importlatest
+```
+
+Available presets are `fps`, `attempt`, `timers`, `resources`, `inputs`, `proof`, `clock`, and `hazard`.
+
+See [Labels](/feature-guide/labels) for the complete Labels tab row reference and [Import and export .akr packs](/akr-packs/import-export) for profile pack workflows.

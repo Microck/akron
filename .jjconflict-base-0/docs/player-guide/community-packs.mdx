@@ -1,0 +1,45 @@
+---
+title: Community Packs
+description: Browse, filter, and import community .akr setup packs for the current Celeste map.
+---
+
+Community Packs opens an in-game browser where you can find and import community `.akr` setup packs scoped to your current map. Choose a category, search by keyword, and import packs directly without leaving the game.
+
+## Index URL
+
+The browser reads packs from a JSON catalog at the configured **Index URL** (shown at the top of the Community Packs window). The default catalog is hosted at `https://akron.micr.dev/catalog/index.json`. You can point this to a custom URL or local `file:///` path. Catalog entries can contain map-specific StartPos, Auto Kill, Auto Deafen, and other scoped `.akr` packs.
+
+## Import a Pack
+
+<Steps>
+  <Step title="Open the target map">
+    Community packs are filtered by the current map SID, so load the map you want a pack for before opening the browser.
+  </Step>
+  <Step title="Open Community Packs">
+    Open Akron's overlay, navigate to the **Interface** tab, and select **Community Packs**.
+  </Step>
+  <Step title="Refresh the catalog">
+    Click **Refresh** to fetch the latest catalog index.
+  </Step>
+  <Step title="Filter entries">
+    Choose a category (All, StartPos, Auto Kill, or Auto Deafen) and type in the search box to filter by title, description, author, map URL, section label, or tags.
+  </Step>
+  <Step title="Import the selected pack">
+    Select a pack in the list, review its details on the right, and click **Import Selected**. Akron downloads the `.akr` file into `Saves/AkronProfiles/community-*.akr` and imports the declared scope.
+  </Step>
+</Steps>
+
+## Pack Safety
+
+Community packs use the same `.akr` import path as local exports.
+
+- **Back up first.** Export your current setup before importing a community pack so you can restore it.
+- **Check the section.** Verify that the pack's section (StartPos, Auto Kill, and so on) matches what you expect.
+- **Attempt-changing imports are policy-visible.** Imported settings that affect attempt counts may appear in ruleset status and proof metadata.
+- **Prefer scoped imports.** Use section-specific packs over whole-setup packs when you only need one category.
+
+## Catalog Contract
+
+Catalog entries point to `.akr` downloads and identify the section, map SID, title, author, tags, and update time. See [Community pack catalog](/reference/community-pack-catalog) for the JSON schema and [Akron .akr archives](/reference/akr-archives) for archive validation rules.
+
+Catalog maintainers should validate pack metadata, scopes, and download URLs before publishing a shared catalog.
