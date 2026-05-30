@@ -301,6 +301,10 @@ async function publishReleaseUpdate(request, apiSection, submissionId, releaseDe
 async function trashUpdate(request, updateId) {
   await fetchJson(request, `${gamebananaOrigin}/apiv12/Update/${updateId}`, {
     method: "DELETE",
+    data: {
+      _idReasonRow: "2",
+      _sNotes: "Replacing an automated release update that was linked to the wrong file.",
+    },
   });
 }
 
