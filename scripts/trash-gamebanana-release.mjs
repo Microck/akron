@@ -84,6 +84,18 @@ function updateRecords(payload) {
   return [];
 }
 
+function getFileRecords(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (payload && typeof payload === "object") {
+    return Object.values(payload);
+  }
+
+  return [];
+}
+
 async function trashResource(context, section, id, notes) {
   await fetchJson(context, `${gamebananaOrigin}/apiv12/${section}/${id}`, {
     method: "DELETE",
@@ -158,6 +170,63 @@ async function inspectFilesSection(page, pageSection, submissionId, fileId) {
   }, fileId);
 
   console.log(`GameBanana edit file section for ${fileId}: ${JSON.stringify(details, null, 2)}`);
+}
+
+async function getFile(context, apiSection, submissionId, fileId) {
+  const files = await fetchJson(
+    context,
+    `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Files`,
+  );
+  return getFileRecords(files).find((record) => Number(record?._idRow) === Number(fileId));
+}
+
+async function archiveFileThroughEditForm(page, pageSection, submissionId, fileName) {
+  await page.goto(`${gamebananaOrigin}/${pageSection}/edit/${submissionId}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  const mediaTab = page.getByText(/^media$/i).first();
+  if (await mediaTab.isVisible().catch(() => false)) {
+    await mediaTab.click();
+  }
+
+  const archived = await page.locator("#Files").evaluate((section, targetFileName) => {
+    const link = Array.from(section.querySelectorAll("a")).find(
+      (anchor) => anchor.textContent?.trim() === targetFileName,
+    );
+    if (!link) {
+      return false;
+    }
+
+    let element = link;
+    while (element && element !== section) {
+      const checkbox = element.querySelector('input[type="checkbox"][name="_bIsArchived"]');
+      if (checkbox instanceof HTMLInputElement) {
+        if (!checkbox.checked) {
+          checkbox.checked = true;
+          checkbox.dispatchEvent(new Event("input", { bubbles: true }));
+          checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        return true;
+      }
+      element = element.parentElement;
+    }
+
+    return false;
+  }, fileName);
+
+  if (!archived) {
+    throw new Error(`Could not find an archive checkbox for GameBanana file ${fileName}.`);
+  }
+
+  const filesSection = page.locator("#Files");
+  const editForm = page.locator("form", { has: filesSection }).first();
+  const submitButton = editForm.locator('button[type="submit"], input[type="submit"]').last();
+  await submitButton.waitFor({ state: "visible", timeout: 20_000 });
+  await Promise.all([
+    page.waitForLoadState("networkidle").catch(() => undefined),
+    submitButton.click(),
+  ]);
 }
 
 async function createBrowserContext(storageState) {
@@ -244,18 +313,34 @@ async function main() {
   try {
     await trashUpdateIfPresent(context.request, apiSection, submissionId, updateId, notes);
 
-    try {
-      await trashResource(context.request, "File", fileId, notes);
-      console.log(`Trashed GameBanana file ${fileId}.`);
-    } catch (error) {
+    const file = await getFile(context.request, apiSection, submissionId, fileId);
+    if (!file) {
+      console.log(`GameBanana file ${fileId} is already absent from the public file list.`);
+    } else if (file._bIsArchived === true) {
+      console.log(`GameBanana file ${fileId} is already archived.`);
+    } else {
       const page = await context.newPage();
-      await inspectFilesSection(page, pageSection, submissionId, fileId);
-      throw error;
+      try {
+        await trashResource(context.request, "File", fileId, notes);
+        console.log(`Trashed GameBanana file ${fileId}.`);
+      } catch (error) {
+        console.log(
+          `Direct GameBanana file trash failed; archiving ${file._sFile} through the edit form instead.`,
+        );
+        await inspectFilesSection(page, pageSection, submissionId, fileId);
+        await archiveFileThroughEditForm(page, pageSection, submissionId, file._sFile);
+        console.log(`Archived GameBanana file ${fileId}.`);
+      }
     }
 
     const update = await getUpdate(context.request, apiSection, submissionId, updateId);
     if (update && update._bIsTrashed !== true) {
       throw new Error(`GameBanana update ${updateId} is still visible and not marked trashed.`);
+    }
+
+    const remainingFile = await getFile(context.request, apiSection, submissionId, fileId);
+    if (remainingFile && remainingFile._bIsArchived !== true) {
+      throw new Error(`GameBanana file ${fileId} is still visible and not archived.`);
     }
   } finally {
     await browserSession.close();
