@@ -28,6 +28,7 @@ jobs:
 
     env:
       GAMEBANANA_API_SECTION: Mod
+      GAMEBANANA_PAGE_SECTION: mods
       GAMEBANANA_SUBMISSION_ID: ${{ vars.GAMEBANANA_SUBMISSION_ID || '681169' }}
       GAMEBANANA_UPDATE_ID: ${{ inputs.update_id }}
       GAMEBANANA_FILE_ID: ${{ inputs.file_id }}

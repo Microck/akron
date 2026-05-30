@@ -94,6 +94,72 @@ async function trashResource(context, section, id, notes) {
   });
 }
 
+async function getUpdate(context, apiSection, submissionId, updateId) {
+  const updates = await fetchJson(
+    context,
+    `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Updates`,
+  );
+  return updateRecords(updates).find((record) => Number(record?._idRow) === Number(updateId));
+}
+
+async function trashUpdateIfPresent(context, apiSection, submissionId, updateId, notes) {
+  const update = await getUpdate(context, apiSection, submissionId, updateId);
+  if (!update) {
+    console.log(`GameBanana update ${updateId} is already absent from the public update list.`);
+    return;
+  }
+
+  if (update._bIsTrashed === true) {
+    console.log(`GameBanana update ${updateId} is already trashed.`);
+    return;
+  }
+
+  await trashResource(context, "Update", updateId, notes);
+  console.log(`Trashed GameBanana update ${updateId}.`);
+}
+
+async function inspectFilesSection(page, pageSection, submissionId, fileId) {
+  await page.goto(`${gamebananaOrigin}/${pageSection}/edit/${submissionId}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  const mediaTab = page.getByText(/^media$/i).first();
+  if (await mediaTab.isVisible().catch(() => false)) {
+    await mediaTab.click();
+  }
+
+  const details = await page.locator("#Files").evaluate((section, targetFileId) => {
+    const summarizeElement = (element) => ({
+      tag: element.tagName.toLowerCase(),
+      text: element.textContent?.replace(/\s+/g, " ").trim().slice(0, 160) ?? "",
+      href: element instanceof HTMLAnchorElement ? element.href : null,
+      type: element instanceof HTMLInputElement ? element.type : null,
+      name: element instanceof HTMLInputElement ? element.name : null,
+      id: element.id || null,
+      value:
+        element instanceof HTMLInputElement || element instanceof HTMLButtonElement
+          ? element.value || null
+          : null,
+    });
+
+    const matchingText = Array.from(section.querySelectorAll("li, tr, div"))
+      .filter((element) => element.textContent?.includes(String(targetFileId)))
+      .map(summarizeElement);
+
+    return {
+      text: section.textContent?.replace(/\s+/g, " ").trim().slice(0, 1200) ?? "",
+      matchingText,
+      links: Array.from(section.querySelectorAll("a")).map(summarizeElement),
+      buttons: Array.from(section.querySelectorAll("button, input[type='button'], input[type='submit']")).map(
+        summarizeElement,
+      ),
+      checkboxes: Array.from(section.querySelectorAll("input[type='checkbox']")).map(summarizeElement),
+    };
+  }, fileId);
+
+  console.log(`GameBanana edit file section for ${fileId}: ${JSON.stringify(details, null, 2)}`);
+}
+
 async function createBrowserContext(storageState) {
   const contextOptions = storageState
     ? {
@@ -170,22 +236,24 @@ async function main() {
   const apiSection = optionalEnv("GAMEBANANA_API_SECTION") || "Mod";
   const updateId = requiredEnv("GAMEBANANA_UPDATE_ID");
   const fileId = requiredEnv("GAMEBANANA_FILE_ID");
+  const pageSection = optionalEnv("GAMEBANANA_PAGE_SECTION") || "mods";
   const notes = optionalEnv("GAMEBANANA_TRASH_NOTES") || "Removing an automated Akron release test.";
 
   const browserSession = await createAuthenticatedBrowserSession();
   const { context } = browserSession;
   try {
-    await trashResource(context.request, "Update", updateId, notes);
-    console.log(`Trashed GameBanana update ${updateId}.`);
+    await trashUpdateIfPresent(context.request, apiSection, submissionId, updateId, notes);
 
-    await trashResource(context.request, "File", fileId, notes);
-    console.log(`Trashed GameBanana file ${fileId}.`);
+    try {
+      await trashResource(context.request, "File", fileId, notes);
+      console.log(`Trashed GameBanana file ${fileId}.`);
+    } catch (error) {
+      const page = await context.newPage();
+      await inspectFilesSection(page, pageSection, submissionId, fileId);
+      throw error;
+    }
 
-    const updates = await fetchJson(
-      context.request,
-      `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Updates`,
-    );
-    const update = updateRecords(updates).find((record) => Number(record?._idRow) === Number(updateId));
+    const update = await getUpdate(context.request, apiSection, submissionId, updateId);
     if (update && update._bIsTrashed !== true) {
       throw new Error(`GameBanana update ${updateId} is still visible and not marked trashed.`);
     }
