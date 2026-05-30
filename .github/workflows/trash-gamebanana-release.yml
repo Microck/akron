@@ -1,0 +1,64 @@
+name: Trash GameBanana Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      update_id:
+        description: GameBanana update row id to trash.
+        required: true
+        default: "425748"
+        type: string
+      file_id:
+        description: GameBanana file row id to trash.
+        required: true
+        default: "1714822"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trash-gamebanana-release
+  cancel-in-progress: false
+
+jobs:
+  trash:
+    name: Trash GameBanana release artifacts
+    runs-on: ubuntu-latest
+
+    env:
+      GAMEBANANA_API_SECTION: Mod
+      GAMEBANANA_SUBMISSION_ID: ${{ vars.GAMEBANANA_SUBMISSION_ID || '681169' }}
+      GAMEBANANA_UPDATE_ID: ${{ inputs.update_id }}
+      GAMEBANANA_FILE_ID: ${{ inputs.file_id }}
+      GAMEBANANA_COOKIES: ${{ secrets.GAMEBANANA_COOKIES }}
+      GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
+      GAMEBANANA_STORAGE_STATE_B64_GZ: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64_GZ }}
+      GAMEBANANA_TRASH_NOTES: Removing an automated Akron release test.
+      TAILSCALE_EXIT_NODE: ${{ vars.TAILSCALE_EXIT_NODE }}
+      TAILSCALE_TAGS: ${{ vars.TAILSCALE_TAGS || 'tag:ci' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install request dependency
+        run: npm install --no-save playwright-core@1.56.1
+
+      - name: Route GameBanana request through Tailscale
+        if: env.TAILSCALE_EXIT_NODE != ''
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: ${{ env.TAILSCALE_TAGS }}
+          args: --exit-node=${{ env.TAILSCALE_EXIT_NODE }}
+          version: latest
+
+      - name: Trash GameBanana artifacts
+        run: node scripts/trash-gamebanana-release.mjs
