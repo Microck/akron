@@ -218,6 +218,126 @@ function collectFileRowIds(value, ids = new Set()) {
   return ids;
 }
 
+function getUpdateRecords(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (value && typeof value === "object" && Array.isArray(value._aRecords)) {
+    return value._aRecords;
+  }
+
+  return [];
+}
+
+function findReleaseUpdate(updates, releaseName, version) {
+  return getUpdateRecords(updates)
+    .filter((update) => update && typeof update === "object")
+    .filter((update) => update._sVersion === version || update._sName === releaseName)
+    .sort((left, right) => Number(right._tsDateAdded ?? 0) - Number(left._tsDateAdded ?? 0))[0];
+}
+
+function updateFileRowIds(update) {
+  const ids = new Set();
+
+  if (Array.isArray(update?._aFileRowIds)) {
+    for (const id of update._aFileRowIds) {
+      if (typeof id === "number") {
+        ids.add(id);
+      }
+
+      if (typeof id === "string" && /^\d+$/.test(id)) {
+        ids.add(Number(id));
+      }
+    }
+  }
+
+  collectFileRowIds(update?._aFiles, ids);
+  return ids;
+}
+
+function normalizedVersion(value) {
+  return String(value ?? "").replace(/^v/i, "");
+}
+
+function findFileById(files, fileId) {
+  return getUpdateRecords(files).find((file) => Number(file?._idRow) === Number(fileId));
+}
+
+function findReleaseFile(files, version) {
+  return getUpdateRecords(files)
+    .filter((file) => releaseFileMatches(file, version))
+    .filter((file) => file._bIsArchived !== true)
+    .sort((left, right) => Number(right._tsDateAdded ?? 0) - Number(left._tsDateAdded ?? 0))[0];
+}
+
+function releaseFileMatches(file, version) {
+  if (!file || typeof file !== "object") {
+    return false;
+  }
+
+  if (file._sVersion && normalizedVersion(file._sVersion) === normalizedVersion(version)) {
+    return true;
+  }
+
+  const normalizedFileName = String(file._sFile ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const normalizedRelease = normalizedVersion(version).toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return normalizedRelease.length > 0 && normalizedFileName.includes(normalizedRelease);
+}
+
+async function publishReleaseUpdate(request, apiSection, submissionId, releaseDetails, fileId) {
+  await fetchJson(request, `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Update`, {
+    method: "POST",
+    data: {
+      _aChangeLog: parseChangeLog(releaseDetails.notes),
+      _aFileRowIds: [fileId],
+      _sName: releaseDetails.name,
+      _sVersion: releaseDetails.version,
+      _sText: markdownToGameBananaHtml(releaseDetails.notes),
+    },
+  });
+}
+
+async function trashUpdate(request, updateId) {
+  await fetchJson(request, `${gamebananaOrigin}/apiv12/Update/${updateId}`, {
+    method: "DELETE",
+  });
+}
+
+async function waitForLinkedReleaseUpdate(
+  page,
+  request,
+  apiSection,
+  submissionId,
+  releaseDetails,
+  fileId,
+) {
+  let releaseUpdate = null;
+  for (let attempt = 1; attempt <= 12; attempt += 1) {
+    const updates = await fetchJson(
+      request,
+      `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Updates`,
+    );
+    releaseUpdate = findReleaseUpdate(updates, releaseDetails.name, releaseDetails.version);
+    if (releaseUpdate && updateFileRowIds(releaseUpdate).has(fileId)) {
+      return releaseUpdate;
+    }
+
+    await page.waitForTimeout(5_000);
+  }
+
+  if (!releaseUpdate) {
+    throw new Error(
+      `GameBanana did not expose an update named "${releaseDetails.name}" or version "${releaseDetails.version}" after publishing.`,
+    );
+  }
+
+  const linkedFileIds = [...updateFileRowIds(releaseUpdate)].sort((left, right) => left - right);
+  throw new Error(
+    `GameBanana update ${releaseUpdate._idRow ?? "(unknown id)"} is linked to file IDs ${linkedFileIds.join(", ") || "(none)"} instead of uploaded file ${fileId}. Refusing to sync public links to a file that is not attached to the release update.`,
+  );
+}
+
 async function fetchJson(request, url, options = {}) {
   const response = await request.fetch(url, {
     ...options,
@@ -494,6 +614,11 @@ async function main() {
   await stat(releaseAsset);
   const releaseNotes = await readFile(releaseNotesFile, "utf8");
   const version = releaseTag.replace(/^v/, "");
+  const releaseDetails = {
+    name: releaseName,
+    notes: releaseNotes,
+    version,
+  };
 
   const browserSession = await createBrowserContext(browserName, storageState);
   const { context } = browserSession;
@@ -512,6 +637,62 @@ async function main() {
   try {
     if (!hasStoredAuth) {
       await logIn(page, username, password);
+    }
+
+    const existingUpdates = await fetchJson(
+      context.request,
+      `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Updates`,
+    );
+    const existingReleaseUpdate = findReleaseUpdate(existingUpdates, releaseName, version);
+    if (existingReleaseUpdate) {
+      const files = await fetchJson(
+        context.request,
+        `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Files`,
+      );
+      const linkedFileIds = [...updateFileRowIds(existingReleaseUpdate)];
+      const matchingLinkedFileId = linkedFileIds.find((fileId) =>
+        releaseFileMatches(findFileById(files, fileId), version),
+      );
+
+      if (!matchingLinkedFileId) {
+        const replacementFile = findReleaseFile(files, version);
+        if (!replacementFile) {
+          throw new Error(
+            `GameBanana already has update ${existingReleaseUpdate._idRow ?? "(unknown id)"} for ${releaseTag}, but it is linked to file IDs ${linkedFileIds.join(", ") || "(none)"} and no uploaded ${version} file exists. Fix or delete that Update before rerunning the release.`,
+          );
+        }
+
+        const replacementFileId = Number(replacementFile._idRow);
+        await trashUpdate(context.request, existingReleaseUpdate._idRow);
+        await publishReleaseUpdate(
+          context.request,
+          apiSection,
+          submissionId,
+          releaseDetails,
+          replacementFileId,
+        );
+        await waitForLinkedReleaseUpdate(
+          page,
+          context.request,
+          apiSection,
+          submissionId,
+          releaseDetails,
+          replacementFileId,
+        );
+        await setGithubOutput("file_id", replacementFileId);
+        console.log(
+          `Replaced GameBanana update ${existingReleaseUpdate._idRow ?? "(unknown id)"} for ${releaseTag}.`,
+        );
+        console.log(`GameBanana file ID: ${replacementFileId}`);
+        return;
+      }
+
+      await setGithubOutput("file_id", matchingLinkedFileId);
+      console.log(
+        `GameBanana update ${existingReleaseUpdate._idRow ?? "(unknown id)"} already exists for ${releaseTag}.`,
+      );
+      console.log(`GameBanana file ID: ${matchingLinkedFileId}`);
+      return;
     }
 
     const beforeIds = await getFileRowIds(context.request, apiSection, submissionId);
@@ -555,16 +736,21 @@ async function main() {
       throw new Error(`Could not determine GameBanana file row ID for ${basename(releaseAsset)}.`);
     }
 
-    await fetchJson(context.request, `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Update`, {
-      method: "POST",
-      data: {
-        _aChangeLog: parseChangeLog(releaseNotes),
-        _aFileRowIds: [uploadedFileId],
-        _sName: releaseName,
-        _sVersion: version,
-        _sText: markdownToGameBananaHtml(releaseNotes),
-      },
-    });
+    await publishReleaseUpdate(
+      context.request,
+      apiSection,
+      submissionId,
+      releaseDetails,
+      uploadedFileId,
+    );
+    await waitForLinkedReleaseUpdate(
+      page,
+      context.request,
+      apiSection,
+      submissionId,
+      releaseDetails,
+      uploadedFileId,
+    );
 
     await setGithubOutput("file_id", uploadedFileId);
     console.log(`Published ${releaseTag} to GameBanana submission ${submissionId}.`);
