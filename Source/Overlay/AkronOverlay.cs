@@ -707,12 +707,32 @@ public sealed partial class AkronOverlay : Entity {
             RequestSearchInputFocus();
             selectedPanel = SelectionPanel.Actions;
         } else {
-            selectedEntry.Execute?.Invoke();
+            ExecuteActionEntry(selectedEntry, "overlay-keyboard");
             if (selectedEntry.IsAddCustomLabelRow) {
                 InvalidateDisplayActionEntryCache();
             }
         }
         return true;
+    }
+
+    private static void ExecuteActionEntry(ActionEntry entry, string source) {
+        if (entry == null) {
+            return;
+        }
+
+        bool shouldTrackToggle = entry.IsToggle && ShouldReadEntryValueForActiveState(entry);
+        bool wasOn = shouldTrackToggle && IsOnState(entry.Value());
+        entry.Execute?.Invoke();
+        if (!shouldTrackToggle) {
+            return;
+        }
+
+        bool isOn = IsOnState(entry.Value());
+        if (wasOn == isOn) {
+            return;
+        }
+
+        AkronShowcaseMarkers.MarkTopLevelToggle(entry.Label, isOn, entry.FeatureKind, source);
     }
 
     private void UpdateFallbackScrollWheel() {

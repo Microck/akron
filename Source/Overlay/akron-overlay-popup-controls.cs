@@ -338,7 +338,12 @@ public sealed partial class AkronOverlay {
                 }
 
                 if (ImGui.Selectable(choice.Label + "##" + label + popupId + index, selected) && enabled) {
+                    string previousValue = value();
                     choice.Apply();
+                    string nextValue = value();
+                    if (!string.Equals(previousValue, nextValue, StringComparison.Ordinal)) {
+                        AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "choice", nextValue);
+                    }
                 }
 
                 if (selected) {
@@ -362,6 +367,7 @@ public sealed partial class AkronOverlay {
         DrawPopupRowLabel(label, CalculatePopupLabelWidth(checkboxWidth));
         if (ImGui.Checkbox("##" + label + popupId, ref enabled)) {
             setter(enabled);
+            AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "checkbox", enabled.ToString().ToLowerInvariant());
         }
         DrawPopupTooltip(tooltip, label);
     }
@@ -380,7 +386,9 @@ public sealed partial class AkronOverlay {
         DrawPopupRowLabel(label, CalculatePopupLabelWidth(colorWidth));
         ImGui.PushItemWidth(colorWidth);
         if (ImGui.ColorEdit3("##" + label + popupId, ref color, ImGuiColorEditFlags.DisplayHex | ImGuiColorEditFlags.InputRGB)) {
-            setter(VectorToRgb(color));
+            int next = VectorToRgb(color);
+            setter(next);
+            AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "color", next.ToString("X6", CultureInfo.InvariantCulture));
         }
         ImGui.PopItemWidth();
         DrawPopupTooltip(tooltip, label);
@@ -626,7 +634,9 @@ public sealed partial class AkronOverlay {
         float controlsWidth = PopupStepperButtonWidth * 2f + valueWidth + ImGui.CalcTextSize("x").X + ImGui.GetStyle().ItemSpacing.X * 3f + 2f;
         DrawPopupRowLabel(label, CalculatePopupLabelWidth(controlsWidth));
         if (ImGui.Button("-##" + label + popupId, new NumericsVector2(PopupStepperButtonWidth, 0f))) {
-            setter(Calc.Clamp(getter() + decrement, minimum, maximum));
+            float next = Calc.Clamp(getter() + decrement, minimum, maximum);
+            setter(next);
+            AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
         ImGui.SameLine();
@@ -635,7 +645,9 @@ public sealed partial class AkronOverlay {
         float value = getter();
         ImGui.PushItemWidth(valueWidth);
         if (ImGui.InputFloat("##" + label + popupId, ref value, 0f, 0f, format)) {
-            setter(Calc.Clamp(value, minimum, maximum));
+            float next = Calc.Clamp(value, minimum, maximum);
+            setter(next);
+            AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
         if (ImGui.IsItemActive()) {
@@ -645,7 +657,9 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip(tooltip, label);
         ImGui.SameLine();
         if (ImGui.Button("+##" + label + popupId, new NumericsVector2(PopupStepperButtonWidth, 0f))) {
-            setter(Calc.Clamp(getter() + increment, minimum, maximum));
+            float next = Calc.Clamp(getter() + increment, minimum, maximum);
+            setter(next);
+            AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
         DrawPopupTooltip(tooltip, label);
@@ -666,14 +680,18 @@ public sealed partial class AkronOverlay {
         float controlsWidth = PopupStepperButtonWidth * 2f + valueWidth + ImGui.GetStyle().ItemSpacing.X * 2f;
         DrawPopupRowLabel(label, CalculatePopupLabelWidth(controlsWidth));
         if (ImGui.Button("-##" + label + popupId, new NumericsVector2(PopupStepperButtonWidth, 0f))) {
-            setter(Calc.Clamp(getter() + decrement, minimum, maximum));
+            float next = Calc.Clamp(getter() + decrement, minimum, maximum);
+            setter(next);
+            AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
         ImGui.SameLine();
         float value = getter();
         ImGui.PushItemWidth(valueWidth);
         if (ImGui.InputFloat("##" + label + popupId, ref value, 0f, 0f, format)) {
-            setter(Calc.Clamp(value, minimum, maximum));
+            float next = Calc.Clamp(value, minimum, maximum);
+            setter(next);
+            AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
         if (ImGui.IsItemActive()) {
@@ -683,7 +701,9 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip(tooltip, label);
         ImGui.SameLine();
         if (ImGui.Button("+##" + label + popupId, new NumericsVector2(PopupStepperButtonWidth, 0f))) {
-            setter(Calc.Clamp(getter() + increment, minimum, maximum));
+            float next = Calc.Clamp(getter() + increment, minimum, maximum);
+            setter(next);
+            AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
         DrawPopupTooltip(tooltip, label);
@@ -703,14 +723,18 @@ public sealed partial class AkronOverlay {
         float controlsWidth = PopupStepperButtonWidth * 2f + valueWidth + ImGui.GetStyle().ItemSpacing.X * 2f;
         DrawPopupRowLabel(label, CalculatePopupLabelWidth(controlsWidth));
         if (ImGui.Button("-##" + label + popupId, new NumericsVector2(PopupStepperButtonWidth, 0f))) {
-            setter(Calc.Clamp(getter() + decrement, minimum, maximum));
+            int next = Calc.Clamp(getter() + decrement, minimum, maximum);
+            setter(next);
+            AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
         ImGui.SameLine();
         int value = getter();
         ImGui.PushItemWidth(valueWidth);
         if (ImGui.InputInt("##" + label + popupId, ref value, 0, 0)) {
-            setter(Calc.Clamp(value, minimum, maximum));
+            int next = Calc.Clamp(value, minimum, maximum);
+            setter(next);
+            AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
         if (ImGui.IsItemActive()) {
@@ -720,7 +744,9 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip(tooltip, label);
         ImGui.SameLine();
         if (ImGui.Button("+##" + label + popupId, new NumericsVector2(PopupStepperButtonWidth, 0f))) {
-            setter(Calc.Clamp(getter() + increment, minimum, maximum));
+            int next = Calc.Clamp(getter() + increment, minimum, maximum);
+            setter(next);
+            AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
         DrawPopupTooltip(tooltip, label);

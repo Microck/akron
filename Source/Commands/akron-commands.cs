@@ -158,6 +158,38 @@ public static partial class AkronCommands {
         Log(AkronPerformanceTelemetry.DescribeOverlayRenderCadence());
     }
 
+    [Command("akron_showcase_mark", "hidden showcase marker log: sync <label>|note <label>|status")]
+    public static void ShowcaseMark(string action = "status", string label = "") {
+        switch (NormalizeToken(action)) {
+            case "":
+            case "status":
+                Log("showcase-markers: " + AkronShowcaseMarkers.DescribeStatus());
+                return;
+            case "sync":
+                if (!AkronShowcaseMarkers.Enabled) {
+                    Log("showcase-markers: disabled");
+                    return;
+                }
+
+                AkronShowcaseMarkers.MarkSync(label);
+                Log("showcase-sync: " + (string.IsNullOrWhiteSpace(label) ? "SYNC" : label.Trim()));
+                return;
+            case "note":
+                if (!AkronShowcaseMarkers.Enabled) {
+                    Log("showcase-markers: disabled");
+                    return;
+                }
+
+                AkronShowcaseMarkers.MarkNote(label);
+                Log("showcase-note: " + (string.IsNullOrWhiteSpace(label) ? "note" : label.Trim()));
+                return;
+            default:
+                Log("unknown showcase marker action: " + action);
+                Log("usage: akron_showcase_mark sync <label>|note <label>|status");
+                return;
+        }
+    }
+
     [Command("akron_menu_pause", "control whether Akron pauses gameplay while open: toggle|on|off|status")]
     public static void MenuPause(string action = "toggle") {
         switch ((action ?? string.Empty).Trim().ToLowerInvariant()) {

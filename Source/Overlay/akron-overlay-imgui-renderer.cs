@@ -392,7 +392,7 @@ public sealed partial class AkronOverlay {
                 internalRecorderExperimentalWarningDontShowAgain = false;
                 ImGui.OpenPopup(GetInternalRecorderExperimentalWarningPopupId());
             } else {
-                entry.Execute?.Invoke();
+                ExecuteActionEntry(entry, "imgui");
             }
         }
 

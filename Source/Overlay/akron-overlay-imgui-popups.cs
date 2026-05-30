@@ -315,7 +315,7 @@ public sealed partial class AkronOverlay {
             pendingInternalRecorderExperimentalAction = null;
             internalRecorderExperimentalWarningDontShowAgain = false;
             ImGui.CloseCurrentPopup();
-            action.Execute?.Invoke();
+            ExecuteActionEntry(action, "imgui");
         }
 
         ImGui.SameLine();

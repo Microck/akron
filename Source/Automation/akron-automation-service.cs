@@ -20,6 +20,7 @@ public static class AkronAutomationService {
         "akron_overlay_collapse",
         "akron_prompt_select",
         "akron_proof",
+        "akron_showcase_mark",
         "akron_debug_snapshot",
         "akron_editable_flag",
         "akron_tas_file"
