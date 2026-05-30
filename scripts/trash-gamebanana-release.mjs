@@ -1,4 +1,4 @@
-import { request } from "playwright-core";
+import { chromium } from "playwright";
 import { gunzipSync } from "node:zlib";
 
 const gamebananaOrigin = "https://gamebanana.com";
@@ -94,35 +94,75 @@ async function trashResource(context, section, id, notes) {
   });
 }
 
-async function createAuthenticatedRequestContext() {
+async function createBrowserContext(storageState) {
+  const contextOptions = storageState
+    ? {
+        storageState,
+      }
+    : {};
+
+  const browserName = optionalEnv("GAMEBANANA_BROWSER") || "cloakbrowser";
+  if (browserName === "cloakbrowser") {
+    const { launchContext } = await import("cloakbrowser");
+    const context = await launchContext({
+      headless: true,
+      humanize: true,
+      contextOptions,
+    });
+    return {
+      context,
+      close: () => context.close(),
+    };
+  }
+
+  if (browserName !== "chromium") {
+    throw new Error(`Unsupported GAMEBANANA_BROWSER value: ${browserName}`);
+  }
+
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext(contextOptions);
+  return {
+    context,
+    close: () => browser.close(),
+  };
+}
+
+function getStorageState() {
   const storageStatePath = optionalEnv("GAMEBANANA_STORAGE_STATE");
   if (storageStatePath) {
-    return request.newContext({ storageState: storageStatePath });
+    return storageStatePath;
   }
 
   const storageStateGz = decodeJsonBase64(optionalEnv("GAMEBANANA_STORAGE_STATE_B64_GZ"), true);
   if (storageStateGz) {
-    return request.newContext({ storageState: storageStateGz });
+    return storageStateGz;
   }
 
   const storageState = decodeJsonBase64(optionalEnv("GAMEBANANA_STORAGE_STATE_B64"));
   if (storageState) {
-    return request.newContext({ storageState });
+    return storageState;
   }
 
-  const cookies = decodeCookieBundle(optionalEnv("GAMEBANANA_COOKIES"));
+  return null;
+}
+
+async function createAuthenticatedBrowserSession() {
+  const storageState = getStorageState();
+  const browserSession = await createBrowserContext(storageState);
+  const cookies = storageState ? [] : decodeCookieBundle(optionalEnv("GAMEBANANA_COOKIES"));
+
   if (cookies.length > 0) {
-    return request.newContext({
-      storageState: {
-        cookies,
-        origins: [],
-      },
-    });
+    await browserSession.context.addCookies(cookies);
   }
 
-  throw new Error(
-    "GAMEBANANA_STORAGE_STATE, GAMEBANANA_STORAGE_STATE_B64_GZ, GAMEBANANA_STORAGE_STATE_B64, or GAMEBANANA_COOKIES is required.",
-  );
+  if (!storageState && cookies.length === 0) {
+    await browserSession.close();
+    throw new Error(
+      "GAMEBANANA_STORAGE_STATE, GAMEBANANA_STORAGE_STATE_B64_GZ, GAMEBANANA_STORAGE_STATE_B64, or GAMEBANANA_COOKIES is required.",
+    );
+  }
+
+  return browserSession;
 }
 
 async function main() {
@@ -132,16 +172,17 @@ async function main() {
   const fileId = requiredEnv("GAMEBANANA_FILE_ID");
   const notes = optionalEnv("GAMEBANANA_TRASH_NOTES") || "Removing an automated Akron release test.";
 
-  const context = await createAuthenticatedRequestContext();
+  const browserSession = await createAuthenticatedBrowserSession();
+  const { context } = browserSession;
   try {
-    await trashResource(context, "Update", updateId, notes);
+    await trashResource(context.request, "Update", updateId, notes);
     console.log(`Trashed GameBanana update ${updateId}.`);
 
-    await trashResource(context, "File", fileId, notes);
+    await trashResource(context.request, "File", fileId, notes);
     console.log(`Trashed GameBanana file ${fileId}.`);
 
     const updates = await fetchJson(
-      context,
+      context.request,
       `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Updates`,
     );
     const update = updateRecords(updates).find((record) => Number(record?._idRow) === Number(updateId));
@@ -149,7 +190,7 @@ async function main() {
       throw new Error(`GameBanana update ${updateId} is still visible and not marked trashed.`);
     }
   } finally {
-    await context.dispose();
+    await browserSession.close();
   }
 }
 

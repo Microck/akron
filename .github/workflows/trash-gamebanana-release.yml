@@ -31,6 +31,7 @@ jobs:
       GAMEBANANA_SUBMISSION_ID: ${{ vars.GAMEBANANA_SUBMISSION_ID || '681169' }}
       GAMEBANANA_UPDATE_ID: ${{ inputs.update_id }}
       GAMEBANANA_FILE_ID: ${{ inputs.file_id }}
+      GAMEBANANA_BROWSER: ${{ vars.GAMEBANANA_BROWSER || 'cloakbrowser' }}
       GAMEBANANA_COOKIES: ${{ secrets.GAMEBANANA_COOKIES }}
       GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
       GAMEBANANA_STORAGE_STATE_B64_GZ: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64_GZ }}
@@ -47,8 +48,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install request dependency
-        run: npm install --no-save playwright-core@1.56.1
+      - name: Install browser automation dependencies
+        run: |
+          npm install --no-save playwright@1.56.1 playwright-core@1.56.1 cloakbrowser@0.3.31
+          npx playwright install --with-deps chromium
+          npx cloakbrowser install
 
       - name: Route GameBanana request through Tailscale
         if: env.TAILSCALE_EXIT_NODE != ''
