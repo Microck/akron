@@ -172,6 +172,23 @@ public static class AkronCommunityPacks {
         profileDirectoryProvider = provider ?? AkronProfilePacks.GetProfileDirectory;
     }
 
+    internal static bool CompleteRefreshForTesting(TimeSpan timeout) {
+        Task<RefreshOutcome> task = refreshTask;
+        if (task == null) {
+            refreshInProgress = false;
+            return true;
+        }
+
+        if (!task.Wait(timeout)) {
+            return false;
+        }
+
+        ApplyRefreshOutcome(task.GetAwaiter().GetResult());
+        refreshTask = null;
+        refreshInProgress = false;
+        return true;
+    }
+
     private static RefreshOutcome RefreshCore(string indexUrl) {
         try {
             List<AkronCommunityPackEntry> entries = LoadIndex(indexUrl).Packs

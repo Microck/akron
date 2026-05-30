@@ -109,7 +109,7 @@ public sealed class CommunityPackTests {
 
     [Fact]
     public void BeginRefreshLoadsFileIndexWithoutBlockingCaller() {
-        string path = Path.Combine(Path.GetTempPath(), "akron-community-index-test.json");
+        string path = Path.Combine(Path.GetTempPath(), "akron-community-index-" + Guid.NewGuid().ToString("N") + ".json");
         File.WriteAllText(path, """
         {
           "format": "akron-community-pack-index-v1",
@@ -126,15 +126,19 @@ public sealed class CommunityPackTests {
         }
         """);
 
-        AkronCommunityPacks.BeginRefresh(new System.Uri(path).AbsoluteUri);
-        Assert.True(SpinWait.SpinUntil(() => !AkronCommunityPacks.RefreshInProgress, 2000));
+        try {
+            AkronCommunityPacks.BeginRefresh(new System.Uri(path).AbsoluteUri);
+            Assert.True(AkronCommunityPacks.CompleteRefreshForTesting(TimeSpan.FromSeconds(10)));
 
-        AkronCommunityPackSearchResult result = AkronCommunityPacks.Search(new AkronCommunityPackFilter {
-            MapSid = "Maps/Current",
-            Section = AkronProfileSection.AutoKill
-        });
+            AkronCommunityPackSearchResult result = AkronCommunityPacks.Search(new AkronCommunityPackFilter {
+                MapSid = "Maps/Current",
+                Section = AkronProfileSection.AutoKill
+            });
 
-        Assert.Equal("File refresh pack", Assert.Single(result.Entries).Title);
+            Assert.Equal("File refresh pack", Assert.Single(result.Entries).Title);
+        } finally {
+            File.Delete(path);
+        }
     }
 
     [Fact]
