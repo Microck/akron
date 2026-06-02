@@ -6,6 +6,12 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.8
+
+- Keep only Open Menu, Click Teleport Cursor, and Cursor Zoom Hold bound by default.
+- Keep Open Menu user-customizable while restoring Tab only for missing or empty menu bindings.
+- Stop built-in Casual profile defaults from enabling features automatically.
+
 ## 0.1.2-beta.7
 
 - Keep Tab opening Akron's menu even when stale or custom menu bindings no longer include Tab.
