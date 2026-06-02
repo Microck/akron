@@ -2,6 +2,7 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { readFile, stat } from "node:fs/promises";
 import { basename } from "node:path";
+import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 
 const gamebananaOrigin = "https://gamebanana.com";
@@ -271,6 +272,30 @@ function findReleaseFile(files, version) {
     .sort((left, right) => Number(right._tsDateAdded ?? 0) - Number(left._tsDateAdded ?? 0))[0];
 }
 
+function activeFileIdsInDisplayOrder(files) {
+  return getUpdateRecords(files)
+    .filter((file) => file && typeof file === "object")
+    .filter((file) => file._bIsArchived !== true)
+    .map((file) => Number(file._idRow))
+    .filter((fileId) => Number.isFinite(fileId));
+}
+
+function assertFirstActiveFile(files, expectedFileId) {
+  const activeFileIds = activeFileIdsInDisplayOrder(files);
+  const normalizedExpectedFileId = Number(expectedFileId);
+  if (activeFileIds[0] === normalizedExpectedFileId) {
+    return;
+  }
+
+  throw new Error(
+    `GameBanana file ${normalizedExpectedFileId} was uploaded, but active file order is ${activeFileIds.join(", ") || "(none)"}. Refusing to publish with the newest release hidden below older files.`,
+  );
+}
+
+function firstActiveFileMatches(files, expectedFileId) {
+  return activeFileIdsInDisplayOrder(files)[0] === Number(expectedFileId);
+}
+
 function releaseFileMatches(file, version) {
   if (!file || typeof file !== "object") {
     return false;
@@ -340,6 +365,49 @@ async function waitForLinkedReleaseUpdate(
   throw new Error(
     `GameBanana update ${releaseUpdate._idRow ?? "(unknown id)"} is linked to file IDs ${linkedFileIds.join(", ") || "(none)"} instead of uploaded file ${fileId}. Refusing to sync public links to a file that is not attached to the release update.`,
   );
+}
+
+async function waitForFirstActiveFile(page, request, apiSection, submissionId, expectedFileId) {
+  let files = [];
+  for (let attempt = 1; attempt <= 12; attempt += 1) {
+    files = await fetchJson(
+      request,
+      `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Files`,
+    );
+
+    if (activeFileIdsInDisplayOrder(files)[0] === Number(expectedFileId)) {
+      return;
+    }
+
+    await page.waitForTimeout(5_000);
+  }
+
+  assertFirstActiveFile(files, expectedFileId);
+}
+
+async function ensureFirstActiveFile(
+  page,
+  request,
+  apiSection,
+  pageSection,
+  submissionId,
+  file,
+) {
+  const fileId = Number(file?._idRow);
+  if (!Number.isFinite(fileId)) {
+    throw new Error("Cannot promote GameBanana file because its row ID is missing.");
+  }
+
+  const files = await fetchJson(
+    request,
+    `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Files`,
+  );
+  if (firstActiveFileMatches(files, fileId)) {
+    return;
+  }
+
+  await promoteExistingReleaseFile(page, pageSection, submissionId, file);
+  await waitForFirstActiveFile(page, request, apiSection, submissionId, fileId);
 }
 
 async function fetchJson(request, url, options = {}) {
@@ -436,6 +504,36 @@ async function logIn(page, username, password) {
 }
 
 async function uploadReleaseAsset(page, pageSection, submissionId, assetPath) {
+  const fileInput = await openEditFileManager(page, pageSection, submissionId);
+  const uploadedFileCount = await page.locator('#Files [id$="_UploadedFiles"] li').count();
+  await fileInput.setInputFiles(assetPath);
+
+  await page.waitForFunction(
+    (previousCount) =>
+      document.querySelectorAll('#Files [id$="_UploadedFiles"] li').length > previousCount &&
+      document.querySelector("#Files .UploadMessage")?.textContent?.includes("Upload complete"),
+    uploadedFileCount,
+    { timeout: 120_000 },
+  );
+
+  const promotedFile = await promoteNewestUploadedFile(page, uploadedFileCount);
+  console.log(
+    `Promoted uploaded GameBanana file ${JSON.stringify(promotedFile.fileName)} from position ${promotedFile.previousIndex + 1} to 1.`,
+  );
+
+  await submitFileManager(page, fileInput);
+}
+
+async function promoteExistingReleaseFile(page, pageSection, submissionId, file) {
+  const fileInput = await openEditFileManager(page, pageSection, submissionId);
+  const promotedFile = await promoteExistingUploadedFile(page, file);
+  console.log(
+    `Promoted existing GameBanana file ${JSON.stringify(promotedFile.fileName)} from position ${promotedFile.previousIndex + 1} to 1.`,
+  );
+  await submitFileManager(page, fileInput);
+}
+
+async function openEditFileManager(page, pageSection, submissionId) {
   await page.goto(`${gamebananaOrigin}/${pageSection}/edit/${submissionId}`, {
     waitUntil: "domcontentloaded",
   });
@@ -455,17 +553,10 @@ async function uploadReleaseAsset(page, pageSection, submissionId, assetPath) {
 
   const fileInput = page.locator('#Files input[type="file"]').first();
   await fileInput.waitFor({ state: "attached", timeout: 20_000 });
-  const uploadedFileCount = await page.locator('#Files [id$="_UploadedFiles"] li').count();
-  await fileInput.setInputFiles(assetPath);
+  return fileInput;
+}
 
-  await page.waitForFunction(
-    (previousCount) =>
-      document.querySelectorAll('#Files [id$="_UploadedFiles"] li').length > previousCount &&
-      document.querySelector("#Files .UploadMessage")?.textContent?.includes("Upload complete"),
-    uploadedFileCount,
-    { timeout: 120_000 },
-  );
-
+async function submitFileManager(page, fileInput) {
   const uploadForm = page.locator("form", { has: fileInput }).first();
   const submitButton = uploadForm.locator('button[type="submit"], input[type="submit"]').last();
   await submitButton.waitFor({ state: "visible", timeout: 20_000 });
@@ -476,6 +567,100 @@ async function uploadReleaseAsset(page, pageSection, submissionId, assetPath) {
     page.waitForLoadState("networkidle").catch(() => undefined),
     submitButton.click(),
   ]);
+}
+
+async function promoteExistingUploadedFile(page, file) {
+  return promoteUploadedFileInList(page, { file });
+}
+
+async function promoteNewestUploadedFile(page, previousFileCount) {
+  return promoteUploadedFileInList(page, { previousFileCount });
+}
+
+async function promoteUploadedFileInList(page, target) {
+  return page.evaluate((target) => {
+    function promoteUploadedListItem(list, uploadedItem) {
+      const items = Array.from(list.querySelectorAll("li"));
+      const previousIndex = items.indexOf(uploadedItem);
+      const fileName =
+        uploadedItem.querySelector("[title]")?.getAttribute("title") ??
+        uploadedItem.querySelector("input[type='hidden'][value]")?.getAttribute("value") ??
+        uploadedItem.textContent?.replace(/\s+/g, " ").trim() ??
+        "(unknown)";
+
+      if (previousIndex > 0) {
+        list.insertBefore(uploadedItem, list.firstElementChild);
+      }
+
+      list.dispatchEvent(new Event("input", { bubbles: true }));
+      list.dispatchEvent(new Event("change", { bubbles: true }));
+      list.dispatchEvent(new CustomEvent("sortupdate", { bubbles: true }));
+
+      if (globalThis.jQuery) {
+        globalThis.jQuery(list).trigger("sortupdate").trigger("change");
+      }
+
+      const firstItem = list.querySelector("li");
+      if (firstItem !== uploadedItem) {
+        throw new Error("GameBanana uploaded file could not be moved to the top of the upload list.");
+      }
+
+      return {
+        fileName,
+        previousIndex,
+      };
+    }
+
+    const list = document.querySelector('#Files [id$="_UploadedFiles"]');
+    if (!list) {
+      throw new Error("GameBanana uploaded-files list is missing.");
+    }
+
+    const items = Array.from(list.querySelectorAll("li"));
+    let uploadedItem = null;
+
+    if ("previousFileCount" in target) {
+      if (items.length <= target.previousFileCount) {
+        throw new Error(
+          `GameBanana uploaded-files list has ${items.length} rows, expected more than ${target.previousFileCount}.`,
+        );
+      }
+
+      // GameBanana renders profile files in stored list order. Uploads append
+      // to this edit-list, so move the newly uploaded row before submitting.
+      const newItems = items.slice(target.previousFileCount);
+      uploadedItem = newItems[newItems.length - 1];
+    } else {
+      const fileId = String(target.file?._idRow ?? "");
+      const fileName = String(target.file?._sFile ?? "");
+      uploadedItem = items.find((item) => {
+        const values = [
+          item.id,
+          item.textContent,
+          ...Array.from(item.querySelectorAll("[href], [src], [value], [name], [id]")).flatMap(
+            (element) => [
+              element.getAttribute("href"),
+              element.getAttribute("src"),
+              element.getAttribute("value"),
+              element.getAttribute("name"),
+              element.getAttribute("id"),
+            ],
+          ),
+        ]
+          .filter((value) => typeof value === "string")
+          .map((value) => value.trim());
+
+        return values.some((value) => value.includes(fileId)) ||
+          (fileName.length > 0 && values.some((value) => value.includes(fileName)));
+      });
+
+      if (!uploadedItem) {
+        throw new Error(`Could not find GameBanana file row ${fileId || fileName} in the upload list.`);
+      }
+    }
+
+    return promoteUploadedListItem(list, uploadedItem);
+  }, target);
 }
 
 function redactKnownSecrets(value) {
@@ -667,6 +852,14 @@ async function main() {
         }
 
         const replacementFileId = Number(replacementFile._idRow);
+        await ensureFirstActiveFile(
+          page,
+          context.request,
+          apiSection,
+          pageSection,
+          submissionId,
+          replacementFile,
+        );
         await trashUpdate(context.request, existingReleaseUpdate._idRow);
         await publishReleaseUpdate(
           context.request,
@@ -691,6 +884,15 @@ async function main() {
         return;
       }
 
+      const matchingLinkedFile = findFileById(files, matchingLinkedFileId);
+      await ensureFirstActiveFile(
+        page,
+        context.request,
+        apiSection,
+        pageSection,
+        submissionId,
+        matchingLinkedFile,
+      );
       await setGithubOutput("file_id", matchingLinkedFileId);
       console.log(
         `GameBanana update ${existingReleaseUpdate._idRow ?? "(unknown id)"} already exists for ${releaseTag}.`,
@@ -740,6 +942,8 @@ async function main() {
       throw new Error(`Could not determine GameBanana file row ID for ${basename(releaseAsset)}.`);
     }
 
+    await waitForFirstActiveFile(page, context.request, apiSection, submissionId, uploadedFileId);
+
     await publishReleaseUpdate(
       context.request,
       apiSection,
@@ -756,6 +960,8 @@ async function main() {
       uploadedFileId,
     );
 
+    await waitForFirstActiveFile(page, context.request, apiSection, submissionId, uploadedFileId);
+
     await setGithubOutput("file_id", uploadedFileId);
     console.log(`Published ${releaseTag} to GameBanana submission ${submissionId}.`);
     console.log(`GameBanana file ID: ${uploadedFileId}`);
@@ -764,7 +970,16 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+export {
+  activeFileIdsInDisplayOrder,
+  assertFirstActiveFile,
+  firstActiveFileMatches,
+  promoteUploadedFileInList,
+};
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}
