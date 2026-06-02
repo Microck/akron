@@ -330,10 +330,6 @@ public partial class AkronModule {
         KeyboardState previousKeyboard = previousOverlayToggleKeyboard;
         previousOverlayToggleKeyboard = keyboard;
 
-        if (IsOverlayAlternateKeyboardBindingPressed(binding.Keys, keyboard, previousKeyboard)) {
-            return true;
-        }
-
         if (IsKeyboardBindingPressed(binding.Keys, keyboard, previousKeyboard)) {
             return true;
         }
@@ -349,28 +345,6 @@ public partial class AkronModule {
         }
 
         return false;
-    }
-
-    private static bool IsOverlayAlternateKeyboardBindingPressed(IReadOnlyCollection<Keys> keys, KeyboardState keyboard, KeyboardState previousKeyboard) {
-        if (keys == null || keys.Count == 0) {
-            return false;
-        }
-
-        bool tab = keys.Contains(Keys.Tab);
-        bool rightShift = keys.Contains(Keys.RightShift);
-        if (!tab && !rightShift) {
-            return false;
-        }
-
-        // The default open-menu binding is displayed as two alternatives
-        // (`Tab / RightShift`), while normal multi-key bindings are chords.
-        // Handle that one explicit alternate binding before chord evaluation.
-        if (keys.Any(key => key != Keys.Tab && key != Keys.RightShift)) {
-            return false;
-        }
-
-        return tab && IsRawKeyPressed(Keys.Tab, keyboard, previousKeyboard) ||
-               rightShift && IsRawKeyPressed(Keys.RightShift, keyboard, previousKeyboard);
     }
 
     private static bool IsKeyboardBindingPressed(IReadOnlyCollection<Keys> keys, KeyboardState keyboard, KeyboardState previousKeyboard) {

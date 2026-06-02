@@ -110,46 +110,46 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     [DefaultButtonBinding(0, Keys.Tab)]
     public ButtonBinding ToggleOverlay { get; set; }
 
-    [DefaultButtonBinding(0, Keys.LeftShift)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding FastLookoutHold { get; set; }
 
-    [DefaultButtonBinding(Buttons.Y, Keys.R)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding Retry { get; set; }
 
-    [DefaultButtonBinding(Buttons.LeftShoulder, Keys.F4)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding ReloadRoom { get; set; }
 
-    [DefaultButtonBinding(Buttons.RightShoulder, Keys.F5)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding OpenDebugMap { get; set; }
 
-    [DefaultButtonBinding(Buttons.Start, Keys.F11)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding ReloadChapter { get; set; }
 
-    [DefaultButtonBinding(Buttons.X, Keys.F7)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding SaveState { get; set; }
 
-    [DefaultButtonBinding(Buttons.B, Keys.F8)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding LoadState { get; set; }
 
-    [DefaultButtonBinding(Buttons.DPadLeft, Keys.F9)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding PreviousSlot { get; set; }
 
-    [DefaultButtonBinding(Buttons.DPadRight, Keys.F10)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding NextSlot { get; set; }
 
-    [DefaultButtonBinding(Buttons.RightStick, Keys.G)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding CycleGrabMode { get; set; }
 
-    [DefaultButtonBinding(0, Keys.F1)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding FreezeGameplay { get; set; }
 
-    [DefaultButtonBinding(0, Keys.F2)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding StepFrame { get; set; }
 
-    [DefaultButtonBinding(0, Keys.OemMinus)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding DecreaseTimescale { get; set; }
 
-    [DefaultButtonBinding(0, Keys.OemPlus)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding IncreaseTimescale { get; set; }
 
     [DefaultButtonBinding(0, Keys.None)]
@@ -161,10 +161,10 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding ClearStartPos { get; set; }
 
-    [DefaultButtonBinding(0, Keys.Q)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding PreviousStartPos { get; set; }
 
-    [DefaultButtonBinding(0, Keys.E)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding NextStartPos { get; set; }
 
     [DefaultButtonBinding(0, Keys.None)]
@@ -194,10 +194,10 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding LoadStartPosSlot9 { get; set; }
 
-    [DefaultButtonBinding(0, Keys.F3)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding ToggleHitboxes { get; set; }
 
-    [DefaultButtonBinding(0, Keys.Home)]
+    [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding ToggleEntityInspector { get; set; }
 
     [DefaultButtonBinding(0, Keys.None)]

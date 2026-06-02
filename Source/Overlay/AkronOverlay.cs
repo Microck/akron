@@ -62,6 +62,7 @@ public sealed partial class AkronOverlay : Entity {
     private readonly List<ActionLayout> lastVisibleActionRows = new List<ActionLayout>();
     private readonly List<ActionEntry> currentEntries = new List<ActionEntry>();
     private readonly Dictionary<string, List<ActionEntry>> displayActionEntryCache = new Dictionary<string, List<ActionEntry>>(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> expandedSoundGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Rectangle> imguiOptionsPopupAnchorRects = new Dictionary<string, Rectangle>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, NumericsVector2> imguiOptionsPopupSizes = new Dictionary<string, NumericsVector2>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, NumericsVector2> imguiTooltipSizes = new Dictionary<string, NumericsVector2>(StringComparer.OrdinalIgnoreCase);
@@ -555,8 +556,8 @@ public sealed partial class AkronOverlay : Entity {
 
         List<ActionEntry> entries = new List<ActionEntry>();
         foreach (string tabName in GetVisibleTabs()) {
-            entries.AddRange(GetDisplayActionEntries(tabName, level)
-                .Where(entry => entry.Control != OverlayEntryControl.SearchInput && MatchesSearch(tabName, entry)));
+            entries.AddRange(GetFilteredDisplayActionEntries(tabName, level)
+                .Where(entry => entry.Control != OverlayEntryControl.SearchInput));
         }
 
         return entries;
@@ -567,7 +568,7 @@ public sealed partial class AkronOverlay : Entity {
             return GetDisplayActionEntries(tabName, level).Count;
         }
 
-        return GetDisplayActionEntries(tabName, level).Count(entry => entry.Control != OverlayEntryControl.SearchInput && MatchesSearch(tabName, entry));
+        return GetFilteredDisplayActionEntries(tabName, level).Count(entry => entry.Control != OverlayEntryControl.SearchInput);
     }
 
     private string GetSelectedTabName() {

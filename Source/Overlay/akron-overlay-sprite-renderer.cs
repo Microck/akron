@@ -99,6 +99,11 @@ public sealed partial class AkronOverlay {
             return;
         }
 
+        if (action.Entry.Control == OverlayEntryControl.GroupHeader) {
+            RenderGroupHeaderActionEntry(action, entryEnabled ? Color.White : AkronDisabledText);
+            return;
+        }
+
         if (buttonOnly) {
             Vector2 textSize = MeasureMenuText(label, AkronRowFontSize);
             float centeredX = action.Rect.X + Math.Max(12f, (action.Rect.Width - textSize.X) * 0.5f);
@@ -122,6 +127,27 @@ public sealed partial class AkronOverlay {
         } else {
             DrawRightStateBar(action.Rect, indicatorColor);
         }
+    }
+
+    private void RenderGroupHeaderActionEntry(ActionLayout action, Color textColor) {
+        bool expanded = IsSoundGroupExpanded(action.Entry.SoundGroupLabel);
+        DrawDisclosureTriangle(action.Rect, expanded, AkronAccent * 0.96f);
+
+        const float valueWidth = 86f;
+        string label = TruncateToWidth(action.Entry.Label, Math.Max(24f, action.Rect.Width - valueWidth - 28f), AkronRowFontSize);
+        DrawMenuText(
+            label,
+            new Vector2(action.Rect.X + 22f, action.Rect.Y + 2.5f),
+            AkronRowFontSize,
+            textColor);
+
+        string value = TruncateToWidth(SafeDescribeEntryValue(action.Entry), valueWidth, AkronSmallFontSize);
+        float valueTextWidth = MeasureMenuText(value, AkronSmallFontSize).X;
+        DrawMenuText(
+            value,
+            new Vector2(action.Rect.Right - valueTextWidth - 6f, action.Rect.Y + 3.5f),
+            AkronSmallFontSize,
+            AkronInactiveIndicator);
     }
 
     private void RenderSearchActionEntry(ActionLayout action, string label, Color textColor) {
@@ -339,6 +365,23 @@ public sealed partial class AkronOverlay {
             if (width > 0) {
                 Draw.Rect(left + inset, top + row, width, 1, color);
             }
+        }
+    }
+
+    private static void DrawDisclosureTriangle(Rectangle rect, bool expanded, Color color) {
+        int left = rect.X + 7;
+        int centerY = rect.Y + rect.Height / 2;
+        if (expanded) {
+            for (int row = 0; row < 5; row++) {
+                int width = 9 - row * 2;
+                Draw.Rect(left + row, centerY - 2 + row, width, 1, color);
+            }
+            return;
+        }
+
+        for (int row = 0; row < 7; row++) {
+            int width = row <= 3 ? row + 1 : 7 - row;
+            Draw.Rect(left + 2, centerY - 3 + row, width, 1, color);
         }
     }
 

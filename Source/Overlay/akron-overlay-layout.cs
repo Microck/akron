@@ -107,7 +107,10 @@ public sealed partial class AkronOverlay {
             return entries;
         }
 
-        entries = BuildDisplayEntriesForTab(tabName, level)
+        List<OverlayEntry> displayEntries = string.Equals(tabName, "Sound", StringComparison.OrdinalIgnoreCase)
+            ? BuildSoundDisplayEntries()
+            : BuildDisplayEntriesForTab(tabName, level);
+        entries = displayEntries
             .Select(entry => new ActionEntry(tabName, entry))
             .ToList();
         displayActionEntryCache[tabName] = entries;
@@ -120,9 +123,47 @@ public sealed partial class AkronOverlay {
             return entries;
         }
 
+        if (string.Equals(tabName, "Sound", StringComparison.OrdinalIgnoreCase)) {
+            return BuildFilteredSoundActionEntries(tabName);
+        }
+
         return entries
             .Where(entry => entry.Control == OverlayEntryControl.SearchInput || MatchesSearch(tabName, entry))
             .ToList();
+    }
+
+    private List<ActionEntry> BuildFilteredSoundActionEntries(string tabName) {
+        List<ActionEntry> filtered = new List<ActionEntry>();
+        foreach (OverlayEntry entry in BuildSoundTopLevelEntries()) {
+            ActionEntry action = new ActionEntry(tabName, entry);
+            if (MatchesSearch(tabName, action)) {
+                filtered.Add(action);
+            }
+        }
+
+        foreach (SoundGroupSpec group in SoundGroups) {
+            ActionEntry header = new ActionEntry(tabName, SoundGroupHeader(group, () => ToggleSoundGroup(group.Label)));
+            List<ActionEntry> children = BuildSoundVolumeEntries(group.SoundLabels, group.Label)
+                .Select(entry => new ActionEntry(tabName, entry))
+                .ToList();
+            if (MatchesSearch(tabName, header)) {
+                filtered.Add(header);
+                filtered.AddRange(children);
+                continue;
+            }
+
+            List<ActionEntry> matchingChildren = children
+                .Where(entry => MatchesSearch(tabName, entry))
+                .ToList();
+            if (matchingChildren.Count == 0) {
+                continue;
+            }
+
+            filtered.Add(header);
+            filtered.AddRange(matchingChildren);
+        }
+
+        return filtered;
     }
 
     private static List<float> CalculateActionColumnXPositions(float firstX, float width, float gap, float screenWidth) {

@@ -8,7 +8,9 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Xunit;
+using XnaButtons = Microsoft.Xna.Framework.Input.Buttons;
 
 namespace Celeste.Mod.Akron.Tests;
 
@@ -201,6 +203,36 @@ public sealed class ModuleSettingsTests {
         Assert.Equal(AkronMadelineEffectSyncMode.MatchHair, settings.MadelineDeathEffectSync);
         Assert.Equal(AkronMadelineEffectSyncMode.MatchHair, settings.MadelineFeatherColorSync);
         Assert.Equal(AkronMadelineEffectSyncMode.MatchHair, settings.MadelineCrownColorSync);
+    }
+
+    [Fact]
+    public void DefaultButtonBindingsStartEmptyExceptMenuAndLeftAltHolds() {
+        IReadOnlyDictionary<string, (XnaButtons Buttons, Keys Key)> allowedDefaults = new Dictionary<string, (XnaButtons, Keys)> {
+            ["ToggleOverlay"] = ((XnaButtons) 0, Keys.Tab),
+            ["ClickTeleportCursor"] = ((XnaButtons) 0, Keys.LeftAlt),
+            ["CursorZoomHold"] = ((XnaButtons) 0, Keys.LeftAlt)
+        };
+
+        foreach (PropertyInfo property in typeof(AkronModuleSettings).GetProperties()) {
+            CustomAttributeData? attribute = property.CustomAttributes
+                .SingleOrDefault(data => data.AttributeType.Name == "DefaultButtonBindingAttribute");
+            if (attribute == null) {
+                continue;
+            }
+
+            Assert.Equal(2, attribute.ConstructorArguments.Count);
+            XnaButtons buttons = (XnaButtons) Convert.ToInt32(attribute.ConstructorArguments[0].Value, CultureInfo.InvariantCulture);
+            Keys key = (Keys) Convert.ToInt32(attribute.ConstructorArguments[1].Value, CultureInfo.InvariantCulture);
+
+            if (allowedDefaults.TryGetValue(property.Name, out (XnaButtons Buttons, Keys Key) expected)) {
+                Assert.Equal(expected.Buttons, buttons);
+                Assert.Equal(expected.Key, key);
+                continue;
+            }
+
+            Assert.Equal((XnaButtons) 0, buttons);
+            Assert.Equal(Keys.None, key);
+        }
     }
 
     [Theory]
@@ -948,13 +980,79 @@ public sealed class ModuleSettingsTests {
     public void SoundColumnReplacesBotWithoutRawStartPosSnapshotRows() {
         List<string> soundLabels = BuildOverlayEntryLabels("Sound");
 
-        Assert.Contains("Audio Splitter", soundLabels);
-        Assert.Contains("Bird Squawk", soundLabels);
-        Assert.Contains("Zip Mover", soundLabels);
+        Assert.Equal(
+            new[] {
+                "Audio Splitter",
+                "Allow Low Volume",
+                "Audio Speed",
+                "Pitch Shift",
+                "Player",
+                "Objects",
+                "Entities",
+                "Ambience",
+                "UI"
+            },
+            soundLabels);
+        Assert.DoesNotContain("Bird Squawk", soundLabels);
+        Assert.DoesNotContain("Zip Mover", soundLabels);
         Assert.DoesNotContain("Ear Aid", soundLabels);
         Assert.DoesNotContain("StartPos Snapshot Slot", soundLabels);
         Assert.DoesNotContain("Capture StartPos State", soundLabels);
         Assert.DoesNotContain("Restore StartPos State", soundLabels);
+    }
+
+    [Fact]
+    public void SoundGroupsExposeChildrenOnlyWhenExpanded() {
+        AkronOverlay overlay = CreateSoundOverlayForListTest();
+
+        List<string> collapsedLabels = BuildRuntimeOverlayEntryLabels(overlay, "Sound");
+        Assert.Contains("Player", collapsedLabels);
+        Assert.DoesNotContain("Death", collapsedLabels);
+
+        AddExpandedSoundGroup(overlay, "Player");
+        List<string> expandedLabels = BuildRuntimeOverlayEntryLabels(overlay, "Sound");
+
+        Assert.Contains("Death", expandedLabels);
+        Assert.Contains("Respawn", expandedLabels);
+        Assert.Contains("Golden Death", expandedLabels);
+        Assert.DoesNotContain("Zip Mover", expandedLabels);
+    }
+
+    [Theory]
+    [InlineData("Zip Mover", "Objects", "Zip Mover", "Broken Window")]
+    [InlineData("Bird Squawk", "Ambience", "Bird Squawk", "Lightning Ambience")]
+    [InlineData("Dialogue", "UI", "Dialogue", "Heart Collect")]
+    public void SoundSearchShowsHeaderAndMatchingCollapsedChild(string query, string expectedGroup, string expectedChild, string unrelatedSibling) {
+        AkronOverlay overlay = CreateSoundOverlayForListTest();
+
+        List<string> labels = BuildFilteredOverlayEntryLabels(overlay, "Sound", query);
+
+        Assert.Contains(expectedGroup, labels);
+        Assert.Contains(expectedChild, labels);
+        Assert.DoesNotContain(unrelatedSibling, labels);
+        Assert.True(labels.IndexOf(expectedGroup) < labels.IndexOf(expectedChild));
+    }
+
+    [Fact]
+    public void SoundSearchByGroupNameShowsAllChildren() {
+        AkronOverlay overlay = CreateSoundOverlayForListTest();
+
+        List<string> labels = BuildFilteredOverlayEntryLabels(overlay, "Sound", "Objects");
+
+        Assert.Contains("Objects", labels);
+        Assert.Contains("Broken Window", labels);
+        Assert.Contains("Zip Mover", labels);
+    }
+
+    [Fact]
+    public void SoundGroupHeadersAreNotBindableActions() {
+        Dictionary<string, bool> bindableRows = BuildOverlayEntryBindableExposure("Sound");
+
+        Assert.False(bindableRows["Player"]);
+        Assert.False(bindableRows["Objects"]);
+        Assert.False(bindableRows["Entities"]);
+        Assert.False(bindableRows["Ambience"]);
+        Assert.False(bindableRows["UI"]);
     }
 
     [Fact]
@@ -1011,7 +1109,7 @@ public sealed class ModuleSettingsTests {
         Assert.Equal("Toggle", creatorControls["Camera Offset"]);
         Assert.Equal("Toggle", playerControls["Prevent Down Dash Redirects"]);
         Assert.Equal("Toggle", playerControls["Grab Mode"]);
-        Assert.Equal("Toggle", soundControls["Bird Squawk"]);
+        Assert.Equal("GroupHeader", soundControls["Ambience"]);
         Assert.True(HasOverlayOptionsPopup("Deload Spinners"));
         Assert.True(HasOverlayOptionsPopup("Light Level"));
         Assert.True(HasOverlayOptionsPopup("Bloom Level"));
@@ -2656,6 +2754,72 @@ public sealed class ModuleSettingsTests {
             .ToList();
     }
 
+    private static List<string> BuildRuntimeOverlayEntryLabels(AkronOverlay overlay, string tab) {
+        MethodInfo? method = typeof(AkronOverlay).GetMethod("GetDisplayActionEntries", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+
+        object? entries = method.Invoke(overlay, new object?[] { tab, null });
+        Assert.NotNull(entries);
+
+        return ExtractPrivateEntryLabels(entries);
+    }
+
+    private static AkronOverlay CreateSoundOverlayForListTest() {
+        AkronOverlay overlay = (AkronOverlay) RuntimeHelpers.GetUninitializedObject(typeof(AkronOverlay));
+        SetPrivateFieldToNewStringComparerCollection(overlay, "displayActionEntryCache");
+        SetPrivateField(overlay, "expandedSoundGroups", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        return overlay;
+    }
+
+    private static List<string> BuildFilteredOverlayEntryLabels(AkronOverlay overlay, string tab, string query) {
+        overlay.SetSearchQuery(query);
+        MethodInfo? method = typeof(AkronOverlay).GetMethod("GetFilteredDisplayActionEntries", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+
+        object? entries = method.Invoke(overlay, new object?[] { tab, null });
+        Assert.NotNull(entries);
+
+        return ExtractPrivateEntryLabels(entries);
+    }
+
+    private static void AddExpandedSoundGroup(AkronOverlay overlay, string groupLabel) {
+        FieldInfo? field = typeof(AkronOverlay).GetField("expandedSoundGroups", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        HashSet<string> groups = (HashSet<string>) field.GetValue(overlay)!;
+        groups.Add(groupLabel);
+
+        MethodInfo? invalidate = typeof(AkronOverlay).GetMethod("InvalidateDisplayActionEntryCache", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(invalidate);
+        invalidate.Invoke(overlay, Array.Empty<object>());
+    }
+
+    private static void SetPrivateField(object target, string fieldName, object value) {
+        FieldInfo? field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        field.SetValue(target, value);
+    }
+
+    private static void SetPrivateFieldToNewStringComparerCollection(object target, string fieldName) {
+        FieldInfo? field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        object? value = Activator.CreateInstance(field.FieldType, new object[] { StringComparer.OrdinalIgnoreCase });
+        Assert.NotNull(value);
+        field.SetValue(target, value);
+    }
+
+    private static List<string> ExtractPrivateEntryLabels(object entries) {
+        PropertyInfo? labelProperty = entries
+            .GetType()
+            .GetGenericArguments()[0]
+            .GetProperty("Label", BindingFlags.Public | BindingFlags.Instance);
+        Assert.NotNull(labelProperty);
+
+        return ((System.Collections.IEnumerable) entries)
+            .Cast<object>()
+            .Select(entry => (string) labelProperty.GetValue(entry)!)
+            .ToList();
+    }
+
     private static Dictionary<string, string> BuildOverlayEntryControls(string tab) {
         MethodInfo? method = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
@@ -2675,6 +2839,28 @@ public sealed class ModuleSettingsTests {
             .ToDictionary(
                 group => group.Key,
                 group => controlProperty.GetValue(group.First())!.ToString()!,
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static Dictionary<string, bool> BuildOverlayEntryBindableExposure(string tab) {
+        MethodInfo? buildEntries = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(buildEntries);
+
+        object? entries = buildEntries.Invoke(null, new object?[] { tab, null });
+        Assert.NotNull(entries);
+
+        Type entryType = entries.GetType().GetGenericArguments()[0];
+        PropertyInfo? labelProperty = entryType.GetProperty("Label", BindingFlags.Public | BindingFlags.Instance);
+        MethodInfo? isBindable = typeof(AkronOverlay).GetMethod("IsBindableOverlayEntry", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(labelProperty);
+        Assert.NotNull(isBindable);
+
+        return ((System.Collections.IEnumerable) entries)
+            .Cast<object>()
+            .GroupBy(entry => (string) labelProperty.GetValue(entry)!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => (bool) isBindable.Invoke(null, new[] { group.First() })!,
                 StringComparer.OrdinalIgnoreCase);
     }
 

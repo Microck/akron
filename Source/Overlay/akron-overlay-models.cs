@@ -31,7 +31,8 @@ public sealed partial class AkronOverlay {
             string rowOrderKey = null,
             bool reorderable = false,
             string customHudLabelId = null,
-            bool isAddCustomLabelRow = false) {
+            bool isAddCustomLabelRow = false,
+            string soundGroupLabel = null) {
             Label = label;
             Enabled = enabled;
             Value = value;
@@ -55,6 +56,7 @@ public sealed partial class AkronOverlay {
             Reorderable = reorderable;
             CustomHudLabelId = customHudLabelId;
             IsAddCustomLabelRow = isAddCustomLabelRow;
+            SoundGroupLabel = soundGroupLabel;
         }
 
         public string Label { get; }
@@ -80,6 +82,7 @@ public sealed partial class AkronOverlay {
         public bool Reorderable { get; }
         public string CustomHudLabelId { get; }
         public bool IsAddCustomLabelRow { get; }
+        public string SoundGroupLabel { get; }
     }
 
     private sealed class ActionEntry {
@@ -108,9 +111,11 @@ public sealed partial class AkronOverlay {
             CustomHudLabelId = entry.CustomHudLabelId;
             IsAddCustomLabelRow = entry.IsAddCustomLabelRow;
             IsCustomHudLabelRow = !string.IsNullOrWhiteSpace(CustomHudLabelId);
+            SoundGroupLabel = entry.SoundGroupLabel;
             HasOptionsPopup = entry.Control != OverlayEntryControl.Keybind &&
                               entry.Control != OverlayEntryControl.KeybindReadOnly &&
                               entry.Control != OverlayEntryControl.SearchInput &&
+                              entry.Control != OverlayEntryControl.GroupHeader &&
                               (entry.ForceOptionsPopup || AkronOverlay.HasOptionsPopup(Label));
         }
 
@@ -139,6 +144,7 @@ public sealed partial class AkronOverlay {
         public string CustomHudLabelId { get; }
         public bool IsCustomHudLabelRow { get; }
         public bool IsAddCustomLabelRow { get; }
+        public string SoundGroupLabel { get; }
 
         public void SetNumericValue(float value) {
             if (NumericSetter == null) {
@@ -272,6 +278,7 @@ public sealed partial class AkronOverlay {
         Keybind,
         KeybindReadOnly,
         Color,
+        GroupHeader,
         StartPosActions
     }
 

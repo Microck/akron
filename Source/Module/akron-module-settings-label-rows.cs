@@ -28,7 +28,7 @@ public partial class AkronModuleSettings {
 
     public static ButtonBinding CreateDefaultOverlayToggleBinding() {
         ButtonBinding binding = new ButtonBinding(0, Keys.Tab);
-        binding.Keys = new List<Keys> { Keys.Tab, Keys.RightShift };
+        binding.Keys = new List<Keys> { Keys.Tab };
         binding.Buttons = new List<Buttons>();
         return binding;
     }

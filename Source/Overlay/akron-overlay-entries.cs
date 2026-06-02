@@ -166,14 +166,7 @@ public sealed partial class AkronOverlay {
                 };
                 return player;
             case "Sound":
-                List<OverlayEntry> sound = new List<OverlayEntry> {
-                    Toggle("Audio Splitter", () => AkronModule.Settings.AudioSplitter, value => AkronModule.Settings.AudioSplitter = value, "music device", "sfx device", "audio devices"),
-                    Toggle("Allow Low Volume", () => AkronModule.Settings.AllowLowVolume, AkronActions.SetAllowLowVolume, "audio", "volume", "mute"),
-                    NumericToggle("Audio Speed", AkronFeatureKind.AudioSpeed, () => AkronModule.Settings.AudioSpeed, value => AkronModule.Settings.AudioSpeed = value, () => AkronModule.Settings.AudioSpeedMultiplier, value => AkronModule.Settings.AudioSpeedMultiplier = AkronModuleSettings.ClampAudioMultiplier(value), 0.1f, 4f, "%.2f", "x", false),
-                    NumericToggle("Pitch Shift", AkronFeatureKind.PitchShift, () => AkronModule.Settings.PitchShift, value => AkronModule.Settings.PitchShift = value, () => AkronModule.Settings.PitchShiftMultiplier, value => AkronModule.Settings.PitchShiftMultiplier = AkronModuleSettings.ClampAudioMultiplier(value), 0.1f, 4f, "%.2f", "x", false)
-                };
-                sound.AddRange(BuildSoundVolumeEntries());
-                return sound;
+                return BuildCollapsedSoundEntries();
             case "Creator":
                 return SortCreatorEntries(new List<OverlayEntry> {
                     PolicyToggle("Free Camera", AkronFeatureKind.FreeCamera, () => AkronModule.Settings.FreeCamera, value => AkronModule.Settings.FreeCamera = value),
@@ -291,20 +284,117 @@ public sealed partial class AkronOverlay {
             : 2;
     }
 
-    private static IEnumerable<OverlayEntry> BuildSoundVolumeEntries() {
-        foreach (AkronEarAid.SoundDefinition sound in AkronEarAid.Sounds) {
+    private List<OverlayEntry> BuildSoundDisplayEntries() {
+        return BuildSoundEntries(group => expandedSoundGroups.Contains(group.Label), label => () => ToggleSoundGroup(label));
+    }
+
+    private static List<OverlayEntry> BuildCollapsedSoundEntries() {
+        return BuildSoundEntries(_ => false, _ => () => { });
+    }
+
+    private static List<OverlayEntry> BuildSoundEntries(Func<SoundGroupSpec, bool> includeChildren, Func<string, Action> buildGroupAction) {
+        List<OverlayEntry> entries = BuildSoundTopLevelEntries();
+        foreach (SoundGroupSpec group in SoundGroups) {
+            entries.Add(SoundGroupHeader(group, buildGroupAction(group.Label)));
+            if (!includeChildren(group)) {
+                continue;
+            }
+
+            entries.AddRange(BuildSoundVolumeEntries(group.SoundLabels, group.Label));
+        }
+
+        return entries;
+    }
+
+    private static List<OverlayEntry> BuildSoundTopLevelEntries() {
+        return new List<OverlayEntry> {
+            Toggle("Audio Splitter", () => AkronModule.Settings.AudioSplitter, value => AkronModule.Settings.AudioSplitter = value, "music device", "sfx device", "audio devices"),
+            Toggle("Allow Low Volume", () => AkronModule.Settings.AllowLowVolume, AkronActions.SetAllowLowVolume, "audio", "volume", "mute"),
+            NumericToggle("Audio Speed", AkronFeatureKind.AudioSpeed, () => AkronModule.Settings.AudioSpeed, value => AkronModule.Settings.AudioSpeed = value, () => AkronModule.Settings.AudioSpeedMultiplier, value => AkronModule.Settings.AudioSpeedMultiplier = AkronModuleSettings.ClampAudioMultiplier(value), 0.1f, 4f, "%.2f", "x", false),
+            NumericToggle("Pitch Shift", AkronFeatureKind.PitchShift, () => AkronModule.Settings.PitchShift, value => AkronModule.Settings.PitchShift = value, () => AkronModule.Settings.PitchShiftMultiplier, value => AkronModule.Settings.PitchShiftMultiplier = AkronModuleSettings.ClampAudioMultiplier(value), 0.1f, 4f, "%.2f", "x", false)
+        };
+    }
+
+    private static OverlayEntry SoundGroupHeader(SoundGroupSpec group, Action toggle) {
+        return new OverlayEntry(
+            group.Label,
+            () => true,
+            () => DescribeSoundGroupValue(group),
+            toggle,
+            BuildSearchTerms(group.Label, new[] { "sound group" }),
+            false,
+            OverlayEntryControl.GroupHeader,
+            soundGroupLabel: group.Label);
+    }
+
+    private static IEnumerable<OverlayEntry> BuildSoundVolumeEntries(IEnumerable<string> labels, string groupLabel = null) {
+        foreach (string soundLabel in labels) {
+            AkronEarAid.SoundDefinition sound = AkronEarAid.Sounds.First(candidate => string.Equals(candidate.Label, soundLabel, StringComparison.OrdinalIgnoreCase));
             string key = sound.Key;
             string label = sound.Label;
-            yield return Toggle(
+            yield return new OverlayEntry(
                 label,
-                () => AkronEarAid.OverrideEnabled(key),
-                value => AkronEarAid.SetOverrideEnabled(key, value),
-                "sound volume",
-                "sfx",
-                "volume",
-                key);
+                () => true,
+                () => AkronEarAid.OverrideEnabled(key) ? "On" : "Off",
+                () => AkronEarAid.SetOverrideEnabled(key, !AkronEarAid.OverrideEnabled(key)),
+                BuildSearchTerms(label, new[] {
+                    "sound volume",
+                    "sfx",
+                    "volume",
+                    key
+                }),
+                true,
+                OverlayEntryControl.Toggle,
+                soundGroupLabel: groupLabel ?? string.Empty);
         }
     }
+
+    private void ToggleSoundGroup(string label) {
+        if (string.IsNullOrWhiteSpace(label)) {
+            return;
+        }
+
+        if (!expandedSoundGroups.Add(label)) {
+            expandedSoundGroups.Remove(label);
+        }
+
+        InvalidateDisplayActionEntryCache();
+    }
+
+    private bool IsSoundGroupExpanded(string label) {
+        return !string.IsNullOrWhiteSpace(label) && expandedSoundGroups.Contains(label);
+    }
+
+    private static string DescribeSoundGroupValue(SoundGroupSpec group) {
+        int total = group.SoundLabels.Length;
+        int enabled = 0;
+        foreach (string label in group.SoundLabels) {
+            AkronEarAid.SoundDefinition sound = AkronEarAid.Sounds.First(candidate => string.Equals(candidate.Label, label, StringComparison.OrdinalIgnoreCase));
+            if (AkronEarAid.OverrideEnabled(sound.Key)) {
+                enabled++;
+            }
+        }
+
+        return enabled == 0 ? total + " sounds" : enabled + " on / " + total + " sounds";
+    }
+
+    private sealed class SoundGroupSpec {
+        public SoundGroupSpec(string label, params string[] soundLabels) {
+            Label = label;
+            SoundLabels = soundLabels ?? Array.Empty<string>();
+        }
+
+        public string Label { get; }
+        public string[] SoundLabels { get; }
+    }
+
+    private static readonly SoundGroupSpec[] SoundGroups = {
+        new SoundGroupSpec("Player", "Death", "Respawn", "Golden Death"),
+        new SoundGroupSpec("Objects", "Broken Window", "Conveyor", "Core Block", "Dream Block", "Drum Swap Block", "Kevin Block", "Move Block", "Spring", "Touch Switch Complete", "Zip Mover"),
+        new SoundGroupSpec("Entities", "Fireball", "Lava Barrier", "Lightning Strike", "Oshiro Boss", "Seeker"),
+        new SoundGroupSpec("Ambience", "Bird Squawk", "Lightning Ambience", "Farewell Wind", "Ridge Wind"),
+        new SoundGroupSpec("UI", "Dialogue", "Heart Collect", "Item Crystal Death", "Pico-8 Flag")
+    };
 
     private static OverlayEntry Action(string label, Func<bool> enabled, Func<string> value, Action action, params string[] tags) {
         return new OverlayEntry(label, enabled, value, () => {
@@ -632,13 +722,8 @@ public sealed partial class AkronOverlay {
         }
     }
 
-    private bool MatchesSearch(string tab, OverlayEntry entry) {
-        string haystack = tab + " " + entry.Label + " " + entry.Value() + " " + entry.SearchTerms;
-        return haystack.IndexOf(searchQuery, StringComparison.OrdinalIgnoreCase) >= 0;
-    }
-
     private bool MatchesSearch(string tab, ActionEntry entry) {
-        string haystack = tab + " " + entry.Label + " " + entry.Value() + " " + entry.SearchTerms;
+        string haystack = tab + " " + entry.Label + " " + SafeDescribeEntryValue(entry) + " " + entry.SearchTerms;
         return haystack.IndexOf(searchQuery, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 

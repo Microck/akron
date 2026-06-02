@@ -45,6 +45,10 @@ public sealed partial class AkronOverlay {
     private static IEnumerable<BindableAction> BuildBindableActions(Level level) {
         foreach (string tabName in GetVisibleTabs()) {
             foreach (OverlayEntry entry in BuildDisplayEntriesForTab(tabName, level)) {
+                if (!IsBindableOverlayEntry(entry)) {
+                    continue;
+                }
+
                 yield return new BindableAction(BuildActionKey(tabName, entry.Label), tabName + " / " + entry.Label, entry.Execute);
             }
         }
@@ -52,6 +56,10 @@ public sealed partial class AkronOverlay {
         foreach (BindableAction action in BuildPopupBindableActions(level)) {
             yield return action;
         }
+    }
+
+    private static bool IsBindableOverlayEntry(OverlayEntry entry) {
+        return entry != null && entry.Control != OverlayEntryControl.GroupHeader;
     }
 
     private static IEnumerable<BindableAction> BuildPopupBindableActions(Level level) {
