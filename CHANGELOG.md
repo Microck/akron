@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.7
+
+- Keep Tab opening Akron's menu even when stale or custom menu bindings no longer include Tab.
+
 ## 0.1.2-beta.6
 
 - Group the Sound tab's per-sound volume rows under collapsed Player, Objects, Entities, Ambience, and UI headers.
