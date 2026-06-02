@@ -5,7 +5,7 @@ namespace Celeste.Mod.Akron;
 
 public sealed class AkronProfileState {
     public PrimaryRuleset PrimaryRuleset { get; set; } = PrimaryRuleset.Casual;
-    public bool SafeMode { get; set; } = true;
+    public bool SafeMode { get; set; }
     public bool StreamerMode { get; set; }
     public bool ProofModeOverlay { get; set; }
     public bool SubmissionMode { get; set; }
@@ -56,8 +56,8 @@ public sealed class AkronProfileState {
     public bool CursorZoomAllowZoomOut { get; set; }
     public bool CursorZoomResetOnDeactivate { get; set; }
     public AkronCursorZoomActivationMode CursorZoomActivationMode { get; set; } = AkronCursorZoomActivationMode.Hold;
-    public bool RoomLabels { get; set; } = true;
-    public bool LabelSystemVisible { get; set; } = true;
+    public bool RoomLabels { get; set; }
+    public bool LabelSystemVisible { get; set; }
     public int RoomLabelColor { get; set; } = 0xFFFFFF;
     public bool StaminaWidget { get; set; }
     public bool SpeedWidget { get; set; }
@@ -381,8 +381,8 @@ public sealed class AkronProfileState {
     public int FreeCameraSpeed { get; set; } = 240;
     public bool FreeCameraFreezeGameplay { get; set; } = true;
     public bool SmartStartPos { get; set; }
-    public bool RespawnAtStartPos { get; set; } = true;
-    public bool StartPosShowLabel { get; set; } = true;
+    public bool RespawnAtStartPos { get; set; }
+    public bool StartPosShowLabel { get; set; }
     public int StartPosLabelColor { get; set; } = 0xFFFFFF;
     public AkronHudAnchor StartPosLabelAnchor { get; set; } = AkronHudAnchor.TopLeft;
     public AkronStartPosLabelFormat StartPosLabelFormat { get; set; } = AkronStartPosLabelFormat.Prefix;
@@ -398,11 +398,11 @@ public sealed class AkronProfileState {
     public bool StartPosConfiguredGrab { get; set; }
     public int StartPosSlotCount { get; set; } = 9;
     public bool ClickTeleport { get; set; }
-    public bool EverestSafeAutoBlock { get; set; } = true;
+    public bool EverestSafeAutoBlock { get; set; }
     public bool SaveTimeAndDeaths { get; set; }
     public bool UnsafeSavestateOverride { get; set; }
     public int ScreenshotScale { get; set; } = 1;
-    public bool ScreenshotStatus { get; set; } = true;
+    public bool ScreenshotStatus { get; set; }
     public string ScreenshotScannerExportPath { get; set; } = AkronModuleSettings.DefaultScreenshotScannerExportPath;
     public AkronScreenshotImageFormat ScreenshotScannerImageFormat { get; set; } = AkronScreenshotImageFormat.Png;
     public bool ScreenshotScannerExportMarkers { get; set; }

@@ -39,33 +39,23 @@ public partial class AkronModuleSettings {
         }
 
         ButtonBinding binding = settings.ToggleOverlay;
-        if (binding == null) {
+        if (!HasUsableOverlayToggleBinding(binding?.Keys, binding?.Buttons)) {
             settings.ToggleOverlay = CreateDefaultOverlayToggleBinding();
+        }
+    }
+
+    internal static bool HasUsableOverlayToggleBinding(IReadOnlyCollection<Keys> keys, IReadOnlyCollection<Buttons> buttons) {
+        return keys?.Any(key => key != Keys.None) == true ||
+               buttons?.Any(button => button != 0) == true;
+    }
+
+    public static void EnsureCurrentKeybindDefaults(AkronModuleSettings settings) {
+        if (settings == null) {
             return;
         }
 
-        if (binding.Keys != null) {
-            List<Keys> safeKeys = binding.Keys
-                .Where(IsSafeOverlayToggleKey)
-                .Distinct()
-                .ToList();
-            if (safeKeys.Count != binding.Keys.Count) {
-                binding.Keys = safeKeys;
-            }
-        }
-
-        if (binding.Buttons != null && binding.Buttons.Contains(Buttons.Back)) {
-            binding.Buttons = binding.Buttons.Where(button => button != Buttons.Back).ToList();
-        }
-
-        bool hasKeys = binding?.Keys != null && binding.Keys.Count > 0;
-        bool hasButtons = binding?.Buttons != null && binding.Buttons.Count > 0;
-        bool tabOnlyKeyboard = binding?.Keys != null &&
-                               binding.Keys.Count == 1 &&
-                               binding.Keys.Contains(Keys.Tab);
-        if (!hasKeys && !hasButtons || tabOnlyKeyboard) {
-            settings.ToggleOverlay = CreateDefaultOverlayToggleBinding();
-        }
+        EnsureCurrentOverlayToggleDefault(settings);
+        settings.MenuActionBindings = new Dictionary<string, string>();
     }
 
     public static List<string> BuildDefaultLabelRowOrder() {
@@ -113,10 +103,4 @@ public partial class AkronModuleSettings {
         return normalized;
     }
 
-    private static bool IsSafeOverlayToggleKey(Keys key) {
-        return key != Keys.None &&
-               key != Keys.Back &&
-               key != Keys.Delete &&
-               key != Keys.Escape;
-    }
 }

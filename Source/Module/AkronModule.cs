@@ -90,7 +90,7 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Load() {
-        AkronModuleSettings.EnsureCurrentOverlayToggleDefault(Settings);
+        AkronModuleSettings.EnsureCurrentKeybindDefaults(Settings);
         AkronImGuiRenderer.EnsureNativeResolverRegistered();
         typeof(AkronSaveLoadExports).ModInterop();
         typeof(SpeedrunToolSaveLoadShim).ModInterop();

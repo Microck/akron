@@ -66,14 +66,12 @@ public partial class AkronModuleSettings {
 
     private static AkronProfileState BuildRulesetState(PrimaryRuleset ruleset) {
         AkronProfileState state = new AkronProfileState {
-            PrimaryRuleset = ruleset,
-            SafeMode = true,
-            RoomLabels = true,
-            EverestSafeAutoBlock = true
+            PrimaryRuleset = ruleset
         };
 
         switch (ruleset) {
             case PrimaryRuleset.Practice:
+                EnableRulesetSafetyDefaults(state);
                 state.StaminaWidget = true;
                 state.SpeedWidget = true;
                 state.DashWidget = true;
@@ -82,14 +80,16 @@ public partial class AkronModuleSettings {
                 state.DeathStatsWidget = true;
                 break;
             case PrimaryRuleset.LeaderboardClean:
+                EnableRulesetSafetyDefaults(state);
                 break;
             case PrimaryRuleset.Sandbox:
-                state.SafeMode = false;
                 break;
             case PrimaryRuleset.EverestSafe:
+                EnableRulesetSafetyDefaults(state);
                 state.UnsafeSavestateOverride = false;
                 break;
             case PrimaryRuleset.MapMaker:
+                EnableRulesetSafetyDefaults(state);
                 state.InputViewer = true;
                 state.ReducedVisualNoise = true;
                 state.NoParticles = true;
@@ -99,6 +99,12 @@ public partial class AkronModuleSettings {
         }
 
         return state;
+    }
+
+    private static void EnableRulesetSafetyDefaults(AkronProfileState state) {
+        state.SafeMode = true;
+        state.RoomLabels = true;
+        state.EverestSafeAutoBlock = true;
     }
 
     private static AkronProfileState BuildProfileState(AkronProfile profile) {

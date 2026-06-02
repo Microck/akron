@@ -330,7 +330,7 @@ public partial class AkronModule {
         KeyboardState previousKeyboard = previousOverlayToggleKeyboard;
         previousOverlayToggleKeyboard = keyboard;
 
-        if (IsOverlayToggleKeyboardPressed(binding.Keys, keyboard, previousKeyboard)) {
+        if (IsKeyboardBindingPressed(binding.Keys, keyboard, previousKeyboard)) {
             return true;
         }
 
@@ -345,16 +345,6 @@ public partial class AkronModule {
         }
 
         return false;
-    }
-
-    private static bool IsOverlayToggleKeyboardPressed(IReadOnlyCollection<Keys> bindingKeys, KeyboardState keyboard, KeyboardState previousKeyboard) {
-        if (IsKeyboardBindingPressed(bindingKeys, keyboard, previousKeyboard)) {
-            return true;
-        }
-
-        // Tab is Akron's canonical menu key. Keep it available even if an old
-        // settings file or keybind edit left the overlay binding empty/custom.
-        return IsRawKeyPressed(Keys.Tab, keyboard, previousKeyboard);
     }
 
     private static bool IsKeyboardBindingPressed(IReadOnlyCollection<Keys> keys, KeyboardState keyboard, KeyboardState previousKeyboard) {

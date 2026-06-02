@@ -235,6 +235,28 @@ public sealed class ModuleSettingsTests {
         }
     }
 
+    [Fact]
+    public void OverlayToggleDefaultRestoresOnlyMissingBindings() {
+        Assert.False(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys>(), new List<XnaButtons>()));
+        Assert.False(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys> { Keys.None }, new List<XnaButtons>()));
+        Assert.True(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys> { Keys.F1 }, new List<XnaButtons>()));
+        Assert.True(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys>(), new List<XnaButtons> { XnaButtons.LeftShoulder }));
+    }
+
+    [Fact]
+    public void CurrentKeybindDefaultsDropPersistedActionBindings() {
+        AkronModuleSettings settings = new AkronModuleSettings {
+            MenuActionBindings = new Dictionary<string, string> {
+                ["Shortcuts/Retry"] = "R",
+                ["Level/Freeze Gameplay"] = "RightShift"
+            }
+        };
+
+        AkronModuleSettings.EnsureCurrentKeybindDefaults(settings);
+
+        Assert.Empty(settings.MenuActionBindings);
+    }
+
     [Theory]
     [InlineData(false, true, true, true, false)]
     [InlineData(true, true, true, true, false)]
@@ -1961,6 +1983,28 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
+    public void CasualDefaultsDoNotEnableFeatures() {
+        AkronModuleSettings settings = new AkronModuleSettings();
+
+        settings.ApplyRulesetDefaults(PrimaryRuleset.Casual);
+
+        Assert.Equal(PrimaryRuleset.Casual, settings.PrimaryRuleset);
+        Assert.False(settings.SafeMode);
+        Assert.False(settings.RoomLabels);
+        Assert.False(settings.EverestSafeAutoBlock);
+        Assert.False(settings.StaminaWidget);
+        Assert.False(settings.SpeedWidget);
+        Assert.False(settings.DashWidget);
+        Assert.False(settings.InputViewer);
+        Assert.False(settings.RoomTimerWidget);
+        Assert.False(settings.DeathStatsWidget);
+        Assert.False(settings.HitboxViewer);
+        Assert.False(settings.EntityInspector);
+        Assert.False(settings.Noclip);
+        Assert.False(settings.Invincibility);
+    }
+
+    [Fact]
     public void RulesetDefaultsEnablePracticeSurfacesWithoutCheats() {
         AkronModuleSettings settings = new AkronModuleSettings();
 
@@ -2002,7 +2046,7 @@ public sealed class ModuleSettingsTests {
 
         Assert.Equal(AkronProfile.Accessibility, settings.ActiveProfile);
         Assert.Equal(PrimaryRuleset.Casual, settings.PrimaryRuleset);
-        Assert.True(settings.SafeMode);
+        Assert.False(settings.SafeMode);
         Assert.True(settings.StaminaWidget);
         Assert.True(settings.SpeedWidget);
         Assert.True(settings.DashWidget);
