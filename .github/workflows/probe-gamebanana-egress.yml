@@ -2,6 +2,9 @@ name: Probe GameBanana Egress
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - probe/gamebanana-egress
 
 permissions:
   contents: read
@@ -32,7 +35,7 @@ jobs:
 
       - name: Write probe script
         run: |
-          cat > "$RUNNER_TEMP/probe-gamebanana-egress.mjs" <<'NODE'
+          cat > ".probe-gamebanana-egress.mjs" <<'NODE'
           import { request } from 'playwright';
 
           const gamebananaOrigin = 'https://gamebanana.com';
@@ -122,7 +125,7 @@ jobs:
       - name: Probe without Tailscale exit node
         id: direct
         continue-on-error: true
-        run: node "$RUNNER_TEMP/probe-gamebanana-egress.mjs"
+        run: node ./.probe-gamebanana-egress.mjs
 
       - name: Route through Tailscale exit node
         if: env.TAILSCALE_EXIT_NODE != ''
@@ -138,7 +141,7 @@ jobs:
         id: tailscale
         if: env.TAILSCALE_EXIT_NODE != ''
         continue-on-error: true
-        run: node "$RUNNER_TEMP/probe-gamebanana-egress.mjs"
+        run: node ./.probe-gamebanana-egress.mjs
 
       - name: Report result
         run: |
