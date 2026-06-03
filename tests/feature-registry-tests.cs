@@ -5,10 +5,13 @@ using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
 
-public sealed class FeatureRegistryTests {
+public sealed class FeatureRegistryTests
+{
     [Fact]
-    public void EveryFeatureKindHasACompleteDefinition() {
-        foreach (AkronFeatureKind kind in Enum.GetValues<AkronFeatureKind>()) {
+    public void EveryFeatureKindHasACompleteDefinition()
+    {
+        foreach (AkronFeatureKind kind in Enum.GetValues<AkronFeatureKind>())
+        {
             FeatureDefinition definition = AkronFeatureRegistry.Get(kind);
 
             Assert.Equal(kind, definition.Kind);
@@ -19,7 +22,8 @@ public sealed class FeatureRegistryTests {
     }
 
     [Fact]
-    public void ClassificationOrderKeepsAttemptEscalationMonotonic() {
+    public void ClassificationOrderKeepsAttemptEscalationMonotonic()
+    {
         Assert.True(AkronStatus.GoldberryHardlistClean < AkronStatus.RegularClean);
         Assert.True(AkronStatus.RegularClean < AkronStatus.Cheat);
     }
@@ -115,7 +119,8 @@ public sealed class FeatureRegistryTests {
     [InlineData(AkronFeatureKind.GoldenTransparency, AkronStatus.RegularClean)]
     [InlineData(AkronFeatureKind.LagPauser, AkronStatus.GoldberryHardlistClean)]
     [InlineData(AkronFeatureKind.JournalSnapshotCompare, AkronStatus.GoldberryHardlistClean)]
-    public void CheatReferenceClassifiesEveryFeatureKind(AkronFeatureKind kind, AkronStatus expectedStatus) {
+    public void CheatReferenceClassifiesEveryFeatureKind(AkronFeatureKind kind, AkronStatus expectedStatus)
+    {
         Assert.Equal(expectedStatus, AkronFeatureRegistry.Classify(kind));
     }
 
@@ -123,7 +128,8 @@ public sealed class FeatureRegistryTests {
     [InlineData(AkronStatus.GoldberryHardlistClean, false)]
     [InlineData(AkronStatus.RegularClean, false)]
     [InlineData(AkronStatus.Cheat, true)]
-    public void MegaHackStyleCheatIndicatorOnlyFlagsCheatStatus(AkronStatus status, bool expectedFlagged) {
+    public void MegaHackStyleCheatIndicatorOnlyFlagsCheatStatus(AkronStatus status, bool expectedFlagged)
+    {
         Assert.Equal(expectedFlagged, AkronPolicy.IsMegaHackStyleCheatIndicatorFlagged(status));
     }
 
@@ -131,12 +137,14 @@ public sealed class FeatureRegistryTests {
     [InlineData(AkronStatus.GoldberryHardlistClean, 0x248BFF)]
     [InlineData(AkronStatus.RegularClean, 0x00FF00)]
     [InlineData(AkronStatus.Cheat, 0xFF0000)]
-    public void StatusColorsUseRulebookPalette(AkronStatus status, int expectedRgb) {
+    public void StatusColorsUseRulebookPalette(AkronStatus status, int expectedRgb)
+    {
         Assert.Equal(expectedRgb, AkronPolicy.GetStatusColorRgb(status));
     }
 
     [Fact]
-    public void SafeModeOnlyRedactsGoldberryHardlistCleanColor() {
+    public void SafeModeOnlyRedactsGoldberryHardlistCleanColor()
+    {
         Assert.Equal(0x6495ED, AkronPolicy.GetStatusColorRgb(AkronStatus.GoldberryHardlistClean, safeModeRedactsCleanStatus: true));
         Assert.Equal(0x00FF00, AkronPolicy.GetStatusColorRgb(AkronStatus.RegularClean, safeModeRedactsCleanStatus: true));
         Assert.Equal(0xFF0000, AkronPolicy.GetStatusColorRgb(AkronStatus.Cheat, safeModeRedactsCleanStatus: true));
@@ -146,7 +154,8 @@ public sealed class FeatureRegistryTests {
     [InlineData(AkronStatus.GoldberryHardlistClean, "No modifying Akron feature has been used in this attempt.", "Blue because the current attempt is Goldberry/Hardlist clear.")]
     [InlineData(AkronStatus.RegularClean, "Displays a label without changing gameplay.", "Green because the current attempt is Normal clear.")]
     [InlineData(AkronStatus.Cheat, "Bypasses collision and intended map traversal.", "Red because the current attempt is Cheat.")]
-    public void StatusColorExplanationNamesColorStatusAndReason(AkronStatus status, string reason, string expectedPrefix) {
+    public void StatusColorExplanationNamesColorStatusAndReason(AkronStatus status, string reason, string expectedPrefix)
+    {
         string explanation = AkronPolicy.DescribeStatusColorReason(status, reason);
 
         Assert.StartsWith(expectedPrefix, explanation);
@@ -154,7 +163,8 @@ public sealed class FeatureRegistryTests {
     }
 
     [Fact]
-    public void SafeModeStatusColorExplanationRedactsGoldberryHardlistCleanLabel() {
+    public void SafeModeStatusColorExplanationRedactsGoldberryHardlistCleanLabel()
+    {
         string explanation = AkronPolicy.DescribeStatusColorReason(
             AkronStatus.GoldberryHardlistClean,
             "No modifying Akron feature has been used in this attempt.",
@@ -164,8 +174,10 @@ public sealed class FeatureRegistryTests {
     }
 
     [Fact]
-    public void ActiveCheatContributorsNameEnabledCheatTogglesAndDisableCommands() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void ActiveCheatContributorsNameEnabledCheatTogglesAndDisableCommands()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             Noclip = true,
             AutoDeafen = true,
             RoomTimerWidget = true
@@ -180,15 +192,18 @@ public sealed class FeatureRegistryTests {
     }
 
     [Fact]
-    public void DefaultSettingsHaveNoActiveCheatContributors() {
+    public void DefaultSettingsHaveNoActiveCheatContributors()
+    {
         IReadOnlyList<AkronActiveCheatContributor> contributors = AkronPolicy.GetActiveCheatContributors(new AkronModuleSettings());
 
         Assert.Empty(contributors);
     }
 
     [Fact]
-    public void ShowHitboxesOnDeathDoesNotContributeWithoutLiveHitboxes() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void ShowHitboxesOnDeathDoesNotContributeWithoutLiveHitboxes()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             HitboxShowLastDeath = true
         };
 
@@ -198,8 +213,10 @@ public sealed class FeatureRegistryTests {
     }
 
     [Fact]
-    public void HitboxRenderingStyleDoesNotContributeWithoutLiveHitboxes() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void HitboxRenderingStyleDoesNotContributeWithoutLiveHitboxes()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             FixHitboxPixels = true
         };
 
@@ -209,8 +226,10 @@ public sealed class FeatureRegistryTests {
     }
 
     [Fact]
-    public void LiveHitboxesRemainTheSingleHitboxCheatContributor() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void LiveHitboxesRemainTheSingleHitboxCheatContributor()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             HitboxViewer = true,
             FixHitboxPixels = true,
             HitboxShowLastDeath = true
@@ -224,9 +243,11 @@ public sealed class FeatureRegistryTests {
     }
 
     [Fact]
-    public void ActiveCheatContributorsIncludeSessionOwnedCheatState() {
+    public void ActiveCheatContributorsIncludeSessionOwnedCheatState()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
-        AkronModuleSession session = new AkronModuleSession {
+        AkronModuleSession session = new AkronModuleSession
+        {
             TimescaleEnabled = true,
             TimescaleMultiplier = 0.5f
         };
@@ -245,8 +266,10 @@ public sealed class FeatureRegistryTests {
     [InlineData("Freeze jumps")]
     [InlineData("Freeze best run")]
     [InlineData("Transition Speed")]
-    public void ActiveCheatContributorsIncludeRedOptionsThatHaveIndependentToggles(string expectedLabel) {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void ActiveCheatContributorsIncludeRedOptionsThatHaveIndependentToggles(string expectedLabel)
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             DashNumber = true,
             ResourceBars = true,
             SafeModeFreezeAttempts = true,
@@ -261,8 +284,10 @@ public sealed class FeatureRegistryTests {
     }
 
     [Fact]
-    public void ActiveCheatContributorsIgnoreEnabledGreenQualityOfLifeOptions() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void ActiveCheatContributorsIgnoreEnabledGreenQualityOfLifeOptions()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             AudioSpeed = true,
             DeathPbLossPrompt = true,
             GrabModeOverrideEnabled = true,
@@ -330,7 +355,8 @@ public sealed class FeatureRegistryTests {
     [InlineData("TAS Status", AkronStatus.RegularClean)]
     [InlineData("Configured TAS File", AkronStatus.RegularClean)]
     [InlineData("Play Configured TAS", AkronStatus.Cheat)]
-    public void UiRowsWithoutFeatureKindsStillExposeClassification(string label, AkronStatus expectedStatus) {
+    public void UiRowsWithoutFeatureKindsStillExposeClassification(string label, AkronStatus expectedStatus)
+    {
         Assert.True(AkronFeatureRegistry.TryClassifyUiLabel(label, out AkronStatus status));
         Assert.Equal(expectedStatus, status);
     }
@@ -343,7 +369,8 @@ public sealed class FeatureRegistryTests {
     [InlineData("Input History", "Pin on death", AkronStatus.RegularClean)]
     [InlineData("Input History", "Show on death", AkronStatus.RegularClean)]
     [InlineData("Room Capture", "Freeze timers", AkronStatus.Cheat)]
-    public void UiSuboptionsCanOverrideParentClassification(string parentLabel, string suboptionLabel, AkronStatus expectedStatus) {
+    public void UiSuboptionsCanOverrideParentClassification(string parentLabel, string suboptionLabel, AkronStatus expectedStatus)
+    {
         Assert.True(AkronFeatureRegistry.TryClassifyUiSuboption(parentLabel, suboptionLabel, out AkronStatus status));
         Assert.Equal(expectedStatus, status);
     }

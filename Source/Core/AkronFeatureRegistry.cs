@@ -3,7 +3,8 @@ using System.Collections.Generic;
 
 namespace Celeste.Mod.Akron;
 
-public static class AkronFeatureRegistry {
+public static class AkronFeatureRegistry
+{
     private static readonly Dictionary<AkronFeatureKind, FeatureDefinition> Definitions = new Dictionary<AkronFeatureKind, FeatureDefinition> {
         { AkronFeatureKind.RoomLabelOverlay, new FeatureDefinition(AkronFeatureKind.RoomLabelOverlay, AkronStatus.RegularClean, "Room labels", "Passive room information only.") },
         { AkronFeatureKind.StaminaWidget, new FeatureDefinition(AkronFeatureKind.StaminaWidget, AkronStatus.Cheat, "Stamina widget", "Displays already-current player state.") },
@@ -248,39 +249,47 @@ public static class AkronFeatureRegistry {
         { BuildUiSuboptionKey("Map Capture", "Freeze timers"), AkronStatus.Cheat }
     };
 
-    public static FeatureDefinition Get(AkronFeatureKind kind) {
+    public static FeatureDefinition Get(AkronFeatureKind kind)
+    {
         return Definitions[kind];
     }
 
-    public static AkronStatus Classify(AkronFeatureKind kind) {
-        int index = (int) kind;
+    public static AkronStatus Classify(AkronFeatureKind kind)
+    {
+        int index = (int)kind;
         return index >= 0 && index < ClassificationByKind.Length
             ? ClassificationByKind[index]
             : Get(kind).Classification;
     }
 
-    public static bool TryClassifyUiLabel(string label, out AkronStatus status) {
+    public static bool TryClassifyUiLabel(string label, out AkronStatus status)
+    {
         return UiLabelClassifications.TryGetValue(label ?? string.Empty, out status);
     }
 
-    public static bool TryClassifyUiSuboption(string parentLabel, string suboptionLabel, out AkronStatus status) {
+    public static bool TryClassifyUiSuboption(string parentLabel, string suboptionLabel, out AkronStatus status)
+    {
         return UiSuboptionClassifications.TryGetValue(BuildUiSuboptionKey(parentLabel, suboptionLabel), out status);
     }
 
-    private static string BuildUiSuboptionKey(string parentLabel, string suboptionLabel) {
+    private static string BuildUiSuboptionKey(string parentLabel, string suboptionLabel)
+    {
         return (parentLabel ?? string.Empty).Trim() + "\n" + (suboptionLabel ?? string.Empty).Trim();
     }
 
-    private static AkronStatus[] BuildClassificationByKind() {
+    private static AkronStatus[] BuildClassificationByKind()
+    {
         Array values = Enum.GetValues(typeof(AkronFeatureKind));
         int max = 0;
-        foreach (AkronFeatureKind kind in values) {
-            max = Math.Max(max, (int) kind);
+        foreach (AkronFeatureKind kind in values)
+        {
+            max = Math.Max(max, (int)kind);
         }
 
         AkronStatus[] classifications = new AkronStatus[max + 1];
-        foreach (AkronFeatureKind kind in values) {
-            classifications[(int) kind] = Definitions[kind].Classification;
+        foreach (AkronFeatureKind kind in values)
+        {
+            classifications[(int)kind] = Definitions[kind].Classification;
         }
 
         return classifications;

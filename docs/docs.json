@@ -159,7 +159,8 @@
           "reference/akr-archives",
           "reference/community-pack-catalog",
           "reference/debug-commands",
-          "reference/file-locations"
+          "reference/file-locations",
+          "reference/release-configuration"
         ]
       },
       {
