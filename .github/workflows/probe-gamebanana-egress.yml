@@ -1,0 +1,160 @@
+name: Probe GameBanana Egress
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GAMEBANANA_API_SECTION: Mod
+      GAMEBANANA_PAGE_SECTION: mods
+      GAMEBANANA_SUBMISSION_ID: ${{ vars.GAMEBANANA_SUBMISSION_ID || '681169' }}
+      TAILSCALE_EXIT_NODE: ${{ vars.TAILSCALE_EXIT_NODE }}
+      TAILSCALE_TAGS: ${{ vars.TAILSCALE_TAGS || 'tag:ci' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install probe dependencies
+        run: |
+          npm install --no-save playwright@1.56.1 playwright-core@1.56.1 cloakbrowser@0.3.31
+          npx playwright install --with-deps chromium
+          npx cloakbrowser install
+
+      - name: Write probe script
+        run: |
+          cat > "$RUNNER_TEMP/probe-gamebanana-egress.mjs" <<'NODE'
+          import { request } from 'playwright';
+
+          const gamebananaOrigin = 'https://gamebanana.com';
+
+          function requiredEnv(name) {
+            const value = process.env[name];
+            if (!value) throw new Error(`${name} is required`);
+            return value;
+          }
+
+          async function fetchJson(requestContext, url) {
+            const response = await requestContext.fetch(url, { headers: { accept: 'application/json' } });
+            const text = await response.text();
+            if (!response.ok()) throw new Error(`GET ${url} failed with ${response.status()}: ${text.slice(0, 500)}`);
+            const payload = text ? JSON.parse(text) : {};
+            if (payload && typeof payload === 'object' && '_sErrorCode' in payload) {
+              throw new Error(`${url} returned GameBanana error: ${JSON.stringify(payload)}`);
+            }
+            return payload;
+          }
+
+          async function main() {
+            const storageState = requiredEnv('GAMEBANANA_STORAGE_STATE');
+            const apiSection = requiredEnv('GAMEBANANA_API_SECTION');
+            const pageSection = requiredEnv('GAMEBANANA_PAGE_SECTION');
+            const submissionId = requiredEnv('GAMEBANANA_SUBMISSION_ID');
+
+            const publicIp = await fetch('https://ifconfig.me').then((response) => response.text()).catch((error) => `unavailable: ${error.message}`);
+            console.log(`public egress ip: ${publicIp.trim()}`);
+
+            const requestContext = await request.newContext({ storageState });
+            try {
+              const files = await fetchJson(requestContext, `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Files`);
+              const updates = await fetchJson(requestContext, `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Updates`);
+              const fileCount = Array.isArray(files) ? files.length : files?._aRecords?.length ?? 0;
+              const updateCount = Array.isArray(updates) ? updates.length : updates?._aRecords?.length ?? 0;
+              console.log(`api probe ok: files=${fileCount} updates=${updateCount}`);
+            } finally {
+              await requestContext.dispose();
+            }
+
+            const { launchContext } = await import('cloakbrowser');
+            const context = await launchContext({
+              headless: true,
+              humanize: true,
+              contextOptions: { storageState },
+            });
+            const page = await context.newPage();
+            try {
+              await page.goto(`${gamebananaOrigin}/${pageSection}/edit/${submissionId}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+              const permissionMessages = page.locator('#EditFormModule .LogMessages').first();
+              if (await permissionMessages.isVisible().catch(() => false)) {
+                throw new Error(`edit form unavailable: ${(await permissionMessages.innerText()).replace(/\s+/g, ' ').trim()}`);
+              }
+              const mediaTab = page.getByText(/^media$/i).first();
+              if (await mediaTab.isVisible().catch(() => false)) await mediaTab.click();
+              await page.locator('#Files input[type="file"]').first().waitFor({ state: 'attached', timeout: 30_000 });
+              console.log('edit-form probe ok: file input is attached');
+            } finally {
+              await context.close().catch(() => undefined);
+            }
+          }
+
+          main().catch((error) => {
+            console.error(error instanceof Error ? error.message : String(error));
+            process.exitCode = 1;
+          });
+          NODE
+
+      - name: Decode storage state
+        env:
+          GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
+          GAMEBANANA_STORAGE_STATE_B64_GZ: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64_GZ }}
+        run: |
+          set -euo pipefail
+          storage_state="$RUNNER_TEMP/gamebanana-storage-state.json"
+          if [ -n "${GAMEBANANA_STORAGE_STATE_B64_GZ:-}" ]; then
+            printf '%s' "$GAMEBANANA_STORAGE_STATE_B64_GZ" | base64 --decode | gzip -dc > "$storage_state"
+          elif [ -n "${GAMEBANANA_STORAGE_STATE_B64:-}" ]; then
+            printf '%s' "$GAMEBANANA_STORAGE_STATE_B64" | base64 --decode > "$storage_state"
+          else
+            echo 'GAMEBANANA_STORAGE_STATE_B64_GZ or GAMEBANANA_STORAGE_STATE_B64 is required.' >&2
+            exit 1
+          fi
+          echo "GAMEBANANA_STORAGE_STATE=$storage_state" >> "$GITHUB_ENV"
+
+      - name: Probe without Tailscale exit node
+        id: direct
+        continue-on-error: true
+        run: node "$RUNNER_TEMP/probe-gamebanana-egress.mjs"
+
+      - name: Route through Tailscale exit node
+        if: env.TAILSCALE_EXIT_NODE != ''
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: ${{ env.TAILSCALE_TAGS }}
+          args: --exit-node=${{ env.TAILSCALE_EXIT_NODE }}
+          version: latest
+
+      - name: Probe with Tailscale exit node
+        id: tailscale
+        if: env.TAILSCALE_EXIT_NODE != ''
+        continue-on-error: true
+        run: node "$RUNNER_TEMP/probe-gamebanana-egress.mjs"
+
+      - name: Report result
+        run: |
+          set -euo pipefail
+          echo "direct outcome: ${{ steps.direct.outcome }}"
+          echo "tailscale outcome: ${{ steps.tailscale.outcome }}"
+
+          if [ "${{ steps.direct.outcome }}" = "success" ]; then
+            echo "RESULT: direct GitHub runner egress works; Tailscale exit node is not required for this probe right now."
+            exit 0
+          fi
+
+          if [ "${{ steps.tailscale.outcome }}" = "success" ]; then
+            echo "RESULT: direct GitHub runner egress failed but Tailscale egress worked; the exit node is required for this probe right now."
+            exit 0
+          fi
+
+          echo "RESULT: both direct and Tailscale probes failed; result is inconclusive and auth/session may be stale."
+          exit 1
