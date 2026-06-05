@@ -16,6 +16,7 @@ namespace Celeste.Mod.Akron.Tests;
 
 public sealed class ModuleSettingsTests {
     [Theory]
+    [InlineData(PrimaryRuleset.None, "None")]
     [InlineData(PrimaryRuleset.Casual, "Casual")]
     [InlineData(PrimaryRuleset.Practice, "Practice")]
     [InlineData(PrimaryRuleset.LeaderboardClean, "Leaderboard-clean")]
@@ -26,6 +27,7 @@ public sealed class ModuleSettingsTests {
     }
 
     [Theory]
+    [InlineData(AkronProfile.None, "None")]
     [InlineData(AkronProfile.Casual, "Casual")]
     [InlineData(AkronProfile.Practice, "Practice")]
     [InlineData(AkronProfile.LeaderboardClean, "Leaderboard Clean")]
@@ -36,6 +38,7 @@ public sealed class ModuleSettingsTests {
     }
 
     [Theory]
+    [InlineData(AkronStatus.Unclassified, "Unclassified")]
     [InlineData(AkronStatus.GoldberryHardlistClean, "Goldberry/Hardlist clear")]
     [InlineData(AkronStatus.RegularClean, "Normal clear")]
     [InlineData(AkronStatus.Cheat, "Cheat")]
@@ -171,6 +174,22 @@ public sealed class ModuleSettingsTests {
         Assert.True(y >= 16f);
         Assert.True(x + popupWidth <= displayWidth - 16f || popupWidth > displayWidth - 32f);
         Assert.True(y + popupHeight <= displayHeight - 16f || popupHeight > displayHeight - 32f);
+    }
+
+    [Fact]
+    public void FreshInstallDefaultsDoNotSelectAProfileRulesetOrAttemptClassification() {
+        AkronModuleSettings settings = new AkronModuleSettings();
+        AkronModuleSession session = new AkronModuleSession();
+
+        Assert.Equal(AkronProfile.None, settings.ActiveProfile);
+        Assert.Equal(PrimaryRuleset.None, settings.PrimaryRuleset);
+        Assert.False(settings.SafeMode);
+        Assert.False(settings.ProofModeOverlay);
+        Assert.False(settings.SubmissionMode);
+        Assert.False(settings.LabelSystemVisible);
+        Assert.False(settings.StatusLabelsWidget);
+        Assert.False(settings.HudCheatIndicator);
+        Assert.Equal(AkronStatus.Unclassified, session.AttemptStatus);
     }
 
     [Fact]
@@ -2091,6 +2110,50 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
+    public void NoneDefaultsDoNotEnableProfilesRulesetsOrHudStatusOptions() {
+        AkronModuleSettings settings = new AkronModuleSettings {
+            ActiveProfile = AkronProfile.Practice,
+            PrimaryRuleset = PrimaryRuleset.Practice,
+            SafeMode = true,
+            RoomLabels = true,
+            LabelSystemVisible = true,
+            StatusLabelsWidget = true,
+            HudCheatIndicator = true,
+            StaminaWidget = true,
+            SpeedWidget = true,
+            DashWidget = true,
+            InputViewer = true
+        };
+
+        settings.ApplyRulesetDefaults(PrimaryRuleset.None);
+
+        Assert.Equal(PrimaryRuleset.None, settings.PrimaryRuleset);
+        Assert.False(settings.SafeMode);
+        Assert.False(settings.RoomLabels);
+        Assert.False(settings.LabelSystemVisible);
+        Assert.False(settings.StatusLabelsWidget);
+        Assert.False(settings.HudCheatIndicator);
+        Assert.False(settings.StaminaWidget);
+        Assert.False(settings.SpeedWidget);
+        Assert.False(settings.DashWidget);
+        Assert.False(settings.InputViewer);
+
+        settings.ApplyProfile(AkronProfile.None);
+
+        Assert.Equal(AkronProfile.None, settings.ActiveProfile);
+        Assert.Equal(PrimaryRuleset.None, settings.PrimaryRuleset);
+        Assert.False(settings.SafeMode);
+        Assert.False(settings.RoomLabels);
+        Assert.False(settings.LabelSystemVisible);
+        Assert.False(settings.StatusLabelsWidget);
+        Assert.False(settings.HudCheatIndicator);
+        Assert.False(settings.StaminaWidget);
+        Assert.False(settings.SpeedWidget);
+        Assert.False(settings.DashWidget);
+        Assert.False(settings.InputViewer);
+    }
+
+    [Fact]
     public void RulesetDefaultsEnablePracticeSurfacesWithoutCheats() {
         AkronModuleSettings settings = new AkronModuleSettings();
 
@@ -2149,6 +2212,7 @@ public sealed class ModuleSettingsTests {
     [Fact]
     public void ProfileSwitchingPersistsTheProfileBeingLeft() {
         AkronModuleSettings settings = new AkronModuleSettings {
+            ActiveProfile = AkronProfile.Casual,
             StaminaWidget = true
         };
 

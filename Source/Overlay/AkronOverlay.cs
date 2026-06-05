@@ -93,6 +93,8 @@ public sealed partial class AkronOverlay : Entity {
     private ActionEntry pendingImGuiOptionsPopupEntry;
     private ActionEntry pendingImGuiTooltipEntry;
     private Rectangle pendingImGuiTooltipAnchor;
+    private string pendingImGuiTextTooltip = string.Empty;
+    private Rectangle pendingImGuiTextTooltipAnchor;
     private bool bindingCaptureOverlayToggle;
     private bool bindingCaptureAutoDeafenHotkey;
     private bool bindingCaptureWaitingForRelease;

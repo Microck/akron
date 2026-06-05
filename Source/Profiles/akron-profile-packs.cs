@@ -18,7 +18,7 @@ public sealed class AkronProfilePack {
     public string Name { get; set; } = "Akron Profile";
     public string CreatedUtc { get; set; } = string.Empty;
     public AkronProfileSection Section { get; set; } = AkronProfileSection.Whole;
-    public AkronProfile ActiveProfile { get; set; } = AkronProfile.Practice;
+    public AkronProfile ActiveProfile { get; set; } = AkronProfile.None;
     public AkronProfileState State { get; set; } = new AkronProfileState();
     public Dictionary<string, AkronButtonBindingPack> ButtonBindings { get; set; } = new Dictionary<string, AkronButtonBindingPack>();
     public Dictionary<string, string> MenuActionBindings { get; set; } = new Dictionary<string, string>();

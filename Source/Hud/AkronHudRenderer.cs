@@ -294,7 +294,8 @@ public static partial class AkronHudRenderer {
                 return AkronPolicy.IsMegaHackStyleCheatIndicatorFlagged(AkronModule.Session.AttemptStatus);
             }
 
-            return AkronModule.Session.AttemptStatus != AkronStatus.GoldberryHardlistClean;
+            return AkronModule.Session.AttemptStatus != AkronStatus.Unclassified &&
+                   AkronModule.Session.AttemptStatus != AkronStatus.GoldberryHardlistClean;
         }
 
         return true;

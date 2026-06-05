@@ -232,7 +232,7 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip("Hide foreground effects during capture so parallax layers do not smear when tiles are merged.");
     }
 
-    private static void DrawScreenshotScannerFormatRow(string popupId) {
+    private void DrawScreenshotScannerFormatRow(string popupId) {
         AkronScreenshotImageFormat format = AkronModuleSettings.NormalizeScreenshotScannerImageFormat(AkronModule.Settings.ScreenshotScannerImageFormat);
         const float comboWidth = 88f;
         DrawPopupRowLabel("Format", CalculatePopupLabelWidth(comboWidth));
@@ -349,7 +349,7 @@ public sealed partial class AkronOverlay {
             "Configured volume percentage. It only affects matching game sounds while this sound row is on.");
     }
 
-    private static void DrawAudioDeviceCombo(string label, Func<string> getter, Action<string> setter, IReadOnlyList<string> devices, string popupId) {
+    private void DrawAudioDeviceCombo(string label, Func<string> getter, Action<string> setter, IReadOnlyList<string> devices, string popupId) {
         const float comboWidth = 240f;
         string selectedDevice = string.IsNullOrWhiteSpace(getter()) ? "Default" : getter();
         DrawPopupRowLabel(label, CalculatePopupLabelWidth(comboWidth));

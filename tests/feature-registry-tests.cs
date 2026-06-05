@@ -24,6 +24,7 @@ public sealed class FeatureRegistryTests
     [Fact]
     public void ClassificationOrderKeepsAttemptEscalationMonotonic()
     {
+        Assert.True(AkronStatus.Unclassified < AkronStatus.GoldberryHardlistClean);
         Assert.True(AkronStatus.GoldberryHardlistClean < AkronStatus.RegularClean);
         Assert.True(AkronStatus.RegularClean < AkronStatus.Cheat);
     }
@@ -125,6 +126,7 @@ public sealed class FeatureRegistryTests
     }
 
     [Theory]
+    [InlineData(AkronStatus.Unclassified, false)]
     [InlineData(AkronStatus.GoldberryHardlistClean, false)]
     [InlineData(AkronStatus.RegularClean, false)]
     [InlineData(AkronStatus.Cheat, true)]
@@ -134,6 +136,7 @@ public sealed class FeatureRegistryTests
     }
 
     [Theory]
+    [InlineData(AkronStatus.Unclassified, 0x909090)]
     [InlineData(AkronStatus.GoldberryHardlistClean, 0x248BFF)]
     [InlineData(AkronStatus.RegularClean, 0x00FF00)]
     [InlineData(AkronStatus.Cheat, 0xFF0000)]
@@ -145,12 +148,14 @@ public sealed class FeatureRegistryTests
     [Fact]
     public void SafeModeOnlyRedactsGoldberryHardlistCleanColor()
     {
+        Assert.Equal(0x909090, AkronPolicy.GetStatusColorRgb(AkronStatus.Unclassified, safeModeRedactsCleanStatus: true));
         Assert.Equal(0x6495ED, AkronPolicy.GetStatusColorRgb(AkronStatus.GoldberryHardlistClean, safeModeRedactsCleanStatus: true));
         Assert.Equal(0x00FF00, AkronPolicy.GetStatusColorRgb(AkronStatus.RegularClean, safeModeRedactsCleanStatus: true));
         Assert.Equal(0xFF0000, AkronPolicy.GetStatusColorRgb(AkronStatus.Cheat, safeModeRedactsCleanStatus: true));
     }
 
     [Theory]
+    [InlineData(AkronStatus.Unclassified, "No Akron attempt classification has been selected or earned yet.", "Gray because the current attempt is Unclassified.")]
     [InlineData(AkronStatus.GoldberryHardlistClean, "No modifying Akron feature has been used in this attempt.", "Blue because the current attempt is Goldberry/Hardlist clear.")]
     [InlineData(AkronStatus.RegularClean, "Displays a label without changing gameplay.", "Green because the current attempt is Normal clear.")]
     [InlineData(AkronStatus.Cheat, "Bypasses collision and intended map traversal.", "Red because the current attempt is Cheat.")]

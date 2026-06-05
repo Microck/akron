@@ -19,6 +19,8 @@ public partial class AkronModuleSettings {
             case AkronProfile.Accessibility:
                 AccessibilityProfileState = snapshot;
                 break;
+            case AkronProfile.None:
+                break;
             default:
                 CasualProfileState = snapshot;
                 break;
@@ -32,6 +34,7 @@ public partial class AkronModuleSettings {
             AkronProfile.Sandbox => SandboxProfileState,
             AkronProfile.MapMaker => MapMakerProfileState,
             AkronProfile.Accessibility => AccessibilityProfileState,
+            AkronProfile.None => null,
             _ => CasualProfileState
         };
 
@@ -56,6 +59,8 @@ public partial class AkronModuleSettings {
             case AkronProfile.Accessibility:
                 AccessibilityProfileState = builtIn;
                 break;
+            case AkronProfile.None:
+                break;
             default:
                 CasualProfileState = builtIn;
                 break;
@@ -70,6 +75,8 @@ public partial class AkronModuleSettings {
         };
 
         switch (ruleset) {
+            case PrimaryRuleset.None:
+                break;
             case PrimaryRuleset.Practice:
                 EnableRulesetSafetyDefaults(state);
                 state.StaminaWidget = true;
@@ -109,6 +116,7 @@ public partial class AkronModuleSettings {
 
     private static AkronProfileState BuildProfileState(AkronProfile profile) {
         AkronProfileState state = profile switch {
+            AkronProfile.None => BuildRulesetState(PrimaryRuleset.None),
             AkronProfile.Practice => BuildRulesetState(PrimaryRuleset.Practice),
             AkronProfile.LeaderboardClean => BuildRulesetState(PrimaryRuleset.LeaderboardClean),
             AkronProfile.Sandbox => BuildRulesetState(PrimaryRuleset.Sandbox),

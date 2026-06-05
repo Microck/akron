@@ -20,6 +20,8 @@ public sealed partial class AkronOverlay {
         pendingImGuiOptionsPopupEntry = null;
         pendingImGuiTooltipEntry = null;
         pendingImGuiTooltipAnchor = Rectangle.Empty;
+        pendingImGuiTextTooltip = string.Empty;
+        pendingImGuiTextTooltipAnchor = Rectangle.Empty;
         suppressImGuiRowPressesThisFrame = imguiPopupBlockedRowsLastFrame;
         imguiPopupBlockedRowsLastFrame = false;
         openedImGuiOptionsPopupThisFrame = false;
@@ -61,6 +63,7 @@ public sealed partial class AkronOverlay {
         DrawCommunityPackBrowserWindow();
         DrawPendingImGuiOptionsPopup();
         DrawPendingImGuiActionTooltip();
+        DrawPendingImGuiItemTooltip();
         DrawImGuiBindingCapturePopup();
         DrawInternalRecorderExperimentalWarningPopup();
     }
@@ -68,6 +71,8 @@ public sealed partial class AkronOverlay {
     private void DrawStartPosPlacementEditor() {
         ImGui.GetIO().FontGlobalScale = AkronModuleSettings.ClampOverlayScale(AkronModule.Settings.OverlayScale) / 100f;
         ApplyOverlayThemePreset();
+        pendingImGuiTextTooltip = string.Empty;
+        pendingImGuiTextTooltipAnchor = Rectangle.Empty;
 
         ImGui.SetNextWindowPos(new NumericsVector2(AkronModule.Settings.StartPosPlacementPanelX, AkronModule.Settings.StartPosPlacementPanelY), ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSize(new NumericsVector2(330f, 0f), ImGuiCond.Always);
@@ -111,6 +116,7 @@ public sealed partial class AkronOverlay {
             DrawPlaceStartPosPopupControls("placement_editor", includePlacementToggle: false);
         }
         ImGui.End();
+        DrawPendingImGuiItemTooltip();
     }
 
     private void DrawInfoWindow(string title, float x, float y, float width, List<RowSpec> rows) {
@@ -720,7 +726,7 @@ public sealed partial class AkronOverlay {
         return OptionEntryPress.None;
     }
 
-    private static bool DrawStartPosActionButton(string label, string id, float width, bool enabled) {
+    private bool DrawStartPosActionButton(string label, string id, float width, bool enabled) {
         ImGui.PushStyleColor(ImGuiCol.Button, AkronImGuiTheme.FrameBackground);
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, enabled ? AkronImGuiTheme.ButtonHovered : AkronImGuiTheme.FrameBackground);
         ImGui.PushStyleColor(ImGuiCol.ButtonActive, enabled ? AkronImGuiTheme.ButtonActive : AkronImGuiTheme.FrameBackground);

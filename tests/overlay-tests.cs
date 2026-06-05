@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -129,6 +130,29 @@ public sealed class OverlayTests {
     public void ToastStackOffsetAddsEveryNewerToastHeightPlusGap() {
         Assert.Equal(0f, AkronToast.CalculateStackOffset(Array.Empty<float>()));
         Assert.Equal(40f, AkronToast.CalculateStackOffset(new[] { 12f, 16f }));
+    }
+
+    [Fact]
+    public void ImGuiItemTooltipsUseDeferredOverlayLayer() {
+        Type overlayType = typeof(AkronOverlay);
+        MethodInfo itemTooltip = overlayType.GetMethod("DrawImGuiItemTooltip", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        MethodInfo pendingTooltip = overlayType.GetMethod("DrawPendingImGuiItemTooltip", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        Assert.NotNull(itemTooltip);
+        Assert.NotNull(pendingTooltip);
+        Assert.False(itemTooltip.IsStatic);
+        Assert.False(pendingTooltip.IsStatic);
+        Assert.NotNull(overlayType.GetField("pendingImGuiTextTooltip", BindingFlags.Instance | BindingFlags.NonPublic));
+        Assert.NotNull(overlayType.GetField("pendingImGuiTextTooltipAnchor", BindingFlags.Instance | BindingFlags.NonPublic));
+    }
+
+    [Fact]
+    public void DeferredImGuiTooltipsUseTooltipLayerInsteadOfPlainWindows() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-imgui-popups.cs"));
+
+        Assert.Contains("ImGui.BeginTooltip()", source);
+        Assert.Contains("ImGui.EndTooltip()", source);
+        Assert.DoesNotContain("##akron_anchored_tooltip_", source);
     }
 
     [Theory]

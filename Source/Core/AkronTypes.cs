@@ -3,12 +3,14 @@ using Microsoft.Xna.Framework;
 namespace Celeste.Mod.Akron;
 
 public enum AkronStatus {
-    GoldberryHardlistClean = 0,
-    RegularClean = 1,
-    Cheat = 2
+    Unclassified = 0,
+    GoldberryHardlistClean = 1,
+    RegularClean = 2,
+    Cheat = 3
 }
 
 public enum PrimaryRuleset {
+    None,
     Casual,
     Practice,
     LeaderboardClean,
@@ -18,6 +20,7 @@ public enum PrimaryRuleset {
 }
 
 public enum AkronProfile {
+    None,
     Casual,
     Practice,
     LeaderboardClean,

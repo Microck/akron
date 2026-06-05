@@ -18,8 +18,8 @@ public sealed class AkronStartPos {
 
 public class AkronModuleSession : EverestModuleSession {
     public string CurrentSessionNonce { get; set; } = string.Empty;
-    public AkronStatus AttemptStatus { get; set; } = AkronStatus.GoldberryHardlistClean;
-    public string AttemptReason { get; set; } = "No modifying Akron feature has been used in this attempt.";
+    public AkronStatus AttemptStatus { get; set; } = AkronStatus.Unclassified;
+    public string AttemptReason { get; set; } = "No Akron attempt classification has been selected or earned yet.";
     public bool UsedBrokeredSavestate { get; set; }
     public bool UsedUnsafeSavestateOverride { get; set; }
     public string TrackedRoom { get; set; } = string.Empty;

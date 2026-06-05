@@ -6,6 +6,12 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.10
+
+- Start fresh installs with no active Akron profile or primary ruleset, so features stay off until explicitly enabled.
+- Add `None` profile and ruleset selections for clearing Akron defaults from commands and overlay UI.
+- Render hover help popups on ImGui's tooltip layer so they stay visible above overlay rows.
+
 ## 0.1.2-beta.9
 
 - Keep legacy shortcut bindings from reappearing after startup normalization.

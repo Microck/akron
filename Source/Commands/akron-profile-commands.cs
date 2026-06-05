@@ -5,7 +5,7 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronCommands {
-    [Command("akron_profile", "show/apply/import/export Akron profile: casual|practice|leaderboard-clean|sandbox|map-maker|accessibility|export [scope] [name]|import [scope] <file-or-name>|import-latest [scope]; scopes: whole|startpos|keybinds|auto-kill|auto-deafen|recorder|audio|hud")]
+    [Command("akron_profile", "show/apply/import/export Akron profile: none|casual|practice|leaderboard-clean|sandbox|map-maker|accessibility|export [scope] [name]|import [scope] <file-or-name>|import-latest [scope]; scopes: whole|startpos|keybinds|auto-kill|auto-deafen|recorder|audio|hud")]
     public static void Profile(string value = "", string part2 = "", string part3 = "", string part4 = "", string part5 = "", string part6 = "") {
         string action = NormalizeToken(value);
         string joined = JoinCommandText(part2, part3, part4, part5, part6);

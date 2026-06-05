@@ -426,6 +426,7 @@ public sealed partial class AkronOverlay {
         ["Free Camera"] = "Pan the camera freely inside the current room while Madeline is not player-controlled.",
         ["Open Debug Map"] = "Open Celeste's debug map scene.",
         ["Skip Cutscene / Dialogue"] = "Request the active cutscene or dialogue sequence to skip.",
+        ["None"] = "Clear Akron's active profile and ruleset defaults.",
         ["Casual"] = "Apply Akron's Casual profile and ruleset defaults.",
         ["Practice"] = "Apply room-lab defaults for StartPos setup, route review, HUD timing, input display, and death stats.",
         ["Leaderboard Clean"] = "Apply leaderboard-clean defaults that keep StartPos, debug, and state-changing tools off.",

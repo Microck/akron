@@ -9,10 +9,11 @@ This is an explanation page. For step-by-step configuration, see the Everest mod
 
 ## Built-in primary rulesets
 
-Primary rulesets are the base policy for a session. They determine the default "legitimacy" of the attempt and which tools are permitted.
+Primary rulesets are opt-in policy presets. Fresh installs start with `None`, which leaves Akron profiles and rulesets inactive until you choose one.
 
 | Ruleset | Purpose |
 |---|---|
+| `None` | No primary ruleset is active. Features and profiles stay off until you opt in. |
 | `Casual` | QoL-first mode. State-changing features stay opt-in. |
 | `Practice` | Room-lab defaults for StartPos setup, route review, HUD timing, input display, and death stats. |
 | `Leaderboard-clean` | Blocks state-changing features. Akron shows explicit conflict prompts instead of auto-switching. |

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Celeste.Mod.Akron;
 
 public sealed class AkronProfileState {
-    public PrimaryRuleset PrimaryRuleset { get; set; } = PrimaryRuleset.Casual;
+    public PrimaryRuleset PrimaryRuleset { get; set; } = PrimaryRuleset.None;
     public bool SafeMode { get; set; }
     public bool StreamerMode { get; set; }
     public bool ProofModeOverlay { get; set; }
@@ -185,7 +185,7 @@ public sealed class AkronProfileState {
     public AkronHudLabelStyleSettings TotalAttemptsLabelStyle { get; set; } = new AkronHudLabelStyleSettings();
     public AkronHudLabelStyleSettings StatusLabelsLabelStyle { get; set; } = new AkronHudLabelStyleSettings();
     public AkronHudLabelStyleSettings ToastLabelStyle { get; set; } = new AkronHudLabelStyleSettings();
-    public bool HudCheatIndicator { get; set; } = true;
+    public bool HudCheatIndicator { get; set; }
     public bool HudCheatIndicatorOnlyFlagged { get; set; }
     public int HudCheatIndicatorScale { get; set; } = 100;
     public int HudCheatIndicatorOpacity { get; set; } = 100;

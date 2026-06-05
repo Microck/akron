@@ -19,6 +19,7 @@ public partial class AkronModuleSettings {
 
     public string DescribePrimaryRulesetBehavior() {
         return PrimaryRuleset switch {
+            PrimaryRuleset.None => "No primary ruleset is active. Akron starts with features and profiles off until you opt in.",
             PrimaryRuleset.Casual => "Casual keeps Akron in QoL-first mode. State-changing features stay opt-in.",
             PrimaryRuleset.Practice => "Practice applies room-lab defaults for StartPos setup, route review, HUD timing, input display, and death stats.",
             PrimaryRuleset.LeaderboardClean => FormatPrimaryRuleset(PrimaryRuleset) + " blocks state-changing features. Akron shows explicit conflict prompts instead of auto-switching.",
@@ -144,6 +145,7 @@ public partial class AkronModuleSettings {
     public static string FormatPrimaryRuleset(PrimaryRuleset ruleset) {
         return ruleset switch {
             // The ruleset label is a local configuration surface, not a run-legitimacy claim.
+            PrimaryRuleset.None => "None",
             PrimaryRuleset.LeaderboardClean => "Leaderboard-clean",
             PrimaryRuleset.EverestSafe => "Everest-safe",
             PrimaryRuleset.MapMaker => "Map-maker",
@@ -155,6 +157,7 @@ public partial class AkronModuleSettings {
         return profile switch {
             // Keep the real profile name visible in local UI even when safe mode redacts
             // clean-status outputs elsewhere.
+            AkronProfile.None => "None",
             AkronProfile.LeaderboardClean => "Leaderboard Clean",
             AkronProfile.MapMaker => "Map Maker",
             _ => profile.ToString()
@@ -163,6 +166,7 @@ public partial class AkronModuleSettings {
 
     public static string FormatStatus(AkronStatus status) {
         return status switch {
+            AkronStatus.Unclassified => "Unclassified",
             AkronStatus.GoldberryHardlistClean => "Goldberry/Hardlist clear",
             AkronStatus.RegularClean => "Normal clear",
             AkronStatus.Cheat => "Cheat",

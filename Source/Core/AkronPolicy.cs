@@ -30,6 +30,7 @@ public static class AkronPolicy {
     public const int GoldberryHardlistCleanColorRgb = 0x248BFF;
     public const int RegularCleanColorRgb = 0x00FF00;
     public const int CheatColorRgb = 0xFF0000;
+    public const int UnclassifiedColorRgb = 0x909090;
     public const int SafeModeRedactedCleanColorRgb = 0x6495ED;
 
     private static readonly HashSet<AkronFeatureKind> TrainingBlockedInLeaderboardClean = new HashSet<AkronFeatureKind> {
@@ -113,8 +114,10 @@ public static class AkronPolicy {
     }
 
     public static void ResetAttempt(string reason) {
-        AkronModule.Session.AttemptStatus = AkronStatus.GoldberryHardlistClean;
-        AkronModule.Session.AttemptReason = reason;
+        AkronModule.Session.AttemptStatus = AkronStatus.Unclassified;
+        AkronModule.Session.AttemptReason = string.IsNullOrWhiteSpace(reason)
+            ? "No Akron attempt classification has been selected or earned yet."
+            : reason;
         AkronModule.Session.UsedBrokeredSavestate = false;
         AkronModule.Session.UsedUnsafeSavestateOverride = false;
     }
@@ -139,6 +142,8 @@ public static class AkronPolicy {
         return status switch {
             AkronStatus.Cheat => CheatColorRgb,
             AkronStatus.RegularClean => RegularCleanColorRgb,
+            AkronStatus.GoldberryHardlistClean => GoldberryHardlistCleanColorRgb,
+            AkronStatus.Unclassified => UnclassifiedColorRgb,
             _ => GoldberryHardlistCleanColorRgb
         };
     }
@@ -151,6 +156,8 @@ public static class AkronPolicy {
         return status switch {
             AkronStatus.Cheat => "Red",
             AkronStatus.RegularClean => "Green",
+            AkronStatus.GoldberryHardlistClean => "Blue",
+            AkronStatus.Unclassified => "Gray",
             _ => "Blue"
         };
     }
@@ -161,7 +168,7 @@ public static class AkronPolicy {
             : AkronModuleSettings.FormatStatus(status);
         string colorName = GetStatusColorName(status, safeModeRedactsCleanStatus);
         string trimmedReason = string.IsNullOrWhiteSpace(reason)
-            ? "No modifying Akron feature has been used in this attempt."
+            ? "No Akron attempt classification has been selected or earned yet."
             : reason.Trim();
 
         return colorName + " because the current attempt is " + statusLabel + ". " + trimmedReason;

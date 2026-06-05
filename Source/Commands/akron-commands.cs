@@ -18,7 +18,7 @@ public static partial class AkronCommands {
     // first-case player UI. Keep those commands documented here so future docs
     // do not accidentally present them as overlay or Everest mod-option flows.
 
-    [Command("akron_ruleset", "set Akron ruleset: casual|practice|leaderboard-clean|sandbox|everest-safe|map-maker")]
+    [Command("akron_ruleset", "set Akron ruleset: none|casual|practice|leaderboard-clean|sandbox|everest-safe|map-maker")]
     public static void Ruleset(string value = "") {
         if (string.IsNullOrWhiteSpace(value)) {
             Log("ruleset: " + AkronModuleSettings.FormatPrimaryRuleset(AkronModule.Settings.PrimaryRuleset));
@@ -243,6 +243,11 @@ public static partial class AkronCommands {
 
     private static bool TryParseRuleset(string value, out PrimaryRuleset ruleset) {
         switch ((value ?? string.Empty).Trim().ToLowerInvariant()) {
+            case "none":
+            case "off":
+            case "disabled":
+                ruleset = PrimaryRuleset.None;
+                return true;
             case "casual":
                 ruleset = PrimaryRuleset.Casual;
                 return true;
@@ -331,6 +336,11 @@ public static partial class AkronCommands {
 
     private static bool TryParseProfile(string value, out AkronProfile profile) {
         switch ((value ?? string.Empty).Trim().ToLowerInvariant()) {
+            case "none":
+            case "off":
+            case "disabled":
+                profile = AkronProfile.None;
+                return true;
             case "casual":
                 profile = AkronProfile.Casual;
                 return true;

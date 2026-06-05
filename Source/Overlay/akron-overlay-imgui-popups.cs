@@ -352,7 +352,7 @@ public sealed partial class AkronOverlay {
         NumericsVector2 cachedSize = imguiTooltipSizes.TryGetValue(tooltipKey, out NumericsVector2 size)
             ? size
             : new NumericsVector2(TooltipMaxWidth, 160f);
-        NumericsVector2 actualSize = DrawAnchoredTooltipWindow(pendingImGuiTooltipAnchor, "action_" + entry.Tab + "_" + entry.Label, cachedSize, () => {
+        NumericsVector2 actualSize = DrawAnchoredTooltipWindow(pendingImGuiTooltipAnchor, cachedSize, () => {
             ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + GetTooltipWrapWidth());
             ImGui.PushStyleColor(ImGuiCol.Text, AkronImGuiTheme.Accent);
             ImGui.TextUnformatted(entry.Label);
@@ -365,7 +365,7 @@ public sealed partial class AkronOverlay {
         imguiTooltipSizes[tooltipKey] = actualSize;
     }
 
-    private static NumericsVector2 DrawAnchoredTooltipWindow(Rectangle anchor, string id, NumericsVector2 expectedSize, Action drawContent) {
+    private static NumericsVector2 DrawAnchoredTooltipWindow(Rectangle anchor, NumericsVector2 expectedSize, Action drawContent) {
         NumericsVector2 displaySize = ImGui.GetIO().DisplaySize;
         NumericsVector2 maxSize = GetPopupViewportMaxSize(displaySize);
         NumericsVector2 constrainedExpectedSize = new NumericsVector2(
@@ -374,24 +374,14 @@ public sealed partial class AkronOverlay {
         ImGui.SetNextWindowPos(CalculateAnchoredPopupPosition(anchor, constrainedExpectedSize, displaySize), ImGuiCond.Always);
         ImGui.SetNextWindowSizeConstraints(new NumericsVector2(1f, 1f), maxSize);
         ImGui.SetNextWindowBgAlpha(AkronModuleSettings.ClampOverlayOpacity(AkronModule.Settings.OverlayOpacity) / 100f);
-        ImGuiWindowFlags flags =
-            ImGuiWindowFlags.NoTitleBar |
-            ImGuiWindowFlags.NoResize |
-            ImGuiWindowFlags.NoMove |
-            ImGuiWindowFlags.NoSavedSettings |
-            ImGuiWindowFlags.AlwaysAutoResize |
-            ImGuiWindowFlags.NoFocusOnAppearing |
-            ImGuiWindowFlags.NoNav |
-            ImGuiWindowFlags.NoInputs;
-
-        ImGui.Begin("##akron_anchored_tooltip_" + id, flags);
+        ImGui.BeginTooltip();
         drawContent?.Invoke();
         NumericsVector2 actualSize = ImGui.GetWindowSize();
         NumericsVector2 constrainedActualSize = new NumericsVector2(
             Math.Min(Math.Max(1f, actualSize.X), maxSize.X),
             Math.Min(Math.Max(1f, actualSize.Y), maxSize.Y));
         ImGui.SetWindowPos(CalculateAnchoredPopupPosition(anchor, constrainedActualSize, displaySize));
-        ImGui.End();
+        ImGui.EndTooltip();
         return actualSize;
     }
 

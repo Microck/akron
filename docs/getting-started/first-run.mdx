@@ -13,10 +13,10 @@ Follow this tutorial after installing Akron. Open the overlay, confirm Akron is 
     Press `Tab`, the default overlay bind. If this bind was changed or conflicts with another mod, configure it in Everest's mod options.
   </Step>
   <Step title="Check the current setup">
-    Look at the overlay status area for the current setup and attempt status. Fresh installs should show Akron's default setup unless you changed Akron's Everest mod options or imported a setup pack.
+    Look at the overlay status area for the current setup and attempt status. Fresh installs should show no active Akron profile, no primary ruleset, and no attempt classification unless you changed Akron's Everest mod options or imported a setup pack.
   </Step>
   <Step title="Check the status chip">
-    Akron shows the current attempt status: Goldberry/Hardlist clear, Normal clear, or Cheat. The status can escalate during an attempt, but it does not silently downgrade.
+    Akron shows the current attempt status: Unclassified, Goldberry/Hardlist clear, Normal clear, or Cheat. Fresh attempts start Unclassified until Akron records classified feature use. The status can escalate during an attempt, but it does not silently downgrade.
   </Step>
   <Step title="Try a harmless surface">
     Open a read-only HUD or label option, such as room labels, then close the overlay and verify that normal gameplay continues.
@@ -25,7 +25,7 @@ Follow this tutorial after installing Akron. Open the overlay, confirm Akron is 
 
 ## First Setup
 
-Use the default setup if you are exploring Akron for the first time. It keeps the normal overlay workflow available without putting the session into a proof-oriented workflow.
+Use the default setup if you are exploring Akron for the first time. It keeps the normal overlay workflow available without enabling an Akron profile, ruleset, proof workflow, or HUD surface.
 
 Use the overlay to enable only the tools you need. StartPos restore, warps, frame tools, timescale, and other state-changing tools — each use is a deliberate action that can change the active attempt status.
 
@@ -35,10 +35,14 @@ Advanced policy presets such as `Practice`, `Sandbox`, and `Leaderboard-clean` l
 
 ```mermaid
 stateDiagram-v2
-  [*] --> strict: strict clean state
+  [*] --> unclassified: default fresh state
+  unclassified: Unclassified
   strict: Goldberry/Hardlist clear
   normal: Normal clear
   cheat: Cheat
+  unclassified --> strict: use a strict clean feature
+  unclassified --> normal: use a Normal clear feature
+  unclassified --> cheat: use a Cheat feature
   strict --> normal: use a Normal clear feature
   strict --> cheat: use a Cheat feature
   normal --> cheat: use a Cheat feature

@@ -141,7 +141,7 @@ public sealed partial class AkronOverlay {
         DrawPopupChoiceCheckbox("Diagonal", AkronModule.Settings.PreventDownDashRedirects == AkronPreventDownDashRedirectMode.Diagonal, () => AkronModule.Settings.PreventDownDashRedirects = AkronPreventDownDashRedirectMode.Diagonal, popupId, "Preserve diagonal down redirects.");
     }
 
-    private static void DrawPopupChoiceCheckbox(string label, bool selected, Action apply, string popupId, string tooltip) {
+    private void DrawPopupChoiceCheckbox(string label, bool selected, Action apply, string popupId, string tooltip) {
         bool value = selected;
         if (ImGui.Checkbox(label + "##" + popupId, ref value) && value && !selected) {
             apply();

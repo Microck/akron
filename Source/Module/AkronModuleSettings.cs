@@ -33,8 +33,8 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     private bool frameBypassHideStretchedEdges;
     private bool frameBypassSillyMode;
 
-    public AkronProfile ActiveProfile { get; set; } = AkronProfile.Casual;
-    public PrimaryRuleset PrimaryRuleset { get; set; } = PrimaryRuleset.Casual;
+    public AkronProfile ActiveProfile { get; set; } = AkronProfile.None;
+    public PrimaryRuleset PrimaryRuleset { get; set; } = PrimaryRuleset.None;
     public bool StreamerMode { get; set; }
     // ProofModeOverlay is normally enabled indirectly by Submission Mode or
     // imported/community rulesets. The direct command path exists for QA and

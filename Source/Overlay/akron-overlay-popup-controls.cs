@@ -319,7 +319,7 @@ public sealed partial class AkronOverlay {
             Math.Max(minimumControlWidth, available - labelWidth - spacing));
     }
 
-    private static void DrawPopupChoiceCombo(
+    private void DrawPopupChoiceCombo(
         string label,
         Func<string> value,
         IReadOnlyList<SelectorDropdownChoice> choices,
@@ -361,7 +361,7 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip(tooltip, label);
     }
 
-    private static void DrawPopupCheckbox(string label, Func<bool> getter, Action<bool> setter, string popupId, string tooltip) {
+    private void DrawPopupCheckbox(string label, Func<bool> getter, Action<bool> setter, string popupId, string tooltip) {
         bool enabled = getter();
         const float checkboxWidth = 24f;
         DrawPopupRowLabel(label, CalculatePopupLabelWidth(checkboxWidth));
@@ -757,7 +757,7 @@ public sealed partial class AkronOverlay {
         SearchOwnsGameplayInputThisFrame = true;
     }
 
-    private static void DrawPopupTooltip(string text, string suboptionLabel = null) {
+    private void DrawPopupTooltip(string text, string suboptionLabel = null) {
         if (!string.IsNullOrWhiteSpace(text) && ImGui.IsItemHovered(ImGuiHoveredFlags.DelayNormal)) {
             DrawImGuiItemTooltip(FormatPopupTooltipText(text, suboptionLabel));
         }
@@ -804,19 +804,33 @@ public sealed partial class AkronOverlay {
         return false;
     }
 
-    private static void DrawImGuiItemTooltip(string text) {
+    private void DrawImGuiItemTooltip(string text) {
         if (string.IsNullOrWhiteSpace(text)) {
             return;
         }
 
         NumericsVector2 min = ImGui.GetItemRectMin();
         NumericsVector2 max = ImGui.GetItemRectMax();
-        Rectangle anchor = RectCeiling(min.X, min.Y, Math.Max(1f, max.X - min.X), Math.Max(1f, max.Y - min.Y));
-        DrawAnchoredTooltipWindow(anchor, "text_" + text.GetHashCode().ToString(CultureInfo.InvariantCulture), new NumericsVector2(TooltipMaxWidth, 160f), () => {
+        pendingImGuiTextTooltip = text;
+        pendingImGuiTextTooltipAnchor = RectCeiling(min.X, min.Y, Math.Max(1f, max.X - min.X), Math.Max(1f, max.Y - min.Y));
+    }
+
+    private void DrawPendingImGuiItemTooltip() {
+        if (string.IsNullOrWhiteSpace(pendingImGuiTextTooltip) || pendingImGuiTextTooltipAnchor == Rectangle.Empty) {
+            return;
+        }
+
+        string text = pendingImGuiTextTooltip;
+        string tooltipKey = "text\n" + text;
+        NumericsVector2 cachedSize = imguiTooltipSizes.TryGetValue(tooltipKey, out NumericsVector2 size)
+            ? size
+            : new NumericsVector2(TooltipMaxWidth, 160f);
+        NumericsVector2 actualSize = DrawAnchoredTooltipWindow(pendingImGuiTextTooltipAnchor, cachedSize, () => {
             ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + GetTooltipWrapWidth());
             ImGui.TextWrapped(text);
             ImGui.PopTextWrapPos();
         });
+        imguiTooltipSizes[tooltipKey] = actualSize;
     }
 
 }
