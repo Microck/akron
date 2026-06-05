@@ -338,34 +338,27 @@ public sealed partial class AkronOverlay {
     }
 
     private readonly struct MenuBinding {
-        public MenuBinding(Keys key, bool control, bool alt, bool shift) {
-            Key = key;
+        private MenuBinding(IEnumerable<Keys> keys) {
+            KeyList = NormalizeKeys(keys);
+            Key = KeyList.Count == 0 ? Keys.None : KeyList[^1];
             Button = 0;
-            Control = control;
-            Alt = alt;
-            Shift = shift;
         }
 
         public Keys Key { get; }
+        public List<Keys> KeyList { get; }
         public Buttons Button { get; }
-        public bool Control { get; }
-        public bool Alt { get; }
-        public bool Shift { get; }
 
         private MenuBinding(Buttons button) {
             Key = Keys.None;
+            KeyList = new List<Keys>();
             Button = button;
-            Control = false;
-            Alt = false;
-            Shift = false;
         }
 
         public static MenuBinding FromKeyboardState(Keys key, Keys[] pressedKeys) {
-            return new MenuBinding(
-                key,
-                pressedKeys.Contains(Keys.LeftControl) || pressedKeys.Contains(Keys.RightControl),
-                pressedKeys.Contains(Keys.LeftAlt) || pressedKeys.Contains(Keys.RightAlt),
-                pressedKeys.Contains(Keys.LeftShift) || pressedKeys.Contains(Keys.RightShift));
+            IEnumerable<Keys> modifiers = pressedKeys.Where(IsModifierKey);
+            return IsModifierKey(key)
+                ? new MenuBinding(modifiers)
+                : new MenuBinding(modifiers.Concat(new[] { key }));
         }
 
         public static MenuBinding FromButton(Buttons button) {
@@ -389,38 +382,37 @@ public sealed partial class AkronOverlay {
                 return false;
             }
 
-            bool control = false;
-            bool alt = false;
-            bool shift = false;
-            Keys key = Keys.None;
+            List<Keys> keys = new List<Keys>();
             foreach (string rawPart in parts) {
                 string part = rawPart.Trim();
                 if (part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) ||
                     part.Equals("Control", StringComparison.OrdinalIgnoreCase)) {
-                    control = true;
+                    keys.Add(Keys.LeftControl);
                     continue;
                 }
 
                 if (part.Equals("Alt", StringComparison.OrdinalIgnoreCase)) {
-                    alt = true;
+                    keys.Add(Keys.LeftAlt);
                     continue;
                 }
 
                 if (part.Equals("Shift", StringComparison.OrdinalIgnoreCase)) {
-                    shift = true;
+                    keys.Add(Keys.LeftShift);
                     continue;
                 }
 
-                if (!Enum.TryParse(part, out key) || key == Keys.None) {
+                if (!TryParseKeyToken(part, out Keys key) || key == Keys.None) {
                     return false;
                 }
+
+                keys.Add(key);
             }
 
-            if (key == Keys.None) {
+            if (keys.Count == 0) {
                 return false;
             }
 
-            binding = new MenuBinding(key, control, alt, shift);
+            binding = new MenuBinding(keys);
             return true;
         }
 
@@ -429,10 +421,9 @@ public sealed partial class AkronOverlay {
                 return IsGamePadPressed(Button);
             }
 
-            return MInput.Keyboard.Pressed(Key) &&
-                   (!Control || IsControlDown()) &&
-                   (!Alt || IsAltDown()) &&
-                   (!Shift || IsShiftDown());
+            return KeyList.Count > 0 &&
+                   KeyList.Any(key => MInput.Keyboard.Pressed(key)) &&
+                   KeyList.All(key => Keyboard.GetState().IsKeyDown(key));
         }
 
         public string ToStorageString() {
@@ -441,19 +432,7 @@ public sealed partial class AkronOverlay {
             }
 
             List<string> parts = new List<string>();
-            if (Control) {
-                parts.Add("Ctrl");
-            }
-
-            if (Alt) {
-                parts.Add("Alt");
-            }
-
-            if (Shift) {
-                parts.Add("Shift");
-            }
-
-            parts.Add(Key.ToString());
+            parts.AddRange(KeyList.Select(key => key.ToString()));
             return string.Join("+", parts);
         }
 
@@ -463,19 +442,7 @@ public sealed partial class AkronOverlay {
             }
 
             List<string> parts = new List<string>();
-            if (Control) {
-                parts.Add("Ctrl");
-            }
-
-            if (Alt) {
-                parts.Add("Alt");
-            }
-
-            if (Shift) {
-                parts.Add("Shift");
-            }
-
-            parts.Add(SimplifyKeyToken(Key));
+            parts.AddRange(KeyList.Select(SimplifyKeyToken));
             return string.Join("+", parts);
         }
 
@@ -484,21 +451,7 @@ public sealed partial class AkronOverlay {
                 return new List<Keys>();
             }
 
-            List<Keys> keys = new List<Keys>();
-            if (Control) {
-                keys.Add(Keys.LeftControl);
-            }
-
-            if (Alt) {
-                keys.Add(Keys.LeftAlt);
-            }
-
-            if (Shift) {
-                keys.Add(Keys.LeftShift);
-            }
-
-            keys.Add(Key);
-            return keys;
+            return KeyList.ToList();
         }
 
         public List<Buttons> ToButtonList() {
@@ -519,6 +472,35 @@ public sealed partial class AkronOverlay {
             }
 
             return Enum.TryParse(token.Trim(), out button) && IsBindableButton(button);
+        }
+
+        private static List<Keys> NormalizeKeys(IEnumerable<Keys> keys) {
+            List<Keys> normalized = new List<Keys>();
+            foreach (Keys key in keys ?? Enumerable.Empty<Keys>()) {
+                if (key == Keys.None || normalized.Contains(key)) {
+                    continue;
+                }
+
+                normalized.Add(key);
+            }
+
+            return normalized;
+        }
+
+        private static bool TryParseKeyToken(string token, out Keys key) {
+            key = Keys.None;
+            string normalized = token.Trim();
+            normalized = normalized switch {
+                "LCtrl" => nameof(Keys.LeftControl),
+                "RCtrl" => nameof(Keys.RightControl),
+                "LAlt" => nameof(Keys.LeftAlt),
+                "RAlt" => nameof(Keys.RightAlt),
+                "LShift" => nameof(Keys.LeftShift),
+                "RShift" => nameof(Keys.RightShift),
+                _ => normalized
+            };
+
+            return Enum.TryParse(normalized, ignoreCase: true, out key);
         }
     }
 
@@ -545,7 +527,7 @@ public sealed partial class AkronOverlay {
 
         if (pressedKeys.Contains(Keys.Back) || pressedKeys.Contains(Keys.Delete)) {
             if (bindingCaptureOverlayToggle) {
-                ClearOverlayToggleKeyboardBinding();
+                ResetOverlayToggleBinding();
             } else if (bindingCaptureAutoDeafenHotkey) {
                 AkronActions.RestoreAutoDeafen();
                 AkronModule.Settings.AutoDeafenHotkey = string.Empty;
@@ -641,7 +623,7 @@ public sealed partial class AkronOverlay {
 
     private static void ClearBindingForEntry(ActionEntry entry) {
         if (string.Equals(entry.ActionKey, OverlayToggleActionKey, StringComparison.Ordinal)) {
-            ClearOverlayToggleKeyboardBinding();
+            ResetOverlayToggleBinding();
             return;
         }
 
@@ -717,11 +699,7 @@ public sealed partial class AkronOverlay {
     }
 
     private static ButtonBinding EmptyButtonBinding() {
-        ButtonBinding binding = new ButtonBinding(0, Keys.Tab);
-        binding.Keys = new List<Keys>();
-        binding.Buttons = new List<Buttons>();
-        binding.MouseButtons = new List<MInput.MouseData.MouseButtons>();
-        return binding;
+        return AkronModuleSettings.CreateEmptyButtonBinding();
     }
 
     private static bool IsEmptyBinding(ButtonBinding binding) {
@@ -736,13 +714,16 @@ public sealed partial class AkronOverlay {
     }
 
     private static bool IsBindableKey(Keys key) {
-        return key != Keys.None &&
-               key != Keys.LeftShift &&
-               key != Keys.RightShift &&
-               key != Keys.LeftControl &&
-               key != Keys.RightControl &&
-               key != Keys.LeftAlt &&
-               key != Keys.RightAlt;
+        return key != Keys.None;
+    }
+
+    private static bool IsModifierKey(Keys key) {
+        return key == Keys.LeftControl ||
+               key == Keys.RightControl ||
+               key == Keys.LeftAlt ||
+               key == Keys.RightAlt ||
+               key == Keys.LeftShift ||
+               key == Keys.RightShift;
     }
 
     private static bool IsBindableButton(Buttons button) {
@@ -803,11 +784,6 @@ public sealed partial class AkronOverlay {
         AkronModule.Settings.ToggleOverlay.Keys = binding.ToKeyList();
         AkronModule.Settings.ToggleOverlay.Buttons = binding.ToButtonList();
         AkronModuleSettings.EnsureCurrentOverlayToggleDefault(AkronModule.Settings);
-        menuBindingRevision++;
-    }
-
-    private static void ClearOverlayToggleKeyboardBinding() {
-        AkronModule.Settings.ToggleOverlay = EmptyButtonBinding();
         menuBindingRevision++;
     }
 

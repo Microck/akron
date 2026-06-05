@@ -301,9 +301,6 @@ public sealed partial class AkronOverlay {
         if (ImGui.MenuItem("Reset to Tab")) {
             ResetOverlayToggleBinding();
         }
-        if (ImGui.MenuItem("Reset keyboard binding", string.Empty, false, HasOverlayToggleKeyboardBinding())) {
-            ClearOverlayToggleKeyboardBinding();
-        }
         ImGui.EndPopup();
     }
 

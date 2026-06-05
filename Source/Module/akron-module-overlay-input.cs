@@ -352,12 +352,12 @@ public partial class AkronModule {
             return false;
         }
 
-        List<Keys> nonModifierKeys = keys.Where(key => !IsModifierKey(key)).ToList();
-        if (nonModifierKeys.Count == 0 || !nonModifierKeys.Any(key => IsRawKeyPressed(key, keyboard, previousKeyboard))) {
+        List<Keys> normalizedKeys = keys.Where(key => key != Keys.None).Distinct().ToList();
+        if (normalizedKeys.Count == 0 || !normalizedKeys.Any(key => IsRawKeyPressed(key, keyboard, previousKeyboard))) {
             return false;
         }
 
-        return keys.All(key => keyboard.IsKeyDown(key));
+        return normalizedKeys.All(key => keyboard.IsKeyDown(key));
     }
 
     private static bool IsStartPosBindingPressed(ButtonBinding binding, KeyboardState keyboard, KeyboardState previousKeyboard) {

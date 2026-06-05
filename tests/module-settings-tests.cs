@@ -236,11 +236,97 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
+    public void CurrentKeybindDefaultsClearLegacyButtonBindingsExceptMenuAndLeftAltHolds() {
+        ButtonBinding retry = BuildInitializedButtonBinding(Keys.R);
+        ButtonBinding reloadRoom = BuildInitializedButtonBinding(Keys.F6);
+        ButtonBinding reloadChapter = BuildInitializedButtonBinding(Keys.F7);
+        ButtonBinding saveState = BuildInitializedButtonBinding(Keys.F5);
+        ButtonBinding loadState = BuildInitializedButtonBinding(Keys.F9);
+        ButtonBinding toggleHitboxes = BuildInitializedButtonBinding(Keys.H);
+        ButtonBinding freezeGameplay = BuildInitializedButtonBinding(Keys.F);
+        ButtonBinding cursorZoomHold = BuildInitializedButtonBinding(Keys.Z);
+        ButtonBinding previousStartPos = BuildInitializedButtonBinding(Keys.OemMinus);
+        ButtonBinding nextStartPos = BuildInitializedButtonBinding(Keys.OemPlus);
+        AkronModuleSettings settings = new AkronModuleSettings {
+            Retry = retry,
+            ReloadRoom = reloadRoom,
+            ReloadChapter = reloadChapter,
+            SaveState = saveState,
+            LoadState = loadState,
+            ToggleHitboxes = toggleHitboxes,
+            FreezeGameplay = freezeGameplay,
+            CursorZoomHold = cursorZoomHold,
+            PreviousStartPos = previousStartPos,
+            NextStartPos = nextStartPos
+        };
+
+        AkronModuleSettings.EnsureCurrentKeybindDefaults(settings);
+
+        Assert.NotSame(retry, settings.Retry);
+        Assert.NotSame(reloadRoom, settings.ReloadRoom);
+        Assert.NotSame(reloadChapter, settings.ReloadChapter);
+        Assert.NotSame(saveState, settings.SaveState);
+        Assert.NotSame(loadState, settings.LoadState);
+        Assert.NotSame(toggleHitboxes, settings.ToggleHitboxes);
+        Assert.NotSame(freezeGameplay, settings.FreezeGameplay);
+        Assert.NotSame(cursorZoomHold, settings.CursorZoomHold);
+        Assert.NotSame(previousStartPos, settings.PreviousStartPos);
+        Assert.NotSame(nextStartPos, settings.NextStartPos);
+
+        Assert.NotNull(settings.Retry);
+        Assert.NotNull(settings.ReloadRoom);
+        Assert.NotNull(settings.ReloadChapter);
+        Assert.NotNull(settings.SaveState);
+        Assert.NotNull(settings.LoadState);
+        Assert.NotNull(settings.ToggleHitboxes);
+        Assert.NotNull(settings.FreezeGameplay);
+        Assert.NotNull(settings.CursorZoomHold);
+        Assert.NotNull(settings.PreviousStartPos);
+        Assert.NotNull(settings.NextStartPos);
+        Assert.NotNull(settings.ToggleOverlay);
+        Assert.NotNull(settings.ClickTeleportCursor);
+    }
+
+    private static ButtonBinding BuildInitializedButtonBinding(Keys key) {
+        return new ButtonBinding(0, key) {
+            Keys = key == Keys.None ? new List<Keys>() : new List<Keys> { key },
+            Buttons = new List<XnaButtons>(),
+            MouseButtons = new List<Monocle.MInput.MouseData.MouseButtons>()
+        };
+    }
+
+    [Fact]
     public void OverlayToggleDefaultRestoresOnlyMissingBindings() {
         Assert.False(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys>(), new List<XnaButtons>()));
         Assert.False(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys> { Keys.None }, new List<XnaButtons>()));
+        Assert.True(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys> { Keys.RightShift }, new List<XnaButtons>()));
+        Assert.True(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys> { Keys.LeftAlt }, new List<XnaButtons>()));
         Assert.True(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys> { Keys.F1 }, new List<XnaButtons>()));
+        Assert.True(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys> { Keys.LeftShift, Keys.F1 }, new List<XnaButtons>()));
         Assert.True(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys>(), new List<XnaButtons> { XnaButtons.LeftShoulder }));
+    }
+
+    [Fact]
+    public void OverlayToggleDefaultIsPlainTabOnly() {
+        Assert.True(AkronModuleSettings.ShouldUseDefaultOverlayToggleBinding(
+            new List<Keys> { Keys.Tab, Keys.LeftShift },
+            new List<XnaButtons>()));
+        Assert.True(AkronModuleSettings.ShouldUseDefaultOverlayToggleBinding(
+            new List<Keys> { Keys.LeftControl, Keys.Tab, Keys.None },
+            null));
+
+        Assert.False(AkronModuleSettings.ShouldUseDefaultOverlayToggleBinding(
+            new List<Keys> { Keys.Tab },
+            new List<XnaButtons>()));
+        Assert.False(AkronModuleSettings.ShouldUseDefaultOverlayToggleBinding(
+            new List<Keys> { Keys.F1 },
+            new List<XnaButtons>()));
+        Assert.False(AkronModuleSettings.ShouldUseDefaultOverlayToggleBinding(
+            new List<Keys> { Keys.LeftShift, Keys.F1 },
+            new List<XnaButtons>()));
+        Assert.False(AkronModuleSettings.ShouldUseDefaultOverlayToggleBinding(
+            new List<Keys> { Keys.Tab, Keys.LeftShift },
+            new List<XnaButtons> { XnaButtons.LeftShoulder }));
     }
 
     [Fact]
@@ -2763,13 +2849,24 @@ public sealed class ModuleSettingsTests {
     }
 
     [Theory]
-    [InlineData("Ctrl+Shift+D", "Ctrl+Shift+D")]
+    [InlineData("Ctrl+Shift+D", "LeftControl+LeftShift+D")]
+    [InlineData("RAlt", "RightAlt")]
+    [InlineData("RShift+F1", "RightShift+F1")]
     [InlineData("Button:LeftShoulder", "Button:LeftShoulder")]
     [InlineData("Controller:RightStick", "Button:RightStick")]
     public void MenuBindingsKeepKeyboardBindingsAndAcceptControllerButtons(string stored, string expectedNormalized) {
         object binding = ParseMenuBinding(stored);
 
         Assert.Equal(expectedNormalized, InvokeMenuBindingString(binding, "ToStorageString"));
+    }
+
+    [Theory]
+    [InlineData("RAlt", "RightAlt")]
+    [InlineData("RShift+F1", "RightShift+F1")]
+    public void MenuBindingDisplayPreservesRightSideModifiers(string stored, string expectedDisplay) {
+        object binding = ParseMenuBinding(stored);
+
+        Assert.Equal(expectedDisplay, InvokeMenuBindingString(binding, "ToDisplayString"));
     }
 
     [Fact]

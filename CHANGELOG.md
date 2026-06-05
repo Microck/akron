@@ -6,6 +6,12 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.9
+
+- Keep legacy shortcut bindings from reappearing after startup normalization.
+- Preserve right-side modifier keys when capturing menu bindings, including modifier-only binds such as `RightAlt` and `RightShift`.
+- Keep Open Menu defaulted to `Tab` while allowing users to rebind it to another valid key.
+
 ## 0.1.2-beta.8
 
 - Keep only Open Menu, Click Teleport Cursor, and Cursor Zoom Hold bound by default.
