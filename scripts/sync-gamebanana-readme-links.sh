@@ -68,8 +68,8 @@ if [ -n "$readme_path" ]; then
     my $file_id = $ENV{"FILE_ID"};
     my $mod_id = $ENV{"MOD_ID"};
 
-    s#everest:https://gamebanana\.com/mmdl/\d+,Mod,\Q$mod_id\E#everest:https://gamebanana.com/mmdl/$file_id,Mod,$mod_id#g;
-    s#href="https://gamebanana\.com/(?:mods/download/\Q$mod_id\E|dl/\d+)"#href="https://gamebanana.com/dl/$file_id"#g;
+    s#(?:everest:)?https://gamebanana\.com/mmdl/\d+,Mod,\Q$mod_id\E#https://gamebanana.com/mmdl/$file_id,Mod,$mod_id#g;
+    s#https://gamebanana\.com/(?:mods/download/\Q$mod_id\E|dl/\d+)#https://gamebanana.com/dl/$file_id#g;
   ' "$readme_path"
 
   echo "README GameBanana links point to file $latest_file_id for mod $mod_id."
