@@ -2037,6 +2037,36 @@ public sealed class ModuleSettingsTests {
         Assert.Equal(expected, AkronModuleSettings.ClampSpeedNumberOffsetY(input));
     }
 
+    [Fact]
+    public void PlayerNumbersRenderEvenWhenHudLabelsAreHidden() {
+        AkronModuleSettings settings = new AkronModuleSettings {
+            LabelSystemVisible = false,
+            DashNumber = true,
+            SpeedNumber = true
+        };
+
+        Assert.True(InvokePlayerNumberGate("ShouldRenderDashNumber", settings, true));
+        Assert.True(InvokePlayerNumberGate("ShouldRenderSpeedNumber", settings, true));
+    }
+
+    [Fact]
+    public void PlayerNumbersStillRespectTheirOwnToggleAndPolicyGate() {
+        AkronModuleSettings settings = new AkronModuleSettings {
+            LabelSystemVisible = true,
+            DashNumber = false,
+            SpeedNumber = false
+        };
+
+        Assert.False(InvokePlayerNumberGate("ShouldRenderDashNumber", settings, true));
+        Assert.False(InvokePlayerNumberGate("ShouldRenderSpeedNumber", settings, true));
+
+        settings.DashNumber = true;
+        settings.SpeedNumber = true;
+
+        Assert.False(InvokePlayerNumberGate("ShouldRenderDashNumber", settings, false));
+        Assert.False(InvokePlayerNumberGate("ShouldRenderSpeedNumber", settings, false));
+    }
+
     [Theory]
     [InlineData(-10, 0)]
     [InlineData(65, 65)]
@@ -3139,6 +3169,12 @@ public sealed class ModuleSettingsTests {
         MethodInfo? method = binding.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
         Assert.NotNull(method);
         return (string) method.Invoke(binding, Array.Empty<object>())!;
+    }
+
+    private static bool InvokePlayerNumberGate(string methodName, AkronModuleSettings settings, bool featureAllowed) {
+        MethodInfo? method = typeof(AkronHudRenderer).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        return (bool) method.Invoke(null, new object[] { settings, featureAllowed })!;
     }
 
     private static string WriteReplaySegment(string folder, string filename, DateTime writeUtc, int bytes) {

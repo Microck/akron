@@ -99,11 +99,11 @@ public static partial class AkronHudRenderer {
             RenderDashBar(level, player, HudEdgePadding, ref y);
         }
 
-        if (player != null && labelsVisible && settings.DashNumber && AkronModule.TryUse(AkronFeatureKind.ResourceBars)) {
+        if (player != null && ShouldRenderDashNumber(settings, AkronModule.TryUse(AkronFeatureKind.ResourceBars))) {
             RenderDashNumber(level, player);
         }
 
-        if (player != null && labelsVisible && settings.SpeedNumber && AkronModule.TryUse(AkronFeatureKind.SpeedNumber)) {
+        if (player != null && ShouldRenderSpeedNumber(settings, AkronModule.TryUse(AkronFeatureKind.SpeedNumber))) {
             RenderSpeedNumber(level, player);
         }
 
