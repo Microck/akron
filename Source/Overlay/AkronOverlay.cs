@@ -149,6 +149,9 @@ public sealed partial class AkronOverlay : Entity {
     public bool SearchInputConsumedThisFrame { get; private set; }
     public bool SearchOwnsGameplayInputThisFrame { get; private set; }
     public bool IsStartPosPlacementActive => startPosPlacementActive;
+    public bool IsAutoKillAreaSelectionActive => autoKillAreaSelectionActive;
+    public bool IsAutoDeafenAreaSelectionActive => autoDeafenAreaSelectionActive;
+    public bool IsTransientMouseUiActive => startPosPlacementActive || autoKillAreaSelectionActive || autoDeafenAreaSelectionActive;
 
     public bool SearchOwnsCurrentKeyboardFrame {
         get {

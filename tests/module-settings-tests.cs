@@ -1,6 +1,7 @@
 using Celeste;
 using Celeste.Mod.Akron;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
@@ -2067,6 +2068,25 @@ public sealed class ModuleSettingsTests {
         Assert.False(InvokePlayerNumberGate("ShouldRenderSpeedNumber", settings, false));
     }
 
+    [Fact]
+    public void AkronHudUsesLinearFilteringForScaledText() {
+        Assert.Same(SamplerState.LinearClamp, AkronModule.HudSamplerState());
+    }
+
+    [Fact]
+    public void AreaSelectionPreviewShowsCursorMarkerBeforeFirstCorner() {
+        AkronOverlay.PracticeAreaSelectionPreviewBounds preview = AkronOverlay.PracticeAreaSelectionPreviewBoundsFor(12.8f, 20.2f, false, 0f, 0f);
+
+        AssertPreviewBounds(preview, 8, 16, 8, 8);
+    }
+
+    [Fact]
+    public void AreaSelectionPreviewShowsDragRectangleAfterFirstCorner() {
+        AkronOverlay.PracticeAreaSelectionPreviewBounds preview = AkronOverlay.PracticeAreaSelectionPreviewBoundsFor(20.2f, 8.8f, true, 4.4f, 18.2f);
+
+        AssertPreviewBounds(preview, 4, 8, 17, 11);
+    }
+
     [Theory]
     [InlineData(-10, 0)]
     [InlineData(65, 65)]
@@ -3175,6 +3195,13 @@ public sealed class ModuleSettingsTests {
         MethodInfo? method = typeof(AkronHudRenderer).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         return (bool) method.Invoke(null, new object[] { settings, featureAllowed })!;
+    }
+
+    private static void AssertPreviewBounds(AkronOverlay.PracticeAreaSelectionPreviewBounds actual, int x, int y, int width, int height) {
+        Assert.Equal(x, actual.X);
+        Assert.Equal(y, actual.Y);
+        Assert.Equal(width, actual.Width);
+        Assert.Equal(height, actual.Height);
     }
 
     private static string WriteReplaySegment(string folder, string filename, DateTime writeUtc, int bytes) {

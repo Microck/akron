@@ -278,18 +278,30 @@ public partial class AkronModule {
     }
 
     private static void UpdateOverlayCursorState() {
-        bool shouldShowCursor = Overlay?.Visible == true || ShouldShowClickTeleportCursor() || ShouldShowCursorZoomCursor();
+        bool shouldShowCursor = Overlay?.Visible == true ||
+                                Overlay?.IsTransientMouseUiActive == true ||
+                                ShouldShowClickTeleportCursor() ||
+                                ShouldShowCursorZoomCursor();
         if (shouldShowCursor) {
-            if (!cursorVisibilityCaptured) {
-                previousMouseVisible = Engine.Instance.IsMouseVisible;
-                cursorVisibilityCaptured = true;
-            }
-
-            Engine.Instance.IsMouseVisible = true;
+            ShowManagedCursorForTransientUi();
             return;
         }
 
         RestoreCursorVisibility();
+    }
+
+    internal static void ShowManagedCursorForTransientUi() {
+        CaptureCursorVisibilityIfNeeded();
+        Engine.Instance.IsMouseVisible = true;
+    }
+
+    private static void CaptureCursorVisibilityIfNeeded() {
+        if (cursorVisibilityCaptured) {
+            return;
+        }
+
+        previousMouseVisible = Engine.Instance.IsMouseVisible;
+        cursorVisibilityCaptured = true;
     }
 
     private static bool ShouldShowClickTeleportCursor() {
