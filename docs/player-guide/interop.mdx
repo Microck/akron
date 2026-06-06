@@ -3,7 +3,7 @@ title: Interop
 description: Set up and use Akron's runtime integrations with Motion Smoothing, Speedrun Tool, CelesteTAS, and Extended Variant Mode.
 ---
 
-Akron detects compatible mods at runtime and adds overlay rows automatically. These integrations are optional — if a mod is not installed, its rows do not appear.
+Akron detects compatible mods at runtime and adds overlay rows automatically. These integrations are optional. If a mod is not installed, its rows do not appear.
 
 External tool actions can change your attempt status. Check the **Attempt status** column for each row before using interop features in a submitted run. See [External Tools](/feature-guide/external-tools) for the full option list.
 
@@ -18,7 +18,7 @@ External tool actions can change your attempt status. Check the **Attempt status
 
 ## Motion Smoothing
 
-When Motion Smoothing is loaded, Akron drives its FPS Bypass and TPS Bypass settings directly from the overlay. You do not need to configure both mods separately — Akron applies your configured values to Motion Smoothing's runtime.
+When Motion Smoothing is loaded, Akron drives its FPS Bypass and TPS Bypass settings directly from the overlay. You do not need to configure both mods separately because Akron applies your configured values to Motion Smoothing's runtime.
 
 Both FPS Bypass and TPS Bypass are **Cheat** actions because they change the game's render and simulation cadence.
 
@@ -34,7 +34,7 @@ Speedrun Tool interop provides state-capture slots, room timer data, and a Tab k
 
 CelesteTAS integration detects whether a TAS is active or running and provides a handoff action that starts playback for a configured `.tas` file. The rows appear only when CelesteTAS is loaded.
 
-- **TAS playback** is **Cheat** in Akron's policy model. Keep TAS handoff in practice, testing, or development setups — not in submitted attempts.
+- **TAS playback** is **Cheat** in Akron's policy model. Keep TAS handoff in practice, testing, or development setups instead of submitted attempts.
 - **TAS status** and **configured file** rows are **Regular clean** because they are read-only.
 
 ## Extended Variant Mode
