@@ -13,6 +13,8 @@ public static partial class AkronHudRenderer {
     private const float HudResourceHeight = 35f;
     private const float PlayerResourceWidth = 96f;
     private const float PlayerResourceHeight = 12f;
+    private const float PlayerNumberAnchorOffsetY = -12f;
+    private const float PlayerNumberHeadroomY = -72f;
     private static float displayedStamina = MaxStamina;
     private static float staminaDisplayTimer;
     private static ulong staminaStateFrame;
@@ -352,6 +354,10 @@ public static partial class AkronHudRenderer {
             AkronModule.Settings.DashNumberOutlineColor);
     }
 
+    private static bool ShouldRenderDashNumber(AkronModuleSettings settings, bool resourceBarsAllowed) {
+        return settings.DashNumber && resourceBarsAllowed;
+    }
+
     private static void RenderSpeedNumber(Level level, Player player) {
         if (level == null || player == null || player.Dead) {
             return;
@@ -373,8 +379,12 @@ public static partial class AkronHudRenderer {
             AkronModule.Settings.SpeedNumberOutlineColor);
     }
 
+    private static bool ShouldRenderSpeedNumber(AkronModuleSettings settings, bool speedNumberAllowed) {
+        return settings.SpeedNumber && speedNumberAllowed;
+    }
+
     private static void RenderPlayerNumber(Level level, Player player, string text, int offsetY, int opacityPercent, int textColor, int outlineColor) {
-        Vector2 position = AkronScreenProjection.WorldToHud(level, player.Center);
+        Vector2 position = AkronScreenProjection.WorldToHud(level, player.Position + new Vector2(0f, PlayerNumberAnchorOffsetY));
         if (SaveData.Instance != null && SaveData.Instance.Assists.MirrorMode) {
             position.X = 1920f - position.X;
         }
@@ -384,7 +394,7 @@ public static partial class AkronHudRenderer {
 
         float scale = 0.32f;
         Vector2 size = ActiveFont.Measure(text) * scale;
-        position += new Vector2(-size.X / 2f, offsetY - size.Y / 2f);
+        position += new Vector2(-size.X / 2f, PlayerNumberHeadroomY + offsetY - size.Y);
         float opacity = AkronModuleSettings.ClampOpacity(opacityPercent) / 100f;
         ActiveFont.DrawOutline(
             text,
