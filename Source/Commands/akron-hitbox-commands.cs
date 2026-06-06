@@ -61,13 +61,14 @@ public static partial class AkronCommands {
         Log("inspector: " + AkronModule.Settings.EntityInspector.ToString().ToLowerInvariant());
     }
 
-    [Command("akron_hitbox_filter", "control hitbox filters: active-only|hide-player|hazards|solids|triggers|last-death|death-all <on|off|status>")]
+    [Command("akron_hitbox_filter", "control hitbox filters: active-only|hide-player|player-hurtbox|hazards|solids|triggers|last-death|death-all <on|off|status>")]
     public static void HitboxFilter(string filter = "status", string action = "status") {
         string normalizedFilter = NormalizeToken(filter);
         bool handled = normalizedFilter switch {
             "" or "status" => true,
             "activeonly" => SetPlainToggle(action, () => AkronModule.Settings.HitboxActiveOnly, value => AkronModule.Settings.HitboxActiveOnly = value, "hitbox-active-only"),
             "hideplayer" => SetPlainToggle(action, () => AkronModule.Settings.HitboxHidePlayer, value => AkronModule.Settings.HitboxHidePlayer = value, "hitbox-hide-player"),
+            "playerhurtbox" or "playerhazard" or "hurtbox" => SetPlainToggle(action, () => AkronModule.Settings.HitboxShowPlayerHurtbox, value => AkronModule.Settings.HitboxShowPlayerHurtbox = value, "hitbox-player-hurtbox"),
             "hazards" => SetPlainToggle(action, () => AkronModule.Settings.HitboxShowHazards, value => AkronModule.Settings.HitboxShowHazards = value, "hitbox-hazards"),
             "solids" => SetPlainToggle(action, () => AkronModule.Settings.HitboxShowSolids, value => AkronModule.Settings.HitboxShowSolids = value, "hitbox-solids"),
             "triggers" => SetPlainToggle(action, () => AkronModule.Settings.HitboxShowTriggers, value => AkronModule.Settings.HitboxShowTriggers = value, "hitbox-triggers"),
@@ -83,6 +84,7 @@ public static partial class AkronCommands {
 
         Log("hitbox-active-only: " + AkronModule.Settings.HitboxActiveOnly.ToString().ToLowerInvariant());
         Log("hitbox-hide-player: " + AkronModule.Settings.HitboxHidePlayer.ToString().ToLowerInvariant());
+        Log("hitbox-player-hurtbox: " + AkronModule.Settings.HitboxShowPlayerHurtbox.ToString().ToLowerInvariant());
         Log("hitbox-hazards: " + AkronModule.Settings.HitboxShowHazards.ToString().ToLowerInvariant());
         Log("hitbox-solids: " + AkronModule.Settings.HitboxShowSolids.ToString().ToLowerInvariant());
         Log("hitbox-triggers: " + AkronModule.Settings.HitboxShowTriggers.ToString().ToLowerInvariant());
@@ -171,6 +173,11 @@ public static partial class AkronCommands {
             case "madeline":
                 AkronModule.Settings.HitboxPlayerColor = rgb;
                 return true;
+            case "playerhurtbox":
+            case "playerhazard":
+            case "hurtbox":
+                AkronModule.Settings.HitboxPlayerHurtboxColor = rgb;
+                return true;
             case "solid":
             case "solids":
                 AkronModule.Settings.HitboxSolidColor = rgb;
@@ -212,6 +219,7 @@ public static partial class AkronCommands {
         Log("hitbox-fill-opacity: " + AkronModuleSettings.ClampHitboxFillOpacity(AkronModule.Settings.HitboxFillOpacity).ToString(CultureInfo.InvariantCulture));
         Log("hitbox-black-outline: " + AkronModule.Settings.HitboxBlackOutline.ToString().ToLowerInvariant());
         Log("hitbox-color-player: " + FormatRgb(AkronModule.Settings.HitboxPlayerColor));
+        Log("hitbox-color-player-hurtbox: " + FormatRgb(AkronModule.Settings.HitboxPlayerHurtboxColor));
         Log("hitbox-color-solid: " + FormatRgb(AkronModule.Settings.HitboxSolidColor));
         Log("hitbox-color-hazard: " + FormatRgb(AkronModule.Settings.HitboxHazardColor));
         Log("hitbox-color-trigger: " + FormatRgb(AkronModule.Settings.HitboxTriggerColor));

@@ -134,6 +134,7 @@ public partial class AkronModuleSettings {
         HitboxFillOpacity = 0;
         HitboxBlackOutline = false;
         HitboxPlayerColor = 0xFFFF00;
+        HitboxPlayerHurtboxColor = 0x00FF00;
         HitboxSolidColor = 0xFF0000;
         HitboxHazardColor = 0xFF3030;
         HitboxTriggerColor = 0xFF00FF;

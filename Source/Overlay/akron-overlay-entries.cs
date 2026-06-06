@@ -185,6 +185,10 @@ public sealed partial class AkronOverlay {
                     Action("Warp Selected Room", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeSelectedRoom(level), () => { if (level != null) AkronActions.WarpSelectedRoom(level); }),
                     Action("Warp To Previous In Order", () => level != null, () => "Cheat", () => { if (level != null) AkronActions.WarpRelativeRoom(level, -1); }),
                     Action("Warp To Next In Order", () => level != null, () => "Cheat", () => { if (level != null) AkronActions.WarpRelativeRoom(level, 1); }),
+                    Action("Previous Map", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCampaignMap(level, -1), () => { if (level != null) AkronActions.WarpRelativeCampaignMap(level, -1); }, "campaign", "chapter", "area", "previous map"),
+                    Action("Next Map", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCampaignMap(level, 1), () => { if (level != null) AkronActions.WarpRelativeCampaignMap(level, 1); }, "campaign", "chapter", "area", "next map"),
+                    Action("Previous Checkpoint", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCheckpoint(level, -1), () => { if (level != null) AkronActions.WarpRelativeCheckpoint(level, -1); }, "checkpoint", "previous checkpoint"),
+                    Action("Next Checkpoint", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCheckpoint(level, 1), () => { if (level != null) AkronActions.WarpRelativeCheckpoint(level, 1); }, "checkpoint", "next checkpoint"),
                     Action("Open Debug Map", () => level != null, () => AkronModuleSettings.DescribeBinding(AkronModule.Settings.OpenDebugMap), () => { if (level != null) AkronModule.PerformOpenDebugMap(level); }),
                     PolicyToggle("Camera Offset", AkronFeatureKind.CameraOffset, () => AkronModule.Settings.CameraOffset, value => {
                         AkronModule.Settings.CameraOffset = value;

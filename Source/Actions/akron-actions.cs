@@ -594,6 +594,60 @@ public static partial class AkronActions {
         WarpToRoom(level, rooms[nextIndex]);
     }
 
+    public static string DescribeRelativeCampaignMap(Level level, int delta) {
+        List<AreaKey> areas = GetCampaignAreaOrder(level);
+        int currentIndex = FindCampaignAreaIndex(areas, level?.Session?.Area ?? AreaKey.None);
+        if (areas.Count == 0 || currentIndex < 0) {
+            return "No campaign";
+        }
+
+        AreaKey target = areas[(currentIndex + delta + areas.Count) % areas.Count];
+        AreaData data = AreaData.Get(target);
+        return FormatAreaLabel(data, target);
+    }
+
+    public static void WarpRelativeCampaignMap(Level level, int delta) {
+        if (!AkronModule.TryUse(AkronFeatureKind.RoomWarp)) {
+            return;
+        }
+
+        List<AreaKey> areas = GetCampaignAreaOrder(level);
+        int currentIndex = FindCampaignAreaIndex(areas, level?.Session?.Area ?? AreaKey.None);
+        if (areas.Count == 0 || currentIndex < 0) {
+            Engine.Scene?.Add(new AkronToast("No campaign map order available."));
+            return;
+        }
+
+        AreaKey target = areas[(currentIndex + delta + areas.Count) % areas.Count];
+        LoadArea(target, checkpoint: null);
+    }
+
+    public static string DescribeRelativeCheckpoint(Level level, int delta) {
+        List<CheckpointData> checkpoints = GetCheckpointOrder(level);
+        int currentIndex = FindCurrentCheckpointIndex(level, checkpoints);
+        if (checkpoints.Count == 0 || currentIndex < 0) {
+            return "No checkpoints";
+        }
+
+        return FormatCheckpointLabel(checkpoints[(currentIndex + delta + checkpoints.Count) % checkpoints.Count]);
+    }
+
+    public static void WarpRelativeCheckpoint(Level level, int delta) {
+        if (!AkronModule.TryUse(AkronFeatureKind.RoomWarp)) {
+            return;
+        }
+
+        List<CheckpointData> checkpoints = GetCheckpointOrder(level);
+        int currentIndex = FindCurrentCheckpointIndex(level, checkpoints);
+        if (checkpoints.Count == 0 || currentIndex < 0) {
+            Engine.Scene?.Add(new AkronToast("No checkpoints available."));
+            return;
+        }
+
+        CheckpointData target = checkpoints[(currentIndex + delta + checkpoints.Count) % checkpoints.Count];
+        LoadArea(level.Session.Area, target.Level);
+    }
+
     public static void SkipCutscene(Level level) {
         if (level == null) {
             return;
@@ -705,6 +759,94 @@ public static partial class AkronActions {
             RelinkRuntimeRenderState(level);
             Engine.Scene?.Add(new AkronToast("Warped to " + roomName + "."));
         };
+    }
+
+    private static List<AreaKey> GetCampaignAreaOrder(Level level) {
+        AreaKey current = level?.Session?.Area ?? AreaKey.None;
+        AreaData currentData = AreaData.Get(current);
+        if (currentData == null || AreaData.Areas == null) {
+            return new List<AreaKey>();
+        }
+
+        string levelSet = currentData.LevelSet ?? current.LevelSet ?? string.Empty;
+        List<AreaKey> areas = new List<AreaKey>();
+        foreach (AreaData data in AreaData.Areas) {
+            if (data == null ||
+                data.Interlude ||
+                string.IsNullOrWhiteSpace(data.SID) ||
+                !string.Equals(data.LevelSet ?? string.Empty, levelSet, StringComparison.Ordinal)) {
+                continue;
+            }
+
+            foreach (AreaMode mode in new[] { AreaMode.Normal, AreaMode.BSide, AreaMode.CSide }) {
+                if (data.HasMode(mode)) {
+                    areas.Add(data.ToKey(mode));
+                }
+            }
+        }
+
+        return areas;
+    }
+
+    private static int FindCampaignAreaIndex(List<AreaKey> areas, AreaKey current) {
+        return areas.FindIndex(area => area.ID == current.ID && area.Mode == current.Mode);
+    }
+
+    private static List<CheckpointData> GetCheckpointOrder(Level level) {
+        CheckpointData[] checkpoints = AreaData.GetMode(level.Session.Area)?.Checkpoints;
+        if (checkpoints == null || checkpoints.Length == 0) {
+            return new List<CheckpointData>();
+        }
+
+        return checkpoints
+            .Where(checkpoint => checkpoint != null && !string.IsNullOrWhiteSpace(checkpoint.Level))
+            .ToList();
+    }
+
+    private static int FindCurrentCheckpointIndex(Level level, List<CheckpointData> checkpoints) {
+        int checkpointId = AreaData.GetCheckpointID(level.Session.Area, level.Session.Level);
+        if (checkpointId >= 0 && checkpointId < checkpoints.Count) {
+            return checkpointId;
+        }
+
+        int roomIndex = checkpoints.FindIndex(checkpoint => string.Equals(checkpoint.Level, level.Session.Level, StringComparison.Ordinal));
+        return roomIndex >= 0 ? roomIndex : 0;
+    }
+
+    private static string FormatAreaLabel(AreaData data, AreaKey area) {
+        string name = data == null || string.IsNullOrWhiteSpace(data.Name) ? area.GetSID() : data.Name;
+        return name + " " + FormatAreaMode(area.Mode);
+    }
+
+    private static string FormatAreaMode(AreaMode mode) {
+        return mode switch {
+            AreaMode.BSide => "B-Side",
+            AreaMode.CSide => "C-Side",
+            _ => "A-Side"
+        };
+    }
+
+    private static string FormatCheckpointLabel(CheckpointData checkpoint) {
+        if (!string.IsNullOrWhiteSpace(checkpoint.Name)) {
+            return Dialog.Clean(checkpoint.Name);
+        }
+
+        return checkpoint.Level;
+    }
+
+    private static void LoadArea(AreaKey area, string checkpoint) {
+        if (SaveData.Instance == null) {
+            Engine.Scene?.Add(new AkronToast("No save data available."));
+            return;
+        }
+
+        AreaStats stats = area.ID >= 0 && area.ID < SaveData.Instance.Areas_Safe.Count
+            ? SaveData.Instance.Areas_Safe[area.ID]
+            : null;
+        Engine.Scene?.Add(new AkronToast("Loading " + FormatAreaLabel(AreaData.Get(area), area) + "."));
+        Session session = new Session(area, checkpoint, stats);
+        SaveData.Instance.StartSession(session);
+        Engine.Scene = new LevelLoader(session);
     }
 
 }

@@ -50,8 +50,9 @@ public sealed partial class AkronOverlay {
         bool labelPressed = ImGui.Button("##numeric_label" + id, new NumericsVector2(labelWidth, 0f));
         NumericsVector2 rowMin = ImGui.GetItemRectMin();
         NumericsVector2 rowMax = ImGui.GetItemRectMax();
+        float scale = CurrentOverlayScale();
         ImGui.GetWindowDrawList().AddText(
-            new NumericsVector2(rowMin.X, rowMin.Y + 3f),
+            new NumericsVector2(rowMin.X, rowMin.Y + 3f * scale),
             AkronImGuiTheme.ToU32(textColor),
             TruncateImGuiTextToWidth(entry.Label, Math.Max(16f, rowMax.X - rowMin.X - 4f)));
         ImGui.PopStyleVar();
@@ -65,9 +66,9 @@ public sealed partial class AkronOverlay {
             bool arrowPressed = ImGui.Button("##open_options_num" + id, new NumericsVector2(arrowWidth, 0f));
             NumericsVector2 min = ImGui.GetItemRectMin();
             NumericsVector2 max = ImGui.GetItemRectMax();
-            float top = min.Y + 4.5f;
-            float bottom = max.Y - 4.5f;
-            float right = max.X - 4.5f;
+            float top = min.Y + 4.5f * scale;
+            float bottom = max.Y - 4.5f * scale;
+            float right = max.X - 4.5f * scale;
             float side = bottom - top;
             float left = right - side;
             ImGui.GetWindowDrawList().AddTriangleFilled(
@@ -82,8 +83,8 @@ public sealed partial class AkronOverlay {
             }
         } else {
             ImGui.GetWindowDrawList().AddRectFilled(
-                new NumericsVector2(rowMax.X - 5f, rowMin.Y + 1f),
-                new NumericsVector2(rowMax.X - 2f, rowMax.Y - 1f),
+                new NumericsVector2(rowMax.X - 5f * scale, rowMin.Y + 1f * scale),
+                new NumericsVector2(rowMax.X - 2f * scale, rowMax.Y - 1f * scale),
                 AkronImGuiTheme.ToU32(indicatorColor));
         }
 
@@ -101,6 +102,7 @@ public sealed partial class AkronOverlay {
         float rowWidth = Math.Max(40f, availableWidth - arrowWidth);
         float labelWidth = Math.Max(32f, rowWidth - valueWidth - 4f);
         bool dropdownInteracted = false;
+        float scale = CurrentOverlayScale();
 
         ImGui.PushStyleColor(ImGuiCol.Text, textColor);
         ImGui.PushStyleColor(ImGuiCol.FrameBg, AkronImGuiTheme.FrameBackground);
@@ -148,7 +150,7 @@ public sealed partial class AkronOverlay {
             NumericsVector2 valueMax = ImGui.GetItemRectMax();
             string value = TruncateImGuiTextToWidth(SafeDescribeEntryValue(entry), Math.Max(16f, valueMax.X - valueMin.X - 8f));
             ImGui.GetWindowDrawList().AddText(
-                new NumericsVector2(valueMin.X + 4f, valueMin.Y + 3f),
+                new NumericsVector2(valueMin.X + 4f * scale, valueMin.Y + 3f * scale),
                 AkronImGuiTheme.ToU32(textColor),
                 value);
             ImGui.PopStyleColor(3);
@@ -164,7 +166,7 @@ public sealed partial class AkronOverlay {
         NumericsVector2 rowMin = ImGui.GetItemRectMin();
         NumericsVector2 rowMax = ImGui.GetItemRectMax();
         ImGui.GetWindowDrawList().AddText(
-            new NumericsVector2(rowMin.X, rowMin.Y + 3f),
+            new NumericsVector2(rowMin.X, rowMin.Y + 3f * scale),
             AkronImGuiTheme.ToU32(textColor),
             TruncateImGuiTextToWidth(entry.Label, Math.Max(16f, rowMax.X - rowMin.X - 4f)));
         ImGui.PopStyleColor(3);
@@ -177,9 +179,9 @@ public sealed partial class AkronOverlay {
             bool arrowPressed = ImGui.Button("##open_options_selector" + id, new NumericsVector2(arrowWidth, 0f));
             NumericsVector2 min = ImGui.GetItemRectMin();
             NumericsVector2 max = ImGui.GetItemRectMax();
-            float top = min.Y + 4.5f;
-            float bottom = max.Y - 4.5f;
-            float right = max.X - 4.5f;
+            float top = min.Y + 4.5f * scale;
+            float bottom = max.Y - 4.5f * scale;
+            float right = max.X - 4.5f * scale;
             float side = bottom - top;
             float left = right - side;
             ImGui.GetWindowDrawList().AddTriangleFilled(

@@ -1280,8 +1280,12 @@ public sealed class ModuleSettingsTests {
                 "Room Capture",
                 "Export Room Stats",
                 "Export Room Times",
+                "Next Checkpoint",
+                "Next Map",
                 "Next Room",
                 "Open Debug Map",
+                "Previous Checkpoint",
+                "Previous Map",
                 "Previous Room",
                 "Warp Selected Room",
                 "Warp To Next In Order",
@@ -2074,10 +2078,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void AreaSelectionPreviewShowsCursorMarkerBeforeFirstCorner() {
+    public void AreaSelectionPreviewShowsSinglePixelMarkerAtCursorBeforeFirstCorner() {
         AkronOverlay.PracticeAreaSelectionPreviewBounds preview = AkronOverlay.PracticeAreaSelectionPreviewBoundsFor(12.8f, 20.2f, false, 0f, 0f);
 
-        AssertPreviewBounds(preview, 8, 16, 8, 8);
+        AssertPreviewBounds(preview, 12, 20, 1, 1);
     }
 
     [Fact]
@@ -2320,6 +2324,8 @@ public sealed class ModuleSettingsTests {
         settings.HitboxFillOpacity = 25;
         settings.HitboxBlackOutline = true;
         settings.HitboxPlayerColor = 0xABCDEF;
+        settings.HitboxShowPlayerHurtbox = false;
+        settings.HitboxPlayerHurtboxColor = 0x123456;
 
         settings.ApplyProfile(AkronProfile.Casual);
         settings.ApplyProfile(AkronProfile.Practice);
@@ -2331,6 +2337,8 @@ public sealed class ModuleSettingsTests {
         Assert.Equal(25, settings.HitboxFillOpacity);
         Assert.True(settings.HitboxBlackOutline);
         Assert.Equal(0xABCDEF, settings.HitboxPlayerColor);
+        Assert.False(settings.HitboxShowPlayerHurtbox);
+        Assert.Equal(0x123456, settings.HitboxPlayerHurtboxColor);
     }
 
     [Fact]

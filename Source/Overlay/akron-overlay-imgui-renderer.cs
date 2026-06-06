@@ -14,8 +14,8 @@ namespace Celeste.Mod.Akron;
 
 public sealed partial class AkronOverlay {
     private void DrawImGuiMenu() {
-        ImGui.GetIO().FontGlobalScale = AkronModuleSettings.ClampOverlayScale(AkronModule.Settings.OverlayScale) / 100f;
-        ApplyOverlayThemePreset();
+        float scale = CurrentOverlayScale();
+        ApplyOverlayThemePreset(scale);
         imguiOptionsPopupAnchorRects.Clear();
         pendingImGuiOptionsPopupEntry = null;
         pendingImGuiTooltipEntry = null;
@@ -31,8 +31,10 @@ public sealed partial class AkronOverlay {
         const float menuTop = 4f;
         const float menuColumnWidth = 208f;
         const float menuColumnGap = PanelGap;
+        float displayWidth = ImGui.GetIO().DisplaySize.X / scale;
+        float displayHeight = ImGui.GetIO().DisplaySize.Y / scale;
 
-        List<float> columnXPositions = CalculateActionColumnXPositions(menuLeft, menuColumnWidth, menuColumnGap, ImGui.GetIO().DisplaySize.X);
+        List<float> columnXPositions = CalculateActionColumnXPositions(menuLeft, menuColumnWidth, menuColumnGap, displayWidth);
         if (columnXPositions.Count == 0) {
             DrawImGuiBindingCapturePopup();
             DrawInternalRecorderExperimentalWarningPopup();
@@ -40,7 +42,7 @@ public sealed partial class AkronOverlay {
         }
 
         string[] visibleTabs = GetVisibleTabs();
-        ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, level, columnXPositions.Count, menuTop, ImGui.GetIO().DisplaySize.Y);
+        ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, level, columnXPositions.Count, menuTop, displayHeight);
         List<float> columnBottoms = columnXPositions.Select(_ => menuTop).ToList();
         List<int> columnSectionCounts = columnXPositions.Select(_ => 0).ToList();
         for (int tabIndex = 0; tabIndex < visibleTabs.Length; tabIndex++) {
@@ -50,10 +52,10 @@ public sealed partial class AkronOverlay {
                 continue;
             }
 
-            int columnIndex = GetPlannedActionColumnIndex(tabName, columnXPositions.Count, columnBottoms, columnSectionCounts, externalPlacementPlan, ImGui.GetIO().DisplaySize.Y);
+            int columnIndex = GetPlannedActionColumnIndex(tabName, columnXPositions.Count, columnBottoms, columnSectionCounts, externalPlacementPlan, displayHeight);
             float x = columnXPositions[columnIndex];
             float y = columnBottoms[columnIndex];
-            float sectionScreenHeight = GetSectionScreenHeight(tabName, columnIndex, externalPlacementPlan, ImGui.GetIO().DisplaySize.Y);
+            float sectionScreenHeight = GetSectionScreenHeight(tabName, columnIndex, externalPlacementPlan, displayHeight);
             float height = CalculateActionSectionHeight(entries.Count, y, sectionScreenHeight);
             DrawActionWindow(tabName, x, y, menuColumnWidth, entries, tabIndex);
             columnBottoms[columnIndex] = y + GetStackedActionSectionHeight(tabName, height) + ColumnStackGap;
@@ -69,13 +71,13 @@ public sealed partial class AkronOverlay {
     }
 
     private void DrawStartPosPlacementEditor() {
-        ImGui.GetIO().FontGlobalScale = AkronModuleSettings.ClampOverlayScale(AkronModule.Settings.OverlayScale) / 100f;
-        ApplyOverlayThemePreset();
+        float scale = CurrentOverlayScale();
+        ApplyOverlayThemePreset(scale);
         pendingImGuiTextTooltip = string.Empty;
         pendingImGuiTextTooltipAnchor = Rectangle.Empty;
 
         ImGui.SetNextWindowPos(new NumericsVector2(AkronModule.Settings.StartPosPlacementPanelX, AkronModule.Settings.StartPosPlacementPanelY), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSize(new NumericsVector2(330f, 0f), ImGuiCond.Always);
+        ImGui.SetNextWindowSize(new NumericsVector2(330f * scale, 0f), ImGuiCond.Always);
         ImGui.Begin(
             "Place StartPos",
             ImGuiWindowFlags.NoCollapse |
@@ -140,7 +142,7 @@ public sealed partial class AkronOverlay {
 
     private void DrawActionWindow(string title, float x, float y, float width, List<ActionEntry> entries, int tabIndex) {
         long start = Stopwatch.GetTimestamp();
-        float displayHeight = ImGui.GetIO().DisplaySize.Y;
+        float displayHeight = ImGui.GetIO().DisplaySize.Y / CurrentOverlayScale();
         bool needsScrolling = entries.Count > CalculateVisibleActionRows(y, displayHeight);
         if (!BeginFixedWindow(title, x, y, width, CalculateActionSectionHeight(entries.Count, y, displayHeight), needsScrolling)) {
             ImGui.End();
@@ -188,9 +190,9 @@ public sealed partial class AkronOverlay {
     }
 
     private bool BeginFixedWindow(string title, float x, float y, float width, float height, bool allowScrollbar = false) {
-        float scale = AkronModuleSettings.ClampOverlayScale(AkronModule.Settings.OverlayScale) / 100f;
-        ImGui.SetNextWindowPos(new NumericsVector2(x, y), ImGuiCond.Always);
-        ImGui.SetNextWindowSize(new NumericsVector2(width * scale, height * Math.Max(1f, scale)), ImGuiCond.Always);
+        float scale = CurrentOverlayScale();
+        ImGui.SetNextWindowPos(new NumericsVector2(x * scale, y * scale), ImGuiCond.Always);
+        ImGui.SetNextWindowSize(new NumericsVector2(width * scale, height * scale), ImGuiCond.Always);
         ImGui.SetNextWindowBgAlpha(AkronModuleSettings.ClampOverlayOpacity(AkronModule.Settings.OverlayOpacity) / 100f);
         if (pendingImGuiCollapseSync.Remove(title)) {
             ImGui.SetNextWindowCollapsed(collapsedWindowTitles.Contains(title), ImGuiCond.Always);
@@ -218,9 +220,39 @@ public sealed partial class AkronOverlay {
         return visible;
     }
 
-    private static void ApplyOverlayThemePreset() {
+    private static float CurrentOverlayScale() {
+        return AkronModuleSettings.ClampOverlayScale(AkronModule.Settings.OverlayScale) / 100f;
+    }
+
+    private static float ScaleImGuiValue(float value) {
+        return value * CurrentOverlayScale();
+    }
+
+    private static void ApplyOverlayThemePreset(float scale) {
+        ImGui.GetIO().FontGlobalScale = scale;
+        ImGui.StyleColorsDark();
+
         ImGuiStylePtr style = ImGui.GetStyle();
         AkronOverlayThemeDefinition theme = AkronOverlayThemes.CurrentDefinition();
+
+        style.WindowPadding = new NumericsVector2(4f, 4f);
+        style.FramePadding = new NumericsVector2(3f, 3f);
+        style.ItemSpacing = new NumericsVector2(12f, 2f);
+        style.ItemInnerSpacing = new NumericsVector2(8f, 6f);
+        style.IndentSpacing = 21f;
+        style.ScrollbarSize = 10f;
+        style.GrabMinSize = 5f;
+        style.WindowRounding = 0f;
+        style.FrameRounding = 4f;
+        style.PopupRounding = 4f;
+        style.ScrollbarRounding = 9f;
+        style.GrabRounding = 3f;
+        style.WindowBorderSize = 0f;
+        style.DisplaySafeAreaPadding = NumericsVector2.Zero;
+        style.DisplayWindowPadding = NumericsVector2.Zero;
+        style.WindowMinSize = new NumericsVector2(32f, 32f);
+        style.ScaleAllSizes(scale);
+
         style.Colors[(int) ImGuiCol.WindowBg] = ToImGuiColor(theme.WindowColor);
         style.Colors[(int) ImGuiCol.TitleBg] = ToImGuiColor(theme.HeaderColor);
         style.Colors[(int) ImGuiCol.TitleBgActive] = ToImGuiColor(theme.HeaderHoverColor);
@@ -543,7 +575,7 @@ public sealed partial class AkronOverlay {
         NumericsVector2 labelMin = ImGui.GetItemRectMin();
         NumericsVector2 labelMax = ImGui.GetItemRectMax();
         ImGui.GetWindowDrawList().AddText(
-            new NumericsVector2(labelMin.X, labelMin.Y + 3f),
+            new NumericsVector2(labelMin.X, labelMin.Y + ScaleImGuiValue(3f)),
             AkronImGuiTheme.ToU32(textColor),
             TruncateImGuiTextToWidth(entry.Label, Math.Max(16f, labelMax.X - labelMin.X - 4f)));
 
@@ -554,8 +586,8 @@ public sealed partial class AkronOverlay {
         ImGui.GetWindowDrawList().AddRectFilled(valueMin, valueMax, AkronImGuiTheme.ToU32(boxColor));
         string value = TruncateImGuiTextToWidth(SafeDescribeEntryValue(entry), Math.Max(16f, valueMax.X - valueMin.X - 8f));
         NumericsVector2 valueSize = ImGui.CalcTextSize(value);
-        ImGui.GetWindowDrawList().AddText(
-            new NumericsVector2(valueMin.X + Math.Max(4f, ((valueMax.X - valueMin.X) - valueSize.X) * 0.5f), valueMin.Y + 3f),
+            ImGui.GetWindowDrawList().AddText(
+                new NumericsVector2(valueMin.X + Math.Max(ScaleImGuiValue(4f), ((valueMax.X - valueMin.X) - valueSize.X) * 0.5f), valueMin.Y + ScaleImGuiValue(3f)),
             AkronImGuiTheme.ToU32(textColor),
             value);
 
@@ -596,17 +628,17 @@ public sealed partial class AkronOverlay {
             string centeredLabel = TruncateImGuiTextToWidth(entry.Label, Math.Max(24f, max.X - min.X - 22f));
             NumericsVector2 textSize = ImGui.CalcTextSize(centeredLabel);
             ImGui.GetWindowDrawList().AddText(
-                new NumericsVector2(min.X + Math.Max(10f, ((max.X - min.X) - textSize.X) * 0.5f), min.Y + 3f),
+                new NumericsVector2(min.X + Math.Max(ScaleImGuiValue(10f), ((max.X - min.X) - textSize.X) * 0.5f), min.Y + ScaleImGuiValue(3f)),
                 AkronImGuiTheme.ToU32(textColor),
                 centeredLabel);
         } else {
             ImGui.GetWindowDrawList().AddText(
-                new NumericsVector2(min.X, min.Y + 3f),
+                new NumericsVector2(min.X, min.Y + ScaleImGuiValue(3f)),
                 AkronImGuiTheme.ToU32(textColor),
                 TruncateImGuiTextToWidth(entry.Label, Math.Max(16f, max.X - min.X - 12f)));
             ImGui.GetWindowDrawList().AddRectFilled(
-                new NumericsVector2(max.X - 5f, min.Y + 1f),
-                new NumericsVector2(max.X - 2f, max.Y - 1f),
+                new NumericsVector2(max.X - ScaleImGuiValue(5f), min.Y + ScaleImGuiValue(1f)),
+                new NumericsVector2(max.X - ScaleImGuiValue(2f), max.Y - ScaleImGuiValue(1f)),
                 AkronImGuiTheme.ToU32(indicatorColor));
         }
 
@@ -633,14 +665,14 @@ public sealed partial class AkronOverlay {
         float valueWidth = Math.Min(82f, Math.Max(60f, (max.X - min.X) * 0.42f));
         string label = TruncateImGuiTextToWidth(entry.Label, Math.Max(16f, max.X - min.X - valueWidth - 24f));
         ImGui.GetWindowDrawList().AddText(
-            new NumericsVector2(min.X + 18f, min.Y + 3f),
+            new NumericsVector2(min.X + ScaleImGuiValue(18f), min.Y + ScaleImGuiValue(3f)),
             AkronImGuiTheme.ToU32(textColor),
             label);
 
         string value = TruncateImGuiTextToWidth(SafeDescribeEntryValue(entry), valueWidth);
         NumericsVector2 valueSize = ImGui.CalcTextSize(value);
         ImGui.GetWindowDrawList().AddText(
-            new NumericsVector2(max.X - valueSize.X - 4f, min.Y + 3f),
+            new NumericsVector2(max.X - valueSize.X - ScaleImGuiValue(4f), min.Y + ScaleImGuiValue(3f)),
             AkronImGuiTheme.ToU32(AkronImGuiTheme.Muted),
             value);
 
@@ -651,21 +683,22 @@ public sealed partial class AkronOverlay {
 
     private static void DrawImGuiDisclosureTriangle(NumericsVector2 min, NumericsVector2 max, bool expanded, NumericsVector4 color) {
         float centerY = (min.Y + max.Y) * 0.5f;
-        float left = min.X + 5f;
+        float scale = CurrentOverlayScale();
+        float left = min.X + 5f * scale;
         uint packed = AkronImGuiTheme.ToU32(color);
         if (expanded) {
             ImGui.GetWindowDrawList().AddTriangleFilled(
-                new NumericsVector2(left, centerY - 3f),
-                new NumericsVector2(left + 8f, centerY - 3f),
-                new NumericsVector2(left + 4f, centerY + 4f),
+                new NumericsVector2(left, centerY - 3f * scale),
+                new NumericsVector2(left + 8f * scale, centerY - 3f * scale),
+                new NumericsVector2(left + 4f * scale, centerY + 4f * scale),
                 packed);
             return;
         }
 
         ImGui.GetWindowDrawList().AddTriangleFilled(
-            new NumericsVector2(left + 2f, centerY - 5f),
-            new NumericsVector2(left + 2f, centerY + 5f),
-            new NumericsVector2(left + 8f, centerY),
+            new NumericsVector2(left + 2f * scale, centerY - 5f * scale),
+            new NumericsVector2(left + 2f * scale, centerY + 5f * scale),
+            new NumericsVector2(left + 8f * scale, centerY),
             packed);
     }
 

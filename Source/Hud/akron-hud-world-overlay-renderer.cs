@@ -8,6 +8,8 @@ using System.Linq;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronHudRenderer {
+    private const float PracticeAreaPixelMarkerYOffset = -4f;
+
     private static void RenderAutoKillArea(Level level, bool deathHitboxPass) {
         AkronModuleSettings settings = AkronModule.Settings;
         if (AkronCapture.IsCapturingGameFrame) {
@@ -31,7 +33,11 @@ public static partial class AkronHudRenderer {
         }
 
         if (shouldShowPreview) {
-            DrawWorldRect(level, preview, Color.OrangeRed, hasAnchor ? 0.18f : 0.10f, hasAnchor ? 2 : 1);
+            if (hasAnchor) {
+                DrawWorldRect(level, preview, Color.OrangeRed, 0.18f, 2);
+            } else {
+                DrawWorldPixelMarker(level, preview, Color.OrangeRed);
+            }
         }
     }
 
@@ -56,7 +62,11 @@ public static partial class AkronHudRenderer {
         }
 
         if (shouldShowPreview) {
-            DrawWorldRect(level, preview, Color.DeepSkyBlue, hasAnchor ? 0.18f : 0.10f, hasAnchor ? 2 : 1);
+            if (hasAnchor) {
+                DrawWorldRect(level, preview, Color.DeepSkyBlue, 0.18f, 2);
+            } else {
+                DrawWorldPixelMarker(level, preview, Color.DeepSkyBlue);
+            }
         }
     }
 
@@ -97,5 +107,15 @@ public static partial class AkronHudRenderer {
         for (int index = 0; index < thickness; index++) {
             Draw.HollowRect(rect.X - index, rect.Y - index, rect.Width + index * 2f, rect.Height + index * 2f, color * 0.95f);
         }
+    }
+
+    private static void DrawWorldPixelMarker(Level level, Rectangle worldBounds, Color color) {
+        AkronHudRect rect = AkronScreenProjection.WorldToHudRect(level, worldBounds);
+        float x = (float) Math.Floor(rect.X);
+        float y = (float) Math.Floor(rect.Y) + PracticeAreaPixelMarkerYOffset;
+        float width = Math.Max(1f, (float) Math.Round(rect.Width));
+        float height = Math.Max(1f, (float) Math.Round(rect.Height));
+
+        Draw.Rect(x, y, width, height, color * 0.85f);
     }
 }
