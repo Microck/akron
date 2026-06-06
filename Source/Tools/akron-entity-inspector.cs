@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using Celeste;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -31,6 +32,7 @@ public static partial class AkronEntityInspector {
     private static int frameGridCellChecks;
     private static int frameGridRuns;
     private static bool renderingToGameplayBuffer;
+    private static readonly FieldInfo PlayerHurtboxField = typeof(Player).GetFieldInfo("hurtbox");
 
     public static Entity GetFocusedEntity(Level level) {
         Player player = level.Tracker.GetEntity<Player>();
@@ -286,22 +288,25 @@ public static partial class AkronEntityInspector {
 
     private static void DrawPlayerHitbox(Level level, Player player) {
         AkronModuleSettings settings = AkronModule.Settings;
-        Color color = ColorFromRgb(settings.HitboxPlayerColor);
+        Color solidCollisionColor = ColorFromRgb(settings.HitboxPlayerColor);
         if (player.Collider != null) {
-            DrawCollider(level, player.Collider, color, CameraWorldBounds(level));
-            return;
+            DrawCollider(level, player.Collider, solidCollisionColor, CameraWorldBounds(level));
+        } else {
+            // Madeline's normal gameplay collider is an 8x11 rectangle anchored to
+            // the bottom-center player position. Use this only as a true fallback:
+            // drawing it on top of an active collider makes fixed hitboxes look
+            // like an extra regular hitbox was appended.
+            Rectangle normalHurtbox = new Rectangle(
+                (int) System.Math.Floor(player.Position.X - 4f),
+                (int) System.Math.Floor(player.Position.Y - 11f),
+                8,
+                11);
+            DrawWorldRect(level, normalHurtbox, solidCollisionColor);
         }
 
-        // Madeline's normal gameplay collider is an 8x11 rectangle anchored to
-        // the bottom-center player position. Use this only as a true fallback:
-        // drawing it on top of an active collider makes fixed hitboxes look
-        // like an extra regular hitbox was appended.
-        Rectangle normalHurtbox = new Rectangle(
-            (int) System.Math.Floor(player.Position.X - 4f),
-            (int) System.Math.Floor(player.Position.Y - 11f),
-            8,
-            11);
-        DrawWorldRect(level, normalHurtbox, color);
+        if (settings.HitboxShowPlayerHurtbox && PlayerHurtboxField?.GetValue(player) is Collider hurtbox) {
+            DrawCollider(level, hurtbox, ColorFromRgb(settings.HitboxPlayerHurtboxColor), CameraWorldBounds(level));
+        }
     }
 
     private static void CapturePlayerTrail(Level level, Player player, AkronModuleSettings settings) {

@@ -19,7 +19,13 @@ public sealed partial class AkronOverlay {
         if (ImGui.Checkbox("Hide player##" + popupId, ref hidePlayer)) {
             AkronModule.Settings.HitboxHidePlayer = hidePlayer;
         }
-        DrawPopupTooltip("Hide the player collider from live hitbox rendering.");
+        DrawPopupTooltip("Hide player solid and hazard collision boxes from live hitbox rendering.");
+
+        bool playerHurtbox = AkronModule.Settings.HitboxShowPlayerHurtbox;
+        if (ImGui.Checkbox("Player hazard box##" + popupId, ref playerHurtbox)) {
+            AkronModule.Settings.HitboxShowPlayerHurtbox = playerHurtbox;
+        }
+        DrawPopupTooltip("Draw Madeline's hazard/death hitbox separately from her solid collision box.");
 
         bool hazards = AkronModule.Settings.HitboxShowHazards;
         if (ImGui.Checkbox("Hazards##" + popupId, ref hazards)) {
@@ -78,7 +84,8 @@ public sealed partial class AkronOverlay {
             popupId,
             "Interior opacity for drawn hitboxes.");
 
-        DrawHitboxColorRow("Player", () => AkronModule.Settings.HitboxPlayerColor, value => AkronModule.Settings.HitboxPlayerColor = value, popupId, "Madeline/player hitbox color.");
+        DrawHitboxColorRow("Player", () => AkronModule.Settings.HitboxPlayerColor, value => AkronModule.Settings.HitboxPlayerColor = value, popupId, "Madeline/player solid collision color.");
+        DrawHitboxColorRow("Player hazard", () => AkronModule.Settings.HitboxPlayerHurtboxColor, value => AkronModule.Settings.HitboxPlayerHurtboxColor = value, popupId, "Madeline/player hazard hitbox color.");
         DrawHitboxColorRow("Solids", () => AkronModule.Settings.HitboxSolidColor, value => AkronModule.Settings.HitboxSolidColor = value, popupId, "Solid collision grid color.");
         DrawHitboxColorRow("Hazards", () => AkronModule.Settings.HitboxHazardColor, value => AkronModule.Settings.HitboxHazardColor = value, popupId, "Spike, blade, and death-object color.");
         DrawHitboxColorRow("Triggers", () => AkronModule.Settings.HitboxTriggerColor, value => AkronModule.Settings.HitboxTriggerColor = value, popupId, "Trigger area color.");

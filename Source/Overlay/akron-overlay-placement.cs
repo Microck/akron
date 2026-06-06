@@ -289,9 +289,9 @@ public sealed partial class AkronOverlay {
             return new PracticeAreaSelectionPreviewBounds(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
         }
 
-        int x = (int) Math.Floor(mouseWorldX) - 4;
-        int y = (int) Math.Floor(mouseWorldY) - 4;
-        return new PracticeAreaSelectionPreviewBounds(x, y, 8, 8);
+        int x = (int) Math.Floor(mouseWorldX);
+        int y = (int) Math.Floor(mouseWorldY);
+        return new PracticeAreaSelectionPreviewBounds(x, y, 1, 1);
     }
 
     internal readonly struct PracticeAreaSelectionPreviewBounds {

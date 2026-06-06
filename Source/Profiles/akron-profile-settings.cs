@@ -246,6 +246,8 @@ public partial class AkronModuleSettings {
             HitboxFillOpacity = ClampHitboxFillOpacity(HitboxFillOpacity),
             HitboxBlackOutline = HitboxBlackOutline,
             HitboxPlayerColor = ClampRgb(HitboxPlayerColor),
+            HitboxShowPlayerHurtbox = HitboxShowPlayerHurtbox,
+            HitboxPlayerHurtboxColor = ClampRgb(HitboxPlayerHurtboxColor),
             HitboxSolidColor = ClampRgb(HitboxSolidColor),
             HitboxHazardColor = ClampRgb(HitboxHazardColor),
             HitboxTriggerColor = ClampRgb(HitboxTriggerColor),

@@ -223,6 +223,8 @@ public sealed class AkronProfileState {
     public int HitboxFillOpacity { get; set; }
     public bool HitboxBlackOutline { get; set; }
     public int HitboxPlayerColor { get; set; } = 0xFFFF00;
+    public bool HitboxShowPlayerHurtbox { get; set; } = true;
+    public int HitboxPlayerHurtboxColor { get; set; } = 0x00FF00;
     public int HitboxSolidColor { get; set; } = 0xFF0000;
     public int HitboxHazardColor { get; set; } = 0xFF3030;
     public int HitboxTriggerColor { get; set; } = 0xFF00FF;

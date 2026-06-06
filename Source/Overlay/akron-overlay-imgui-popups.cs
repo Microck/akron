@@ -23,17 +23,18 @@ public sealed partial class AkronOverlay {
         bool labelPressed = ImGui.Button("##option_label" + id, new NumericsVector2(availableWidth - arrowWidth, 0f));
         NumericsVector2 labelMin = ImGui.GetItemRectMin();
         NumericsVector2 labelMax = ImGui.GetItemRectMax();
+        float scale = CurrentOverlayScale();
         ImGui.GetWindowDrawList().AddText(
-            new NumericsVector2(labelMin.X, labelMin.Y + 3f),
+            new NumericsVector2(labelMin.X, labelMin.Y + 3f * scale),
             AkronImGuiTheme.ToU32(textColor),
             TruncateImGuiTextToWidth(entry.Label, Math.Max(16f, labelMax.X - labelMin.X - 4f)));
         ImGui.SameLine(0f, 0f);
         bool arrowPressed = ImGui.Button("##open_options" + id, new NumericsVector2(arrowWidth, 0f));
         NumericsVector2 min = ImGui.GetItemRectMin();
         NumericsVector2 max = ImGui.GetItemRectMax();
-        float top = min.Y + 4.5f;
-        float bottom = max.Y - 4.5f;
-        float right = max.X - 4.5f;
+        float top = min.Y + 4.5f * scale;
+        float bottom = max.Y - 4.5f * scale;
+        float right = max.X - 4.5f * scale;
         float side = bottom - top;
         float left = right - side;
         ImGui.GetWindowDrawList().AddTriangleFilled(
@@ -57,21 +58,22 @@ public sealed partial class AkronOverlay {
             return;
         }
 
+        float scale = CurrentOverlayScale();
         NumericsVector2 displaySize = ImGui.GetIO().DisplaySize;
         NumericsVector2 maxPopupSize = GetPopupViewportMaxSize(displaySize);
         float maxPopupHeight = maxPopupSize.Y;
-        float popupWidth = Math.Min(560f, maxPopupSize.X);
+        float popupWidth = Math.Min(560f * scale, maxPopupSize.X);
         if (TryGetPopupAnchorRect(popupKey, out Rectangle anchorRect)) {
             NumericsVector2 cachedSize = imguiOptionsPopupSizes.TryGetValue(popupKey, out NumericsVector2 size)
                 ? size
-                : new NumericsVector2(popupWidth, Math.Min(360f, maxPopupHeight));
+                : new NumericsVector2(popupWidth, Math.Min(360f * scale, maxPopupHeight));
             cachedSize = new NumericsVector2(
                 Math.Min(Math.Max(1f, cachedSize.X), maxPopupSize.X),
                 Math.Min(Math.Max(1f, cachedSize.Y), maxPopupSize.Y));
             ImGui.SetNextWindowPos(CalculateAnchoredPopupPosition(anchorRect, cachedSize, displaySize), ImGuiCond.Always);
         }
 
-        ImGui.SetNextWindowSizeConstraints(new NumericsVector2(Math.Min(320f, popupWidth), 0f), new NumericsVector2(popupWidth, maxPopupHeight));
+        ImGui.SetNextWindowSizeConstraints(new NumericsVector2(Math.Min(320f * scale, popupWidth), 0f), new NumericsVector2(popupWidth, maxPopupHeight));
         // Options panels float above the row grid. Keep them opaque so rows
         // underneath cannot bleed through and read as if the panel is behind.
         ImGui.SetNextWindowBgAlpha(1f);
@@ -95,7 +97,7 @@ public sealed partial class AkronOverlay {
             return;
         }
 
-        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new NumericsVector2(8f, 2f));
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new NumericsVector2(8f * scale, 2f * scale));
         DrawImGuiOptionsPopupContent(entry, popupKey);
         ImGui.PopStyleVar();
         if (TryGetPopupAnchorRect(popupKey, out anchorRect)) {
@@ -128,11 +130,14 @@ public sealed partial class AkronOverlay {
 
     public static NumericsVector2 CalculateAnchoredPopupPosition(Rectangle anchorRect, NumericsVector2 popupSize, NumericsVector2 displaySize) {
         (float x, float y) = CalculateAnchoredPopupPosition(
-            anchorRect,
+            anchorRect.X,
+            anchorRect.Y,
+            anchorRect.Width,
             popupSize.X,
             popupSize.Y,
             displaySize.X,
-            displaySize.Y);
+            displaySize.Y,
+            CurrentOverlayScale());
         return new NumericsVector2(x, y);
     }
 
@@ -141,8 +146,12 @@ public sealed partial class AkronOverlay {
     }
 
     public static (float X, float Y) CalculateAnchoredPopupPosition(float anchorX, float anchorY, float anchorWidth, float popupWidth, float popupHeight, float displayWidth, float displayHeight) {
-        const float edgePadding = PopupViewportMargin;
-        const float anchorGap = 8f;
+        return CalculateAnchoredPopupPosition(anchorX, anchorY, anchorWidth, popupWidth, popupHeight, displayWidth, displayHeight, 1f);
+    }
+
+    private static (float X, float Y) CalculateAnchoredPopupPosition(float anchorX, float anchorY, float anchorWidth, float popupWidth, float popupHeight, float displayWidth, float displayHeight, float scale) {
+        float edgePadding = PopupViewportMargin * scale;
+        float anchorGap = 8f * scale;
         popupWidth = Math.Max(1f, popupWidth);
         popupHeight = Math.Max(1f, popupHeight);
         float anchorRight = anchorX + Math.Max(1f, anchorWidth);
@@ -279,7 +288,8 @@ public sealed partial class AkronOverlay {
         }
 
         string popupId = GetInternalRecorderExperimentalWarningPopupId();
-        NumericsVector2 popupSize = new NumericsVector2(520f, 210f);
+        float scale = CurrentOverlayScale();
+        NumericsVector2 popupSize = new NumericsVector2(520f * scale, 210f * scale);
         NumericsVector2 displaySize = ImGui.GetIO().DisplaySize;
         NumericsVector2 popupPosition = new NumericsVector2(
             Math.Max(0f, (displaySize.X - popupSize.X) * 0.5f),
@@ -293,10 +303,10 @@ public sealed partial class AkronOverlay {
         }
 
         imguiPopupBlockedRowsLastFrame = true;
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + 8f);
+        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + 8f * scale);
         ImGui.TextUnformatted("Internal Recorder is EXPERIMENTAL.");
         ImGui.Spacing();
-        ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + 470f);
+        ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + 470f * scale);
         ImGui.TextWrapped("Please report any bugs or issues to https://github.com/Microck/akron.");
         ImGui.PopTextWrapPos();
         ImGui.Spacing();
@@ -304,9 +314,9 @@ public sealed partial class AkronOverlay {
         ImGui.Spacing();
         ImGui.Checkbox("Don't show this again##internal-recorder-experimental-warning", ref internalRecorderExperimentalWarningDontShowAgain);
 
-        ImGui.SetCursorPosY(popupSize.Y - 48f);
-        ImGui.SetCursorPosX(popupSize.X - 296f);
-        if (ImGui.Button("Continue##internal-recorder-experimental-warning", new NumericsVector2(136f, 0f))) {
+        ImGui.SetCursorPosY(popupSize.Y - 48f * scale);
+        ImGui.SetCursorPosX(popupSize.X - 296f * scale);
+        if (ImGui.Button("Continue##internal-recorder-experimental-warning", new NumericsVector2(136f * scale, 0f))) {
             if (internalRecorderExperimentalWarningDontShowAgain) {
                 AkronModule.Settings.InternalRecorderExperimentalWarningDismissed = true;
             }
@@ -319,7 +329,7 @@ public sealed partial class AkronOverlay {
         }
 
         ImGui.SameLine();
-        if (ImGui.Button("Cancel##internal-recorder-experimental-warning", new NumericsVector2(136f, 0f))) {
+        if (ImGui.Button("Cancel##internal-recorder-experimental-warning", new NumericsVector2(136f * scale, 0f))) {
             pendingInternalRecorderExperimentalAction = null;
             internalRecorderExperimentalWarningDontShowAgain = false;
             ImGui.CloseCurrentPopup();
@@ -351,7 +361,7 @@ public sealed partial class AkronOverlay {
         string tooltipKey = entry.Tab + "\n" + entry.Label;
         NumericsVector2 cachedSize = imguiTooltipSizes.TryGetValue(tooltipKey, out NumericsVector2 size)
             ? size
-            : new NumericsVector2(TooltipMaxWidth, 160f);
+            : new NumericsVector2(TooltipMaxWidth * CurrentOverlayScale(), 160f * CurrentOverlayScale());
         NumericsVector2 actualSize = DrawAnchoredTooltipWindow(pendingImGuiTooltipAnchor, cachedSize, () => {
             ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + GetTooltipWrapWidth());
             ImGui.PushStyleColor(ImGuiCol.Text, AkronImGuiTheme.Accent);
@@ -387,13 +397,14 @@ public sealed partial class AkronOverlay {
 
     private static NumericsVector2 GetPopupViewportMaxSize(NumericsVector2 displaySize) {
         return new NumericsVector2(
-            Math.Max(1f, displaySize.X - PopupViewportMargin * 2f),
-            Math.Max(1f, displaySize.Y - PopupViewportMargin * 2f));
+            Math.Max(1f, displaySize.X - PopupViewportMargin * CurrentOverlayScale() * 2f),
+            Math.Max(1f, displaySize.Y - PopupViewportMargin * CurrentOverlayScale() * 2f));
     }
 
     private static float GetTooltipWrapWidth() {
         NumericsVector2 displaySize = ImGui.GetIO().DisplaySize;
-        return Math.Min(ImGuiTooltipWrapWidth, Math.Max(1f, displaySize.X - PopupViewportMargin * 2f - 20f));
+        float scale = CurrentOverlayScale();
+        return Math.Min(ImGuiTooltipWrapWidth * scale, Math.Max(1f, displaySize.X - PopupViewportMargin * scale * 2f - 20f * scale));
     }
 
     private static string DescribeTooltipMeta(ActionEntry entry) {
