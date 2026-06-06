@@ -66,6 +66,12 @@ public sealed partial class AkronOverlay {
         openOptionsPopupRect = RectCeiling(x, y, width, height);
         float opacity = AkronModuleSettings.ClampOverlayOpacity(AkronModule.Settings.OverlayOpacity) / 100f;
         Draw.Rect(openOptionsPopupRect, AkronWindowBackground * opacity);
+        Draw.HollowRect(
+            openOptionsPopupRect.X,
+            openOptionsPopupRect.Y,
+            openOptionsPopupRect.Width,
+            openOptionsPopupRect.Height,
+            AkronPopupOutline);
 
         if (HasStepperPopup(openOptionsLabel)) {
             openOptionsMinusRect = Rect(openOptionsPopupRect.X + 4f, openOptionsPopupRect.Y + 4f, 34f, 26f);
@@ -141,6 +147,9 @@ public sealed partial class AkronOverlay {
                string.Equals(label, "Noclip", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Hazard Accuracy", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Air Jumps", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Core Mode", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Set Inventory", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Dream State", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Ground Refills", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Frame Stepper", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Respawn Time", StringComparison.OrdinalIgnoreCase) ||

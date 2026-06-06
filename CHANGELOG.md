@@ -6,6 +6,16 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.11
+
+- Add Spawn Jelly, Spawn Theo, Set Inventory, Dream State, and Core Mode overlay actions.
+- Add Set Inventory jump configuration and optional death restore behavior.
+- Make Core Mode toggle restore the level's original mode when turned off, with Hot and Cold as the only configured modes.
+- Simplify Akron's Mod Options menu so the in-game overlay carries the detailed feature controls.
+- Add 1px submenu outlines and stop triangle hover targets from showing duplicate info tooltips.
+- Update hitbox default colors to follow CelesteTAS conventions where available.
+- Credit viddie's Spawn Jelly, Set Inventory, Dream State, and Core Mode suggestions in the docs.
+
 ## 0.1.2-beta.10
 
 - Start fresh installs with no active Akron profile or primary ruleset, so features stay off until explicitly enabled.

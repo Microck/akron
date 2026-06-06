@@ -58,6 +58,7 @@ public partial class AkronModule {
             if (level != null) {
                 MaybeShowDeathPbLossPrompt(level);
                 AkronPracticeStats.NotifyRespawnTimerReset(level);
+                AkronActions.RestoreSetInventoryOnDeath(level, self);
                 if (autoKillDeathArea.HasValue) {
                     AkronEntityInspector.RecordLastDeath(level, deathPosition, autoKillDeathArea.Value, "AutoKillArea");
                 } else {

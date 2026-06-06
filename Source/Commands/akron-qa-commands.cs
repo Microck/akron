@@ -212,6 +212,37 @@ public static partial class AkronCommands {
         Log("player-dead: " + player.Dead.ToString().ToLowerInvariant());
         Log("player-stamina: " + player.Stamina.ToString("0.##", CultureInfo.InvariantCulture));
         Log("player-dashes: " + player.Dashes.ToString(CultureInfo.InvariantCulture));
+        Log("player-inventory-dashes: " + player.Inventory.Dashes.ToString(CultureInfo.InvariantCulture));
+        Log("player-inventory-dream-dash: " + player.Inventory.DreamDash.ToString().ToLowerInvariant());
+        Log("session-inventory-dashes: " + level.Session.Inventory.Dashes.ToString(CultureInfo.InvariantCulture));
+        Log("session-inventory-dream-dash: " + level.Session.Inventory.DreamDash.ToString().ToLowerInvariant());
+        Log("air-jumps: " + AkronModule.Settings.JumpHack.ToString().ToLowerInvariant());
+        Log("air-jumps-infinite: " + AkronModule.Settings.JumpHackInfinite.ToString().ToLowerInvariant());
+        Log("air-jumps-extra: " + AkronModule.Settings.JumpHackExtraJumps.ToString(CultureInfo.InvariantCulture));
+        Log("set-inventory-restore: " + (AkronModule.Session?.SetInventoryRestoreSnapshot != null).ToString().ToLowerInvariant());
+        Log("level-core-mode: " + level.CoreMode);
+        int gliderCount = 0;
+        Glider firstGlider = null;
+        int theoCount = 0;
+        TheoCrystal firstTheo = null;
+        foreach (Entity entity in level.Entities) {
+            if (entity is Glider glider) {
+                firstGlider ??= glider;
+                gliderCount++;
+            } else if (entity is TheoCrystal theo) {
+                firstTheo ??= theo;
+                theoCount++;
+            }
+        }
+
+        Log("glider-count: " + gliderCount.ToString(CultureInfo.InvariantCulture));
+        if (firstGlider != null) {
+            Log("first-glider-position: " + FormatVector(firstGlider.Position));
+        }
+        Log("theo-count: " + theoCount.ToString(CultureInfo.InvariantCulture));
+        if (firstTheo != null) {
+            Log("first-theo-position: " + FormatVector(firstTheo.Position));
+        }
         Log("player-on-ground: " + player.OnGround().ToString().ToLowerInvariant());
         Log("player-collides-solid: " + player.CollideCheck<Solid>().ToString().ToLowerInvariant());
         Log("player-collides-spikes: " + player.CollideCheck<Spikes>().ToString().ToLowerInvariant());

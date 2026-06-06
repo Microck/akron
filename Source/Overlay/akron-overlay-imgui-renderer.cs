@@ -322,7 +322,11 @@ public sealed partial class AkronOverlay {
         ImGui.PopStyleVar();
         ImGui.PopStyleColor(4);
 
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);
+        ImGui.PushStyleColor(ImGuiCol.Border, AkronImGuiTheme.PopupOutline);
         if (!ImGui.BeginPopup(popupId)) {
+            ImGui.PopStyleColor();
+            ImGui.PopStyleVar();
             if (hovered && ImGui.IsItemHovered(ImGuiHoveredFlags.DelayNormal)) {
                 DrawImGuiItemTooltip("Click to rebind the Akron menu input.\nRight-click or Shift-click for binding options.");
             }
@@ -340,6 +344,8 @@ public sealed partial class AkronOverlay {
             ResetOverlayToggleBinding();
         }
         ImGui.EndPopup();
+        ImGui.PopStyleColor();
+        ImGui.PopStyleVar();
     }
 
     private void DrawImGuiActionEntry(ActionEntry entry, int index, int tabIndex) {
@@ -383,6 +389,7 @@ public sealed partial class AkronOverlay {
         NumericsVector2 rowMax = ImGui.GetItemRectMax();
         bool rowHovered = ImGui.IsMouseHoveringRect(rowMin, rowMax);
         bool rowActive = ImGui.IsItemActive();
+        bool optionButtonHovered = IsImGuiOptionsButtonHovered(entry, rowMin, rowMax);
         bool bindingContextRequested = entry.Control != OverlayEntryControl.KeybindReadOnly &&
                                        entry.Control != OverlayEntryControl.GroupHeader &&
                                        rowHovered &&
@@ -435,13 +442,31 @@ public sealed partial class AkronOverlay {
         }
 
         DrawImGuiBindingContext(entry, bindingContextRequested);
-        DrawImGuiActionTooltip(entry, rowHovered);
+        DrawImGuiActionTooltip(entry, rowHovered && !optionButtonHovered);
         if (hasOptionsPopup) {
             RecordImGuiOptionsPopupAnchor(entry, rowMin, rowMax);
             if (IsOptionsPopupOpen(entry.OptionsPopupKey)) {
                 pendingImGuiOptionsPopupEntry = entry;
             }
         }
+    }
+
+    private static bool IsImGuiOptionsButtonHovered(ActionEntry entry, NumericsVector2 rowMin, NumericsVector2 rowMax) {
+        if (entry == null ||
+            !entry.HasOptionsPopup &&
+            entry.Control != OverlayEntryControl.StartPosActions) {
+            return false;
+        }
+
+        float rowWidth = Math.Max(1f, rowMax.X - rowMin.X);
+        float scale = CurrentOverlayScale();
+        float logicalWidth = rowWidth / Math.Max(0.01f, scale);
+        float buttonWidth = Math.Min(30f, Math.Max(24f, logicalWidth * 0.12f)) * scale;
+        NumericsVector2 mouse = ImGui.GetMousePos();
+        return mouse.X >= rowMax.X - buttonWidth &&
+               mouse.X <= rowMax.X &&
+               mouse.Y >= rowMin.Y &&
+               mouse.Y <= rowMax.Y;
     }
 
     private void DrawPendingImGuiOptionsPopup() {

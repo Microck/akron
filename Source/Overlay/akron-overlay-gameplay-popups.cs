@@ -100,6 +100,90 @@ public sealed partial class AkronOverlay {
             "Used when Infinite jumps is off.");
     }
 
+    private void DrawCoreModePopupControls(string popupId) {
+        DrawPopupRowLabel("Mode", CalculatePopupLabelWidth(84f));
+        DrawPopupChoiceRadioButton(
+            "Hot",
+            AkronModule.Settings.CoreModeOverride == AkronCoreModeOverride.Hot,
+            () => {
+                AkronModule.Settings.CoreModeOverride = AkronCoreModeOverride.Hot;
+            },
+            popupId,
+            "Click toggles the configured Core Mode override on or off.");
+        DrawPopupChoiceRadioButton(
+            "Cold",
+            AkronModule.Settings.CoreModeOverride == AkronCoreModeOverride.Cold,
+            () => {
+                AkronModule.Settings.CoreModeOverride = AkronCoreModeOverride.Cold;
+            },
+            popupId,
+            "Click toggles the configured Core Mode override on or off.");
+
+        ImGui.Separator();
+        DrawPopupRowLabel("Click", CalculatePopupLabelWidth(84f));
+        DrawPopupChoiceRadioButton(
+            "Toggle",
+            AkronModule.Settings.CoreModeClickBehavior == AkronCoreModeClickBehavior.Toggle,
+            () => AkronModule.Settings.CoreModeClickBehavior = AkronCoreModeClickBehavior.Toggle,
+            popupId,
+            "Clicking the row toggles the configured Hot/Cold override on or off.");
+        DrawPopupChoiceRadioButton(
+            "Cycle",
+            AkronModule.Settings.CoreModeClickBehavior == AkronCoreModeClickBehavior.Cycle,
+            () => AkronModule.Settings.CoreModeClickBehavior = AkronCoreModeClickBehavior.Cycle,
+            popupId,
+            "Clicking the row cycles directly between Hot and Cold and enables the override.");
+    }
+
+    private void DrawSetInventoryPopupControls(string popupId) {
+        DrawIntStepperRow(
+            "Dashes",
+            () => AkronModule.Settings.SetInventoryDashes,
+            value => AkronModule.Settings.SetInventoryDashes = AkronModuleSettings.ClampSetInventoryDashes(value),
+            -1,
+            1,
+            0,
+            5,
+            popupId,
+            "Dash inventory applied when Set Inventory is clicked.");
+
+        DrawIntStepperRow(
+            "Jumps",
+            () => AkronModule.Settings.SetInventoryJumps,
+            value => AkronModule.Settings.SetInventoryJumps = AkronModuleSettings.ClampSetInventoryJumps(value),
+            -1,
+            1,
+            0,
+            99,
+            popupId,
+            "Extra air jumps applied through Akron's Air Jumps setting. Zero disables extra jumps.");
+
+        bool restoreOnDeath = AkronModule.Settings.SetInventoryRestoreOnDeath;
+        if (ImGui.Checkbox("Restore on Death##" + popupId, ref restoreOnDeath)) {
+            AkronModule.Settings.SetInventoryRestoreOnDeath = restoreOnDeath;
+            if (!restoreOnDeath) {
+                AkronActions.ClearSetInventory();
+            }
+        }
+        DrawPopupTooltip("Restore the pre-click dash and Air Jumps settings on the next death.");
+
+        if (ImGui.Button("Apply now##" + popupId) && Engine.Scene is Level level) {
+            AkronActions.ApplySetInventory(level);
+        }
+        DrawPopupTooltip("Apply the configured inventory to Madeline without waiting for the row click.");
+
+        ImGui.TextUnformatted(AkronModule.Settings.SetInventoryRestoreOnDeath
+            ? "Restore snapshot is captured on apply."
+            : "Chapter restart returns to map defaults.");
+    }
+
+    private void DrawDreamStatePopupControls(string popupId) {
+        if (ImGui.Button("Toggle dream state##" + popupId) && Engine.Scene is Level level) {
+            AkronActions.ToggleDreamState(level);
+        }
+        DrawPopupTooltip("Toggle whether Madeline's current inventory can use dream blocks.");
+    }
+
     private void DrawGroundRefillsPopupControls(string popupId) {
         bool dash = AkronModule.Settings.GroundDashRefill;
         if (ImGui.Checkbox("Dash refill##" + popupId, ref dash)) {
@@ -144,6 +228,13 @@ public sealed partial class AkronOverlay {
     private void DrawPopupChoiceCheckbox(string label, bool selected, Action apply, string popupId, string tooltip) {
         bool value = selected;
         if (ImGui.Checkbox(label + "##" + popupId, ref value) && value && !selected) {
+            apply();
+        }
+        DrawPopupTooltip(tooltip, label);
+    }
+
+    private void DrawPopupChoiceRadioButton(string label, bool selected, Action apply, string popupId, string tooltip) {
+        if (ImGui.RadioButton(label + "##" + popupId, selected)) {
             apply();
         }
         DrawPopupTooltip(tooltip, label);

@@ -237,6 +237,9 @@ public partial class AkronModuleSettings {
         EntityInspector = resolved.EntityInspector;
         InfiniteStamina = resolved.InfiniteStamina;
         InfiniteDash = resolved.InfiniteDash;
+        SetInventoryDashes = ClampSetInventoryDashes(resolved.SetInventoryDashes);
+        SetInventoryJumps = ClampSetInventoryJumps(resolved.SetInventoryJumps);
+        SetInventoryRestoreOnDeath = resolved.SetInventoryRestoreOnDeath;
         DashCountOverride = resolved.DashCountOverride;
         DashCountOverrideValue = ClampDashCountOverride(resolved.DashCountOverrideValue);
         DashCountRefillOnRoomEntry = resolved.DashCountRefillOnRoomEntry;
@@ -272,6 +275,9 @@ public partial class AkronModuleSettings {
         AutoDeafenAreaY = resolved.AutoDeafenAreaY;
         AutoDeafenAreaWidth = ClampAutoKillAreaSize(resolved.AutoDeafenAreaWidth);
         AutoDeafenAreaHeight = ClampAutoKillAreaSize(resolved.AutoDeafenAreaHeight);
+        CoreModeOverrideEnabled = resolved.CoreModeOverrideEnabled;
+        CoreModeOverride = NormalizeCoreModeOverride(resolved.CoreModeOverride);
+        CoreModeClickBehavior = NormalizeCoreModeClickBehavior(resolved.CoreModeClickBehavior);
         TransitionSpeedMultiplier = ClampTransitionSpeedMultiplier(resolved.TransitionSpeedMultiplier);
         TrailVisibility = resolved.TrailVisibility;
         TrailCuttingRate = ClampTrailCuttingRate(resolved.TrailCuttingRate);

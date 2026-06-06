@@ -43,6 +43,8 @@ public class AkronModuleSession : EverestModuleSession {
     public bool StepFrameRequested { get; set; }
     public int StepFrameHoldFrames { get; set; }
     public int StepFrameRepeatCountdown { get; set; }
+    public AkronSetInventorySnapshot SetInventoryRestoreSnapshot { get; set; }
+    public Session.CoreModes? CoreModeRestoreSnapshot { get; set; }
     public bool TimescaleEnabled { get; set; }
     public float TimescaleMultiplier { get; set; } = 1f;
     public int EditableFlagIndex { get; set; }

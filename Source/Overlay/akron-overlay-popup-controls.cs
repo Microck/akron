@@ -38,6 +38,12 @@ public sealed partial class AkronOverlay {
             DrawHazardAccuracyPopupControls(popupId);
         } else if (string.Equals(entry.Label, "Air Jumps", StringComparison.OrdinalIgnoreCase)) {
             DrawAirJumpsPopupControls(popupId);
+        } else if (string.Equals(entry.Label, "Core Mode", StringComparison.OrdinalIgnoreCase)) {
+            DrawCoreModePopupControls(popupId);
+        } else if (string.Equals(entry.Label, "Set Inventory", StringComparison.OrdinalIgnoreCase)) {
+            DrawSetInventoryPopupControls(popupId);
+        } else if (string.Equals(entry.Label, "Dream State", StringComparison.OrdinalIgnoreCase)) {
+            DrawDreamStatePopupControls(popupId);
         } else if (string.Equals(entry.Label, "Frame Stepper", StringComparison.OrdinalIgnoreCase)) {
             DrawFrameStepperPopupControls(popupId);
         } else if (string.Equals(entry.Label, "Respawn Time", StringComparison.OrdinalIgnoreCase)) {

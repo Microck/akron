@@ -60,6 +60,246 @@ public static partial class AkronActions {
         Engine.Scene?.Add(new AkronToast(session.FreezeGameplay ? "Gameplay frozen." : "Gameplay resumed."));
     }
 
+    public static bool IsSetInventoryActive() {
+        return AkronModule.Session?.SetInventoryRestoreSnapshot != null;
+    }
+
+    public static string DescribeSetInventory(Level level) {
+        if (level?.Tracker.GetEntity<Player>() == null) {
+            return "No player";
+        }
+
+        int dashes = AkronModuleSettings.ClampSetInventoryDashes(AkronModule.Settings.SetInventoryDashes);
+        int jumps = AkronModuleSettings.ClampSetInventoryJumps(AkronModule.Settings.SetInventoryJumps);
+        return dashes.ToString(CultureInfo.InvariantCulture) + " dash" + (dashes == 1 ? string.Empty : "es") +
+               " / " + jumps.ToString(CultureInfo.InvariantCulture) + " jump" + (jumps == 1 ? string.Empty : "s");
+    }
+
+    public static void ToggleSetInventory(Level level) {
+        AkronModuleSession session = AkronModule.Session;
+        if (session == null || level?.Tracker.GetEntity<Player>() == null) {
+            Engine.Scene?.Add(new AkronToast("Set Inventory is unavailable outside gameplay."));
+            return;
+        }
+
+        ApplySetInventory(level);
+    }
+
+    public static void ApplySetInventory(Level level) {
+        AkronModuleSession session = AkronModule.Session;
+        if (session == null) {
+            Engine.Scene?.Add(new AkronToast("Set Inventory is unavailable outside gameplay."));
+            return;
+        }
+
+        if (level?.Tracker.GetEntity<Player>() is not Player player) {
+            Engine.Scene?.Add(new AkronToast("Set Inventory is unavailable without Madeline."));
+            return;
+        }
+
+        if (!AkronModule.TryUse(AkronFeatureKind.MovementStatMutation)) {
+            return;
+        }
+
+        if (AkronModule.Settings.SetInventoryRestoreOnDeath && session.SetInventoryRestoreSnapshot == null) {
+            session.SetInventoryRestoreSnapshot = CaptureSetInventorySnapshot(level, player);
+        } else if (!AkronModule.Settings.SetInventoryRestoreOnDeath) {
+            session.SetInventoryRestoreSnapshot = null;
+        }
+
+        int dashes = AkronModuleSettings.ClampSetInventoryDashes(AkronModule.Settings.SetInventoryDashes);
+        int jumps = AkronModuleSettings.ClampSetInventoryJumps(AkronModule.Settings.SetInventoryJumps);
+        PlayerInventory inventory = level.Session.Inventory;
+        inventory.Dashes = dashes;
+        level.Session.Inventory = inventory;
+        level.Session.Dashes = dashes;
+        player.Dashes = dashes;
+        ApplySetInventoryJumps(jumps);
+        Engine.Scene?.Add(new AkronToast(
+            "Inventory set: " +
+            dashes.ToString(CultureInfo.InvariantCulture) +
+            " dash" +
+            (dashes == 1 ? string.Empty : "es") +
+            ", " +
+            jumps.ToString(CultureInfo.InvariantCulture) +
+            " jump" +
+            (jumps == 1 ? string.Empty : "s") +
+            "."));
+    }
+
+    public static void ClearSetInventory() {
+        if (AkronModule.Session != null) {
+            AkronModule.Session.SetInventoryRestoreSnapshot = null;
+        }
+    }
+
+    public static void RestoreSetInventoryOnDeath(Level level, Player player) {
+        AkronModuleSession session = AkronModule.Session;
+        AkronSetInventorySnapshot snapshot = session?.SetInventoryRestoreSnapshot;
+        if (session == null || snapshot == null) {
+            ClearSetInventory();
+            return;
+        }
+
+        if (level != null) {
+            PlayerInventory inventory = level.Session.Inventory;
+            inventory.Dashes = AkronModuleSettings.ClampSetInventoryDashes(snapshot.SessionInventoryDashes);
+            level.Session.Inventory = inventory;
+            level.Session.Dashes = AkronModuleSettings.ClampSetInventoryDashes(snapshot.SessionDashes);
+        }
+
+        if (player != null) {
+            player.Dashes = AkronModuleSettings.ClampSetInventoryDashes(snapshot.PlayerDashes);
+        }
+
+        AkronModule.Settings.JumpHack = snapshot.JumpHack;
+        AkronModule.Settings.JumpHackInfinite = snapshot.JumpHackInfinite;
+        AkronModule.Settings.JumpHackExtraJumps = AkronModuleSettings.ClampJumpHackExtraJumps(snapshot.JumpHackExtraJumps);
+        ClearSetInventory();
+    }
+
+    private static AkronSetInventorySnapshot CaptureSetInventorySnapshot(Level level, Player player) {
+        return new AkronSetInventorySnapshot {
+            SessionInventoryDashes = level.Session.Inventory.Dashes,
+            SessionDashes = level.Session.Dashes,
+            PlayerDashes = player.Dashes,
+            JumpHack = AkronModule.Settings.JumpHack,
+            JumpHackInfinite = AkronModule.Settings.JumpHackInfinite,
+            JumpHackExtraJumps = AkronModule.Settings.JumpHackExtraJumps
+        };
+    }
+
+    private static void ApplySetInventoryJumps(int jumps) {
+        AkronModule.Settings.JumpHack = jumps > 0;
+        AkronModule.Settings.JumpHackInfinite = false;
+        if (jumps > 0) {
+            AkronModule.Settings.JumpHackExtraJumps = AkronModuleSettings.ClampJumpHackExtraJumps(jumps);
+        }
+    }
+
+    public static string DescribeDreamState(Level level) {
+        Player player = level?.Tracker.GetEntity<Player>();
+        return player == null ? "No player" : player.Inventory.DreamDash ? "On" : "Off";
+    }
+
+    public static void ToggleDreamState(Level level) {
+        if (level?.Tracker.GetEntity<Player>() is not Player player) {
+            Engine.Scene?.Add(new AkronToast("Dream State is unavailable without Madeline."));
+            return;
+        }
+
+        if (!AkronModule.TryUse(AkronFeatureKind.MovementStatMutation)) {
+            return;
+        }
+
+        PlayerInventory inventory = level.Session.Inventory;
+        inventory.DreamDash = !inventory.DreamDash;
+        level.Session.Inventory = inventory;
+        Engine.Scene?.Add(new AkronToast("Dream State: " + (inventory.DreamDash ? "On" : "Off") + "."));
+    }
+
+    public static string DescribeCoreMode(Level level) {
+        if (level == null) {
+            return "No level";
+        }
+
+        return AkronModule.Settings.CoreModeOverrideEnabled
+            ? FormatCoreMode(AkronModule.Settings.CoreModeOverride)
+            : "Off";
+    }
+
+    public static void ToggleCoreMode(Level level) {
+        AkronModuleSession session = AkronModule.Session;
+        if (level == null || session == null) {
+            Engine.Scene?.Add(new AkronToast("Core Mode is unavailable outside a level."));
+            return;
+        }
+
+        if (AkronModule.Settings.CoreModeClickBehavior == AkronCoreModeClickBehavior.Cycle) {
+            CaptureCoreModeRestoreSnapshot(level, session);
+            AkronModule.Settings.CoreModeOverride = AkronModule.Settings.CoreModeOverride == AkronCoreModeOverride.Hot
+                ? AkronCoreModeOverride.Cold
+                : AkronCoreModeOverride.Hot;
+            AkronModule.Settings.CoreModeOverrideEnabled = true;
+            ApplyCoreMode(level, AkronModule.Settings.CoreModeOverride);
+            return;
+        }
+
+        if (!AkronModule.Settings.CoreModeOverrideEnabled) {
+            CaptureCoreModeRestoreSnapshot(level, session);
+            AkronModule.Settings.CoreModeOverrideEnabled = true;
+            ApplyCoreMode(level, AkronModule.Settings.CoreModeOverride);
+            return;
+        }
+
+        DisableCoreModeOverride(level, session);
+    }
+
+    public static void ApplyCoreMode(Level level, AkronCoreModeOverride mode) {
+        if (level == null) {
+            return;
+        }
+
+        if (!AkronModule.TryUse(AkronFeatureKind.MovementStatMutation)) {
+            return;
+        }
+
+        mode = AkronModuleSettings.NormalizeCoreModeOverride(mode);
+        AkronModule.Settings.CoreModeOverride = mode;
+        level.CoreMode = ToSessionCoreMode(mode);
+        Engine.Scene?.Add(new AkronToast("Core Mode: " + FormatCoreMode(mode) + "."));
+    }
+
+    private static void CaptureCoreModeRestoreSnapshot(Level level, AkronModuleSession session) {
+        if (session.CoreModeRestoreSnapshot == null) {
+            session.CoreModeRestoreSnapshot = level.CoreMode;
+        }
+    }
+
+    private static void DisableCoreModeOverride(Level level, AkronModuleSession session) {
+        if (session.CoreModeRestoreSnapshot.HasValue) {
+            level.CoreMode = session.CoreModeRestoreSnapshot.Value;
+            session.CoreModeRestoreSnapshot = null;
+        }
+
+        AkronModule.Settings.CoreModeOverrideEnabled = false;
+        Engine.Scene?.Add(new AkronToast("Core Mode override off."));
+    }
+
+    public static string FormatCoreMode(AkronCoreModeOverride mode) {
+        return AkronModuleSettings.NormalizeCoreModeOverride(mode) == AkronCoreModeOverride.Cold ? "Cold" : "Hot";
+    }
+
+    public static string FormatCoreModeClickBehavior(AkronCoreModeClickBehavior behavior) {
+        return AkronModuleSettings.NormalizeCoreModeClickBehavior(behavior) == AkronCoreModeClickBehavior.Cycle ? "Cycle" : "Toggle";
+    }
+
+    private static Session.CoreModes ToSessionCoreMode(AkronCoreModeOverride mode) {
+        return AkronModuleSettings.NormalizeCoreModeOverride(mode) == AkronCoreModeOverride.Cold
+            ? Session.CoreModes.Cold
+            : Session.CoreModes.Hot;
+    }
+
+    public static void SpawnJelly(Level level) {
+        if (level?.Tracker.GetEntity<Player>() is not Player player) {
+            Engine.Scene?.Add(new AkronToast("Spawn Jelly is unavailable without Madeline."));
+            return;
+        }
+
+        level.Add(new Glider(player.Position, false, false));
+        Engine.Scene?.Add(new AkronToast("Spawned jelly."));
+    }
+
+    public static void SpawnTheo(Level level) {
+        if (level?.Tracker.GetEntity<Player>() is not Player player) {
+            Engine.Scene?.Add(new AkronToast("Spawn Theo is unavailable without Madeline."));
+            return;
+        }
+
+        level.Add(new TheoCrystal(player.Position));
+        Engine.Scene?.Add(new AkronToast("Spawned Theo."));
+    }
+
     public static void AdjustTimescale(float delta) {
         AkronModuleSession session = AkronModule.Session;
         if (session == null) {

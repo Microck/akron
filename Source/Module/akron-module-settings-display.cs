@@ -133,14 +133,14 @@ public partial class AkronModuleSettings {
         HitboxLineThickness = 5f;
         HitboxFillOpacity = 0;
         HitboxBlackOutline = false;
-        HitboxPlayerColor = 0xFFFF00;
-        HitboxPlayerHurtboxColor = 0x00FF00;
-        HitboxSolidColor = 0xFF0000;
-        HitboxHazardColor = 0xFF3030;
-        HitboxTriggerColor = 0xFF00FF;
-        HitboxOtherColor = 0x00FF00;
-        HitboxDeathColor = 0xFF3030;
-        HitboxDeathPlayerColor = 0xFFFFFF;
+        HitboxPlayerColor = DefaultHitboxPlayerColor;
+        HitboxPlayerHurtboxColor = DefaultHitboxPlayerHurtboxColor;
+        HitboxSolidColor = DefaultHitboxSolidColor;
+        HitboxHazardColor = DefaultHitboxHazardColor;
+        HitboxTriggerColor = DefaultHitboxTriggerColor;
+        HitboxOtherColor = DefaultHitboxOtherColor;
+        HitboxDeathColor = DefaultHitboxDeathColor;
+        HitboxDeathPlayerColor = DefaultHitboxDeathPlayerColor;
     }
 
     public static string FormatPrimaryRuleset(PrimaryRuleset ruleset) {
@@ -240,16 +240,6 @@ public partial class AkronModuleSettings {
                 .Replace("Oem", string.Empty)
                 .Trim() ?? string.Empty
         };
-    }
-
-    public void CreateActiveProfileEntry(TextMenu menu, bool inGame) {
-        menu.Add(new TextMenu.Button("Active Profile: " + FormatProfile(ActiveProfile)) { Selectable = false });
-        foreach (AkronProfile profile in (AkronProfile[]) System.Enum.GetValues(typeof(AkronProfile))) {
-            AkronProfile capturedProfile = profile;
-            menu.Add(new TextMenu.Button("Use " + FormatProfile(capturedProfile)).Pressed(() => {
-                ApplyProfile(capturedProfile);
-            }));
-        }
     }
 
     public void CreateCurrentMapCompatibilityEntry(TextMenu menu, bool inGame) {

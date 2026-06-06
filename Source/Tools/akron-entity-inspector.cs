@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
-using System.Reflection;
 using Celeste;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -19,6 +18,10 @@ public enum GridEdge {
 public static partial class AkronEntityInspector {
     private const float CameraCullMargin = 32f;
     private const float HitboxThicknessUnitsPerGamePixel = 5f;
+    private const float DefaultPlayerHurtboxWidth = 8f;
+    private const float DefaultPlayerHurtboxHeight = 9f;
+    private const float DefaultPlayerHurtboxX = -4f;
+    private const float DefaultPlayerHurtboxY = -11f;
     private static readonly List<Rectangle> playerTrail = new List<Rectangle>();
     private static readonly Rectangle onePixelProbe = new Rectangle(0, 0, 1, 1);
     private static string playerTrailRoom = string.Empty;
@@ -32,7 +35,6 @@ public static partial class AkronEntityInspector {
     private static int frameGridCellChecks;
     private static int frameGridRuns;
     private static bool renderingToGameplayBuffer;
-    private static readonly FieldInfo PlayerHurtboxField = typeof(Player).GetFieldInfo("hurtbox");
 
     public static Entity GetFocusedEntity(Level level) {
         Player player = level.Tracker.GetEntity<Player>();
@@ -252,7 +254,11 @@ public static partial class AkronEntityInspector {
             return settings.HitboxShowSolids;
         }
 
-        return true;
+        // Unknown collidable helper entities can sit far away from their visual
+        // owner, which creates floating boxes that look like broken player
+        // hurtboxes. Keep the live overlay scoped to gameplay collision classes
+        // Akron can classify confidently.
+        return false;
     }
 
     private static Rectangle ColliderWorldBounds(Collider collider) {
@@ -304,9 +310,54 @@ public static partial class AkronEntityInspector {
             DrawWorldRect(level, normalHurtbox, solidCollisionColor);
         }
 
-        if (settings.HitboxShowPlayerHurtbox && PlayerHurtboxField?.GetValue(player) is Collider hurtbox) {
-            DrawCollider(level, hurtbox, ColorFromRgb(settings.HitboxPlayerHurtboxColor), CameraWorldBounds(level));
+        if (settings.HitboxShowPlayerHurtbox) {
+            DrawWorldRect(level, PlayerHazardHitboxBounds(player), ColorFromRgb(settings.HitboxPlayerHurtboxColor));
         }
+    }
+
+    private static Rectangle PlayerHazardHitboxBounds(Player player) {
+        Hitbox hurtbox = player.GetFieldValue<Hitbox>("hurtbox");
+        if (hurtbox == null) {
+            return PlayerDefaultHazardHitboxBounds(player.Position.X, player.Position.Y);
+        }
+
+        return PlayerHazardHitboxBounds(
+            player.Position.X,
+            player.Position.Y,
+            hurtbox.Position.X,
+            hurtbox.Position.Y,
+            hurtbox.Width,
+            hurtbox.Height);
+    }
+
+    internal static Rectangle PlayerHazardHitboxBounds(float playerX, float playerY, float localX, float localY, float width, float height) {
+        // CelesteTAS draws Player.hurtbox directly. Feed this helper the live
+        // hurtbox offset/size so ducking and star-fly states keep their distinct
+        // hazard shape. The fallback call site uses Celeste's normal hurtbox:
+        // new Hitbox(8f, 9f, -4f, -11f).
+        (int left, int top, int pixelWidth, int pixelHeight) = PixelExactBoundsParts(playerX + localX, playerY + localY, width, height);
+        return new Rectangle(left, top, pixelWidth, pixelHeight);
+    }
+
+    internal static Rectangle PlayerDefaultHazardHitboxBounds(float playerX, float playerY) {
+        return PlayerHazardHitboxBounds(
+            playerX,
+            playerY,
+            DefaultPlayerHurtboxX,
+            DefaultPlayerHurtboxY,
+            DefaultPlayerHurtboxWidth,
+            DefaultPlayerHurtboxHeight);
+    }
+
+    internal static (int Left, int Top, int Width, int Height) PixelExactBoundsParts(float x, float y, float width, float height) {
+        int left = (int) System.Math.Floor(x);
+        int top = (int) System.Math.Floor(y);
+
+        return (
+            left,
+            top,
+            (int) System.Math.Ceiling(width + x - left),
+            (int) System.Math.Ceiling(height + y - top));
     }
 
     private static void CapturePlayerTrail(Level level, Player player, AkronModuleSettings settings) {
@@ -789,9 +840,12 @@ public static partial class AkronEntityInspector {
 
     private static float HitboxThicknessToScreenPixels(float thickness) {
         float surfaceScale = renderingToGameplayBuffer ? 1f : AkronScreenProjection.CurrentViewportScale();
-        return surfaceScale *
-               AkronModuleSettings.ClampHitboxLineThickness(thickness) /
-               HitboxThicknessUnitsPerGamePixel;
+        float requestedPixels = surfaceScale *
+                                AkronModuleSettings.ClampHitboxLineThickness(thickness) /
+                                HitboxThicknessUnitsPerGamePixel;
+        // Persisted old settings can request sub-pixel outlines. The renderer
+        // will still count draw calls, but the hitboxes look absent in-game.
+        return System.Math.Max(1f, requestedPixels);
     }
 
     private static AkronHudRect WorldToHitboxSurfaceRect(Level level, Rectangle worldBounds) {
@@ -813,10 +867,11 @@ public static partial class AkronEntityInspector {
         return new Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
     }
 
-    private static bool IsHazard(Entity entity) {
+    internal static bool IsHazard(Entity entity) {
         string name = entity.GetType().Name;
         return entity is Spikes ||
                name.Contains("Spike") ||
+               name.Contains("Spinner") ||
                name.Contains("Hazard") ||
                name.Contains("Kill") ||
                name.Contains("Blade");

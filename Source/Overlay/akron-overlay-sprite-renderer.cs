@@ -421,6 +421,8 @@ public sealed partial class AkronOverlay {
                string.Equals(entry.Label, "Restart Level", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Reload Room", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Reload Chapter", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(entry.Label, "Spawn Jelly", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(entry.Label, "Spawn Theo", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Neutral Drop", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Backboost", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Skip Cutscene / Dialogue", StringComparison.OrdinalIgnoreCase) ||

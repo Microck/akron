@@ -54,6 +54,7 @@ public sealed partial class AkronOverlay {
                     Toggle("Confirm Restart", () => AkronModule.Settings.ConfirmRestart, value => AkronModule.Settings.ConfirmRestart = value),
                     Toggle("Confirm Full Reset", () => AkronModule.Settings.ConfirmFullReset, value => AkronModule.Settings.ConfirmFullReset = value),
                     Action("Freeze Gameplay", () => AkronModule.Session != null, () => AkronModule.Session == null ? "Unavailable" : AkronModule.Session.FreezeGameplay ? "On" : "Off", AkronActions.ToggleFreeze),
+                    Action("Core Mode", () => level != null, () => AkronActions.DescribeCoreMode(level), () => AkronActions.ToggleCoreMode(level), "core", "hot", "cold", "cycle"),
                     NumericToggle("Respawn Time", AkronFeatureKind.RespawnTime, () => AkronModule.Settings.RespawnTimeModifier, value => AkronModule.Settings.RespawnTimeModifier = value, () => AkronModule.Settings.RespawnTimeSeconds, value => AkronModule.Settings.RespawnTimeSeconds = AkronModuleSettings.ClampRespawnTimeSeconds(value), 0.1f, 10f, "%.2f", "s", false),
                     NumericToggle("Pause Timer", AkronFeatureKind.PauseCountdown, () => AkronModule.Settings.PauseCountdown, value => AkronModule.Settings.PauseCountdown = value, () => AkronModule.Settings.PauseCountdownSeconds, value => AkronModule.Settings.PauseCountdownSeconds = AkronModuleSettings.ClampPauseCountdownSeconds(value), 0.1f, 15f, "%.2f", "s", false),
                     PolicyToggle("Pause Tracker", AkronFeatureKind.PauseTracker, () => AkronModule.Settings.PauseTracker, value => AkronModule.Settings.PauseTracker = value, "pause count", "proof", "pause abuse"),
@@ -150,6 +151,8 @@ public sealed partial class AkronOverlay {
                     PolicyToggle("Madeline Colors", AkronFeatureKind.CustomTrail, () => AkronModule.Settings.MadelineColors, value => AkronModule.Settings.MadelineColors = value),
                     PolicyToggle("Madeline Hair Length", AkronFeatureKind.MadelineHairLength, () => AkronModule.Settings.MadelineHairLength, value => AkronModule.Settings.MadelineHairLength = value),
                     PolicyToggle("Madeline Effect Sync", AkronFeatureKind.MadelineEffectSync, () => AkronModule.Settings.MadelineEffectSync, value => AkronModule.Settings.MadelineEffectSync = value),
+                    Action("Set Inventory", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeSetInventory(level), () => AkronActions.ToggleSetInventory(level), "inventory", "dash count", "dashes", "space ruins"),
+                    Action("Dream State", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeDreamState(level), () => AkronActions.ToggleDreamState(level), "dream dash", "dream blocks", "inventory"),
                     PolicyToggle("No Death Effect", AkronFeatureKind.DeathVisuals, () => AkronModule.Settings.NoDeathEffect, value => AkronModule.Settings.NoDeathEffect = value),
                     Toggle("No Ghost Trail", () => AkronModule.Settings.TrailVisibility == AkronTrailVisibility.Hidden, value => {
                         AkronModule.Settings.TrailVisibility = value ? AkronTrailVisibility.Hidden : AkronTrailVisibility.Vanilla;
@@ -183,8 +186,8 @@ public sealed partial class AkronOverlay {
                     Action("Previous Room", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeSelectedRoom(level), () => { if (level != null) AkronActions.CycleSelectedRoom(level, -1); }),
                     Action("Next Room", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeSelectedRoom(level), () => { if (level != null) AkronActions.CycleSelectedRoom(level, 1); }),
                     Action("Warp Selected Room", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeSelectedRoom(level), () => { if (level != null) AkronActions.WarpSelectedRoom(level); }),
-                    Action("Warp To Previous In Order", () => level != null, () => "Cheat", () => { if (level != null) AkronActions.WarpRelativeRoom(level, -1); }),
-                    Action("Warp To Next In Order", () => level != null, () => "Cheat", () => { if (level != null) AkronActions.WarpRelativeRoom(level, 1); }),
+                    Action("Previous Room In Order", () => level != null, () => "Cheat", () => { if (level != null) AkronActions.WarpRelativeRoom(level, -1); }, "warp previous room", "warp to previous in order"),
+                    Action("Next Room In Order", () => level != null, () => "Cheat", () => { if (level != null) AkronActions.WarpRelativeRoom(level, 1); }, "warp next room", "warp to next in order"),
                     Action("Previous Map", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCampaignMap(level, -1), () => { if (level != null) AkronActions.WarpRelativeCampaignMap(level, -1); }, "campaign", "chapter", "area", "previous map"),
                     Action("Next Map", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCampaignMap(level, 1), () => { if (level != null) AkronActions.WarpRelativeCampaignMap(level, 1); }, "campaign", "chapter", "area", "next map"),
                     Action("Previous Checkpoint", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCheckpoint(level, -1), () => { if (level != null) AkronActions.WarpRelativeCheckpoint(level, -1); }, "checkpoint", "previous checkpoint"),
@@ -213,6 +216,8 @@ public sealed partial class AkronOverlay {
                     Action("Restart Level", () => level != null, () => level != null ? "Chapter" : "Unavailable", () => { if (level != null) AkronModule.PerformReloadChapter(level); }),
                     Action("Reload Room", () => level != null, () => AkronModuleSettings.DescribeBinding(AkronModule.Settings.ReloadRoom), () => { if (level != null) AkronModule.PerformReloadRoom(level); }),
                     Action("Reload Chapter", () => level != null, () => AkronModuleSettings.DescribeBinding(AkronModule.Settings.ReloadChapter), () => { if (level != null) AkronModule.PerformReloadChapter(level); }),
+                    Action("Spawn Jelly", () => level != null && level.Tracker.GetEntity<Player>() != null, () => level != null ? "Ready" : "Unavailable", () => AkronActions.SpawnJelly(level), "jelly", "glider", "spawn"),
+                    Action("Spawn Theo", () => level != null && level.Tracker.GetEntity<Player>() != null, () => level != null ? "Ready" : "Unavailable", () => AkronActions.SpawnTheo(level), "theo", "theo crystal", "spawn"),
                     Action("Neutral Drop", () => level != null, () => level != null ? "Assist" : "Unavailable", AkronActions.NeutralDrop, "neutral", "drop", "throw"),
                     Action("Backboost", () => level != null, () => level != null ? "Assist" : "Unavailable", AkronActions.Backboost, "throw", "backboost"),
                     Action("Skip Cutscene / Dialogue", () => level != null, () => level != null && (level.InCutscene || level.SkippingCutscene) ? "Ready" : "No cutscene", () => { if (level != null) AkronActions.SkipCutscene(level); })
@@ -273,6 +278,7 @@ public sealed partial class AkronOverlay {
     private static List<OverlayEntry> SortCreatorEntries(IEnumerable<OverlayEntry> entries) {
         return (entries ?? Enumerable.Empty<OverlayEntry>())
             .OrderBy(GetCreatorEntrySortGroup)
+            .ThenBy(GetCreatorEntrySortRank)
             .ThenBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -282,10 +288,28 @@ public sealed partial class AkronOverlay {
             return 0;
         }
 
-        return string.Equals(entry.Label, "Map Capture", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(entry.Label, "Room Capture", StringComparison.OrdinalIgnoreCase)
-            ? 1
-            : 2;
+        if (string.Equals(entry.Label, "Map Capture", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(entry.Label, "Room Capture", StringComparison.OrdinalIgnoreCase)) {
+            return 1;
+        }
+
+        return GetCreatorEntrySortRank(entry) < int.MaxValue ? 2 : 3;
+    }
+
+    private static int GetCreatorEntrySortRank(OverlayEntry entry) {
+        return entry.Label switch {
+            "Warp Selected Room" => 0,
+            "Previous Room" => 1,
+            "Next Room" => 2,
+            "Previous Room In Order" => 3,
+            "Next Room In Order" => 4,
+            "Previous Checkpoint" => 5,
+            "Next Checkpoint" => 6,
+            "Previous Map" => 7,
+            "Next Map" => 8,
+            "Open Debug Map" => 9,
+            _ => int.MaxValue
+        };
     }
 
     private List<OverlayEntry> BuildSoundDisplayEntries() {

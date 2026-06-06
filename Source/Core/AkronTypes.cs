@@ -304,6 +304,25 @@ public enum AkronCounterDisplayMode {
     Both
 }
 
+public enum AkronCoreModeOverride {
+    Hot,
+    Cold
+}
+
+public enum AkronCoreModeClickBehavior {
+    Toggle,
+    Cycle
+}
+
+public sealed class AkronSetInventorySnapshot {
+    public int SessionInventoryDashes { get; set; }
+    public int SessionDashes { get; set; }
+    public int PlayerDashes { get; set; }
+    public bool JumpHack { get; set; }
+    public bool JumpHackInfinite { get; set; }
+    public int JumpHackExtraJumps { get; set; }
+}
+
 public readonly struct AkronStartPosEntry {
     public AkronStartPosEntry(int slot, AkronStartPos startPos) {
         Slot = slot;

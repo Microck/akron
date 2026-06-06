@@ -222,20 +222,23 @@ public sealed class AkronProfileState {
     public float HitboxLineThickness { get; set; } = 5f;
     public int HitboxFillOpacity { get; set; }
     public bool HitboxBlackOutline { get; set; }
-    public int HitboxPlayerColor { get; set; } = 0xFFFF00;
+    public int HitboxPlayerColor { get; set; } = AkronModuleSettings.DefaultHitboxPlayerColor;
     public bool HitboxShowPlayerHurtbox { get; set; } = true;
-    public int HitboxPlayerHurtboxColor { get; set; } = 0x00FF00;
-    public int HitboxSolidColor { get; set; } = 0xFF0000;
-    public int HitboxHazardColor { get; set; } = 0xFF3030;
-    public int HitboxTriggerColor { get; set; } = 0xFF00FF;
-    public int HitboxOtherColor { get; set; } = 0x00FF00;
-    public int HitboxDeathColor { get; set; } = 0xFF3030;
-    public int HitboxDeathPlayerColor { get; set; } = 0xFFFFFF;
+    public int HitboxPlayerHurtboxColor { get; set; } = AkronModuleSettings.DefaultHitboxPlayerHurtboxColor;
+    public int HitboxSolidColor { get; set; } = AkronModuleSettings.DefaultHitboxSolidColor;
+    public int HitboxHazardColor { get; set; } = AkronModuleSettings.DefaultHitboxHazardColor;
+    public int HitboxTriggerColor { get; set; } = AkronModuleSettings.DefaultHitboxTriggerColor;
+    public int HitboxOtherColor { get; set; } = AkronModuleSettings.DefaultHitboxOtherColor;
+    public int HitboxDeathColor { get; set; } = AkronModuleSettings.DefaultHitboxDeathColor;
+    public int HitboxDeathPlayerColor { get; set; } = AkronModuleSettings.DefaultHitboxDeathPlayerColor;
     public bool FixHitboxPixels { get; set; }
     public bool ShowTriggers { get; set; }
     public bool EntityInspector { get; set; }
     public bool InfiniteStamina { get; set; }
     public bool InfiniteDash { get; set; }
+    public int SetInventoryDashes { get; set; } = 2;
+    public int SetInventoryJumps { get; set; }
+    public bool SetInventoryRestoreOnDeath { get; set; }
     public bool DashCountOverride { get; set; }
     public int DashCountOverrideValue { get; set; } = 2;
     public bool DashCountRefillOnRoomEntry { get; set; } = true;
@@ -271,6 +274,9 @@ public sealed class AkronProfileState {
     public int AutoDeafenAreaY { get; set; }
     public int AutoDeafenAreaWidth { get; set; }
     public int AutoDeafenAreaHeight { get; set; }
+    public bool CoreModeOverrideEnabled { get; set; }
+    public AkronCoreModeOverride CoreModeOverride { get; set; } = AkronCoreModeOverride.Hot;
+    public AkronCoreModeClickBehavior CoreModeClickBehavior { get; set; } = AkronCoreModeClickBehavior.Toggle;
     public float TransitionSpeedMultiplier { get; set; } = 1f;
     public AkronTrailVisibility TrailVisibility { get; set; } = AkronTrailVisibility.Vanilla;
     public int TrailCuttingRate { get; set; } = 1;

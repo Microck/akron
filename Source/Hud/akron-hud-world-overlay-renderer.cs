@@ -8,7 +8,7 @@ using System.Linq;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronHudRenderer {
-    private const float PracticeAreaPixelMarkerYOffset = -4f;
+    private const float PracticeAreaPixelMarkerYOffset = 4f;
 
     private static void RenderAutoKillArea(Level level, bool deathHitboxPass) {
         AkronModuleSettings settings = AkronModule.Settings;

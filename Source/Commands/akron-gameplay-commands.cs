@@ -87,6 +87,90 @@ public static partial class AkronCommands {
         Log("backboost: requested");
     }
 
+    [Command("akron_core_mode", "control Core Mode: status|apply|toggle|mode hot|cold|click toggle|cycle")]
+    public static void CoreMode(string action = "status", string value = "") {
+        Level level = Engine.Scene as Level;
+        switch (NormalizeToken(action)) {
+            case "":
+            case "status":
+                break;
+            case "apply":
+            case "toggle":
+                if (level == null) {
+                    Log("core-mode: unavailable");
+                    return;
+                }
+                AkronActions.ToggleCoreMode(level);
+                break;
+            case "mode":
+                if (string.Equals(value, "hot", StringComparison.OrdinalIgnoreCase)) {
+                    AkronModule.Settings.CoreModeOverride = AkronCoreModeOverride.Hot;
+                } else if (string.Equals(value, "cold", StringComparison.OrdinalIgnoreCase)) {
+                    AkronModule.Settings.CoreModeOverride = AkronCoreModeOverride.Cold;
+                } else {
+                    Log("invalid core-mode value: " + value);
+                    return;
+                }
+                break;
+            case "click":
+                if (string.Equals(value, "toggle", StringComparison.OrdinalIgnoreCase)) {
+                    AkronModule.Settings.CoreModeClickBehavior = AkronCoreModeClickBehavior.Toggle;
+                } else if (string.Equals(value, "cycle", StringComparison.OrdinalIgnoreCase)) {
+                    AkronModule.Settings.CoreModeClickBehavior = AkronCoreModeClickBehavior.Cycle;
+                } else {
+                    Log("invalid core-mode click mode: " + value);
+                    return;
+                }
+                break;
+            default:
+                Log("unknown core-mode action: " + action);
+                return;
+        }
+
+        LogCoreModeSettings(level);
+    }
+
+    [Command("akron_set_inventory", "control Set Inventory: status|apply|dashes <0-5>|jumps <0-99>|restore on|off")]
+    public static void SetInventory(string action = "status", string value = "") {
+        switch (NormalizeToken(action)) {
+            case "":
+            case "status":
+                break;
+            case "apply":
+                AkronActions.ApplySetInventory(Engine.Scene as Level);
+                break;
+            case "dashes":
+                if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int dashes)) {
+                    Log("invalid set-inventory dash count: " + value);
+                    return;
+                }
+                AkronModule.Settings.SetInventoryDashes = AkronModuleSettings.ClampSetInventoryDashes(dashes);
+                break;
+            case "jumps":
+                if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int jumps)) {
+                    Log("invalid set-inventory jump count: " + value);
+                    return;
+                }
+                AkronModule.Settings.SetInventoryJumps = AkronModuleSettings.ClampSetInventoryJumps(jumps);
+                break;
+            case "restore":
+                if (!TryParseBoolean(value, out bool restore)) {
+                    Log("invalid set-inventory restore toggle: " + value);
+                    return;
+                }
+                AkronModule.Settings.SetInventoryRestoreOnDeath = restore;
+                if (!restore) {
+                    AkronActions.ClearSetInventory();
+                }
+                break;
+            default:
+                Log("unknown set-inventory action: " + action);
+                return;
+        }
+
+        LogSetInventorySettings();
+    }
+
     [Command("akron_prevent_down_dash_redirects", "control Prevent Down Dash Redirects: disabled|normal|diagonal|toggle|status")]
     public static void PreventDownDashRedirects(string action = "status") {
         SetPreventDownDashRedirects(action);
@@ -235,5 +319,20 @@ public static partial class AkronCommands {
         Level level = Engine.Scene as Level;
         string path = level == null ? string.Empty : AkronPracticeStats.ExportRoomStats(level);
         Log("room-stats-export: " + (string.IsNullOrWhiteSpace(path) ? "unavailable" : path));
+    }
+
+    private static void LogSetInventorySettings() {
+        Log("set-inventory-dashes: " + AkronModuleSettings.ClampSetInventoryDashes(AkronModule.Settings.SetInventoryDashes).ToString(CultureInfo.InvariantCulture));
+        Log("set-inventory-jumps: " + AkronModuleSettings.ClampSetInventoryJumps(AkronModule.Settings.SetInventoryJumps).ToString(CultureInfo.InvariantCulture));
+        Log("set-inventory-restore-on-death: " + AkronModule.Settings.SetInventoryRestoreOnDeath.ToString().ToLowerInvariant());
+        Log("set-inventory-restore-armed: " + (AkronModule.Session?.SetInventoryRestoreSnapshot != null).ToString().ToLowerInvariant());
+    }
+
+    private static void LogCoreModeSettings(Level level) {
+        Log("core-mode-mode: " + AkronActions.FormatCoreMode(AkronModule.Settings.CoreModeOverride));
+        Log("core-mode-click: " + AkronActions.FormatCoreModeClickBehavior(AkronModule.Settings.CoreModeClickBehavior));
+        Log("core-mode-enabled: " + AkronModule.Settings.CoreModeOverrideEnabled.ToString().ToLowerInvariant());
+        Log("core-mode-level: " + (level == null ? "unavailable" : level.CoreMode.ToString()));
+        Log("core-mode-restore-armed: " + (AkronModule.Session?.CoreModeRestoreSnapshot != null).ToString().ToLowerInvariant());
     }
 }

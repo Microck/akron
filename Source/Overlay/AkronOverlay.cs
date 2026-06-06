@@ -55,6 +55,9 @@ public sealed partial class AkronOverlay : Entity {
     private static Color AkronAccentHovered => AkronOverlayThemes.HeaderHoverColor();
     private static Color AkronInactiveIndicator => AkronOverlayThemes.MutedColor();
     private static Color AkronDisabledText => AkronOverlayThemes.DisabledColor();
+    // Match the ImGui popup border alpha so SpriteBatch submenus read as the
+    // same surface instead of a separate visual system.
+    private static Color AkronPopupOutline => Color.White * (0x2E / 255f);
 
     private readonly HashSet<string> collapsedWindowTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> pendingImGuiCollapseSync = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -629,7 +632,9 @@ public sealed partial class AkronOverlay : Entity {
             ? string.Empty
             : hoveredActionLayout.Entry.Tab + "\n" + hoveredActionLayout.Entry.Label;
 
-        if (string.IsNullOrWhiteSpace(nextKey) || !TryGetActionDescription(hoveredActionLayout.Entry.Label, out _)) {
+        if (string.IsNullOrWhiteSpace(nextKey) ||
+            IsSpriteOptionsButtonHovered(hoveredActionLayout, MInput.Mouse.Position) ||
+            !TryGetActionDescription(hoveredActionLayout.Entry.Label, out _)) {
             hoveredTooltipKey = string.Empty;
             hoveredTooltipSeconds = 0f;
             return;
@@ -719,6 +724,11 @@ public sealed partial class AkronOverlay : Entity {
             }
         }
         return true;
+    }
+
+    private static bool IsSpriteOptionsButtonHovered(ActionLayout action, Vector2 mouse) {
+        return action?.Entry.HasOptionsPopup == true &&
+               Contains(GetOptionsButtonRect(action.Rect), mouse);
     }
 
     private static void ExecuteActionEntry(ActionEntry entry, string source) {

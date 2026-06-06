@@ -202,7 +202,7 @@ public static partial class AkronHudRenderer {
 
     private static bool CollidesTrajectoryHazard(Level level, Rectangle bounds) {
         foreach (Entity entity in level.Entities) {
-            if (entity.Collider == null || !IsTrajectoryHazard(entity)) {
+            if (entity.Collider == null || !AkronEntityInspector.IsHazard(entity)) {
                 continue;
             }
 
@@ -212,15 +212,6 @@ public static partial class AkronHudRenderer {
         }
 
         return false;
-    }
-
-    private static bool IsTrajectoryHazard(Entity entity) {
-        string name = entity.GetType().Name;
-        return entity is Spikes ||
-               name.Contains("Spike") ||
-               name.Contains("Hazard") ||
-               name.Contains("Kill") ||
-               name.Contains("Blade");
     }
 
     private static void DrawTrajectoryMarker(Vector2 position, Color color, float alpha, float size) {

@@ -18,6 +18,14 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public const int DefaultHazardAccuracyTintDurationMs = 250;
     public const string DefaultDeathStatsFormat = "$C ($B)";
     public const int DefaultRefillClarityColor = 0xFF2929;
+    public const int DefaultHitboxPlayerColor = 0xFF0000;
+    public const int DefaultHitboxPlayerHurtboxColor = 0x9ACD32;
+    public const int DefaultHitboxSolidColor = 0xFF7F50;
+    public const int DefaultHitboxHazardColor = 0xFF0000;
+    public const int DefaultHitboxTriggerColor = 0x9370DB;
+    public const int DefaultHitboxOtherColor = 0xFF0000;
+    public const int DefaultHitboxDeathColor = 0x8B0000;
+    public const int DefaultHitboxDeathPlayerColor = 0xF5F5F5;
     public const string DefaultScreenshotScannerExportPath = "AkronScreenshotTool_Exports";
     private bool fpsBypass;
     private int fpsBypassTarget = 120;
@@ -254,14 +262,14 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public float HitboxLineThickness { get; set; } = 5f;
     public int HitboxFillOpacity { get; set; }
     public bool HitboxBlackOutline { get; set; }
-    public int HitboxPlayerColor { get; set; } = 0xFFFF00;
-    public int HitboxPlayerHurtboxColor { get; set; } = 0x00FF00;
-    public int HitboxSolidColor { get; set; } = 0xFF0000;
-    public int HitboxHazardColor { get; set; } = 0xFF3030;
-    public int HitboxTriggerColor { get; set; } = 0xFF00FF;
-    public int HitboxOtherColor { get; set; } = 0x00FF00;
-    public int HitboxDeathColor { get; set; } = 0xFF3030;
-    public int HitboxDeathPlayerColor { get; set; } = 0xFFFFFF;
+    public int HitboxPlayerColor { get; set; } = DefaultHitboxPlayerColor;
+    public int HitboxPlayerHurtboxColor { get; set; } = DefaultHitboxPlayerHurtboxColor;
+    public int HitboxSolidColor { get; set; } = DefaultHitboxSolidColor;
+    public int HitboxHazardColor { get; set; } = DefaultHitboxHazardColor;
+    public int HitboxTriggerColor { get; set; } = DefaultHitboxTriggerColor;
+    public int HitboxOtherColor { get; set; } = DefaultHitboxOtherColor;
+    public int HitboxDeathColor { get; set; } = DefaultHitboxDeathColor;
+    public int HitboxDeathPlayerColor { get; set; } = DefaultHitboxDeathPlayerColor;
     public bool EntityInspector { get; set; }
     public bool StepHoldRepeat { get; set; }
     public int StepHoldDelayFrames { get; set; } = 18;
@@ -269,6 +277,9 @@ public partial class AkronModuleSettings : EverestModuleSettings {
 
     public bool InfiniteStamina { get; set; }
     public bool InfiniteDash { get; set; }
+    public int SetInventoryDashes { get; set; } = 2;
+    public int SetInventoryJumps { get; set; }
+    public bool SetInventoryRestoreOnDeath { get; set; }
     public bool DashCountOverride { get; set; }
     public int DashCountOverrideValue { get; set; } = 2;
     public bool DashCountRefillOnRoomEntry { get; set; } = true;
@@ -304,6 +315,9 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int AutoDeafenAreaY { get; set; }
     public int AutoDeafenAreaWidth { get; set; }
     public int AutoDeafenAreaHeight { get; set; }
+    public bool CoreModeOverrideEnabled { get; set; }
+    public AkronCoreModeOverride CoreModeOverride { get; set; } = AkronCoreModeOverride.Hot;
+    public AkronCoreModeClickBehavior CoreModeClickBehavior { get; set; } = AkronCoreModeClickBehavior.Toggle;
     public float TransitionSpeedMultiplier { get; set; } = 1f;
     public AkronTrailVisibility TrailVisibility { get; set; } = AkronTrailVisibility.Vanilla;
     public int TrailCuttingRate { get; set; } = 1;

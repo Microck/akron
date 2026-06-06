@@ -127,6 +127,41 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void Issue18RowsStayInExistingGameplayTabs() {
+        List<string> levelLabels = BuildOverlayEntryLabels("Level");
+        List<string> playerLabels = BuildOverlayEntryLabels("Player");
+        List<string> shortcutLabels = BuildOverlayEntryLabels("Shortcuts");
+
+        Assert.Contains("Core Mode", levelLabels);
+        Assert.Contains("Set Inventory", playerLabels);
+        Assert.Contains("Dream State", playerLabels);
+        Assert.Contains("Spawn Jelly", shortcutLabels);
+        Assert.Contains("Spawn Theo", shortcutLabels);
+
+        Assert.True(HasOverlayOptionsPopup("Core Mode"));
+        Assert.True(HasOverlayOptionsPopup("Set Inventory"));
+        Assert.True(HasOverlayOptionsPopup("Dream State"));
+        Assert.False(HasOverlayOptionsPopup("Spawn Jelly"));
+        Assert.False(HasOverlayOptionsPopup("Spawn Theo"));
+    }
+
+    [Fact]
+    public void CoreModePopupUsesRadioRowsForModeAndClickBehavior() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-gameplay-popups.cs"));
+        int start = source.IndexOf("private void DrawCoreModePopupControls", StringComparison.Ordinal);
+        int end = source.IndexOf("private void DrawSetInventoryPopupControls", start, StringComparison.Ordinal);
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        string coreModePopup = source[start..end];
+
+        Assert.Contains("DrawPopupRowLabel(\"Mode\"", coreModePopup);
+        Assert.Contains("DrawPopupRowLabel(\"Click\"", coreModePopup);
+        Assert.Contains("DrawPopupChoiceRadioButton(", coreModePopup);
+        Assert.DoesNotContain("DrawPopupChoiceCheckbox(", coreModePopup);
+    }
+
+    [Fact]
     public void ToastStackOffsetAddsEveryNewerToastHeightPlusGap() {
         Assert.Equal(0f, AkronToast.CalculateStackOffset(Array.Empty<float>()));
         Assert.Equal(40f, AkronToast.CalculateStackOffset(new[] { 12f, 16f }));
@@ -153,6 +188,15 @@ public sealed class OverlayTests {
         Assert.Contains("ImGui.BeginTooltip()", source);
         Assert.Contains("ImGui.EndTooltip()", source);
         Assert.DoesNotContain("##akron_anchored_tooltip_", source);
+    }
+
+    [Fact]
+    public void ImGuiSubmenusUsePopupOutlineBorder() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-imgui-renderer.cs"));
+
+        Assert.Contains("ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);", source);
+        Assert.Contains("ImGui.PushStyleColor(ImGuiCol.Border, AkronImGuiTheme.PopupOutline);", source);
+        Assert.Contains("ImGui.BeginPopup(popupId)", source);
     }
 
     [Theory]

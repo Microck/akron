@@ -244,6 +244,26 @@ public partial class AkronModuleSettings {
         return ClampValue(dashes, 0, 5);
     }
 
+    public static int ClampSetInventoryDashes(int dashes) {
+        return ClampValue(dashes, 0, 5);
+    }
+
+    public static int ClampSetInventoryJumps(int jumps) {
+        return ClampValue(jumps, 0, 99);
+    }
+
+    public static AkronCoreModeOverride NormalizeCoreModeOverride(AkronCoreModeOverride mode) {
+        return Enum.IsDefined(typeof(AkronCoreModeOverride), mode)
+            ? mode
+            : AkronCoreModeOverride.Hot;
+    }
+
+    public static AkronCoreModeClickBehavior NormalizeCoreModeClickBehavior(AkronCoreModeClickBehavior behavior) {
+        return Enum.IsDefined(typeof(AkronCoreModeClickBehavior), behavior)
+            ? behavior
+            : AkronCoreModeClickBehavior.Toggle;
+    }
+
     public static int ClampDashNumberOffsetY(int offset) {
         return ClampValue(offset, -96, 96);
     }

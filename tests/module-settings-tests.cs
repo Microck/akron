@@ -3,6 +3,7 @@ using Celeste.Mod.Akron;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Monocle;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -917,6 +918,15 @@ public sealed class ModuleSettingsTests {
     }
 
     [Theory]
+    [InlineData(-2, 0)]
+    [InlineData(0, 0)]
+    [InlineData(3, 3)]
+    [InlineData(250, 99)]
+    public void SetInventoryJumpsClampAllowsNoExtraJumps(int input, int expected) {
+        Assert.Equal(expected, AkronModuleSettings.ClampSetInventoryJumps(input));
+    }
+
+    [Theory]
     [InlineData(-50, -20)]
     [InlineData(-2, -2)]
     [InlineData(0, 0)]
@@ -1267,7 +1277,7 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void CreatorPanelPlacesCaptureButtonsBeforeOtherButtons() {
+    public void CreatorPanelGroupsNavigationActionsByScope() {
         List<string> creatorLabels = BuildOverlayEntryLabels("Creator");
 
         Assert.Equal(
@@ -1278,18 +1288,18 @@ public sealed class ModuleSettingsTests {
                 "Free Camera",
                 "Map Capture",
                 "Room Capture",
-                "Export Room Stats",
-                "Export Room Times",
-                "Next Checkpoint",
-                "Next Map",
-                "Next Room",
-                "Open Debug Map",
-                "Previous Checkpoint",
-                "Previous Map",
-                "Previous Room",
                 "Warp Selected Room",
-                "Warp To Next In Order",
-                "Warp To Previous In Order"
+                "Previous Room",
+                "Next Room",
+                "Previous Room In Order",
+                "Next Room In Order",
+                "Previous Checkpoint",
+                "Next Checkpoint",
+                "Previous Map",
+                "Next Map",
+                "Open Debug Map",
+                "Export Room Stats",
+                "Export Room Times"
             },
             creatorLabels);
     }
@@ -1310,6 +1320,16 @@ public sealed class ModuleSettingsTests {
         Assert.True(HasOverlayOptionsPopup("Fast Lookout"));
         Assert.True(HasOverlayOptionsPopup("Audio Speed"));
         Assert.True(HasOverlayOptionsPopup("Pitch Shift"));
+    }
+
+    [Fact]
+    public void SpawnEntityShortcutsUseButtonRowsInsteadOfTriangleOptions() {
+        Dictionary<string, string> shortcutControls = BuildOverlayEntryControls("Shortcuts");
+
+        Assert.Equal("Action", shortcutControls["Spawn Jelly"]);
+        Assert.Equal("Action", shortcutControls["Spawn Theo"]);
+        Assert.False(HasOverlayOptionsPopup("Spawn Jelly"));
+        Assert.False(HasOverlayOptionsPopup("Spawn Theo"));
     }
 
     [Fact]
@@ -1594,6 +1614,96 @@ public sealed class ModuleSettingsTests {
         Assert.Equal(5f, settings.HitboxLineThickness);
         Assert.Equal(0, settings.HitboxFillOpacity);
         Assert.False(settings.HitboxBlackOutline);
+        Assert.Equal(AkronModuleSettings.DefaultHitboxPlayerColor, settings.HitboxPlayerColor);
+        Assert.Equal(AkronModuleSettings.DefaultHitboxPlayerHurtboxColor, settings.HitboxPlayerHurtboxColor);
+        Assert.Equal(AkronModuleSettings.DefaultHitboxSolidColor, settings.HitboxSolidColor);
+        Assert.Equal(AkronModuleSettings.DefaultHitboxHazardColor, settings.HitboxHazardColor);
+        Assert.Equal(AkronModuleSettings.DefaultHitboxTriggerColor, settings.HitboxTriggerColor);
+        Assert.Equal(AkronModuleSettings.DefaultHitboxOtherColor, settings.HitboxOtherColor);
+        Assert.Equal(AkronModuleSettings.DefaultHitboxDeathColor, settings.HitboxDeathColor);
+        Assert.Equal(AkronModuleSettings.DefaultHitboxDeathPlayerColor, settings.HitboxDeathPlayerColor);
+    }
+
+    [Fact]
+    public void HitboxColorDefaultsMatchCelesteTasConvention() {
+        AkronModuleSettings settings = new AkronModuleSettings();
+        AkronProfileState profile = new AkronProfileState();
+
+        Assert.Equal(0xFF0000, settings.HitboxPlayerColor);
+        Assert.Equal(0x9ACD32, settings.HitboxPlayerHurtboxColor);
+        Assert.Equal(0xFF7F50, settings.HitboxSolidColor);
+        Assert.Equal(0xFF0000, settings.HitboxHazardColor);
+        Assert.Equal(0x9370DB, settings.HitboxTriggerColor);
+        Assert.Equal(0xFF0000, settings.HitboxOtherColor);
+        Assert.Equal(0x8B0000, settings.HitboxDeathColor);
+        Assert.Equal(0xF5F5F5, settings.HitboxDeathPlayerColor);
+        Assert.Equal(settings.HitboxPlayerColor, profile.HitboxPlayerColor);
+        Assert.Equal(settings.HitboxPlayerHurtboxColor, profile.HitboxPlayerHurtboxColor);
+        Assert.Equal(settings.HitboxSolidColor, profile.HitboxSolidColor);
+        Assert.Equal(settings.HitboxHazardColor, profile.HitboxHazardColor);
+        Assert.Equal(settings.HitboxTriggerColor, profile.HitboxTriggerColor);
+        Assert.Equal(settings.HitboxOtherColor, profile.HitboxOtherColor);
+        Assert.Equal(settings.HitboxDeathColor, profile.HitboxDeathColor);
+        Assert.Equal(settings.HitboxDeathPlayerColor, profile.HitboxDeathPlayerColor);
+    }
+
+    [Fact]
+    public void PlayerHazardHitboxUsesCelesteTasNormalHurtboxShape() {
+        (int left, int top, int width, int height) = AkronEntityInspector.PixelExactBoundsParts(19f - 4f, 144f - 11f, 8f, 9f);
+
+        AssertHitboxBounds(15, 133, 8, 9, left, top, width, height);
+    }
+
+    [Fact]
+    public void PlayerHazardHitboxFallbackUsesCelesteNormalHurtboxShape() {
+        (int left, int top, int width, int height) = AkronEntityInspector.PixelExactBoundsParts(19f - 4f, 144f - 11f, 8f, 9f);
+
+        AssertHitboxBounds(15, 133, 8, 9, left, top, width, height);
+    }
+
+    [Fact]
+    public void PlayerHazardHitboxUsesCelesteTasPixelRounding() {
+        (int left, int top, int width, int height) = AkronEntityInspector.PixelExactBoundsParts(19.25f - 4f, 144.75f - 11f, 8f, 9f);
+
+        AssertHitboxBounds(15, 133, 9, 10, left, top, width, height);
+    }
+
+    [Theory]
+    [InlineData(typeof(DustStaticSpinnerProbe))]
+    [InlineData(typeof(DustTrackSpinnerProbe))]
+    [InlineData(typeof(DustRotateSpinnerProbe))]
+    [InlineData(typeof(TriggerSpikesProbe))]
+    public void HitboxHazardClassifierCoversThreeCHazardTypes(Type entityType) {
+        Entity entity = Assert.IsAssignableFrom<Entity>(Activator.CreateInstance(entityType));
+
+        Assert.True(AkronEntityInspector.IsHazard(entity));
+    }
+
+    [Fact]
+    public void HitboxHazardClassifierDoesNotTreatRefillsAsHazards() {
+        Assert.False(AkronEntityInspector.IsHazard(new RefillProbe()));
+    }
+
+    private static void AssertHitboxBounds(int expectedLeft, int expectedTop, int expectedWidth, int expectedHeight, int left, int top, int width, int height) {
+        Assert.Equal(expectedLeft, left);
+        Assert.Equal(expectedTop, top);
+        Assert.Equal(expectedWidth, width);
+        Assert.Equal(expectedHeight, height);
+    }
+
+    private sealed class DustStaticSpinnerProbe : Entity {
+    }
+
+    private sealed class DustTrackSpinnerProbe : Entity {
+    }
+
+    private sealed class DustRotateSpinnerProbe : Entity {
+    }
+
+    private sealed class TriggerSpikesProbe : Entity {
+    }
+
+    private sealed class RefillProbe : Entity {
     }
 
     [Fact]
@@ -2715,6 +2825,9 @@ public sealed class ModuleSettingsTests {
             StaminaBarHudPosition = AkronStaminaHudPosition.BottomCenter,
             DashBar = true,
             DashBarHudOffsetY = 96,
+            SetInventoryDashes = 4,
+            SetInventoryJumps = 3,
+            SetInventoryRestoreOnDeath = true,
             MenuActionBindings = new Dictionary<string, string> {
                 ["Shortcuts/Retry"] = "Ctrl+R"
             }
@@ -2735,6 +2848,9 @@ public sealed class ModuleSettingsTests {
             }
         };
         AkronProfilePack pack = AkronProfilePacks.Capture(source, sourceSession, "Practice Setup");
+        Assert.Equal(4, pack.State.SetInventoryDashes);
+        Assert.Equal(3, pack.State.SetInventoryJumps);
+        Assert.True(pack.State.SetInventoryRestoreOnDeath);
 
         AkronModuleSettings startPosOnly = new AkronModuleSettings { AutoKill = false };
         AkronModuleSession startPosSession = new AkronModuleSession();

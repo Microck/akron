@@ -83,6 +83,8 @@ public sealed partial class AkronOverlay {
             ImGuiWindowFlags.NoMove |
             ImGuiWindowFlags.NoSavedSettings |
             ImGuiWindowFlags.AlwaysAutoResize;
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);
+        ImGui.PushStyleColor(ImGuiCol.Border, AkronImGuiTheme.PopupOutline);
         ImGui.Begin(GetImGuiPopupId(popupKey), flags);
 
         imguiPopupBlockedRowsLastFrame = true;
@@ -94,6 +96,8 @@ public sealed partial class AkronOverlay {
             !ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows | ImGuiHoveredFlags.AllowWhenBlockedByActiveItem)) {
             CloseOptionsPopup();
             ImGui.End();
+            ImGui.PopStyleColor();
+            ImGui.PopStyleVar();
             return;
         }
 
@@ -109,6 +113,8 @@ public sealed partial class AkronOverlay {
             ImGui.SetWindowPos(CalculateAnchoredPopupPosition(anchorRect, constrainedActualSize, displaySize));
         }
         ImGui.End();
+        ImGui.PopStyleColor();
+        ImGui.PopStyleVar();
     }
 
     private bool TryGetPopupAnchorRect(string popupKey, out Rectangle rect) {

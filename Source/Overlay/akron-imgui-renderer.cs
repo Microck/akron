@@ -705,6 +705,7 @@ internal static class AkronImGuiTheme {
     public static System.Numerics.Vector4 AccentHovered => ThemeColor(CurrentTheme().HeaderHoverColor, 0xFF);
     public static System.Numerics.Vector4 ButtonHovered => ThemeColor(CurrentTheme().HeaderHoverColor, 0x52);
     public static System.Numerics.Vector4 ButtonActive => ThemeColor(CurrentTheme().HeaderHoverColor, 0x7A);
+    public static readonly System.Numerics.Vector4 PopupOutline = Color(0xFF, 0xFF, 0xFF, 0x2E);
     public static readonly System.Numerics.Vector4 Transparent = Color(0x00, 0x00, 0x00, 0x00);
 
     public static uint ToU32(System.Numerics.Vector4 color) {
