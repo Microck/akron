@@ -15,8 +15,8 @@ Required public surfaces:
 - GitHub tag: `vX.Y.Z`
 - GitHub Release: title, notes, `Akron-vX.Y.Z.zip`, and `Akron-vX.Y.Z.zip.sha256`
 - GameBanana: release update and downloadable file for the same tag
-- README: Olympus one-click handoff and raw-download links point at the published release
-- `akron.micr.dev`: docs are current and fallback GameBanana file ids point at the published file
+- README: Olympus one-click handoff and raw-download links point at Akron's stable install endpoints
+- `akron.micr.dev`: docs are current, install endpoints resolve to the published release, and fallback GameBanana file ids point at the published file
 
 Do not mint a replacement tag for a sync or publishing failure unless rollback or unpublish has been explicitly chosen. Normal recovery repairs the same tag.
 
@@ -133,15 +133,15 @@ gh run list -R Microck/Akron --workflow 'Sync GameBanana README Links' --limit 5
 
 - Verify the rendered mod page shows the new release/update.
 - Verify the latest file is downloadable and matches the released version.
-- Verify the Olympus handoff bridge resolves to the current `everest:` install URL and the raw download URL resolves to the new file id.
+- Verify `https://akron.micr.dev/olympus` resolves to the current `everest:` install URL and `https://akron.micr.dev/raw` resolves to the new raw download file.
 
 4. README:
 
 ```bash
-grep -n 'akron.micr.dev/everest\|gamebanana.com/dl' README.md
+grep -n 'akron.micr.dev/olympus\|akron.micr.dev/raw' README.md
 ```
 
-Confirm the Olympus image points at the Akron handoff bridge and the raw-download link uses the GameBanana file id produced by the release workflow.
+Confirm the image buttons point at Akron's stable install endpoints.
 
 5. `akron.micr.dev`:
 

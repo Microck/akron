@@ -68,13 +68,16 @@ if [ -n "$readme_path" ]; then
     my $file_id = $ENV{"FILE_ID"};
     my $mod_id = $ENV{"MOD_ID"};
 
-    s#(?:everest:)?https://gamebanana\.com/mmdl/\d+,Mod,\Q$mod_id\E#https://akron.micr.dev/everest#g;
-    s#(\[<img src="docs/images/olympus-one-click-install\.png"[^]]*>\]\()[^)]+(\))#$1https://akron.micr.dev/everest$2#g;
-    s#(<a href=")[^"]*(">\s*<img src="docs/images/olympus-one-click-install\.png")#$1https://akron.micr.dev/everest$2#g;
-    s#https://gamebanana\.com/(?:mods/download/\Q$mod_id\E|dl/\d+)#https://gamebanana.com/dl/$file_id#g;
+    s#(?:everest:)?https://gamebanana\.com/mmdl/\d+,Mod,\Q$mod_id\E#https://akron.micr.dev/olympus#g;
+    s#https://akron\.micr\.dev/everest#https://akron.micr.dev/olympus#g;
+    s#(\[<img src="docs/images/olympus-one-click-install\.png"[^]]*>\]\()[^)]+(\))#$1https://akron.micr.dev/olympus$2#g;
+    s#(<a href=")[^"]*(">\s*<img src="docs/images/olympus-one-click-install\.png")#$1https://akron.micr.dev/olympus$2#g;
+    s#https://gamebanana\.com/(?:mods/download/\Q$mod_id\E|dl/\d+)#https://akron.micr.dev/raw#g;
+    s#(\[<img src="docs/images/raw-download\.png"[^]]*>\]\()[^)]+(\))#$1https://akron.micr.dev/raw$2#g;
+    s#(<a href=")[^"]*(">\s*<img src="docs/images/raw-download\.png")#$1https://akron.micr.dev/raw$2#g;
   ' "$readme_path"
 
-  echo "README GameBanana links point to file $latest_file_id for mod $mod_id."
+  echo "README install links point to Akron stable install endpoints for mod $mod_id."
 fi
 
 if [ -n "$website_source_path" ]; then

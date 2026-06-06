@@ -21,8 +21,8 @@ the overlay keeps common player tools close to the game instead of scattered acr
 
 ## quickstart
 
-[<img src="docs/images/olympus-one-click-install.png" alt="Olympus 1-click install" height="50">](https://akron.micr.dev/everest)
-[<img src="docs/images/raw-download.png" alt="raw download" height="50">](https://gamebanana.com/dl/1721480)
+[<img src="docs/images/olympus-one-click-install.png" alt="Olympus 1-click install" height="50">](https://akron.micr.dev/olympus)
+[<img src="docs/images/raw-download.png" alt="raw download" height="50">](https://akron.micr.dev/raw)
 
 1. install Akron with Olympus, or download it from [gamebanana](https://gamebanana.com/mods/681169) and place the downloaded mod archive in your Everest `Mods` folder. do not unzip manual installs unless a release explicitly says to.
 2. launch Celeste through Everest.
