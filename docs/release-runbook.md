@@ -15,7 +15,7 @@ Required public surfaces:
 - GitHub tag: `vX.Y.Z`
 - GitHub Release: title, notes, `Akron-vX.Y.Z.zip`, and `Akron-vX.Y.Z.zip.sha256`
 - GameBanana: release update and downloadable file for the same tag
-- README: one-click install and raw download links point at the published GameBanana file
+- README: GameBanana mod-page and raw-download links point at the published release
 - `akron.micr.dev`: docs are current and fallback GameBanana file ids point at the published file
 
 Do not mint a replacement tag for a sync or publishing failure unless rollback or unpublish has been explicitly chosen. Normal recovery repairs the same tag.
@@ -133,15 +133,15 @@ gh run list -R Microck/Akron --workflow 'Sync GameBanana README Links' --limit 5
 
 - Verify the rendered mod page shows the new release/update.
 - Verify the latest file is downloadable and matches the released version.
-- Verify the one-click install URL resolves to the new file id.
+- Verify the raw download URL resolves to the new file id.
 
 4. README:
 
 ```bash
-grep -n 'gamebanana.com/mmdl\|gamebanana.com/dl' README.md
+grep -n 'gamebanana.com/mods/681169\|gamebanana.com/dl' README.md
 ```
 
-Confirm both links use the GameBanana file id produced by the release workflow.
+Confirm the mod-page link uses the Akron mod id and the raw-download link uses the GameBanana file id produced by the release workflow.
 
 5. `akron.micr.dev`:
 
