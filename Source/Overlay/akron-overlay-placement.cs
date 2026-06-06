@@ -29,7 +29,7 @@ public sealed partial class AkronOverlay {
 
         SearchInputConsumedThisFrame = true;
         SearchOwnsGameplayInputThisFrame = true;
-        Engine.Instance.IsMouseVisible = true;
+        AkronModule.ShowManagedCursorForTransientUi();
 
         MouseState mouse = Mouse.GetState();
         if (MInput.Keyboard.Pressed(Keys.Escape) || MInput.Keyboard.Pressed(Keys.Back) || mouse.RightButton == ButtonState.Pressed) {
@@ -68,7 +68,7 @@ public sealed partial class AkronOverlay {
 
         SearchInputConsumedThisFrame = true;
         SearchOwnsGameplayInputThisFrame = true;
-        Engine.Instance.IsMouseVisible = true;
+        AkronModule.ShowManagedCursorForTransientUi();
         if (MInput.Keyboard.Pressed(Keys.Escape) || MInput.Keyboard.Pressed(Keys.Back) || Mouse.GetState().RightButton == ButtonState.Pressed) {
             if (isAutoDeafen) {
                 EndAutoDeafenAreaSelection(true);
@@ -138,8 +138,12 @@ public sealed partial class AkronOverlay {
         autoKillAreaLastLeftDown = Mouse.GetState().LeftButton == ButtonState.Pressed;
         Visible = false;
         Active = false;
-        Engine.Instance.IsMouseVisible = true;
+        AkronModule.ShowManagedCursorForTransientUi();
         Engine.Scene?.Add(new AkronToast("Auto Kill: frozen. Click two corners per area; Esc/right-click ends."));
+    }
+
+    internal void BeginAutoKillAreaSelectionFromAutomation() {
+        BeginAutoKillAreaSelection();
     }
 
     private void BeginStartPosPlacement() {
@@ -171,7 +175,7 @@ public sealed partial class AkronOverlay {
         startPosPlacementLastLeftDown = Mouse.GetState().LeftButton == ButtonState.Pressed;
         Visible = false;
         Active = false;
-        Engine.Instance.IsMouseVisible = true;
+        AkronModule.ShowManagedCursorForTransientUi();
         Engine.Scene?.Add(new AkronToast("StartPos placement: frozen free camera. Click to place; Esc/right-click ends."));
     }
 
@@ -234,8 +238,12 @@ public sealed partial class AkronOverlay {
         autoDeafenAreaLastLeftDown = Mouse.GetState().LeftButton == ButtonState.Pressed;
         Visible = false;
         Active = false;
-        Engine.Instance.IsMouseVisible = true;
+        AkronModule.ShowManagedCursorForTransientUi();
         Engine.Scene?.Add(new AkronToast("Auto Deafen: frozen. Click two corners per area; Esc/right-click ends."));
+    }
+
+    internal void BeginAutoDeafenAreaSelectionFromAutomation() {
+        BeginAutoDeafenAreaSelection();
     }
 
     private void EndAutoDeafenAreaSelection(bool restoreOverlay) {
@@ -249,6 +257,55 @@ public sealed partial class AkronOverlay {
             Visible = true;
             Active = AkronModule.Settings.ConsumeGameplayInputInMenu;
         }
+    }
+
+    internal bool TryGetPracticeAreaSelectionPreview(Level level, bool isAutoDeafen, out Rectangle area, out bool hasAnchor) {
+        area = new Rectangle();
+        hasAnchor = false;
+        if (level == null || !(isAutoDeafen ? autoDeafenAreaSelectionActive : autoKillAreaSelectionActive)) {
+            return false;
+        }
+
+        Vector2 mouseWorld = AkronScreenProjection.MouseScreenToWorld(level, new Vector2(Mouse.GetState().X, Mouse.GetState().Y));
+        hasAnchor = isAutoDeafen ? autoDeafenAreaHasFirstCorner : autoKillAreaHasFirstCorner;
+        PracticeAreaSelectionPreviewBounds bounds = PracticeAreaSelectionPreviewBoundsFor(
+            mouseWorld,
+            hasAnchor,
+            isAutoDeafen ? autoDeafenAreaFirstCorner : autoKillAreaFirstCorner);
+        area = new Rectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        return true;
+    }
+
+    internal static PracticeAreaSelectionPreviewBounds PracticeAreaSelectionPreviewBoundsFor(Vector2 mouseWorld, bool hasAnchor, Vector2 firstCorner) {
+        return PracticeAreaSelectionPreviewBoundsFor(mouseWorld.X, mouseWorld.Y, hasAnchor, firstCorner.X, firstCorner.Y);
+    }
+
+    internal static PracticeAreaSelectionPreviewBounds PracticeAreaSelectionPreviewBoundsFor(float mouseWorldX, float mouseWorldY, bool hasAnchor, float firstCornerX, float firstCornerY) {
+        if (hasAnchor) {
+            int left = (int) Math.Floor(Math.Min(firstCornerX, mouseWorldX));
+            int top = (int) Math.Floor(Math.Min(firstCornerY, mouseWorldY));
+            int right = (int) Math.Ceiling(Math.Max(firstCornerX, mouseWorldX));
+            int bottom = (int) Math.Ceiling(Math.Max(firstCornerY, mouseWorldY));
+            return new PracticeAreaSelectionPreviewBounds(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
+        }
+
+        int x = (int) Math.Floor(mouseWorldX) - 4;
+        int y = (int) Math.Floor(mouseWorldY) - 4;
+        return new PracticeAreaSelectionPreviewBounds(x, y, 8, 8);
+    }
+
+    internal readonly struct PracticeAreaSelectionPreviewBounds {
+        public PracticeAreaSelectionPreviewBounds(int x, int y, int width, int height) {
+            X = x;
+            Y = y;
+            Width = width;
+            Height = height;
+        }
+
+        public int X { get; }
+        public int Y { get; }
+        public int Width { get; }
+        public int Height { get; }
     }
 
     private static Rectangle RectFromWorldCorners(Vector2 first, Vector2 second) {

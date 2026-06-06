@@ -37,6 +37,12 @@ public partial class AkronModule : EverestModule {
         return Overlay?.EndStartPosPlacementForLoad() == true;
     }
 
+    internal static bool TryGetPracticeAreaSelectionPreview(Level level, bool isAutoDeafen, out Rectangle area, out bool hasAnchor) {
+        area = Rectangle.Empty;
+        hasAnchor = false;
+        return Overlay?.TryGetPracticeAreaSelectionPreview(level, isAutoDeafen, out area, out hasAnchor) == true;
+    }
+
     private static AkronOverlay Overlay;
     private static bool nativeAssistInvincibilityCaptured;
     private static bool previousAssistMode;
@@ -585,7 +591,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void RenderAkronLevelHud(Level level, bool ignoreDeathWipeSuppression = false) {
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, HudSamplerState(), DepthStencilState.None, RasterizerState.CullNone);
         try {
             AkronHudRenderer.Render(level, ignoreDeathWipeSuppression);
             if (AkronCapture.IsCapturingGameFrame) {
@@ -598,6 +604,13 @@ public partial class AkronModule : EverestModule {
         } finally {
             Draw.SpriteBatch.End();
         }
+    }
+
+    internal static SamplerState HudSamplerState() {
+        // Akron HUD text is intentionally user-scalable. Linear filtering keeps
+        // labels readable at non-native scale settings while solid rectangles
+        // and world-area outlines still render with stable edges.
+        return SamplerState.LinearClamp;
     }
 
     private static void RenderAkronScreenProjection(Scene scene) {
@@ -779,7 +792,7 @@ public partial class AkronModule : EverestModule {
             Settings.CustomHudLabelsInNonLevelScenes &&
             !overlayVisible &&
             !Settings.HideAkronHud) {
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Engine.ScreenMatrix);
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, HudSamplerState(), DepthStencilState.None, RasterizerState.CullNone, null, Engine.ScreenMatrix);
             try {
                 float y = 0f;
                 AkronCustomHudLabels.Render(null, null, ref y, Engine.Width, Engine.Height);

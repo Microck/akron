@@ -19,7 +19,8 @@ public static partial class AkronHudRenderer {
                                  settings.AutoKillShowAreaOnDeath &&
                                  settings.HitboxShowLastDeath &&
                                  AkronEntityInspector.HasVisibleLastDeathHitbox();
-        if (!shouldShowLive && !shouldShowOnDeath) {
+        bool shouldShowPreview = AkronModule.TryGetPracticeAreaSelectionPreview(level, isAutoDeafen: false, out Rectangle preview, out bool hasAnchor);
+        if (!shouldShowLive && !shouldShowOnDeath && !shouldShowPreview) {
             return;
         }
 
@@ -28,22 +29,34 @@ public static partial class AkronHudRenderer {
                 DrawWorldRect(level, area, Color.OrangeRed, shouldShowOnDeath ? 0.20f : 0.14f, 2);
             }
         }
+
+        if (shouldShowPreview) {
+            DrawWorldRect(level, preview, Color.OrangeRed, hasAnchor ? 0.18f : 0.10f, hasAnchor ? 2 : 1);
+        }
     }
 
     private static void RenderAutoDeafenArea(Level level) {
         AkronModuleSettings settings = AkronModule.Settings;
-        if (AkronCapture.IsCapturingGameFrame ||
-            level == null ||
-            !settings.AutoDeafen ||
-            !settings.AutoDeafenArea ||
-            !settings.AutoDeafenShowArea) {
+        if (AkronCapture.IsCapturingGameFrame || level == null) {
             return;
         }
 
-        foreach (Rectangle area in AkronModule.GetAutoDeafenAreas()) {
-            if (area.Width > 0 && area.Height > 0) {
-                DrawWorldRect(level, area, Color.DeepSkyBlue, 0.14f, 2);
+        bool shouldShowLive = settings.AutoDeafen && settings.AutoDeafenArea && settings.AutoDeafenShowArea;
+        bool shouldShowPreview = AkronModule.TryGetPracticeAreaSelectionPreview(level, isAutoDeafen: true, out Rectangle preview, out bool hasAnchor);
+        if (!shouldShowLive && !shouldShowPreview) {
+            return;
+        }
+
+        if (shouldShowLive) {
+            foreach (Rectangle area in AkronModule.GetAutoDeafenAreas()) {
+                if (area.Width > 0 && area.Height > 0) {
+                    DrawWorldRect(level, area, Color.DeepSkyBlue, 0.14f, 2);
+                }
             }
+        }
+
+        if (shouldShowPreview) {
+            DrawWorldRect(level, preview, Color.DeepSkyBlue, hasAnchor ? 0.18f : 0.10f, hasAnchor ? 2 : 1);
         }
     }
 

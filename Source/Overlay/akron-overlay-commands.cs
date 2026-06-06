@@ -112,6 +112,36 @@ public static partial class AkronCommands {
         Log("overlay: " + overlay.DescribeState());
     }
 
+    [Command("akron_overlay_select_area", "start overlay area selection: auto-kill|auto-deafen")]
+    public static void OverlaySelectArea(string kind = "") {
+        Scene scene = RequireScene();
+        if (scene == null) {
+            return;
+        }
+
+        AkronOverlay overlay = AkronModule.GetOverlay(scene, ensureVisible: true);
+        if (overlay == null) {
+            Log("overlay area selection failed: " + kind);
+            return;
+        }
+
+        switch (NormalizeToken(kind)) {
+            case "autokill":
+            case "kill":
+                overlay.BeginAutoKillAreaSelectionFromAutomation();
+                Log("overlay-area-selection: auto-kill");
+                return;
+            case "autodeafen":
+            case "deafen":
+                overlay.BeginAutoDeafenAreaSelectionFromAutomation();
+                Log("overlay-area-selection: auto-deafen");
+                return;
+            default:
+                Log("unknown overlay area selection: " + kind);
+                return;
+        }
+    }
+
     [Command("akron_overlay_search", "set Akron overlay search query")]
     public static void OverlaySearch(string query = "", string part2 = "", string part3 = "", string part4 = "", string part5 = "", string part6 = "") {
         Scene scene = RequireScene();
