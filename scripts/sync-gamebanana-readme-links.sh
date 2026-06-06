@@ -68,7 +68,9 @@ if [ -n "$readme_path" ]; then
     my $file_id = $ENV{"FILE_ID"};
     my $mod_id = $ENV{"MOD_ID"};
 
-    s#(?:everest:)?https://gamebanana\.com/mmdl/\d+,Mod,\Q$mod_id\E#https://gamebanana.com/mods/$mod_id#g;
+    s#(?:everest:)?https://gamebanana\.com/mmdl/\d+,Mod,\Q$mod_id\E#https://akron.micr.dev/everest#g;
+    s#(\[<img src="docs/images/olympus-one-click-install\.png"[^]]*>\]\()[^)]+(\))#$1https://akron.micr.dev/everest$2#g;
+    s#(<a href=")[^"]*(">\s*<img src="docs/images/olympus-one-click-install\.png")#$1https://akron.micr.dev/everest$2#g;
     s#https://gamebanana\.com/(?:mods/download/\Q$mod_id\E|dl/\d+)#https://gamebanana.com/dl/$file_id#g;
   ' "$readme_path"
 
