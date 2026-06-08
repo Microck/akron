@@ -73,6 +73,23 @@ Before submitting, confirm that:
 
 Screenshots or video should show the smallest surface that proves the change. Use screenshots for static UI, overlay, path, policy, or layout behavior. Use video for animation, input timing, recording, screen transitions, camera movement, hitboxes, or gameplay state changes.
 
+## Feature Pull Requests
+
+Feature PRs should follow the [Feature adding runbook](docs/contributing/feature-adding-runbook.mdx). The runbook covers expected feature shape, tab placement, ordering, tooltip style, implementation surfaces, tests, and live verification.
+
+For feature PRs, confirm that:
+
+- [ ] The feature type is identified: simple action button, runtime toggle, HUD rendering feature, or other with explanation.
+- [ ] The feature row has one primary behavior, and independent behaviors are split into separate rows or separate PRs.
+- [ ] The row is in the tab users would check first and ordered according to that tab's existing convention.
+- [ ] Overlay row behavior, tooltip/search copy, and optional submenu controls are complete.
+- [ ] Settings, clamps, profile persistence, and defaults are covered if the feature stores configuration.
+- [ ] Command/status output is added when useful for automation or verification.
+- [ ] `AkronFeatureRegistry` and policy tests/docs are updated when the feature affects clean/cheat status.
+- [ ] Public docs are updated for user-facing behavior.
+- [ ] Tests cover settings, persistence, policy, command contracts, or rendering-adjacent logic where applicable.
+- [ ] Live Celeste verification evidence is included for visible, runtime, input, rendering, or gameplay behavior.
+
 ## AI-Assisted Contributions
 
 AI-assisted contributions are allowed. A pull request may contain code, tests, documentation, screenshots, or other changes that were partially or substantially generated with AI assistance.

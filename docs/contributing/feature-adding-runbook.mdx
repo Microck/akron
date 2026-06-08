@@ -1,0 +1,264 @@
+---
+title: Feature adding runbook
+description: Add Akron features with the expected shape, placement, copy, tests, docs, and live verification evidence.
+---
+
+Use this runbook when adding a user-facing Akron feature. Start from the player-visible behavior, then choose the smallest UI shape that expresses it.
+
+Most feature PRs should fit one of these shapes:
+
+| Shape | Use for | Canonical example |
+|---|---|---|
+| Simple action button | One click performs one immediate action. | `Spawn Theo` |
+| Runtime toggle | One setting turns ongoing behavior on or off. | `Infinite Dash` |
+| HUD rendering feature | A setting draws persistent on-screen information. | `Dash Number` |
+
+If the feature does not fit one of these shapes, explain the shape in the pull request before expanding the UI or runtime surface.
+
+## Feature Shape
+
+A feature row should have one primary behavior. Submenu controls may configure that behavior, but they should not quietly add separate features.
+
+Split behavior into separate rows or separate PRs when users would reasonably enable, disable, document, test, or search for each behavior independently.
+
+Good feature shapes:
+
+- `Spawn Theo` spawns a Theo crystal at Madeline's current position.
+- `Spawn Jelly` spawns a jellyfish at Madeline's current position.
+- `Infinite Dash` toggles dash refill behavior.
+- `Dash Number` toggles one HUD number.
+
+Avoid feature bundles:
+
+- Do not make one row that spawns entities, changes inventory, and modifies level state.
+- Do not hide unrelated behavior in a submenu.
+- Do not add a setting that activates behavior while the parent row still reads as off.
+- Do not add a row at the bottom of a tab without checking the tab's local ordering style.
+
+## Placement And Ordering
+
+Pick the tab users would check first. Then follow that tab's existing ordering convention. Some tabs are alphabetical, some are workflow ordered, and some have explicit sort logic.
+
+Do not append a new row to the end by default.
+
+| Tab | Add features here when | Ordering rule |
+|---|---|---|
+| `Player` | The feature directly changes Madeline, player resources, movement, or player-attached information. | Mostly alphabetical. Insert near related player/resource features. |
+| `Level` | The feature affects the current room, chapter, map state, timer, pause behavior, visual tuning, hitboxes, or level-wide rules. | Curated by impact and related systems. Place near the closest system. |
+| `Shortcuts` | The feature is an immediate one-shot action. | Workflow ordered. Keep restart/reload actions, spawn actions, throw actions, and cutscene actions grouped. |
+| `Creator` | The feature helps route building, map navigation, room capture, debug-map work, or entity inspection. | Uses explicit sorting in `SortCreatorEntries`. Add custom rank only when needed. |
+| `Labels` | The feature draws persistent label-style HUD information. | Uses label row order and user row-order behavior. |
+| `Global` | The feature changes Akron-level behavior across scenes. | Curated workflow order. Place near related global controls. |
+| `Interface` | The feature changes menu appearance, search, profile import/export, keybinds, or menu behavior. | Curated workflow order. Place near related interface controls. |
+| `Internal Recorder` | The feature changes recording, replay buffers, clip triggers, output, codec, or proof recording. | Curated recorder workflow order. Place near the matching recorder step. |
+| `Sound` | The feature changes audio routing, volume, pitch, speed, or playback presentation. | Grouped by sound concern. Place in the matching sound group. |
+
+When in doubt, choose the tab based on the user's mental model, not the implementation file.
+
+## File Map
+
+Common starting points:
+
+| Concern | Common files |
+|---|---|
+| Feature behavior | `Source/Actions/akron-actions.cs` or a focused file in `Source/Actions/` or `Source/Runtime/` |
+| Runtime update hooks | `Source/Module/akron-module-player-runtime.cs`, `Source/Module/akron-module-visual-runtime.cs`, `Source/Runtime/akron-*.cs` |
+| Persisted settings | `Source/Module/AkronModuleSettings.cs`, `Source/Module/akron-module-settings-clamps.cs`, `Source/Module/akron-module-settings-display.cs` |
+| Profile persistence | `Source/Profiles/akron-profile-settings.cs`, `Source/Profiles/akron-profile-state.cs`, `Source/Profiles/akron-profile-state-apply.cs` |
+| Overlay row placement | `Source/Overlay/akron-overlay-entries.cs` |
+| Submenu controls | A focused `Source/Overlay/akron-overlay-*-popups.cs` partial |
+| Tooltip and search copy | `Source/Overlay/akron-overlay-copy.cs` |
+| Bindable actions | `Source/Overlay/akron-overlay-bindable-actions.cs` |
+| Commands and status output | `Source/Commands/akron-*-commands.cs` |
+| Policy classification | `Source/Core/AkronFeatureRegistry.cs` |
+| HUD rendering | `Source/Hud/AkronHudRenderer.cs`, `Source/Hud/akron-hud-*.cs` |
+| Tests | `tests/feature-registry-tests.cs`, `tests/module-settings-tests.cs`, feature-specific tests |
+| Public docs | `docs/feature-guide/`, `docs/player-guide/`, `docs/contributing/` |
+
+See [Implementation boundaries](/contributing/implementation-boundaries) for the full ownership map.
+
+## Simple Action Button
+
+Use this path for one-shot behavior such as spawning, exporting, restarting, loading, clearing, or skipping.
+
+Implementation checklist:
+
+- Add a focused action method in the nearest action/runtime file.
+- Gate the action with `AkronModule.TryUse(...)` when using it should record policy use.
+- Add an `Action(...)` row in `Source/Overlay/akron-overlay-entries.cs`.
+- Add search aliases and tooltip copy in `Source/Overlay/akron-overlay-copy.cs`.
+- Add command/status output when automation or live verification needs it.
+- Add or update feature policy classification when the action affects run validity.
+- Update public docs for user-facing behavior.
+- Add tests when behavior is policy-visible, command-visible, persistent, or contract-like.
+- Include live Celeste evidence when unit tests cannot prove the behavior.
+
+Copy template:
+
+```md
+[Verb] [object] [where/when it applies].
+```
+
+Example:
+
+```md
+Spawn a Theo crystal at Madeline's current position.
+```
+
+## Runtime Toggle
+
+Use this path for ongoing behavior controlled by one enabled/disabled state.
+
+Implementation checklist:
+
+- Add a boolean setting only if the toggle must persist.
+- Add clamps or normalization when user input can set related values.
+- Add profile capture/apply coverage when the setting is part of `.akr` setup state.
+- Apply runtime behavior from the appropriate hook or runtime helper.
+- Keep the off state vanilla.
+- Use `PolicyToggle(...)` when the behavior maps to an `AkronFeatureKind`.
+- Add tooltip/search copy.
+- Add command/status output when automation, debugging, or live verification benefits from it.
+- Add tests for defaults, clamps, profile persistence, feature policy, and command contracts.
+- Live-check in Celeste when behavior depends on gameplay timing, inputs, scene state, or hooks.
+
+Copy template:
+
+```md
+[Keep/Allow/Prevent/Show] [behavior] while [condition].
+```
+
+Example:
+
+```md
+Replenish dash count after dash consumption during gameplay updates.
+```
+
+## HUD Rendering Feature
+
+Use this path for persistent on-screen information or player-attached display.
+
+Implementation checklist:
+
+- Add the setting and default.
+- Add the overlay row in the tab where users expect to toggle the display.
+- Add tooltip/search copy.
+- Render from the focused HUD partial closest to the surface.
+- Respect overlay/HUD scale, opacity, viewport bounds, and player overlap behavior when relevant.
+- Avoid layout shifts from dynamic text.
+- Add policy classification when the display reveals gameplay information.
+- Add tests for settings, defaults, policy, and display configuration.
+- Include screenshots for static HUD output and video when timing, animation, or input behavior matters.
+
+Copy template:
+
+```md
+Show [specific value] [where it appears].
+```
+
+Example:
+
+```md
+Show the current dash count as a small number above Madeline.
+```
+
+## Submenus
+
+Submenus are fine when they configure the primary behavior of the row.
+
+Use a submenu when:
+
+- The row has necessary secondary values.
+- The row behavior remains obvious without opening the submenu.
+- The submenu controls all support the same feature, not unrelated behavior.
+- Each control has tooltip copy.
+- Configuration changes do not silently activate the feature unless the row is explicitly an action.
+
+Prefer separate rows when a submenu option would need separate docs, separate policy, separate tests, or separate search behavior.
+
+## Copy Style
+
+Akron UI copy should describe observable behavior, not motivation.
+
+Rules:
+
+- Use title case for feature row labels.
+- Use sentence case for tooltips and docs prose.
+- Start with the action or result.
+- Use player-facing nouns such as `Madeline`, `room`, `chapter`, `checkpoint`, `dash`, and `stamina`.
+- Keep row tooltips to one or two sentences.
+- Put long explanations in docs, not tooltips.
+- Mention risk only when it changes user expectations.
+- Do not repeat policy badge text manually. The UI owns policy display.
+
+Avoid vague words unless the sentence explains the concrete behavior:
+
+| Avoid | Prefer |
+|---|---|
+| Useful | Name what it does. |
+| Advanced | Name the affected system. |
+| Powerful | Name the behavior and risk. |
+| Better | Name the specific change. |
+| Easy | Remove the claim or explain the workflow. |
+
+More examples:
+
+| Surface | Template | Example |
+|---|---|---|
+| Tooltip | `[Verb] [object] [where/when it applies].` | `Spawn a jellyfish at Madeline's current position.` |
+| Runtime toggle tooltip | `[Keep/Allow/Prevent/Show] [behavior] while [condition].` | `Keep player stamina replenished during gameplay updates.` |
+| HUD tooltip | `Show [specific value] [where it appears].` | `Show current speed as a small number above Madeline.` |
+| Docs first sentence | `[Feature name] [does what] [for which workflow].` | `Dash Number shows Madeline's current dash count above her during gameplay.` |
+| PR summary | `Adds [feature name], a [feature type] that [observable behavior].` | `Adds Spawn Theo, a shortcut action that spawns a Theo crystal at Madeline's current position.` |
+
+## Verification
+
+Match verification to risk.
+
+Run focused tests for policy, settings, persistence, commands, and contracts:
+
+```bash
+dotnet test tests/akron-tests.csproj --nologo --filter FeatureRegistryTests
+dotnet test tests/akron-tests.csproj --nologo --filter ModuleSettingsTests
+```
+
+Run the full test project before opening the PR when the change touches shared behavior:
+
+```bash
+dotnet test tests/akron-tests.csproj --nologo
+```
+
+Run formatting on changed C# files:
+
+```bash
+dotnet format Akron.sln --include <changed-csharp-files>
+```
+
+Live Celeste/Everest verification is required when the feature depends on rendering, input timing, screen transitions, camera state, hitboxes, overlay layout, capture output, external integrations, or map-specific runtime state.
+
+Include the smallest evidence that proves the change:
+
+- Test output for unit-level behavior.
+- Command output for command/status surfaces.
+- Screenshot proof for static UI or HUD rendering.
+- Video proof for input timing, animation, transitions, camera movement, hitboxes, and gameplay state changes.
+- Map SID, room, profile/ruleset, and commands used for live checks.
+
+## Feature PR Checklist
+
+Use this checklist in feature pull requests:
+
+- [ ] Feature type identified: simple action button, runtime toggle, HUD rendering feature, or other with explanation.
+- [ ] Feature row has one primary behavior.
+- [ ] Independent behaviors are split into separate rows or separate PRs.
+- [ ] Tab/category matches where users would look first.
+- [ ] Row ordering follows the tab's existing convention.
+- [ ] Overlay row behavior is complete.
+- [ ] Tooltip/search copy is complete.
+- [ ] Submenu controls are complete when used and only configure the primary behavior.
+- [ ] Settings, clamps, defaults, and profile persistence are covered when configuration is stored.
+- [ ] Command/status output is added when useful for automation or verification.
+- [ ] Policy classification and tests are updated when the feature affects clean/cheat status.
+- [ ] Public docs are updated for user-facing behavior.
+- [ ] Tests cover settings, persistence, policy, command contracts, or rendering-adjacent logic where applicable.
+- [ ] Live Celeste verification evidence is included for visible, runtime, input, rendering, or gameplay behavior.

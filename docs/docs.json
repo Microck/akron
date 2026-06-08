@@ -176,6 +176,7 @@
         "pages": [
           "contributing/development-setup",
           "contributing/contribution-workflow",
+          "contributing/feature-adding-runbook",
           "contributing/feature-policy",
           "contributing/testing-and-verification",
           "contributing/public-architecture",
