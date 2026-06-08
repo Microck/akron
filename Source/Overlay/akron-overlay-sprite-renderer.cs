@@ -425,7 +425,7 @@ public sealed partial class AkronOverlay {
                string.Equals(entry.Label, "Spawn Theo", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Neutral Drop", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Backboost", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(entry.Label, "Skip Cutscene / Dialogue", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(entry.Label, "Skip Cutscene", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Export Proof JSON", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Capture StartPos State", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Restore StartPos State", StringComparison.OrdinalIgnoreCase) ||

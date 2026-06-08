@@ -220,7 +220,7 @@ public sealed partial class AkronOverlay {
                     Action("Spawn Theo", () => level != null && level.Tracker.GetEntity<Player>() != null, () => level != null ? "Ready" : "Unavailable", () => AkronActions.SpawnTheo(level), "theo", "theo crystal", "spawn"),
                     Action("Neutral Drop", () => level != null, () => level != null ? "Assist" : "Unavailable", AkronActions.NeutralDrop, "neutral", "drop", "throw"),
                     Action("Backboost", () => level != null, () => level != null ? "Assist" : "Unavailable", AkronActions.Backboost, "throw", "backboost"),
-                    Action("Skip Cutscene / Dialogue", () => level != null, () => level != null && (level.InCutscene || level.SkippingCutscene) ? "Ready" : "No cutscene", () => { if (level != null) AkronActions.SkipCutscene(level); })
+                    Action("Skip Cutscene", () => level != null, () => level != null && (level.InCutscene || level.SkippingCutscene) ? "Ready" : "No cutscene", () => { if (level != null) AkronActions.SkipCutscene(level); })
                 };
             case "Keybinds":
                 return BuildKeybindOverviewEntries(level);

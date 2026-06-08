@@ -181,7 +181,7 @@ public static class AkronFeatureRegistry
         { "Backboost", AkronStatus.Cheat },
         { "Fix Hitbox Pixels", AkronStatus.RegularClean },
         { "Show Hitboxes On Death", AkronStatus.RegularClean },
-        { "Skip Cutscene / Dialogue", AkronStatus.RegularClean },
+        { "Skip Cutscene", AkronStatus.RegularClean },
         { "Theme", AkronStatus.RegularClean },
         { "UI Scale", AkronStatus.RegularClean },
         { "Opacity", AkronStatus.RegularClean },
