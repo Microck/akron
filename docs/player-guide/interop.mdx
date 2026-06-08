@@ -1,0 +1,45 @@
+---
+title: Interop
+description: Set up and use Akron's runtime integrations with Motion Smoothing, Speedrun Tool, CelesteTAS, and Extended Variant Mode.
+---
+
+Akron detects compatible mods at runtime and adds overlay rows automatically. These integrations are optional. If a mod is not installed, its rows do not appear.
+
+External tool actions can change your attempt status. Check the **Attempt status** column for each row before using interop features in a submitted run. See [External Tools](/feature-guide/external-tools) for the full option list.
+
+## Supported Integrations
+
+| Area | What it adds |
+|---|---|
+| Motion Smoothing | FPS Bypass and TPS Bypass rows on the Global tab. |
+| Speedrun Tool | State capture and restore slots, room timer readout, and Tab key conflict mitigation. |
+| CelesteTAS | TAS status detection and a configured `.tas` file playback action. |
+| Extended Variant Mode | Variant reset, master toggle, and randomizer controls. |
+
+## Motion Smoothing
+
+When Motion Smoothing is loaded, Akron drives its FPS Bypass and TPS Bypass settings directly from the overlay. You do not need to configure both mods separately because Akron applies your configured values to Motion Smoothing's runtime.
+
+Both FPS Bypass and TPS Bypass are **Cheat** actions because they change the game's render and simulation cadence.
+
+## Speedrun Tool
+
+Speedrun Tool interop provides state-capture slots, room timer data, and a Tab key conflict fix. The rows appear only when Speedrun Tool is loaded.
+
+- **Tab key conflict**: If both Akron and Speedrun Tool bind Tab, Akron removes Speedrun Tool's Tab binding automatically so the overlay toggle works. This runs at startup and requires no manual configuration.
+- **Room timer**: Akron reads room-timing data from Speedrun Tool's `RoomTimer` export. Room timer actions are **Regular clean** because they read data without changing live gameplay.
+- **State capture and restore**: Capture, restore, and clear actions map to Speedrun Tool's TAS save slots. These are **Cheat** because they change live game state.
+
+## CelesteTAS
+
+CelesteTAS integration detects whether a TAS is active or running and provides a handoff action that starts playback for a configured `.tas` file. The rows appear only when CelesteTAS is loaded.
+
+- **TAS playback** is **Cheat** in Akron's policy model. Keep TAS handoff in practice, testing, or development setups instead of submitted attempts.
+- **TAS status** and **configured file** rows are **Regular clean** because they are read-only.
+
+## Extended Variant Mode
+
+Extended Variant Mode interop exposes variant reset, master toggle, and randomizer controls when the mod is loaded. Akron reads and changes individual variant values at runtime, so the available rows depend on the installed Extended Variant Mode option list.
+
+- **Reset Extended** and **Reset Vanilla** are **Regular clean** because they restore defaults without changing live gameplay.
+- **Extended Variants Master** and **Extended Variants Randomizer** toggles are **Cheat** because they change active gameplay rules.

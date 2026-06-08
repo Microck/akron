@@ -1,0 +1,159 @@
+---
+title: Debug commands
+description: Reference listing for Akron debug console commands, file-backed automation, and QA workflows exposed through Everest's console and DebugRC.
+---
+
+Akron exposes developer-facing console commands through Everest's debug console and DebugRC. These commands route into Akron's runtime services and exist for QA, live verification, and automation.
+
+<Warning>
+  Debug commands are not a player-facing UI. Player-facing documentation covers overlay rows and Everest mod options. Commands serve development, testing, and controlled verification contexts only.
+</Warning>
+
+## Exposure Levels
+
+| Level | Meaning |
+|---|---|
+| UI mirror | The command wraps an overlay row or Everest mod option. UI documentation is the normal player-facing path. |
+| Automation | The command exists so QA can drive the UI or runtime repeatably. |
+| Command-only | No first-class player UI exists. Treat as developer, QA, or controlled review tooling. |
+
+## Common UI Mirrors
+
+| Command | Purpose |
+|---|---|
+| `akron_status` | Dump current Akron runtime state. |
+| `akron_ruleset <none\|casual\|practice\|leaderboard-clean\|sandbox\|everest-safe\|map-maker>` | Switch the advanced primary ruleset setting for QA or controlled verification. |
+| `akron_overlay <toggle\|show\|hide\|status>` | Control the overlay without a hotkey. |
+| `akron_room_capture <start\|stop\|status\|format <png\|jpg>\|markers <on\|off>\|startpos <on\|off>\|autokill <on\|off>\|autodeafen <on\|off>\|removebg <on\|off>\|removefg <on\|off>\|wait <frames>\|horizontal <tiles>\|vertical <tiles>>` | Drive Room Capture. The overlay Room Capture row is the normal player-facing path. |
+| `akron_map_capture <start\|stop\|status\|format <png\|jpg>\|markers <on\|off>\|startpos <on\|off>\|autokill <on\|off>\|autodeafen <on\|off>\|removebg <on\|off>\|removefg <on\|off>\|wait <frames>\|horizontal <tiles>\|vertical <tiles>>` | Drive Map Capture. The overlay Map Capture row is the normal player-facing path. |
+| `akron_startpos <status\|slot <n>\|set\|load\|clear\|prev\|next\|place <on\|off>\|dashes <n>\|stamina <n>\|slots <n>\|facing <current\|left\|right>\|idle <on\|off>\|grab <on\|off>\|label <on\|off>\|respawn <on\|off>>` | Full StartPos control. `akron_save` and `akron_load` provide convenience shortcuts. |
+| `akron_slot <n>` | Set or show the active StartPos slot (1–9). |
+| `akron_save [slot]` | Capture StartPos state into the current or specified slot. |
+| `akron_load [slot]` | Restore StartPos state from the current or specified slot. |
+| `akron_save_time_deaths <on\|off\|status>` | Control whether StartPos restores preserve time and death counters. |
+| `akron_freeze <toggle\|on\|off\|status>` | Control gameplay freeze. |
+| `akron_hitboxes <toggle\|on\|off\|status\|sync>` | Control the hitbox overlay. |
+| `akron_inspector <toggle\|on\|off\|status>` | Control the entity inspector. |
+| `akron_timescale <value\|reset>` | Set absolute timescale using invariant-culture parsing (range 0.1–2.0). |
+| `akron_proof` | Export a proof sidecar JSON file. |
+| `akron_community_packs <status\|url <catalog-url>\|refresh\|category <name>\|search <query>\|list\|import <index>>` | Configure and exercise the community `.akr` catalog. |
+
+## Command-Only or Automation-First
+
+| Command | Scope |
+|---|---|
+| `akron_overlay_move`, `akron_overlay_select`, `akron_overlay_options`, `akron_overlay_exec`, `akron_overlay_search`, `akron_overlay_state`, `akron_overlay_collapse` | Automation controls for driving the overlay without synthetic input. |
+| `akron_perf <status\|reset>` | Developer performance telemetry for overlay/render diagnostics. |
+| `akron_feature <name> [on\|off\|toggle\|status]` | Low-level wrapper over many toggles. Document the concrete overlay row first. |
+| `akron_qa_*`, `akron_player_state`, `akron_input_state` | QA state setup and telemetry for live verification. |
+| `akron_position <x> <y>` | Command-only position setter for controlled map debugging. StartPos and room-warp UI flows are the player-facing paths. |
+| `akron_debug_snapshot [tag]` | Diagnostic JSON artifact for bug reports and automation. |
+| `akron_editable_flag [value]` | Console mirror for the Everest Editable Flag Name setting; the flag inspector is developer/map-inspection tooling. |
+| `akron_tas_file [path]` | Console mirror for the Everest TAS File Path setting; the overlay can show and play the configured file. |
+| `akron_play_tas` | Run the configured TAS handoff action for automation. |
+| `akron_broker_prompt <save\|load>`, `akron_prompt_state`, `akron_prompt_select` | Prompt automation for tests and live verification. |
+| `akron_broker_warnings <on\|off\|status>` | Show or set Speedrun Tool broker warning behavior. |
+| `akron_toggle_force_broker`, `akron_toggle_unsafe_native_override`, `akron_toggle_everest_safe_override` | Per-map compatibility override commands. Everest's Akron mod options are the normal manual testing path. |
+
+## Extended Gameplay Commands
+
+| Command | Purpose |
+|---|---|
+| `akron_golden_start_helper` | Run the golden start helper when the current room is the first room. |
+| `akron_journal_snapshot` | Write and compare a journal proof snapshot. |
+| `akron_neutral_drop` | Trigger the Neutral Drop shortcut. |
+| `akron_backboost` | Trigger the Backboost shortcut. |
+| `akron_prevent_down_dash_redirects <disabled\|normal\|diagonal\|toggle\|status>` | Control Prevent Down Dash Redirects mode. |
+| `akron_step_repeat <on\|off\|status\|delay <frames>\|interval <frames>\|key <key>\|reset-key>` | Control frozen hold-repeat stepping. |
+| `akron_step_frame` | Request one gameplay frame while Akron freeze is active. |
+| `akron_skip_cutscene` | Request a cutscene or dialogue skip. |
+| `akron_room_stats_export` | Export room stats for the current map. |
+
+## Camera and Visual Commands
+
+| Command | Purpose |
+|---|---|
+| `akron_camera_offset <on\|off\|toggle\|status\|set <x> <y>\|reset>` | Control camera offset. |
+| `akron_cursor_zoom <on\|off\|status\|set <percent>\|step <percent>\|allow-zoom-out <on\|off>\|reset-on-deactivate <on\|off>\|mode <hold\|toggle>\|reset>` | Control cursor zoom. |
+| `akron_noclip <on\|off\|status\|speed <n>\|float-speed <n>\|draw-on-top <on\|off>\|hide-player <on\|off>>` | Control fly noclip mode. |
+| `akron_no_freeze_frames <on\|off\|toggle\|status>` | Control No Freeze Frames. |
+| `akron_madeline_colors <on\|off\|status\|no-dash <on\|off>\|one-dash <on\|off>\|…>` | Control Madeline Colors per dash state. |
+| `akron_frame_bypass <status\|fps <on\|off>\|fps-target <60-480>\|tps <on\|off>\|tps-target <30-480>\|…>` | Control frame bypass options. |
+| `akron_megahack_public <action>` | MegaHack-public compatibility layer for overlay opacity, pause buffering, trail, jump hack, respawn time, and trajectory settings. |
+
+## Hitbox and HUD Commands
+
+| Command | Purpose |
+|---|---|
+| `akron_hitbox_filter <active-only\|hide-player\|hazards\|solids\|triggers\|last-death\|death-all> <on\|off\|status>` | Control hitbox display filters. |
+| `akron_hitbox_style <status\|reset\|trail <on\|off>\|length <1-240>\|…>` | Control hitbox visual style. |
+| `akron_hud_labels <on\|off\|status\|preset <name>\|select <n>\|…>` | Control custom HUD labels. |
+| `akron_hud_cheat_indicator <on\|off\|status\|style <text\|dot>\|…>` | Control HUD cheat indicator. |
+| `akron_resource_hud <on\|off\|status\|stamina <on\|off>\|dash <on\|off>\|…>` | Control resource HUD. |
+| `akron_dash_bar <on\|off\|status\|player <on\|off>\|hud <on\|off>\|…>` | Control dash bar display. |
+| `akron_dash_count <on\|off\|status\|max <0-5>\|room-entry <on\|off>\|…>` | Control dash count tools. |
+| `akron_speed_number <on\|off\|status\|mode <total\|horizontal\|vertical>\|…>` | Control Speed Number display. |
+| `akron_air_jumps <on\|off\|status\|infinite <on\|off>\|extra <n>>` | Control Air Jumps. |
+| `akron_ground_refills <on\|off\|status\|dash <on\|off>\|stamina <on\|off>>` | Control Ground Refills. |
+
+## Input and Utility Commands
+
+| Command | Purpose |
+|---|---|
+| `akron_input_history <on\|off\|status\|length <n>\|placement <left\|right>\|opacity <30-100>\|compact <on\|off>>` | Control input history display. |
+| `akron_control_display <on\|off\|toggle\|status\|preset <default\|split\|compact\|keyboard\|bar>\|reset\|…>` | Control live input board. |
+| `akron_autosave <on\|off\|toggle\|save\|hide-icon-on\|hide-icon-off\|hide-icon-toggle\|status>` | Control Autosave behavior. |
+| `akron_deload_spinners <on\|off\|toggle\|status\|now\|delay <seconds>>` | Control spinner deload simulation. |
+| `akron_sound_volume <status\|on <key>\|off <key>\|volume <key> <0-200>>` | Control per-SFX volume. |
+| `akron_bypass <status\|low-volume <on\|off>\|volume <music> <sfx>\|instant-complete\|unlock-a-sides\|unlock-b-sides\|unlock-c-sides\|unlock-all-levels\|unlock-golden-berries\|unlock-paths\|obtain-room-berries\|obtain-chapter-berries\|berry-options>` | Bypass options for testing. |
+| `akron_evm <status\|master <on\|off>\|reset\|list\|set <variant> <value>\|configure <variant> <value>\|toggle <variant>>` | Extended Variant Mode control. |
+
+## Profile, Theme, and Settings Commands
+
+| Command | Purpose |
+|---|---|
+| `akron_profile [none\|casual\|practice\|leaderboard-clean\|sandbox\|map-maker\|accessibility\|export [scope] [name]\|import [scope] <file>\|import-latest [scope]]` | Show, apply, import, or export Akron profiles. |
+| `akron_theme <status\|next\|copy-custom\|export [name]\|import <file>\|import-latest>` | Manage overlay themes. |
+| `akron_community_rulesets <list\|apply <id-or-label>>` | List or apply community rulesets. |
+| `akron_grab_mode <on\|off\|toggle-enabled\|hold\|toggle\|invert\|status>` | Show or set Celeste grab mode. |
+| `akron_menu_input <on\|off\|status>` | Control whether Akron consumes menu input while open. |
+| `akron_menu_pause <toggle\|on\|off\|status>` | Control whether Akron pauses gameplay while open. |
+| `akron_internal_recorder <start\|stop\|start-replay\|stop-replay\|disarm-completion\|save-replay\|arm-completion\|flag-completion\|build-clear-video\|status>` | Internal Recorder control for automation. |
+
+## Community Pack Commands
+
+```text
+akron_community_packs status
+akron_community_packs url <catalog-url>
+akron_community_packs refresh
+akron_community_packs category StartPos
+akron_community_packs search beginner lobby
+akron_community_packs list
+akron_community_packs import 0
+```
+
+`list` prints the currently filtered zero-based entries. `import` downloads the selected `.akr` and imports it through the same scoped path as the in-game button.
+
+## File-Backed Automation Queue
+
+When DebugRC's `/console` endpoint is unreliable, Akron can process a file-backed queue on the game thread.
+
+| File | Purpose |
+|---|---|
+| `Saves/AkronAutomation/command.txt` | Newline-delimited commands to run. |
+| `Saves/AkronAutomation/last-command.txt` | Consumed input. |
+| `Saves/AkronAutomation/last-result.txt` | Plain-text result with pending/complete status. |
+
+Akron executes one command per frame so structural actions such as load or room transitions do not stack unsafely inside a single update.
+
+## Verification Scenarios
+
+Commands support repeatable live verification scenarios:
+
+- Show the overlay before screenshots.
+- Switch advanced ruleset settings without relying on fragile input.
+- Exercise StartPos, freeze, hitbox, inspector, and proof surfaces.
+- Refresh and import community packs.
+- Capture proof sidecars for comparison.
+
+Command-only controls should not appear in player tutorials unless a normal UI path exists first.
