@@ -19,6 +19,9 @@ public static partial class AkronCommands {
                     return;
                 }
                 AkronModule.Settings.AutoKill = true;
+                if (!AkronModule.Settings.AutoKillTimer && !AkronModule.Settings.AutoKillArea) {
+                    AkronModule.Settings.AutoKillTimer = true;
+                }
                 break;
             case "off":
                 AkronModule.Settings.AutoKill = false;
@@ -29,6 +32,9 @@ public static partial class AkronCommands {
                     return;
                 }
                 AkronModule.Settings.AutoKill = !AkronModule.Settings.AutoKill;
+                if (AkronModule.Settings.AutoKill && !AkronModule.Settings.AutoKillTimer && !AkronModule.Settings.AutoKillArea) {
+                    AkronModule.Settings.AutoKillTimer = true;
+                }
                 break;
             case "timer":
                 if (!TryParseBoolean(value, out bool timer)) {
@@ -36,6 +42,9 @@ public static partial class AkronCommands {
                     return;
                 }
                 AkronModule.Settings.AutoKillTimer = timer;
+                if (timer) {
+                    AkronModule.Settings.AutoKillArea = false;
+                }
                 break;
             case "seconds":
                 if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds)) {

@@ -50,6 +50,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     private static int initializationRetryFrames;
     private static string lastFailure = string.Empty;
     private static bool renderDiagnosticLogged;
+    private static bool renderInProgress;
 
     private AkronImGuiRenderer(GraphicsDevice graphicsDevice) {
         this.graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
@@ -101,11 +102,16 @@ internal sealed class AkronImGuiRenderer : IDisposable {
             return false;
         }
 
+        if (renderInProgress) {
+            return false;
+        }
+
         if (initializationFailed && initializationRetryFrames-- > 0) {
             return false;
         }
 
         try {
+            renderInProgress = true;
             initializationFailed = false;
             instance ??= new AkronImGuiRenderer(Engine.Instance.GraphicsDevice);
             instance.RenderFrame(drawLayout);
@@ -118,6 +124,8 @@ internal sealed class AkronImGuiRenderer : IDisposable {
             Logger.Log(LogLevel.Error, nameof(AkronImGuiRenderer), "Akron ImGui overlay render failed; retrying after a short cooldown: " + exception);
             Engine.Scene?.Add(new AkronToast("Akron ImGui overlay failed. Check Everest log."));
             return false;
+        } finally {
+            renderInProgress = false;
         }
     }
 
@@ -232,8 +240,10 @@ internal sealed class AkronImGuiRenderer : IDisposable {
             ImDrawDataPtr diagnosticDrawData = ImGui.GetDrawData();
             Logger.Log(LogLevel.Info, nameof(AkronImGuiRenderer), "ImGui draw data: cmdLists=" + diagnosticDrawData.CmdListsCount + ", vertices=" + diagnosticDrawData.TotalVtxCount + ", indices=" + diagnosticDrawData.TotalIdxCount + ".");
         }
-        unsafe {
-            RenderDrawData(ImGui.GetDrawData());
+        using (new GraphicsDeviceStateScope(graphicsDevice)) {
+            unsafe {
+                RenderDrawData(ImGui.GetDrawData());
+            }
         }
         long drawEnd = Stopwatch.GetTimestamp();
         AkronPerformanceTelemetry.RecordOverlayRenderCost(
@@ -520,6 +530,55 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         using MemoryStream memory = new MemoryStream();
         stream.CopyTo(memory);
         return memory.ToArray();
+    }
+
+    private sealed class GraphicsDeviceStateScope : IDisposable {
+        private readonly GraphicsDevice graphicsDevice;
+        private readonly RenderTargetBinding[] renderTargets;
+        private readonly Viewport viewport;
+        private readonly XnaRectangle scissorRectangle;
+        private readonly RasterizerState rasterizerState;
+        private readonly DepthStencilState depthStencilState;
+        private readonly BlendState blendState;
+        private readonly XnaColor blendFactor;
+        private readonly IndexBuffer indices;
+        private readonly VertexBufferBinding[] vertexBuffers;
+        private readonly Texture texture0;
+        private readonly SamplerState sampler0;
+
+        public GraphicsDeviceStateScope(GraphicsDevice graphicsDevice) {
+            this.graphicsDevice = graphicsDevice;
+            renderTargets = graphicsDevice.GetRenderTargets();
+            viewport = graphicsDevice.Viewport;
+            scissorRectangle = graphicsDevice.ScissorRectangle;
+            rasterizerState = graphicsDevice.RasterizerState;
+            depthStencilState = graphicsDevice.DepthStencilState;
+            blendState = graphicsDevice.BlendState;
+            blendFactor = graphicsDevice.BlendFactor;
+            indices = graphicsDevice.Indices;
+            vertexBuffers = graphicsDevice.GetVertexBuffers();
+            texture0 = graphicsDevice.Textures[0];
+            sampler0 = graphicsDevice.SamplerStates[0];
+        }
+
+        public void Dispose() {
+            if (renderTargets.Length == 0) {
+                graphicsDevice.SetRenderTarget(null);
+            } else {
+                graphicsDevice.SetRenderTargets(renderTargets);
+            }
+
+            graphicsDevice.Viewport = viewport;
+            graphicsDevice.ScissorRectangle = scissorRectangle;
+            graphicsDevice.RasterizerState = rasterizerState;
+            graphicsDevice.DepthStencilState = depthStencilState;
+            graphicsDevice.BlendState = blendState;
+            graphicsDevice.BlendFactor = blendFactor;
+            graphicsDevice.Indices = indices;
+            graphicsDevice.SetVertexBuffers(vertexBuffers);
+            graphicsDevice.Textures[0] = texture0;
+            graphicsDevice.SamplerStates[0] = sampler0;
+        }
     }
 
     private static void RegisterNativeResolver() {

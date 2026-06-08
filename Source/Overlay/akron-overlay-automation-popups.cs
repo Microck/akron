@@ -5,11 +5,30 @@ namespace Celeste.Mod.Akron;
 
 public sealed partial class AkronOverlay {
     private void DrawAutoKillPopupControls(string popupId) {
-        bool timer = AkronModule.Settings.AutoKillTimer;
-        if (ImGui.Checkbox("Timer kill##" + popupId, ref timer)) {
-            AkronModule.Settings.AutoKillTimer = timer;
-        }
-        DrawPopupTooltip("Kill the attempt when current map time reaches the configured threshold.");
+        DrawPopupRowLabel("Method", CalculatePopupLabelWidth(96f));
+        float choiceColumnX = ImGui.GetCursorPosX();
+        DrawPopupChoiceRadioButton(
+            "Timer",
+            AkronModule.Settings.AutoKillTimer && !AkronModule.Settings.AutoKillArea,
+            () => {
+                AkronModule.Settings.AutoKillTimer = true;
+                AkronModule.Settings.AutoKillArea = false;
+            },
+            popupId,
+            "Kill the attempt when current map time reaches the configured threshold.",
+            choiceColumnX,
+            false);
+        DrawPopupChoiceRadioButton(
+            "Area",
+            AkronModule.Settings.AutoKillArea,
+            () => {
+                AkronModule.Settings.AutoKillArea = true;
+                AkronModule.Settings.AutoKillTimer = false;
+            },
+            popupId,
+            "Kill the attempt when Madeline enters any selected rectangle.",
+            choiceColumnX,
+            true);
 
         DrawIntStepperRow(
             "Seconds",
@@ -21,12 +40,6 @@ public sealed partial class AkronOverlay {
             3600,
             popupId,
             "Map-time threshold where Auto Kill kills the player.");
-
-        bool area = AkronModule.Settings.AutoKillArea;
-        if (ImGui.Checkbox("Area kill##" + popupId, ref area)) {
-            AkronModule.Settings.AutoKillArea = area && AkronModule.GetAutoKillAreas().Count > 0;
-        }
-        DrawPopupTooltip("Kill the attempt when Madeline enters any selected rectangle.");
 
         bool showArea = AkronModule.Settings.AutoKillShowArea;
         if (ImGui.Checkbox("Show area##" + popupId, ref showArea)) {

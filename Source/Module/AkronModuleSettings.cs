@@ -296,7 +296,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool GrabModeOverrideEnabled { get; set; }
     public GrabModes GrabModeOverrideMode { get; set; } = GrabModes.Toggle;
     public bool AutoKill { get; set; }
-    public bool AutoKillTimer { get; set; }
+    public bool AutoKillTimer { get; set; } = true;
     public int AutoKillSeconds { get; set; } = 60;
     public bool AutoKillArea { get; set; }
     public bool AutoKillShowArea { get; set; } = true;

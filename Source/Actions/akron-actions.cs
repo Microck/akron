@@ -71,8 +71,9 @@ public static partial class AkronActions {
 
         int dashes = AkronModuleSettings.ClampSetInventoryDashes(AkronModule.Settings.SetInventoryDashes);
         int jumps = AkronModuleSettings.ClampSetInventoryJumps(AkronModule.Settings.SetInventoryJumps);
-        return dashes.ToString(CultureInfo.InvariantCulture) + " dash" + (dashes == 1 ? string.Empty : "es") +
-               " / " + jumps.ToString(CultureInfo.InvariantCulture) + " jump" + (jumps == 1 ? string.Empty : "s");
+        string summary = dashes.ToString(CultureInfo.InvariantCulture) + " dash" + (dashes == 1 ? string.Empty : "es") +
+                         " / " + jumps.ToString(CultureInfo.InvariantCulture) + " jump" + (jumps == 1 ? string.Empty : "s");
+        return IsSetInventoryActive() ? "On | " + summary : summary;
     }
 
     public static void ToggleSetInventory(Level level) {
@@ -82,6 +83,7 @@ public static partial class AkronActions {
             return;
         }
 
+        AkronModule.Settings.SetInventoryRestoreOnDeath = true;
         ApplySetInventory(level);
     }
 
@@ -203,9 +205,8 @@ public static partial class AkronActions {
             return "No level";
         }
 
-        return AkronModule.Settings.CoreModeOverrideEnabled
-            ? FormatCoreMode(AkronModule.Settings.CoreModeOverride)
-            : "Off";
+        string mode = FormatCoreMode(AkronModule.Settings.CoreModeOverride);
+        return AkronModule.Settings.CoreModeOverrideEnabled ? "On | " + mode : "Off | " + mode;
     }
 
     public static void ToggleCoreMode(Level level) {
@@ -216,19 +217,30 @@ public static partial class AkronActions {
         }
 
         if (AkronModule.Settings.CoreModeClickBehavior == AkronCoreModeClickBehavior.Cycle) {
-            CaptureCoreModeRestoreSnapshot(level, session);
-            AkronModule.Settings.CoreModeOverride = AkronModule.Settings.CoreModeOverride == AkronCoreModeOverride.Hot
+            AkronCoreModeOverride nextMode = AkronModule.Settings.CoreModeOverride == AkronCoreModeOverride.Hot
                 ? AkronCoreModeOverride.Cold
                 : AkronCoreModeOverride.Hot;
-            AkronModule.Settings.CoreModeOverrideEnabled = true;
-            ApplyCoreMode(level, AkronModule.Settings.CoreModeOverride);
+            ApplyCoreModeOverride(level, session, nextMode);
             return;
         }
 
         if (!AkronModule.Settings.CoreModeOverrideEnabled) {
-            CaptureCoreModeRestoreSnapshot(level, session);
-            AkronModule.Settings.CoreModeOverrideEnabled = true;
-            ApplyCoreMode(level, AkronModule.Settings.CoreModeOverride);
+            ApplyCoreModeOverride(level, session, AkronModule.Settings.CoreModeOverride);
+            return;
+        }
+
+        DisableCoreModeOverride(level, session);
+    }
+
+    public static void SetCoreModeOverrideEnabled(Level level, bool enabled) {
+        AkronModuleSession session = AkronModule.Session;
+        if (level == null || session == null) {
+            Engine.Scene?.Add(new AkronToast("Core Mode is unavailable outside a level."));
+            return;
+        }
+
+        if (enabled) {
+            ApplyCoreModeOverride(level, session, AkronModule.Settings.CoreModeOverride);
             return;
         }
 
@@ -236,6 +248,10 @@ public static partial class AkronActions {
     }
 
     public static void ApplyCoreMode(Level level, AkronCoreModeOverride mode) {
+        ApplyCoreModeOverride(level, AkronModule.Session, mode);
+    }
+
+    private static void ApplyCoreModeOverride(Level level, AkronModuleSession session, AkronCoreModeOverride mode) {
         if (level == null) {
             return;
         }
@@ -244,8 +260,13 @@ public static partial class AkronActions {
             return;
         }
 
+        if (session != null) {
+            CaptureCoreModeRestoreSnapshot(level, session);
+        }
+
         mode = AkronModuleSettings.NormalizeCoreModeOverride(mode);
         AkronModule.Settings.CoreModeOverride = mode;
+        AkronModule.Settings.CoreModeOverrideEnabled = true;
         level.CoreMode = ToSessionCoreMode(mode);
         Engine.Scene?.Add(new AkronToast("Core Mode: " + FormatCoreMode(mode) + "."));
     }

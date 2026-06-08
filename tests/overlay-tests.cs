@@ -146,7 +146,7 @@ public sealed class OverlayTests {
     }
 
     [Fact]
-    public void CoreModePopupUsesRadioRowsForModeAndClickBehavior() {
+    public void CoreModePopupUsesRadioRowsForStatusModeAndClickBehavior() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-gameplay-popups.cs"));
         int start = source.IndexOf("private void DrawCoreModePopupControls", StringComparison.Ordinal);
         int end = source.IndexOf("private void DrawSetInventoryPopupControls", start, StringComparison.Ordinal);
@@ -159,6 +159,53 @@ public sealed class OverlayTests {
         Assert.Contains("DrawPopupRowLabel(\"Click\"", coreModePopup);
         Assert.Contains("DrawPopupChoiceRadioButton(", coreModePopup);
         Assert.DoesNotContain("DrawPopupChoiceCheckbox(", coreModePopup);
+    }
+
+    [Fact]
+    public void AutoKillPopupUsesMethodRadioRows() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-automation-popups.cs"));
+        int start = source.IndexOf("private void DrawAutoKillPopupControls", StringComparison.Ordinal);
+        int end = source.IndexOf("private void DrawAutoDeafenPopupControls", start, StringComparison.Ordinal);
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        string autoKillPopup = source[start..end];
+
+        Assert.Contains("DrawPopupRowLabel(\"Method\"", autoKillPopup);
+        Assert.Contains("float choiceColumnX = ImGui.GetCursorPosX();", autoKillPopup);
+        Assert.Contains("choiceColumnX,\n            true", autoKillPopup);
+        Assert.Contains("DrawPopupChoiceRadioButton(", autoKillPopup);
+        Assert.DoesNotContain("Timer kill", autoKillPopup);
+        Assert.DoesNotContain("Area kill", autoKillPopup);
+    }
+
+    [Fact]
+    public void SetInventoryPopupUsesSetButtonAndArmsRestoreSnapshot() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-gameplay-popups.cs"));
+        int start = source.IndexOf("private void DrawSetInventoryPopupControls", StringComparison.Ordinal);
+        int end = source.IndexOf("private void DrawDreamStatePopupControls", start, StringComparison.Ordinal);
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        string setInventoryPopup = source[start..end];
+
+        Assert.Contains("ImGui.Button(\"Set##\"", setInventoryPopup);
+        Assert.Contains("AkronModule.Settings.SetInventoryRestoreOnDeath = true;", setInventoryPopup);
+        Assert.DoesNotContain("Apply now##", setInventoryPopup);
+    }
+
+    [Fact]
+    public void ActionRowsCanReadToggleStateForMainMenuColoring() {
+        string renderer = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-imgui-renderer.cs"));
+        Assert.Contains("entry.Control == OverlayEntryControl.Action && !entry.IsToggle", renderer);
+    }
+
+    [Fact]
+    public void AreaPixelMarkerDoesNotUseYOffset() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Hud/akron-hud-world-overlay-renderer.cs"));
+
+        Assert.DoesNotContain("PracticeAreaPixelMarkerYOffset", source);
+        Assert.DoesNotContain("Math.Floor(rect.Y) +", source);
     }
 
     [Fact]
@@ -197,6 +244,33 @@ public sealed class OverlayTests {
         Assert.Contains("ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);", source);
         Assert.Contains("ImGui.PushStyleColor(ImGuiCol.Border, AkronImGuiTheme.PopupOutline);", source);
         Assert.Contains("ImGui.BeginPopup(popupId)", source);
+    }
+
+    [Fact]
+    public void AkronOverlayDoesNotHookNestedWorldRenderPasses() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/AkronModule.cs"));
+
+        Assert.DoesNotContain("On.Celeste.Level.Render += LevelOnRender", source);
+        Assert.DoesNotContain("On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender", source);
+        Assert.DoesNotContain("private static void LevelOnRender(", source);
+        Assert.DoesNotContain("private static void GameplayRendererOnRender(", source);
+        Assert.Contains("On.Monocle.Engine.RenderCore += EngineOnRenderCore", source);
+        Assert.Contains("RenderAkronHitboxHud(postRenderLevel);", source);
+        Assert.Contains("RenderAkronLevelHud(postRenderLevel);", source);
+    }
+
+    [Fact]
+    public void ImGuiRendererRestoresGraphicsDeviceState() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-imgui-renderer.cs"));
+
+        Assert.Contains("private sealed class GraphicsDeviceStateScope", source);
+        Assert.Contains("graphicsDevice.GetRenderTargets()", source);
+        Assert.Contains("graphicsDevice.SetRenderTargets(renderTargets)", source);
+        Assert.Contains("graphicsDevice.GetVertexBuffers()", source);
+        Assert.Contains("graphicsDevice.SetVertexBuffers(vertexBuffers)", source);
+        Assert.Contains("graphicsDevice.Textures[0]", source);
+        Assert.Contains("graphicsDevice.SamplerStates[0]", source);
+        Assert.Contains("using (new GraphicsDeviceStateScope(graphicsDevice))", source);
     }
 
     [Theory]

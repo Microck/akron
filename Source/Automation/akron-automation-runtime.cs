@@ -158,11 +158,13 @@ public partial class AkronModule {
         Settings.AutoKillAreaWidth = clamped.Width;
         Settings.AutoKillAreaHeight = clamped.Height;
         Settings.AutoKillArea = Settings.AutoKillAreas.Count > 0;
+        Settings.AutoKillTimer = false;
         Settings.AutoKillShowArea = true;
     }
 
     public static void ClearAutoKillArea() {
         Settings.AutoKillArea = false;
+        Settings.AutoKillTimer = true;
         Settings.AutoKillAreas = new List<AkronRectangleData>();
         Settings.AutoKillAreaX = 0;
         Settings.AutoKillAreaY = 0;

@@ -108,8 +108,6 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.UpdateTime += LevelOnUpdateTime;
         On.Celeste.Level.Update += LevelOnUpdate;
         On.Celeste.Level.BeforeRender += LevelOnBeforeRender;
-        On.Celeste.Level.Render += LevelOnRender;
-        On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent += HudRendererOnRenderContent;
         On.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiOnRender;
         On.Celeste.MiniTextbox.Render += MiniTextboxOnRender;
@@ -206,8 +204,6 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.UpdateTime -= LevelOnUpdateTime;
         On.Celeste.Level.Update -= LevelOnUpdate;
         On.Celeste.Level.BeforeRender -= LevelOnBeforeRender;
-        On.Celeste.Level.Render -= LevelOnRender;
-        On.Celeste.GameplayRenderer.Render -= GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent -= HudRendererOnRenderContent;
         On.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiOnRender;
         On.Celeste.MiniTextbox.Render -= MiniTextboxOnRender;
@@ -554,42 +550,6 @@ public partial class AkronModule : EverestModule {
         return ex?.StackTrace?.IndexOf("DustEdges.BeforeRender", StringComparison.Ordinal) >= 0;
     }
 
-    private static void LevelOnRender(On.Celeste.Level.orig_Render orig, Level self) {
-        orig(self);
-        if (deathWipeRenderSuppressionActive && self.Transitioning) {
-            deathWipeRenderSuppressionHasDrawnPrimitives = true;
-        }
-        bool hideAkronRenderSurfaces = ShouldHideAkronRenderSurfacesBehindDeathWipe();
-        if (hideAkronRenderSurfaces) {
-            return;
-        }
-
-        RenderAkronLevelHud(self);
-    }
-
-    private static void GameplayRendererOnRender(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene) {
-        orig(self, scene);
-        if (scene is not Level level ||
-            AkronCapture.IsCapturingGameFrame ||
-            ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
-            return;
-        }
-
-        AkronModuleSettings settings = Settings;
-        if (!settings.HitboxViewer &&
-            (!settings.HitboxShowLastDeath || !AkronEntityInspector.HasVisibleLastDeathHitbox())) {
-            return;
-        }
-
-        Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-        try {
-            AkronEntityInspector.RenderHitboxesToGameplayBuffer(level, level.Tracker.GetEntity<Player>());
-        } finally {
-            Draw.SpriteBatch.End();
-        }
-    }
-
     private static void RenderAkronLevelHud(Level level, bool ignoreDeathWipeSuppression = false) {
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, HudSamplerState(), DepthStencilState.None, RasterizerState.CullNone);
         try {
@@ -601,6 +561,27 @@ public partial class AkronModule : EverestModule {
             AkronHudRenderer.RenderAutomationAreas(level);
             RenderVisualTuningTint();
             RenderNoclipAccuracyTint();
+        } finally {
+            Draw.SpriteBatch.End();
+        }
+    }
+
+    private static void RenderAkronHitboxHud(Level level) {
+        if (level == null ||
+            AkronCapture.IsCapturingGameFrame ||
+            ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
+            return;
+        }
+
+        AkronModuleSettings settings = Settings;
+        if (!settings.HitboxViewer &&
+            (!settings.HitboxShowLastDeath || !AkronEntityInspector.HasVisibleLastDeathHitbox())) {
+            return;
+        }
+
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+        try {
+            AkronEntityInspector.RenderHitboxes(level, level.Tracker.GetEntity<Player>());
         } finally {
             Draw.SpriteBatch.End();
         }
@@ -765,16 +746,23 @@ public partial class AkronModule : EverestModule {
         orig(self);
         Scene scene = Engine.Scene;
         bool isLevelScene = scene is Level;
-        bool hideAkronRenderSurfaces = ShouldHideAkronRenderSurfacesBehindDeathWipe();
 
         if (scene is Level level) {
             AkronInternalRecorder.CaptureFrame(level);
+            if (deathWipeRenderSuppressionActive && level.Transitioning) {
+                deathWipeRenderSuppressionHasDrawnPrimitives = true;
+            }
         } else {
             AkronInternalRecorder.CaptureFrame(scene);
         }
 
-        if (hideAkronRenderSurfaces) {
+        if (ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
             return;
+        }
+
+        if (scene is Level postRenderLevel) {
+            RenderAkronHitboxHud(postRenderLevel);
+            RenderAkronLevelHud(postRenderLevel);
         }
 
         RenderAkronScreenProjection(scene);

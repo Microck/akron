@@ -44,7 +44,12 @@ public sealed partial class AkronOverlay {
                 return BuildGlobalEntries(AkronInterop.MotionSmoothingLoaded);
             case "Level":
                 return new List<OverlayEntry> {
-                    PolicyToggle("Auto Kill", AkronFeatureKind.AutoKill, () => AkronModule.Settings.AutoKill, value => AkronModule.Settings.AutoKill = value),
+                    PolicyToggle("Auto Kill", AkronFeatureKind.AutoKill, () => AkronModule.Settings.AutoKill, value => {
+                        AkronModule.Settings.AutoKill = value;
+                        if (value && !AkronModule.Settings.AutoKillTimer && !AkronModule.Settings.AutoKillArea) {
+                            AkronModule.Settings.AutoKillTimer = true;
+                        }
+                    }),
                     PolicyToggle("Auto Deafen", AkronFeatureKind.AutoDeafen, () => AkronModule.Settings.AutoDeafen, value => {
                         AkronModule.Settings.AutoDeafen = value;
                         if (!value) {
@@ -54,7 +59,7 @@ public sealed partial class AkronOverlay {
                     Toggle("Confirm Restart", () => AkronModule.Settings.ConfirmRestart, value => AkronModule.Settings.ConfirmRestart = value),
                     Toggle("Confirm Full Reset", () => AkronModule.Settings.ConfirmFullReset, value => AkronModule.Settings.ConfirmFullReset = value),
                     Action("Freeze Gameplay", () => AkronModule.Session != null, () => AkronModule.Session == null ? "Unavailable" : AkronModule.Session.FreezeGameplay ? "On" : "Off", AkronActions.ToggleFreeze),
-                    Action("Core Mode", () => level != null, () => AkronActions.DescribeCoreMode(level), () => AkronActions.ToggleCoreMode(level), "core", "hot", "cold", "cycle"),
+                    Action("Core Mode", () => level != null, () => AkronActions.DescribeCoreMode(level), () => AkronActions.ToggleCoreMode(level), true, "core", "hot", "cold", "cycle"),
                     NumericToggle("Respawn Time", AkronFeatureKind.RespawnTime, () => AkronModule.Settings.RespawnTimeModifier, value => AkronModule.Settings.RespawnTimeModifier = value, () => AkronModule.Settings.RespawnTimeSeconds, value => AkronModule.Settings.RespawnTimeSeconds = AkronModuleSettings.ClampRespawnTimeSeconds(value), 0.1f, 10f, "%.2f", "s", false),
                     NumericToggle("Pause Timer", AkronFeatureKind.PauseCountdown, () => AkronModule.Settings.PauseCountdown, value => AkronModule.Settings.PauseCountdown = value, () => AkronModule.Settings.PauseCountdownSeconds, value => AkronModule.Settings.PauseCountdownSeconds = AkronModuleSettings.ClampPauseCountdownSeconds(value), 0.1f, 15f, "%.2f", "s", false),
                     PolicyToggle("Pause Tracker", AkronFeatureKind.PauseTracker, () => AkronModule.Settings.PauseTracker, value => AkronModule.Settings.PauseTracker = value, "pause count", "proof", "pause abuse"),
@@ -151,7 +156,7 @@ public sealed partial class AkronOverlay {
                     PolicyToggle("Madeline Colors", AkronFeatureKind.CustomTrail, () => AkronModule.Settings.MadelineColors, value => AkronModule.Settings.MadelineColors = value),
                     PolicyToggle("Madeline Hair Length", AkronFeatureKind.MadelineHairLength, () => AkronModule.Settings.MadelineHairLength, value => AkronModule.Settings.MadelineHairLength = value),
                     PolicyToggle("Madeline Effect Sync", AkronFeatureKind.MadelineEffectSync, () => AkronModule.Settings.MadelineEffectSync, value => AkronModule.Settings.MadelineEffectSync = value),
-                    Action("Set Inventory", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeSetInventory(level), () => AkronActions.ToggleSetInventory(level), "inventory", "dash count", "dashes", "space ruins"),
+                    Action("Set Inventory", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeSetInventory(level), () => AkronActions.ToggleSetInventory(level), true, "inventory", "dash count", "dashes", "space ruins"),
                     Action("Dream State", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeDreamState(level), () => AkronActions.ToggleDreamState(level), "dream dash", "dream blocks", "inventory"),
                     PolicyToggle("No Death Effect", AkronFeatureKind.DeathVisuals, () => AkronModule.Settings.NoDeathEffect, value => AkronModule.Settings.NoDeathEffect = value),
                     Toggle("No Ghost Trail", () => AkronModule.Settings.TrailVisibility == AkronTrailVisibility.Hidden, value => {
@@ -425,11 +430,15 @@ public sealed partial class AkronOverlay {
     };
 
     private static OverlayEntry Action(string label, Func<bool> enabled, Func<string> value, Action action, params string[] tags) {
+        return Action(label, enabled, value, action, false, tags);
+    }
+
+    private static OverlayEntry Action(string label, Func<bool> enabled, Func<string> value, Action action, bool isToggle, params string[] tags) {
         return new OverlayEntry(label, enabled, value, () => {
             if (enabled()) {
                 action();
             }
-        }, BuildSearchTerms(label, tags), false, OverlayEntryControl.Action);
+        }, BuildSearchTerms(label, tags), isToggle, OverlayEntryControl.Action);
     }
 
     private static OverlayEntry StartPosRow(Level level) {

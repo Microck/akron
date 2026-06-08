@@ -102,6 +102,7 @@ public sealed partial class AkronOverlay {
 
     private void DrawCoreModePopupControls(string popupId) {
         DrawPopupRowLabel("Mode", CalculatePopupLabelWidth(84f));
+        float choiceColumnX = ImGui.GetCursorPosX();
         DrawPopupChoiceRadioButton(
             "Hot",
             AkronModule.Settings.CoreModeOverride == AkronCoreModeOverride.Hot,
@@ -109,7 +110,9 @@ public sealed partial class AkronOverlay {
                 AkronModule.Settings.CoreModeOverride = AkronCoreModeOverride.Hot;
             },
             popupId,
-            "Click toggles the configured Core Mode override on or off.");
+            "Click toggles the configured Core Mode override on or off.",
+            choiceColumnX,
+            false);
         DrawPopupChoiceRadioButton(
             "Cold",
             AkronModule.Settings.CoreModeOverride == AkronCoreModeOverride.Cold,
@@ -117,22 +120,29 @@ public sealed partial class AkronOverlay {
                 AkronModule.Settings.CoreModeOverride = AkronCoreModeOverride.Cold;
             },
             popupId,
-            "Click toggles the configured Core Mode override on or off.");
+            "Click toggles the configured Core Mode override on or off.",
+            choiceColumnX,
+            true);
 
         ImGui.Separator();
         DrawPopupRowLabel("Click", CalculatePopupLabelWidth(84f));
+        choiceColumnX = ImGui.GetCursorPosX();
         DrawPopupChoiceRadioButton(
             "Toggle",
             AkronModule.Settings.CoreModeClickBehavior == AkronCoreModeClickBehavior.Toggle,
             () => AkronModule.Settings.CoreModeClickBehavior = AkronCoreModeClickBehavior.Toggle,
             popupId,
-            "Clicking the row toggles the configured Hot/Cold override on or off.");
+            "Clicking the row toggles the configured Hot/Cold override on or off.",
+            choiceColumnX,
+            false);
         DrawPopupChoiceRadioButton(
             "Cycle",
             AkronModule.Settings.CoreModeClickBehavior == AkronCoreModeClickBehavior.Cycle,
             () => AkronModule.Settings.CoreModeClickBehavior = AkronCoreModeClickBehavior.Cycle,
             popupId,
-            "Clicking the row cycles directly between Hot and Cold and enables the override.");
+            "Clicking the row cycles directly between Hot and Cold and enables the override.",
+            choiceColumnX,
+            true);
     }
 
     private void DrawSetInventoryPopupControls(string popupId) {
@@ -167,10 +177,11 @@ public sealed partial class AkronOverlay {
         }
         DrawPopupTooltip("Restore the pre-click dash and Air Jumps settings on the next death.");
 
-        if (ImGui.Button("Apply now##" + popupId) && Engine.Scene is Level level) {
+        if (ImGui.Button("Set##" + popupId) && Engine.Scene is Level level) {
+            AkronModule.Settings.SetInventoryRestoreOnDeath = true;
             AkronActions.ApplySetInventory(level);
         }
-        DrawPopupTooltip("Apply the configured inventory to Madeline without waiting for the row click.");
+        DrawPopupTooltip("Apply the configured inventory to Madeline now and arm the restore-on-death snapshot.");
 
         ImGui.TextUnformatted(AkronModule.Settings.SetInventoryRestoreOnDeath
             ? "Restore snapshot is captured on apply."
@@ -233,7 +244,20 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip(tooltip, label);
     }
 
-    private void DrawPopupChoiceRadioButton(string label, bool selected, Action apply, string popupId, string tooltip) {
+    private void DrawPopupChoiceRadioButton(
+        string label,
+        bool selected,
+        Action apply,
+        string popupId,
+        string tooltip,
+        float choiceColumnX = -1f,
+        bool newLineBefore = false) {
+        if (newLineBefore) {
+            if (choiceColumnX >= 0f) {
+                ImGui.SetCursorPosX(choiceColumnX);
+            }
+        }
+
         if (ImGui.RadioButton(label + "##" + popupId, selected)) {
             apply();
         }

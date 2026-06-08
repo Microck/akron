@@ -847,7 +847,7 @@ public sealed partial class AkronOverlay {
             return false;
         }
 
-        if (entry.Control == OverlayEntryControl.Action ||
+        if (entry.Control == OverlayEntryControl.Action && !entry.IsToggle ||
             entry.Control == OverlayEntryControl.Keybind ||
             entry.Control == OverlayEntryControl.KeybindReadOnly ||
             entry.Control == OverlayEntryControl.GroupHeader) {

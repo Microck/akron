@@ -17,6 +17,7 @@ dist/
 live-verification/
 opensrc/
 .residue/
+AGENTS.md
 
 # dora code context index
 .dora/
