@@ -6,6 +6,12 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.12
+
+- Add Akron save backups with manual creation, restore browsing, restore safety backups, automatic triggers, ZIP metadata, pinning, and retention cleanup.
+- Add the Backups overlay tab, with trigger and retention settings grouped into submenus.
+- Document backup creation, restore behavior, metadata, and retention rules.
+
 ## 0.1.2-beta.11
 
 - Add Spawn Jelly, Spawn Theo, Set Inventory, Dream State, and Core Mode overlay actions.

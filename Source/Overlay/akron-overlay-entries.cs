@@ -111,6 +111,15 @@ public sealed partial class AkronOverlay {
                     SelectorDropdown("StartPos Slot", () => true, () => "Slot " + AkronModule.Settings.ActiveStartPosSlot, () => AkronActions.ShiftStartPosSlot(1), BuildStartPosSlotChoices, "slot", "selected", "dropdown"),
                     Toggle("Respawn at StartPos", () => AkronModule.Settings.RespawnAtStartPos, value => AkronModule.Settings.RespawnAtStartPos = value, "respawn", "death", "practice")
                 };
+            case "Backups":
+                return new List<OverlayEntry> {
+                    Toggle("Enabled", () => AkronModule.Settings.BackupsEnabled, value => AkronModule.Settings.BackupsEnabled = value, "backup", "save", "zip"),
+                    Action("Create Now", () => AkronModule.Settings.BackupsEnabled, () => AkronModule.Settings.BackupsEnabled ? "Now" : "Disabled", () => AkronBackupActions.CreateBackup("manual"), "manual", "zip", "save"),
+                    Action("Restore", () => AkronBackupActions.ListBackups().Count > 0, AkronBackupActions.DescribeBackupSummary, () => ApplyOptionsPopupDelta("Restore", 1), "restore", "browser", "save"),
+                    Action("Last Result", () => true, () => AkronBackupActions.DescribeLastBackup(), () => ApplyOptionsPopupDelta("Last Result", 1), "status", "last backup", "errors"),
+                    Action("Triggers", () => true, DescribeBackupTriggers, () => ApplyOptionsPopupDelta("Triggers", 1), "startup", "shutdown", "save", "chapter", "interval"),
+                    Action("Retention", () => true, DescribeBackupRetention, () => ApplyOptionsPopupDelta("Retention", 1), "delete", "age", "count", "size", "keep")
+                };
             case "Bypass":
                 return new List<OverlayEntry> {
                     Action("Instant Complete", () => level != null, () => level != null ? "Cheat" : "No level", () => { if (level != null) AkronActions.InstantComplete(level); }, "complete", "finish"),
@@ -786,6 +795,23 @@ public sealed partial class AkronOverlay {
         string state = AkronActions.GetActiveStartPos() != null ? "Set" : "Unset";
         string index = Engine.Scene is Level level ? AkronActions.DescribeStartPosIndex(level) : "0/0";
         return state + " | " + index + " | Slot " + AkronModule.Settings.ActiveStartPosSlot;
+    }
+
+    private static string DescribeBackupRetention() {
+        return AkronModule.Settings.BackupsMaxCount + " max | " +
+               AkronModule.Settings.BackupsDeleteOlderThanDays + "d | " +
+               AkronModule.Settings.BackupsMaxTotalSizeMb + " MB";
+    }
+
+    private static string DescribeBackupTriggers() {
+        int enabled = 0;
+        if (AkronModule.Settings.BackupsOnStartup) enabled++;
+        if (AkronModule.Settings.BackupsOnShutdown) enabled++;
+        if (AkronModule.Settings.BackupsOnSave) enabled++;
+        if (AkronModule.Settings.BackupsOnLevelBegin) enabled++;
+        if (AkronModule.Settings.BackupsEveryInterval) enabled++;
+
+        return enabled + "/5 on | " + AkronModule.Settings.BackupsIntervalMinutes + " min";
     }
 
     private static string DescribeFrameStepperValue() {

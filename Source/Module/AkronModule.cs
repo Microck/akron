@@ -142,6 +142,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.PlayerDeadBody.Update += PlayerDeadBodyOnUpdate;
         On.Celeste.Strawberry.OnCollect += StrawberryOnCollect;
         On.Celeste.Celeste.Freeze += CelesteOnFreeze;
+        On.Celeste.UserIO.SaveHandler += UserIOOnSaveHandler;
         On.FMOD.Studio.EventDescription.createInstance += EventDescriptionOnCreateInstance;
         Everest.Events.Level.OnPause += LevelOnPause;
         Everest.Events.Level.OnUnpause += LevelOnUnpause;
@@ -153,6 +154,7 @@ public partial class AkronModule : EverestModule {
         if (lookoutRoutineMethod != null) {
             lookoutRoutineHook = new ILHook(lookoutRoutineMethod, LookoutRoutineIlHook);
         }
+        AkronBackupActions.NotifyStartupReady();
     }
 
     private static MethodInfo ResolvePlayerDashCoroutineMethod() {
@@ -197,6 +199,7 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Unload() {
+        AkronBackupActions.NotifyShutdown();
         AkronScreenshotScanner.Unload();
         AkronNativeSavestateSupport.Reset();
         AkronSaveLoadService.ClearRuntimeState();
@@ -243,6 +246,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.PlayerDeadBody.Update -= PlayerDeadBodyOnUpdate;
         On.Celeste.Strawberry.OnCollect -= StrawberryOnCollect;
         On.Celeste.Celeste.Freeze -= CelesteOnFreeze;
+        On.Celeste.UserIO.SaveHandler -= UserIOOnSaveHandler;
         On.FMOD.Studio.EventDescription.createInstance -= EventDescriptionOnCreateInstance;
         Everest.Events.Level.OnPause -= LevelOnPause;
         Everest.Events.Level.OnUnpause -= LevelOnUnpause;
@@ -302,6 +306,7 @@ public partial class AkronModule : EverestModule {
         AkronPracticeStats.OnLevelBegin(self);
         AkronPracticeCounters.OnLevelBegin(self);
         AkronAutosave.NotifyLevelBegin(self);
+        AkronBackupActions.NotifyLevelBegin(self);
         AkronInternalRecorder.NotifyLevelBegin(self);
         AkronActions.ApplyCameraOffset(self);
         EnsureOverlay(self);
@@ -448,6 +453,14 @@ public partial class AkronModule : EverestModule {
         pauseTimerFreezeStoppedTimer = true;
     }
 
+    private static void UserIOOnSaveHandler(On.Celeste.UserIO.orig_SaveHandler orig, bool file, bool settings) {
+        if (AkronBackupActions.ShouldBackupBeforeSave(file, settings)) {
+            AkronBackupActions.CreateBackup(settings && !file ? "settings-save" : "save");
+        }
+
+        orig(file, settings);
+    }
+
     private static bool ShouldFreezeTimerDuringPause(Level level) {
         return level != null && (level.Paused || level.wasPaused);
     }
@@ -476,6 +489,7 @@ public partial class AkronModule : EverestModule {
     private static void EngineOnUpdate(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime) {
         RunDeferredScreenWipeAction();
         UpdateDeathWipeRenderSuppression();
+        AkronBackupActions.UpdateInterval((float) gameTime.ElapsedGameTime.TotalSeconds);
         if (Engine.Scene is Level) {
             orig(self, gameTime);
             return;

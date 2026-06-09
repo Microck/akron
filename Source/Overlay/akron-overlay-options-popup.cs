@@ -203,6 +203,10 @@ public sealed partial class AkronOverlay {
                string.Equals(label, "StartPos HUD", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "StartPos Switcher", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "StartPos", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Restore", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Last Result", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Triggers", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Retention", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Input History", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Stamina Bar", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Dash Bar", StringComparison.OrdinalIgnoreCase) ||

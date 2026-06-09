@@ -161,6 +161,14 @@ public sealed partial class AkronOverlay {
             DrawStartPosSwitcherPopupControls(popupId);
         } else if (string.Equals(entry.Label, "Place StartPos", StringComparison.OrdinalIgnoreCase)) {
             DrawPlaceStartPosPopupControls(popupId);
+        } else if (string.Equals(entry.Label, "Restore", StringComparison.OrdinalIgnoreCase)) {
+            DrawRestoreBackupPopupControls(popupId);
+        } else if (string.Equals(entry.Label, "Last Result", StringComparison.OrdinalIgnoreCase)) {
+            DrawBackupStatusPopupControls(popupId);
+        } else if (string.Equals(entry.Label, "Triggers", StringComparison.OrdinalIgnoreCase)) {
+            DrawBackupTriggersPopupControls(popupId);
+        } else if (string.Equals(entry.Label, "Retention", StringComparison.OrdinalIgnoreCase)) {
+            DrawBackupRetentionPopupControls(popupId);
         } else if (string.Equals(entry.Label, "Input History", StringComparison.OrdinalIgnoreCase)) {
             DrawInputDisplayPopupControls(popupId);
         } else if (string.Equals(entry.Label, "Stamina Bar", StringComparison.OrdinalIgnoreCase)) {

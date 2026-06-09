@@ -593,6 +593,18 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool StartPosConfiguredIdle { get; set; } = true;
     public bool StartPosConfiguredGrab { get; set; }
     public int StartPosSlotCount { get; set; } = 9;
+    public bool BackupsEnabled { get; set; } = true;
+    public bool BackupsOnStartup { get; set; } = true;
+    public bool BackupsOnShutdown { get; set; }
+    public bool BackupsOnSave { get; set; }
+    public bool BackupsOnLevelBegin { get; set; }
+    public bool BackupsEveryInterval { get; set; }
+    public int BackupsIntervalMinutes { get; set; } = 30;
+    public int BackupsDeleteOlderThanDays { get; set; } = 15;
+    public int BackupsMaxCount { get; set; } = 100;
+    public int BackupsKeepAtLeast { get; set; } = 5;
+    public int BackupsMaxTotalSizeMb { get; set; } = 1024;
+    public long BackupsLastBackupUtcTicks { get; set; }
     public bool ClickTeleport { get; set; }
     public bool BerryObtainIncludeRegular { get; set; } = true;
     public bool BerryObtainIncludeGolden { get; set; }

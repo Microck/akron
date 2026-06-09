@@ -282,7 +282,7 @@ public sealed partial class AkronOverlay {
         StartPosActions
     }
 
-    private static readonly string[] BaseTabs = { "Global", "Level", "StartPos", "Bypass", "Keybinds", "Player", "Sound", "Creator", "Interface", "Labels", "Shortcuts", "Internal Recorder" };
+    private static readonly string[] BaseTabs = { "Global", "Level", "StartPos", "Backups", "Bypass", "Keybinds", "Player", "Sound", "Creator", "Interface", "Labels", "Shortcuts", "Internal Recorder" };
     private static readonly string[] ExternalToolTabs = { "Speedrun Tool", "CelesteTAS", "Extended Variant Mode" };
 
     private static bool IsExternalToolTab(string tabName) {

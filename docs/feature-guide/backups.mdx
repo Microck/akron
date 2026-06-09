@@ -1,0 +1,38 @@
+---
+title: Backups
+description: Create, browse, restore, and clean up Akron save backups.
+---
+
+The Backups tab keeps ZIP snapshots of Celeste's `Saves` folder. Akron stores them in `Saves/AkronBackups`, then excludes that folder from later snapshots so each archive contains save data rather than older backup ZIPs.
+
+Use it before risky mod changes, save-file edits, testing sessions, or any run where losing the current profile would be expensive. Backups can be created manually or triggered on launch, close, save/settings writes, chapter entry, and timed intervals.
+
+Restore is intentionally conservative. Akron verifies the selected ZIP, creates a `pre-restore` backup of the current save files, extracts the selected backup to disk, reloads the restored save slot, and returns to the main menu so Celeste does not keep using stale in-level save data. That safety backup stays in the browser like any other backup, so you can recover the state you had immediately before the restore.
+
+| Option | Control | What it does | Attempt status |
+|---|---|---|---|
+| Enabled | Toggle | Master switch for Akron save backups. | Utility |
+| Create Now | Action | Create a ZIP backup immediately. | Utility |
+| Restore | Action | Browse backup ZIPs and restore one after creating a pre-restore safety backup. | Utility |
+| Last Result | Action | Show the last backup time, current folder, and latest success or error message. | Utility |
+| Triggers | Action | Configure automatic backups on launch, close, save writes, chapter entry, and timed intervals. | Utility |
+| Retention | Action | Configure automatic cleanup by age, count, total size, pinned backups, and protected newest backups. | Utility |
+
+## Backup metadata
+
+Every ZIP includes `_akron-backup.json`. This file records why the backup was created, when it was created, the Celeste and Akron versions, the active save slot and profile name, the current area and room when available, and the enabled Everest module list. Metadata makes the restore browser easier to inspect and helps diagnose backups made around mod changes.
+
+## Retention
+
+Retention runs only after a successful backup. A failed new ZIP is deleted and does not cause older archives to be cleaned up.
+
+Akron can clean up by backup count, age, and total backup folder size. The newest protected backups are kept even when they exceed those limits, and pinned backups are never deleted by automatic retention.
+
+| Setting | What it does |
+|---|---|
+| Max count | Deletes oldest backups beyond the configured count. |
+| Max age | Deletes backups older than the configured number of days. Zero disables age deletion. |
+| Max size MB | Deletes oldest backups until the folder is under the configured size. Zero disables size deletion. |
+| Keep at least | Protects the newest backups from automatic deletion. |
+
+Pin important backups from the restore browser when you want to keep them outside the normal cleanup rules.

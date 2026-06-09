@@ -188,6 +188,7 @@ public sealed partial class AkronOverlay {
             "Global" => 0,
             "Level" => 1,
             "StartPos" => 0,
+            "Backups" => 0,
             "Bypass" or "Keybinds" => 2,
             "Player" => 3,
             "Sound" => 4,
