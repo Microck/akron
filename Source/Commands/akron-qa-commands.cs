@@ -259,6 +259,43 @@ public static partial class AkronCommands {
         Log("input-crouch-dash: " + Input.CrouchDash.Check.ToString().ToLowerInvariant());
     }
 
+#if DEBUG
+    [Command("akron_qa_stress", "debug-only Akron UI stress mode: on [seed]|off|status|poison-render-state")]
+    public static void QaStress(string action = "status", string seedText = "") {
+        switch (NormalizeToken(action)) {
+            case "":
+            case "status":
+                Log(AkronModule.StressStatus());
+                return;
+            case "on":
+            case "start":
+                int seed = 0xA0001;
+                if (!string.IsNullOrWhiteSpace(seedText) &&
+                    !int.TryParse(seedText, NumberStyles.Integer, CultureInfo.InvariantCulture, out seed)) {
+                    Log("qa-stress: invalid seed=" + seedText);
+                    return;
+                }
+
+                AkronModule.StartStressMode(seed);
+                Log(AkronModule.StressStatus());
+                return;
+            case "off":
+            case "stop":
+                AkronModule.StopStressMode();
+                Log(AkronModule.StressStatus());
+                return;
+            case "poisonrenderstate":
+            case "poison-render-state":
+                AkronImGuiRenderer.PoisonNextFrameForTest();
+                Log("qa-stress: poison-render-state armed");
+                return;
+            default:
+                Log("usage: akron_qa_stress on [seed]|off|status|poison-render-state");
+                return;
+        }
+    }
+#endif
+
     [Command("akron_qa_probe", "prepare repeatable Akron QA states: low-stamina|zero-dash|start-dash|right-speed|nearest-spike|force-death")]
     public static void QaProbe(string action = "") {
         Level level = RequireLevel();

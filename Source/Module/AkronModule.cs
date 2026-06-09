@@ -314,6 +314,9 @@ public partial class AkronModule : EverestModule {
         EnsureOverlay(self);
         AkronScreenshotScanner.MaintainActiveScanHost(self);
         AkronAutomationService.ProcessPendingCommands(self);
+#if DEBUG
+        StressUpdate(self);
+#endif
         HandleHotkeys(self);
         if (Settings.InputViewer || Settings.InputHistoryPanel || Settings.InputHistoryShowOnDeath || Settings.ShowTaps) {
             AkronInputHistory.RecordFrame();
@@ -486,6 +489,9 @@ public partial class AkronModule : EverestModule {
 
         EnsureOverlay(scene);
         AkronAutomationService.ProcessPendingCommands(scene);
+#if DEBUG
+        StressUpdate(scene);
+#endif
         HandleGlobalOverlayHotkeys(scene);
         if (!Settings.MenuBindingsInGameOnly) {
             AkronOverlay.ExecuteCustomBoundActions(scene);

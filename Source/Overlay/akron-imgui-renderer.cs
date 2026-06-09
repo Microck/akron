@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using ImGuiNET;
 using Celeste.Mod;
 using Microsoft.Xna.Framework;
@@ -51,6 +52,9 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     private static string lastFailure = string.Empty;
     private static bool renderDiagnosticLogged;
     private static bool renderInProgress;
+#if DEBUG
+    private static bool poisonNextFrameForTest;
+#endif
 
     private AkronImGuiRenderer(GraphicsDevice graphicsDevice) {
         this.graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
@@ -128,6 +132,12 @@ internal sealed class AkronImGuiRenderer : IDisposable {
             renderInProgress = false;
         }
     }
+
+#if DEBUG
+    internal static void PoisonNextFrameForTest() {
+        poisonNextFrameForTest = true;
+    }
+#endif
 
     public static void WarmUp() {
         if (Engine.Instance?.GraphicsDevice == null || initializationFailed) {
@@ -240,11 +250,28 @@ internal sealed class AkronImGuiRenderer : IDisposable {
             ImDrawDataPtr diagnosticDrawData = ImGui.GetDrawData();
             Logger.Log(LogLevel.Info, nameof(AkronImGuiRenderer), "ImGui draw data: cmdLists=" + diagnosticDrawData.CmdListsCount + ", vertices=" + diagnosticDrawData.TotalVtxCount + ", indices=" + diagnosticDrawData.TotalIdxCount + ".");
         }
+#if DEBUG
+        if (poisonNextFrameForTest) {
+            poisonNextFrameForTest = false;
+            PoisonGraphicsStateForTest(graphicsDevice);
+        }
+
+        GraphicsDeviceStateSnapshot beforeState = GraphicsDeviceStateSnapshot.Capture(graphicsDevice);
+#endif
+
         using (new GraphicsDeviceStateScope(graphicsDevice)) {
             unsafe {
                 RenderDrawData(ImGui.GetDrawData());
             }
         }
+
+#if DEBUG
+        GraphicsDeviceStateSnapshot afterState = GraphicsDeviceStateSnapshot.Capture(graphicsDevice);
+        if (!beforeState.EquivalentTo(afterState, out string diff)) {
+            Logger.Log(LogLevel.Error, "AkronRenderState", "Graphics state leak after Akron overlay render:\n" + diff);
+        }
+#endif
+
         long drawEnd = Stopwatch.GetTimestamp();
         AkronPerformanceTelemetry.RecordOverlayRenderCost(
             ElapsedMilliseconds(frameStart, inputEnd),
@@ -256,6 +283,15 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     private static double ElapsedMilliseconds(long start, long end) {
         return (end - start) * 1000.0 / Stopwatch.Frequency;
     }
+
+#if DEBUG
+    private static void PoisonGraphicsStateForTest(GraphicsDevice graphicsDevice) {
+        graphicsDevice.ScissorRectangle = new XnaRectangle(17, 19, 123, 127);
+        graphicsDevice.BlendState = BlendState.AlphaBlend;
+        graphicsDevice.DepthStencilState = DepthStencilState.None;
+        graphicsDevice.RasterizerState = RasterizerState.CullNone;
+    }
+#endif
 
     private void UpdateInput() {
         ImGuiIOPtr io = ImGui.GetIO();
@@ -580,6 +616,91 @@ internal sealed class AkronImGuiRenderer : IDisposable {
             graphicsDevice.SamplerStates[0] = sampler0;
         }
     }
+
+#if DEBUG
+    private sealed class GraphicsDeviceStateSnapshot {
+        private readonly RenderTargetBinding[] renderTargets;
+        private readonly Viewport viewport;
+        private readonly XnaRectangle scissorRectangle;
+        private readonly RasterizerState rasterizerState;
+        private readonly DepthStencilState depthStencilState;
+        private readonly BlendState blendState;
+        private readonly XnaColor blendFactor;
+        private readonly IndexBuffer indices;
+        private readonly VertexBufferBinding[] vertexBuffers;
+        private readonly Texture texture0;
+        private readonly SamplerState sampler0;
+
+        private GraphicsDeviceStateSnapshot(GraphicsDevice graphicsDevice) {
+            renderTargets = graphicsDevice.GetRenderTargets();
+            viewport = graphicsDevice.Viewport;
+            scissorRectangle = graphicsDevice.ScissorRectangle;
+            rasterizerState = graphicsDevice.RasterizerState;
+            depthStencilState = graphicsDevice.DepthStencilState;
+            blendState = graphicsDevice.BlendState;
+            blendFactor = graphicsDevice.BlendFactor;
+            indices = graphicsDevice.Indices;
+            vertexBuffers = graphicsDevice.GetVertexBuffers();
+            texture0 = graphicsDevice.Textures[0];
+            sampler0 = graphicsDevice.SamplerStates[0];
+        }
+
+        public static GraphicsDeviceStateSnapshot Capture(GraphicsDevice graphicsDevice) {
+            return new GraphicsDeviceStateSnapshot(graphicsDevice);
+        }
+
+        public bool EquivalentTo(GraphicsDeviceStateSnapshot other, out string diff) {
+            StringBuilder builder = new StringBuilder();
+            AppendDiff(builder, "RenderTargets", RenderTargetsEqual(renderTargets, other.renderTargets));
+            AppendDiff(builder, "Viewport", viewport.Equals(other.viewport));
+            AppendDiff(builder, "ScissorRectangle", scissorRectangle.Equals(other.scissorRectangle));
+            AppendDiff(builder, "BlendState", ReferenceEquals(blendState, other.blendState));
+            AppendDiff(builder, "DepthStencilState", ReferenceEquals(depthStencilState, other.depthStencilState));
+            AppendDiff(builder, "RasterizerState", ReferenceEquals(rasterizerState, other.rasterizerState));
+            AppendDiff(builder, "SamplerStates[0]", ReferenceEquals(sampler0, other.sampler0));
+            AppendDiff(builder, "Textures[0]", ReferenceEquals(texture0, other.texture0));
+            AppendDiff(builder, "Indices", ReferenceEquals(indices, other.indices));
+            AppendDiff(builder, "VertexBuffers", VertexBuffersEqual(vertexBuffers, other.vertexBuffers));
+            AppendDiff(builder, "BlendFactor", blendFactor.Equals(other.blendFactor));
+            diff = builder.ToString().TrimEnd();
+            return diff.Length == 0;
+        }
+
+        private static void AppendDiff(StringBuilder builder, string name, bool equal) {
+            if (!equal) {
+                builder.AppendLine(name);
+            }
+        }
+
+        private static bool RenderTargetsEqual(RenderTargetBinding[] left, RenderTargetBinding[] right) {
+            if (left.Length != right.Length) {
+                return false;
+            }
+
+            for (int index = 0; index < left.Length; index++) {
+                if (!EqualityComparer<RenderTargetBinding>.Default.Equals(left[index], right[index])) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool VertexBuffersEqual(VertexBufferBinding[] left, VertexBufferBinding[] right) {
+            if (left.Length != right.Length) {
+                return false;
+            }
+
+            for (int index = 0; index < left.Length; index++) {
+                if (!EqualityComparer<VertexBufferBinding>.Default.Equals(left[index], right[index])) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+#endif
 
     private static void RegisterNativeResolver() {
         if (nativeResolverRegistered) {
