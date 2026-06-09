@@ -4,8 +4,10 @@ using Monocle;
 
 namespace Celeste.Mod.Akron;
 
-public sealed class AkronPolicyDecision {
-    public AkronPolicyDecision(bool allowed, string message) {
+public sealed class AkronPolicyDecision
+{
+    public AkronPolicyDecision(bool allowed, string message)
+    {
         Allowed = allowed;
         Message = message;
     }
@@ -14,8 +16,10 @@ public sealed class AkronPolicyDecision {
     public string Message { get; }
 }
 
-public sealed class AkronActiveCheatContributor {
-    public AkronActiveCheatContributor(string label, string disableCommand, AkronFeatureKind feature) {
+public sealed class AkronActiveCheatContributor
+{
+    public AkronActiveCheatContributor(string label, string disableCommand, AkronFeatureKind feature)
+    {
         Label = label;
         DisableCommand = disableCommand;
         Feature = feature;
@@ -26,7 +30,8 @@ public sealed class AkronActiveCheatContributor {
     public AkronFeatureKind Feature { get; }
 }
 
-public static class AkronPolicy {
+public static class AkronPolicy
+{
     public const int GoldberryHardlistCleanColorRgb = 0x248BFF;
     public const int RegularCleanColorRgb = 0x00FF00;
     public const int CheatColorRgb = 0xFF0000;
@@ -53,16 +58,20 @@ public static class AkronPolicy {
         AkronFeatureKind.FreeCamera
     };
 
-    public static AkronPolicyDecision CanUse(AkronFeatureKind feature) {
+    public static AkronPolicyDecision CanUse(AkronFeatureKind feature)
+    {
         AkronModuleSettings settings = AkronModule.Settings;
         AkronStatus classification = AkronFeatureRegistry.Classify(feature);
 
-        if (settings.PrimaryRuleset == PrimaryRuleset.Sandbox) {
+        if (settings.PrimaryRuleset == PrimaryRuleset.Sandbox)
+        {
             return new AkronPolicyDecision(true, "Sandbox allows all Akron feature classes.");
         }
 
-        if (settings.PrimaryRuleset == PrimaryRuleset.LeaderboardClean) {
-            if (classification == AkronStatus.Cheat || TrainingBlockedInLeaderboardClean.Contains(feature)) {
+        if (settings.PrimaryRuleset == PrimaryRuleset.LeaderboardClean)
+        {
+            if (classification == AkronStatus.Cheat || TrainingBlockedInLeaderboardClean.Contains(feature))
+            {
                 return new AkronPolicyDecision(false, "Current ruleset blocks state-changing features. Switch rulesets or keep current guardrails.");
             }
         }
@@ -71,15 +80,18 @@ public static class AkronPolicy {
         // global gameplay lock that blocks local state-changing features by itself.
         if (feature == AkronFeatureKind.UnsafeNativeSavestateOverride &&
             !settings.UnsafeSavestateOverride &&
-            !AkronMapOverrides.ShouldAllowUnsafeSavestates(Engine.Scene as Level)) {
+            !AkronMapOverrides.ShouldAllowUnsafeSavestates(Engine.Scene as Level))
+        {
             return new AkronPolicyDecision(false, "Unsafe StartPos restore override is disabled in settings.");
         }
 
         return new AkronPolicyDecision(true, AkronFeatureRegistry.Get(feature).Reason);
     }
 
-    public static bool ShouldOfferRulesetEscape(AkronFeatureKind feature) {
-        if (AkronModule.Settings.PrimaryRuleset != PrimaryRuleset.LeaderboardClean) {
+    public static bool ShouldOfferRulesetEscape(AkronFeatureKind feature)
+    {
+        if (AkronModule.Settings.PrimaryRuleset != PrimaryRuleset.LeaderboardClean)
+        {
             return false;
         }
 
@@ -87,33 +99,56 @@ public static class AkronPolicy {
         return classification == AkronStatus.Cheat || TrainingBlockedInLeaderboardClean.Contains(feature);
     }
 
-    public static PrimaryRuleset GetSuggestedRuleset(AkronFeatureKind feature) {
+    public static PrimaryRuleset GetSuggestedRuleset(AkronFeatureKind feature)
+    {
         return AkronFeatureRegistry.Classify(feature) == AkronStatus.Cheat
             ? PrimaryRuleset.Sandbox
             : PrimaryRuleset.Practice;
     }
 
-    public static void RecordFeatureUse(AkronFeatureKind feature) {
-        if (AkronModule.Session == null) {
+    public static void RecordFeatureUse(AkronFeatureKind feature)
+    {
+        if (AkronModule.Session == null)
+        {
             return;
         }
 
         FeatureDefinition definition = AkronFeatureRegistry.Get(feature);
-        if (definition.Classification >= AkronModule.Session.AttemptStatus) {
+        if (definition.Classification >= AkronModule.Session.AttemptStatus)
+        {
             AkronModule.Session.AttemptReason = definition.Reason;
         }
         AkronModule.Session.AttemptStatus = Max(AkronModule.Session.AttemptStatus, definition.Classification);
 
-        if (feature == AkronFeatureKind.BrokeredSavestates) {
+        if (feature == AkronFeatureKind.BrokeredSavestates)
+        {
             AkronModule.Session.UsedBrokeredSavestate = true;
         }
 
-        if (feature == AkronFeatureKind.UnsafeNativeSavestateOverride) {
+        if (feature == AkronFeatureKind.UnsafeNativeSavestateOverride)
+        {
             AkronModule.Session.UsedUnsafeSavestateOverride = true;
         }
     }
 
-    public static void ResetAttempt(string reason) {
+    public static void RecordCheatUse(string reason)
+    {
+        if (AkronModule.Session == null)
+        {
+            return;
+        }
+
+        if (AkronStatus.Cheat >= AkronModule.Session.AttemptStatus)
+        {
+            AkronModule.Session.AttemptReason = string.IsNullOrWhiteSpace(reason)
+                ? "A cheat-class Akron option was used in this attempt."
+                : reason;
+        }
+        AkronModule.Session.AttemptStatus = AkronStatus.Cheat;
+    }
+
+    public static void ResetAttempt(string reason)
+    {
         AkronModule.Session.AttemptStatus = AkronStatus.Unclassified;
         AkronModule.Session.AttemptReason = string.IsNullOrWhiteSpace(reason)
             ? "No Akron attempt classification has been selected or earned yet."
@@ -122,24 +157,30 @@ public static class AkronPolicy {
         AkronModule.Session.UsedUnsafeSavestateOverride = false;
     }
 
-    public static bool CanExposeCleanLegitimacy() {
+    public static bool CanExposeCleanLegitimacy()
+    {
         return AkronModule.Instance == null || !AkronModule.Settings.SafeMode;
     }
 
-    public static string GetLegitimacySensitiveStatusLabel(AkronStatus status) {
-        if (AkronModule.Settings.SafeMode && status == AkronStatus.GoldberryHardlistClean) {
+    public static string GetLegitimacySensitiveStatusLabel(AkronStatus status)
+    {
+        if (AkronModule.Settings.SafeMode && status == AkronStatus.GoldberryHardlistClean)
+        {
             return "Safe mode";
         }
 
         return AkronModuleSettings.FormatStatus(status);
     }
 
-    public static int GetStatusColorRgb(AkronStatus status, bool safeModeRedactsCleanStatus = false) {
-        if (safeModeRedactsCleanStatus && status == AkronStatus.GoldberryHardlistClean) {
+    public static int GetStatusColorRgb(AkronStatus status, bool safeModeRedactsCleanStatus = false)
+    {
+        if (safeModeRedactsCleanStatus && status == AkronStatus.GoldberryHardlistClean)
+        {
             return SafeModeRedactedCleanColorRgb;
         }
 
-        return status switch {
+        return status switch
+        {
             AkronStatus.Cheat => CheatColorRgb,
             AkronStatus.RegularClean => RegularCleanColorRgb,
             AkronStatus.GoldberryHardlistClean => GoldberryHardlistCleanColorRgb,
@@ -148,12 +189,15 @@ public static class AkronPolicy {
         };
     }
 
-    public static string GetStatusColorName(AkronStatus status, bool safeModeRedactsCleanStatus = false) {
-        if (safeModeRedactsCleanStatus && status == AkronStatus.GoldberryHardlistClean) {
+    public static string GetStatusColorName(AkronStatus status, bool safeModeRedactsCleanStatus = false)
+    {
+        if (safeModeRedactsCleanStatus && status == AkronStatus.GoldberryHardlistClean)
+        {
             return "Blue";
         }
 
-        return status switch {
+        return status switch
+        {
             AkronStatus.Cheat => "Red",
             AkronStatus.RegularClean => "Green",
             AkronStatus.GoldberryHardlistClean => "Blue",
@@ -162,7 +206,8 @@ public static class AkronPolicy {
         };
     }
 
-    public static string DescribeStatusColorReason(AkronStatus status, string reason, bool safeModeRedactsCleanStatus = false) {
+    public static string DescribeStatusColorReason(AkronStatus status, string reason, bool safeModeRedactsCleanStatus = false)
+    {
         string statusLabel = safeModeRedactsCleanStatus && status == AkronStatus.GoldberryHardlistClean
             ? "Safe mode"
             : AkronModuleSettings.FormatStatus(status);
@@ -174,9 +219,11 @@ public static class AkronPolicy {
         return colorName + " because the current attempt is " + statusLabel + ". " + trimmedReason;
     }
 
-    public static IReadOnlyList<AkronActiveCheatContributor> GetActiveCheatContributors(AkronModuleSettings settings, AkronModuleSession session = null) {
+    public static IReadOnlyList<AkronActiveCheatContributor> GetActiveCheatContributors(AkronModuleSettings settings, AkronModuleSession session = null)
+    {
         List<AkronActiveCheatContributor> contributors = new List<AkronActiveCheatContributor>();
-        if (settings == null) {
+        if (settings == null)
+        {
             return contributors;
         }
 
@@ -187,6 +234,9 @@ public static class AkronPolicy {
         AddIfCheat(contributors, settings.NoclipAccuracy, "Hazard Accuracy", "akron_feature hazard-accuracy off", AkronFeatureKind.HazardAccuracy);
         AddIfCheat(contributors, settings.FreeCamera, "Free Camera", "akron_feature free-camera off", AkronFeatureKind.FreeCamera);
         AddIfCheat(contributors, AkronMotionSmoothingInterop.Loaded && settings.FpsBypass, "FPS Bypass", "akron_feature fps-bypass off", AkronFeatureKind.FpsBypass);
+        AddMotionSmoothingCheatContributor(contributors, AkronMotionSmoothingInterop.Loaded && settings.FrameBypassObjectSmoothing == AkronObjectSmoothingMode.Interpolate, "FPS Bypass object interpolation", "akron_frame_bypass objects extrapolate");
+        AddMotionSmoothingCheatContributor(contributors, AkronMotionSmoothingInterop.Loaded && settings.FrameBypassTasMode, "FPS Bypass TAS mode", "akron_frame_bypass tas off");
+        AddMotionSmoothingCheatContributor(contributors, AkronMotionSmoothingInterop.Loaded && settings.FrameBypassSillyMode, "FPS Bypass Nasty mode", "akron_frame_bypass nasty off");
         AddIfCheat(contributors, AkronMotionSmoothingInterop.Loaded && settings.TpsBypass, "TPS Bypass", "akron_feature tps-bypass off", AkronFeatureKind.TpsBypass);
         AddIfCheat(contributors, settings.Invincibility, "Invincibility", "akron_feature invincibility off", AkronFeatureKind.Invincibility);
         AddIfCheat(contributors, settings.JumpHack, "Air Jumps", "akron_feature air-jumps off", AkronFeatureKind.MovementStatMutation);
@@ -223,7 +273,8 @@ public static class AkronPolicy {
         AddIfCheat(contributors, settings.AudioSpeed, "Audio Speed", "akron_feature audio-speed off", AkronFeatureKind.AudioSpeed);
         AddExtendedVariantContributors(contributors);
 
-        if (session != null) {
+        if (session != null)
+        {
             AddIfCheat(contributors, session.FreezeGameplay, "Frame Stepper / Freeze Gameplay", "akron_feature frame-stepper off", AkronFeatureKind.FrameAdvance);
             AddIfCheat(contributors, session.TimescaleEnabled && session.TimescaleMultiplier != 1f, "Timescale", "akron_timescale off", AkronFeatureKind.Timescale);
         }
@@ -231,32 +282,48 @@ public static class AkronPolicy {
         return contributors;
     }
 
-    public static bool IsMegaHackStyleCheatIndicatorFlagged(AkronStatus status) {
+    public static bool IsMegaHackStyleCheatIndicatorFlagged(AkronStatus status)
+    {
         return status == AkronStatus.Cheat;
     }
 
-    private static void AddIfCheat(List<AkronActiveCheatContributor> contributors, bool enabled, string label, string disableCommand, AkronFeatureKind feature) {
-        if (enabled && AkronFeatureRegistry.Classify(feature) == AkronStatus.Cheat) {
+    private static void AddIfCheat(List<AkronActiveCheatContributor> contributors, bool enabled, string label, string disableCommand, AkronFeatureKind feature)
+    {
+        if (enabled && AkronFeatureRegistry.Classify(feature) == AkronStatus.Cheat)
+        {
             contributors.Add(new AkronActiveCheatContributor(label, "Turn off " + label, feature));
         }
     }
 
-    private static void AddExtendedVariantContributors(List<AkronActiveCheatContributor> contributors) {
-        if (!AkronExtendedVariants.Available || AkronFeatureRegistry.Classify(AkronFeatureKind.ExtendedVariantMode) != AkronStatus.Cheat) {
+    private static void AddMotionSmoothingCheatContributor(List<AkronActiveCheatContributor> contributors, bool enabled, string label, string disableCommand)
+    {
+        if (enabled)
+        {
+            contributors.Add(new AkronActiveCheatContributor(label, disableCommand, AkronFeatureKind.FpsBypass));
+        }
+    }
+
+    private static void AddExtendedVariantContributors(List<AkronActiveCheatContributor> contributors)
+    {
+        if (!AkronExtendedVariants.Available || AkronFeatureRegistry.Classify(AkronFeatureKind.ExtendedVariantMode) != AkronStatus.Cheat)
+        {
             return;
         }
 
         AddIfCheat(contributors, AkronExtendedVariants.MasterSwitch, "Extended Variants Master", "akron_evm master off", AkronFeatureKind.ExtendedVariantMode);
         AddIfCheat(contributors, AkronExtendedVariants.RandomizerEnabled, "Extended Variants Randomizer", "akron_evm randomizer off", AkronFeatureKind.ExtendedVariantMode);
 
-        foreach (AkronExtendedVariantOption option in AkronExtendedVariants.GetOptions()) {
-            if (!option.IsDefault) {
+        foreach (AkronExtendedVariantOption option in AkronExtendedVariants.GetOptions())
+        {
+            if (!option.IsDefault)
+            {
                 contributors.Add(new AkronActiveCheatContributor(option.Label, "Turn off " + option.Label, AkronFeatureKind.ExtendedVariantMode));
             }
         }
     }
 
-    private static AkronStatus Max(AkronStatus left, AkronStatus right) {
+    private static AkronStatus Max(AkronStatus left, AkronStatus right)
+    {
         return left > right ? left : right;
     }
 }

@@ -5,11 +5,11 @@ description: Options that appear only when Motion Smoothing, Speedrun Tool, Cele
 
 External tool rows are not part of Akron's base overlay tabs. They appear only when the relevant mod is loaded, and they are documented separately so the main feature pages stay focused on Akron's own options.
 
-Motion Smoothing adds FPS and TPS bypass rows to the Global tab. Extended Variant Mode can also expose variant-specific rows at runtime; those dynamic rows depend on the installed Extended Variant Mode option list.
+Motion Smoothing adds FPS and TPS bypass rows to the Global tab. Its higher-FPS path keeps Celeste physics at 60 FPS while drawing extra frames, so Akron marks FPS Bypass and the physics-neutral smoothing options as **Regular clean**. Object interpolation is stricter because Motion Smoothing documents that it can add 1-2 frames of input delay. Extended Variant Mode can also expose variant-specific rows at runtime; those dynamic rows depend on the installed Extended Variant Mode option list.
 
 | Tool | Option | Control | What it does | Attempt status |
 |---|---|---|---|---|
-| Motion Smoothing | FPS Bypass | Numeric toggle | Raise the draw cadence while keeping the configured simulation cadence when possible. | Cheat |
+| Motion Smoothing | FPS Bypass | Numeric toggle | Raise the draw cadence or enable Motion Smoothing's smoothing pipeline while keeping physics at 60 FPS when TPS Bypass is off. | Regular clean |
 | Motion Smoothing | TPS Bypass | Numeric toggle | Change the simulation tick cadence. | Cheat |
 | Speedrun Tool | SRT Status | Action | Show whether Akron can read Speedrun Tool status, slot state, and room time right now. | Regular clean |
 | Speedrun Tool | SRT Slot | Action | Show the active Akron slot used for Speedrun Tool state capture and restore actions. | Regular clean |
@@ -32,16 +32,16 @@ Rows with a triangle expose the controls listed below.
 
 | Option | Menu control | What it changes | Attempt status |
 |---|---|---|---|
-| FPS Bypass | Target FPS | Set the draw target while FPS Bypass is enabled. | Cheat |
-| FPS Bypass | Method | Choose interval or dynamic render cadence behavior. | Cheat |
-| FPS Bypass | Smooth camera | Choose Fancy, Fast, or Off camera smoothing. | Cheat |
-| FPS Bypass | Objects | Choose extrapolate or interpolate object smoothing. | Cheat |
+| FPS Bypass | Target FPS | Set the draw target while FPS Bypass is enabled. | Regular clean |
+| FPS Bypass | Method | Choose interval or dynamic render cadence behavior. | Regular clean |
+| FPS Bypass | Smooth camera | Choose Fancy, Fast, or Off camera smoothing. | Regular clean |
+| FPS Bypass | Objects | Choose extrapolate or interpolate object smoothing. | Regular clean for Extrapolate; Cheat for Interpolate |
 | FPS Bypass | TAS mode | Keep overworld updates locked for TAS compatibility. | Cheat |
-| FPS Bypass | Subpixel Madeline | Draw Madeline and held items at subpixel render positions. | Cheat |
-| FPS Bypass | Smooth background | Use high-resolution background compositing in Fancy camera smoothing. | Cheat |
-| FPS Bypass | Smooth foreground | Use high-resolution foreground compositing in Fancy camera smoothing. | Cheat |
-| FPS Bypass | Hide edge gaps | Slightly zoom the level to hide gaps introduced by fractional camera offsets. | Cheat |
-| FPS Bypass | Silly mode | Apply an experimental smoothing preset to FPS Bypass rendering. | Cheat |
+| FPS Bypass | Subpixel Madeline | Draw Madeline and held items at subpixel render positions. | Regular clean |
+| FPS Bypass | Smooth background | Use high-resolution background compositing in Fancy camera smoothing. | Regular clean |
+| FPS Bypass | Smooth foreground | Use high-resolution foreground compositing in Fancy camera smoothing. | Regular clean |
+| FPS Bypass | Hide edge gaps | Slightly zoom the level to hide gaps introduced by fractional camera offsets. | Regular clean |
+| FPS Bypass | Nasty mode | Apply the experimental smoothing preset that Motion Smoothing recommends avoiding in real gameplay. | Cheat |
 | TPS Bypass | Target TPS | Set the simulation update target while TPS Bypass is enabled. | Cheat |
 | Extended Variants Randomizer | Change variants randomly | Enable the external variant randomizer loop. | Cheat |
 | Extended Variants Randomizer | Reroll mode | Replace the randomized variant set instead of changing one option at a time. | Cheat |

@@ -31,16 +31,21 @@ If a StartPos restore is blocked:
 
 | Tool | Compatibility Note |
 |---|---|
-| Motion Smoothing | FPS and TPS bypass rows appear when the mod is loaded at runtime. Akron does not declare Motion Smoothing as a formal Everest dependency. |
+| Motion Smoothing | FPS and TPS bypass rows appear when the mod is loaded at runtime. Akron does not declare Motion Smoothing as a formal Everest dependency. Motion Smoothing's higher-FPS path keeps physics at 60 FPS when TPS Bypass is off, so Akron marks FPS Bypass and the physics-neutral smoothing options as **Regular clean**. |
 | Speedrun Tool | External timing and compatibility interfaces are available when the mod is loaded. |
 | CelesteTAS | TAS handoff delegates active control and is marked as "Cheat." |
 | Extended Variant Mode | Variant controls appear when the mod is loaded at runtime. Dynamic rows depend on the installed Extended Variant Mode option list. |
 | External Timers | Room timer export and synchronization are supported as part of the room timing workflow. |
 | Discord Deafen | Auto Deafen simulates the configured hotkey; it does not directly manage Discord's internal state. |
 
+Motion Smoothing's current compatibility notes call out two cases that matter in Akron:
+
+- **Fancy** camera smoothing changes Celeste's rendering pipeline and is currently documented as incompatible with `auspicioushelper`.
+- **Dynamic** framerate mode allows arbitrary FPS, but can conflict with mods that hook the main XNA tick path.
+- **Interpolate** object smoothing can add 1-2 frames of input delay, so Akron treats that selected value as "Cheat" even though the Extrapolate object-smoothing value is "Regular clean."
+
 ## Rendering and Capture
 
 Visual verification is necessary for rendering-sensitive features, including overlays, hitboxes, camera, zoom, death transitions, room captures, map captures, and screenshots.
 
 If a rendering feature behaves inconsistently across different hosts, please document the host, platform, map SID, visible policy/status state, and Akron setup, and provide screenshot evidence before filing an issue.
-

@@ -7,7 +7,7 @@ The Global tab collects options that affect the entire Akron session rather than
 
 | Option | Control | What it does | Attempt status |
 |---|---|---|---|
-| FPS Bypass | Numeric toggle | Raise the draw cadence while keeping the configured simulation cadence when possible. | Cheat |
+| FPS Bypass | Numeric toggle | Raise the draw cadence or enable Motion Smoothing's smoothing pipeline while keeping Celeste physics at 60 FPS. | Regular clean |
 | TPS Bypass | Numeric toggle | Change the simulation tick cadence. | Cheat |
 | Timescale | Number | Open speed controls for decreasing or increasing gameplay timescale. | Cheat |
 | Safe Mode | Toggle | Safe Mode indicator plus optional local stat guards for deaths, jumps, and best-run fields. | Regular clean |
@@ -24,16 +24,16 @@ Rows with a triangle expose the controls listed below.
 
 | Option | Menu control | What it changes | Attempt status |
 |---|---|---|---|
-| FPS Bypass | Target FPS | Draw target while FPS Bypass is enabled. Interval mode rounds to a clean multiple of TPS. | Cheat |
-| FPS Bypass | Method | Interval keeps render cadence aligned to physics ticks. Dynamic allows arbitrary FPS but is riskier for code that hooks the main tick. | Cheat |
-| FPS Bypass | Smooth Camera | Fancy is highest quality, Fast is cheaper but can jitter backgrounds, Off leaves the camera pixel-locked. | Cheat |
-| FPS Bypass | Objects | Extrapolate predicts between physics frames. Interpolate uses prior frames and can add 1-2 frames of delay. | Cheat |
+| FPS Bypass | Target FPS | Draw target while FPS Bypass is enabled. Motion Smoothing keeps Celeste physics at 60 FPS while drawing extra frames. | Regular clean |
+| FPS Bypass | Method | Interval keeps render cadence aligned to physics ticks. Dynamic allows arbitrary FPS but is riskier for code that hooks the main tick. | Regular clean |
+| FPS Bypass | Smooth Camera | Fancy is highest quality, Fast is cheaper but can jitter backgrounds, Off leaves the camera pixel-locked. | Regular clean |
+| FPS Bypass | Objects | Extrapolate predicts between physics frames. Interpolate uses prior frames and can add 1-2 frames of delay. | Regular clean for Extrapolate; Cheat for Interpolate |
 | FPS Bypass | TAS mode | Keeps overworld updates locked for TAS compatibility while level gameplay remains controlled by TPS Bypass. | Cheat |
-| FPS Bypass | Subpixel Madeline | Reference option for drawing Madeline and held items at subpixel render positions. | Cheat |
-| FPS Bypass | Smooth background | Reference option for high-resolution background compositing in Fancy camera smoothing. | Cheat |
-| FPS Bypass | Smooth foreground | Reference option for high-resolution foreground compositing in Fancy camera smoothing. | Cheat |
-| FPS Bypass | Hide edge gaps | Reference option: slightly zooms the level to hide gaps introduced by fractional camera offsets. | Cheat |
-| FPS Bypass | Silly mode | Apply an experimental smoothing preset to FPS Bypass rendering. | Cheat |
+| FPS Bypass | Subpixel Madeline | Reference option for drawing Madeline and held items at subpixel render positions. | Regular clean |
+| FPS Bypass | Smooth background | Reference option for high-resolution background compositing in Fancy camera smoothing. | Regular clean |
+| FPS Bypass | Smooth foreground | Reference option for high-resolution foreground compositing in Fancy camera smoothing. | Regular clean |
+| FPS Bypass | Hide edge gaps | Reference option: slightly zooms the level to hide gaps introduced by fractional camera offsets. | Regular clean |
+| FPS Bypass | Nasty mode | Apply the experimental smoothing preset that Motion Smoothing recommends avoiding in real gameplay. | Cheat |
 | TPS Bypass | Target TPS | Simulation update target while TPS Bypass is enabled. Unlike FPS Bypass, this changes physics cadence. | Cheat |
 | Timescale | Enabled | Toggle gameplay timescale on or off. | Cheat |
 | Timescale | Decrease | Lower the gameplay timescale multiplier. | Cheat |

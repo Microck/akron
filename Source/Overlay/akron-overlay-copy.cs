@@ -342,7 +342,7 @@ public sealed partial class AkronOverlay {
         ["Export Profile"] = "Export the selected Whole, StartPos, Keybinds, Auto Kill, Auto Deafen, Recorder, Audio, or HUD profile scope as a .akr pack.",
         ["Import Profile"] = "Open a file browser to import a selected profile .akr pack using the selected scope.",
         ["Community Packs"] = "Search map-linked community .akr packs from the configured Akron Discord catalog endpoint.",
-        ["FPS Bypass"] = "Raise the draw cadence while keeping the configured simulation cadence when possible.",
+        ["FPS Bypass"] = "Raise the draw cadence or enable Motion Smoothing's smoothing pipeline while keeping Celeste physics at 60 FPS.",
         ["TPS Bypass"] = "Change the simulation tick cadence.",
         ["Safe Mode"] = "Safe Mode indicator plus optional local stat guards for deaths, jumps, and best-run fields.",
         ["Freeze Attempts"] = "Restore the current save slot's death counter while Safe Mode is active.",

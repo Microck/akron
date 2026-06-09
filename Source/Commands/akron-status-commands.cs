@@ -85,7 +85,7 @@ public static partial class AkronCommands {
         Log("frame-bypass-smooth-background: " + AkronModule.Settings.FrameBypassSmoothBackground.ToString().ToLowerInvariant());
         Log("frame-bypass-smooth-foreground: " + AkronModule.Settings.FrameBypassSmoothForeground.ToString().ToLowerInvariant());
         Log("frame-bypass-hide-edge-gaps: " + AkronModule.Settings.FrameBypassHideStretchedEdges.ToString().ToLowerInvariant());
-        Log("frame-bypass-silly-mode: " + AkronModule.Settings.FrameBypassSillyMode.ToString().ToLowerInvariant());
+        Log("frame-bypass-nasty-mode: " + AkronModule.Settings.FrameBypassSillyMode.ToString().ToLowerInvariant());
         Log("free-camera: " + AkronRuntimeOptions.DescribeFreeCamera());
         Log("free-camera-freeze-gameplay: " + AkronModule.Settings.FreeCameraFreezeGameplay.ToString().ToLowerInvariant());
         Log("hide-hud: " + AkronRuntimeOptions.DescribeHudVisibility());
