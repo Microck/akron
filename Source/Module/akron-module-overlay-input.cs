@@ -13,6 +13,15 @@ public partial class AkronModule {
     private static bool previousMouseVisible;
 
     private static void HandleHotkeys(Level level) {
+        if (Overlay?.IsTransientMouseUiActive == true && IsOverlayTogglePressed()) {
+            Overlay.CancelTransientMouseUiForOverlayToggle();
+            Overlay.PrewarmLayout(level);
+            Overlay.Visible = true;
+            Overlay.Active = false;
+            UpdateOverlayCursorState();
+            return;
+        }
+
         if (Overlay?.Visible == true) {
             if (IsOverlayTogglePressed()) {
                 Overlay.ResetTransientUiState();
@@ -182,6 +191,15 @@ public partial class AkronModule {
     }
 
     private static void HandleGlobalOverlayHotkeys(Scene scene) {
+        if (Overlay?.IsTransientMouseUiActive == true && IsOverlayTogglePressed()) {
+            Overlay.CancelTransientMouseUiForOverlayToggle();
+            Overlay.PrewarmLayout(scene as Level);
+            Overlay.Visible = true;
+            Overlay.Active = false;
+            UpdateOverlayCursorState();
+            return;
+        }
+
         if (Overlay?.Visible == true) {
             if (IsOverlayTogglePressed()) {
                 Overlay.ResetTransientUiState();
@@ -288,6 +306,10 @@ public partial class AkronModule {
         }
 
         RestoreCursorVisibility();
+    }
+
+    internal static void RefreshOverlayCursorState() {
+        UpdateOverlayCursorState();
     }
 
     internal static void ShowManagedCursorForTransientUi() {

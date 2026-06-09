@@ -146,6 +146,32 @@ public sealed partial class AkronOverlay {
         BeginAutoKillAreaSelection();
     }
 
+    internal bool CancelTransientMouseUiForOverlayToggle() {
+        bool cancelled = false;
+        if (startPosPlacementActive) {
+            EndStartPosPlacement(false);
+            cancelled = true;
+        }
+        if (autoKillAreaSelectionActive) {
+            EndAutoKillAreaSelection(false);
+            cancelled = true;
+        }
+        if (autoDeafenAreaSelectionActive) {
+            EndAutoDeafenAreaSelection(false);
+            cancelled = true;
+        }
+
+        if (!cancelled) {
+            return false;
+        }
+
+        SearchInputConsumedThisFrame = false;
+        SearchOwnsGameplayInputThisFrame = false;
+        AkronModule.RefreshOverlayCursorState();
+        Engine.Scene?.Add(new AkronToast("Selection cancelled; Akron reopened."));
+        return true;
+    }
+
     private void BeginStartPosPlacement() {
         if (!CanUseStartPosPlacementEditor()) {
             AkronModule.Settings.StartPosMousePlacement = false;
@@ -208,6 +234,8 @@ public sealed partial class AkronOverlay {
             Visible = true;
             Active = AkronModule.Settings.ConsumeGameplayInputInMenu;
         }
+
+        AkronModule.RefreshOverlayCursorState();
     }
 
     private void EndAutoKillAreaSelection(bool restoreOverlay) {
@@ -221,6 +249,8 @@ public sealed partial class AkronOverlay {
             Visible = true;
             Active = AkronModule.Settings.ConsumeGameplayInputInMenu;
         }
+
+        AkronModule.RefreshOverlayCursorState();
     }
 
     private void BeginAutoDeafenAreaSelection() {
@@ -257,6 +287,8 @@ public sealed partial class AkronOverlay {
             Visible = true;
             Active = AkronModule.Settings.ConsumeGameplayInputInMenu;
         }
+
+        AkronModule.RefreshOverlayCursorState();
     }
 
     internal bool TryGetPracticeAreaSelectionPreview(Level level, bool isAutoDeafen, out Rectangle area, out bool hasAnchor) {

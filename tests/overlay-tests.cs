@@ -180,6 +180,43 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void OverlayToggleCancelsHiddenTransientMouseToolsBeforeNormalToggle() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/akron-module-overlay-input.cs"));
+        int handleHotkeys = source.IndexOf("private static void HandleHotkeys", StringComparison.Ordinal);
+        int handleFrameBypassBindings = source.IndexOf("private static void HandleFrameBypassBindings", handleHotkeys, StringComparison.Ordinal);
+        int transientCancel = source.IndexOf("CancelTransientMouseUiForOverlayToggle", handleHotkeys, StringComparison.Ordinal);
+        int visibleBranch = source.IndexOf("if (Overlay?.Visible == true)", handleHotkeys, StringComparison.Ordinal);
+
+        Assert.True(handleHotkeys >= 0);
+        Assert.True(handleFrameBypassBindings > handleHotkeys);
+        Assert.InRange(transientCancel, handleHotkeys, handleFrameBypassBindings);
+        Assert.InRange(visibleBranch, handleHotkeys, handleFrameBypassBindings);
+        Assert.True(transientCancel < visibleBranch);
+    }
+
+    [Fact]
+    public void PlacementEndPathsRefreshManagedCursorState() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-placement.cs"));
+
+        Assert.Contains("internal bool CancelTransientMouseUiForOverlayToggle()", source);
+        Assert.Contains("EndStartPosPlacement(false);", source);
+        Assert.Contains("EndAutoKillAreaSelection(false);", source);
+        Assert.Contains("EndAutoDeafenAreaSelection(false);", source);
+
+        foreach (string methodName in new[] { "EndStartPosPlacement", "EndAutoKillAreaSelection", "EndAutoDeafenAreaSelection" }) {
+            int start = source.IndexOf("private void " + methodName, StringComparison.Ordinal);
+            int nextMethod = source.IndexOf("\n    private ", start + 1, StringComparison.Ordinal);
+            if (nextMethod < 0) {
+                nextMethod = source.IndexOf("\n    internal ", start + 1, StringComparison.Ordinal);
+            }
+
+            Assert.True(start >= 0);
+            string methodSource = source[start..nextMethod];
+            Assert.Contains("AkronModule.RefreshOverlayCursorState();", methodSource);
+        }
+    }
+
+    [Fact]
     public void SetInventoryPopupUsesSetButtonAndArmsRestoreSnapshot() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-gameplay-popups.cs"));
         int start = source.IndexOf("private void DrawSetInventoryPopupControls", StringComparison.Ordinal);

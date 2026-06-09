@@ -6,22 +6,42 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.13
+
+### Fixed
+
+- Let the Open Menu key cancel hidden Auto Kill and Auto Deafen area selection and reopen Akron, so players are not stuck in a frozen selection mode.
+- Restore Akron-managed cursor visibility after StartPos placement, Auto Kill area selection, and Auto Deafen area selection ends.
+
 ## 0.1.2-beta.12
+
+### Added
 
 - Add a Backups overlay tab for managing Akron save backups from inside the game.
 - Add manual backup creation for the current Celeste `Saves` folder.
 - Add automatic backup triggers for Akron launch, Akron close, save/settings writes, chapter entry, and timed intervals.
-- Group automatic backup triggers into a `Triggers` submenu so the Backups tab stays compact.
 - Add a restore browser for backup ZIPs, including backup timestamps, file names, sizes, reasons, save slots, and pinned state.
-- Make restore create a `pre-restore` safety backup before extracting the selected ZIP.
-- Make restore reload the restored save data and return to the main menu so Celeste does not keep using stale in-level save state.
 - Add ZIP metadata in `_akron-backup.json` with the backup reason, creation time, Celeste version, Akron version, save slot, profile name, current area/room when available, and enabled Everest modules.
-- Exclude `Saves/AkronBackups` from future backup ZIPs so backups do not recursively include older backups.
 - Add backup pinning through sidecar `.pin` files so important backups are protected from automatic cleanup.
 - Add retention cleanup by maximum count, maximum age, maximum total folder size, and protected newest backups.
 - Add a `Last Result` popup with the latest backup status, last backup age, backup folder path, manual-create action, and open-folder action.
 - Add user-facing docs for backup creation, restore behavior, metadata, pinning, and retention rules.
+- Add feature tooltips for overlay actions.
+
+### Changed
+
+- Group automatic backup triggers into a `Triggers` submenu so the Backups tab stays compact.
+- Make restore create a `pre-restore` safety backup before extracting the selected ZIP.
+- Make restore reload the restored save data and return to the main menu so Celeste does not keep using stale in-level save state.
+- Exclude `Saves/AkronBackups` from future backup ZIPs so backups do not recursively include older backups.
+- Rename `Skip Cutscene / Dialogue` to `Skip Cutscene`.
 - Verify the Backups overlay and manual backup creation on the remote Windows Celeste test box, including ZIP readability and metadata contents.
+
+### Fixed
+
+- Prevent save/load restore crashes when a modded runtime rejects readonly field writes during deep clone.
+- Prevent FrostHelper and other gameplay renderers from being interrupted by Akron overlay rendering.
+- Preserve graphics device state after Akron draws ImGui overlay content.
 
 ## 0.1.2-beta.11
 
