@@ -227,6 +227,35 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
+    public void LoggingDefaultsToMaximumDiagnosticsWithBoundedRetention() {
+        AkronModuleSettings settings = new AkronModuleSettings();
+
+        Assert.True(settings.Logging);
+        Assert.Equal(AkronLoggingLevel.Trace, settings.LoggingLevel);
+        Assert.True(settings.LoggingMirrorWarningsToEverest);
+        Assert.Equal(5, settings.LoggingMaxFileSizeMb);
+        Assert.Equal(5, settings.LoggingRetainedFiles);
+    }
+
+    [Theory]
+    [InlineData(0, 5)]
+    [InlineData(1, 1)]
+    [InlineData(50, 50)]
+    [InlineData(500, 100)]
+    public void LoggingFileSizeClampKeepsFilesBounded(int input, int expected) {
+        Assert.Equal(expected, AkronModuleSettings.ClampLoggingMaxFileSizeMb(input));
+    }
+
+    [Theory]
+    [InlineData(-1, 5)]
+    [InlineData(0, 0)]
+    [InlineData(7, 7)]
+    [InlineData(500, 20)]
+    public void LoggingRetentionClampKeepsRotationBounded(int input, int expected) {
+        Assert.Equal(expected, AkronModuleSettings.ClampLoggingRetainedFiles(input));
+    }
+
+    [Fact]
     public void DefaultButtonBindingsStartEmptyExceptMenuAndLeftAltHolds() {
         IReadOnlyDictionary<string, (XnaButtons Buttons, Keys Key)> allowedDefaults = new Dictionary<string, (XnaButtons, Keys)> {
             ["ToggleOverlay"] = ((XnaButtons) 0, Keys.Tab),
@@ -1205,6 +1234,16 @@ public sealed class ModuleSettingsTests {
 
         Assert.Equal("Action", interfaceControls["Community Packs"]);
         Assert.False(HasOverlayOptionsPopup("Community Packs"));
+    }
+
+    [Fact]
+    public void LoggingLivesInInterfaceWithOptionsPopup() {
+        Dictionary<string, string> interfaceControls = BuildOverlayEntryControls("Interface");
+
+        Assert.Equal("Toggle", interfaceControls["Logging"]);
+        Assert.True(HasOverlayOptionsPopup("Logging"));
+        Assert.Contains("Logging", BuildOverlayEntryLabels("Interface"));
+        Assert.DoesNotContain("Logging", BuildOverlayEntryLabels("Global"));
     }
 
     [Fact]
@@ -2770,6 +2809,29 @@ public sealed class ModuleSettingsTests {
         } finally {
             Directory.Delete(folder, recursive: true);
         }
+    }
+
+    [Fact]
+    public void ProfilePacksDoNotReplaceMachineLocalLoggingSettings() {
+        AkronModuleSettings source = new AkronModuleSettings {
+            StreamerMode = true
+        };
+        AkronProfilePack pack = AkronProfilePacks.Capture(source, session: null, "Practice Setup");
+        AkronModuleSettings target = new AkronModuleSettings {
+            Logging = false,
+            LoggingLevel = AkronLoggingLevel.Normal,
+            LoggingMirrorWarningsToEverest = false,
+            LoggingMaxFileSizeMb = 42,
+            LoggingRetainedFiles = 2
+        };
+
+        AkronProfilePacks.Apply(target, session: null, pack);
+
+        Assert.False(target.Logging);
+        Assert.Equal(AkronLoggingLevel.Normal, target.LoggingLevel);
+        Assert.False(target.LoggingMirrorWarningsToEverest);
+        Assert.Equal(42, target.LoggingMaxFileSizeMb);
+        Assert.Equal(2, target.LoggingRetainedFiles);
     }
 
     [Fact]

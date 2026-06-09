@@ -95,6 +95,7 @@ public static class AkronFeatureRegistry
         { AkronFeatureKind.GoldenStartHelper, new FeatureDefinition(AkronFeatureKind.GoldenStartHelper, AkronStatus.GoldberryHardlistClean, "Golden start helper", "Runs Celeste's first-room golden-start helper.") },
         { AkronFeatureKind.GoldenTransparency, new FeatureDefinition(AkronFeatureKind.GoldenTransparency, AkronStatus.RegularClean, "Golden transparency", "Changes golden berry/follower presentation without changing gameplay.") },
         { AkronFeatureKind.LagPauser, new FeatureDefinition(AkronFeatureKind.LagPauser, AkronStatus.GoldberryHardlistClean, "Lag pauser", "Pauses after a detected frame-time spike.") },
+        { AkronFeatureKind.Logging, new FeatureDefinition(AkronFeatureKind.Logging, AkronStatus.RegularClean, "Logging", "Records local Akron diagnostics without changing gameplay state.") },
         { AkronFeatureKind.JournalSnapshotCompare, new FeatureDefinition(AkronFeatureKind.JournalSnapshotCompare, AkronStatus.GoldberryHardlistClean, "Journal snapshot / compare", "Exports and compares save-file journal stats.") }
     };
 
@@ -193,6 +194,7 @@ public static class AkronFeatureRegistry
         { "Map Capture", AkronStatus.GoldberryHardlistClean },
         { "Search", AkronStatus.RegularClean },
         { "Search Autofocus", AkronStatus.RegularClean },
+        { "Logging", AkronStatus.RegularClean },
         { "Extended Variants Master", AkronStatus.Cheat },
         { "Extended Variants Randomizer", AkronStatus.Cheat },
         { "Reset Extended", AkronStatus.RegularClean },

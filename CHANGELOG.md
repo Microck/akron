@@ -6,6 +6,20 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.14
+
+### Added
+
+- Add local Akron diagnostic logging under the Interface tab, including log level, warning mirroring, file rotation, retained files, and a test entry action.
+
+### Changed
+
+- Reclassify Motion Smoothing FPS Bypass as regular clean while keeping TPS Bypass, object interpolation, TAS mode, and Nasty mode marked as Cheat.
+
+### Fixed
+
+- Keep the overlay Search textbox focused while backspacing from narrow queries into broader result sets.
+
 ## 0.1.2-beta.13
 
 ### Fixed

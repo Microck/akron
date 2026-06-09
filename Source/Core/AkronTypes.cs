@@ -95,6 +95,12 @@ public enum AkronFrameIncreaseMethod {
     Dynamic
 }
 
+public enum AkronLoggingLevel {
+    Normal,
+    Verbose,
+    Trace
+}
+
 public enum AkronCameraSmoothingMode {
     Fancy,
     Fast,
@@ -542,6 +548,7 @@ public enum AkronFeatureKind {
     GoldenStartHelper,
     GoldenTransparency,
     LagPauser,
+    Logging,
     JournalSnapshotCompare
 }
 

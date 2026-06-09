@@ -73,6 +73,11 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int OverlayScale { get; set; } = 100;
     public int OverlayBlur { get; set; }
     public int OverlayAnimationMs { get; set; } = 80;
+    public bool Logging { get; set; } = true;
+    public AkronLoggingLevel LoggingLevel { get; set; } = AkronLoggingLevel.Trace;
+    public bool LoggingMirrorWarningsToEverest { get; set; } = true;
+    public int LoggingMaxFileSizeMb { get; set; } = 5;
+    public int LoggingRetainedFiles { get; set; } = 5;
     public AkronProfileSection ProfilePackSection { get; set; } = AkronProfileSection.Whole;
     public string ProfilePackExportName { get; set; } = string.Empty;
     public string CommunityPackIndexUrl { get; set; } = AkronCommunityPacks.DefaultIndexUrl;

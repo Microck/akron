@@ -785,6 +785,7 @@ public static partial class AkronActions {
         }
 
         string path = AkronDebugSnapshot.Write(level, tag);
+        AkronLog.Normal(nameof(AkronDebugSnapshot), "debug snapshot written: " + path);
         Engine.Scene?.Add(new AkronToast("Debug snapshot: " + Path.GetFileName(path)));
         return path;
     }

@@ -25,6 +25,8 @@ public sealed partial class AkronOverlay {
         } else if (string.Equals(entry.Label, "Overlay Appearance", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(entry.Label, "Theme", StringComparison.OrdinalIgnoreCase)) {
             DrawOverlayAppearancePopupControls(popupId);
+        } else if (string.Equals(entry.Label, "Logging", StringComparison.OrdinalIgnoreCase)) {
+            DrawLoggingPopupControls(popupId);
         } else if (string.Equals(entry.Label, "Keybinds", StringComparison.OrdinalIgnoreCase)) {
             DrawKeybindsPopupControls(popupId);
         } else if (string.Equals(entry.Label, "Export Profile", StringComparison.OrdinalIgnoreCase) ||
@@ -233,6 +235,39 @@ public sealed partial class AkronOverlay {
         DrawProfileSectionChoice("Audio", AkronProfileSection.Audio, popupId);
         DrawProfileSectionChoice("HUD", AkronProfileSection.Hud, popupId);
         ImGui.TextWrapped("Whole applies the full profile. Scoped imports only replace the selected system.");
+    }
+
+    private void DrawLoggingPopupControls(string popupId) {
+        ImGui.TextUnformatted("Level: " + AkronLog.FormatLevel(AkronModule.Settings.LoggingLevel));
+        DrawLoggingLevelChoice("Normal", AkronLoggingLevel.Normal, popupId);
+        DrawLoggingLevelChoice("Verbose", AkronLoggingLevel.Verbose, popupId);
+        DrawLoggingLevelChoice("Trace", AkronLoggingLevel.Trace, popupId);
+        ImGui.Separator();
+        DrawPopupCheckbox("Mirror warnings", () => AkronModule.Settings.LoggingMirrorWarningsToEverest, value => {
+            AkronModule.Settings.LoggingMirrorWarningsToEverest = value;
+            AkronLog.LogSettingsChanged("mirror-warnings=" + value.ToString().ToLowerInvariant());
+        }, popupId, "Send warnings and errors to Everest's shared log as well as Akron's log file.");
+        DrawIntStepperRow("Max MB", () => AkronModule.Settings.LoggingMaxFileSizeMb, value => {
+            AkronModule.Settings.LoggingMaxFileSizeMb = AkronModuleSettings.ClampLoggingMaxFileSizeMb(value);
+            AkronLog.LogSettingsChanged("max-file-size-mb=" + AkronModule.Settings.LoggingMaxFileSizeMb.ToString(CultureInfo.InvariantCulture));
+        }, -1, 1, 1, 100, popupId, "Rotate the current Akron log when it reaches this many megabytes.");
+        DrawIntStepperRow("Retained", () => AkronModule.Settings.LoggingRetainedFiles, value => {
+            AkronModule.Settings.LoggingRetainedFiles = AkronModuleSettings.ClampLoggingRetainedFiles(value);
+            AkronLog.LogSettingsChanged("retained-files=" + AkronModule.Settings.LoggingRetainedFiles.ToString(CultureInfo.InvariantCulture));
+        }, -1, 1, 0, 20, popupId, "Keep this many rotated Akron log files.");
+        ImGui.Separator();
+        if (ImGui.Button("Write test entry##" + popupId)) {
+            AkronLog.Trace(nameof(AkronOverlay), "test log entry from Logging popup");
+        }
+        ImGui.TextWrapped("Path: " + AkronModule.Settings.FormatPathForDisplay(AkronLog.GetCurrentLogPath()));
+    }
+
+    private static void DrawLoggingLevelChoice(string label, AkronLoggingLevel level, string popupId) {
+        bool selected = AkronModuleSettings.NormalizeLoggingLevel(AkronModule.Settings.LoggingLevel) == level;
+        if (ImGui.RadioButton(label + "##logging-level-" + popupId, selected)) {
+            AkronModule.Settings.LoggingLevel = level;
+            AkronLog.LogSettingsChanged("level=" + AkronLog.FormatLevel(level));
+        }
     }
 
     private static void DrawProfileSectionChoice(string label, AkronProfileSection section, string popupId) {

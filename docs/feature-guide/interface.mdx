@@ -1,6 +1,6 @@
 ---
 title: Interface
-description: Overlay appearance, Streamer Mode, `.akr` pack import/export, community packs, and search.
+description: Overlay appearance, logging, Streamer Mode, `.akr` pack import/export, community packs, and search.
 ---
 
 The Interface tab controls the Akron overlay itself and the public `.akr` pack workflows.
@@ -11,6 +11,7 @@ The Interface tab controls the Akron overlay itself and the public `.akr` pack w
 | UI Scale | Number | Scale Akron overlay text and controls. | Normal clear |
 | Opacity | Number | Set Akron overlay background opacity. | Normal clear |
 | Streamer Mode | Toggle | Show filenames instead of full local filesystem paths. | Normal clear |
+| Logging | Toggle | Write local Akron diagnostic logs to `Saves/AkronLogs`. | Normal clear |
 | Pause While Open | Toggle | When enabled, opening the Akron menu stops gameplay updates until the menu closes. | Normal clear |
 | Export Profile | Action | Export the selected Whole, StartPos, Keybinds, Auto Kill, Auto Deafen, Recorder, Audio, or HUD profile scope as a `.akr` profile pack. | Normal clear |
 | Import Profile | Action | Open a file browser to import a selected `.akr` profile pack using the selected profile scope. | Normal clear |
@@ -46,6 +47,13 @@ Rows with a triangle expose the controls listed below.
 | Theme | Button in levels | Allow the floating activation button in active levels. | Normal clear |
 | Theme | Button in menus | Allow the floating activation button outside active levels. | Normal clear |
 | Theme | Search autofocus | Focus Akron search automatically when the overlay opens. | Normal clear |
+| Logging | Normal | Record normal diagnostic events. | Normal clear |
+| Logging | Verbose | Record normal and verbose diagnostic events. | Normal clear |
+| Logging | Trace | Record maximum diagnostic events. | Normal clear |
+| Logging | Mirror warnings | Also send warnings and errors to Everest's shared log. | Normal clear |
+| Logging | Max MB | Rotate the active Akron log file after the configured file size. | Normal clear |
+| Logging | Retained | Keep the configured number of rotated Akron log files. | Normal clear |
+| Logging | Write test entry | Write a trace entry to the current Akron log file. | Normal clear |
 | Export Profile | Name | Set the exported `.akr` profile pack name. | Normal clear |
 | Export Profile | Whole | Export every supported profile section into one `.akr` profile pack. | Normal clear |
 | Export Profile | StartPos | Export only StartPos profile data into the `.akr` profile pack. | Normal clear |

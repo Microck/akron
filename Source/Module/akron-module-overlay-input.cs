@@ -16,18 +16,22 @@ public partial class AkronModule {
         if (Overlay?.IsTransientMouseUiActive == true && IsOverlayTogglePressed()) {
             Overlay.CancelTransientMouseUiForOverlayToggle();
             Overlay.PrewarmLayout(level);
+            bool wasVisible = Overlay.Visible;
             Overlay.Visible = true;
             Overlay.Active = false;
             UpdateOverlayCursorState();
+            LogOverlayVisibilityChange(wasVisible, Overlay.Visible, "transient-toggle");
             return;
         }
 
         if (Overlay?.Visible == true) {
             if (IsOverlayTogglePressed()) {
                 Overlay.ResetTransientUiState();
+                bool wasVisible = Overlay.Visible;
                 Overlay.Visible = false;
                 Overlay.Active = false;
                 UpdateOverlayCursorState();
+                LogOverlayVisibilityChange(wasVisible, Overlay.Visible, "hotkey");
             }
 
             return;
@@ -41,9 +45,11 @@ public partial class AkronModule {
             } else {
                 Overlay.PrewarmLayout(level);
             }
+            bool wasVisible = Overlay.Visible;
             Overlay.Visible = nextVisible;
             Overlay.Active = false;
             UpdateOverlayCursorState();
+            LogOverlayVisibilityChange(wasVisible, Overlay.Visible, "hotkey");
             return;
         }
 
@@ -271,6 +277,7 @@ public partial class AkronModule {
         Overlay.Visible = visible;
         Overlay.Active = Overlay.Visible && Settings.ConsumeGameplayInputInMenu;
         UpdateOverlayCursorState();
+        LogOverlayVisibilityChange(wasVisible, Overlay.Visible, "api");
         return Overlay.Visible;
     }
 
@@ -285,11 +292,13 @@ public partial class AkronModule {
 
         EnsureOverlay(scene);
         if (ensureVisible) {
+            bool wasVisible = Overlay.Visible;
             Overlay.ResetTransientUiState();
             Overlay.PrewarmLayout(scene as Level);
             Overlay.Visible = true;
             Overlay.Active = Overlay.Visible && Settings.ConsumeGameplayInputInMenu;
             UpdateOverlayCursorState();
+            LogOverlayVisibilityChange(wasVisible, Overlay.Visible, "ensure-visible");
         }
 
         return Overlay;
@@ -379,6 +388,14 @@ public partial class AkronModule {
         }
 
         return false;
+    }
+
+    private static void LogOverlayVisibilityChange(bool wasVisible, bool visible, string source) {
+        if (wasVisible == visible) {
+            return;
+        }
+
+        AkronLog.Verbose(nameof(AkronOverlay), "overlay " + (visible ? "opened" : "closed") + "; source=" + source);
     }
 
     private static bool IsKeyboardBindingPressed(IReadOnlyCollection<Keys> keys, KeyboardState keyboard, KeyboardState previousKeyboard) {

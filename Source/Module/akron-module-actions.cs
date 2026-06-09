@@ -242,6 +242,7 @@ public partial class AkronModule {
     }
     public static bool TryUse(AkronFeatureKind feature) {
         AkronPolicyDecision decision = AkronPolicy.CanUse(feature);
+        AkronLog.Trace(nameof(AkronModule), "policy check: " + feature + "; allowed=" + decision.Allowed.ToString().ToLowerInvariant() + "; message=" + decision.Message);
         if (!decision.Allowed) {
             if (Engine.Scene is Level level && AkronPolicy.ShouldOfferRulesetEscape(feature)) {
                 ShowRulesetConflictPrompt(level, feature);
@@ -253,6 +254,7 @@ public partial class AkronModule {
         }
 
         AkronPolicy.RecordFeatureUse(feature);
+        AkronLog.Verbose(nameof(AkronModule), "feature use recorded: " + feature);
         return true;
     }
 

@@ -78,7 +78,7 @@ internal static class AkronPerformanceTelemetry {
 
         if (!overlayVisible) {
             if (wasOverlayVisible && overlayRenderCount > 0) {
-                Logger.Log(LogLevel.Info, nameof(AkronPerformanceTelemetry), "Overlay hidden. " + DescribeOverlayRenderCadence());
+                AkronLog.Info(nameof(AkronPerformanceTelemetry), "Overlay hidden. " + DescribeOverlayRenderCadence());
                 measureHiddenBaselineAfterOverlay = true;
                 hiddenBaselineTotal = 0.0;
                 hiddenBaselineWorst = 0.0;
@@ -101,7 +101,7 @@ internal static class AkronPerformanceTelemetry {
         overlayFramesSinceLog++;
         if (overlayFramesSinceLog >= OverlayLogIntervalFrames) {
             overlayFramesSinceLog = 0;
-            Logger.Log(LogLevel.Info, nameof(AkronPerformanceTelemetry), "Overlay visible. " + DescribeOverlayRenderCadence());
+            AkronLog.Info(nameof(AkronPerformanceTelemetry), "Overlay visible. " + DescribeOverlayRenderCadence());
         }
     }
 
@@ -142,7 +142,7 @@ internal static class AkronPerformanceTelemetry {
         double averageInterval = hiddenBaselineTotal / hiddenBaselineSamples;
         double averageFps = averageInterval <= 0.0 ? 0.0 : 1.0 / averageInterval;
         double worstFps = hiddenBaselineWorst <= 0.0 ? 0.0 : 1.0 / hiddenBaselineWorst;
-        Logger.Log(LogLevel.Info, nameof(AkronPerformanceTelemetry),
+        AkronLog.Info(nameof(AkronPerformanceTelemetry),
             "Overlay hidden baseline. render-fps-avg: " + averageFps.ToString("0.0", CultureInfo.InvariantCulture) +
             "; render-fps-worst: " + worstFps.ToString("0.0", CultureInfo.InvariantCulture) +
             "; render-samples: " + hiddenBaselineSamples.ToString(CultureInfo.InvariantCulture));

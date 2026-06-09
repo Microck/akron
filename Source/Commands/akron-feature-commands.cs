@@ -11,7 +11,7 @@ public static partial class AkronCommands {
     public static void Feature(string name = "", string action = "status") {
         string normalizedName = NormalizeToken(name);
         if (string.IsNullOrWhiteSpace(normalizedName)) {
-            Log("usage: akron_feature <infinite-stamina|infinite-dash|auto-kill|auto-deafen|click-teleport|cursor-zoom|noclip|hazard-accuracy|free-camera|fps-bypass|tps-bypass|invincibility|air-jumps|input-viewer|input-history|inputs-per-second|stamina-bar|dash-bar|speed-number|room-labels|room-timer|room-stat-tracker|freeze-timer-paused|fast-lookout|skip-postcards|skip-intro|death-pb-loss-prompt|prevent-down-dash-redirects|death-stats|total-attempts|status-labels|madeline-colors|madeline-hair-length|madeline-effect-sync|hide-player|no-death-effect|no-death-wipe|fix-hitbox-pixels|no-freeze-frames|ground-refills|reduced-visual-noise|light-level|bloom-level|screen-tint|no-particles|no-trails|no-glitch|no-anxiety|no-distortion|hide-snow|hide-wind-snow|hide-waterfalls|hide-tentacles|hide-heat-distortion|streamer-mode|proof-mode|submission-mode|proof-recorder-guard|end-screen-helper|pause-tracker|map-version-stamp|golden-transparency|lag-pauser> [on|off|toggle|status]");
+            Log("usage: akron_feature <infinite-stamina|infinite-dash|auto-kill|auto-deafen|click-teleport|cursor-zoom|noclip|hazard-accuracy|free-camera|fps-bypass|tps-bypass|invincibility|air-jumps|input-viewer|input-history|inputs-per-second|stamina-bar|dash-bar|speed-number|room-labels|room-timer|room-stat-tracker|freeze-timer-paused|fast-lookout|skip-postcards|skip-intro|death-pb-loss-prompt|prevent-down-dash-redirects|death-stats|total-attempts|status-labels|madeline-colors|madeline-hair-length|madeline-effect-sync|hide-player|no-death-effect|no-death-wipe|fix-hitbox-pixels|no-freeze-frames|ground-refills|reduced-visual-noise|light-level|bloom-level|screen-tint|no-particles|no-trails|no-glitch|no-anxiety|no-distortion|hide-snow|hide-wind-snow|hide-waterfalls|hide-tentacles|hide-heat-distortion|streamer-mode|proof-mode|submission-mode|proof-recorder-guard|end-screen-helper|pause-tracker|map-version-stamp|golden-transparency|lag-pauser|logging> [on|off|toggle|status]");
             return;
         }
 
@@ -101,6 +101,10 @@ public static partial class AkronCommands {
             "mapversionstamp" => SetFeatureToggle(action, AkronFeatureKind.MapVersionStamp, () => AkronModule.Settings.MapVersionStamp, value => AkronModule.Settings.MapVersionStamp = value, "map-version-stamp"),
             "goldentransparency" => SetFeatureToggle(action, AkronFeatureKind.GoldenTransparency, () => AkronModule.Settings.GoldenTransparency, value => AkronModule.Settings.GoldenTransparency = value, "golden-transparency"),
             "lagpauser" => SetFeatureToggle(action, AkronFeatureKind.LagPauser, () => AkronModule.Settings.LagPauser, value => AkronModule.Settings.LagPauser = value, "lag-pauser"),
+            "logging" or "logs" => SetPlainToggle(action, () => AkronModule.Settings.Logging, value => {
+                AkronModule.Settings.Logging = value;
+                AkronLog.LogSettingsChanged("enabled=" + value.ToString().ToLowerInvariant());
+            }, "logging"),
             _ => false
         };
 

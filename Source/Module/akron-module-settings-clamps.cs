@@ -81,6 +81,18 @@ public partial class AkronModuleSettings {
         return ClampValue(milliseconds, 0, 500);
     }
 
+    public static AkronLoggingLevel NormalizeLoggingLevel(AkronLoggingLevel level) {
+        return Enum.IsDefined(typeof(AkronLoggingLevel), level) ? level : AkronLoggingLevel.Trace;
+    }
+
+    public static int ClampLoggingMaxFileSizeMb(int sizeMb) {
+        return ClampValue(sizeMb <= 0 ? 5 : sizeMb, 1, 100);
+    }
+
+    public static int ClampLoggingRetainedFiles(int files) {
+        return ClampValue(files < 0 ? 5 : files, 0, 20);
+    }
+
     public static int ClampPercent(int value, int minimum = 10, int maximum = 300) {
         return ClampValue(value <= 0 ? 100 : value, minimum, maximum);
     }

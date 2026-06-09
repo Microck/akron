@@ -95,6 +95,10 @@ public sealed partial class AkronOverlay {
             selectedPanel = SelectionPanel.Actions;
             searchInputActive = true;
             searchInputUsesImGui = true;
+            // Filtering can add enough windows or rows to make ImGui drop the
+            // active text item for a frame. Re-acquire the same input next
+            // frame so backspacing through broader queries keeps editing.
+            RequestSearchInputFocus(id);
             SearchInputConsumedThisFrame = true;
             SearchOwnsGameplayInputThisFrame = true;
         }

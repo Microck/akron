@@ -119,6 +119,7 @@ public sealed class FeatureRegistryTests
     [InlineData(AkronFeatureKind.GoldenStartHelper, AkronStatus.GoldberryHardlistClean)]
     [InlineData(AkronFeatureKind.GoldenTransparency, AkronStatus.RegularClean)]
     [InlineData(AkronFeatureKind.LagPauser, AkronStatus.GoldberryHardlistClean)]
+    [InlineData(AkronFeatureKind.Logging, AkronStatus.RegularClean)]
     [InlineData(AkronFeatureKind.JournalSnapshotCompare, AkronStatus.GoldberryHardlistClean)]
     public void CheatReferenceClassifiesEveryFeatureKind(AkronFeatureKind kind, AkronStatus expectedStatus)
     {
@@ -350,6 +351,7 @@ public sealed class FeatureRegistryTests
     [InlineData("Golden Transparency", AkronStatus.RegularClean)]
     [InlineData("Streamer Mode", AkronStatus.RegularClean)]
     [InlineData("Lag Pauser", AkronStatus.GoldberryHardlistClean)]
+    [InlineData("Logging", AkronStatus.RegularClean)]
     [InlineData("Journal Snapshot / Compare", AkronStatus.GoldberryHardlistClean)]
     [InlineData("SRT Status", AkronStatus.RegularClean)]
     [InlineData("SRT Slot", AkronStatus.RegularClean)]

@@ -97,6 +97,7 @@ public partial class AkronModule : EverestModule {
 
     public override void Load() {
         AkronModuleSettings.EnsureCurrentKeybindDefaults(Settings);
+        AkronLog.Normal(nameof(AkronModule), "load start; " + AkronLog.DescribeSettings());
         AkronImGuiRenderer.EnsureNativeResolverRegistered();
         typeof(AkronSaveLoadExports).ModInterop();
         typeof(SpeedrunToolSaveLoadShim).ModInterop();
@@ -199,6 +200,7 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Unload() {
+        AkronLog.Normal(nameof(AkronModule), "unload start");
         AkronBackupActions.NotifyShutdown();
         AkronScreenshotScanner.Unload();
         AkronNativeSavestateSupport.Reset();

@@ -858,6 +858,6 @@ public static partial class AkronCommands {
     private static void Log(string line) {
         Engine.Commands?.Log(line);
         AkronAutomationService.RecordOutput(line);
-        Logger.Log(LogLevel.Info, nameof(AkronCommands), line);
+        AkronLog.Info(nameof(AkronCommands), line);
     }
 }

@@ -138,6 +138,7 @@ public sealed partial class AkronOverlay {
     private static bool HasOptionsPopup(string label) {
         return string.Equals(label, "Overlay Appearance", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Theme", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Logging", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Keybinds", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Export Profile", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Import Profile", StringComparison.OrdinalIgnoreCase) ||

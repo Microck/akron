@@ -244,6 +244,7 @@ public sealed partial class AkronOverlay {
                     NumericRow("UI Scale", () => AkronModule.Settings.OverlayScale / 100f, value => AkronModule.Settings.OverlayScale = AkronModuleSettings.ClampOverlayScale((int) Math.Round(value * 100f)), 0.75f, 1.5f, "%.3f", string.Empty, false, "overlay appearance", "dpi"),
                     NumericRow("Opacity", () => AkronModule.Settings.OverlayOpacity, value => AkronModule.Settings.OverlayOpacity = AkronModuleSettings.ClampOverlayOpacity((int) Math.Round(value)), 55, 100, "%.0f", "%", true, "transparent lists"),
                     Toggle("Streamer Mode", () => AkronModule.Settings.StreamerMode, value => AkronModule.Settings.StreamerMode = value),
+                    LoggingToggle(),
                     Toggle("Pause While Open", () => AkronModule.Settings.PauseGameplayInMenu, value => AkronModule.Settings.PauseGameplayInMenu = value),
                     Action("Export Profile", () => true, () => AkronProfilePacks.FormatSection(AkronModule.Settings.ProfilePackSection), () => AkronProfilePacks.ExportCurrent(AkronModule.Settings.ProfilePackExportName, AkronModule.Settings.ProfilePackSection), "profile", ".akr", "export"),
                     Action("Import Profile", () => true, () => AkronProfilePacks.FormatSection(AkronModule.Settings.ProfilePackSection), () => AkronProfilePacks.ImportFromFileBrowser(AkronModule.Settings.ProfilePackSection), "profile", ".akr", "import"),
@@ -525,6 +526,23 @@ public sealed partial class AkronOverlay {
 
     private static OverlayEntry Toggle(string label, Func<bool> getter, Action<bool> setter, params string[] tags) {
         return new OverlayEntry(label, () => true, () => getter() ? "On" : "Off", () => setter(!getter()), BuildSearchTerms(label, tags), true, OverlayEntryControl.Toggle);
+    }
+
+    private static OverlayEntry LoggingToggle() {
+        return new OverlayEntry(
+            "Logging",
+            () => true,
+            () => AkronModule.Settings.Logging ? AkronLog.FormatLevel(AkronModule.Settings.LoggingLevel) : "Off",
+            () => {
+                bool next = !AkronModule.Settings.Logging;
+                AkronModule.Settings.Logging = next;
+                AkronLog.LogSettingsChanged("enabled=" + next.ToString().ToLowerInvariant());
+            },
+            BuildSearchTerms("Logging", new[] { "logs", "debug", "diagnostics", "trace" }),
+            true,
+            OverlayEntryControl.Toggle,
+            AkronFeatureKind.Logging,
+            forceOptionsPopup: true);
     }
 
     private static OverlayEntry Keybind(string label, string actionTab, string actionLabel, params string[] tags) {
