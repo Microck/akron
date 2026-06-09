@@ -9,6 +9,18 @@ namespace Celeste.Mod.Akron.Tests;
 
 public sealed class ValueObjectTests {
     [Fact]
+    public void DeepCloneReadonlyFieldSetterDoesNotThrowWhenRuntimeRejectsWrite() {
+        Type setterType = typeof(AkronModule).Assembly.GetType("Force.DeepCloner.Helpers.DeepClonerExprGenerator")!;
+        MethodInfo forceSetField = setterType.GetMethod("ForceSetField", BindingFlags.Static | BindingFlags.NonPublic)!;
+        FieldInfo readonlyField = typeof(ReadonlyFieldProbe).GetField(nameof(ReadonlyFieldProbe.Value), BindingFlags.Instance | BindingFlags.Public)!;
+        ReadonlyFieldProbe probe = new ReadonlyFieldProbe("original");
+
+        Exception exception = Record.Exception(() => forceSetField.Invoke(null, new object[] { readonlyField, probe, "updated" }));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public void RectangleDataRoundTripsThroughXnaRectangle() {
         Rectangle source = new Rectangle(-12, 34, 56, 78);
 
@@ -240,5 +252,13 @@ public sealed class ValueObjectTests {
         Assert.Equal(height, cell.Height);
         Assert.Equal(increase, cell.Increase);
         Assert.Equal(polarity, cell.Polarity);
+    }
+
+    private sealed class ReadonlyFieldProbe {
+        public readonly string Value;
+
+        public ReadonlyFieldProbe(string value) {
+            Value = value;
+        }
     }
 }

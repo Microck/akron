@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -33,9 +34,17 @@ namespace Force.DeepCloner.Helpers {
 
             // protect from parallel execution, when first thread set field readonly back, and second set it to write value
             lock (fieldInfo) {
-                fieldInfo.SetValue(field, v & ~FieldAttributes.InitOnly);
-                field.SetValue(obj, value);
-                fieldInfo.SetValue(field, v | FieldAttributes.InitOnly);
+                try {
+                    fieldInfo.SetValue(field, v & ~FieldAttributes.InitOnly);
+                    field.SetValue(obj, value);
+                } catch (FieldAccessException) {
+                    // Some modded Celeste runtimes reject writes to initonly
+                    // fields even after the FieldInfo attributes are patched.
+                    // MemberwiseClone already copied the field value, so keeping
+                    // that original reference is safer than crashing a restore.
+                } finally {
+                    fieldInfo.SetValue(field, v | FieldAttributes.InitOnly);
+                }
             }
         }
 
