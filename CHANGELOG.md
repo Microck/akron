@@ -8,9 +8,20 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## 0.1.2-beta.12
 
-- Add Akron save backups with manual creation, restore browsing, restore safety backups, automatic triggers, ZIP metadata, pinning, and retention cleanup.
-- Add the Backups overlay tab, with trigger and retention settings grouped into submenus.
-- Document backup creation, restore behavior, metadata, and retention rules.
+- Add a Backups overlay tab for managing Akron save backups from inside the game.
+- Add manual backup creation for the current Celeste `Saves` folder.
+- Add automatic backup triggers for Akron launch, Akron close, save/settings writes, chapter entry, and timed intervals.
+- Group automatic backup triggers into a `Triggers` submenu so the Backups tab stays compact.
+- Add a restore browser for backup ZIPs, including backup timestamps, file names, sizes, reasons, save slots, and pinned state.
+- Make restore create a `pre-restore` safety backup before extracting the selected ZIP.
+- Make restore reload the restored save data and return to the main menu so Celeste does not keep using stale in-level save state.
+- Add ZIP metadata in `_akron-backup.json` with the backup reason, creation time, Celeste version, Akron version, save slot, profile name, current area/room when available, and enabled Everest modules.
+- Exclude `Saves/AkronBackups` from future backup ZIPs so backups do not recursively include older backups.
+- Add backup pinning through sidecar `.pin` files so important backups are protected from automatic cleanup.
+- Add retention cleanup by maximum count, maximum age, maximum total folder size, and protected newest backups.
+- Add a `Last Result` popup with the latest backup status, last backup age, backup folder path, manual-create action, and open-folder action.
+- Add user-facing docs for backup creation, restore behavior, metadata, pinning, and retention rules.
+- Verify the Backups overlay and manual backup creation on the remote Windows Celeste test box, including ZIP readability and metadata contents.
 
 ## 0.1.2-beta.11
 
