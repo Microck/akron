@@ -51,8 +51,11 @@
       "color-scheme": "light dark",
       "googlebot": "index, follow",
       "keywords": "Akron, Celeste mod, Everest mod, Celeste tools, rulesets, StartPos, .akr packs, proof metadata, practice tools",
+      "og:image": "https://akron.micr.dev/docs/images/og.png",
       "robots": "index, follow",
-      "theme-color": "#A86048"
+      "theme-color": "#A86048",
+      "twitter:card": "summary_large_image",
+      "twitter:image": "https://akron.micr.dev/docs/images/og.png"
     }
   },
   "markdown": {

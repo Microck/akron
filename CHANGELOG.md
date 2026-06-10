@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+### Fixed
+
+- Use a stable docs-hosted Open Graph preview image after Mintlify's generated Akron preview returned an empty PNG.
+
 ## 0.1.2-beta.15
 
 ### Added
