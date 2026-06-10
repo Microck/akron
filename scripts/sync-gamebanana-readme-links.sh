@@ -4,6 +4,7 @@ set -euo pipefail
 mod_id="${AKRON_GAMEBANANA_MOD_ID:-681169}"
 readme_path="${AKRON_README_PATH-README.md}"
 website_source_path="${AKRON_WEBSITE_SOURCE_PATH-}"
+website_vercel_path="${AKRON_WEBSITE_VERCEL_PATH-}"
 api_url="https://api.gamebanana.com/Core/Item/Data?itemtype=Mod&itemid=${mod_id}&fields=Files().aFiles()&return_keys=1&format=json_min&flags=JSON_UNESCAPED_SLASHES"
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -21,8 +22,13 @@ if [ -n "$website_source_path" ] && [ ! -f "$website_source_path" ]; then
   exit 1
 fi
 
-if [ -z "$readme_path" ] && [ -z "$website_source_path" ]; then
-  echo "Set AKRON_README_PATH or AKRON_WEBSITE_SOURCE_PATH before syncing links." >&2
+if [ -n "$website_vercel_path" ] && [ ! -f "$website_vercel_path" ]; then
+  echo "Akron website Vercel path does not exist: $website_vercel_path" >&2
+  exit 1
+fi
+
+if [ -z "$readme_path" ] && [ -z "$website_source_path" ] && [ -z "$website_vercel_path" ]; then
+  echo "Set AKRON_README_PATH, AKRON_WEBSITE_SOURCE_PATH, or AKRON_WEBSITE_VERCEL_PATH before syncing links." >&2
   exit 1
 fi
 
@@ -90,4 +96,26 @@ if [ -n "$website_source_path" ]; then
   ' "$website_source_path"
 
   echo "Akron website fallback links point to file $latest_file_id for mod $mod_id."
+fi
+
+if [ -n "$website_vercel_path" ]; then
+  FILE_ID="$latest_file_id" MOD_ID="$mod_id" node - "$website_vercel_path" <<'EOF'
+const fs = require("node:fs");
+
+const filePath = process.argv[2];
+const fileId = process.env.FILE_ID;
+const modId = process.env.MOD_ID;
+
+const config = JSON.parse(fs.readFileSync(filePath, "utf8"));
+for (const route of config.redirects ?? []) {
+  if (route.source === "/olympus") {
+    route.destination = `everest:https://gamebanana.com/mmdl/${fileId},Mod,${modId}`;
+  } else if (route.source === "/raw") {
+    route.destination = `https://gamebanana.com/dl/${fileId}`;
+  }
+}
+fs.writeFileSync(filePath, `${JSON.stringify(config, null, 2)}\n`);
+EOF
+
+  echo "Akron website redirect routes point to file $latest_file_id for mod $mod_id."
 fi
