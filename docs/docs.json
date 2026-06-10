@@ -4,8 +4,8 @@
   "description": "Akron documentation for players, pack authors, and contributors.",
   "theme": "maple",
   "logo": {
-    "light": "/images/logo.png",
-    "dark": "/images/logo.png",
+    "light": "/images/logo.svg",
+    "dark": "/images/logo.svg",
     "href": "/docs/"
   },
   "favicon": "/images/favicon.png",
@@ -51,11 +51,8 @@
       "color-scheme": "light dark",
       "googlebot": "index, follow",
       "keywords": "Akron, Celeste mod, Everest mod, Celeste tools, rulesets, StartPos, .akr packs, proof metadata, practice tools",
-      "og:image": "https://akron.micr.dev/docs/images/og.png",
       "robots": "index, follow",
-      "theme-color": "#A86048",
-      "twitter:card": "summary_large_image",
-      "twitter:image": "https://akron.micr.dev/docs/images/og.png"
+      "theme-color": "#A86048"
     }
   },
   "markdown": {
