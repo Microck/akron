@@ -7,6 +7,7 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
+    private const string EverestModTogglerOuiTypeName = "Celeste.Mod.UI.OuiModToggler";
     private static KeyboardState previousOverlayToggleKeyboard;
     private static KeyboardState previousStartPosHotkeyKeyboard;
     private static bool cursorVisibilityCaptured;
@@ -217,6 +218,11 @@ public partial class AkronModule {
             return;
         }
 
+        if (ShouldSuppressGlobalOverlayToggle(scene)) {
+            RefreshOverlayToggleKeyboardState();
+            return;
+        }
+
         if (IsOverlayTogglePressed()) {
             EnsureOverlay(scene);
             bool nextVisible = !Overlay.Visible;
@@ -233,6 +239,20 @@ public partial class AkronModule {
         if (scene is not Level) {
             HandleFrameBypassBindings();
         }
+    }
+
+    internal static bool ShouldSuppressGlobalOverlayToggleForOuiType(string ouiTypeName) {
+        return string.Equals(ouiTypeName, EverestModTogglerOuiTypeName, System.StringComparison.Ordinal);
+    }
+
+    private static bool ShouldSuppressGlobalOverlayToggle(Scene scene) {
+        return scene is Overworld overworld &&
+               ShouldSuppressGlobalOverlayToggleForOuiType(overworld.Current?.GetType().FullName);
+    }
+
+    private static void RefreshOverlayToggleKeyboardState() {
+        AkronModuleSettings.EnsureCurrentOverlayToggleDefault(Settings);
+        previousOverlayToggleKeyboard = Keyboard.GetState();
     }
 
     private static void UpdateStepHoldRepeat() {

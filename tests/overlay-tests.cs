@@ -194,6 +194,35 @@ public sealed class OverlayTests {
         Assert.True(transientCancel < visibleBranch);
     }
 
+    [Theory]
+    [InlineData("Celeste.Mod.UI.OuiModToggler", true)]
+    [InlineData("Celeste.Mod.UI.OuiModOptions", false)]
+    [InlineData("Celeste.OuiMainMenu", false)]
+    [InlineData(null, false)]
+    public void GlobalOverlayToggleIsSuppressedOnlyInEverestModToggler(string? ouiTypeName, bool expected) {
+        Assert.Equal(expected, AkronModule.ShouldSuppressGlobalOverlayToggleForOuiType(ouiTypeName));
+    }
+
+    [Fact]
+    public void GlobalOverlayHotkeysSuppressModTogglerBeforeOpeningOverlay() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/akron-module-overlay-input.cs"));
+        int start = source.IndexOf("private static void HandleGlobalOverlayHotkeys", StringComparison.Ordinal);
+        int end = source.IndexOf("private static void UpdateStepHoldRepeat", start, StringComparison.Ordinal);
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        string globalHotkeys = source[start..end];
+
+        int visibleBranch = globalHotkeys.IndexOf("if (Overlay?.Visible == true)", StringComparison.Ordinal);
+        int suppressBranch = globalHotkeys.IndexOf("if (ShouldSuppressGlobalOverlayToggle(scene))", StringComparison.Ordinal);
+        int openBranch = globalHotkeys.IndexOf("if (IsOverlayTogglePressed())", suppressBranch, StringComparison.Ordinal);
+
+        Assert.True(visibleBranch >= 0);
+        Assert.True(suppressBranch > visibleBranch);
+        Assert.True(openBranch > suppressBranch);
+        Assert.Contains("RefreshOverlayToggleKeyboardState();", globalHotkeys);
+    }
+
     [Fact]
     public void PlacementEndPathsRefreshManagedCursorState() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-placement.cs"));
