@@ -1,3 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1254" height="1254" viewBox="0 0 1254 1254">
-  <image href="logo.png" x="0" y="0" width="1254" height="1254" />
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="180" viewBox="0 0 700 180" role="img" aria-labelledby="akron-logo-title">
+  <title id="akron-logo-title">Akron</title>
+  <rect width="700" height="180" fill="none" />
+  <g transform="translate(28 30)" fill="#F6D5A8" stroke="#1C0F0B" stroke-width="10" stroke-linejoin="round">
+    <path d="M 4 120 L 40 0 H 68 L 104 120 H 75 L 68 94 H 40 L 33 120 Z M 47 70 H 61 L 54 44 Z" fill-rule="evenodd" />
+    <path d="M 128 0 H 156 V 47 L 198 0 H 234 L 184 56 L 238 120 H 202 L 156 65 V 120 H 128 Z" />
+    <path d="M 260 0 H 321 C 347 0 365 18 365 44 C 365 61 357 75 343 83 L 371 120 H 337 L 314 88 H 288 V 120 H 260 Z M 288 26 V 62 H 316 C 328 62 336 55 336 44 C 336 33 328 26 316 26 Z" fill-rule="evenodd" />
+    <path d="M 393 60 C 393 25 419 0 456 0 C 493 0 519 25 519 60 C 519 95 493 120 456 120 C 419 120 393 95 393 60 Z M 423 60 C 423 78 437 92 456 92 C 475 92 489 78 489 60 C 489 42 475 28 456 28 C 437 28 423 42 423 60 Z" fill-rule="evenodd" />
+    <path d="M 545 0 H 574 L 615 72 V 0 H 643 V 120 H 614 L 573 48 V 120 H 545 Z" />
+  </g>
+  <g transform="translate(28 30)" fill="none" stroke="#A86048" stroke-width="2" stroke-linejoin="round">
+    <path d="M 4 120 L 40 0 H 68 L 104 120 H 75 L 68 94 H 40 L 33 120 Z M 47 70 H 61 L 54 44 Z" fill-rule="evenodd" />
+    <path d="M 128 0 H 156 V 47 L 198 0 H 234 L 184 56 L 238 120 H 202 L 156 65 V 120 H 128 Z" />
+    <path d="M 260 0 H 321 C 347 0 365 18 365 44 C 365 61 357 75 343 83 L 371 120 H 337 L 314 88 H 288 V 120 H 260 Z M 288 26 V 62 H 316 C 328 62 336 55 336 44 C 336 33 328 26 316 26 Z" fill-rule="evenodd" />
+    <path d="M 393 60 C 393 25 419 0 456 0 C 493 0 519 25 519 60 C 519 95 493 120 456 120 C 419 120 393 95 393 60 Z M 423 60 C 423 78 437 92 456 92 C 475 92 489 78 489 60 C 489 42 475 28 456 28 C 437 28 423 42 423 60 Z" fill-rule="evenodd" />
+    <path d="M 545 0 H 574 L 615 72 V 0 H 643 V 120 H 614 L 573 48 V 120 H 545 Z" />
+  </g>
 </svg>

@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+### Fixed
+
+- Keep Mintlify's generated Open Graph previews working by using an SVG docs logo asset instead of the PNG logo path that produced empty generated preview images.
+
 ## 0.1.2-beta.15
 
 ### Added
