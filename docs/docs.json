@@ -51,16 +51,8 @@
       "color-scheme": "light dark",
       "googlebot": "index, follow",
       "keywords": "Akron, Celeste mod, Everest mod, Celeste tools, rulesets, StartPos, .akr packs, proof metadata, practice tools",
-      "og:description": "Install, configure, and contribute to Akron, an Everest utility suite for Celeste.",
-      "og:image": "/images/logo.png",
-      "og:site_name": "Akron",
-      "og:title": "Akron documentation",
       "robots": "index, follow",
-      "theme-color": "#A86048",
-      "twitter:card": "summary_large_image",
-      "twitter:description": "Install, configure, and contribute to Akron, an Everest utility suite for Celeste.",
-      "twitter:image": "/images/logo.png",
-      "twitter:title": "Akron documentation"
+      "theme-color": "#A86048"
     }
   },
   "markdown": {
