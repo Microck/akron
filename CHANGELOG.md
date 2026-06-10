@@ -10,6 +10,15 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 - Keep Mintlify's generated Open Graph previews working by using an SVG docs logo asset instead of the PNG logo path that produced empty generated preview images.
 
+## 0.1.2-beta.16
+
+### Fixed
+
+- Keep the Akron overlay visible during death-related flows.
+- Show Logging as a true On/Off toggle in the overlay.
+- Fix zoom drift for auto kill, auto deafen, and hitbox overlays.
+- Reload the latest loaded StartPos on death and preserve active runtime audio/state.
+
 ## 0.1.2-beta.15
 
 ### Added
