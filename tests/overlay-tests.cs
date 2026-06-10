@@ -246,6 +246,25 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void InputBoardElementEditorUsesSelectionScopedInputIds() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Input/akron-input-board-overlay.cs"));
+        int start = source.IndexOf("private void DrawInputBoardEditor", StringComparison.Ordinal);
+        int end = source.IndexOf("private void DrawInputBoardPreview", start, StringComparison.Ordinal);
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        string editor = source[start..end];
+
+        Assert.Contains("string elementPopupId", editor);
+        Assert.Contains("DrawPopupInputText(\"Label\", ref label, 24, elementPopupId", editor);
+        Assert.Contains("DrawInputBoardIntStepperRow(\"X\",", editor);
+        Assert.Contains("DrawInputBoardIntStepperRow(\"X\", () => element.X, value => element.X = Calc.Clamp(value, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition), -2, 2, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition, elementPopupId", editor);
+        Assert.Contains("DrawInputBoardBindingEditor(element, elementPopupId)", editor);
+        Assert.Contains("DrawInputBoardColorRow(\"Fill\",", editor);
+        Assert.Contains("DrawInputBoardColorRow(\"Fill\", () => element.FillColor, value => element.FillColor = value, elementPopupId", editor);
+    }
+
+    [Fact]
     public void ToastStackOffsetAddsEveryNewerToastHeightPlusGap() {
         Assert.Equal(0f, AkronToast.CalculateStackOffset(Array.Empty<float>()));
         Assert.Equal(40f, AkronToast.CalculateStackOffset(new[] { 12f, 16f }));
@@ -281,6 +300,35 @@ public sealed class OverlayTests {
         Assert.Contains("ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);", source);
         Assert.Contains("ImGui.PushStyleColor(ImGuiCol.Border, AkronImGuiTheme.PopupOutline);", source);
         Assert.Contains("ImGui.BeginPopup(popupId)", source);
+    }
+
+    [Fact]
+    public void OverlayThemePresetsCycleThroughBuiltInKeycapPackThemes() {
+        AkronOverlayThemePreset[] expected = {
+            AkronOverlayThemePreset.Default,
+            AkronOverlayThemePreset.Monochrome,
+            AkronOverlayThemePreset.HighContrast,
+            AkronOverlayThemePreset.Midnight,
+            AkronOverlayThemePreset.Crimson,
+            AkronOverlayThemePreset.Terminal,
+            AkronOverlayThemePreset.Symbiote,
+            AkronOverlayThemePreset.Carbon,
+            AkronOverlayThemePreset.Retro,
+            AkronOverlayThemePreset.Coniferous,
+            AkronOverlayThemePreset.Wine,
+            AkronOverlayThemePreset.Custom
+        };
+
+        AkronOverlayThemePreset current = expected[0];
+        foreach (AkronOverlayThemePreset next in expected.Skip(1)) {
+            current = AkronOverlayThemes.NextPreset(current);
+            Assert.Equal(next, current);
+            if (current != AkronOverlayThemePreset.Custom) {
+                Assert.False(string.IsNullOrWhiteSpace(AkronOverlayThemes.DisplayName(current)));
+            }
+        }
+
+        Assert.Equal(AkronOverlayThemePreset.Default, AkronOverlayThemes.NextPreset(current));
     }
 
     [Fact]

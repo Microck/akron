@@ -116,6 +116,71 @@ public static class AkronOverlayThemes {
                 MutedColor = 0x72A879,
                 DisabledColor = 0x44684B
             }
+        },
+        {
+            AkronOverlayThemePreset.Symbiote,
+            new AkronOverlayThemeDefinition {
+                Name = "Symbiote",
+                WindowColor = 0x241C2B,
+                HeaderColor = 0xB86C8B,
+                HeaderHoverColor = 0xD88AA5,
+                FrameColor = 0x33263B,
+                TextColor = 0xF6E4EE,
+                MutedColor = 0xB69AAF,
+                DisabledColor = 0x7F6878
+            }
+        },
+        {
+            AkronOverlayThemePreset.Carbon,
+            new AkronOverlayThemeDefinition {
+                Name = "Carbon",
+                WindowColor = 0x393B3B,
+                HeaderColor = 0xEE6900,
+                HeaderHoverColor = 0xFF8524,
+                FrameColor = 0x171718,
+                TextColor = 0xD8D2C3,
+                MutedColor = 0xACA693,
+                DisabledColor = 0x727474
+            }
+        },
+        {
+            AkronOverlayThemePreset.Retro,
+            new AkronOverlayThemeDefinition {
+                Name = "Retro",
+                WindowColor = 0xACA693,
+                HeaderColor = 0xBC251E,
+                HeaderHoverColor = 0xD02F1C,
+                FrameColor = 0xD8D2C3,
+                TextColor = 0x171718,
+                MutedColor = 0x67635B,
+                DisabledColor = 0x91867A
+            }
+        },
+        {
+            AkronOverlayThemePreset.Coniferous,
+            new AkronOverlayThemeDefinition {
+                Name = "Coniferous",
+                WindowColor = 0x393B3B,
+                HeaderColor = 0x00773A,
+                HeaderHoverColor = 0x689B34,
+                FrameColor = 0x171718,
+                TextColor = 0xD8D2C3,
+                MutedColor = 0xACA693,
+                DisabledColor = 0x768E72
+            }
+        },
+        {
+            AkronOverlayThemePreset.Wine,
+            new AkronOverlayThemeDefinition {
+                Name = "Wine",
+                WindowColor = 0x241014,
+                HeaderColor = 0x7F1D2D,
+                HeaderHoverColor = 0xA52A3A,
+                FrameColor = 0x16090C,
+                TextColor = 0xFFF1F3,
+                MutedColor = 0xC58A92,
+                DisabledColor = 0x8D5D65
+            }
         }
     };
 
@@ -146,7 +211,12 @@ public static class AkronOverlayThemes {
             AkronOverlayThemePreset.HighContrast => AkronOverlayThemePreset.Midnight,
             AkronOverlayThemePreset.Midnight => AkronOverlayThemePreset.Crimson,
             AkronOverlayThemePreset.Crimson => AkronOverlayThemePreset.Terminal,
-            AkronOverlayThemePreset.Terminal => AkronOverlayThemePreset.Custom,
+            AkronOverlayThemePreset.Terminal => AkronOverlayThemePreset.Symbiote,
+            AkronOverlayThemePreset.Symbiote => AkronOverlayThemePreset.Carbon,
+            AkronOverlayThemePreset.Carbon => AkronOverlayThemePreset.Retro,
+            AkronOverlayThemePreset.Retro => AkronOverlayThemePreset.Coniferous,
+            AkronOverlayThemePreset.Coniferous => AkronOverlayThemePreset.Wine,
+            AkronOverlayThemePreset.Wine => AkronOverlayThemePreset.Custom,
             _ => AkronOverlayThemePreset.Default
         };
     }

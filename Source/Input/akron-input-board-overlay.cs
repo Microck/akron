@@ -121,8 +121,9 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip("Cycle the key currently being edited.");
 
         AkronInputBoardElement element = elements[selectedInputBoardElementIndex];
+        string elementPopupId = popupId + "::element-" + selectedInputBoardElementIndex.ToString(CultureInfo.InvariantCulture) + "-" + (element.Id ?? string.Empty);
         string label = element.Label ?? string.Empty;
-        if (DrawPopupInputText("Label", ref label, 24, popupId, 154f)) {
+        if (DrawPopupInputText("Label", ref label, 24, elementPopupId, 154f)) {
             if (!string.Equals(element.Label, label, StringComparison.Ordinal)) {
                 CaptureInputBoardUndoSnapshot();
             }
@@ -130,25 +131,25 @@ public sealed partial class AkronOverlay {
         }
 
         bool visible = element.Visible;
-        if (ImGui.Checkbox("Visible##" + popupId, ref visible)) {
+        if (ImGui.Checkbox("Visible##" + elementPopupId, ref visible)) {
             CaptureInputBoardUndoSnapshot();
             element.Visible = visible;
         }
 
-        DrawInputBoardIntStepperRow("X", () => element.X, value => element.X = Calc.Clamp(value, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition), -2, 2, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition, popupId, "Horizontal board position.");
-        DrawInputBoardIntStepperRow("Y", () => element.Y, value => element.Y = Calc.Clamp(value, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition), -2, 2, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition, popupId, "Vertical board position.");
-        DrawInputBoardIntStepperRow("Width", () => element.Width, value => element.Width = Calc.Clamp(value, AkronInputBoard.MinimumElementSize, AkronInputBoard.MaximumElementSize), -2, 2, AkronInputBoard.MinimumElementSize, AkronInputBoard.MaximumElementSize, popupId, "Key width.");
-        DrawInputBoardIntStepperRow("Height", () => element.Height, value => element.Height = Calc.Clamp(value, AkronInputBoard.MinimumElementSize, AkronInputBoard.MaximumElementSize), -2, 2, AkronInputBoard.MinimumElementSize, AkronInputBoard.MaximumElementSize, popupId, "Key height.");
-        DrawInputBoardIntStepperRow("Text scale", () => element.TextScale, value => element.TextScale = Calc.Clamp(value, AkronInputBoard.MinimumTextScale, AkronInputBoard.MaximumTextScale), -5, 5, AkronInputBoard.MinimumTextScale, AkronInputBoard.MaximumTextScale, popupId, "Text scale for this key.");
+        DrawInputBoardIntStepperRow("X", () => element.X, value => element.X = Calc.Clamp(value, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition), -2, 2, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition, elementPopupId, "Horizontal board position.");
+        DrawInputBoardIntStepperRow("Y", () => element.Y, value => element.Y = Calc.Clamp(value, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition), -2, 2, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition, elementPopupId, "Vertical board position.");
+        DrawInputBoardIntStepperRow("Width", () => element.Width, value => element.Width = Calc.Clamp(value, AkronInputBoard.MinimumElementSize, AkronInputBoard.MaximumElementSize), -2, 2, AkronInputBoard.MinimumElementSize, AkronInputBoard.MaximumElementSize, elementPopupId, "Key width.");
+        DrawInputBoardIntStepperRow("Height", () => element.Height, value => element.Height = Calc.Clamp(value, AkronInputBoard.MinimumElementSize, AkronInputBoard.MaximumElementSize), -2, 2, AkronInputBoard.MinimumElementSize, AkronInputBoard.MaximumElementSize, elementPopupId, "Key height.");
+        DrawInputBoardIntStepperRow("Text scale", () => element.TextScale, value => element.TextScale = Calc.Clamp(value, AkronInputBoard.MinimumTextScale, AkronInputBoard.MaximumTextScale), -5, 5, AkronInputBoard.MinimumTextScale, AkronInputBoard.MaximumTextScale, elementPopupId, "Text scale for this key.");
 
-        DrawInputBoardBindingEditor(element, popupId);
+        DrawInputBoardBindingEditor(element, elementPopupId);
 
-        if (ImGui.TreeNode("Colors##" + popupId)) {
-            DrawInputBoardColorRow("Fill", () => element.FillColor, value => element.FillColor = value, popupId, "Key background color.");
-            DrawInputBoardColorRow("Pressed", () => element.PressedFillColor, value => element.PressedFillColor = value, popupId, "Key color while any bound input is held.");
-            DrawInputBoardColorRow("Stroke", () => element.StrokeColor, value => element.StrokeColor = value, popupId, "Key outline color.");
-            DrawInputBoardColorRow("Text", () => element.TextColor, value => element.TextColor = value, popupId, "Key text color.");
-            DrawInputBoardIntStepperRow("Outline", () => element.OutlineWidth, value => element.OutlineWidth = Calc.Clamp(value, 0, 8), -1, 1, 0, 8, popupId, "Outline width in pixels.");
+        if (ImGui.TreeNode("Colors##" + elementPopupId)) {
+            DrawInputBoardColorRow("Fill", () => element.FillColor, value => element.FillColor = value, elementPopupId, "Key background color.");
+            DrawInputBoardColorRow("Pressed", () => element.PressedFillColor, value => element.PressedFillColor = value, elementPopupId, "Key color while any bound input is held.");
+            DrawInputBoardColorRow("Stroke", () => element.StrokeColor, value => element.StrokeColor = value, elementPopupId, "Key outline color.");
+            DrawInputBoardColorRow("Text", () => element.TextColor, value => element.TextColor = value, elementPopupId, "Key text color.");
+            DrawInputBoardIntStepperRow("Outline", () => element.OutlineWidth, value => element.OutlineWidth = Calc.Clamp(value, 0, 8), -1, 1, 0, 8, elementPopupId, "Outline width in pixels.");
             ImGui.TreePop();
         }
 

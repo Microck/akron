@@ -231,6 +231,11 @@ public enum AkronOverlayThemePreset {
     Midnight,
     Crimson,
     Terminal,
+    Symbiote,
+    Carbon,
+    Retro,
+    Coniferous,
+    Wine,
     Custom
 }
 

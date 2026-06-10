@@ -125,6 +125,11 @@ public sealed partial class AkronOverlay {
             ThemeDropdownChoice(AkronOverlayThemePreset.Midnight),
             ThemeDropdownChoice(AkronOverlayThemePreset.Crimson),
             ThemeDropdownChoice(AkronOverlayThemePreset.Terminal),
+            ThemeDropdownChoice(AkronOverlayThemePreset.Symbiote),
+            ThemeDropdownChoice(AkronOverlayThemePreset.Carbon),
+            ThemeDropdownChoice(AkronOverlayThemePreset.Retro),
+            ThemeDropdownChoice(AkronOverlayThemePreset.Coniferous),
+            ThemeDropdownChoice(AkronOverlayThemePreset.Wine),
             ThemeDropdownChoice(AkronOverlayThemePreset.Custom)
         };
     }
