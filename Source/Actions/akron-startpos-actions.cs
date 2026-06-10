@@ -122,7 +122,8 @@ public static partial class AkronActions {
             return;
         }
 
-        AkronStartPos startPos = GetActiveStartPos();
+        int slot = AkronModule.Settings.ActiveStartPosSlot;
+        AkronStartPos startPos = GetStartPos(slot);
         if (startPos == null) {
             Engine.Scene?.Add(new AkronToast("No StartPos saved in slot " + AkronModule.Settings.ActiveStartPosSlot + "."));
             return;
@@ -132,7 +133,7 @@ public static partial class AkronActions {
             return;
         }
 
-        level.OnEndOfFrame += () => RestoreStartPos(level, startPos, "Loaded StartPos " + AkronModule.Settings.ActiveStartPosSlot + ".");
+        level.OnEndOfFrame += () => RestoreStartPos(level, startPos, "Loaded StartPos " + slot + ".", slot);
     }
 
     public static void LoadStartPosSlot(Level level, int slot) {
@@ -160,6 +161,9 @@ public static partial class AkronActions {
         }
 
         AkronModule.Session.StartPositions.Remove(clampedSlot);
+        if (AkronModule.Session.LastLoadedStartPosSlot == clampedSlot) {
+            AkronModule.Session.LastLoadedStartPosSlot = 0;
+        }
         Engine.Scene?.Add(new AkronToast("StartPos " + clampedSlot + " cleared."));
     }
 
@@ -234,11 +238,19 @@ public static partial class AkronActions {
         startPos.Grab = AkronModule.Settings.StartPosConfiguredGrab;
     }
 
-    private static void RestoreStartPos(Level level, AkronStartPos startPos, string toast) {
+    internal static void RestoreStartPosAfterDeath(Level level, AkronStartPos startPos) {
+        if (level == null || startPos == null) {
+            return;
+        }
+
+        level.OnEndOfFrame += () => RestoreStartPos(level, startPos, string.Empty, FindStartPosSlot(startPos), endPlacementForLoad: false);
+    }
+
+    private static void RestoreStartPos(Level level, AkronStartPos startPos, string toast, int loadedSlot = 0, bool endPlacementForLoad = true) {
         bool restoreRespawnAtStartPos = AkronModule.Settings.RespawnAtStartPos;
         AkronModule.Settings.RespawnAtStartPos = false;
         try {
-            if (!AkronModule.EndStartPosPlacementForLoad()) {
+            if (endPlacementForLoad && !AkronModule.EndStartPosPlacementForLoad()) {
                 AkronModule.Settings.StartPosMousePlacement = false;
             }
             if (string.IsNullOrWhiteSpace(startPos.StateSlotName)) {
@@ -263,6 +275,9 @@ public static partial class AkronActions {
                 StartStartPosCameraFollow(currentLevel, player);
             }
             RelinkRuntimeRenderState(currentLevel);
+            if (loadedSlot > 0) {
+                AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;
+            }
 
             if (!string.IsNullOrWhiteSpace(toast)) {
                 Engine.Scene?.Add(new AkronToast(toast));
@@ -480,6 +495,34 @@ public static partial class AkronActions {
                                 string.Equals(startPos.AreaSid, areaSid, StringComparison.Ordinal)))
             .OrderBy(startPos => Vector2.DistanceSquared(startPos.Position, referencePosition))
             .FirstOrDefault();
+    }
+
+    public static AkronStartPos GetDeathRespawnStartPos(Level level, Vector2 referencePosition) {
+        AkronStartPos lastLoaded = GetStartPos(AkronModule.Session?.LastLoadedStartPosSlot ?? 0);
+        if (IsStartPosUsableInCurrentRoom(level, lastLoaded)) {
+            return lastLoaded;
+        }
+
+        if (AkronModule.Settings.SmartStartPos) {
+            return GetSmartRespawnStartPos(level, referencePosition);
+        }
+
+        AkronStartPos active = GetActiveStartPos();
+        return IsStartPosUsableInCurrentRoom(level, active) ? active : null;
+    }
+
+    private static int FindStartPosSlot(AkronStartPos startPos) {
+        if (startPos == null || AkronModule.Session?.StartPositions == null) {
+            return 0;
+        }
+
+        foreach (KeyValuePair<int, AkronStartPos> pair in AkronModule.Session.StartPositions) {
+            if (ReferenceEquals(pair.Value, startPos)) {
+                return NormalizePositionSlot(pair.Key);
+            }
+        }
+
+        return 0;
     }
 
     private static bool IsStartPosUsableInCurrentRoom(Level level, AkronStartPos startPos) {

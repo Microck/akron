@@ -74,6 +74,14 @@ internal static class AkronEventInstanceUtils {
             SaveTimelinePosition(clone, timelinePosition);
         }
 
+        eventInstance.getPlaybackState(out PLAYBACK_STATE playbackState);
+        if (playbackState != PLAYBACK_STATE.STOPPED && playbackState != PLAYBACK_STATE.STOPPING) {
+            clone.start();
+            if (eventInstance.getPaused(out bool paused) == RESULT.OK) {
+                clone.setPaused(paused);
+            }
+        }
+
         return clone;
     }
 

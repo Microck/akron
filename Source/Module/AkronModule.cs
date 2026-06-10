@@ -778,16 +778,16 @@ public partial class AkronModule : EverestModule {
             AkronInternalRecorder.CaptureFrame(scene);
         }
 
-        if (ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
-            return;
-        }
+        bool hideAkronRenderSurfaces = ShouldHideAkronRenderSurfacesBehindDeathWipe();
 
-        if (scene is Level postRenderLevel) {
+        if (!hideAkronRenderSurfaces && scene is Level postRenderLevel) {
             RenderAkronHitboxHud(postRenderLevel);
             RenderAkronLevelHud(postRenderLevel);
         }
 
-        RenderAkronScreenProjection(scene);
+        if (!hideAkronRenderSurfaces) {
+            RenderAkronScreenProjection(scene);
+        }
 
         bool overlayVisible = Overlay?.Visible == true || Overlay?.IsStartPosPlacementActive == true;
         AkronPerformanceTelemetry.RecordRenderFrame(overlayVisible);
@@ -797,6 +797,7 @@ public partial class AkronModule : EverestModule {
         }
 
         if (!isLevelScene &&
+            !hideAkronRenderSurfaces &&
             Settings.LabelSystemVisible &&
             Settings.CustomHudLabels &&
             Settings.CustomHudLabelsInNonLevelScenes &&

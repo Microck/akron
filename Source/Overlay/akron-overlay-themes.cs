@@ -148,8 +148,8 @@ public static class AkronOverlayThemes {
             new AkronOverlayThemeDefinition {
                 Name = "Retro",
                 WindowColor = 0xACA693,
-                HeaderColor = 0xBC251E,
-                HeaderHoverColor = 0xD02F1C,
+                HeaderColor = 0x67635B,
+                HeaderHoverColor = 0x91867A,
                 FrameColor = 0xD8D2C3,
                 TextColor = 0x171718,
                 MutedColor = 0x67635B,

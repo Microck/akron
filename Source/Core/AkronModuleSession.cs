@@ -39,6 +39,7 @@ public class AkronModuleSession : EverestModuleSession {
     public float LevelEnterSkipHoldSeconds { get; set; }
     public string LastRoomStatsExportPath { get; set; } = string.Empty;
     public Dictionary<int, AkronStartPos> StartPositions { get; set; } = new Dictionary<int, AkronStartPos>();
+    public int LastLoadedStartPosSlot { get; set; }
     public bool FreezeGameplay { get; set; }
     public bool StepFrameRequested { get; set; }
     public int StepFrameHoldFrames { get; set; }

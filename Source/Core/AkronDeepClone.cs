@@ -128,7 +128,7 @@ internal static class AkronDeepClone {
                 return source;
             }
 
-            if (source is EventInstance eventInstance && AkronEventInstanceUtils.IsManualCloneNeeded(eventInstance)) {
+            if (source is EventInstance eventInstance) {
                 return AkronEventInstanceUtils.Clone(eventInstance);
             }
 

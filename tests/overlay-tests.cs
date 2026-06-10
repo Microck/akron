@@ -267,6 +267,28 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void LoggingToggleReportsOnOffForMainMenuColoring() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-entries.cs"));
+        int start = source.IndexOf("private static OverlayEntry LoggingToggle()", StringComparison.Ordinal);
+        int end = source.IndexOf("private static OverlayEntry Keybind", start, StringComparison.Ordinal);
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        string loggingToggle = source[start..end];
+
+        Assert.Contains("AkronModule.Settings.Logging ? \"On\" : \"Off\"", loggingToggle);
+        Assert.DoesNotContain("AkronLog.FormatLevel(AkronModule.Settings.LoggingLevel)", loggingToggle);
+    }
+
+    [Fact]
+    public void WorldProjectionAppliesLevelZoomAroundFocus() {
+        Vector2 projected = AkronScreenProjection.ApplyLevelZoom(TestVector(100f, 80f), 2f, TestVector(160f, 90f));
+
+        Assert.Equal(40f, projected.X);
+        Assert.Equal(70f, projected.Y);
+    }
+
+    [Fact]
     public void AreaPixelMarkerDoesNotUseYOffset() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Hud/akron-hud-world-overlay-renderer.cs"));
 

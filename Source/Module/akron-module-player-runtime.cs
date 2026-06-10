@@ -18,7 +18,7 @@ public partial class AkronModule {
         bool shouldFreezeDeathSprite = Settings.NoDeathEffect && AkronPolicy.CanUse(AkronFeatureKind.DeathVisuals).Allowed;
         AkronFrozenDeathSprite frozenDeathSprite = shouldFreezeDeathSprite ? AkronFrozenDeathSprite.Capture(self) : null;
 
-        ApplyPracticeRespawnPoint(self);
+        AkronStartPos startPosRespawn = ApplyPracticeRespawnPoint(self);
         RestoreNoclipDepth(self);
         RestorePlayerVisibilityOverride(self);
         AkronActions.RestoreAutoDeafen();
@@ -70,6 +70,9 @@ public partial class AkronModule {
 
         if (deadBody != null || self.Dead) {
             AkronInternalRecorder.NotifyDeath(level, goldenDeath);
+            if (startPosRespawn != null && level != null) {
+                AkronActions.RestoreStartPosAfterDeath(level, startPosRespawn);
+            }
         }
 
         return deadBody;
@@ -125,27 +128,26 @@ public partial class AkronModule {
         }
     }
 
-    private static void ApplyPracticeRespawnPoint(Player player) {
+    private static AkronStartPos ApplyPracticeRespawnPoint(Player player) {
         if (player.Scene is not Level level) {
-            return;
+            return null;
         }
 
         if (Settings.RespawnAtStartPos) {
-            AkronStartPos startPos = Settings.SmartStartPos
-                ? AkronActions.GetSmartRespawnStartPos(level, player.Position)
-                : AkronActions.GetActiveStartPos();
+            AkronStartPos startPos = AkronActions.GetDeathRespawnStartPos(level, player.Position);
             if (startPos != null &&
                 string.Equals(startPos.Room, level.Session.Level) &&
                 (string.IsNullOrWhiteSpace(startPos.AreaSid) || string.Equals(startPos.AreaSid, level.Session.Area.GetSID())) &&
                 TryUse(AkronFeatureKind.StartPosTools)) {
-                // StartPos death should behave like a normal death. It only moves
-                // the vanilla respawn point; it must not short-circuit the dead-body
-                // animation or restore the saved StartPos state.
+                // Keep vanilla death accounting and visuals, then reload the
+                // StartPos state at frame end so entities, sounds, and player
+                // state match the latest loaded practice snapshot.
                 level.Session.RespawnPoint = startPos.Position;
-                return;
+                return startPos;
             }
         }
 
+        return null;
     }
 
     private static void PlayerOnUpdate(On.Celeste.Player.orig_Update orig, Player self) {

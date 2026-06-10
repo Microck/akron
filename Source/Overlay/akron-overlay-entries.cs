@@ -532,7 +532,7 @@ public sealed partial class AkronOverlay {
         return new OverlayEntry(
             "Logging",
             () => true,
-            () => AkronModule.Settings.Logging ? AkronLog.FormatLevel(AkronModule.Settings.LoggingLevel) : "Off",
+            () => AkronModule.Settings.Logging ? "On" : "Off",
             () => {
                 bool next = !AkronModule.Settings.Logging;
                 AkronModule.Settings.Logging = next;

@@ -28,30 +28,38 @@ internal static partial class AkronScreenProjection {
     private const float GameHeight = 180f;
 
     public static AkronHudRect WorldToHudRect(Level level, Rectangle worldBounds) {
-        Vector2 topLeft = WorldToHud(level, new Vector2(worldBounds.X, worldBounds.Y));
-        float scale = CurrentViewportScale();
+        Vector2 topLeft = WorldToHud(level, CreateVector2(worldBounds.X, worldBounds.Y));
+        Vector2 bottomRight = WorldToHud(level, CreateVector2(worldBounds.X + worldBounds.Width, worldBounds.Y + worldBounds.Height));
         return new AkronHudRect(
             topLeft.X,
             topLeft.Y,
-            worldBounds.Width * scale,
-            worldBounds.Height * scale);
+            bottomRight.X - topLeft.X,
+            bottomRight.Y - topLeft.Y);
     }
 
     public static Vector2 WorldToHud(Level level, Vector2 worldPosition) {
-        return level.Camera.CameraToScreen(worldPosition) * CurrentViewportScale() + CurrentViewportOffset();
+        Vector2 gamePosition = level.Camera.CameraToScreen(worldPosition);
+        Vector2 zoomedGamePosition = ApplyLevelZoom(gamePosition, CurrentLevelZoom(level), CurrentLevelZoomFocus(level));
+        float scale = CurrentViewportScale();
+        Vector2 offset = CurrentViewportOffset();
+        return CreateVector2(
+            zoomedGamePosition.X * scale + offset.X,
+            zoomedGamePosition.Y * scale + offset.Y);
     }
 
     public static Vector2 MouseScreenToWorld(Level level, Vector2 mouseScreenPosition) {
         Vector2 gamePosition = RemoveLevelZoom(level, MouseScreenToGame(mouseScreenPosition));
-        return new Vector2(level.Camera.X + gamePosition.X, level.Camera.Y + gamePosition.Y);
+        return CreateVector2(level.Camera.X + gamePosition.X, level.Camera.Y + gamePosition.Y);
     }
 
     public static Vector2 MouseScreenToGame(Vector2 mouseScreenPosition) {
         float scale = CurrentViewportScale();
-        Vector2 viewportPosition = mouseScreenPosition - CurrentViewportOffset();
-        return new Vector2(
-            Calc.Clamp(viewportPosition.X / scale, 0f, GameWidth),
-            Calc.Clamp(viewportPosition.Y / scale, 0f, GameHeight));
+        Vector2 offset = CurrentViewportOffset();
+        float viewportX = mouseScreenPosition.X - offset.X;
+        float viewportY = mouseScreenPosition.Y - offset.Y;
+        return CreateVector2(
+            Calc.Clamp(viewportX / scale, 0f, GameWidth),
+            Calc.Clamp(viewportY / scale, 0f, GameHeight));
     }
 
     public static float CurrentViewportScale() {
@@ -65,7 +73,7 @@ internal static partial class AkronScreenProjection {
 
     public static Vector2 CurrentViewportOffset() {
         Viewport viewport = Engine.Viewport;
-        return new Vector2(viewport.X, viewport.Y);
+        return CreateVector2(viewport.X, viewport.Y);
     }
 
     private static Vector2 RemoveLevelZoom(Level level, Vector2 screenGamePosition) {
@@ -75,7 +83,26 @@ internal static partial class AkronScreenProjection {
         }
 
         Vector2 focus = CurrentLevelZoomFocus(level);
-        return focus + (screenGamePosition - focus) / zoom;
+        return CreateVector2(
+            focus.X + (screenGamePosition.X - focus.X) / zoom,
+            focus.Y + (screenGamePosition.Y - focus.Y) / zoom);
+    }
+
+    internal static Vector2 ApplyLevelZoom(Vector2 screenGamePosition, float zoom, Vector2 focus) {
+        if (System.Math.Abs(zoom - 1f) < 0.001f) {
+            return screenGamePosition;
+        }
+
+        return CreateVector2(
+            focus.X + (screenGamePosition.X - focus.X) * zoom,
+            focus.Y + (screenGamePosition.Y - focus.Y) * zoom);
+    }
+
+    private static Vector2 CreateVector2(float x, float y) {
+        Vector2 value = default;
+        value.X = x;
+        value.Y = y;
+        return value;
     }
 
     private static float CurrentLevelZoom(Level level) {
@@ -88,7 +115,7 @@ internal static partial class AkronScreenProjection {
 
     private static Vector2 CurrentLevelZoomFocus(Level level) {
         if (level == null) {
-            return new Vector2(GameWidth / 2f, GameHeight / 2f);
+            return CreateVector2(GameWidth / 2f, GameHeight / 2f);
         }
 
         return level.ZoomFocusPoint;
