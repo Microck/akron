@@ -179,7 +179,7 @@
       {
         "group": "Project",
         "pages": [
-          "docs/project/special-thanks"
+          "project/special-thanks"
         ]
       }
     ]
