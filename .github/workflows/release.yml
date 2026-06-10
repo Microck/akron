@@ -53,6 +53,23 @@ jobs:
           fi
           git checkout "$RELEASE_TAG"
 
+      - name: Validate release version matches everest.yaml
+        run: |
+          set -euo pipefail
+
+          release_version="${RELEASE_TAG#v}"
+          everest_version="$(awk -F': ' '/^[[:space:]]*Version:/ { print $2; exit }' everest.yaml)"
+
+          if [ -z "$everest_version" ]; then
+            echo "::error::Could not read Version from everest.yaml."
+            exit 1
+          fi
+
+          if [ "$everest_version" != "$release_version" ]; then
+            echo "::error::everest.yaml Version is '$everest_version' but release tag is '$release_version'."
+            exit 1
+          fi
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
