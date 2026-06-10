@@ -6,6 +6,21 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.15
+
+### Added
+
+- Add Symbiote, Carbon, Retro, Coniferous, and Wine overlay theme presets.
+
+### Changed
+
+- Let Mintlify generate page-specific Open Graph previews for the docs site instead of using one static logo image.
+
+### Fixed
+
+- Prevent active Control Display key editor fields from copying into another key when selecting a different key before blurring the input.
+- Prevent Akron's overlay hotkey from opening over Everest's Enable or Disable Mods menu, where Tab favorites or unfavorites mods.
+
 ## 0.1.2-beta.14
 
 ### Added
