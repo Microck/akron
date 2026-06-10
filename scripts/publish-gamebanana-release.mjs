@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
@@ -265,9 +266,10 @@ function findFileById(files, fileId) {
   return getUpdateRecords(files).find((file) => Number(file?._idRow) === Number(fileId));
 }
 
-function findReleaseFile(files, version) {
+function findReleaseFile(files, version, releaseAssetInfo = null) {
   return getUpdateRecords(files)
     .filter((file) => releaseFileMatches(file, version))
+    .filter((file) => !releaseAssetInfo || releaseFileMatchesAsset(file, releaseAssetInfo))
     .filter((file) => file._bIsArchived !== true)
     .sort((left, right) => Number(right._tsDateAdded ?? 0) - Number(left._tsDateAdded ?? 0))[0];
 }
@@ -308,6 +310,32 @@ function releaseFileMatches(file, version) {
   const normalizedFileName = String(file._sFile ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
   const normalizedRelease = normalizedVersion(version).toLowerCase().replace(/[^a-z0-9]+/g, "");
   return normalizedRelease.length > 0 && normalizedFileName.includes(normalizedRelease);
+}
+
+function releaseFileMatchesAsset(file, releaseAssetInfo) {
+  if (!file || typeof file !== "object" || !releaseAssetInfo) {
+    return false;
+  }
+
+  const fileSize = Number(file._nFilesize);
+  if (Number.isFinite(fileSize) && fileSize !== releaseAssetInfo.size) {
+    return false;
+  }
+
+  const md5 = String(file._sMd5Checksum ?? "").toLowerCase();
+  return md5.length === 0 || md5 === releaseAssetInfo.md5;
+}
+
+async function getReleaseAssetInfo(assetPath) {
+  const [assetStat, assetBuffer] = await Promise.all([
+    stat(assetPath),
+    readFile(assetPath),
+  ]);
+
+  return {
+    size: assetStat.size,
+    md5: createHash("md5").update(assetBuffer).digest("hex"),
+  };
 }
 
 async function publishReleaseUpdate(request, apiSection, submissionId, releaseDetails, fileId) {
@@ -446,6 +474,55 @@ async function getFileRowIds(request, apiSection, submissionId) {
     `${gamebananaOrigin}/apiv11/${apiSection}/${submissionId}/Files`,
   );
   return collectFileRowIds(files);
+}
+
+async function uploadReleaseAssetAndFindFileId(
+  page,
+  request,
+  apiSection,
+  pageSection,
+  submissionId,
+  releaseAsset,
+  hasStoredAuth,
+  username,
+  password,
+) {
+  const beforeIds = await getFileRowIds(request, apiSection, submissionId);
+  try {
+    await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
+  } catch (error) {
+    if (
+      hasStoredAuth &&
+      username &&
+      password &&
+      error instanceof Error &&
+      error.code === "GAMEBANANA_EDIT_PERMISSION_DENIED"
+    ) {
+      await logPageState(page, "Stored GameBanana session edit denial");
+      await captureDebugArtifact(page, "stored-gamebanana-session-edit-denial");
+      console.log("Stored GameBanana session could not edit the submission; retrying with credentials.");
+      await logIn(page, username, password);
+      await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
+    } else {
+      await logPageState(page, "GameBanana upload failed");
+      await captureDebugArtifact(page, "gamebanana-upload-failed");
+      throw error;
+    }
+  }
+
+  for (let attempt = 1; attempt <= 12; attempt += 1) {
+    const afterIds = await getFileRowIds(request, apiSection, submissionId);
+    const newIds = [...afterIds].filter((id) => !beforeIds.has(id));
+    if (newIds.length > 0) {
+      return Math.max(...newIds);
+    }
+
+    await page.waitForTimeout(5_000);
+  }
+
+  await logPageState(page, "GameBanana upload did not create a new file");
+  await captureDebugArtifact(page, "gamebanana-upload-did-not-create-a-new-file");
+  throw new Error(`Could not determine GameBanana file row ID for ${basename(releaseAsset)}.`);
 }
 
 async function logIn(page, username, password) {
@@ -800,7 +877,7 @@ async function main() {
   const releaseNotesFile = requiredEnv("RELEASE_NOTES_FILE");
   const releaseName = optionalEnv("RELEASE_NAME", `Akron ${releaseTag}`);
 
-  await stat(releaseAsset);
+  const releaseAssetInfo = await getReleaseAssetInfo(releaseAsset);
   const releaseNotes = await readFile(releaseNotesFile, "utf8");
   const version = releaseTag.replace(/^v/, "");
   const releaseDetails = {
@@ -840,26 +917,39 @@ async function main() {
       );
       const linkedFileIds = [...updateFileRowIds(existingReleaseUpdate)];
       const matchingLinkedFileId = linkedFileIds.find((fileId) =>
-        releaseFileMatches(findFileById(files, fileId), version),
+        releaseFileMatches(findFileById(files, fileId), version) &&
+        releaseFileMatchesAsset(findFileById(files, fileId), releaseAssetInfo),
       );
 
       if (!matchingLinkedFileId) {
-        const replacementFile = findReleaseFile(files, version);
-        if (!replacementFile) {
-          throw new Error(
-            `GameBanana already has update ${existingReleaseUpdate._idRow ?? "(unknown id)"} for ${releaseTag}, but it is linked to file IDs ${linkedFileIds.join(", ") || "(none)"} and no uploaded ${version} file exists. Fix or delete that Update before rerunning the release.`,
+        const replacementFile = findReleaseFile(files, version, releaseAssetInfo);
+        const replacementFileId = replacementFile
+          ? Number(replacementFile._idRow)
+          : await uploadReleaseAssetAndFindFileId(
+            page,
+            context.request,
+            apiSection,
+            pageSection,
+            submissionId,
+            releaseAsset,
+            hasStoredAuth,
+            username,
+            password,
           );
+
+        if (replacementFile) {
+          await ensureFirstActiveFile(
+            page,
+            context.request,
+            apiSection,
+            pageSection,
+            submissionId,
+            replacementFile,
+          );
+        } else {
+          await waitForFirstActiveFile(page, context.request, apiSection, submissionId, replacementFileId);
         }
 
-        const replacementFileId = Number(replacementFile._idRow);
-        await ensureFirstActiveFile(
-          page,
-          context.request,
-          apiSection,
-          pageSection,
-          submissionId,
-          replacementFile,
-        );
         await trashUpdate(context.request, existingReleaseUpdate._idRow);
         await publishReleaseUpdate(
           context.request,
@@ -901,46 +991,17 @@ async function main() {
       return;
     }
 
-    const beforeIds = await getFileRowIds(context.request, apiSection, submissionId);
-    try {
-      await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
-    } catch (error) {
-      if (
-        hasStoredAuth &&
-        username &&
-        password &&
-        error instanceof Error &&
-        error.code === "GAMEBANANA_EDIT_PERMISSION_DENIED"
-      ) {
-        await logPageState(page, "Stored GameBanana session edit denial");
-        await captureDebugArtifact(page, "stored-gamebanana-session-edit-denial");
-        console.log("Stored GameBanana session could not edit the submission; retrying with credentials.");
-        await logIn(page, username, password);
-        await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
-      } else {
-        await logPageState(page, "GameBanana upload failed");
-        await captureDebugArtifact(page, "gamebanana-upload-failed");
-        throw error;
-      }
-    }
-
-    let uploadedFileId = null;
-    for (let attempt = 1; attempt <= 12; attempt += 1) {
-      const afterIds = await getFileRowIds(context.request, apiSection, submissionId);
-      const newIds = [...afterIds].filter((id) => !beforeIds.has(id));
-      if (newIds.length > 0) {
-        uploadedFileId = Math.max(...newIds);
-        break;
-      }
-
-      await page.waitForTimeout(5_000);
-    }
-
-    if (!uploadedFileId) {
-      await logPageState(page, "GameBanana upload did not create a new file");
-      await captureDebugArtifact(page, "gamebanana-upload-did-not-create-a-new-file");
-      throw new Error(`Could not determine GameBanana file row ID for ${basename(releaseAsset)}.`);
-    }
+    const uploadedFileId = await uploadReleaseAssetAndFindFileId(
+      page,
+      context.request,
+      apiSection,
+      pageSection,
+      submissionId,
+      releaseAsset,
+      hasStoredAuth,
+      username,
+      password,
+    );
 
     await waitForFirstActiveFile(page, context.request, apiSection, submissionId, uploadedFileId);
 
@@ -975,6 +1036,7 @@ export {
   assertFirstActiveFile,
   firstActiveFileMatches,
   promoteUploadedFileInList,
+  releaseFileMatchesAsset,
 };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
