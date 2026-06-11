@@ -29,17 +29,7 @@ internal static class AkronNativeSavestateSupport {
         initialized = true;
         AkronDeepClone.Initialize();
 
-        AkronSaveLoadService.AddReturnSameObjectProcessor(type =>
-            type == typeof(Type) ||
-            type == typeof(DustEdges) ||
-            // Level snapshots own gameplay state, not GPU resources. Cloning FNA
-            // GraphicsResource instances creates unregistered wrapper objects whose
-            // finalizers can dispose texture handles that belong to the live game.
-            typeof(GraphicsResource).IsAssignableFrom(type) ||
-            typeof(MTexture).IsAssignableFrom(type) ||
-            typeof(MemberInfo).IsAssignableFrom(type) ||
-            typeof(Assembly).IsAssignableFrom(type) ||
-            typeof(IDisposable).IsAssignableFrom(type) && (type.FullName?.IndexOf("ILHook", StringComparison.Ordinal) >= 0));
+        AkronSaveLoadService.AddReturnSameObjectProcessor(ShouldReturnSameObjectForNativeClone);
 
         AkronEventInstanceUtils.Initialize();
         RegisterCoreRuntimeSupport();
@@ -58,6 +48,29 @@ internal static class AkronNativeSavestateSupport {
         deathTrackerGeneratedObject = null;
         deathTrackerDisplayType = null;
         initialized = false;
+    }
+
+    internal static bool ShouldReturnSameObjectForNativeClone(Type type) {
+        return type == typeof(Type) ||
+               type == typeof(DustEdges) ||
+               // Level snapshots own gameplay state, not GPU resources. Cloning FNA
+               // GraphicsResource instances creates unregistered wrapper objects whose
+               // finalizers can dispose texture handles that belong to the live game.
+               typeof(GraphicsResource).IsAssignableFrom(type) ||
+               typeof(MTexture).IsAssignableFrom(type) ||
+               typeof(MemberInfo).IsAssignableFrom(type) ||
+               typeof(Assembly).IsAssignableFrom(type) ||
+               (typeof(IDisposable).IsAssignableFrom(type) && type.FullName?.IndexOf("ILHook", StringComparison.Ordinal) >= 0) ||
+               IsFrostHelperSavestatePersisted(type);
+    }
+
+    private static bool IsFrostHelperSavestatePersisted(Type type) {
+        // FrostHelper registers this marker with SpeedrunTool so packed sprite
+        // sources are kept by reference. Akron's native StartPos clone path may
+        // run without receiving SpeedrunTool's import callback, and cloning those
+        // sources can finalize clones that dispose live spinner VirtualTextures.
+        return type.GetInterfaces().Any(candidate =>
+            string.Equals(candidate.FullName, "FrostHelper.ModIntegration.ISavestatePersisted", StringComparison.Ordinal));
     }
 
     private static void RegisterCoreRuntimeSupport() {
