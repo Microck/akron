@@ -60,16 +60,6 @@
   },
   "redirects": [
     {
-      "source": "/special-thanks",
-      "destination": "/docs/project/special-thanks",
-      "permanent": true
-    },
-    {
-      "source": "/docs/special-thanks",
-      "destination": "/docs/project/special-thanks",
-      "permanent": true
-    },
-    {
       "source": "/reference/feature-status-reference",
       "destination": "/concepts/clean-vs-cheat",
       "permanent": true
