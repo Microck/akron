@@ -61,21 +61,19 @@ public static partial class AkronCommands {
                     Log("deload-spinners: blocked");
                     return;
                 }
-                AkronModule.Settings.DeloadSpinners = true;
                 steps = AkronDeloadSimulator.Simulate(level, delay);
+                AkronModule.Settings.DeloadSpinners = false;
                 break;
             case "off":
                 AkronModule.Settings.DeloadSpinners = false;
                 break;
             case "toggle":
-                if (!AkronModule.Settings.DeloadSpinners && !AkronModule.TryUse(AkronFeatureKind.DeloadSimulation)) {
+                if (!AkronModule.TryUse(AkronFeatureKind.DeloadSimulation)) {
                     Log("deload-spinners: blocked");
                     return;
                 }
-                AkronModule.Settings.DeloadSpinners = !AkronModule.Settings.DeloadSpinners;
-                if (AkronModule.Settings.DeloadSpinners) {
-                    steps = AkronDeloadSimulator.Simulate(level, delay);
-                }
+                steps = AkronDeloadSimulator.Simulate(level, delay);
+                AkronModule.Settings.DeloadSpinners = false;
                 break;
             case "now":
                 if (!AkronModule.TryUse(AkronFeatureKind.DeloadSimulation)) {
@@ -83,6 +81,7 @@ public static partial class AkronCommands {
                     return;
                 }
                 steps = AkronDeloadSimulator.Simulate(level, delay);
+                AkronModule.Settings.DeloadSpinners = false;
                 break;
             case "delay":
                 if (!float.TryParse(secondsBeforeDeload, NumberStyles.Float, CultureInfo.InvariantCulture, out delay)) {

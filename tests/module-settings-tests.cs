@@ -1273,12 +1273,12 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void ReworkedRowsUseToggleControlsWithPopupConfiguration() {
+    public void ReworkedRowsUseExpectedControlsWithPopupConfiguration() {
         Dictionary<string, string> levelControls = BuildOverlayEntryControls("Level");
         Dictionary<string, string> playerControls = BuildOverlayEntryControls("Player");
         Dictionary<string, string> soundControls = BuildOverlayEntryControls("Sound");
 
-        Assert.Equal("Toggle", levelControls["Deload Spinners"]);
+        Assert.Equal("Action", levelControls["Deload Spinners"]);
         Assert.Equal("Toggle", levelControls["Light Level"]);
         Assert.Equal("Toggle", levelControls["Bloom Level"]);
         Dictionary<string, string> creatorControls = BuildOverlayEntryControls("Creator");
@@ -2495,6 +2495,34 @@ public sealed class ModuleSettingsTests {
         Assert.Equal(0xABCDEF, settings.HitboxPlayerColor);
         Assert.False(settings.HitboxShowPlayerHurtbox);
         Assert.Equal(0x123456, settings.HitboxPlayerHurtboxColor);
+    }
+
+    [Fact]
+    public void ProfileSwitchingDoesNotPersistOneShotDeloadSimulation() {
+        AkronModuleSettings settings = new AkronModuleSettings();
+
+        settings.ApplyProfile(AkronProfile.Practice);
+        settings.DeloadSpinners = true;
+        settings.DeloadSpinnerDelaySeconds = 2.5f;
+
+        settings.ApplyProfile(AkronProfile.Casual);
+        settings.ApplyProfile(AkronProfile.Practice);
+
+        Assert.False(settings.DeloadSpinners);
+        Assert.Equal(2.5f, settings.DeloadSpinnerDelaySeconds);
+    }
+
+    [Fact]
+    public void OneShotRuntimeActionsAreClearedOnSettingsLoad() {
+        AkronModuleSettings settings = new AkronModuleSettings {
+            DeloadSpinners = true,
+            DeloadSpinnerDelaySeconds = 3f
+        };
+
+        AkronModuleSettings.ClearOneShotRuntimeActions(settings);
+
+        Assert.False(settings.DeloadSpinners);
+        Assert.Equal(3f, settings.DeloadSpinnerDelaySeconds);
     }
 
     [Fact]

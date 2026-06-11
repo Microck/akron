@@ -97,6 +97,7 @@ public partial class AkronModule : EverestModule {
 
     public override void Load() {
         AkronModuleSettings.EnsureCurrentKeybindDefaults(Settings);
+        AkronModuleSettings.ClearOneShotRuntimeActions(Settings);
         AkronLog.Normal(nameof(AkronModule), "load start; " + AkronLog.DescribeSettings());
         try {
             AkronImGuiRenderer.EnsureNativeResolverRegistered();
@@ -394,13 +395,6 @@ public partial class AkronModule : EverestModule {
         orig(self);
         ApplyJumpHackAfterPlayerUpdate(self);
         ClearLastDeathHitboxAfterRespawn(self);
-        if (!Settings.DeloadSpinners) {
-            Session.DeloadSpinnersApplied = false;
-        } else if (!Session.DeloadSpinnersApplied &&
-                   AkronDeloadSimulator.SimulationSteps(self, Settings.DeloadSpinnerDelaySeconds) > 0 &&
-                   TryUse(AkronFeatureKind.DeloadSimulation)) {
-            Session.DeloadSpinnersApplied = AkronDeloadSimulator.Simulate(self, Settings.DeloadSpinnerDelaySeconds) > 0;
-        }
         AkronPracticeStats.OnLevelUpdate(self);
         AkronInternalRecorder.Update(self);
         UpdateProofRecorderGuard(self);

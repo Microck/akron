@@ -71,12 +71,16 @@ public sealed partial class AkronOverlay {
                     PolicyToggle("Screen Tint", AkronFeatureKind.VisualTuning, () => AkronModule.Settings.ScreenTint, value => AkronModule.Settings.ScreenTint = value),
                     PolicyToggle("Screenshake", AkronFeatureKind.Screenshake, () => AkronModule.Settings.Screenshake, value => AkronModule.Settings.Screenshake = value),
                     PolicyToggle("Refill Clarity", AkronFeatureKind.RefillClarity, () => AkronModule.Settings.RefillClarity, value => AkronModule.Settings.RefillClarity = value),
-                    PolicyToggle("Deload Spinners", AkronFeatureKind.DeloadSimulation, () => AkronModule.Settings.DeloadSpinners, value => {
-                        AkronModule.Settings.DeloadSpinners = value;
-                        if (value && level != null) {
-                            AkronDeloadSimulator.Simulate(level, AkronModule.Settings.DeloadSpinnerDelaySeconds);
-                        }
-                    }, "deload", "spinner", "precision", "simulation"),
+                    new OverlayEntry(
+                        "Deload Spinners",
+                        () => level != null,
+                        AkronDeloadSimulator.Describe,
+                        () => AkronActions.DeloadSpinners(level, AkronModule.Settings.DeloadSpinnerDelaySeconds),
+                        BuildSearchTerms("Deload Spinners", new[] { "deload", "spinner", "precision", "simulation" }),
+                        false,
+                        OverlayEntryControl.Action,
+                        AkronFeatureKind.DeloadSimulation,
+                        forceOptionsPopup: true),
                     PolicyToggle("Skip Intro", AkronFeatureKind.LevelEnterSkip, () => AkronModule.Settings.SkipIntro, value => AkronModule.Settings.SkipIntro = value),
                     PolicyToggle("Skip Postcards", AkronFeatureKind.LevelEnterSkip, () => AkronModule.Settings.SkipPostcards, value => AkronModule.Settings.SkipPostcards = value),
                     Toggle("Reduced Visual Noise", () => AkronModule.Settings.ReducedVisualNoise, value => AkronModule.Settings.ReducedVisualNoise = value),
