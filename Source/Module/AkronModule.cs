@@ -607,7 +607,8 @@ public partial class AkronModule : EverestModule {
 
         if (scene is not Level level ||
             AkronCapture.IsCapturingGameFrame ||
-            ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
+            ShouldHideAkronRenderSurfacesBehindDeathWipe() ||
+            !ShouldRenderGameplayDebugPass(level)) {
             return;
         }
 
@@ -622,6 +623,23 @@ public partial class AkronModule : EverestModule {
         } finally {
             Draw.SpriteBatch.End();
         }
+    }
+
+    private static bool ShouldRenderGameplayDebugPass(Level level) {
+        AkronModuleSettings settings = Settings;
+        bool showHitboxes = settings.HitboxViewer ||
+                            settings.HitboxShowLastDeath &&
+                            AkronEntityInspector.HasVisibleLastDeathHitbox();
+        bool showAutoKillArea = settings.AutoKill &&
+                                settings.AutoKillArea &&
+                                settings.AutoKillShowArea;
+        bool showAutoDeafenArea = settings.AutoDeafen &&
+                                  settings.AutoDeafenArea &&
+                                  settings.AutoDeafenShowArea;
+        bool selectingArea = TryGetPracticeAreaSelectionPreview(level, isAutoDeafen: false, out _, out _) ||
+                             TryGetPracticeAreaSelectionPreview(level, isAutoDeafen: true, out _, out _);
+
+        return showHitboxes || showAutoKillArea || showAutoDeafenArea || selectingArea;
     }
 
     internal static SamplerState HudSamplerState() {

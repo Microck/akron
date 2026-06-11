@@ -394,6 +394,7 @@ public sealed class OverlayTests {
         Assert.Contains("RenderAkronLevelHud(postRenderLevel);", source);
         Assert.Contains("if (overlayVisible && !Overlay.RenderImGui())", source);
         Assert.Contains("On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender", source);
+        Assert.Contains("!ShouldRenderGameplayDebugPass(level)", source);
         Assert.Contains("AkronHudRenderer.RenderAutomationAreasToGameplayBuffer(level);", source);
         Assert.Contains("AkronEntityInspector.RenderHitboxesToGameplayBuffer(level", source);
         Assert.DoesNotContain("RenderAkronHitboxHud(postRenderLevel);", source);
