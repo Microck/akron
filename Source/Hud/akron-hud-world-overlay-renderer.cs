@@ -8,6 +8,8 @@ using System.Linq;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronHudRenderer {
+    private static bool renderingAutomationAreasToGameplayBuffer;
+
     private static void RenderAutoKillArea(Level level, bool deathHitboxPass) {
         AkronModuleSettings settings = AkronModule.Settings;
         if (AkronCapture.IsCapturingGameFrame) {
@@ -100,7 +102,7 @@ public static partial class AkronHudRenderer {
     }
 
     private static void DrawWorldRect(Level level, Rectangle worldBounds, Color color, float fillAlpha, int thickness) {
-        AkronHudRect rect = AkronScreenProjection.WorldToHudRect(level, worldBounds);
+        AkronHudRect rect = WorldToAutomationAreaSurfaceRect(level, worldBounds);
         Draw.Rect(rect.X, rect.Y, rect.Width, rect.Height, color * fillAlpha);
         for (int index = 0; index < thickness; index++) {
             Draw.HollowRect(rect.X - index, rect.Y - index, rect.Width + index * 2f, rect.Height + index * 2f, color * 0.95f);
@@ -108,12 +110,21 @@ public static partial class AkronHudRenderer {
     }
 
     private static void DrawWorldPixelMarker(Level level, Rectangle worldBounds, Color color) {
-        AkronHudRect rect = AkronScreenProjection.WorldToHudRect(level, worldBounds);
+        AkronHudRect rect = WorldToAutomationAreaSurfaceRect(level, worldBounds);
         float x = (float) Math.Floor(rect.X);
         float y = (float) Math.Floor(rect.Y);
         float width = Math.Max(1f, (float) Math.Round(rect.Width));
         float height = Math.Max(1f, (float) Math.Round(rect.Height));
 
         Draw.Rect(x, y, width, height, color * 0.85f);
+    }
+
+    private static AkronHudRect WorldToAutomationAreaSurfaceRect(Level level, Rectangle worldBounds) {
+        if (!renderingAutomationAreasToGameplayBuffer) {
+            return AkronScreenProjection.WorldToHudRect(level, worldBounds);
+        }
+
+        Vector2 topLeft = level.Camera.CameraToScreen(new Vector2(worldBounds.X, worldBounds.Y));
+        return new AkronHudRect(topLeft.X, topLeft.Y, worldBounds.Width, worldBounds.Height);
     }
 }

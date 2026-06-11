@@ -1664,6 +1664,13 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
+    public void HitboxLineThicknessDefaultsToOneNativePixel() {
+        AkronModuleSettings settings = new AkronModuleSettings();
+
+        Assert.Equal(5f, settings.HitboxLineThickness);
+    }
+
+    [Fact]
     public void HitboxColorDefaultsMatchCelesteTasConvention() {
         AkronModuleSettings settings = new AkronModuleSettings();
         AkronProfileState profile = new AkronProfileState();

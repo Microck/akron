@@ -98,17 +98,22 @@ public partial class AkronModule : EverestModule {
     public override void Load() {
         AkronModuleSettings.EnsureCurrentKeybindDefaults(Settings);
         AkronLog.Normal(nameof(AkronModule), "load start; " + AkronLog.DescribeSettings());
-        AkronImGuiRenderer.EnsureNativeResolverRegistered();
-        typeof(AkronSaveLoadExports).ModInterop();
-        typeof(SpeedrunToolSaveLoadShim).ModInterop();
-        AkronSpeedrunToolBroker.Initialize();
-        AkronInterop.Initialize();
-        AkronNativeSavestateSupport.Initialize();
-        AkronScreenshotScanner.Load();
+        try {
+            AkronImGuiRenderer.EnsureNativeResolverRegistered();
+            typeof(AkronSaveLoadExports).ModInterop();
+            typeof(SpeedrunToolSaveLoadShim).ModInterop();
+            AkronSpeedrunToolBroker.Initialize();
+            AkronInterop.Initialize();
+            AkronNativeSavestateSupport.Initialize();
+            AkronScreenshotScanner.Load();
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed; continuing so the module menu and overlay can still load: " + exception);
+        }
         On.Celeste.Level.Begin += LevelOnBegin;
         On.Celeste.Level.UpdateTime += LevelOnUpdateTime;
         On.Celeste.Level.Update += LevelOnUpdate;
         On.Celeste.Level.BeforeRender += LevelOnBeforeRender;
+        On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent += HudRendererOnRenderContent;
         On.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiOnRender;
         On.Celeste.MiniTextbox.Render += MiniTextboxOnRender;
@@ -191,12 +196,20 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Initialize() {
-        AkronMotionSmoothingInterop.RefreshLoadedState();
-        AkronMotionSmoothingInterop.ApplyAkronSettings();
+        try {
+            AkronMotionSmoothingInterop.RefreshLoadedState();
+            AkronMotionSmoothingInterop.ApplyAkronSettings();
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed during Initialize; continuing so the module menu and overlay can still load: " + exception);
+        }
     }
 
     public override void LoadContent(bool firstLoad) {
-        AkronImGuiRenderer.WarmUp();
+        try {
+            AkronImGuiRenderer.WarmUp();
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed during LoadContent; continuing so the module menu and overlay can still load: " + exception);
+        }
     }
 
     public override void Unload() {
@@ -209,6 +222,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.UpdateTime -= LevelOnUpdateTime;
         On.Celeste.Level.Update -= LevelOnUpdate;
         On.Celeste.Level.BeforeRender -= LevelOnBeforeRender;
+        On.Celeste.GameplayRenderer.Render -= GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent -= HudRendererOnRenderContent;
         On.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiOnRender;
         On.Celeste.MiniTextbox.Render -= MiniTextboxOnRender;
@@ -580,7 +594,6 @@ public partial class AkronModule : EverestModule {
                 return;
             }
 
-            AkronHudRenderer.RenderAutomationAreas(level);
             RenderVisualTuningTint();
             RenderNoclipAccuracyTint();
         } finally {
@@ -588,22 +601,23 @@ public partial class AkronModule : EverestModule {
         }
     }
 
-    private static void RenderAkronHitboxHud(Level level) {
-        if (level == null ||
+    private static void GameplayRendererOnRender(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene) {
+        orig(self, scene);
+
+        if (scene is not Level level ||
             AkronCapture.IsCapturingGameFrame ||
             ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
             return;
         }
 
-        AkronModuleSettings settings = Settings;
-        if (!settings.HitboxViewer &&
-            (!settings.HitboxShowLastDeath || !AkronEntityInspector.HasVisibleLastDeathHitbox())) {
-            return;
-        }
-
+        // CelesteTAS renders hitboxes inside GameplayRenderer.Render so Monocle's
+        // active gameplay camera owns the world-to-screen transform. Akron's
+        // auto areas and hitboxes are also world-space debug geometry, so keep
+        // them in this pass instead of manually re-projecting after RenderCore.
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
         try {
-            AkronEntityInspector.RenderHitboxes(level, level.Tracker.GetEntity<Player>());
+            AkronHudRenderer.RenderAutomationAreasToGameplayBuffer(level);
+            AkronEntityInspector.RenderHitboxesToGameplayBuffer(level, level.Tracker.GetEntity<Player>());
         } finally {
             Draw.SpriteBatch.End();
         }
@@ -781,7 +795,6 @@ public partial class AkronModule : EverestModule {
         bool hideAkronRenderSurfaces = ShouldHideAkronRenderSurfacesBehindDeathWipe();
 
         if (!hideAkronRenderSurfaces && scene is Level postRenderLevel) {
-            RenderAkronHitboxHud(postRenderLevel);
             RenderAkronLevelHud(postRenderLevel);
         }
 
