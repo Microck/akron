@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -9,6 +10,57 @@ using Xunit;
 namespace Celeste.Mod.Akron.Tests;
 
 public sealed class ValueObjectTests {
+    [Fact]
+    public void StaticMemberRestoreSkipsReadonlyAndLiteralFields() {
+        StaticMemberProbe.Mutable = "changed";
+        Dictionary<Type, Dictionary<string, object>> savedValues = new Dictionary<Type, Dictionary<string, object>> {
+            [typeof(StaticMemberProbe)] = new Dictionary<string, object> {
+                [nameof(StaticMemberProbe.Mutable)] = "restored",
+                [nameof(StaticMemberProbe.Readonly)] = "bad-readonly-value",
+                [nameof(StaticMemberProbe.Literal)] = "bad-literal-value"
+            }
+        };
+
+        Exception exception = Record.Exception(() => AkronSaveLoadService.LoadStaticMembers(
+            savedValues,
+            typeof(StaticMemberProbe),
+            nameof(StaticMemberProbe.Mutable),
+            nameof(StaticMemberProbe.Readonly),
+            nameof(StaticMemberProbe.Literal)));
+
+        Assert.Null(exception);
+        Assert.Equal("restored", StaticMemberProbe.Mutable);
+        Assert.Equal("readonly", StaticMemberProbe.Readonly);
+        Assert.Equal("literal", StaticMemberProbe.Literal);
+    }
+
+    [Fact]
+    public void StaticMemberSaveDoesNotCaptureReadonlyOrLiteralFields() {
+        StaticMemberProbe.Mutable = "saved";
+        Dictionary<Type, Dictionary<string, object>> savedValues = new Dictionary<Type, Dictionary<string, object>>();
+
+        AkronSaveLoadService.SaveStaticMembers(
+            savedValues,
+            typeof(StaticMemberProbe),
+            nameof(StaticMemberProbe.Mutable),
+            nameof(StaticMemberProbe.Readonly),
+            nameof(StaticMemberProbe.Literal));
+
+        Dictionary<string, object> typeValues = Assert.Single(savedValues).Value;
+        Assert.Equal("saved", typeValues[nameof(StaticMemberProbe.Mutable)]);
+        Assert.DoesNotContain(nameof(StaticMemberProbe.Readonly), typeValues.Keys);
+        Assert.DoesNotContain(nameof(StaticMemberProbe.Literal), typeValues.Keys);
+    }
+
+    [Fact]
+    public void GameplayCommandsDoNotDereferenceSessionStateDirectly() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Commands/akron-gameplay-commands.cs"));
+
+        Assert.DoesNotContain("AkronModule.Session.FreezeGameplay", source);
+        Assert.DoesNotContain("AkronModule.Session.TimescaleMultiplier", source);
+        Assert.DoesNotContain("AkronModule.Session.StepFrameRequested", source);
+    }
+
     [Fact]
     public void DeepCloneReadonlyFieldSetterDoesNotThrowWhenRuntimeRejectsWrite() {
         Type setterType = typeof(AkronModule).Assembly.GetType("Force.DeepCloner.Helpers.DeepClonerExprGenerator")!;
@@ -263,6 +315,12 @@ public sealed class ValueObjectTests {
         Assert.Equal(height, cell.Height);
         Assert.Equal(increase, cell.Increase);
         Assert.Equal(polarity, cell.Polarity);
+    }
+
+    private static class StaticMemberProbe {
+        public const string Literal = "literal";
+        public static readonly string Readonly = "readonly";
+        public static string Mutable = "original";
     }
 
     private sealed class ReadonlyFieldProbe {

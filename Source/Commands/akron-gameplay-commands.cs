@@ -9,19 +9,33 @@ namespace Celeste.Mod.Akron;
 public static partial class AkronCommands {
     [Command("akron_freeze", "control Akron freeze: toggle|on|off|status")]
     public static void Freeze(string action = "toggle") {
+        AkronModuleSession session = AkronModule.Session;
         switch ((action ?? string.Empty).Trim().ToLowerInvariant()) {
             case "":
             case "toggle":
                 AkronActions.ToggleFreeze();
+                session = AkronModule.Session;
                 break;
             case "on":
-                if (!AkronModule.Session.FreezeGameplay) {
+                if (session == null) {
+                    Log("freeze: unavailable");
+                    return;
+                }
+
+                if (!session.FreezeGameplay) {
                     AkronActions.ToggleFreeze();
+                    session = AkronModule.Session;
                 }
                 break;
             case "off":
-                if (AkronModule.Session.FreezeGameplay) {
+                if (session == null) {
+                    Log("freeze: unavailable");
+                    return;
+                }
+
+                if (session.FreezeGameplay) {
                     AkronActions.ToggleFreeze();
+                    session = AkronModule.Session;
                 }
                 break;
             case "status":
@@ -31,19 +45,25 @@ public static partial class AkronCommands {
                 return;
         }
 
-        Log("freeze: " + AkronModule.Session.FreezeGameplay.ToString().ToLowerInvariant());
+        Log("freeze: " + (session?.FreezeGameplay.ToString().ToLowerInvariant() ?? "false"));
     }
 
     [Command("akron_timescale", "set Akron timescale: reset or value between 0.1 and 2.0")]
     public static void Timescale(string value = "") {
+        AkronModuleSession session = AkronModule.Session;
         if (string.IsNullOrWhiteSpace(value)) {
-            Log("timescale: " + AkronModule.Session.TimescaleMultiplier.ToString("0.0x", CultureInfo.InvariantCulture));
+            Log("timescale: " + (session?.TimescaleMultiplier.ToString("0.0x", CultureInfo.InvariantCulture) ?? "1.0x"));
+            return;
+        }
+
+        if (session == null) {
+            Log("timescale: unavailable");
             return;
         }
 
         if (string.Equals(value, "reset", StringComparison.OrdinalIgnoreCase)) {
-            AkronActions.AdjustTimescale(1f - AkronModule.Session.TimescaleMultiplier);
-            Log("timescale: " + AkronModule.Session.TimescaleMultiplier.ToString("0.0x", CultureInfo.InvariantCulture));
+            AkronActions.AdjustTimescale(1f - session.TimescaleMultiplier);
+            Log("timescale: " + session.TimescaleMultiplier.ToString("0.0x", CultureInfo.InvariantCulture));
             return;
         }
 
@@ -52,8 +72,8 @@ public static partial class AkronCommands {
             return;
         }
 
-        AkronActions.AdjustTimescale(parsedValue - AkronModule.Session.TimescaleMultiplier);
-        Log("timescale: " + AkronModule.Session.TimescaleMultiplier.ToString("0.0x", CultureInfo.InvariantCulture));
+        AkronActions.AdjustTimescale(parsedValue - session.TimescaleMultiplier);
+        Log("timescale: " + session.TimescaleMultiplier.ToString("0.0x", CultureInfo.InvariantCulture));
     }
 
     [Command("akron_golden_start_helper", "run the allowed golden start helper when the current room is the first room")]
@@ -229,12 +249,18 @@ public static partial class AkronCommands {
 
     [Command("akron_step_frame", "request one gameplay frame while Akron freeze is active")]
     public static void StepFrame(string _ = "") {
-        if (!AkronModule.Session.FreezeGameplay) {
+        AkronModuleSession session = AkronModule.Session;
+        if (session == null) {
+            Log("step-frame: unavailable");
+            return;
+        }
+
+        if (!session.FreezeGameplay) {
             Log("step-frame: ignored because freeze is off");
             return;
         }
 
-        AkronModule.Session.StepFrameRequested = true;
+        session.StepFrameRequested = true;
         Log("step-frame: requested");
     }
 

@@ -773,9 +773,27 @@ public static partial class AkronSaveLoadService {
 
             MemberInfo memberInfo = memberInfos[0];
             if (memberInfo is FieldInfo fieldInfo) {
-                typeValues[memberName] = DeepClone(fieldInfo.GetValue(null));
+                if (ShouldSkipStaticField(fieldInfo)) {
+                    LogSkippedStaticMember(fieldInfo, "save");
+                    continue;
+                }
+
+                try {
+                    typeValues[memberName] = DeepClone(fieldInfo.GetValue(null));
+                } catch (Exception e) {
+                    LogStaticMemberFailure(fieldInfo, "save", e);
+                }
             } else if (memberInfo is PropertyInfo propertyInfo && propertyInfo.CanRead) {
-                typeValues[memberName] = DeepClone(propertyInfo.GetValue(null));
+                if (ShouldSkipStaticProperty(propertyInfo, requireWrite: false)) {
+                    LogSkippedStaticMember(propertyInfo, "save");
+                    continue;
+                }
+
+                try {
+                    typeValues[memberName] = DeepClone(propertyInfo.GetValue(null));
+                } catch (Exception e) {
+                    LogStaticMemberFailure(propertyInfo, "save", e);
+                }
             }
         }
 
@@ -799,10 +817,64 @@ public static partial class AkronSaveLoadService {
 
             MemberInfo memberInfo = memberInfos[0];
             if (memberInfo is FieldInfo fieldInfo) {
-                fieldInfo.SetValue(null, DeepClone(value));
+                if (ShouldSkipStaticField(fieldInfo)) {
+                    LogSkippedStaticMember(fieldInfo, "restore");
+                    continue;
+                }
+
+                try {
+                    fieldInfo.SetValue(null, DeepClone(value));
+                } catch (Exception e) {
+                    LogStaticMemberFailure(fieldInfo, "restore", e);
+                }
             } else if (memberInfo is PropertyInfo propertyInfo && propertyInfo.CanWrite) {
-                propertyInfo.SetValue(null, DeepClone(value));
+                if (ShouldSkipStaticProperty(propertyInfo, requireWrite: true)) {
+                    LogSkippedStaticMember(propertyInfo, "restore");
+                    continue;
+                }
+
+                try {
+                    propertyInfo.SetValue(null, DeepClone(value));
+                } catch (Exception e) {
+                    LogStaticMemberFailure(propertyInfo, "restore", e);
+                }
             }
         }
+    }
+
+    private static bool ShouldSkipStaticField(FieldInfo fieldInfo) {
+        // External save/load registrations can name fields owned by other mods.
+        // Readonly and literal static fields are runtime constants after type
+        // initialization, so trying to restore them can crash StartPos loads.
+        return fieldInfo.IsLiteral || fieldInfo.IsInitOnly || fieldInfo.IsSpecialName;
+    }
+
+    private static bool ShouldSkipStaticProperty(PropertyInfo propertyInfo, bool requireWrite) {
+        return propertyInfo.IsSpecialName ||
+               !propertyInfo.CanRead ||
+               requireWrite && !propertyInfo.CanWrite;
+    }
+
+    private static void LogSkippedStaticMember(MemberInfo memberInfo, string operation) {
+        if (AkronModule.Instance == null) {
+            return;
+        }
+
+        AkronLog.Verbose(nameof(AkronSaveLoadService),
+            "skipped static " + operation + " member: " + FormatStaticMemberName(memberInfo));
+    }
+
+    private static void LogStaticMemberFailure(MemberInfo memberInfo, string operation, Exception exception) {
+        if (AkronModule.Instance == null) {
+            return;
+        }
+
+        AkronLog.Warn(nameof(AkronSaveLoadService),
+            "failed to " + operation + " static member " + FormatStaticMemberName(memberInfo) + "; skipping. " +
+            exception.GetType().Name + ": " + exception.Message);
+    }
+
+    private static string FormatStaticMemberName(MemberInfo memberInfo) {
+        return (memberInfo.DeclaringType?.FullName ?? "unknown") + "." + memberInfo.Name;
     }
 }
