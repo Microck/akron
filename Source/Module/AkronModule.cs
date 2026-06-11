@@ -98,13 +98,17 @@ public partial class AkronModule : EverestModule {
     public override void Load() {
         AkronModuleSettings.EnsureCurrentKeybindDefaults(Settings);
         AkronLog.Normal(nameof(AkronModule), "load start; " + AkronLog.DescribeSettings());
-        AkronImGuiRenderer.EnsureNativeResolverRegistered();
-        typeof(AkronSaveLoadExports).ModInterop();
-        typeof(SpeedrunToolSaveLoadShim).ModInterop();
-        AkronSpeedrunToolBroker.Initialize();
-        AkronInterop.Initialize();
-        AkronNativeSavestateSupport.Initialize();
-        AkronScreenshotScanner.Load();
+        try {
+            AkronImGuiRenderer.EnsureNativeResolverRegistered();
+            typeof(AkronSaveLoadExports).ModInterop();
+            typeof(SpeedrunToolSaveLoadShim).ModInterop();
+            AkronSpeedrunToolBroker.Initialize();
+            AkronInterop.Initialize();
+            AkronNativeSavestateSupport.Initialize();
+            AkronScreenshotScanner.Load();
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed; continuing so the module menu and overlay can still load: " + exception);
+        }
         On.Celeste.Level.Begin += LevelOnBegin;
         On.Celeste.Level.UpdateTime += LevelOnUpdateTime;
         On.Celeste.Level.Update += LevelOnUpdate;
@@ -191,12 +195,20 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Initialize() {
-        AkronMotionSmoothingInterop.RefreshLoadedState();
-        AkronMotionSmoothingInterop.ApplyAkronSettings();
+        try {
+            AkronMotionSmoothingInterop.RefreshLoadedState();
+            AkronMotionSmoothingInterop.ApplyAkronSettings();
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed during Initialize; continuing so the module menu and overlay can still load: " + exception);
+        }
     }
 
     public override void LoadContent(bool firstLoad) {
-        AkronImGuiRenderer.WarmUp();
+        try {
+            AkronImGuiRenderer.WarmUp();
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed during LoadContent; continuing so the module menu and overlay can still load: " + exception);
+        }
     }
 
     public override void Unload() {
