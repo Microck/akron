@@ -436,7 +436,7 @@ public partial class AkronModuleSettings {
         AutosaveIntervalSeconds = ClampAutosaveIntervalSeconds(resolved.AutosaveIntervalSeconds);
         AutosaveMinimumDelaySeconds = ClampAutosaveMinimumDelaySeconds(resolved.AutosaveMinimumDelaySeconds);
         AutosaveHideSavingIcon = resolved.AutosaveHideSavingIcon;
-        DeloadSpinners = resolved.DeloadSpinners;
+        DeloadSpinners = false;
         DeloadSpinnerDelaySeconds = AkronDeloadSimulator.ClampDelaySeconds(resolved.DeloadSpinnerDelaySeconds);
         DashCountStats = resolved.DashCountStats;
         DashCountStatsMode = resolved.DashCountStatsMode;

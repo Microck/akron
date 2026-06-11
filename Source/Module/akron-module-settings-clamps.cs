@@ -93,6 +93,17 @@ public partial class AkronModuleSettings {
         return ClampValue(files < 0 ? 5 : files, 0, 20);
     }
 
+    public static void ClearOneShotRuntimeActions(AkronModuleSettings settings) {
+        if (settings == null) {
+            return;
+        }
+
+        // Deload simulation mutates timers immediately. It must not survive a
+        // settings reload, otherwise opening a room after restart replays the
+        // simulation and corrupts journal time.
+        settings.DeloadSpinners = false;
+    }
+
     public static int ClampPercent(int value, int minimum = 10, int maximum = 300) {
         return ClampValue(value <= 0 ? 100 : value, minimum, maximum);
     }

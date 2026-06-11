@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using Celeste.Mod.Akron;
@@ -31,6 +32,16 @@ public sealed class ValueObjectTests {
         Assert.Equal(source.Y, roundTrip.Y);
         Assert.Equal(source.Width, roundTrip.Width);
         Assert.Equal(source.Height, roundTrip.Height);
+    }
+
+    [Fact]
+    public void DeloadSimulationDoesNotMutatePlayerTimeStats() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Runtime/akron-deload-simulator.cs"));
+
+        Assert.DoesNotContain("SaveData.Instance?.AddTime", source);
+        Assert.DoesNotContain("level.Session.Time +=", source);
+        Assert.DoesNotContain("Update(ref level.TimeActive", source);
+        Assert.DoesNotContain("Update(ref level.RawTimeActive", source);
     }
 
     [Fact]

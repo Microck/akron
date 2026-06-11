@@ -18,8 +18,8 @@ internal static class AkronDeloadSimulator {
     }
 
     public static string Describe() {
-        if (AkronModule.Settings?.DeloadSpinners != true) {
-            return "Off";
+        if (AkronModule.Settings == null) {
+            return "Unavailable";
         }
 
         float delay = AkronModule.Settings.DeloadSpinnerDelaySeconds;
@@ -37,16 +37,10 @@ internal static class AkronDeloadSimulator {
         }
 
         Engine.FrameCounter += (ulong) steps;
-        Update(ref level.TimeActive, steps);
-        Update(ref level.RawTimeActive, steps);
 
-        long ticksPerStep = TimeSpan.FromSeconds(Engine.RawDeltaTime).Ticks;
-        long remainder = ticksPerStep % 10000;
-        ticksPerStep = remainder < 500 ? ticksPerStep - remainder : ticksPerStep + (10000 - remainder);
-
-        SaveData.Instance?.AddTime(level.Session.Area, ticksPerStep * steps);
-        level.Session.Time += ticksPerStep * steps;
-
+        // This simulates visual timer drift only. Do not add the skipped
+        // frames to level, session, or journal time; doing so corrupts player
+        // stats by turning a visual helper into real playtime.
         Update(ref level.glitchTimer, steps);
         foreach (Backdrop backdrop in level.Foreground.Backdrops) {
             UpdateVanillaBackdrop(level, backdrop, steps);
