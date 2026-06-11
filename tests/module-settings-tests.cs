@@ -2438,6 +2438,26 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
+    public void PersistingActiveProfileStoresDisabledFeatureToggles() {
+        AkronModuleSettings settings = new AkronModuleSettings();
+
+        settings.ApplyProfile(AkronProfile.Practice);
+        settings.AutoKill = true;
+        settings.Noclip = true;
+        settings.PersistActiveProfileState();
+
+        settings.AutoKill = false;
+        settings.Noclip = false;
+        settings.PersistActiveProfileState();
+
+        settings.ApplyProfile(AkronProfile.Casual);
+        settings.ApplyProfile(AkronProfile.Practice);
+
+        Assert.False(settings.AutoKill);
+        Assert.False(settings.Noclip);
+    }
+
+    [Fact]
     public void ProfileSwitchingPersistsInputsPerSecondOptions() {
         AkronModuleSettings settings = new AkronModuleSettings();
 

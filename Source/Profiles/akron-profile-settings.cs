@@ -15,6 +15,10 @@ public partial class AkronModuleSettings {
         ApplyProfileState(GetProfileState(profile));
     }
 
+    public void PersistActiveProfileState() {
+        SaveProfileState(ActiveProfile);
+    }
+
     public AkronProfileState CaptureProfilePackState() {
         return CaptureCurrentState();
     }

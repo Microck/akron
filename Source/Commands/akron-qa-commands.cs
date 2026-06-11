@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Reflection;
 using Celeste;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -10,6 +12,23 @@ namespace Celeste.Mod.Akron;
 public static partial class AkronCommands {
     // Command-only QA probes and telemetry. These intentionally create or report
     // controlled runtime states for repeatable live verification, not player UI.
+    [Command("akron_qa_save_settings", "force a settings save for Akron live automation")]
+    public static void QaSaveSettings() {
+        AkronModule.Settings.PersistActiveProfileState();
+        MethodInfo saveSettings = typeof(Everest).GetMethod("_SaveSettings", BindingFlags.Static | BindingFlags.NonPublic);
+        if (saveSettings != null) {
+            if (saveSettings.Invoke(null, Array.Empty<object>()) is IEnumerator routine) {
+                while (routine.MoveNext()) {
+                }
+            }
+            Log("qa-save-settings: saved");
+            return;
+        }
+
+        UserIO.SaveHandler(true, true);
+        Log("qa-save-settings: saved-fallback");
+    }
+
     [Command("akron_qa_area_complete", "trigger Level.RegisterAreaComplete for Akron proof automation")]
     public static void QaAreaComplete(string _ = "") {
         Level level = RequireLevel();
