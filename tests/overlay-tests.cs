@@ -383,16 +383,18 @@ public sealed class OverlayTests {
     }
 
     [Fact]
-    public void AkronOverlayDoesNotHookNestedWorldRenderPasses() {
+    public void AkronOverlayStaysOnFinalRenderPassWhileWorldDebugGeometryUsesGameplayPass() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/AkronModule.cs"));
 
         Assert.DoesNotContain("On.Celeste.Level.Render += LevelOnRender", source);
-        Assert.DoesNotContain("On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender", source);
         Assert.DoesNotContain("private static void LevelOnRender(", source);
-        Assert.DoesNotContain("private static void GameplayRendererOnRender(", source);
         Assert.Contains("On.Monocle.Engine.RenderCore += EngineOnRenderCore", source);
-        Assert.Contains("RenderAkronHitboxHud(postRenderLevel);", source);
         Assert.Contains("RenderAkronLevelHud(postRenderLevel);", source);
+        Assert.Contains("if (overlayVisible && !Overlay.RenderImGui())", source);
+        Assert.Contains("On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender", source);
+        Assert.Contains("AkronHudRenderer.RenderAutomationAreasToGameplayBuffer(level);", source);
+        Assert.Contains("AkronEntityInspector.RenderHitboxesToGameplayBuffer(level", source);
+        Assert.DoesNotContain("RenderAkronHitboxHud(postRenderLevel);", source);
     }
 
     [Fact]

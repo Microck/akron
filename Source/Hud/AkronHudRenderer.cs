@@ -195,13 +195,18 @@ public static partial class AkronHudRenderer {
         }
     }
 
-    public static void RenderAutomationAreas(Level level) {
+    public static void RenderAutomationAreasToGameplayBuffer(Level level) {
         if (AkronCapture.IsCapturingGameFrame || AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
             return;
         }
 
-        RenderAutoKillArea(level, true);
-        RenderAutoDeafenArea(level);
+        renderingAutomationAreasToGameplayBuffer = true;
+        try {
+            RenderAutoKillArea(level, true);
+            RenderAutoDeafenArea(level);
+        } finally {
+            renderingAutomationAreasToGameplayBuffer = false;
+        }
     }
 
     private static bool ShouldRenderRoomStatTracker(Level level) {

@@ -113,6 +113,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.UpdateTime += LevelOnUpdateTime;
         On.Celeste.Level.Update += LevelOnUpdate;
         On.Celeste.Level.BeforeRender += LevelOnBeforeRender;
+        On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent += HudRendererOnRenderContent;
         On.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiOnRender;
         On.Celeste.MiniTextbox.Render += MiniTextboxOnRender;
@@ -221,6 +222,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.UpdateTime -= LevelOnUpdateTime;
         On.Celeste.Level.Update -= LevelOnUpdate;
         On.Celeste.Level.BeforeRender -= LevelOnBeforeRender;
+        On.Celeste.GameplayRenderer.Render -= GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent -= HudRendererOnRenderContent;
         On.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiOnRender;
         On.Celeste.MiniTextbox.Render -= MiniTextboxOnRender;
@@ -592,7 +594,6 @@ public partial class AkronModule : EverestModule {
                 return;
             }
 
-            AkronHudRenderer.RenderAutomationAreas(level);
             RenderVisualTuningTint();
             RenderNoclipAccuracyTint();
         } finally {
@@ -600,22 +601,23 @@ public partial class AkronModule : EverestModule {
         }
     }
 
-    private static void RenderAkronHitboxHud(Level level) {
-        if (level == null ||
+    private static void GameplayRendererOnRender(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene) {
+        orig(self, scene);
+
+        if (scene is not Level level ||
             AkronCapture.IsCapturingGameFrame ||
             ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
             return;
         }
 
-        AkronModuleSettings settings = Settings;
-        if (!settings.HitboxViewer &&
-            (!settings.HitboxShowLastDeath || !AkronEntityInspector.HasVisibleLastDeathHitbox())) {
-            return;
-        }
-
+        // CelesteTAS renders hitboxes inside GameplayRenderer.Render so Monocle's
+        // active gameplay camera owns the world-to-screen transform. Akron's
+        // auto areas and hitboxes are also world-space debug geometry, so keep
+        // them in this pass instead of manually re-projecting after RenderCore.
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
         try {
-            AkronEntityInspector.RenderHitboxes(level, level.Tracker.GetEntity<Player>());
+            AkronHudRenderer.RenderAutomationAreasToGameplayBuffer(level);
+            AkronEntityInspector.RenderHitboxesToGameplayBuffer(level, level.Tracker.GetEntity<Player>());
         } finally {
             Draw.SpriteBatch.End();
         }
@@ -793,7 +795,6 @@ public partial class AkronModule : EverestModule {
         bool hideAkronRenderSurfaces = ShouldHideAkronRenderSurfacesBehindDeathWipe();
 
         if (!hideAkronRenderSurfaces && scene is Level postRenderLevel) {
-            RenderAkronHitboxHud(postRenderLevel);
             RenderAkronLevelHud(postRenderLevel);
         }
 
