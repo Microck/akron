@@ -294,6 +294,8 @@ public sealed class OverlayTests {
 
         Assert.DoesNotContain("PracticeAreaPixelMarkerYOffset", source);
         Assert.DoesNotContain("Math.Floor(rect.Y) +", source);
+        Assert.DoesNotContain("Mouse.GetState()", source);
+        Assert.Contains("DrawWorldPixelMarker(level, preview", source);
     }
 
     [Fact]
@@ -395,6 +397,7 @@ public sealed class OverlayTests {
         Assert.Contains("AkronHudRenderer.RenderAutomationAreasToGameplayBuffer(level);", source);
         Assert.Contains("AkronEntityInspector.RenderHitboxesToGameplayBuffer(level", source);
         Assert.DoesNotContain("RenderAkronHitboxHud(postRenderLevel);", source);
+        Assert.DoesNotContain("RenderAutomationDeathAreasToGameplayBuffer", source);
     }
 
     [Fact]

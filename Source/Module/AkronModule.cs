@@ -612,9 +612,9 @@ public partial class AkronModule : EverestModule {
         }
 
         // CelesteTAS renders hitboxes inside GameplayRenderer.Render so Monocle's
-        // active gameplay camera owns the world-to-screen transform. Akron's
-        // auto areas and hitboxes are also world-space debug geometry, so keep
-        // them in this pass instead of manually re-projecting after RenderCore.
+        // active gameplay camera owns the world-to-screen transform. Auto Kill
+        // and Auto Deafen areas use the same pass because their placement
+        // preview, saved display, and death hitbox all describe world pixels.
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
         try {
             AkronHudRenderer.RenderAutomationAreasToGameplayBuffer(level);

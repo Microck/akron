@@ -43,8 +43,6 @@ public static partial class AkronHudRenderer {
             return;
         }
 
-        RenderAutoKillArea(level, true);
-        RenderAutoDeafenArea(level);
         RenderRefillClarity(level);
         RenderTriggerViewer(level);
         RenderTrajectory(level, player);
@@ -192,20 +190,6 @@ public static partial class AkronHudRenderer {
         } finally {
             currentLabelPlayerHudRect = previousLabelPlayerHudRect;
             currentAnyHudLabelObstructed = previousAnyHudLabelObstructed;
-        }
-    }
-
-    public static void RenderAutomationAreasToGameplayBuffer(Level level) {
-        if (AkronCapture.IsCapturingGameFrame || AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
-            return;
-        }
-
-        renderingAutomationAreasToGameplayBuffer = true;
-        try {
-            RenderAutoKillArea(level, true);
-            RenderAutoDeafenArea(level);
-        } finally {
-            renderingAutomationAreasToGameplayBuffer = false;
         }
     }
 

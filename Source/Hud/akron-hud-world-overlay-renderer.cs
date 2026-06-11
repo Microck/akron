@@ -10,31 +10,31 @@ namespace Celeste.Mod.Akron;
 public static partial class AkronHudRenderer {
     private static bool renderingAutomationAreasToGameplayBuffer;
 
-    private static void RenderAutoKillArea(Level level, bool deathHitboxPass) {
+    private static void RenderAutoKillArea(Level level) {
         AkronModuleSettings settings = AkronModule.Settings;
         if (AkronCapture.IsCapturingGameFrame) {
             return;
         }
 
-        bool shouldShowLive = settings.AutoKill && settings.AutoKillArea && settings.AutoKillShowArea;
-        bool shouldShowOnDeath = deathHitboxPass &&
-                                 settings.AutoKillShowAreaOnDeath &&
-                                 settings.HitboxShowLastDeath &&
-                                 AkronEntityInspector.HasVisibleLastDeathHitbox();
+        bool shouldShowLive = settings.AutoKill &&
+                              settings.AutoKillArea &&
+                              settings.AutoKillShowArea &&
+                              !HasVisibleRecordedAutoKillDeath(settings);
         bool shouldShowPreview = AkronModule.TryGetPracticeAreaSelectionPreview(level, isAutoDeafen: false, out Rectangle preview, out bool hasAnchor);
-        if (!shouldShowLive && !shouldShowOnDeath && !shouldShowPreview) {
+        if (!shouldShowLive && !shouldShowPreview) {
             return;
         }
 
+        int lineThickness = AutomationAreaGamePixelThickness();
         foreach (Rectangle area in AkronModule.GetAutoKillAreas()) {
             if (area.Width > 0 && area.Height > 0) {
-                DrawWorldRect(level, area, Color.OrangeRed, shouldShowOnDeath ? 0.20f : 0.14f, 2);
+                DrawWorldRect(level, area, Color.OrangeRed, 0.14f, lineThickness);
             }
         }
 
         if (shouldShowPreview) {
             if (hasAnchor) {
-                DrawWorldRect(level, preview, Color.OrangeRed, 0.18f, 2);
+                DrawWorldRect(level, preview, Color.OrangeRed, 0f, lineThickness);
             } else {
                 DrawWorldPixelMarker(level, preview, Color.OrangeRed);
             }
@@ -53,20 +53,37 @@ public static partial class AkronHudRenderer {
             return;
         }
 
+        int lineThickness = AutomationAreaGamePixelThickness();
         if (shouldShowLive) {
             foreach (Rectangle area in AkronModule.GetAutoDeafenAreas()) {
                 if (area.Width > 0 && area.Height > 0) {
-                    DrawWorldRect(level, area, Color.DeepSkyBlue, 0.14f, 2);
+                    DrawWorldRect(level, area, Color.DeepSkyBlue, 0.14f, lineThickness);
                 }
             }
         }
 
         if (shouldShowPreview) {
             if (hasAnchor) {
-                DrawWorldRect(level, preview, Color.DeepSkyBlue, 0.18f, 2);
+                DrawWorldRect(level, preview, Color.DeepSkyBlue, 0f, lineThickness);
             } else {
                 DrawWorldPixelMarker(level, preview, Color.DeepSkyBlue);
             }
+        }
+    }
+
+    public static void RenderAutomationAreasToGameplayBuffer(Level level) {
+        if (AkronCapture.IsCapturingGameFrame ||
+            level == null ||
+            AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
+            return;
+        }
+
+        renderingAutomationAreasToGameplayBuffer = true;
+        try {
+            RenderAutoKillArea(level);
+            RenderAutoDeafenArea(level);
+        } finally {
+            renderingAutomationAreasToGameplayBuffer = false;
         }
     }
 
@@ -103,10 +120,25 @@ public static partial class AkronHudRenderer {
 
     private static void DrawWorldRect(Level level, Rectangle worldBounds, Color color, float fillAlpha, int thickness) {
         AkronHudRect rect = WorldToAutomationAreaSurfaceRect(level, worldBounds);
-        Draw.Rect(rect.X, rect.Y, rect.Width, rect.Height, color * fillAlpha);
-        for (int index = 0; index < thickness; index++) {
-            Draw.HollowRect(rect.X - index, rect.Y - index, rect.Width + index * 2f, rect.Height + index * 2f, color * 0.95f);
+        float left = (float) Math.Floor(rect.X);
+        float top = (float) Math.Floor(rect.Y);
+        float right = (float) Math.Floor(rect.X + rect.Width);
+        float bottom = (float) Math.Floor(rect.Y + rect.Height);
+        float width = Math.Max(1f, right - left);
+        float height = Math.Max(1f, bottom - top);
+        float lineThickness = Math.Max(1f, Math.Min(thickness, Math.Min(width, height)));
+
+        if (fillAlpha > 0f) {
+            Draw.Rect(left, top, width, height, color * fillAlpha);
         }
+
+        // Automation areas are authored in Celeste world pixels. In the gameplay
+        // buffer pass, one surface unit is one game pixel, which keeps selection,
+        // live-area display, and death hitboxes on the same grid.
+        Draw.Rect(left, top, width, lineThickness, color * 0.95f);
+        Draw.Rect(left, bottom - lineThickness, width, lineThickness, color * 0.95f);
+        Draw.Rect(left, top, lineThickness, height, color * 0.95f);
+        Draw.Rect(right - lineThickness, top, lineThickness, height, color * 0.95f);
     }
 
     private static void DrawWorldPixelMarker(Level level, Rectangle worldBounds, Color color) {
@@ -116,15 +148,29 @@ public static partial class AkronHudRenderer {
         float width = Math.Max(1f, (float) Math.Round(rect.Width));
         float height = Math.Max(1f, (float) Math.Round(rect.Height));
 
-        Draw.Rect(x, y, width, height, color * 0.85f);
+        Draw.Rect(x, y, width, height, color * 0.95f);
     }
 
     private static AkronHudRect WorldToAutomationAreaSurfaceRect(Level level, Rectangle worldBounds) {
-        if (!renderingAutomationAreasToGameplayBuffer) {
-            return AkronScreenProjection.WorldToHudRect(level, worldBounds);
+        if (renderingAutomationAreasToGameplayBuffer) {
+            Vector2 topLeft = level.Camera.CameraToScreen(new Vector2(worldBounds.X, worldBounds.Y));
+            return new AkronHudRect(topLeft.X, topLeft.Y, worldBounds.Width, worldBounds.Height);
         }
 
-        Vector2 topLeft = level.Camera.CameraToScreen(new Vector2(worldBounds.X, worldBounds.Y));
-        return new AkronHudRect(topLeft.X, topLeft.Y, worldBounds.Width, worldBounds.Height);
+        return AkronScreenProjection.WorldToHudRect(level, worldBounds);
+    }
+
+    private static int AutomationAreaGamePixelThickness() {
+        if (renderingAutomationAreasToGameplayBuffer) {
+            return 1;
+        }
+
+        return Math.Max(1, (int) Math.Round(AkronScreenProjection.CurrentViewportScale()));
+    }
+
+    private static bool HasVisibleRecordedAutoKillDeath(AkronModuleSettings settings) {
+        return settings.HitboxShowLastDeath &&
+               AkronEntityInspector.HasVisibleLastDeathHitbox() &&
+               string.Equals(AkronModule.Session?.LastDeathEntityType, "AutoKillArea", StringComparison.Ordinal);
     }
 }
