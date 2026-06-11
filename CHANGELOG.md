@@ -6,8 +6,12 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.17
+
 ### Fixed
 
+- Prevent Deload Spinners from adding simulated frames to level, session, or journal time.
+- Make Deload Spinners a one-shot action so stale settings and profile imports cannot replay the simulation after restart.
 - Keep Mintlify's generated Open Graph previews working by using an SVG docs logo asset instead of the PNG logo path that produced empty generated preview images.
 
 ## 0.1.2-beta.16
