@@ -11,26 +11,7 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModuleSettings {
-    public string DescribeRulesetStack() {
-        string primary = FormatPrimaryRuleset(PrimaryRuleset);
-        string overlays = DescribeOverlayRulesets();
-        return overlays == "None" ? primary : primary + " + " + overlays;
-    }
-
-    public string DescribePrimaryRulesetBehavior() {
-        return PrimaryRuleset switch {
-            PrimaryRuleset.None => "No primary ruleset is active. Akron starts with features and profiles off until you opt in.",
-            PrimaryRuleset.Casual => "Casual keeps Akron in QoL-first mode. State-changing features stay opt-in.",
-            PrimaryRuleset.Practice => "Practice applies room-lab defaults for StartPos setup, route review, HUD timing, input display, and death stats.",
-            PrimaryRuleset.LeaderboardClean => FormatPrimaryRuleset(PrimaryRuleset) + " blocks state-changing features. Akron shows explicit conflict prompts instead of auto-switching.",
-            PrimaryRuleset.Sandbox => "Sandbox removes Akron policy blocks. It does not auto-enable features for you.",
-            PrimaryRuleset.EverestSafe => "Everest-safe stays conservative on unknown Everest content and pushes risky compatibility decisions behind explicit overrides.",
-            PrimaryRuleset.MapMaker => "Map-maker favors inspection, reload, and debug traversal without automatically turning on overt gameplay cheats.",
-            _ => "Akron uses one primary ruleset plus optional overlay rulesets."
-        };
-    }
-
-    public string DescribeOverlayRulesets() {
+    public string DescribePresentationOverlays() {
         List<string> overlays = new List<string>();
         if (StreamerMode) {
             overlays.Add("Streamer Mode");
@@ -54,7 +35,7 @@ public partial class AkronModuleSettings {
         }
 
         if (ProofModeOverlay) {
-            behaviors.Add("Proof-mode keeps proof surfaces compact and ruleset-aware instead of turning Akron into a permanent review HUD.");
+            behaviors.Add("Proof-mode keeps proof surfaces compact instead of turning Akron into a permanent review HUD.");
         }
 
         if (IsLowDistractionActive()) {
@@ -62,7 +43,7 @@ public partial class AkronModuleSettings {
         }
 
         return behaviors.Count == 0
-            ? "Overlay rulesets are optional presentation layers that sit on top of the current primary ruleset."
+            ? "Presentation overlays change how Akron shows or records information."
             : string.Join(" ", behaviors);
     }
 
@@ -141,28 +122,6 @@ public partial class AkronModuleSettings {
         HitboxOtherColor = DefaultHitboxOtherColor;
         HitboxDeathColor = DefaultHitboxDeathColor;
         HitboxDeathPlayerColor = DefaultHitboxDeathPlayerColor;
-    }
-
-    public static string FormatPrimaryRuleset(PrimaryRuleset ruleset) {
-        return ruleset switch {
-            // The ruleset label is a local configuration surface, not a run-legitimacy claim.
-            PrimaryRuleset.None => "None",
-            PrimaryRuleset.LeaderboardClean => "Leaderboard-clean",
-            PrimaryRuleset.EverestSafe => "Everest-safe",
-            PrimaryRuleset.MapMaker => "Map-maker",
-            _ => ruleset.ToString()
-        };
-    }
-
-    public static string FormatProfile(AkronProfile profile) {
-        return profile switch {
-            // Keep the real profile name visible in local UI even when safe mode redacts
-            // clean-status outputs elsewhere.
-            AkronProfile.None => "None",
-            AkronProfile.LeaderboardClean => "Leaderboard Clean",
-            AkronProfile.MapMaker => "Map Maker",
-            _ => profile.ToString()
-        };
     }
 
     public static string FormatStatus(AkronStatus status) {

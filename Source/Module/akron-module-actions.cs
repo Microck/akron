@@ -233,7 +233,7 @@ public partial class AkronModule {
             case AkronSaveLoadResult.SessionMismatch:
                 return "Slot " + slot + " belongs to a different save file or map session.";
             case AkronSaveLoadResult.Blocked:
-                return verb + " blocked by the current ruleset or StartPos restore safety check.";
+                return verb + " blocked by StartPos restore safety check.";
             case AkronSaveLoadResult.BrokerUnavailable:
                 return "Speedrun Tool broker is unavailable.";
             default:
@@ -244,12 +244,7 @@ public partial class AkronModule {
         AkronPolicyDecision decision = AkronPolicy.CanUse(feature);
         AkronLog.Trace(nameof(AkronModule), "policy check: " + feature + "; allowed=" + decision.Allowed.ToString().ToLowerInvariant() + "; message=" + decision.Message);
         if (!decision.Allowed) {
-            if (Engine.Scene is Level level && AkronPolicy.ShouldOfferRulesetEscape(feature)) {
-                ShowRulesetConflictPrompt(level, feature);
-            } else {
-                Engine.Scene?.Add(new AkronToast(decision.Message));
-            }
-
+            Engine.Scene?.Add(new AkronToast(decision.Message));
             return false;
         }
 
@@ -297,24 +292,6 @@ public partial class AkronModule {
         Engine.Scene?.Add(new AkronToast(DescribeSaveLoadResult(load ? "Load" : "Save", result, Settings.ActiveSavestateSlot)));
     }
 
-    private static void ShowRulesetConflictPrompt(Level level, AkronFeatureKind feature) {
-        FeatureDefinition definition = AkronFeatureRegistry.Get(feature);
-        PrimaryRuleset nextRuleset = AkronPolicy.GetSuggestedRuleset(feature);
-        string currentRulesetLabel = AkronModuleSettings.FormatPrimaryRuleset(PrimaryRuleset.LeaderboardClean);
-        string stayLabel = AkronPolicy.CanExposeCleanLegitimacy() ? "Stay Leaderboard Clean" : "Keep Current Guardrails";
-        AkronPromptMenu.Show(
-            level,
-            "RULESET CONFLICT",
-            currentRulesetLabel + " blocks " + definition.Label + ".\n" +
-            "Akron does not auto-switch rulesets for legitimacy-sensitive features.",
-            new AkronPromptOption(stayLabel, () => { }),
-            new AkronPromptOption("Switch To " + FormatRulesetLabel(nextRuleset), () => {
-                ApplyRuleset(nextRuleset);
-                Engine.Scene?.Add(new AkronToast("Switched ruleset to " + FormatRulesetLabel(nextRuleset) + ". Use the action again."));
-            })
-        );
-    }
-
     private static void ShowConfirmPrompt(Level level, string title, string body, Action confirmedAction) {
         if (level == null) {
             return;
@@ -328,19 +305,10 @@ public partial class AkronModule {
         );
     }
 
-    private static void ApplyRuleset(PrimaryRuleset ruleset) {
-        Settings.ApplyRulesetDefaults(ruleset);
-    }
-
-    private static string FormatRulesetLabel(PrimaryRuleset ruleset) {
-        return AkronModuleSettings.FormatPrimaryRuleset(ruleset);
-    }
-
     public static void SetActiveSavestateSlot(int slot) {
         Settings.ActiveSavestateSlot = Calc.Clamp(slot, 1, 9);
     }
 
-    public static void PerformApplyRuleset(PrimaryRuleset ruleset) => ApplyRuleset(ruleset);
     public static void PerformRetry(Level level) => Retry(level);
     public static void PerformReloadRoom(Level level) => ReloadRoom(level);
     public static void PerformOpenDebugMap(Level level) => OpenDebugMap(level);

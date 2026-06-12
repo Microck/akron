@@ -89,10 +89,10 @@ Before adding archives to the catalog, ensure that:
 
 Before publishing, perform the following validation steps:
 
-- Verify that the archive contains exactly `manifest.json` and `profile.json`.
-- Verify that the manifest `kind` is `profile`.
-- Ensure that `profile.json` uses the `akron-profile-v1` format.
-- Verify that the entry `section` matches the profile section, unless a different scope is intended.
+- Verify that the archive contains exactly `manifest.json` and `setup.json`.
+- Verify that the manifest `kind` is `setup`.
+- Ensure that `setup.json` uses the `akron-setup-v1` format.
+- Verify that the entry `section` matches the setup section, unless a different scope is intended.
 - Confirm that the download URL returns the expected `.akr` archive.
 
 See [Akron .akr archives](/reference/akr-archives) for the full archive contract and import safety rules.
@@ -105,7 +105,7 @@ Akron filters catalog entries using the following criteria:
 - Selected category.
 - Search terms against title, description, author, map URL, section label, and tags.
 
-When a player imports a pack, Akron downloads it to `Saves/AkronProfiles/community-*.akr` and imports the declared scope.
+When a player imports a pack, Akron downloads it to `Saves/AkronSetups/community-*.akr` and imports the declared scope.
 
 ## Automation commands
 

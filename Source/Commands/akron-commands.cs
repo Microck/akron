@@ -18,22 +18,6 @@ public static partial class AkronCommands {
     // first-case player UI. Keep those commands documented here so future docs
     // do not accidentally present them as overlay or Everest mod-option flows.
 
-    [Command("akron_ruleset", "set Akron ruleset: none|casual|practice|leaderboard-clean|sandbox|everest-safe|map-maker")]
-    public static void Ruleset(string value = "") {
-        if (string.IsNullOrWhiteSpace(value)) {
-            Log("ruleset: " + AkronModuleSettings.FormatPrimaryRuleset(AkronModule.Settings.PrimaryRuleset));
-            return;
-        }
-
-        if (!TryParseRuleset(value, out PrimaryRuleset ruleset)) {
-            Log("invalid ruleset: " + value);
-            return;
-        }
-
-        AkronModule.PerformApplyRuleset(ruleset);
-        Log("ruleset set: " + AkronModuleSettings.FormatPrimaryRuleset(AkronModule.Settings.PrimaryRuleset));
-    }
-
     [Command("akron_menu_input", "control whether Akron consumes menu input while open: on|off|status")]
     public static void MenuInput(string action = "status") {
         switch ((action ?? string.Empty).Trim().ToLowerInvariant()) {
@@ -97,46 +81,6 @@ public static partial class AkronCommands {
         AkronModule.Settings.GrabModeOverrideMode = mode;
         ApplyConfiguredGrabMode();
         LogGrabModeStatus();
-    }
-
-    [Command("akron_community_rulesets", "list or apply community rulesets: list|apply <id-or-label>")]
-    public static void CommunityRulesets(string action = "list", string idOrLabel = "") {
-        IReadOnlyList<AkronCommunityRulesetManifest> manifests = AkronCommunityRulesets.LoadAvailable();
-        string normalizedAction = (action ?? string.Empty).Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(normalizedAction) || normalizedAction == "list") {
-            if (manifests.Count == 0) {
-                Log("community-rulesets: none");
-                return;
-            }
-
-            foreach (AkronCommunityRulesetManifest manifest in manifests) {
-                Log("community-ruleset: " + manifest.Id + " | " + manifest.Label + " | " + manifest.SourcePath);
-            }
-            return;
-        }
-
-        if (normalizedAction != "apply") {
-            Log("unknown community-rulesets action: " + action);
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(idOrLabel)) {
-            Log("usage: akron_community_rulesets apply <id-or-label>");
-            return;
-        }
-
-        string normalizedTarget = NormalizeToken(idOrLabel);
-        AkronCommunityRulesetManifest selected = manifests.FirstOrDefault(manifest =>
-            string.Equals(NormalizeToken(manifest.Id), normalizedTarget, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(NormalizeToken(manifest.Label), normalizedTarget, StringComparison.OrdinalIgnoreCase));
-        if (selected == null) {
-            Log("community-ruleset not found: " + idOrLabel);
-            return;
-        }
-
-        AkronCommunityRulesets.Apply(selected);
-        Log("community-ruleset applied: " + selected.Id + " | " + selected.Label);
-        Log("rulesets: " + AkronModule.Settings.DescribeRulesetStack());
     }
 
     // Command-only diagnostic output. This is intentionally not an overlay
@@ -241,43 +185,6 @@ public static partial class AkronCommands {
         };
     }
 
-    private static bool TryParseRuleset(string value, out PrimaryRuleset ruleset) {
-        switch ((value ?? string.Empty).Trim().ToLowerInvariant()) {
-            case "none":
-            case "off":
-            case "disabled":
-                ruleset = PrimaryRuleset.None;
-                return true;
-            case "casual":
-                ruleset = PrimaryRuleset.Casual;
-                return true;
-            case "practice":
-                ruleset = PrimaryRuleset.Practice;
-                return true;
-            case "leaderboardclean":
-            case "leaderboard-clean":
-            case "leaderboard_clean":
-                ruleset = PrimaryRuleset.LeaderboardClean;
-                return true;
-            case "sandbox":
-                ruleset = PrimaryRuleset.Sandbox;
-                return true;
-            case "everestsafe":
-            case "everest-safe":
-            case "everest_safe":
-                ruleset = PrimaryRuleset.EverestSafe;
-                return true;
-            case "mapmaker":
-            case "map-maker":
-            case "map_maker":
-                ruleset = PrimaryRuleset.MapMaker;
-                return true;
-            default:
-                ruleset = AkronModule.Settings.PrimaryRuleset;
-                return false;
-        }
-    }
-
     private static bool TryParseGrabMode(string value, out GrabModes mode) {
         switch ((value ?? string.Empty).Trim().ToLowerInvariant()) {
             case "hold":
@@ -330,41 +237,6 @@ public static partial class AkronCommands {
                 return true;
             default:
                 mode = AkronModule.Settings.NoclipAccuracyTintMode;
-                return false;
-        }
-    }
-
-    private static bool TryParseProfile(string value, out AkronProfile profile) {
-        switch ((value ?? string.Empty).Trim().ToLowerInvariant()) {
-            case "none":
-            case "off":
-            case "disabled":
-                profile = AkronProfile.None;
-                return true;
-            case "casual":
-                profile = AkronProfile.Casual;
-                return true;
-            case "practice":
-                profile = AkronProfile.Practice;
-                return true;
-            case "leaderboardclean":
-            case "leaderboard-clean":
-            case "leaderboard_clean":
-                profile = AkronProfile.LeaderboardClean;
-                return true;
-            case "sandbox":
-                profile = AkronProfile.Sandbox;
-                return true;
-            case "mapmaker":
-            case "map-maker":
-            case "map_maker":
-                profile = AkronProfile.MapMaker;
-                return true;
-            case "accessibility":
-                profile = AkronProfile.Accessibility;
-                return true;
-            default:
-                profile = AkronModule.Settings.ActiveProfile;
                 return false;
         }
     }

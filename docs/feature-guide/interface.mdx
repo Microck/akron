@@ -13,8 +13,8 @@ The Interface tab controls the Akron overlay itself and the public `.akr` pack w
 | Streamer Mode | Toggle | Show filenames instead of full local filesystem paths. | Normal clear |
 | Logging | Toggle | Write local Akron diagnostic logs to `Saves/AkronLogs`. | Normal clear |
 | Pause While Open | Toggle | When enabled, opening the Akron menu stops gameplay updates until the menu closes. | Normal clear |
-| Export Profile | Action | Export the selected Whole, StartPos, Keybinds, Auto Kill, Auto Deafen, Recorder, Audio, or HUD profile scope as a `.akr` profile pack. | Normal clear |
-| Import Profile | Action | Open a file browser to import a selected `.akr` profile pack using the selected profile scope. | Normal clear |
+| Export Setup | Action | Export the selected Whole, StartPos, Keybinds, Auto Kill, Auto Deafen, Recorder, Audio, or HUD setup scope as a `.akr` setup pack. | Normal clear |
+| Import Setup | Action | Open a file browser to import a selected `.akr` setup pack using the selected setup scope. | Normal clear |
 | Community Packs | Action | Search map-linked community `.akr` packs from the configured community pack index. | Normal clear |
 | Search Autofocus | Toggle | Focus Akron search automatically when the overlay opens. | Normal clear |
 | Search | Text input | Filter visible Akron rows by label or search alias. | Normal clear |
@@ -54,23 +54,23 @@ Rows with a triangle expose the controls listed below.
 | Logging | Max MB | Rotate the active Akron log file after the configured file size. | Normal clear |
 | Logging | Retained | Keep the configured number of rotated Akron log files. | Normal clear |
 | Logging | Write test entry | Write a trace entry to the current Akron log file. | Normal clear |
-| Export Profile | Name | Set the exported `.akr` profile pack name. | Normal clear |
-| Export Profile | Whole | Export every supported profile section into one `.akr` profile pack. | Normal clear |
-| Export Profile | StartPos | Export only StartPos profile data into the `.akr` profile pack. | Normal clear |
-| Export Profile | Keybinds | Export only Akron menu keybind profile data into the `.akr` profile pack. | Normal clear |
-| Export Profile | Auto Kill | Export only Auto Kill profile data into the `.akr` profile pack. | Normal clear |
-| Export Profile | Auto Deafen | Export only Auto Deafen profile data into the `.akr` profile pack. | Normal clear |
-| Export Profile | Recorder | Export only Internal Recorder profile data into the `.akr` profile pack. | Normal clear |
-| Export Profile | Audio | Export only audio profile data into the `.akr` profile pack. | Normal clear |
-| Export Profile | HUD | Export only HUD profile data into the `.akr` profile pack. | Normal clear |
-| Import Profile | Whole | Import every supported profile section from the selected `.akr` profile pack. | Normal clear |
-| Import Profile | StartPos | Import only StartPos profile data from the selected `.akr` profile pack. | Normal clear |
-| Import Profile | Keybinds | Import only Akron menu keybind profile data from the selected `.akr` profile pack. | Normal clear |
-| Import Profile | Auto Kill | Import only Auto Kill profile data from the selected `.akr` profile pack. | Normal clear |
-| Import Profile | Auto Deafen | Import only Auto Deafen profile data from the selected `.akr` profile pack. | Normal clear |
-| Import Profile | Recorder | Import only Internal Recorder profile data from the selected `.akr` profile pack. | Normal clear |
-| Import Profile | Audio | Import only audio profile data from the selected `.akr` profile pack. | Normal clear |
-| Import Profile | HUD | Import only HUD profile data from the selected `.akr` profile pack. | Normal clear |
+| Export Setup | Name | Set the exported `.akr` setup pack name. | Normal clear |
+| Export Setup | Whole | Export every supported setup section into one `.akr` setup pack. | Normal clear |
+| Export Setup | StartPos | Export only StartPos setup data into the `.akr` setup pack. | Normal clear |
+| Export Setup | Keybinds | Export only Akron menu keybind setup data into the `.akr` setup pack. | Normal clear |
+| Export Setup | Auto Kill | Export only Auto Kill setup data into the `.akr` setup pack. | Normal clear |
+| Export Setup | Auto Deafen | Export only Auto Deafen setup data into the `.akr` setup pack. | Normal clear |
+| Export Setup | Recorder | Export only Internal Recorder setup data into the `.akr` setup pack. | Normal clear |
+| Export Setup | Audio | Export only audio setup data into the `.akr` setup pack. | Normal clear |
+| Export Setup | HUD | Export only HUD setup data into the `.akr` setup pack. | Normal clear |
+| Import Setup | Whole | Import every supported setup section from the selected `.akr` setup pack. | Normal clear |
+| Import Setup | StartPos | Import only StartPos setup data from the selected `.akr` setup pack. | Normal clear |
+| Import Setup | Keybinds | Import only Akron menu keybind setup data from the selected `.akr` setup pack. | Normal clear |
+| Import Setup | Auto Kill | Import only Auto Kill setup data from the selected `.akr` setup pack. | Normal clear |
+| Import Setup | Auto Deafen | Import only Auto Deafen setup data from the selected `.akr` setup pack. | Normal clear |
+| Import Setup | Recorder | Import only Internal Recorder setup data from the selected `.akr` setup pack. | Normal clear |
+| Import Setup | Audio | Import only audio setup data from the selected `.akr` setup pack. | Normal clear |
+| Import Setup | HUD | Import only HUD setup data from the selected `.akr` setup pack. | Normal clear |
 
 ## Community Packs Browser
 
@@ -80,6 +80,6 @@ Clicking **Community Packs** opens a standalone browser window. This interface a
 |---|---|---|
 | Index URL | The catalog repository URL (default is `https://akron.micr.dev/catalog/index.json`). | Normal clear |
 | Search | Filter the catalog of community packs by name or description. | Normal clear |
-| Category | Filter packs by profile scope: All, StartPos, Auto Kill, or Auto Deafen. | Normal clear |
+| Category | Filter packs by setup scope: All, StartPos, Auto Kill, or Auto Deafen. | Normal clear |
 | Refresh | Connect to the index URL and reload available packs. | Normal clear |
-| Import Selected | Download and import the highlighted community profile pack. | Normal clear |
+| Import Selected | Download and import the highlighted community setup pack. | Normal clear |

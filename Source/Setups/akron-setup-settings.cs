@@ -3,35 +3,16 @@ using System.Collections.Generic;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModuleSettings {
-    public void ApplyRulesetDefaults(PrimaryRuleset ruleset) {
-        ApplyProfileState(BuildRulesetState(ruleset));
-    }
-
-    public void ApplyProfile(AkronProfile profile) {
-        // Persist the profile being left so built-in profiles become real stored profile
-        // objects instead of one-shot presets.
-        SaveProfileState(ActiveProfile);
-        ActiveProfile = profile;
-        ApplyProfileState(GetProfileState(profile));
-    }
-
-    public void PersistActiveProfileState() {
-        SaveProfileState(ActiveProfile);
-    }
-
-    public AkronProfileState CaptureProfilePackState() {
+    public AkronSetupState CaptureSetupPackState() {
         return CaptureCurrentState();
     }
 
-    public void ApplyProfilePackState(AkronProfile profile, AkronProfileState state) {
-        ActiveProfile = profile;
-        ApplyProfileState(state);
-        SaveProfileState(ActiveProfile);
+    public void ApplySetupPackState(AkronSetupState state) {
+        ApplySetupState(state);
     }
 
-    private AkronProfileState CaptureCurrentState() {
-        return new AkronProfileState {
-            PrimaryRuleset = PrimaryRuleset,
+    private AkronSetupState CaptureCurrentState() {
+        return new AkronSetupState {
             SafeMode = SafeMode,
             StreamerMode = StreamerMode,
             ProofModeOverlay = ProofModeOverlay,

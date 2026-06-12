@@ -250,8 +250,8 @@ public sealed partial class AkronOverlay {
                     Toggle("Streamer Mode", () => AkronModule.Settings.StreamerMode, value => AkronModule.Settings.StreamerMode = value),
                     LoggingToggle(),
                     Toggle("Pause While Open", () => AkronModule.Settings.PauseGameplayInMenu, value => AkronModule.Settings.PauseGameplayInMenu = value),
-                    Action("Export Profile", () => true, () => AkronProfilePacks.FormatSection(AkronModule.Settings.ProfilePackSection), () => AkronProfilePacks.ExportCurrent(AkronModule.Settings.ProfilePackExportName, AkronModule.Settings.ProfilePackSection), "profile", ".akr", "export"),
-                    Action("Import Profile", () => true, () => AkronProfilePacks.FormatSection(AkronModule.Settings.ProfilePackSection), () => AkronProfilePacks.ImportFromFileBrowser(AkronModule.Settings.ProfilePackSection), "profile", ".akr", "import"),
+                    Action("Export Setup", () => true, () => AkronSetupPacks.FormatSection(AkronModule.Settings.SetupPackSection), () => AkronSetupPacks.ExportCurrent(AkronModule.Settings.SetupPackExportName, AkronModule.Settings.SetupPackSection), "setup", ".akr", "export"),
+                    Action("Import Setup", () => true, () => AkronSetupPacks.FormatSection(AkronModule.Settings.SetupPackSection), () => AkronSetupPacks.ImportFromFileBrowser(AkronModule.Settings.SetupPackSection), "setup", ".akr", "import"),
                     Action("Community Packs", () => true, DescribeCommunityPackBrowser, OpenCommunityPackBrowser, "discord", "community", "map", ".akr", "gamebanana"),
                     Toggle("Search Autofocus", () => AkronModule.Settings.SearchAutofocus, value => AkronModule.Settings.SearchAutofocus = value),
                     SearchInput()

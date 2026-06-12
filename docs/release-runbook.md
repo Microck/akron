@@ -73,7 +73,6 @@ Required contents:
 - `bin/runtimes/osx/native/libcimgui.dylib`
 - at least one Windows `cimgui.dll` runtime under `bin/runtimes/`
 - `Dialog/English.txt`
-- `Rulesets/hard-clears-submit.json`
 
 Check the local package:
 

@@ -1,6 +1,6 @@
 ---
 title: Import and export .akr packs
-description: Export, import, and share whole or scoped Akron .akr setup packs for backups, map-specific workflows, and safe profile transfer.
+description: Export, import, and share whole or scoped Akron .akr setup packs for backups and map-specific workflows.
 ---
 
 Akron uses `.akr` files to back up and share setups. Export the whole Akron setup or a single scoped section.
@@ -11,13 +11,13 @@ Akron uses `.akr` files to back up and share setups. Export the whole Akron setu
 
 <Steps>
   <Step title="Open the Interface tab">
-    Open the Akron overlay, go to **Interface**, and choose **Export Profile**.
+    Open the Akron overlay, go to **Interface**, and choose **Export Setup**.
   </Step>
   <Step title="Choose the scope">
     Select `Whole` for a full backup, or choose a scoped section: `StartPos`, `Keybinds`, `AutoKill`, `AutoDeafen`, `Recorder`, `Audio`, or `Hud`.
   </Step>
   <Step title="Export the pack">
-    Confirm the export to write the `.akr` file to the Akron profile export directory.
+    Confirm the export to write the `.akr` file to the Akron setup export directory.
   </Step>
   <Step title="Review before sharing">
     Check the file name, scope, and intended map or context before sharing the pack.
@@ -31,7 +31,7 @@ Akron uses `.akr` files to back up and share setups. Export the whole Akron setu
     Export your current setup before importing a shared pack.
   </Step>
   <Step title="Open the import flow">
-    Open the Akron overlay, go to **Interface**, and choose **Import Profile**.
+    Open the Akron overlay, go to **Interface**, and choose **Import Setup**.
   </Step>
   <Step title="Choose the import scope">
     Select `Whole` for a full setup import. For scoped packs, choose the target section before selecting the `.akr` file.
@@ -48,7 +48,7 @@ Akron uses `.akr` files to back up and share setups. Export the whole Akron setu
 
 | Section | Import behavior |
 |---|---|
-| `Whole` | Replaces the active profile, full setup state, button bindings, menu action bindings, and StartPos slots. |
+| `Whole` | Replaces the full setup state, button bindings, menu action bindings, and StartPos slots. |
 | `StartPos` | Merges StartPos settings and saved slots. |
 | `Keybinds` | Merges Everest button bindings and Akron menu action bindings. |
 | `AutoKill` | Merges Auto Kill trigger and area state. |

@@ -140,8 +140,8 @@ public sealed partial class AkronOverlay {
                string.Equals(label, "Theme", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Logging", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Keybinds", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(label, "Export Profile", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(label, "Import Profile", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Export Setup", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Import Setup", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Confirm Actions", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "StartPos Snapshot Slot", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Grab Mode", StringComparison.OrdinalIgnoreCase) ||

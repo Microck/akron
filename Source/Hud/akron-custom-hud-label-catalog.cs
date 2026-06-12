@@ -37,7 +37,7 @@ public static partial class AkronCustomHudLabels {
             },
             new AkronCustomHudLabel {
                 Name = "Run State",
-                Text = "{profile} / {ruleset} / {status}",
+                Text = "{overlays} / {status}",
                 Anchor = AkronHudAnchor.TopRight,
                 X = 1570,
                 Y = 72,
@@ -276,7 +276,7 @@ public static partial class AkronCustomHudLabels {
     }
 
     public static string VariableCatalog() {
-        return "app_version, profile, ruleset, status, reason, chapter, room, map, player_x, player_y, speed, stamina, dashes, deaths, room_deaths, attempt, room_time, map_time, fps, tps, inputs, hazard_accuracy, hazard_invalid, savestate_slot, tas, speedrun_tool, clock";
+        return "app_version, overlays, status, reason, chapter, room, map, player_x, player_y, speed, stamina, dashes, deaths, room_deaths, attempt, room_time, map_time, fps, tps, inputs, hazard_accuracy, hazard_invalid, savestate_slot, tas, speedrun_tool, clock";
     }
 
     private static void EnsureLabels() {

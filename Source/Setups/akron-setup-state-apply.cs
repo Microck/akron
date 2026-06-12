@@ -3,9 +3,8 @@ using System.Collections.Generic;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModuleSettings {
-    private void ApplyProfileState(AkronProfileState state) {
-        AkronProfileState resolved = state ?? BuildProfileState(ActiveProfile);
-        PrimaryRuleset = resolved.PrimaryRuleset;
+    private void ApplySetupState(AkronSetupState state) {
+        AkronSetupState resolved = state ?? new AkronSetupState();
         SafeMode = resolved.SafeMode;
         StreamerMode = resolved.StreamerMode;
         ProofModeOverlay = resolved.ProofModeOverlay;

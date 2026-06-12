@@ -1,6 +1,4 @@
 modoptions_akron_title= Akron
-modoptions_akron_activeprofile= Active Profile
-modoptions_akron_primaryruleset= Primary Ruleset
 modoptions_akron_streamermode= Streamer Mode
 modoptions_akron_proofmodeoverlay= Proof-mode Overlay
 modoptions_akron_lowdistractionoverlay= Low-distraction State

@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Celeste;
 using Monocle;
 
@@ -38,43 +37,9 @@ public static class AkronPolicy
     public const int UnclassifiedColorRgb = 0x909090;
     public const int SafeModeRedactedCleanColorRgb = 0x6495ED;
 
-    private static readonly HashSet<AkronFeatureKind> TrainingBlockedInLeaderboardClean = new HashSet<AkronFeatureKind> {
-        AkronFeatureKind.RetryHotkey,
-        AkronFeatureKind.RoomReload,
-        AkronFeatureKind.ChapterReload,
-        AkronFeatureKind.DebugMapLauncher,
-        AkronFeatureKind.MountainViewer,
-        AkronFeatureKind.Savestates,
-        AkronFeatureKind.BrokeredSavestates,
-        AkronFeatureKind.TasHandoff,
-        AkronFeatureKind.SplitHelper,
-        AkronFeatureKind.RoomWarp,
-        AkronFeatureKind.HitboxViewer,
-        AkronFeatureKind.EntityInspector,
-        AkronFeatureKind.FlagInspector,
-        AkronFeatureKind.FrameAdvance,
-        AkronFeatureKind.Freeze,
-        AkronFeatureKind.Timescale,
-        AkronFeatureKind.FreeCamera
-    };
-
     public static AkronPolicyDecision CanUse(AkronFeatureKind feature)
     {
         AkronModuleSettings settings = AkronModule.Settings;
-        AkronStatus classification = AkronFeatureRegistry.Classify(feature);
-
-        if (settings.PrimaryRuleset == PrimaryRuleset.Sandbox)
-        {
-            return new AkronPolicyDecision(true, "Sandbox allows all Akron feature classes.");
-        }
-
-        if (settings.PrimaryRuleset == PrimaryRuleset.LeaderboardClean)
-        {
-            if (classification == AkronStatus.Cheat || TrainingBlockedInLeaderboardClean.Contains(feature))
-            {
-                return new AkronPolicyDecision(false, "Current ruleset blocks state-changing features. Switch rulesets or keep current guardrails.");
-            }
-        }
 
         // Safe mode only redacts clean-legitimacy surfaces. It should not turn into a
         // global gameplay lock that blocks local state-changing features by itself.
@@ -86,24 +51,6 @@ public static class AkronPolicy
         }
 
         return new AkronPolicyDecision(true, AkronFeatureRegistry.Get(feature).Reason);
-    }
-
-    public static bool ShouldOfferRulesetEscape(AkronFeatureKind feature)
-    {
-        if (AkronModule.Settings.PrimaryRuleset != PrimaryRuleset.LeaderboardClean)
-        {
-            return false;
-        }
-
-        AkronStatus classification = AkronFeatureRegistry.Classify(feature);
-        return classification == AkronStatus.Cheat || TrainingBlockedInLeaderboardClean.Contains(feature);
-    }
-
-    public static PrimaryRuleset GetSuggestedRuleset(AkronFeatureKind feature)
-    {
-        return AkronFeatureRegistry.Classify(feature) == AkronStatus.Cheat
-            ? PrimaryRuleset.Sandbox
-            : PrimaryRuleset.Practice;
     }
 
     public static void RecordFeatureUse(AkronFeatureKind feature)

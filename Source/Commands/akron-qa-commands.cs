@@ -14,7 +14,6 @@ public static partial class AkronCommands {
     // controlled runtime states for repeatable live verification, not player UI.
     [Command("akron_qa_save_settings", "force a settings save for Akron live automation")]
     public static void QaSaveSettings() {
-        AkronModule.Settings.PersistActiveProfileState();
         MethodInfo saveSettings = typeof(Everest).GetMethod("_SaveSettings", BindingFlags.Static | BindingFlags.NonPublic);
         if (saveSettings != null) {
             if (saveSettings.Invoke(null, Array.Empty<object>()) is IEnumerator routine) {

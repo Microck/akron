@@ -25,10 +25,10 @@ flowchart TD
 | Boundary | Responsibility |
 |---|---|
 | Overlay | Presents rows, actions, popups, search, policy badges, and feature-specific browsers. Large browser surfaces, complex popup editors, fallback rendering, search, action binding, and layout helpers live in focused overlay partials. |
-| Settings | Stores user-configurable values and persisted setup state. Profile capture, profile application, HUD settings, defaults, clamps, display helpers, and recorder settings live in focused settings/profile partials. |
-| Policy | Classifies features and records or blocks use under active rulesets. |
+| Settings | Stores user-configurable values and persisted setup state. Setup capture, setup application, HUD settings, defaults, clamps, display helpers, and recorder settings live in focused partials. |
+| Policy | Classifies features and records or blocks use under active policy. |
 | Runtime | Applies gameplay, visual, capture, interop, proof behavior, and module lifecycle hooks. Feature-family runtime, command, HUD, save/load, recorder, and inspector logic should live beside that feature family instead of in the core module file. |
-| `.akr` packs | Exports/imports scoped settings. Profile archive contracts and section copying live in the profile-pack service; OS-specific file picker process launching lives in a focused profile file-picker partial. |
+| `.akr` packs | Exports/imports scoped settings. Setup archive contracts and section copying live in the setup-pack service; OS-specific file picker process launching lives in a focused setup file-picker partial. |
 | Tests | Enforce registry coverage, defaults, archive safety, and behavior contracts. |
 
 ## Policy Calls

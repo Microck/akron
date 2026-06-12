@@ -22,12 +22,12 @@ Akron changes must move from behavior to policy, then to implementation, and fin
 |---|---|
 | Feature kind and policy metadata | `Source/Core/AkronTypes.cs`, `Source/Core/AkronFeatureRegistry.cs` |
 | Overlay rows, control types, and tooltip controls | `Source/Overlay/AkronOverlay.cs` plus focused `Source/Overlay/akron-overlay-*.cs` partials |
-| Persisted settings and setup state | `Source/Module/AkronModuleSettings.cs`, `Source/Module/akron-module-settings-*.cs`, `Source/Profiles/akron-profile-*.cs` |
+| Persisted settings and setup state | `Source/Module/AkronModuleSettings.cs`, `Source/Module/akron-module-settings-*.cs`, `Source/Setups/akron-setup-*.cs` |
 | Runtime behavior | `Source/Module/AkronModule.cs`, `Source/Actions/akron-actions.cs`, `Source/Runtime/akron-runtime-options.cs`, feature-specific runtime partials |
 | HUD rendering | `Source/Hud/AkronHudRenderer.cs`, `Source/Hud/akron-hud-*.cs` |
 | Save/load internals | `Source/SaveLoad/AkronSaveLoad.cs`, `Source/SaveLoad/akron-save-load-*.cs` |
 | Internal recording | `Source/Recorder/akron-internal-recorder*.cs`, `Source/Recorder/akron-internal-audio-recorder.cs` |
-| `.akr` import/export | `Source/Profiles/akron-profile-packs.cs`, `Source/Profiles/akron-profile-file-picker.cs`, `Source/Packs/akron-archive.cs` |
+| `.akr` import/export | `Source/Setups/akron-setup-packs.cs`, `Source/Setups/akron-setup-file-picker.cs`, `Source/Packs/akron-archive.cs` |
 | Debug and automation commands | `Source/Commands/akron-commands.cs`, `Source/Commands/akron-*-commands.cs` |
 | Verification | `tests/feature-registry-tests.cs`, `tests/module-settings-tests.cs`, feature-specific tests |
 
@@ -91,7 +91,7 @@ Disclosure fields must be factual. Do not claim human review, testing, verificat
 `human_testing` must describe real work that happened. Examples:
 
 - `Ran dotnet test tests/akron-tests.csproj --nologo --filter FeatureRegistryTests.`
-- `Built Source/Akron.csproj and manually checked the overlay in 7A with Leaderboard-clean active.`
-- `Reviewed the .akr pack in Saves/AkronProfiles and imported it through the Interface tab.`
+- `Built Source/Akron.csproj and manually checked the overlay in 7A with the overlay active.`
+- `Reviewed the .akr pack in Saves/AkronSetups and imported it through the Interface tab.`
 
 `No human testing performed` is not acceptable for a pull request that is ready to merge.

@@ -168,8 +168,7 @@ public static partial class AkronCustomHudLabels {
         AkronNoclipAccuracySnapshot hazardAccuracy = AkronModule.GetNoclipAccuracySnapshot();
         Dictionary<string, string> values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
             ["app_version"] = AkronModule.Instance?.Metadata?.VersionString ?? "Akron",
-            ["profile"] = AkronModuleSettings.FormatProfile(settings.ActiveProfile),
-            ["ruleset"] = settings.DescribeRulesetStack(),
+            ["overlays"] = settings.DescribePresentationOverlays(),
             ["status"] = AkronModule.Session == null ? "No save" : AkronPolicy.GetLegitimacySensitiveStatusLabel(AkronModule.Session.AttemptStatus),
             ["reason"] = AkronModule.Session?.AttemptReason ?? string.Empty,
             ["chapter"] = level?.Session?.Area.GetSID() ?? "No map",

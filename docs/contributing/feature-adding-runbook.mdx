@@ -49,7 +49,7 @@ Do not append a new row to the end by default.
 | `Creator` | The feature helps route building, map navigation, room capture, debug-map work, or entity inspection. | Uses explicit sorting in `SortCreatorEntries`. Add custom rank only when needed. |
 | `Labels` | The feature draws persistent label-style HUD information. | Uses label row order and user row-order behavior. |
 | `Global` | The feature changes Akron-level behavior across scenes. | Curated workflow order. Place near related global controls. |
-| `Interface` | The feature changes menu appearance, search, profile import/export, keybinds, or menu behavior. | Curated workflow order. Place near related interface controls. |
+| `Interface` | The feature changes menu appearance, search, setup import/export, keybinds, or menu behavior. | Curated workflow order. Place near related interface controls. |
 | `Internal Recorder` | The feature changes recording, replay buffers, clip triggers, output, codec, or proof recording. | Curated recorder workflow order. Place near the matching recorder step. |
 | `Sound` | The feature changes audio routing, volume, pitch, speed, or playback presentation. | Grouped by sound concern. Place in the matching sound group. |
 
@@ -64,7 +64,7 @@ Common starting points:
 | Feature behavior | `Source/Actions/akron-actions.cs` or a focused file in `Source/Actions/` or `Source/Runtime/` |
 | Runtime update hooks | `Source/Module/akron-module-player-runtime.cs`, `Source/Module/akron-module-visual-runtime.cs`, `Source/Runtime/akron-*.cs` |
 | Persisted settings | `Source/Module/AkronModuleSettings.cs`, `Source/Module/akron-module-settings-clamps.cs`, `Source/Module/akron-module-settings-display.cs` |
-| Profile persistence | `Source/Profiles/akron-profile-settings.cs`, `Source/Profiles/akron-profile-state.cs`, `Source/Profiles/akron-profile-state-apply.cs` |
+| Setup persistence | `Source/Setups/akron-setup-settings.cs`, `Source/Setups/akron-setup-state.cs`, `Source/Setups/akron-setup-state-apply.cs` |
 | Overlay row placement | `Source/Overlay/akron-overlay-entries.cs` |
 | Submenu controls | A focused `Source/Overlay/akron-overlay-*-popups.cs` partial |
 | Tooltip and search copy | `Source/Overlay/akron-overlay-copy.cs` |
@@ -113,13 +113,13 @@ Implementation checklist:
 
 - Add a boolean setting only if the toggle must persist.
 - Add clamps or normalization when user input can set related values.
-- Add profile capture/apply coverage when the setting is part of `.akr` setup state.
+- Add setup capture/apply coverage when the setting is part of `.akr` setup state.
 - Apply runtime behavior from the appropriate hook or runtime helper.
 - Keep the off state vanilla.
 - Use `PolicyToggle(...)` when the behavior maps to an `AkronFeatureKind`.
 - Add tooltip/search copy.
 - Add command/status output when automation, debugging, or live verification benefits from it.
-- Add tests for defaults, clamps, profile persistence, feature policy, and command contracts.
+- Add tests for defaults, clamps, setup persistence, feature policy, and command contracts.
 - Live-check in Celeste when behavior depends on gameplay timing, inputs, scene state, or hooks.
 
 Copy template:
@@ -242,7 +242,7 @@ Include the smallest evidence that proves the change:
 - Command output for command/status surfaces.
 - Screenshot proof for static UI or HUD rendering.
 - Video proof for input timing, animation, transitions, camera movement, hitboxes, and gameplay state changes.
-- Map SID, room, profile/ruleset, and commands used for live checks.
+- Map SID, room, setup, and commands used for live checks.
 
 ## Feature PR Checklist
 
@@ -256,7 +256,7 @@ Use this checklist in feature pull requests:
 - [ ] Overlay row behavior is complete.
 - [ ] Tooltip/search copy is complete.
 - [ ] Submenu controls are complete when used and only configure the primary behavior.
-- [ ] Settings, clamps, defaults, and profile persistence are covered when configuration is stored.
+- [ ] Settings, clamps, defaults, and setup persistence are covered when configuration is stored.
 - [ ] Command/status output is added when useful for automation or verification.
 - [ ] Policy classification and tests are updated when the feature affects clean/cheat status.
 - [ ] Public docs are updated for user-facing behavior.

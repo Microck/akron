@@ -3,8 +3,7 @@ using System.Collections.Generic;
 
 namespace Celeste.Mod.Akron;
 
-public sealed class AkronProfileState {
-    public PrimaryRuleset PrimaryRuleset { get; set; } = PrimaryRuleset.None;
+public sealed class AkronSetupState {
     public bool SafeMode { get; set; }
     public bool StreamerMode { get; set; }
     public bool ProofModeOverlay { get; set; }

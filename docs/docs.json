@@ -50,7 +50,7 @@
       "category": "Celeste mod documentation",
       "color-scheme": "light dark",
       "googlebot": "index, follow",
-      "keywords": "Akron, Celeste mod, Everest mod, Celeste tools, rulesets, StartPos, .akr packs, proof metadata, practice tools",
+      "keywords": "Akron, Celeste mod, Everest mod, Celeste tools, StartPos, .akr packs, proof metadata, practice tools",
       "robots": "index, follow",
       "theme-color": "#A86048"
     }
@@ -80,7 +80,6 @@
       {
         "group": "Concepts",
         "pages": [
-          "concepts/rulesets-and-status",
           "concepts/clean-vs-cheat",
           "concepts/proof-and-submission-mode",
           "concepts/akr-files-and-setup-state"
@@ -125,15 +124,6 @@
         "pages": [
           "akr-packs/manage-setups",
           "akr-packs/import-export"
-        ]
-      },
-      {
-        "group": "Rulesets",
-        "pages": [
-          "rulesets/overview",
-          "rulesets/leaderboard-clean",
-          "rulesets/practice-and-sandbox",
-          "rulesets/streamer-mode-and-proof-overlays"
         ]
       },
       {

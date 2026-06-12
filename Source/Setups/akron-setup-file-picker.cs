@@ -8,14 +8,14 @@ using System.Runtime.InteropServices;
 
 namespace Celeste.Mod.Akron;
 
-internal enum AkronProfileFilePickerResult {
+internal enum AkronSetupFilePickerResult {
     Selected,
     Canceled,
     Failed
 }
 
-public static partial class AkronProfilePacks {
-    internal static AkronProfileFilePickerResult TryPickProfileArchive(string initialDirectory, out string path, out string error) {
+public static partial class AkronSetupPacks {
+    internal static AkronSetupFilePickerResult TryPickSetupArchive(string initialDirectory, out string path, out string error) {
         path = string.Empty;
         error = string.Empty;
         string directory = string.IsNullOrWhiteSpace(initialDirectory)
@@ -23,37 +23,37 @@ public static partial class AkronProfilePacks {
             : initialDirectory;
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
-            return TryPickWindowsProfileArchive(directory, out path, out error);
+            return TryPickWindowsSetupArchive(directory, out path, out error);
         }
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) {
-            return TryPickMacProfileArchive(directory, out path, out error);
+            return TryPickMacSetupArchive(directory, out path, out error);
         }
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) {
-            return TryPickLinuxProfileArchive(directory, out path, out error);
+            return TryPickLinuxSetupArchive(directory, out path, out error);
         }
 
         error = "Unsupported operating system.";
-        return AkronProfileFilePickerResult.Failed;
+        return AkronSetupFilePickerResult.Failed;
     }
 
-    private static AkronProfileFilePickerResult TryPickWindowsProfileArchive(string initialDirectory, out string path, out string error) {
+    private static AkronSetupFilePickerResult TryPickWindowsSetupArchive(string initialDirectory, out string path, out string error) {
         string command =
             "Add-Type -AssemblyName System.Windows.Forms; " +
             "$dialog = New-Object System.Windows.Forms.OpenFileDialog; " +
-            "$dialog.Title = 'Import Akron profile'; " +
-            "$dialog.Filter = 'Akron profile packs (*.akr)|*.akr|All files (*.*)|*.*'; " +
+            "$dialog.Title = 'Import Akron setup'; " +
+            "$dialog.Filter = 'Akron setup packs (*.akr)|*.akr|All files (*.*)|*.*'; " +
             "$dialog.InitialDirectory = [System.IO.Path]::GetFullPath($args[0]); " +
             "if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.FileName) }";
 
         List<string> errors = new List<string>();
-        AkronProfileFilePickerResult result = TryRunFilePickerProcess(
+        AkronSetupFilePickerResult result = TryRunFilePickerProcess(
             "powershell.exe",
             new[] { "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", command, initialDirectory },
             out path,
             out error);
-        if (result != AkronProfileFilePickerResult.Failed) {
+        if (result != AkronSetupFilePickerResult.Failed) {
             return result;
         }
         errors.Add("powershell.exe: " + error);
@@ -63,21 +63,21 @@ public static partial class AkronProfilePacks {
             new[] { "-NoProfile", "-Command", command, initialDirectory },
             out path,
             out error);
-        if (result != AkronProfileFilePickerResult.Failed) {
+        if (result != AkronSetupFilePickerResult.Failed) {
             return result;
         }
         errors.Add("pwsh: " + error);
 
         error = string.Join(" | ", errors);
-        return AkronProfileFilePickerResult.Failed;
+        return AkronSetupFilePickerResult.Failed;
     }
 
-    private static AkronProfileFilePickerResult TryPickMacProfileArchive(string initialDirectory, out string path, out string error) {
+    private static AkronSetupFilePickerResult TryPickMacSetupArchive(string initialDirectory, out string path, out string error) {
         string directory = EnsureDirectorySeparator(initialDirectory);
         string[] arguments = {
             "-e", "on run argv",
             "-e", "set initialPath to item 1 of argv",
-            "-e", "set selectedFile to choose file with prompt \"Import Akron profile\" default location POSIX file initialPath of type {\"akr\"}",
+            "-e", "set selectedFile to choose file with prompt \"Import Akron setup\" default location POSIX file initialPath of type {\"akr\"}",
             "-e", "POSIX path of selectedFile",
             "-e", "end run",
             directory
@@ -85,13 +85,13 @@ public static partial class AkronProfilePacks {
         return TryRunFilePickerProcess("osascript", arguments, out path, out error);
     }
 
-    private static AkronProfileFilePickerResult TryPickLinuxProfileArchive(string initialDirectory, out string path, out string error) {
+    private static AkronSetupFilePickerResult TryPickLinuxSetupArchive(string initialDirectory, out string path, out string error) {
         path = string.Empty;
         string directory = EnsureDirectorySeparator(initialDirectory);
         List<string> errors = new List<string>();
-        foreach ((string fileName, string[] arguments) in BuildLinuxProfilePickerCommands(directory)) {
-            AkronProfileFilePickerResult result = TryRunFilePickerProcess(fileName, arguments, out path, out error);
-            if (result != AkronProfileFilePickerResult.Failed) {
+        foreach ((string fileName, string[] arguments) in BuildLinuxSetupPickerCommands(directory)) {
+            AkronSetupFilePickerResult result = TryRunFilePickerProcess(fileName, arguments, out path, out error);
+            if (result != AkronSetupFilePickerResult.Failed) {
                 return result;
             }
 
@@ -101,21 +101,21 @@ public static partial class AkronProfilePacks {
         error = errors.Count == 0
             ? "No Linux file picker command was configured."
             : string.Join(" | ", errors);
-        return AkronProfileFilePickerResult.Failed;
+        return AkronSetupFilePickerResult.Failed;
     }
 
-    private static IEnumerable<(string FileName, string[] Arguments)> BuildLinuxProfilePickerCommands(string initialDirectory) {
+    private static IEnumerable<(string FileName, string[] Arguments)> BuildLinuxSetupPickerCommands(string initialDirectory) {
         string[] zenityArguments = {
             "--file-selection",
-            "--title=Import Akron profile",
+            "--title=Import Akron setup",
             "--filename=" + initialDirectory,
-            "--file-filter=Akron profile packs (*.akr) | *.akr",
+            "--file-filter=Akron setup packs (*.akr) | *.akr",
             "--file-filter=All files | *"
         };
         string[] kdialogArguments = {
-            "--title", "Import Akron profile",
+            "--title", "Import Akron setup",
             "--getopenfilename", initialDirectory,
-            "Akron profile packs (*.akr)"
+            "Akron setup packs (*.akr)"
         };
 
         yield return ("/usr/bin/flatpak-spawn", new[] { "--host", "zenity" }.Concat(zenityArguments).ToArray());
@@ -126,7 +126,7 @@ public static partial class AkronProfilePacks {
         yield return ("kdialog", kdialogArguments);
     }
 
-    private static AkronProfileFilePickerResult TryRunFilePickerProcess(string fileName, IReadOnlyList<string> arguments, out string path, out string error) {
+    private static AkronSetupFilePickerResult TryRunFilePickerProcess(string fileName, IReadOnlyList<string> arguments, out string path, out string error) {
         path = string.Empty;
         error = string.Empty;
         try {
@@ -144,7 +144,7 @@ public static partial class AkronProfilePacks {
             using Process process = Process.Start(startInfo);
             if (process == null) {
                 error = "process did not start.";
-                return AkronProfileFilePickerResult.Failed;
+                return AkronSetupFilePickerResult.Failed;
             }
 
             process.WaitForExit();
@@ -153,19 +153,19 @@ public static partial class AkronProfilePacks {
             if (process.ExitCode == 0) {
                 path = stdout;
                 return string.IsNullOrWhiteSpace(path)
-                    ? AkronProfileFilePickerResult.Canceled
-                    : AkronProfileFilePickerResult.Selected;
+                    ? AkronSetupFilePickerResult.Canceled
+                    : AkronSetupFilePickerResult.Selected;
             }
 
             if (IsFilePickerCancel(process.ExitCode, stdout, stderr)) {
-                return AkronProfileFilePickerResult.Canceled;
+                return AkronSetupFilePickerResult.Canceled;
             }
 
             error = stderr.Length > 0 ? stderr : (stdout.Length > 0 ? stdout : "exit " + process.ExitCode.ToString(CultureInfo.InvariantCulture));
-            return AkronProfileFilePickerResult.Failed;
+            return AkronSetupFilePickerResult.Failed;
         } catch (Exception exception) when (exception is InvalidOperationException || exception is System.ComponentModel.Win32Exception) {
             error = exception.Message;
-            return AkronProfileFilePickerResult.Failed;
+            return AkronSetupFilePickerResult.Failed;
         }
     }
 

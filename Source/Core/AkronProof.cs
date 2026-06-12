@@ -12,7 +12,6 @@ public static class AkronProof {
             return;
         }
 
-        string rulesets = AkronModule.Settings.DescribeRulesetStack();
         string summary = "Reason: " + AkronModule.Session.AttemptReason;
         string legitimacy = AkronPolicy.CanExposeCleanLegitimacy()
             ? "Clean legitimacy surfaces are available."
@@ -23,7 +22,7 @@ public static class AkronProof {
 
         level.Add(new AkronProofPanel(
             "Proof context - " + eventName,
-            "Classification: " + AkronPolicy.GetLegitimacySensitiveStatusLabel(AkronModule.Session.AttemptStatus) + " | Rulesets: " + rulesets,
+            "Classification: " + AkronPolicy.GetLegitimacySensitiveStatusLabel(AkronModule.Session.AttemptStatus),
             summary,
             legitimacy,
             pathLine
@@ -46,10 +45,8 @@ public static class AkronProof {
         AppendJson(builder, "mapSid", level?.Session?.Area.GetSID() ?? "unknown", true);
         AppendJson(builder, "room", level?.Session?.Level ?? "unknown", true);
         AppendJson(builder, "classification", AkronPolicy.GetLegitimacySensitiveStatusLabel(session.AttemptStatus), true);
-        AppendJson(builder, "profile", AkronModuleSettings.FormatProfile(settings.ActiveProfile), true);
-        AppendJson(builder, "primaryRuleset", AkronModuleSettings.FormatPrimaryRuleset(settings.PrimaryRuleset), true);
         AppendJson(builder, "submissionMode", settings.SubmissionMode.ToString().ToLowerInvariant(), true, true);
-        builder.Append("  \"overlayRulesets\": [");
+        builder.Append("  \"presentationOverlays\": [");
         for (int overlayIndex = 0; overlayIndex < overlays.Count; overlayIndex++) {
             if (overlayIndex > 0) builder.Append(", ");
             builder.Append('"').Append(Escape(overlays[overlayIndex])).Append('"');

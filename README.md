@@ -73,7 +73,7 @@ dotnet build Source/Akron.csproj
 dotnet test tests/akron-tests.csproj --nologo
 ```
 
-read the [contributor docs](https://akron.micr.dev/docs/contributing/development-setup) before changing feature policy, rulesets, setup packs, or public behavior.
+read the [contributor docs](https://akron.micr.dev/docs/contributing/development-setup) before changing feature policy, setup packs, or public behavior.
 
 ## support
 

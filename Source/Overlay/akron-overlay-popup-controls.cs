@@ -29,9 +29,9 @@ public sealed partial class AkronOverlay {
             DrawLoggingPopupControls(popupId);
         } else if (string.Equals(entry.Label, "Keybinds", StringComparison.OrdinalIgnoreCase)) {
             DrawKeybindsPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Export Profile", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(entry.Label, "Import Profile", StringComparison.OrdinalIgnoreCase)) {
-            DrawProfilePopupControls(popupId);
+        } else if (string.Equals(entry.Label, "Export Setup", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(entry.Label, "Import Setup", StringComparison.OrdinalIgnoreCase)) {
+            DrawSetupPopupControls(popupId);
         } else if (string.Equals(entry.Label, "Confirm Actions", StringComparison.OrdinalIgnoreCase)) {
             DrawConfirmActionsPopupControls(popupId);
         } else if (string.Equals(entry.Label, "Noclip", StringComparison.OrdinalIgnoreCase)) {
@@ -215,26 +215,26 @@ public sealed partial class AkronOverlay {
         }
     }
 
-    private void DrawProfilePopupControls(string popupId) {
-        if (string.Equals(activeOptionsPopupLabel, "Export Profile", StringComparison.OrdinalIgnoreCase)) {
-            string exportName = AkronModule.Settings.ProfilePackExportName ?? string.Empty;
+    private void DrawSetupPopupControls(string popupId) {
+        if (string.Equals(activeOptionsPopupLabel, "Export Setup", StringComparison.OrdinalIgnoreCase)) {
+            string exportName = AkronModule.Settings.SetupPackExportName ?? string.Empty;
             if (DrawPopupInputText("Name", ref exportName, 80, popupId, 280f)) {
-                AkronModule.Settings.ProfilePackExportName = exportName;
+                AkronModule.Settings.SetupPackExportName = exportName;
             }
-            ImGui.TextWrapped("Blank uses the active Akron profile name.");
+            ImGui.TextWrapped("Blank uses a default setup name.");
             ImGui.Separator();
         }
 
-        ImGui.TextUnformatted("Scope: " + AkronProfilePacks.FormatSection(AkronModule.Settings.ProfilePackSection));
-        DrawProfileSectionChoice("Whole", AkronProfileSection.Whole, popupId);
-        DrawProfileSectionChoice("StartPos", AkronProfileSection.StartPos, popupId);
-        DrawProfileSectionChoice("Keybinds", AkronProfileSection.Keybinds, popupId);
-        DrawProfileSectionChoice("Auto Kill", AkronProfileSection.AutoKill, popupId);
-        DrawProfileSectionChoice("Auto Deafen", AkronProfileSection.AutoDeafen, popupId);
-        DrawProfileSectionChoice("Recorder", AkronProfileSection.Recorder, popupId);
-        DrawProfileSectionChoice("Audio", AkronProfileSection.Audio, popupId);
-        DrawProfileSectionChoice("HUD", AkronProfileSection.Hud, popupId);
-        ImGui.TextWrapped("Whole applies the full profile. Scoped imports only replace the selected system.");
+        ImGui.TextUnformatted("Scope: " + AkronSetupPacks.FormatSection(AkronModule.Settings.SetupPackSection));
+        DrawSetupSectionChoice("Whole", AkronSetupSection.Whole, popupId);
+        DrawSetupSectionChoice("StartPos", AkronSetupSection.StartPos, popupId);
+        DrawSetupSectionChoice("Keybinds", AkronSetupSection.Keybinds, popupId);
+        DrawSetupSectionChoice("Auto Kill", AkronSetupSection.AutoKill, popupId);
+        DrawSetupSectionChoice("Auto Deafen", AkronSetupSection.AutoDeafen, popupId);
+        DrawSetupSectionChoice("Recorder", AkronSetupSection.Recorder, popupId);
+        DrawSetupSectionChoice("Audio", AkronSetupSection.Audio, popupId);
+        DrawSetupSectionChoice("HUD", AkronSetupSection.Hud, popupId);
+        ImGui.TextWrapped("Whole applies the full setup. Scoped imports only replace the selected system.");
     }
 
     private void DrawLoggingPopupControls(string popupId) {
@@ -270,10 +270,10 @@ public sealed partial class AkronOverlay {
         }
     }
 
-    private static void DrawProfileSectionChoice(string label, AkronProfileSection section, string popupId) {
-        bool selected = AkronModule.Settings.ProfilePackSection == section;
-        if (ImGui.RadioButton(label + "##profile-section-" + popupId, selected)) {
-            AkronModule.Settings.ProfilePackSection = section;
+    private static void DrawSetupSectionChoice(string label, AkronSetupSection section, string popupId) {
+        bool selected = AkronModule.Settings.SetupPackSection == section;
+        if (ImGui.RadioButton(label + "##setup-section-" + popupId, selected)) {
+            AkronModule.Settings.SetupPackSection = section;
         }
     }
 

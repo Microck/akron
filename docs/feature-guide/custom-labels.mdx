@@ -20,7 +20,7 @@ Custom HUD labels are **Normal clear**. They display information and do not chan
     Open the new custom label row to edit its name, text, placement, style, and event behavior.
   </Step>
   <Step title="Write the template">
-    Set **Text** to plain text plus variables in braces, such as `Room {room_time}` or `{profile} / {ruleset} / {status}`.
+    Set **Text** to plain text plus variables in braces, such as `Room {room_time}` or `{overlays} / {status}`.
   </Step>
   <Step title="Place and test it">
     Choose an anchor, tune the offset or absolute position, close the overlay, and verify the label is readable in a room.
@@ -34,7 +34,7 @@ A custom label template is ordinary text with expressions inside `{}`. Unknown v
 | Example | Output intent |
 |---|---|
 | `Room {room_time}` | Show the current room timer. |
-| `{profile} / {ruleset} / {status}` | Show the active Akron profile, ruleset stack, and attempt status. |
+| `{overlays} / {status}` | Show the presentation overlays and attempt status. |
 | `XY {player_x}, {player_y}  V {precision(speed, 1)}` | Show player position and speed with one decimal place. |
 | `{upper(status)}: {reason}` | Show an uppercase status label and the current attempt reason. |
 | `{if:cfg.noclip:Noclip on:Noclip off}` | Show one of two strings based on whether noclip is enabled. |
@@ -46,8 +46,7 @@ Template expressions are case-insensitive for variable lookup.
 | Variable | Value |
 |---|---|
 | `app_version` | Akron version string when available. |
-| `profile` | Active Akron profile. |
-| `ruleset` | Active ruleset stack description. |
+| `overlays` | Active presentation overlays. |
 | `status` | Current attempt status label. |
 | `reason` | Current attempt status reason. |
 | `chapter` | Current map SID. |
@@ -140,7 +139,7 @@ Use **Duplicate** to copy the active label and edit a variant. Use **Delete** to
 
 Use **Export .akr** from a custom label row to write a label pack to `Saves/AkronHudLabels`. Use **Import Latest .akr** to import the newest custom-label pack from that folder. Importing a custom-label pack replaces the current custom label definitions with the labels from the pack.
 
-Custom label packs are separate from whole-profile `.akr` packs. A HUD-scoped profile export also includes custom HUD label settings as part of the broader HUD section.
+Custom label packs are separate from whole-setup `.akr` packs. A HUD-scoped setup export also includes custom HUD label settings as part of the broader HUD section.
 
 ## Console command
 
@@ -159,4 +158,4 @@ akron_hud_labels importlatest
 
 Available presets are `fps`, `attempt`, `timers`, `resources`, `inputs`, `proof`, `clock`, and `hazard`.
 
-See [Labels](/feature-guide/labels) for the complete Labels tab row reference and [Import and export .akr packs](/akr-packs/import-export) for profile pack workflows.
+See [Labels](/feature-guide/labels) for the complete Labels tab row reference and [Import and export .akr packs](/akr-packs/import-export) for setup pack workflows.

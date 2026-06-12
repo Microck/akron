@@ -30,7 +30,7 @@ public static partial class AkronCommands {
                 }
 
                 if (master && !AkronModule.TryUse(AkronFeatureKind.ExtendedVariantMode)) {
-                    Log("evm-master: blocked by current Akron ruleset");
+                    Log("evm-master: blocked by current Akron policy");
                     return;
                 }
 
@@ -52,7 +52,7 @@ public static partial class AkronCommands {
                 }
 
                 if (randomizer && !AkronModule.TryUse(AkronFeatureKind.ExtendedVariantMode)) {
-                    Log("evm-randomizer: blocked by current Akron ruleset");
+                    Log("evm-randomizer: blocked by current Akron policy");
                     return;
                 }
 
@@ -81,7 +81,7 @@ public static partial class AkronCommands {
                 }
 
                 if (!AkronModule.TryUse(AkronFeatureKind.ExtendedVariantMode)) {
-                    Log("evm-toggle: blocked by current Akron ruleset");
+                    Log("evm-toggle: blocked by current Akron policy");
                     return;
                 }
 
@@ -98,7 +98,7 @@ public static partial class AkronCommands {
                 }
 
                 if (!AkronModule.TryUse(AkronFeatureKind.ExtendedVariantMode)) {
-                    Log("evm-configure: blocked by current Akron ruleset");
+                    Log("evm-configure: blocked by current Akron policy");
                     return;
                 }
 
@@ -115,7 +115,7 @@ public static partial class AkronCommands {
                 }
 
                 if (!AkronModule.TryUse(AkronFeatureKind.ExtendedVariantMode)) {
-                    Log("evm-set: blocked by current Akron ruleset");
+                    Log("evm-set: blocked by current Akron policy");
                     return;
                 }
 

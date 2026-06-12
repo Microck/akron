@@ -50,8 +50,8 @@ public static partial class AkronActions {
 
         bool next = !session.FreezeGameplay;
 
-        // Leaderboard-clean must be able to recover from a previously-enabled freeze
-        // state, but it must not allow enabling freeze while the ruleset blocks it.
+        // The action must be able to recover from a previously-enabled freeze
+        // state while still respecting the current feature policy.
         if (next && !AkronModule.TryUse(AkronFeatureKind.Freeze)) {
             return;
         }
@@ -331,7 +331,7 @@ public static partial class AkronActions {
         float next = Calc.Clamp(session.TimescaleMultiplier + delta, 0.1f, 2f);
 
         // Resetting to canonical speed must stay available even when Cheat
-        // speed changes are blocked, but blocked rulesets must not allow moving away
+        // speed changes are blocked, but blocked policy decisions must not allow moving away
         // from 1.0x.
         if (next != 1f && !AkronModule.TryUse(AkronFeatureKind.Timescale)) {
             return;
@@ -465,7 +465,7 @@ public static partial class AkronActions {
     public static void OpenOptionsShortcut() {
         Scene scene = Engine.Scene;
         AkronOverlay overlay = AkronModule.GetOverlay(scene, ensureVisible: true);
-        overlay?.OpenTab("Profiles");
+        overlay?.OpenTab("Interface");
         Engine.Scene?.Add(new AkronToast("Opened Akron options."));
     }
 
@@ -553,7 +553,7 @@ public static partial class AkronActions {
 
         float delay = AkronDeloadSimulator.ClampDelaySeconds(secondsBeforeDeload);
         if (!AkronModule.TryUse(AkronFeatureKind.DeloadSimulation)) {
-            Engine.Scene?.Add(new AkronToast("Deload simulation is blocked by the active ruleset."));
+            Engine.Scene?.Add(new AkronToast("Deload simulation is blocked by Akron policy."));
             return;
         }
 

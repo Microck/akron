@@ -22,7 +22,6 @@ Akron exposes developer-facing console commands through Everest's debug console 
 | Command | Purpose |
 |---|---|
 | `akron_status` | Dump current Akron runtime state. |
-| `akron_ruleset <none\|casual\|practice\|leaderboard-clean\|sandbox\|everest-safe\|map-maker>` | Switch the advanced primary ruleset setting for QA or controlled verification. |
 | `akron_overlay <toggle\|show\|hide\|status>` | Control the overlay without a hotkey. |
 | `akron_room_capture <start\|stop\|status\|format <png\|jpg>\|markers <on\|off>\|startpos <on\|off>\|autokill <on\|off>\|autodeafen <on\|off>\|removebg <on\|off>\|removefg <on\|off>\|wait <frames>\|horizontal <tiles>\|vertical <tiles>>` | Drive Room Capture. The overlay Room Capture row is the normal player-facing path. |
 | `akron_map_capture <start\|stop\|status\|format <png\|jpg>\|markers <on\|off>\|startpos <on\|off>\|autokill <on\|off>\|autodeafen <on\|off>\|removebg <on\|off>\|removefg <on\|off>\|wait <frames>\|horizontal <tiles>\|vertical <tiles>>` | Drive Map Capture. The overlay Map Capture row is the normal player-facing path. |
@@ -108,13 +107,12 @@ Akron exposes developer-facing console commands through Everest's debug console 
 | `akron_bypass <status\|low-volume <on\|off>\|volume <music> <sfx>\|instant-complete\|unlock-a-sides\|unlock-b-sides\|unlock-c-sides\|unlock-all-levels\|unlock-golden-berries\|unlock-paths\|obtain-room-berries\|obtain-chapter-berries\|berry-options>` | Bypass options for testing. |
 | `akron_evm <status\|master <on\|off>\|reset\|list\|set <variant> <value>\|configure <variant> <value>\|toggle <variant>>` | Extended Variant Mode control. |
 
-## Profile, Theme, and Settings Commands
+## Setup, Theme, and Settings Commands
 
 | Command | Purpose |
 |---|---|
-| `akron_profile [none\|casual\|practice\|leaderboard-clean\|sandbox\|map-maker\|accessibility\|export [scope] [name]\|import [scope] <file>\|import-latest [scope]]` | Show, apply, import, or export Akron profiles. |
+| `akron_setup [export [scope] [name]\|import [scope] <file>\|import-latest [scope]]` | Show, import, or export Akron `.akr` setup packs. |
 | `akron_theme <status\|next\|copy-custom\|export [name]\|import <file>\|import-latest>` | Manage overlay themes. |
-| `akron_community_rulesets <list\|apply <id-or-label>>` | List or apply community rulesets. |
 | `akron_grab_mode <on\|off\|toggle-enabled\|hold\|toggle\|invert\|status>` | Show or set Celeste grab mode. |
 | `akron_menu_input <on\|off\|status>` | Control whether Akron consumes menu input while open. |
 | `akron_menu_pause <toggle\|on\|off\|status>` | Control whether Akron pauses gameplay while open. |
@@ -151,7 +149,7 @@ Akron executes one command per frame so structural actions such as load or room 
 Commands support repeatable live verification scenarios:
 
 - Show the overlay before screenshots.
-- Switch advanced ruleset settings without relying on fragile input.
+- Drive settings without relying on fragile input.
 - Exercise StartPos, freeze, hitbox, inspector, and proof surfaces.
 - Refresh and import community packs.
 - Capture proof sidecars for comparison.

@@ -5,72 +5,63 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronCommands {
-    [Command("akron_profile", "show/apply/import/export Akron profile: none|casual|practice|leaderboard-clean|sandbox|map-maker|accessibility|export [scope] [name]|import [scope] <file-or-name>|import-latest [scope]; scopes: whole|startpos|keybinds|auto-kill|auto-deafen|recorder|audio|hud")]
-    public static void Profile(string value = "", string part2 = "", string part3 = "", string part4 = "", string part5 = "", string part6 = "") {
+    [Command("akron_setup", "show/import/export Akron .akr setup: export [scope] [name]|import [scope] <file-or-name>|import-latest [scope]; scopes: whole|startpos|keybinds|auto-kill|auto-deafen|recorder|audio|hud")]
+    public static void Setup(string value = "", string part2 = "", string part3 = "", string part4 = "", string part5 = "", string part6 = "") {
         string action = NormalizeToken(value);
         string joined = JoinCommandText(part2, part3, part4, part5, part6);
         if (string.IsNullOrWhiteSpace(value)) {
-            Log("profile: " + AkronModuleSettings.FormatProfile(AkronModule.Settings.ActiveProfile));
-            Log("profile-section: " + AkronProfilePacks.FormatSection(AkronModule.Settings.ProfilePackSection));
-            Log("profile-directory: " + AkronProfilePacks.GetProfileDirectory());
+            Log("setup-section: " + AkronSetupPacks.FormatSection(AkronModule.Settings.SetupPackSection));
+            Log("setup-directory: " + AkronSetupPacks.GetSetupDirectory());
             return;
         }
 
         if (action == "export") {
-            AkronProfileSection section = AkronProfileSection.Whole;
+            AkronSetupSection section = AkronSetupSection.Whole;
             string exportName = joined;
-            if (AkronProfilePacks.TryParseSection(part2, out AkronProfileSection parsedSection) && !string.IsNullOrWhiteSpace(part2)) {
+            if (AkronSetupPacks.TryParseSection(part2, out AkronSetupSection parsedSection) && !string.IsNullOrWhiteSpace(part2)) {
                 section = parsedSection;
                 exportName = JoinCommandText(part3, part4, part5, part6);
             }
 
-            string path = AkronProfilePacks.ExportCurrent(exportName, section);
-            Log("profile-export: " + path);
-            Log("profile-section: " + AkronProfilePacks.FormatSection(section));
+            string path = AkronSetupPacks.ExportCurrent(exportName, section);
+            Log("setup-export: " + path);
+            Log("setup-section: " + AkronSetupPacks.FormatSection(section));
             return;
         }
 
         if (action == "import") {
-            AkronProfileSection? section = null;
+            AkronSetupSection? section = null;
             string importPath = joined;
-            if (AkronProfilePacks.TryParseSection(part2, out AkronProfileSection parsedSection) && !string.IsNullOrWhiteSpace(part2)) {
+            if (AkronSetupPacks.TryParseSection(part2, out AkronSetupSection parsedSection) && !string.IsNullOrWhiteSpace(part2)) {
                 section = parsedSection;
                 importPath = JoinCommandText(part3, part4, part5, part6);
             }
 
             if (string.IsNullOrWhiteSpace(importPath)) {
-                Log("usage: akron_profile import [scope] <file-or-name>");
+                Log("usage: akron_setup import [scope] <file-or-name>");
                 return;
             }
 
-            Log("profile-imported: " + AkronProfilePacks.Import(importPath, section).ToString().ToLowerInvariant());
-            Log("profile: " + AkronModuleSettings.FormatProfile(AkronModule.Settings.ActiveProfile));
+            Log("setup-imported: " + AkronSetupPacks.Import(importPath, section).ToString().ToLowerInvariant());
             if (section.HasValue) {
-                Log("profile-section: " + AkronProfilePacks.FormatSection(section.Value));
+                Log("setup-section: " + AkronSetupPacks.FormatSection(section.Value));
             }
             return;
         }
 
         if (action == "importlatest") {
-            AkronProfileSection? section = AkronProfilePacks.TryParseSection(part2, out AkronProfileSection parsedSection) && !string.IsNullOrWhiteSpace(part2)
+            AkronSetupSection? section = AkronSetupPacks.TryParseSection(part2, out AkronSetupSection parsedSection) && !string.IsNullOrWhiteSpace(part2)
                 ? parsedSection
                 : null;
-            string path = AkronProfilePacks.ImportLatest(section);
-            Log("profile-import-latest: " + path);
-            Log("profile: " + AkronModuleSettings.FormatProfile(AkronModule.Settings.ActiveProfile));
+            string path = AkronSetupPacks.ImportLatest(section);
+            Log("setup-import-latest: " + path);
             if (section.HasValue) {
-                Log("profile-section: " + AkronProfilePacks.FormatSection(section.Value));
+                Log("setup-section: " + AkronSetupPacks.FormatSection(section.Value));
             }
             return;
         }
 
-        if (!TryParseProfile(value, out AkronProfile profile)) {
-            Log("invalid profile: " + value);
-            return;
-        }
-
-        AkronModule.Settings.ApplyProfile(profile);
-        Log("profile set: " + AkronModuleSettings.FormatProfile(AkronModule.Settings.ActiveProfile));
+        Log("unknown setup action: " + value);
     }
 
     [Command("akron_theme", "Akron overlay themes: status|next|copy-custom|export [name]|import <file-or-name>|import-latest")]

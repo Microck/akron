@@ -65,7 +65,7 @@ public static partial class AkronHudRenderer {
             RenderIndicator(level);
         }
 
-        RenderOverlayRulesetChips(level);
+        RenderPresentationOverlayChips(level);
 
         if (settings.HideAkronHud) {
             return;
@@ -148,8 +148,7 @@ public static partial class AkronHudRenderer {
 
         if (labelsVisible && settings.StatusLabelsWidget) {
             Color statusColor = ColorFromRgb(settings.StatusLabelsColor);
-            DrawText("Profile: " + AkronModuleSettings.FormatProfile(settings.ActiveProfile), HudEdgePadding, ref y, statusColor, settings.StatusLabelsLabelStyle);
-            DrawText("Rules: " + settings.DescribeRulesetStack(), HudEdgePadding, ref y, statusColor, settings.StatusLabelsLabelStyle);
+            DrawText("Overlays: " + settings.DescribePresentationOverlays(), HudEdgePadding, ref y, statusColor, settings.StatusLabelsLabelStyle);
             DrawText(
                 "Attempt: " + AkronPolicy.GetLegitimacySensitiveStatusLabel(AkronModule.Session.AttemptStatus),
                 HudEdgePadding,
@@ -373,7 +372,7 @@ public static partial class AkronHudRenderer {
         return textSize.Y + 20f;
     }
 
-    private static void RenderOverlayRulesetChips(Level level) {
+    private static void RenderPresentationOverlayChips(Level level) {
         List<(string Label, Color Color)> chips = new List<(string Label, Color Color)>();
         if (AkronModule.Settings.ProofModeOverlay) {
             chips.Add(("Proof-mode", Color.CornflowerBlue));

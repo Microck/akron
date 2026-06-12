@@ -464,13 +464,6 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void UserIOOnSaveHandler(On.Celeste.UserIO.orig_SaveHandler orig, bool file, bool settings) {
-        if (settings) {
-            // Live settings and the selected profile snapshot are both serialized.
-            // Keep them in sync so toggles changed inside the active profile do not
-            // revert when that profile is applied again after a restart.
-            Settings.PersistActiveProfileState();
-        }
-
         if (AkronBackupActions.ShouldBackupBeforeSave(file, settings)) {
             AkronBackupActions.CreateBackup(settings && !file ? "settings-save" : "save");
         }

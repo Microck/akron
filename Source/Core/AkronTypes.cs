@@ -9,26 +9,6 @@ public enum AkronStatus {
     Cheat = 3
 }
 
-public enum PrimaryRuleset {
-    None,
-    Casual,
-    Practice,
-    LeaderboardClean,
-    Sandbox,
-    EverestSafe,
-    MapMaker
-}
-
-public enum AkronProfile {
-    None,
-    Casual,
-    Practice,
-    LeaderboardClean,
-    Sandbox,
-    MapMaker,
-    Accessibility
-}
-
 public enum IndicatorVisibility {
     Hidden,
     ShowWhenFlagged,

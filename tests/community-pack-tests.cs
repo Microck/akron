@@ -44,7 +44,7 @@ public sealed class CommunityPackTests {
         """);
 
         AkronCommunityPackEntry pack = Assert.Single(index.Packs);
-        Assert.Equal(AkronProfileSection.StartPos, pack.Section);
+        Assert.Equal(AkronSetupSection.StartPos, pack.Section);
         Assert.Equal("https://gamebanana.com/mods/150453", pack.MapUrl);
     }
 
@@ -53,21 +53,21 @@ public sealed class CommunityPackTests {
         AkronCommunityPackEntry matching = new AkronCommunityPackEntry {
             Id = "match",
             Title = "Start room setup",
-            Section = AkronProfileSection.StartPos,
+            Section = AkronSetupSection.StartPos,
             MapSid = "Maps/Current",
             DownloadUrl = "file:///tmp/match.akr"
         };
         AkronCommunityPackEntry wrongMap = new AkronCommunityPackEntry {
             Id = "wrong-map",
             Title = "Start room setup",
-            Section = AkronProfileSection.StartPos,
+            Section = AkronSetupSection.StartPos,
             MapSid = "Maps/Other",
             DownloadUrl = "file:///tmp/wrong.akr"
         };
         AkronCommunityPackEntry wrongCategory = new AkronCommunityPackEntry {
             Id = "wrong-category",
             Title = "Auto kill setup",
-            Section = AkronProfileSection.AutoKill,
+            Section = AkronSetupSection.AutoKill,
             MapSid = "Maps/Current",
             DownloadUrl = "file:///tmp/kill.akr"
         };
@@ -76,7 +76,7 @@ public sealed class CommunityPackTests {
             new[] { matching, wrongMap, wrongCategory },
             new AkronCommunityPackFilter {
                 MapSid = "Maps/Current",
-                Section = AkronProfileSection.StartPos,
+                Section = AkronSetupSection.StartPos,
                 Query = "start"
             }).ToArray();
 
@@ -89,7 +89,7 @@ public sealed class CommunityPackTests {
             Id = "auto-deafen",
             Title = "Quiet rooms",
             Description = "Discord deafen regions for berry rooms",
-            Section = AkronProfileSection.AutoDeafen,
+            Section = AkronSetupSection.AutoDeafen,
             MapSid = "Maps/Current",
             DownloadUrl = "file:///tmp/deafen.akr",
             AuthorName = "Mapper",
@@ -100,7 +100,7 @@ public sealed class CommunityPackTests {
             new[] { pack },
             new AkronCommunityPackFilter {
                 MapSid = "Maps/Current",
-                Section = AkronProfileSection.AutoDeafen,
+                Section = AkronSetupSection.AutoDeafen,
                 Query = "mapper focus"
             }).ToArray();
 
@@ -132,7 +132,7 @@ public sealed class CommunityPackTests {
 
             AkronCommunityPackSearchResult result = AkronCommunityPacks.Search(new AkronCommunityPackFilter {
                 MapSid = "Maps/Current",
-                Section = AkronProfileSection.AutoKill
+                Section = AkronSetupSection.AutoKill
             });
 
             Assert.Equal("File refresh pack", Assert.Single(result.Entries).Title);
@@ -157,22 +157,22 @@ public sealed class CommunityPackTests {
     public void BeginDownloadCopiesArchiveFromCatalogEntry() {
         string tempDirectory = Path.Combine(Path.GetTempPath(), "akron-community-download-test");
         Directory.CreateDirectory(tempDirectory);
-        AkronCommunityPacks.SetProfileDirectoryProviderForTest(() => tempDirectory);
+        AkronCommunityPacks.SetSetupDirectoryProviderForTest(() => tempDirectory);
         string sourcePath = Path.Combine(tempDirectory, "akron-community-source.akr");
         AkronArchive.WriteSinglePayloadArchive(
             sourcePath,
             new AkronArchiveManifest {
-                Kind = AkronProfilePacks.ProfileArchiveKind,
+                Kind = AkronSetupPacks.SetupArchiveKind,
                 KindVersion = 1,
                 Target = new AkronArchiveTarget {
                     Game = "Celeste",
                     MapSid = "Maps/Current"
                 }
             },
-            AkronProfilePacks.ProfileArchivePayload,
+            AkronSetupPacks.SetupArchivePayload,
             """
             {
-              "Format": "akron-profile-v1",
+              "Format": "akron-setup-v1",
               "Name": "Downloaded StartPos",
               "Section": "StartPos",
               "State": {}
@@ -182,7 +182,7 @@ public sealed class CommunityPackTests {
             AkronCommunityPackEntry entry = new AkronCommunityPackEntry {
                 Id = "download-test",
                 Title = "Download Test Pack",
-                Section = AkronProfileSection.StartPos,
+                Section = AkronSetupSection.StartPos,
                 MapSid = "Maps/Current",
                 DownloadUrl = new System.Uri(sourcePath).AbsoluteUri
             };
@@ -198,12 +198,12 @@ public sealed class CommunityPackTests {
 
             Assert.Same(entry, downloaded);
             Assert.True(File.Exists(downloadedPath));
-            AkronProfilePack pack = AkronProfilePacks.Read(downloadedPath);
+            AkronSetupPack pack = AkronSetupPacks.Read(downloadedPath);
             Assert.Equal("Downloaded StartPos", pack.Name);
-            Assert.Equal(AkronProfileSection.StartPos, pack.Section);
+            Assert.Equal(AkronSetupSection.StartPos, pack.Section);
             Assert.EndsWith(".akr", downloadedPath);
         } finally {
-            AkronCommunityPacks.SetProfileDirectoryProviderForTest(null);
+            AkronCommunityPacks.SetSetupDirectoryProviderForTest(null);
         }
     }
 
@@ -211,14 +211,14 @@ public sealed class CommunityPackTests {
     public void ImportRejectsOversizedFilePack() {
         string tempDirectory = Path.Combine(Path.GetTempPath(), "akron-community-download-too-large-test");
         Directory.CreateDirectory(tempDirectory);
-        AkronCommunityPacks.SetProfileDirectoryProviderForTest(() => tempDirectory);
+        AkronCommunityPacks.SetSetupDirectoryProviderForTest(() => tempDirectory);
         string sourcePath = Path.Combine(tempDirectory, "oversized.akr");
         File.WriteAllBytes(sourcePath, new byte[4 * 1024 * 1024 + 1]);
         try {
             AkronCommunityPackEntry entry = new AkronCommunityPackEntry {
                 Id = "oversized",
                 Title = "Oversized Pack",
-                Section = AkronProfileSection.StartPos,
+                Section = AkronSetupSection.StartPos,
                 MapSid = "Maps/Current",
                 DownloadUrl = new Uri(sourcePath).AbsoluteUri
             };
@@ -226,7 +226,7 @@ public sealed class CommunityPackTests {
             Assert.False(AkronCommunityPacks.Import(entry, out string message));
             Assert.Equal("Pack is too large.", message);
         } finally {
-            AkronCommunityPacks.SetProfileDirectoryProviderForTest(null);
+            AkronCommunityPacks.SetSetupDirectoryProviderForTest(null);
         }
     }
 }

@@ -23,15 +23,15 @@ flowchart LR
 |---|---|
 | Feature kind and policy metadata | `Source/Core/AkronTypes.cs`, `Source/Core/AkronFeatureRegistry.cs` |
 | Overlay rows, control type, tooltip controls | `Source/Overlay/AkronOverlay.cs` plus focused `Source/Overlay/akron-overlay-*.cs` partials |
-| Persisted settings and setup state | `Source/Module/AkronModuleSettings.cs`, `Source/Module/akron-module-settings-*.cs`, `Source/Profiles/akron-profile-*.cs` |
+| Persisted settings and setup state | `Source/Module/AkronModuleSettings.cs`, `Source/Module/akron-module-settings-*.cs`, `Source/Setups/akron-setup-*.cs` |
 | Runtime behavior | `Source/Module/AkronModule.cs`, `Source/Actions/akron-actions.cs`, `Source/Runtime/akron-runtime-options.cs`, feature-specific runtime partials |
 | HUD rendering | `Source/Hud/AkronHudRenderer.cs`, `Source/Hud/akron-hud-*.cs` |
 | Save/load internals | `Source/SaveLoad/AkronSaveLoad.cs`, `Source/SaveLoad/akron-save-load-*.cs` |
 | Internal recording | `Source/Recorder/akron-internal-recorder*.cs`, `Source/Recorder/akron-internal-audio-recorder.cs` |
-| `.akr` import/export | `Source/Profiles/akron-profile-packs.cs`, `Source/Profiles/akron-profile-file-picker.cs`, `Source/Packs/akron-archive.cs` |
+| `.akr` import/export | `Source/Setups/akron-setup-packs.cs`, `Source/Setups/akron-setup-file-picker.cs`, `Source/Packs/akron-archive.cs` |
 | Debug and automation commands | `Source/Commands/akron-commands.cs`, `Source/Commands/akron-*-commands.cs` |
 | Verification | `tests/feature-registry-tests.cs`, `tests/module-settings-tests.cs`, feature-specific tests |
-| Community packs and rulesets | `Source/Community/akron-community-packs.cs`, `Source/Community/akron-community-pack-browser.cs`, `Source/Community/akron-community-rulesets.cs` |
+| Community packs | `Source/Community/akron-community-packs.cs`, `Source/Community/akron-community-pack-browser.cs` |
 | Motion smoothing subsystem | `Source/MotionSmoothing/akron-motion-smoothing-module.cs`, `Source/MotionSmoothing/akron-motion-smoothing-settings.cs`, `Source/MotionSmoothing/akron-motion-smoothing-input-handler.cs` |
 
 ## Adding A Feature
@@ -108,7 +108,7 @@ Keep `Source/Module/AkronModule.cs` focused on lifecycle and hook orchestration.
 | Noclip movement, Hazard Accuracy, tint, and player visibility/depth overrides | `Source/Runtime/akron-noclip-runtime.cs` |
 | Click teleport, cursor zoom, transition speed, StartPos placement fallback, trails, and player visuals | `Source/Module/akron-module-visual-runtime.cs` |
 | Death handling, respawn overrides, player update hooks, dash/jump hooks, and player counters | `Source/Module/akron-module-player-runtime.cs` |
-| Retry, reload, save/load actions, prompts, ruleset conflicts, and automation action wrappers | `Source/Module/akron-module-actions.cs` |
+| Retry, reload, save/load actions, prompts, and automation action wrappers | `Source/Module/akron-module-actions.cs` |
 | Native Everest mod menu and menu-only helpers | `Source/Module/akron-module-menu.cs` |
 | Overlay visibility, hotkey dispatch, cursor capture, and keyboard/gamepad binding helpers | `Source/Module/akron-module-overlay-input.cs` |
 | Reduced visual-noise hooks | `Source/Runtime/akron-visual-noise-runtime.cs` |
@@ -122,11 +122,10 @@ Keep the main settings file focused on persisted properties, menu entries, forma
 
 | Settings concern | Boundary |
 |---|---|
-| Profile capture | `Source/Profiles/akron-profile-settings.cs` |
-| Profile application | `Source/Profiles/akron-profile-state-apply.cs` |
-| Stored profile slot selection and built-in profile/ruleset catalogs | `Source/Profiles/akron-profile-state-catalog.cs` |
-| Profile state structure and defaults | `Source/Profiles/akron-profile-state.cs` |
-| Ruleset/profile/status formatting, streamer-mode path display, binding labels, low-distraction channels, hitbox style reset, and native menu entries | `Source/Module/akron-module-settings-display.cs` |
+| Setup capture | `Source/Setups/akron-setup-settings.cs` |
+| Setup application | `Source/Setups/akron-setup-state-apply.cs` |
+| Setup state structure and defaults | `Source/Setups/akron-setup-state.cs` |
+| Status formatting, streamer-mode path display, binding labels, low-distraction channels, hitbox style reset, and native menu entries | `Source/Module/akron-module-settings-display.cs` |
 | Overlay-toggle defaults and HUD label row ordering | `Source/Module/akron-module-settings-label-rows.cs` |
 | HUD-facing settings and HUD label style cloning | `Source/Module/akron-module-settings-hud.cs` |
 | Generic clamps, normalization, range resolution, and auto-area copy helpers | `Source/Module/akron-module-settings-clamps.cs` |
@@ -136,7 +135,7 @@ Defaults should be opt-in for anything that changes gameplay, reveals hidden inf
 
 For numeric settings:
 
-- Add a clamp helper when the value comes from user input or profile import.
+- Add a clamp helper when the value comes from user input or setup import.
 - Use invariant-culture parsing for command and debug paths.
 - Keep the row label as on/off when the feature has an enabled state.
 - Put numeric configuration in the option menu.
@@ -191,7 +190,7 @@ Keep `Source/Commands/akron-commands.cs` for shared command plumbing. Put focuse
 | Noclip, Hazard Accuracy, visual noise, and visual tuning | `Source/Commands/akron-visual-commands.cs` |
 | Hitbox and entity inspector controls | `Source/Commands/akron-hitbox-commands.cs` |
 | StartPos, state slot, save/load, and StartPos restore | `Source/Commands/akron-startpos-commands.cs` |
-| Profile show, apply, import, export, and sections | `Source/Commands/akron-profile-commands.cs` |
+| Setup import, export, and sections | `Source/Commands/akron-setup-commands.cs` |
 | Extended Variant Mode | `Source/Commands/akron-extended-variant-commands.cs` |
 | Frame bypass and Motion Smoothing interop | `Source/Commands/akron-frame-bypass-commands.cs` |
 | Camera offset and cursor zoom | `Source/Commands/akron-camera-commands.cs` |
@@ -208,6 +207,6 @@ Before finishing a feature, check for these common mistakes:
 - A button was implemented as a toggle.
 - A Cheat suboption inherits a clean parent badge.
 - A runtime draw check records feature use merely because a menu is open.
-- A persisted setting was added to `AkronModuleSettings` but not to profile capture/apply.
+- A persisted setting was added to `AkronModuleSettings` but not to setup capture/apply.
 - A new `.akr` payload accepts extra ZIP entries or missing manifests.
 - A docs update changed policy wording but the registry/tests still say something else.

@@ -182,7 +182,7 @@ public static partial class AkronCommands {
                 LogCommunityPackStatus();
                 return;
             case "category":
-                if (!AkronProfilePacks.TryParseSection(text, out AkronProfileSection section)) {
+                if (!AkronSetupPacks.TryParseSection(text, out AkronSetupSection section)) {
                     Log("unknown community-pack category: " + text);
                     return;
                 }
@@ -227,7 +227,7 @@ public static partial class AkronCommands {
             AkronCommunityPackEntry entry = result.Entries[index];
             Log("community-pack-" + index.ToString(CultureInfo.InvariantCulture) + ": " +
                 entry.Title + " | " +
-                AkronProfilePacks.FormatSection(entry.Section) + " | " +
+                AkronSetupPacks.FormatSection(entry.Section) + " | " +
                 entry.AuthorName + " | " +
                 entry.MapUrl);
         }

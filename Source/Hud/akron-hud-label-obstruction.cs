@@ -170,8 +170,7 @@ public static partial class AkronHudRenderer {
         }
 
         if (settings.StatusLabelsWidget) {
-            plans.Add(BuildTextPlan("Profile: " + AkronModuleSettings.FormatProfile(settings.ActiveProfile), HudEdgePadding, ref y, settings.StatusLabelsLabelStyle));
-            plans.Add(BuildTextPlan("Rules: " + settings.DescribeRulesetStack(), HudEdgePadding, ref y, settings.StatusLabelsLabelStyle));
+            plans.Add(BuildTextPlan("Overlays: " + settings.DescribePresentationOverlays(), HudEdgePadding, ref y, settings.StatusLabelsLabelStyle));
             plans.Add(BuildTextPlan("Attempt: " + AkronPolicy.GetLegitimacySensitiveStatusLabel(AkronModule.Session.AttemptStatus), HudEdgePadding, ref y, settings.StatusLabelsLabelStyle));
         }
 

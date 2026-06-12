@@ -27,7 +27,7 @@ The `manifest.json` file uses the following structure:
 {
   "Format": "akron-archive",
   "FormatVersion": 1,
-  "Kind": "profile",
+  "Kind": "setup",
   "KindVersion": 1,
   "CreatedBy": "Akron",
   "CreatedAt": "2026-05-14T00:00:00.0000000Z",
@@ -42,7 +42,7 @@ The `manifest.json` file uses the following structure:
 |---|---|
 | `Format` | Must be `akron-archive`. |
 | `FormatVersion` | Current value: `1`. |
-| `Kind` | Payload kind. Setup packs currently use the archive kind `profile`. |
+| `Kind` | Payload kind. Setup packs currently use the archive kind `setup`. |
 | `KindVersion` | Version of that payload kind. Must be positive. |
 | `CreatedBy` | Producer label. Defaults to `Akron`. |
 | `CreatedAt` | UTC creation timestamp when available. |
@@ -53,24 +53,23 @@ The manifest size limit is 16 KiB.
 
 ## Setup Payload
 
-Setup packs use the `profile` archive contract:
+Setup packs use the `setup` archive contract:
 
 ```text
-Kind: profile
-Payload entry: profile.json
-Payload format: akron-profile-v1
-Directory: Saves/AkronProfiles
+Kind: setup
+Payload entry: setup.json
+Payload format: akron-setup-v1
+Directory: Saves/AkronSetups
 ```
 
-The `profile.json` payload uses the following structure:
+The `setup.json` payload uses the following structure:
 
 ```json
 {
-  "Format": "akron-profile-v1",
-  "Name": "Practice Audio",
+  "Format": "akron-setup-v1",
+  "Name": "Audio Setup",
   "CreatedUtc": "2026-05-14T00:00:00.0000000Z",
   "Section": "Audio",
-  "ActiveProfile": "Practice",
   "State": {},
   "ButtonBindings": {},
   "MenuActionBindings": {},
@@ -120,7 +119,7 @@ If an import fails, current settings remain unchanged and a short toast notifica
 
 Settings included in `.akr` setup packs must meet these requirements:
 
-- Must be defined as a field in `AkronProfileState`.
+- Must be defined as a field in `AkronSetupState`.
 - Must support capture from `AkronModuleSettings`.
 - Must support application back to `AkronModuleSettings`.
 - Must implement scoped-section copy behavior when the setting belongs to `StartPos`, `AutoKill`, `AutoDeafen`, `Recorder`, `Audio`, or `Hud`.
@@ -128,7 +127,7 @@ Settings included in `.akr` setup packs must meet these requirements:
 
 Avoid adding compatibility shims for old local packs unless explicitly required. Akron maintains a single canonical contract to ensure clear import errors.
 
-New archive kinds are reserved for payloads that are not setup/profile sections.
+New archive kinds are reserved for payloads that are not setup/setup sections.
 
 New archive kinds require:
 

@@ -548,8 +548,7 @@ public sealed partial class AkronOverlay : Entity {
     private List<RowSpec> BuildStatusRows(Level level) {
         return new List<RowSpec> {
             new RowSpec("Attempt", DescribeAttemptStatus, RowKind.Info, DescribeAttemptStatusColorRgb),
-            new RowSpec("Profile", () => AkronModuleSettings.FormatProfile(AkronModule.Settings.ActiveProfile), RowKind.Info),
-            new RowSpec("Ruleset", () => AkronModule.Settings.DescribeRulesetStack(), RowKind.Info),
+            new RowSpec("Overlays", () => AkronModule.Settings.DescribePresentationOverlays(), RowKind.Info),
             new RowSpec("Map", () => DescribeMap(level), RowKind.Info),
             new RowSpec("Room", () => DescribeRoom(level), RowKind.Info),
             new RowSpec("Slot", () => AkronModule.Settings.ActiveSavestateSlot.ToString(), RowKind.Info),

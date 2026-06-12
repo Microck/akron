@@ -65,9 +65,9 @@ public sealed class ArchiveTests : IDisposable {
 
     [Fact]
     public void WrongKindArchiveIsRejected() {
-        string path = Path.Combine(directory, "profile.akr");
+        string path = Path.Combine(directory, "setup.akr");
         AkronArchive.WriteSinglePayloadArchive(path, new AkronArchiveManifest {
-            Kind = "profile"
+            Kind = "setup"
         }, "hud-labels.json", "{}");
 
         InvalidDataException ex = Assert.Throws<InvalidDataException>(() =>

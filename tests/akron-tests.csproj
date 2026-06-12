@@ -41,8 +41,4 @@
     </Reference>
   </ItemGroup>
 
-  <ItemGroup>
-    <None Include="..\Rulesets\*.json" Link="rulesets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
 </Project>

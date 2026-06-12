@@ -182,10 +182,10 @@ public sealed class ValueObjectTests {
     }
 
     [Fact]
-    public void RenderPassHasNoSettingsOrProfileSurface() {
+    public void RenderPassHasNoSettingsSurface() {
         string[] surfaceNames = typeof(AkronModuleSettings)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Concat(typeof(AkronProfileState).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            .Concat(typeof(AkronSetupState).GetProperties(BindingFlags.Public | BindingFlags.Instance))
             .Select(property => property.Name)
             .ToArray();
 

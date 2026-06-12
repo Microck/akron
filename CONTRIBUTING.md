@@ -83,7 +83,7 @@ For feature PRs, confirm that:
 - [ ] The feature row has one primary behavior, and independent behaviors are split into separate rows or separate PRs.
 - [ ] The row is in the tab users would check first and ordered according to that tab's existing convention.
 - [ ] Overlay row behavior, tooltip/search copy, and optional submenu controls are complete.
-- [ ] Settings, clamps, profile persistence, and defaults are covered if the feature stores configuration.
+- [ ] Settings, clamps, setup persistence, and defaults are covered if the feature stores configuration.
 - [ ] Command/status output is added when useful for automation or verification.
 - [ ] `AkronFeatureRegistry` and policy tests/docs are updated when the feature affects clean/cheat status.
 - [ ] Public docs are updated for user-facing behavior.
@@ -145,7 +145,7 @@ When a change affects policy:
 
 ## Release Notes
 
-For notable user-facing changes, update the relevant docs page. If a future release-note workflow is added, call out breaking overlay, ruleset, `.akr`, or file-location changes explicitly.
+For notable user-facing changes, update the relevant docs page. If a future release-note workflow is added, call out breaking overlay, `.akr`, or file-location changes explicitly.
 
 ## Review Policy
 

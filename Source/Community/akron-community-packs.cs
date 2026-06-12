@@ -22,7 +22,7 @@ public sealed class AkronCommunityPackEntry {
     public string Id { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
-    public AkronProfileSection Section { get; set; } = AkronProfileSection.Whole;
+    public AkronSetupSection Section { get; set; } = AkronSetupSection.Whole;
     public string MapSid { get; set; } = string.Empty;
     public string MapUrl { get; set; } = string.Empty;
     public string DownloadUrl { get; set; } = string.Empty;
@@ -36,7 +36,7 @@ public sealed class AkronCommunityPackEntry {
 
 public sealed class AkronCommunityPackFilter {
     public string MapSid { get; set; } = string.Empty;
-    public AkronProfileSection Section { get; set; } = AkronProfileSection.Whole;
+    public AkronSetupSection Section { get; set; } = AkronSetupSection.Whole;
     public string Query { get; set; } = string.Empty;
 }
 
@@ -78,7 +78,7 @@ public static class AkronCommunityPacks {
     private static Task<DownloadOutcome> downloadTask;
     private static bool refreshInProgress;
     private static bool downloadInProgress;
-    private static Func<string> profileDirectoryProvider = AkronProfilePacks.GetProfileDirectory;
+    private static Func<string> setupDirectoryProvider = AkronSetupPacks.GetSetupDirectory;
 
     public static AkronCommunityPackSearchResult Search(AkronCommunityPackFilter filter) {
         CompleteRefreshIfReady();
@@ -157,7 +157,7 @@ public static class AkronCommunityPacks {
                 return false;
             }
 
-            bool imported = AkronProfilePacks.Import(outcome.Path, entry.Section);
+            bool imported = AkronSetupPacks.Import(outcome.Path, entry.Section);
             message = imported ? "Imported " + entry.Title + "." : "Import failed.";
             return imported;
         } catch (Exception exception) when (exception is IOException || exception is HttpRequestException || exception is TaskCanceledException || exception is UnauthorizedAccessException || exception is InvalidDataException || exception is ArgumentException || exception is FormatException) {
@@ -168,8 +168,8 @@ public static class AkronCommunityPacks {
         }
     }
 
-    internal static void SetProfileDirectoryProviderForTest(Func<string> provider) {
-        profileDirectoryProvider = provider ?? AkronProfilePacks.GetProfileDirectory;
+    internal static void SetSetupDirectoryProviderForTest(Func<string> provider) {
+        setupDirectoryProvider = provider ?? AkronSetupPacks.GetSetupDirectory;
     }
 
     internal static bool CompleteRefreshForTesting(TimeSpan timeout) {
@@ -211,9 +211,9 @@ public static class AkronCommunityPacks {
         }
 
         try {
-            Directory.CreateDirectory(profileDirectoryProvider());
+            Directory.CreateDirectory(setupDirectoryProvider());
             string fileName = SanitizeFileName(string.IsNullOrWhiteSpace(entry.Title) ? entry.Id : entry.Title) + AkronArchive.Extension;
-            string path = Path.Combine(profileDirectoryProvider(), "community-" + fileName);
+            string path = Path.Combine(setupDirectoryProvider(), "community-" + fileName);
             DownloadPack(entry.DownloadUrl, path);
             return new DownloadOutcome(entry, path, "Downloaded " + entry.Title + ".", true);
         } catch (Exception exception) when (exception is IOException || exception is HttpRequestException || exception is TaskCanceledException || exception is UnauthorizedAccessException || exception is InvalidDataException || exception is ArgumentException || exception is FormatException) {
@@ -257,7 +257,7 @@ public static class AkronCommunityPacks {
         filter ??= new AkronCommunityPackFilter();
         string mapSid = (filter.MapSid ?? string.Empty).Trim();
         string query = (filter.Query ?? string.Empty).Trim();
-        AkronProfileSection section = filter.Section;
+        AkronSetupSection section = filter.Section;
 
         IEnumerable<AkronCommunityPackEntry> filtered = (entries ?? Enumerable.Empty<AkronCommunityPackEntry>())
             .Where(IsUsableEntry);
@@ -266,7 +266,7 @@ public static class AkronCommunityPacks {
             filtered = filtered.Where(entry => string.Equals(entry.MapSid, mapSid, StringComparison.OrdinalIgnoreCase));
         }
 
-        if (section != AkronProfileSection.Whole) {
+        if (section != AkronSetupSection.Whole) {
             filtered = filtered.Where(entry => entry.Section == section);
         }
 
@@ -278,8 +278,8 @@ public static class AkronCommunityPacks {
         return filtered;
     }
 
-    public static string DescribeCategory(AkronProfileSection section) {
-        return section == AkronProfileSection.Whole ? "All" : AkronProfilePacks.FormatSection(section);
+    public static string DescribeCategory(AkronSetupSection section) {
+        return section == AkronSetupSection.Whole ? "All" : AkronSetupPacks.FormatSection(section);
     }
 
     private static AkronCommunityPackIndex LoadIndex(string indexUrl) {
@@ -367,7 +367,7 @@ public static class AkronCommunityPacks {
                Contains(entry.Description, token) ||
                Contains(entry.AuthorName, token) ||
                Contains(entry.MapUrl, token) ||
-               Contains(AkronProfilePacks.FormatSection(entry.Section), token) ||
+               Contains(AkronSetupPacks.FormatSection(entry.Section), token) ||
                (entry.Tags ?? new List<string>()).Any(tag => Contains(tag, token));
     }
 

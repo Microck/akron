@@ -41,12 +41,10 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     private bool frameBypassHideStretchedEdges;
     private bool frameBypassSillyMode;
 
-    public AkronProfile ActiveProfile { get; set; } = AkronProfile.None;
-    public PrimaryRuleset PrimaryRuleset { get; set; } = PrimaryRuleset.None;
     public bool StreamerMode { get; set; }
-    // ProofModeOverlay is normally enabled indirectly by Submission Mode or
-    // imported/community rulesets. The direct command path exists for QA and
-    // review automation, not as a first-case player setting.
+    // ProofModeOverlay is normally enabled indirectly by Submission Mode. The
+    // direct command path exists for QA and review automation, not as a
+    // first-case player setting.
     public bool ProofModeOverlay { get; set; }
     public bool SubmissionMode { get; set; }
     public bool ProofRecorderGuard { get; set; }
@@ -57,7 +55,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int GoldenTransparencyOpacity { get; set; } = 55;
     public bool LagPauser { get; set; }
     public int LagPauserThresholdMs { get; set; } = 250;
-    // Derived compatibility flag for exported/imported profile state. Runtime UI
+    // Derived compatibility flag for exported/imported setup state. Runtime UI
     // should derive low-distraction from the visual-noise channel settings.
     public bool LowDistractionOverlay { get; set; }
 
@@ -78,10 +76,10 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool LoggingMirrorWarningsToEverest { get; set; } = true;
     public int LoggingMaxFileSizeMb { get; set; } = 5;
     public int LoggingRetainedFiles { get; set; } = 5;
-    public AkronProfileSection ProfilePackSection { get; set; } = AkronProfileSection.Whole;
-    public string ProfilePackExportName { get; set; } = string.Empty;
+    public AkronSetupSection SetupPackSection { get; set; } = AkronSetupSection.Whole;
+    public string SetupPackExportName { get; set; } = string.Empty;
     public string CommunityPackIndexUrl { get; set; } = AkronCommunityPacks.DefaultIndexUrl;
-    public AkronProfileSection CommunityPackSection { get; set; } = AkronProfileSection.Whole;
+    public AkronSetupSection CommunityPackSection { get; set; } = AkronSetupSection.Whole;
     public string CommunityPackSearchQuery { get; set; } = string.Empty;
     public string CustomOverlayThemeName { get; set; } = "Custom";
     public int CustomOverlayWindowColor { get; set; } = 0x292929;
@@ -708,11 +706,4 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public Dictionary<string, AkronMapOverride> MapOverrides { get; set; } = new Dictionary<string, AkronMapOverride>();
     public Dictionary<string, string> MenuActionBindings { get; set; } = new Dictionary<string, string>();
     public Dictionary<string, string> ExtendedVariantConfiguredValues { get; set; } = new Dictionary<string, string>();
-    public AkronProfileState CasualProfileState { get; set; }
-    public AkronProfileState PracticeProfileState { get; set; }
-    public AkronProfileState LeaderboardCleanProfileState { get; set; }
-    public AkronProfileState SandboxProfileState { get; set; }
-    public AkronProfileState MapMakerProfileState { get; set; }
-    public AkronProfileState AccessibilityProfileState { get; set; }
-
 }

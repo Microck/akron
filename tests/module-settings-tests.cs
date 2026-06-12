@@ -18,28 +18,6 @@ namespace Celeste.Mod.Akron.Tests;
 
 public sealed class ModuleSettingsTests {
     [Theory]
-    [InlineData(PrimaryRuleset.None, "None")]
-    [InlineData(PrimaryRuleset.Casual, "Casual")]
-    [InlineData(PrimaryRuleset.Practice, "Practice")]
-    [InlineData(PrimaryRuleset.LeaderboardClean, "Leaderboard-clean")]
-    [InlineData(PrimaryRuleset.EverestSafe, "Everest-safe")]
-    [InlineData(PrimaryRuleset.MapMaker, "Map-maker")]
-    public void PrimaryRulesetLabelsMatchPublicUiContract(PrimaryRuleset ruleset, string expected) {
-        Assert.Equal(expected, AkronModuleSettings.FormatPrimaryRuleset(ruleset));
-    }
-
-    [Theory]
-    [InlineData(AkronProfile.None, "None")]
-    [InlineData(AkronProfile.Casual, "Casual")]
-    [InlineData(AkronProfile.Practice, "Practice")]
-    [InlineData(AkronProfile.LeaderboardClean, "Leaderboard Clean")]
-    [InlineData(AkronProfile.MapMaker, "Map Maker")]
-    [InlineData(AkronProfile.Accessibility, "Accessibility")]
-    public void ProfileLabelsMatchPublicUiContract(AkronProfile profile, string expected) {
-        Assert.Equal(expected, AkronModuleSettings.FormatProfile(profile));
-    }
-
-    [Theory]
     [InlineData(AkronStatus.Unclassified, "Unclassified")]
     [InlineData(AkronStatus.GoldberryHardlistClean, "Goldberry/Hardlist clear")]
     [InlineData(AkronStatus.RegularClean, "Normal clear")]
@@ -179,12 +157,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void FreshInstallDefaultsDoNotSelectAProfileRulesetOrAttemptClassification() {
+    public void FreshInstallDefaultsDoNotEnableStatusOrAttemptClassification() {
         AkronModuleSettings settings = new AkronModuleSettings();
         AkronModuleSession session = new AkronModuleSession();
 
-        Assert.Equal(AkronProfile.None, settings.ActiveProfile);
-        Assert.Equal(PrimaryRuleset.None, settings.PrimaryRuleset);
         Assert.False(settings.SafeMode);
         Assert.False(settings.ProofModeOverlay);
         Assert.False(settings.SubmissionMode);
@@ -1673,7 +1649,7 @@ public sealed class ModuleSettingsTests {
     [Fact]
     public void HitboxColorDefaultsMatchCelesteTasConvention() {
         AkronModuleSettings settings = new AkronModuleSettings();
-        AkronProfileState profile = new AkronProfileState();
+        AkronSetupState setup = new AkronSetupState();
 
         Assert.Equal(0xFF0000, settings.HitboxPlayerColor);
         Assert.Equal(0x9ACD32, settings.HitboxPlayerHurtboxColor);
@@ -1683,14 +1659,14 @@ public sealed class ModuleSettingsTests {
         Assert.Equal(0xFF0000, settings.HitboxOtherColor);
         Assert.Equal(0x8B0000, settings.HitboxDeathColor);
         Assert.Equal(0xF5F5F5, settings.HitboxDeathPlayerColor);
-        Assert.Equal(settings.HitboxPlayerColor, profile.HitboxPlayerColor);
-        Assert.Equal(settings.HitboxPlayerHurtboxColor, profile.HitboxPlayerHurtboxColor);
-        Assert.Equal(settings.HitboxSolidColor, profile.HitboxSolidColor);
-        Assert.Equal(settings.HitboxHazardColor, profile.HitboxHazardColor);
-        Assert.Equal(settings.HitboxTriggerColor, profile.HitboxTriggerColor);
-        Assert.Equal(settings.HitboxOtherColor, profile.HitboxOtherColor);
-        Assert.Equal(settings.HitboxDeathColor, profile.HitboxDeathColor);
-        Assert.Equal(settings.HitboxDeathPlayerColor, profile.HitboxDeathPlayerColor);
+        Assert.Equal(settings.HitboxPlayerColor, setup.HitboxPlayerColor);
+        Assert.Equal(settings.HitboxPlayerHurtboxColor, setup.HitboxPlayerHurtboxColor);
+        Assert.Equal(settings.HitboxSolidColor, setup.HitboxSolidColor);
+        Assert.Equal(settings.HitboxHazardColor, setup.HitboxHazardColor);
+        Assert.Equal(settings.HitboxTriggerColor, setup.HitboxTriggerColor);
+        Assert.Equal(settings.HitboxOtherColor, setup.HitboxOtherColor);
+        Assert.Equal(settings.HitboxDeathColor, setup.HitboxDeathColor);
+        Assert.Equal(settings.HitboxDeathPlayerColor, setup.HitboxDeathPlayerColor);
     }
 
     [Fact]
@@ -2000,55 +1976,6 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void ProfileStateCarriesStartPosConfiguration() {
-        AkronModuleSettings settings = new AkronModuleSettings {
-            ActiveProfile = AkronProfile.Practice,
-            RespawnAtStartPos = true,
-            StartPosMousePlacement = true,
-            StartPosPreviewOpacity = 42,
-            StartPosPlacementPanelX = 240,
-            StartPosPlacementPanelY = 160,
-            StartPosPlacementPanelMinimized = true,
-            StartPosLabelAnchor = AkronHudAnchor.BottomCenter,
-            StartPosLabelFormat = AkronStartPosLabelFormat.CountOnly,
-            StartPosConfiguredDashes = 2,
-            StartPosConfiguredStaminaPercent = 35,
-            StartPosConfiguredFacing = AkronStartPosFacing.Left,
-            StartPosConfiguredIdle = false,
-            StartPosConfiguredGrab = true,
-            StartPosSlotCount = 24
-        };
-
-        settings.ApplyProfile(AkronProfile.Casual);
-        settings.RespawnAtStartPos = false;
-        settings.StartPosMousePlacement = false;
-        settings.StartPosPreviewOpacity = 100;
-        settings.StartPosConfiguredDashes = -1;
-        settings.StartPosConfiguredStaminaPercent = -1;
-        settings.StartPosConfiguredFacing = AkronStartPosFacing.Right;
-        settings.StartPosConfiguredIdle = true;
-        settings.StartPosConfiguredGrab = false;
-        settings.StartPosSlotCount = 9;
-
-        settings.ApplyProfile(AkronProfile.Practice);
-
-        Assert.True(settings.RespawnAtStartPos);
-        Assert.True(settings.StartPosMousePlacement);
-        Assert.Equal(42, settings.StartPosPreviewOpacity);
-        Assert.Equal(240, settings.StartPosPlacementPanelX);
-        Assert.Equal(160, settings.StartPosPlacementPanelY);
-        Assert.True(settings.StartPosPlacementPanelMinimized);
-        Assert.Equal(AkronHudAnchor.BottomCenter, settings.StartPosLabelAnchor);
-        Assert.Equal(AkronStartPosLabelFormat.CountOnly, settings.StartPosLabelFormat);
-        Assert.Equal(2, settings.StartPosConfiguredDashes);
-        Assert.Equal(35, settings.StartPosConfiguredStaminaPercent);
-        Assert.Equal(AkronStartPosFacing.Left, settings.StartPosConfiguredFacing);
-        Assert.False(settings.StartPosConfiguredIdle);
-        Assert.True(settings.StartPosConfiguredGrab);
-        Assert.Equal(24, settings.StartPosSlotCount);
-    }
-
-    [Fact]
     public void StartPosCoreActionsHaveIndependentBindings() {
         AkronModuleSettings settings = new AkronModuleSettings();
         ButtonBinding set = new ButtonBinding(0, Keys.D1);
@@ -2062,96 +1989,6 @@ public sealed class ModuleSettingsTests {
         Assert.Same(set, settings.SetStartPos);
         Assert.Same(load, settings.LoadStartPos);
         Assert.Same(clear, settings.ClearStartPos);
-    }
-
-    [Fact]
-    public void ProfileStateCarriesAddedOptionConfiguration() {
-        AkronModuleSettings settings = new AkronModuleSettings {
-            ActiveProfile = AkronProfile.Practice,
-            RoomStatTracker = true,
-            RoomStatTrackerColor = 0x123456,
-            RoomStatShowRoomName = false,
-            RoomStatShowDeaths = false,
-            RoomStatShowInGameTime = false,
-            RoomStatShowStrawberries = false,
-            RoomStatShowAliveTime = true,
-            RoomStatHideIfGolden = true,
-            RoomStatTimerFreezeMode = AkronRoomStatTimerFreezeMode.Never,
-            FreezeTimerWhilePaused = true,
-            PreventDownDashRedirectsEnabled = true,
-            PreventDownDashRedirects = AkronPreventDownDashRedirectMode.Diagonal,
-            GrabModeOverrideEnabled = true,
-            GrabModeOverrideMode = GrabModes.Invert,
-            ToastLabels = false,
-            ToastLabelColor = 0xABCDEF,
-            ToastLabelAnchor = AkronHudAnchor.TopRight,
-            CameraOffset = true,
-            CameraOffsetX = 8,
-            CameraOffsetY = -6,
-            CursorZoom = true,
-            CursorZoomPercent = 225,
-            CursorZoomStepPercent = 15,
-            CursorZoomAllowZoomOut = true,
-            CursorZoomResetOnDeactivate = true,
-            CursorZoomActivationMode = AkronCursorZoomActivationMode.Toggle
-        };
-
-        settings.ApplyProfile(AkronProfile.Casual);
-        settings.RoomStatTracker = false;
-        settings.RoomStatTrackerColor = 0xFAFAD2;
-        settings.RoomStatShowRoomName = true;
-        settings.RoomStatShowDeaths = true;
-        settings.RoomStatShowInGameTime = true;
-        settings.RoomStatShowStrawberries = true;
-        settings.RoomStatShowAliveTime = false;
-        settings.RoomStatHideIfGolden = false;
-        settings.RoomStatTimerFreezeMode = AkronRoomStatTimerFreezeMode.PausedOrInactive;
-        settings.FreezeTimerWhilePaused = false;
-        settings.PreventDownDashRedirectsEnabled = false;
-        settings.PreventDownDashRedirects = AkronPreventDownDashRedirectMode.Normal;
-        settings.GrabModeOverrideEnabled = false;
-        settings.GrabModeOverrideMode = GrabModes.Toggle;
-        settings.ToastLabels = true;
-        settings.ToastLabelColor = 0xFFFFFF;
-        settings.ToastLabelAnchor = AkronHudAnchor.BottomLeft;
-        settings.CameraOffset = false;
-        settings.CameraOffsetX = 0;
-        settings.CameraOffsetY = 0;
-        settings.CursorZoom = false;
-        settings.CursorZoomPercent = 100;
-        settings.CursorZoomStepPercent = 10;
-        settings.CursorZoomAllowZoomOut = false;
-        settings.CursorZoomResetOnDeactivate = false;
-        settings.CursorZoomActivationMode = AkronCursorZoomActivationMode.Hold;
-
-        settings.ApplyProfile(AkronProfile.Practice);
-
-        Assert.True(settings.RoomStatTracker);
-        Assert.Equal(0x123456, settings.RoomStatTrackerColor);
-        Assert.False(settings.RoomStatShowRoomName);
-        Assert.False(settings.RoomStatShowDeaths);
-        Assert.False(settings.RoomStatShowInGameTime);
-        Assert.False(settings.RoomStatShowStrawberries);
-        Assert.True(settings.RoomStatShowAliveTime);
-        Assert.True(settings.RoomStatHideIfGolden);
-        Assert.Equal(AkronRoomStatTimerFreezeMode.Never, settings.RoomStatTimerFreezeMode);
-        Assert.True(settings.FreezeTimerWhilePaused);
-        Assert.True(settings.PreventDownDashRedirectsEnabled);
-        Assert.Equal(AkronPreventDownDashRedirectMode.Diagonal, settings.PreventDownDashRedirects);
-        Assert.True(settings.GrabModeOverrideEnabled);
-        Assert.Equal(GrabModes.Invert, settings.GrabModeOverrideMode);
-        Assert.False(settings.ToastLabels);
-        Assert.Equal(0xABCDEF, settings.ToastLabelColor);
-        Assert.True(settings.CameraOffset);
-        Assert.Equal(8, settings.CameraOffsetX);
-        Assert.Equal(-6, settings.CameraOffsetY);
-        Assert.True(settings.CursorZoom);
-        Assert.Equal(225, settings.CursorZoomPercent);
-        Assert.Equal(15, settings.CursorZoomStepPercent);
-        Assert.True(settings.CursorZoomAllowZoomOut);
-        Assert.True(settings.CursorZoomResetOnDeactivate);
-        Assert.Equal(AkronCursorZoomActivationMode.Toggle, settings.CursorZoomActivationMode);
-        Assert.Equal(AkronHudAnchor.TopRight, settings.ToastLabelAnchor);
     }
 
     [Fact]
@@ -2270,12 +2107,12 @@ public sealed class ModuleSettingsTests {
         settings.SetLowDistractionChannels(true);
 
         Assert.True(settings.IsLowDistractionActive());
-        Assert.Equal("Low-distraction", settings.DescribeOverlayRulesets());
+        Assert.Equal("Low-distraction", settings.DescribePresentationOverlays());
 
         settings.SetNoTrails(false);
 
         Assert.False(settings.IsLowDistractionActive());
-        Assert.Equal("None", settings.DescribeOverlayRulesets());
+        Assert.Equal("None", settings.DescribePresentationOverlays());
     }
 
     [Fact]
@@ -2284,7 +2121,7 @@ public sealed class ModuleSettingsTests {
             StreamerMode = true
         };
 
-        Assert.Equal("Streamer Mode", settings.DescribeOverlayRulesets());
+        Assert.Equal("Streamer Mode", settings.DescribePresentationOverlays());
         Assert.Contains("filesystem paths", settings.DescribeOverlayBehavior(), StringComparison.OrdinalIgnoreCase);
         Assert.Equal("clear.json", settings.FormatPathForDisplay("/tmp/akron/proof/clear.json"));
         Assert.Equal("AkronRecordings", settings.FormatPathForDisplay("/tmp/akron/AkronRecordings/"));
@@ -2298,241 +2135,6 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void CasualDefaultsDoNotEnableFeatures() {
-        AkronModuleSettings settings = new AkronModuleSettings();
-
-        settings.ApplyRulesetDefaults(PrimaryRuleset.Casual);
-
-        Assert.Equal(PrimaryRuleset.Casual, settings.PrimaryRuleset);
-        Assert.False(settings.SafeMode);
-        Assert.False(settings.RoomLabels);
-        Assert.False(settings.EverestSafeAutoBlock);
-        Assert.False(settings.StaminaWidget);
-        Assert.False(settings.SpeedWidget);
-        Assert.False(settings.DashWidget);
-        Assert.False(settings.InputViewer);
-        Assert.False(settings.RoomTimerWidget);
-        Assert.False(settings.DeathStatsWidget);
-        Assert.False(settings.HitboxViewer);
-        Assert.False(settings.EntityInspector);
-        Assert.False(settings.Noclip);
-        Assert.False(settings.Invincibility);
-    }
-
-    [Fact]
-    public void NoneDefaultsDoNotEnableProfilesRulesetsOrHudStatusOptions() {
-        AkronModuleSettings settings = new AkronModuleSettings {
-            ActiveProfile = AkronProfile.Practice,
-            PrimaryRuleset = PrimaryRuleset.Practice,
-            SafeMode = true,
-            RoomLabels = true,
-            LabelSystemVisible = true,
-            StatusLabelsWidget = true,
-            HudCheatIndicator = true,
-            StaminaWidget = true,
-            SpeedWidget = true,
-            DashWidget = true,
-            InputViewer = true
-        };
-
-        settings.ApplyRulesetDefaults(PrimaryRuleset.None);
-
-        Assert.Equal(PrimaryRuleset.None, settings.PrimaryRuleset);
-        Assert.False(settings.SafeMode);
-        Assert.False(settings.RoomLabels);
-        Assert.False(settings.LabelSystemVisible);
-        Assert.False(settings.StatusLabelsWidget);
-        Assert.False(settings.HudCheatIndicator);
-        Assert.False(settings.StaminaWidget);
-        Assert.False(settings.SpeedWidget);
-        Assert.False(settings.DashWidget);
-        Assert.False(settings.InputViewer);
-
-        settings.ApplyProfile(AkronProfile.None);
-
-        Assert.Equal(AkronProfile.None, settings.ActiveProfile);
-        Assert.Equal(PrimaryRuleset.None, settings.PrimaryRuleset);
-        Assert.False(settings.SafeMode);
-        Assert.False(settings.RoomLabels);
-        Assert.False(settings.LabelSystemVisible);
-        Assert.False(settings.StatusLabelsWidget);
-        Assert.False(settings.HudCheatIndicator);
-        Assert.False(settings.StaminaWidget);
-        Assert.False(settings.SpeedWidget);
-        Assert.False(settings.DashWidget);
-        Assert.False(settings.InputViewer);
-    }
-
-    [Fact]
-    public void RulesetDefaultsEnablePracticeSurfacesWithoutCheats() {
-        AkronModuleSettings settings = new AkronModuleSettings();
-
-        settings.ApplyRulesetDefaults(PrimaryRuleset.Practice);
-
-        Assert.Equal(PrimaryRuleset.Practice, settings.PrimaryRuleset);
-        Assert.True(settings.SafeMode);
-        Assert.True(settings.StaminaWidget);
-        Assert.True(settings.SpeedWidget);
-        Assert.True(settings.DashWidget);
-        Assert.True(settings.InputViewer);
-        Assert.True(settings.RoomTimerWidget);
-        Assert.True(settings.DeathStatsWidget);
-        Assert.False(settings.InfiniteStamina);
-        Assert.False(settings.InfiniteDash);
-        Assert.False(settings.Noclip);
-        Assert.False(settings.Invincibility);
-    }
-
-    [Fact]
-    public void SandboxDefaultsRemovePolicyBlocksWithoutAutoEnablingCheats() {
-        AkronModuleSettings settings = new AkronModuleSettings();
-
-        settings.ApplyRulesetDefaults(PrimaryRuleset.Sandbox);
-
-        Assert.Equal(PrimaryRuleset.Sandbox, settings.PrimaryRuleset);
-        Assert.False(settings.SafeMode);
-        Assert.False(settings.InfiniteStamina);
-        Assert.False(settings.InfiniteDash);
-        Assert.False(settings.Noclip);
-        Assert.False(settings.Invincibility);
-    }
-
-    [Fact]
-    public void AccessibilityProfileTurnsOnPresentationAidsOnly() {
-        AkronModuleSettings settings = new AkronModuleSettings();
-
-        settings.ApplyProfile(AkronProfile.Accessibility);
-
-        Assert.Equal(AkronProfile.Accessibility, settings.ActiveProfile);
-        Assert.Equal(PrimaryRuleset.Casual, settings.PrimaryRuleset);
-        Assert.False(settings.SafeMode);
-        Assert.True(settings.StaminaWidget);
-        Assert.True(settings.SpeedWidget);
-        Assert.True(settings.DashWidget);
-        Assert.True(settings.InputViewer);
-        Assert.True(settings.StaminaBar);
-        Assert.True(settings.DashBar);
-        Assert.True(settings.IsLowDistractionActive());
-        Assert.False(settings.InfiniteStamina);
-        Assert.False(settings.InfiniteDash);
-        Assert.False(settings.Noclip);
-        Assert.False(settings.Invincibility);
-    }
-
-    [Fact]
-    public void ProfileSwitchingPersistsTheProfileBeingLeft() {
-        AkronModuleSettings settings = new AkronModuleSettings {
-            ActiveProfile = AkronProfile.Casual,
-            StaminaWidget = true
-        };
-
-        settings.ApplyProfile(AkronProfile.Practice);
-        settings.StaminaWidget = false;
-        settings.ApplyProfile(AkronProfile.Casual);
-
-        Assert.True(settings.StaminaWidget);
-
-        settings.ApplyProfile(AkronProfile.Practice);
-
-        Assert.False(settings.StaminaWidget);
-    }
-
-    [Fact]
-    public void PersistingActiveProfileStoresDisabledFeatureToggles() {
-        AkronModuleSettings settings = new AkronModuleSettings();
-
-        settings.ApplyProfile(AkronProfile.Practice);
-        settings.AutoKill = true;
-        settings.Noclip = true;
-        settings.PersistActiveProfileState();
-
-        settings.AutoKill = false;
-        settings.Noclip = false;
-        settings.PersistActiveProfileState();
-
-        settings.ApplyProfile(AkronProfile.Casual);
-        settings.ApplyProfile(AkronProfile.Practice);
-
-        Assert.False(settings.AutoKill);
-        Assert.False(settings.Noclip);
-    }
-
-    [Fact]
-    public void ProfileSwitchingPersistsInputsPerSecondOptions() {
-        AkronModuleSettings settings = new AkronModuleSettings();
-
-        settings.ApplyProfile(AkronProfile.Practice);
-        settings.InputsPerSecondCounter = true;
-        settings.InputsPerSecondPlacement = AkronHudPlacement.Right;
-        settings.InputsPerSecondScale = 175;
-        settings.InputsPerSecondOpacity = 65;
-        settings.InputsPerSecondTextColor = 0x66D9EF;
-        settings.InputsPerSecondShowTotal = false;
-        settings.InputsPerSecondShowMax = true;
-        settings.InputsPerSecondCountMovement = false;
-        settings.InputsPerSecondCountActions = true;
-        settings.InputsPerSecondCountMenu = true;
-
-        settings.ApplyProfile(AkronProfile.Casual);
-        settings.ApplyProfile(AkronProfile.Practice);
-
-        Assert.True(settings.InputsPerSecondCounter);
-        Assert.Equal(AkronHudPlacement.Right, settings.InputsPerSecondPlacement);
-        Assert.Equal(175, settings.InputsPerSecondScale);
-        Assert.Equal(65, settings.InputsPerSecondOpacity);
-        Assert.Equal(0x66D9EF, settings.InputsPerSecondTextColor);
-        Assert.False(settings.InputsPerSecondShowTotal);
-        Assert.True(settings.InputsPerSecondShowMax);
-        Assert.False(settings.InputsPerSecondCountMovement);
-        Assert.True(settings.InputsPerSecondCountActions);
-        Assert.True(settings.InputsPerSecondCountMenu);
-    }
-
-    [Fact]
-    public void ProfileSwitchingPersistsHitboxTrailStyleOptions() {
-        AkronModuleSettings settings = new AkronModuleSettings();
-
-        settings.ApplyProfile(AkronProfile.Practice);
-        settings.ShowHitboxTrail = true;
-        settings.HitboxTrailLength = 90;
-        settings.HitboxTrailOpacity = 70;
-        settings.HitboxLineThickness = 3.5f;
-        settings.HitboxFillOpacity = 25;
-        settings.HitboxBlackOutline = true;
-        settings.HitboxPlayerColor = 0xABCDEF;
-        settings.HitboxShowPlayerHurtbox = false;
-        settings.HitboxPlayerHurtboxColor = 0x123456;
-
-        settings.ApplyProfile(AkronProfile.Casual);
-        settings.ApplyProfile(AkronProfile.Practice);
-
-        Assert.True(settings.ShowHitboxTrail);
-        Assert.Equal(90, settings.HitboxTrailLength);
-        Assert.Equal(70, settings.HitboxTrailOpacity);
-        Assert.Equal(3.5f, settings.HitboxLineThickness);
-        Assert.Equal(25, settings.HitboxFillOpacity);
-        Assert.True(settings.HitboxBlackOutline);
-        Assert.Equal(0xABCDEF, settings.HitboxPlayerColor);
-        Assert.False(settings.HitboxShowPlayerHurtbox);
-        Assert.Equal(0x123456, settings.HitboxPlayerHurtboxColor);
-    }
-
-    [Fact]
-    public void ProfileSwitchingDoesNotPersistOneShotDeloadSimulation() {
-        AkronModuleSettings settings = new AkronModuleSettings();
-
-        settings.ApplyProfile(AkronProfile.Practice);
-        settings.DeloadSpinners = true;
-        settings.DeloadSpinnerDelaySeconds = 2.5f;
-
-        settings.ApplyProfile(AkronProfile.Casual);
-        settings.ApplyProfile(AkronProfile.Practice);
-
-        Assert.False(settings.DeloadSpinners);
-        Assert.Equal(2.5f, settings.DeloadSpinnerDelaySeconds);
-    }
-
-    [Fact]
     public void OneShotRuntimeActionsAreClearedOnSettingsLoad() {
         AkronModuleSettings settings = new AkronModuleSettings {
             DeloadSpinners = true,
@@ -2543,61 +2145,6 @@ public sealed class ModuleSettingsTests {
 
         Assert.False(settings.DeloadSpinners);
         Assert.Equal(3f, settings.DeloadSpinnerDelaySeconds);
-    }
-
-    [Fact]
-    public void ProfileSwitchingPersistsControlDisplayOptions() {
-        AkronModuleSettings settings = new AkronModuleSettings();
-
-        settings.ApplyProfile(AkronProfile.Practice);
-        settings.ShowTaps = true;
-        settings.TapDisplayCorner = IndicatorCorner.BottomLeft;
-        settings.TapDisplayScale = 190;
-        settings.TapDisplayOpacity = 63;
-        settings.InputBoardSource = AkronInputBoardSource.KeyboardKeys;
-        settings.InputBoardLabelPreset = AkronInputBoardLabelPreset.Keyboard;
-        settings.InputBoardElements = new List<AkronInputBoardElement> {
-            new AkronInputBoardElement {
-                Id = "jump",
-                Label = "Jump",
-                X = 12,
-                Y = 34,
-                Width = 56,
-                Height = 40,
-                Bindings = new List<AkronInputBoardBinding> { AkronInputBoardBinding.Jump },
-                KeyBindings = new List<Keys> { Keys.C, Keys.Space },
-                FillColor = 0x111111,
-                PressedFillColor = 0x222222,
-                StrokeColor = 0x333333,
-                TextColor = 0x444444,
-                OutlineWidth = 3,
-                TextScale = 135
-            }
-        };
-
-        settings.ApplyProfile(AkronProfile.Casual);
-        settings.ApplyProfile(AkronProfile.Practice);
-
-        Assert.True(settings.ShowTaps);
-        Assert.Equal(IndicatorCorner.BottomLeft, settings.TapDisplayCorner);
-        Assert.Equal(190, settings.TapDisplayScale);
-        Assert.Equal(63, settings.TapDisplayOpacity);
-        Assert.Equal(AkronInputBoardSource.KeyboardKeys, settings.InputBoardSource);
-        Assert.Equal(AkronInputBoardLabelPreset.Keyboard, settings.InputBoardLabelPreset);
-        AkronInputBoardElement element = Assert.Single(settings.InputBoardElements);
-        Assert.Equal("Jump", element.Label);
-        Assert.Equal(12, element.X);
-        Assert.Equal(34, element.Y);
-        Assert.Equal(56, element.Width);
-        Assert.Equal(40, element.Height);
-        Assert.Equal(new[] { AkronInputBoardBinding.Jump }, element.Bindings);
-        Assert.Equal(new[] { Keys.C, Keys.Space }, element.KeyBindings);
-        Assert.Equal(0x111111, element.FillColor);
-        Assert.Equal(0x222222, element.PressedFillColor);
-        Assert.Equal(0x333333, element.StrokeColor);
-        Assert.Equal(0x444444, element.TextColor);
-        Assert.Equal(3, element.OutlineWidth);
-        Assert.Equal(135, element.TextScale);
     }
 
     [Fact]
@@ -2772,12 +2319,11 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void ProfilePackArchiveRoundTripsListedProfileSystems() {
-        string folder = Path.Combine(Path.GetTempPath(), "akron-profile-pack-tests-" + Guid.NewGuid().ToString("N"));
+    public void SetupPackArchiveRoundTripsListedSetupSystems() {
+        string folder = Path.Combine(Path.GetTempPath(), "akron-setup-pack-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
         try {
             AkronModuleSettings source = new AkronModuleSettings {
-                ActiveProfile = AkronProfile.Practice,
                 SmartStartPos = true,
                 RespawnAtStartPos = true,
                 StartPosConfiguredDashes = 2,
@@ -2823,14 +2369,13 @@ public sealed class ModuleSettingsTests {
             };
             string path = Path.Combine(folder, "practice.akr");
 
-            AkronProfilePacks.Write(source, sourceSession, path, "Practice Setup");
-            AkronProfilePack pack = AkronProfilePacks.Read(path);
+            AkronSetupPacks.Write(source, sourceSession, path, "Practice Setup");
+            AkronSetupPack pack = AkronSetupPacks.Read(path);
             AkronModuleSettings imported = new AkronModuleSettings();
             AkronModuleSession importedSession = new AkronModuleSession();
-            AkronProfilePacks.Apply(imported, importedSession, pack);
+            AkronSetupPacks.Apply(imported, importedSession, pack);
 
-            Assert.Equal(AkronProfileSection.Whole, pack.Section);
-            Assert.Equal(AkronProfile.Practice, imported.ActiveProfile);
+            Assert.Equal(AkronSetupSection.Whole, pack.Section);
             Assert.True(imported.SmartStartPos);
             Assert.Equal(2, imported.StartPosConfiguredDashes);
             Assert.True(imported.AutoKill);
@@ -2867,11 +2412,11 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void ProfilePacksDoNotReplaceMachineLocalLoggingSettings() {
+    public void SetupPacksDoNotReplaceMachineLocalLoggingSettings() {
         AkronModuleSettings source = new AkronModuleSettings {
             StreamerMode = true
         };
-        AkronProfilePack pack = AkronProfilePacks.Capture(source, session: null, "Practice Setup");
+        AkronSetupPack pack = AkronSetupPacks.Capture(source, session: null, "Practice Setup");
         AkronModuleSettings target = new AkronModuleSettings {
             Logging = false,
             LoggingLevel = AkronLoggingLevel.Normal,
@@ -2880,7 +2425,7 @@ public sealed class ModuleSettingsTests {
             LoggingRetainedFiles = 2
         };
 
-        AkronProfilePacks.Apply(target, session: null, pack);
+        AkronSetupPacks.Apply(target, session: null, pack);
 
         Assert.False(target.Logging);
         Assert.Equal(AkronLoggingLevel.Normal, target.LoggingLevel);
@@ -2890,9 +2435,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void ProfilePackScopedImportsOnlyReplaceRequestedSystems() {
+    public void SetupPackScopedImportsOnlyReplaceRequestedSystems() {
         AkronModuleSettings source = new AkronModuleSettings {
-            ActiveProfile = AkronProfile.Practice,
             SmartStartPos = true,
             StartPosConfiguredDashes = 2,
             StartPosConfiguredStaminaPercent = 55,
@@ -2964,26 +2508,26 @@ public sealed class ModuleSettingsTests {
                 }
             }
         };
-        AkronProfilePack pack = AkronProfilePacks.Capture(source, sourceSession, "Practice Setup");
+        AkronSetupPack pack = AkronSetupPacks.Capture(source, sourceSession, "Practice Setup");
         Assert.Equal(4, pack.State.SetInventoryDashes);
         Assert.Equal(3, pack.State.SetInventoryJumps);
         Assert.True(pack.State.SetInventoryRestoreOnDeath);
 
         AkronModuleSettings startPosOnly = new AkronModuleSettings { AutoKill = false };
         AkronModuleSession startPosSession = new AkronModuleSession();
-        AkronProfilePacks.Apply(startPosOnly, startPosSession, pack, AkronProfileSection.StartPos);
+        AkronSetupPacks.Apply(startPosOnly, startPosSession, pack, AkronSetupSection.StartPos);
         Assert.True(startPosOnly.SmartStartPos);
         Assert.Equal(2, startPosOnly.StartPosConfiguredDashes);
         Assert.False(startPosOnly.AutoKill);
         Assert.Single(startPosSession.StartPositions);
 
         AkronModuleSettings keybindsOnly = new AkronModuleSettings { SmartStartPos = false };
-        AkronProfilePacks.Apply(keybindsOnly, new AkronModuleSession(), pack, AkronProfileSection.Keybinds);
+        AkronSetupPacks.Apply(keybindsOnly, new AkronModuleSession(), pack, AkronSetupSection.Keybinds);
         Assert.Equal("Ctrl+R", keybindsOnly.MenuActionBindings["Shortcuts/Retry"]);
         Assert.False(keybindsOnly.SmartStartPos);
 
         AkronModuleSettings autoKillOnly = new AkronModuleSettings { AutoDeafen = false };
-        AkronProfilePacks.Apply(autoKillOnly, new AkronModuleSession(), pack, AkronProfileSection.AutoKill);
+        AkronSetupPacks.Apply(autoKillOnly, new AkronModuleSession(), pack, AkronSetupSection.AutoKill);
         Assert.True(autoKillOnly.AutoKill);
         Assert.True(autoKillOnly.AutoKillTimer);
         Assert.Equal(12, autoKillOnly.AutoKillSeconds);
@@ -2991,13 +2535,13 @@ public sealed class ModuleSettingsTests {
         Assert.False(autoKillOnly.AutoDeafen);
 
         AkronModuleSettings autoDeafenOnly = new AkronModuleSettings { AutoKill = false };
-        AkronProfilePacks.Apply(autoDeafenOnly, new AkronModuleSession(), pack, AkronProfileSection.AutoDeafen);
+        AkronSetupPacks.Apply(autoDeafenOnly, new AkronModuleSession(), pack, AkronSetupSection.AutoDeafen);
         Assert.True(autoDeafenOnly.AutoDeafen);
         Assert.Equal("Ctrl+Shift+D", autoDeafenOnly.AutoDeafenHotkey);
         Assert.False(autoDeafenOnly.AutoKill);
 
         AkronModuleSettings recorderOnly = new AkronModuleSettings { AudioSplitter = false };
-        AkronProfilePacks.Apply(recorderOnly, new AkronModuleSession(), pack, AkronProfileSection.Recorder);
+        AkronSetupPacks.Apply(recorderOnly, new AkronModuleSession(), pack, AkronSetupSection.Recorder);
         Assert.Equal(120, recorderOnly.RecordingFramerate);
         Assert.Equal(80, recorderOnly.RecordingBitrateMbps);
         Assert.Equal(AkronRecordingCodec.H264Nvenc, recorderOnly.RecordingCodec);
@@ -3005,7 +2549,7 @@ public sealed class ModuleSettingsTests {
         Assert.False(recorderOnly.AudioSplitter);
 
         AkronModuleSettings audioOnly = new AkronModuleSettings { RecordingFramerate = 60 };
-        AkronProfilePacks.Apply(audioOnly, new AkronModuleSession(), pack, AkronProfileSection.Audio);
+        AkronSetupPacks.Apply(audioOnly, new AkronModuleSession(), pack, AkronSetupSection.Audio);
         Assert.True(audioOnly.AudioSpeed);
         Assert.Equal(1.25f, audioOnly.AudioSpeedMultiplier);
         Assert.True(audioOnly.PitchShift);
@@ -3019,7 +2563,7 @@ public sealed class ModuleSettingsTests {
             AutoKill = false,
             AudioSpeed = false
         };
-        AkronProfilePacks.Apply(hudOnly, new AkronModuleSession(), pack, AkronProfileSection.Hud);
+        AkronSetupPacks.Apply(hudOnly, new AkronModuleSession(), pack, AkronSetupSection.Hud);
         Assert.False(hudOnly.LabelSystemVisible);
         Assert.False(hudOnly.RoomLabels);
         Assert.Equal(0x123456, hudOnly.RoomLabelColor);
@@ -3059,148 +2603,6 @@ public sealed class ModuleSettingsTests {
     [InlineData(0.2f, false)]
     public void FreezeFrameSuppressionKeepsScriptedLongFreezes(float seconds, bool expected) {
         Assert.Equal(expected, AkronModule.ShouldSuppressFreezeFrames(seconds));
-    }
-
-    [Fact]
-    public void ProfileSwitchingPersistsAutoDeafenOptions() {
-        AkronModuleSettings settings = new AkronModuleSettings();
-
-        settings.ApplyProfile(AkronProfile.Practice);
-        settings.AutoDeafen = true;
-        settings.AutoDeafenHotkey = "LeftShift+F7";
-        settings.AutoDeafenArea = true;
-        settings.AutoDeafenShowArea = false;
-        settings.AutoDeafenAreas = new List<AkronRectangleData> {
-            new AkronRectangleData(new Rectangle(10, 20, 30, 40))
-        };
-        settings.AutoDeafenAreaX = 10;
-        settings.AutoDeafenAreaY = 20;
-        settings.AutoDeafenAreaWidth = 30;
-        settings.AutoDeafenAreaHeight = 40;
-
-        settings.ApplyProfile(AkronProfile.Casual);
-        settings.ApplyProfile(AkronProfile.Practice);
-
-        Assert.True(settings.AutoDeafen);
-        Assert.Equal("LeftShift+F7", settings.AutoDeafenHotkey);
-        Assert.True(settings.AutoDeafenArea);
-        Assert.False(settings.AutoDeafenShowArea);
-        AkronRectangleData area = Assert.Single(settings.AutoDeafenAreas);
-        Assert.Equal(10, area.X);
-        Assert.Equal(20, area.Y);
-        Assert.Equal(30, area.Width);
-        Assert.Equal(40, area.Height);
-        Assert.Equal(10, settings.AutoDeafenAreaX);
-        Assert.Equal(20, settings.AutoDeafenAreaY);
-        Assert.Equal(30, settings.AutoDeafenAreaWidth);
-        Assert.Equal(40, settings.AutoDeafenAreaHeight);
-    }
-
-    [Fact]
-    public void ProfileSwitchingPersistsNativeVisualSliceOptions() {
-        AkronModuleSettings settings = new AkronModuleSettings();
-
-        settings.ApplyProfile(AkronProfile.Practice);
-        settings.LabelSystemVisible = false;
-        settings.RoomLabelColor = 0x112233;
-        settings.InputHistoryTextColor = 0x667788;
-        settings.InputHistoryEventColor = 0x778899;
-        settings.RoomTimerColor = 0x223344;
-        settings.DeathStatsColor = 0x334455;
-        settings.TotalAttemptsColor = 0x445566;
-        settings.StatusLabelsColor = 0x556677;
-        settings.StartPosLabelColor = 0x887766;
-        settings.LabelRowOrder = AkronModuleSettings.NormalizeLabelRowOrder(
-            new[] { "Room Timer", "Death Stats" },
-            settings.CustomHudLabelDefinitions);
-        settings.CustomHudLabelObstructionEnabled = true;
-        settings.CustomHudLabelObstructionMode = AkronLabelObstructionMode.Move;
-        settings.CustomHudLabelObstructedOpacity = 42;
-        settings.CustomHudLabelObstructionPaddingPixels = 15;
-        settings.CustomHudLabelObstructionOnlyOverlappedLabel = true;
-        settings.CustomHudLabelObstructedAnchor = AkronHudAnchor.TopLeft;
-        settings.CustomHudLabelObstructedOffsetX = 12;
-        settings.CustomHudLabelObstructedOffsetY = -8;
-        settings.LabelBulkStyle = new AkronHudLabelStyleSettings { Scale = 80, Opacity = 70, OffsetX = 12 };
-        settings.RoomLabelStyle = new AkronHudLabelStyleSettings { Scale = 90, Opacity = 60, OffsetY = 14 };
-        settings.InputsPerSecondLabelStyle = new AkronHudLabelStyleSettings { Shadow = false, ShadowOpacity = 30 };
-        settings.StartPosLabelStyle = new AkronHudLabelStyleSettings { Scale = 120, Opacity = 65, OffsetX = -9 };
-        settings.DeathStatsFormat = "$C deaths";
-        settings.DeathStatsVisibility = AkronDeathStatsVisibility.Always;
-        settings.NoStaminaFlash = true;
-        settings.RefillClarity = true;
-        settings.RefillClarityColor = 0x123456;
-        settings.RefillClarityOpacity = 45;
-        settings.MadelineHairLength = true;
-        settings.MadelineNoDashHairLength = 6;
-        settings.MadelineOneDashHairLength = 7;
-        settings.MadelineTwoDashHairLength = 8;
-        settings.MadelineThreeDashHairLength = 9;
-        settings.MadelineFourDashHairLength = 10;
-        settings.MadelineFiveDashHairLength = 11;
-        settings.MadelineEffectSync = true;
-        settings.MadelineDashParticleSync = AkronMadelineEffectSyncMode.Off;
-        settings.MadelineDashTrailSync = AkronMadelineEffectSyncMode.MatchHair;
-        settings.MadelineDeathEffectSync = AkronMadelineEffectSyncMode.Off;
-        settings.MadelineFeatherColorSync = AkronMadelineEffectSyncMode.MatchHair;
-        settings.MadelineCrownColorSync = AkronMadelineEffectSyncMode.Off;
-        settings.ScreenshotScale = 4;
-        settings.ScreenshotStatus = false;
-
-        settings.ApplyProfile(AkronProfile.Casual);
-        settings.ApplyProfile(AkronProfile.Practice);
-
-        Assert.False(settings.LabelSystemVisible);
-        Assert.Equal(0x112233, settings.RoomLabelColor);
-        Assert.Equal(0x667788, settings.InputHistoryTextColor);
-        Assert.Equal(0x778899, settings.InputHistoryEventColor);
-        Assert.Equal(0x223344, settings.RoomTimerColor);
-        Assert.Equal(0x334455, settings.DeathStatsColor);
-        Assert.Equal(0x445566, settings.TotalAttemptsColor);
-        Assert.Equal(0x556677, settings.StatusLabelsColor);
-        Assert.Equal(0x887766, settings.StartPosLabelColor);
-        Assert.Equal("Room Timer", settings.LabelRowOrder[0]);
-        Assert.Equal("Death Stats", settings.LabelRowOrder[1]);
-        Assert.True(settings.CustomHudLabelObstructionEnabled);
-        Assert.Equal(AkronLabelObstructionMode.Move, settings.CustomHudLabelObstructionMode);
-        Assert.Equal(42, settings.CustomHudLabelObstructedOpacity);
-        Assert.Equal(15, settings.CustomHudLabelObstructionPaddingPixels);
-        Assert.True(settings.CustomHudLabelObstructionOnlyOverlappedLabel);
-        Assert.Equal(AkronHudAnchor.TopLeft, settings.CustomHudLabelObstructedAnchor);
-        Assert.Equal(12, settings.CustomHudLabelObstructedOffsetX);
-        Assert.Equal(-8, settings.CustomHudLabelObstructedOffsetY);
-        Assert.Equal(80, settings.LabelBulkStyle.Scale);
-        Assert.Equal(70, settings.LabelBulkStyle.Opacity);
-        Assert.Equal(12, settings.LabelBulkStyle.OffsetX);
-        Assert.Equal(90, settings.RoomLabelStyle.Scale);
-        Assert.Equal(60, settings.RoomLabelStyle.Opacity);
-        Assert.Equal(14, settings.RoomLabelStyle.OffsetY);
-        Assert.False(settings.InputsPerSecondLabelStyle.Shadow);
-        Assert.Equal(30, settings.InputsPerSecondLabelStyle.ShadowOpacity);
-        Assert.Equal(120, settings.StartPosLabelStyle.Scale);
-        Assert.Equal(65, settings.StartPosLabelStyle.Opacity);
-        Assert.Equal(-9, settings.StartPosLabelStyle.OffsetX);
-        Assert.Equal("$C deaths", settings.DeathStatsFormat);
-        Assert.Equal(AkronDeathStatsVisibility.Always, settings.DeathStatsVisibility);
-        Assert.True(settings.NoStaminaFlash);
-        Assert.True(settings.RefillClarity);
-        Assert.Equal(0x123456, settings.RefillClarityColor);
-        Assert.Equal(45, settings.RefillClarityOpacity);
-        Assert.True(settings.MadelineHairLength);
-        Assert.Equal(6, settings.MadelineNoDashHairLength);
-        Assert.Equal(7, settings.MadelineOneDashHairLength);
-        Assert.Equal(8, settings.MadelineTwoDashHairLength);
-        Assert.Equal(9, settings.MadelineThreeDashHairLength);
-        Assert.Equal(10, settings.MadelineFourDashHairLength);
-        Assert.Equal(11, settings.MadelineFiveDashHairLength);
-        Assert.True(settings.MadelineEffectSync);
-        Assert.Equal(AkronMadelineEffectSyncMode.Off, settings.MadelineDashParticleSync);
-        Assert.Equal(AkronMadelineEffectSyncMode.MatchHair, settings.MadelineDashTrailSync);
-        Assert.Equal(AkronMadelineEffectSyncMode.Off, settings.MadelineDeathEffectSync);
-        Assert.Equal(AkronMadelineEffectSyncMode.MatchHair, settings.MadelineFeatherColorSync);
-        Assert.Equal(AkronMadelineEffectSyncMode.Off, settings.MadelineCrownColorSync);
-        Assert.Equal(4, settings.ScreenshotScale);
-        Assert.False(settings.ScreenshotStatus);
     }
 
     [Theory]

@@ -13,8 +13,7 @@ public static partial class AkronCommands {
         AkronModuleSession session = AkronModule.Session;
         Log("scene: " + (Engine.Scene?.GetType().Name ?? "null"));
         Log("overlay: " + (AkronModule.IsOverlayVisible ? "visible" : "hidden"));
-        Log("profile: " + AkronModuleSettings.FormatProfile(AkronModule.Settings.ActiveProfile));
-        Log("rulesets: " + SafeStatusValue(() => AkronModule.Settings.DescribeRulesetStack(), "unavailable"));
+        Log("overlays: " + SafeStatusValue(() => AkronModule.Settings.DescribePresentationOverlays(), "unavailable"));
         Log("attempt: " + (session == null ? "unavailable" : AkronModuleSettings.FormatStatus(session.AttemptStatus)));
         Log("reason: " + (session == null ? "session unavailable outside active save context" : session.AttemptReason));
         Log("slot: " + AkronModule.Settings.ActiveSavestateSlot);

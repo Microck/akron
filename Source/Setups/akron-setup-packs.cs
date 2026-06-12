@@ -13,19 +13,18 @@ using Monocle;
 
 namespace Celeste.Mod.Akron;
 
-public sealed class AkronProfilePack {
-    public string Format { get; set; } = AkronProfilePacks.ProfilePackFormat;
-    public string Name { get; set; } = "Akron Profile";
+public sealed class AkronSetupPack {
+    public string Format { get; set; } = AkronSetupPacks.SetupPackFormat;
+    public string Name { get; set; } = "Akron Setup";
     public string CreatedUtc { get; set; } = string.Empty;
-    public AkronProfileSection Section { get; set; } = AkronProfileSection.Whole;
-    public AkronProfile ActiveProfile { get; set; } = AkronProfile.None;
-    public AkronProfileState State { get; set; } = new AkronProfileState();
+    public AkronSetupSection Section { get; set; } = AkronSetupSection.Whole;
+    public AkronSetupState State { get; set; } = new AkronSetupState();
     public Dictionary<string, AkronButtonBindingPack> ButtonBindings { get; set; } = new Dictionary<string, AkronButtonBindingPack>();
     public Dictionary<string, string> MenuActionBindings { get; set; } = new Dictionary<string, string>();
     public Dictionary<int, AkronStartPosPackEntry> StartPositions { get; set; } = new Dictionary<int, AkronStartPosPackEntry>();
 }
 
-public enum AkronProfileSection {
+public enum AkronSetupSection {
     Whole,
     StartPos,
     Keybinds,
@@ -55,12 +54,12 @@ public sealed class AkronStartPosPackEntry {
     public bool Grab { get; set; }
 }
 
-public static partial class AkronProfilePacks {
-    public const string ProfileArchiveKind = "profile";
-    public const string ProfileArchivePayload = "profile.json";
-    public const string ProfilePackFormat = "akron-profile-v1";
+public static partial class AkronSetupPacks {
+    public const string SetupArchiveKind = "setup";
+    public const string SetupArchivePayload = "setup.json";
+    public const string SetupPackFormat = "akron-setup-v1";
 
-    private const int MaxProfilePayloadBytes = 2 * 1024 * 1024;
+    private const int MaxSetupPayloadBytes = 2 * 1024 * 1024;
 
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {
         WriteIndented = true,
@@ -74,173 +73,172 @@ public static partial class AkronProfilePacks {
         .ToArray();
 
     private static readonly PropertyInfo[] HudStateProperties = BuildStatePropertyList(
-        nameof(AkronProfileState.RoomLabels),
-        nameof(AkronProfileState.LabelSystemVisible),
-        nameof(AkronProfileState.RoomLabelColor),
-        nameof(AkronProfileState.StaminaWidget),
-        nameof(AkronProfileState.SpeedWidget),
-        nameof(AkronProfileState.DashWidget),
-        nameof(AkronProfileState.InputViewer),
-        nameof(AkronProfileState.InputHistoryTextColor),
-        nameof(AkronProfileState.InputHistoryEventColor),
-        nameof(AkronProfileState.ShowTaps),
-        nameof(AkronProfileState.TapDisplayCorner),
-        nameof(AkronProfileState.TapDisplayScale),
-        nameof(AkronProfileState.TapDisplayOpacity),
-        nameof(AkronProfileState.InputBoardSource),
-        nameof(AkronProfileState.InputBoardLabelPreset),
-        nameof(AkronProfileState.InputBoardElements),
-        nameof(AkronProfileState.InputsPerSecondCounter),
-        nameof(AkronProfileState.InputsPerSecondPlacement),
-        nameof(AkronProfileState.InputsPerSecondScale),
-        nameof(AkronProfileState.InputsPerSecondOpacity),
-        nameof(AkronProfileState.InputsPerSecondTextColor),
-        nameof(AkronProfileState.InputsPerSecondShowTotal),
-        nameof(AkronProfileState.InputsPerSecondShowMax),
-        nameof(AkronProfileState.InputsPerSecondCountMovement),
-        nameof(AkronProfileState.InputsPerSecondCountActions),
-        nameof(AkronProfileState.InputsPerSecondCountMenu),
-        nameof(AkronProfileState.RoomTimerWidget),
-        nameof(AkronProfileState.RoomTimerColor),
-        nameof(AkronProfileState.RoomStatTracker),
-        nameof(AkronProfileState.RoomStatTrackerColor),
-        nameof(AkronProfileState.RoomStatShowRoomName),
-        nameof(AkronProfileState.RoomStatShowDeaths),
-        nameof(AkronProfileState.RoomStatShowInGameTime),
-        nameof(AkronProfileState.RoomStatShowStrawberries),
-        nameof(AkronProfileState.RoomStatShowAliveTime),
-        nameof(AkronProfileState.RoomStatHideIfGolden),
-        nameof(AkronProfileState.RoomStatTimerFreezeMode),
-        nameof(AkronProfileState.DeathStatsWidget),
-        nameof(AkronProfileState.DeathStatsFormat),
-        nameof(AkronProfileState.DeathStatsVisibility),
-        nameof(AkronProfileState.DeathStatsColor),
-        nameof(AkronProfileState.ResourceStaminaBar),
-        nameof(AkronProfileState.StaminaBar),
-        nameof(AkronProfileState.StaminaBarPlayer),
-        nameof(AkronProfileState.StaminaBarHud),
-        nameof(AkronProfileState.StaminaBarPlayerPosition),
-        nameof(AkronProfileState.StaminaBarHudPosition),
-        nameof(AkronProfileState.StaminaBarStyle),
-        nameof(AkronProfileState.StaminaPlayerOffsetX),
-        nameof(AkronProfileState.StaminaPlayerOffsetY),
-        nameof(AkronProfileState.StaminaPlayerScale),
-        nameof(AkronProfileState.StaminaAlwaysVisible),
-        nameof(AkronProfileState.StaminaShowDangerMarker),
-        nameof(AkronProfileState.StaminaShowChangePulse),
-        nameof(AkronProfileState.StaminaShowOverflow),
-        nameof(AkronProfileState.StaminaHideWhilePaused),
-        nameof(AkronProfileState.StaminaHudOffsetX),
-        nameof(AkronProfileState.StaminaHudOffsetY),
-        nameof(AkronProfileState.StaminaNormalColor),
-        nameof(AkronProfileState.StaminaLowColor),
-        nameof(AkronProfileState.StaminaFillColor),
-        nameof(AkronProfileState.StaminaLineColor),
-        nameof(AkronProfileState.StaminaOverflowColor),
-        nameof(AkronProfileState.DashBar),
-        nameof(AkronProfileState.DashBarPlayer),
-        nameof(AkronProfileState.DashBarHud),
-        nameof(AkronProfileState.DashBarPlayerPosition),
-        nameof(AkronProfileState.DashBarHudPosition),
-        nameof(AkronProfileState.DashBarStyle),
-        nameof(AkronProfileState.DashBarPlayerOffsetX),
-        nameof(AkronProfileState.DashBarPlayerOffsetY),
-        nameof(AkronProfileState.DashBarPlayerScale),
-        nameof(AkronProfileState.DashBarAlwaysVisible),
-        nameof(AkronProfileState.DashBarShowText),
-        nameof(AkronProfileState.DashBarShowEmptyPips),
-        nameof(AkronProfileState.DashBarHideWhilePaused),
-        nameof(AkronProfileState.DashBarHudOffsetX),
-        nameof(AkronProfileState.DashBarHudOffsetY),
-        nameof(AkronProfileState.DashBarAvailableColor),
-        nameof(AkronProfileState.DashBarEmptyColor),
-        nameof(AkronProfileState.DashBarFillColor),
-        nameof(AkronProfileState.DashBarLineColor),
-        nameof(AkronProfileState.DashBarLowColor),
-        nameof(AkronProfileState.DashNumber),
-        nameof(AkronProfileState.DashNumberOffsetY),
-        nameof(AkronProfileState.DashNumberColor),
-        nameof(AkronProfileState.DashNumberOutlineColor),
-        nameof(AkronProfileState.DashNumberOpacity),
-        nameof(AkronProfileState.SpeedNumber),
-        nameof(AkronProfileState.SpeedNumberMode),
-        nameof(AkronProfileState.SpeedNumberOffsetY),
-        nameof(AkronProfileState.SpeedNumberColor),
-        nameof(AkronProfileState.SpeedNumberOutlineColor),
-        nameof(AkronProfileState.SpeedNumberOpacity),
-        nameof(AkronProfileState.TotalAttemptsWidget),
-        nameof(AkronProfileState.TotalAttemptsColor),
-        nameof(AkronProfileState.StatusLabelsWidget),
-        nameof(AkronProfileState.StatusLabelsColor),
-        nameof(AkronProfileState.ToastLabels),
-        nameof(AkronProfileState.ToastLabelColor),
-        nameof(AkronProfileState.ToastLabelAnchor),
-        nameof(AkronProfileState.NoShortNumbers),
-        nameof(AkronProfileState.HideVanillaHud),
-        nameof(AkronProfileState.HideAkronHud),
-        nameof(AkronProfileState.CustomHudLabels),
-        nameof(AkronProfileState.CustomHudLabelsInNonLevelScenes),
-        nameof(AkronProfileState.CustomHudLabelPadding),
-        nameof(AkronProfileState.CustomHudLabelGap),
-        nameof(AkronProfileState.CustomHudLabelObstructionEnabled),
-        nameof(AkronProfileState.CustomHudLabelObstructionMode),
-        nameof(AkronProfileState.CustomHudLabelObstructedOpacity),
-        nameof(AkronProfileState.CustomHudLabelObstructionPaddingPixels),
-        nameof(AkronProfileState.CustomHudLabelObstructionOnlyOverlappedLabel),
-        nameof(AkronProfileState.CustomHudLabelObstructedAnchor),
-        nameof(AkronProfileState.CustomHudLabelObstructedOffsetX),
-        nameof(AkronProfileState.CustomHudLabelObstructedOffsetY),
-        nameof(AkronProfileState.CustomHudLabelIndex),
-        nameof(AkronProfileState.CustomHudLabelDefinitions),
-        nameof(AkronProfileState.LabelRowOrder),
-        nameof(AkronProfileState.LabelBulkStyle),
-        nameof(AkronProfileState.RoomLabelStyle),
-        nameof(AkronProfileState.InputHistoryLabelStyle),
-        nameof(AkronProfileState.InputsPerSecondLabelStyle),
-        nameof(AkronProfileState.StartPosLabelStyle),
-        nameof(AkronProfileState.RoomTimerLabelStyle),
-        nameof(AkronProfileState.DeathStatsLabelStyle),
-        nameof(AkronProfileState.TotalAttemptsLabelStyle),
-        nameof(AkronProfileState.StatusLabelsLabelStyle),
-        nameof(AkronProfileState.ToastLabelStyle),
-        nameof(AkronProfileState.HudCheatIndicator),
-        nameof(AkronProfileState.HudCheatIndicatorOnlyFlagged),
-        nameof(AkronProfileState.HudCheatIndicatorScale),
-        nameof(AkronProfileState.HudCheatIndicatorOpacity),
-        nameof(AkronProfileState.HudCheatIndicatorAnchor),
-        nameof(AkronProfileState.HudCheatIndicatorStyle));
+        nameof(AkronSetupState.RoomLabels),
+        nameof(AkronSetupState.LabelSystemVisible),
+        nameof(AkronSetupState.RoomLabelColor),
+        nameof(AkronSetupState.StaminaWidget),
+        nameof(AkronSetupState.SpeedWidget),
+        nameof(AkronSetupState.DashWidget),
+        nameof(AkronSetupState.InputViewer),
+        nameof(AkronSetupState.InputHistoryTextColor),
+        nameof(AkronSetupState.InputHistoryEventColor),
+        nameof(AkronSetupState.ShowTaps),
+        nameof(AkronSetupState.TapDisplayCorner),
+        nameof(AkronSetupState.TapDisplayScale),
+        nameof(AkronSetupState.TapDisplayOpacity),
+        nameof(AkronSetupState.InputBoardSource),
+        nameof(AkronSetupState.InputBoardLabelPreset),
+        nameof(AkronSetupState.InputBoardElements),
+        nameof(AkronSetupState.InputsPerSecondCounter),
+        nameof(AkronSetupState.InputsPerSecondPlacement),
+        nameof(AkronSetupState.InputsPerSecondScale),
+        nameof(AkronSetupState.InputsPerSecondOpacity),
+        nameof(AkronSetupState.InputsPerSecondTextColor),
+        nameof(AkronSetupState.InputsPerSecondShowTotal),
+        nameof(AkronSetupState.InputsPerSecondShowMax),
+        nameof(AkronSetupState.InputsPerSecondCountMovement),
+        nameof(AkronSetupState.InputsPerSecondCountActions),
+        nameof(AkronSetupState.InputsPerSecondCountMenu),
+        nameof(AkronSetupState.RoomTimerWidget),
+        nameof(AkronSetupState.RoomTimerColor),
+        nameof(AkronSetupState.RoomStatTracker),
+        nameof(AkronSetupState.RoomStatTrackerColor),
+        nameof(AkronSetupState.RoomStatShowRoomName),
+        nameof(AkronSetupState.RoomStatShowDeaths),
+        nameof(AkronSetupState.RoomStatShowInGameTime),
+        nameof(AkronSetupState.RoomStatShowStrawberries),
+        nameof(AkronSetupState.RoomStatShowAliveTime),
+        nameof(AkronSetupState.RoomStatHideIfGolden),
+        nameof(AkronSetupState.RoomStatTimerFreezeMode),
+        nameof(AkronSetupState.DeathStatsWidget),
+        nameof(AkronSetupState.DeathStatsFormat),
+        nameof(AkronSetupState.DeathStatsVisibility),
+        nameof(AkronSetupState.DeathStatsColor),
+        nameof(AkronSetupState.ResourceStaminaBar),
+        nameof(AkronSetupState.StaminaBar),
+        nameof(AkronSetupState.StaminaBarPlayer),
+        nameof(AkronSetupState.StaminaBarHud),
+        nameof(AkronSetupState.StaminaBarPlayerPosition),
+        nameof(AkronSetupState.StaminaBarHudPosition),
+        nameof(AkronSetupState.StaminaBarStyle),
+        nameof(AkronSetupState.StaminaPlayerOffsetX),
+        nameof(AkronSetupState.StaminaPlayerOffsetY),
+        nameof(AkronSetupState.StaminaPlayerScale),
+        nameof(AkronSetupState.StaminaAlwaysVisible),
+        nameof(AkronSetupState.StaminaShowDangerMarker),
+        nameof(AkronSetupState.StaminaShowChangePulse),
+        nameof(AkronSetupState.StaminaShowOverflow),
+        nameof(AkronSetupState.StaminaHideWhilePaused),
+        nameof(AkronSetupState.StaminaHudOffsetX),
+        nameof(AkronSetupState.StaminaHudOffsetY),
+        nameof(AkronSetupState.StaminaNormalColor),
+        nameof(AkronSetupState.StaminaLowColor),
+        nameof(AkronSetupState.StaminaFillColor),
+        nameof(AkronSetupState.StaminaLineColor),
+        nameof(AkronSetupState.StaminaOverflowColor),
+        nameof(AkronSetupState.DashBar),
+        nameof(AkronSetupState.DashBarPlayer),
+        nameof(AkronSetupState.DashBarHud),
+        nameof(AkronSetupState.DashBarPlayerPosition),
+        nameof(AkronSetupState.DashBarHudPosition),
+        nameof(AkronSetupState.DashBarStyle),
+        nameof(AkronSetupState.DashBarPlayerOffsetX),
+        nameof(AkronSetupState.DashBarPlayerOffsetY),
+        nameof(AkronSetupState.DashBarPlayerScale),
+        nameof(AkronSetupState.DashBarAlwaysVisible),
+        nameof(AkronSetupState.DashBarShowText),
+        nameof(AkronSetupState.DashBarShowEmptyPips),
+        nameof(AkronSetupState.DashBarHideWhilePaused),
+        nameof(AkronSetupState.DashBarHudOffsetX),
+        nameof(AkronSetupState.DashBarHudOffsetY),
+        nameof(AkronSetupState.DashBarAvailableColor),
+        nameof(AkronSetupState.DashBarEmptyColor),
+        nameof(AkronSetupState.DashBarFillColor),
+        nameof(AkronSetupState.DashBarLineColor),
+        nameof(AkronSetupState.DashBarLowColor),
+        nameof(AkronSetupState.DashNumber),
+        nameof(AkronSetupState.DashNumberOffsetY),
+        nameof(AkronSetupState.DashNumberColor),
+        nameof(AkronSetupState.DashNumberOutlineColor),
+        nameof(AkronSetupState.DashNumberOpacity),
+        nameof(AkronSetupState.SpeedNumber),
+        nameof(AkronSetupState.SpeedNumberMode),
+        nameof(AkronSetupState.SpeedNumberOffsetY),
+        nameof(AkronSetupState.SpeedNumberColor),
+        nameof(AkronSetupState.SpeedNumberOutlineColor),
+        nameof(AkronSetupState.SpeedNumberOpacity),
+        nameof(AkronSetupState.TotalAttemptsWidget),
+        nameof(AkronSetupState.TotalAttemptsColor),
+        nameof(AkronSetupState.StatusLabelsWidget),
+        nameof(AkronSetupState.StatusLabelsColor),
+        nameof(AkronSetupState.ToastLabels),
+        nameof(AkronSetupState.ToastLabelColor),
+        nameof(AkronSetupState.ToastLabelAnchor),
+        nameof(AkronSetupState.NoShortNumbers),
+        nameof(AkronSetupState.HideVanillaHud),
+        nameof(AkronSetupState.HideAkronHud),
+        nameof(AkronSetupState.CustomHudLabels),
+        nameof(AkronSetupState.CustomHudLabelsInNonLevelScenes),
+        nameof(AkronSetupState.CustomHudLabelPadding),
+        nameof(AkronSetupState.CustomHudLabelGap),
+        nameof(AkronSetupState.CustomHudLabelObstructionEnabled),
+        nameof(AkronSetupState.CustomHudLabelObstructionMode),
+        nameof(AkronSetupState.CustomHudLabelObstructedOpacity),
+        nameof(AkronSetupState.CustomHudLabelObstructionPaddingPixels),
+        nameof(AkronSetupState.CustomHudLabelObstructionOnlyOverlappedLabel),
+        nameof(AkronSetupState.CustomHudLabelObstructedAnchor),
+        nameof(AkronSetupState.CustomHudLabelObstructedOffsetX),
+        nameof(AkronSetupState.CustomHudLabelObstructedOffsetY),
+        nameof(AkronSetupState.CustomHudLabelIndex),
+        nameof(AkronSetupState.CustomHudLabelDefinitions),
+        nameof(AkronSetupState.LabelRowOrder),
+        nameof(AkronSetupState.LabelBulkStyle),
+        nameof(AkronSetupState.RoomLabelStyle),
+        nameof(AkronSetupState.InputHistoryLabelStyle),
+        nameof(AkronSetupState.InputsPerSecondLabelStyle),
+        nameof(AkronSetupState.StartPosLabelStyle),
+        nameof(AkronSetupState.RoomTimerLabelStyle),
+        nameof(AkronSetupState.DeathStatsLabelStyle),
+        nameof(AkronSetupState.TotalAttemptsLabelStyle),
+        nameof(AkronSetupState.StatusLabelsLabelStyle),
+        nameof(AkronSetupState.ToastLabelStyle),
+        nameof(AkronSetupState.HudCheatIndicator),
+        nameof(AkronSetupState.HudCheatIndicatorOnlyFlagged),
+        nameof(AkronSetupState.HudCheatIndicatorScale),
+        nameof(AkronSetupState.HudCheatIndicatorOpacity),
+        nameof(AkronSetupState.HudCheatIndicatorAnchor),
+        nameof(AkronSetupState.HudCheatIndicatorStyle));
 
-    public static AkronProfilePack Capture(AkronModuleSettings settings, AkronModuleSession session, string name = "", AkronProfileSection section = AkronProfileSection.Whole) {
+    public static AkronSetupPack Capture(AkronModuleSettings settings, AkronModuleSession session, string name = "", AkronSetupSection section = AkronSetupSection.Whole) {
         if (settings == null) {
             throw new ArgumentNullException(nameof(settings));
         }
 
         string created = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
         section = NormalizeSection(section);
-        return new AkronProfilePack {
+        return new AkronSetupPack {
             Name = BuildPackName(settings, name, section),
             CreatedUtc = created,
             Section = section,
-            ActiveProfile = settings.ActiveProfile,
-            State = settings.CaptureProfilePackState(),
+            State = settings.CaptureSetupPackState(),
             ButtonBindings = CaptureButtonBindings(settings),
             MenuActionBindings = new Dictionary<string, string>(settings.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal),
             StartPositions = CaptureStartPositions(session)
         };
     }
 
-    public static void Apply(AkronModuleSettings settings, AkronModuleSession session, AkronProfilePack pack, AkronProfileSection? requestedSection = null) {
+    public static void Apply(AkronModuleSettings settings, AkronModuleSession session, AkronSetupPack pack, AkronSetupSection? requestedSection = null) {
         if (settings == null) {
             throw new ArgumentNullException(nameof(settings));
         }
 
-        if (pack == null || !string.Equals(pack.Format, ProfilePackFormat, StringComparison.Ordinal)) {
-            throw new InvalidDataException("Unsupported profile pack.");
+        if (pack == null || !string.Equals(pack.Format, SetupPackFormat, StringComparison.Ordinal)) {
+            throw new InvalidDataException("Unsupported setup pack.");
         }
 
-        AkronProfileSection section = NormalizeSection(requestedSection ?? pack.Section);
-        if (section == AkronProfileSection.Whole) {
-            settings.ApplyProfilePackState(pack.ActiveProfile, pack.State);
+        AkronSetupSection section = NormalizeSection(requestedSection ?? pack.Section);
+        if (section == AkronSetupSection.Whole) {
+            settings.ApplySetupPackState(pack.State);
             ApplyButtonBindings(settings, pack.ButtonBindings);
             settings.MenuActionBindings = new Dictionary<string, string>(pack.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal);
             if (session != null) {
@@ -249,57 +247,57 @@ public static partial class AkronProfilePacks {
             return;
         }
 
-        AkronProfileState merged = settings.CaptureProfilePackState();
+        AkronSetupState merged = settings.CaptureSetupPackState();
         ApplyStateSection(merged, pack.State, section);
-        settings.ApplyProfilePackState(settings.ActiveProfile, merged);
-        if (section == AkronProfileSection.Keybinds) {
+        settings.ApplySetupPackState(merged);
+        if (section == AkronSetupSection.Keybinds) {
             ApplyButtonBindings(settings, pack.ButtonBindings);
             settings.MenuActionBindings = new Dictionary<string, string>(pack.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal);
-        } else if (section == AkronProfileSection.StartPos && session != null) {
+        } else if (section == AkronSetupSection.StartPos && session != null) {
             session.StartPositions = BuildStartPositions(pack.StartPositions);
         }
     }
 
-    public static string ExportCurrent(string name = "", AkronProfileSection section = AkronProfileSection.Whole) {
+    public static string ExportCurrent(string name = "", AkronSetupSection section = AkronSetupSection.Whole) {
         section = NormalizeSection(section);
-        AkronProfilePack pack = Capture(AkronModule.Settings, AkronModule.Session, name, section);
-        Directory.CreateDirectory(GetProfileDirectory());
+        AkronSetupPack pack = Capture(AkronModule.Settings, AkronModule.Session, name, section);
+        Directory.CreateDirectory(GetSetupDirectory());
         string fileName = SanitizeFileName(pack.Name) + "-" + DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ", CultureInfo.InvariantCulture) + AkronArchive.Extension;
-        string path = Path.Combine(GetProfileDirectory(), fileName);
+        string path = Path.Combine(GetSetupDirectory(), fileName);
         Write(AkronModule.Settings, AkronModule.Session, path, name, section);
-        Engine.Scene?.Add(new AkronToast("Exported " + FormatSection(section) + " profile " + pack.Name + "."));
+        Engine.Scene?.Add(new AkronToast("Exported " + FormatSection(section) + " setup " + pack.Name + "."));
         return path;
     }
 
-    public static bool Import(string pathOrName, AkronProfileSection? section = null) {
-        string path = ResolveProfilePath(pathOrName);
+    public static bool Import(string pathOrName, AkronSetupSection? section = null) {
+        string path = ResolveSetupPath(pathOrName);
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-            Engine.Scene?.Add(new AkronToast("Profile pack not found."));
+            Engine.Scene?.Add(new AkronToast("Setup pack not found."));
             return false;
         }
 
-        AkronProfilePack pack;
+        AkronSetupPack pack;
         try {
             pack = Read(path);
             Apply(AkronModule.Settings, AkronModule.Session, pack, section);
         } catch (Exception ex) when (ex is InvalidDataException || ex is JsonException || ex is IOException || ex is UnauthorizedAccessException) {
-            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to import Akron profile archive: " + ex.Message);
-            Engine.Scene?.Add(new AkronToast("Unsupported profile pack."));
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to import Akron setup archive: " + ex.Message);
+            Engine.Scene?.Add(new AkronToast("Unsupported setup pack."));
             return false;
         }
 
-        Engine.Scene?.Add(new AkronToast("Imported " + FormatSection(NormalizeSection(section ?? pack.Section)) + " profile " + pack.Name + "."));
+        Engine.Scene?.Add(new AkronToast("Imported " + FormatSection(NormalizeSection(section ?? pack.Section)) + " setup " + pack.Name + "."));
         return true;
     }
 
-    public static string ImportLatest(AkronProfileSection? section = null) {
-        string path = Directory.Exists(GetProfileDirectory())
-            ? Directory.GetFiles(GetProfileDirectory(), "*" + AkronArchive.Extension, SearchOption.TopDirectoryOnly)
+    public static string ImportLatest(AkronSetupSection? section = null) {
+        string path = Directory.Exists(GetSetupDirectory())
+            ? Directory.GetFiles(GetSetupDirectory(), "*" + AkronArchive.Extension, SearchOption.TopDirectoryOnly)
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .FirstOrDefault()
             : null;
         if (string.IsNullOrWhiteSpace(path)) {
-            Engine.Scene?.Add(new AkronToast("No profile packs found."));
+            Engine.Scene?.Add(new AkronToast("No setup packs found."));
             return string.Empty;
         }
 
@@ -307,155 +305,154 @@ public static partial class AkronProfilePacks {
         return path;
     }
 
-    public static bool ImportFromFileBrowser(AkronProfileSection? section = null) {
-        string directory = GetProfileDirectory();
+    public static bool ImportFromFileBrowser(AkronSetupSection? section = null) {
+        string directory = GetSetupDirectory();
         Directory.CreateDirectory(directory);
 
-        AkronProfileFilePickerResult result = TryPickProfileArchive(directory, out string path, out string error);
-        if (result == AkronProfileFilePickerResult.Selected) {
+        AkronSetupFilePickerResult result = TryPickSetupArchive(directory, out string path, out string error);
+        if (result == AkronSetupFilePickerResult.Selected) {
             return Import(path, section);
         }
 
-        if (result == AkronProfileFilePickerResult.Canceled) {
-            Engine.Scene?.Add(new AkronToast("No profile pack selected."));
+        if (result == AkronSetupFilePickerResult.Canceled) {
+            Engine.Scene?.Add(new AkronToast("No setup pack selected."));
             return false;
         }
 
-        Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to open Akron profile file browser: " + error);
-        Engine.Scene?.Add(new AkronToast("Could not open profile file browser."));
+        Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to open Akron setup file browser: " + error);
+        Engine.Scene?.Add(new AkronToast("Could not open setup file browser."));
         return false;
     }
 
-    public static void Write(AkronModuleSettings settings, AkronModuleSession session, string path, string name = "", AkronProfileSection section = AkronProfileSection.Whole) {
-        AkronProfilePack pack = Capture(settings, session, name, section);
+    public static void Write(AkronModuleSettings settings, AkronModuleSession session, string path, string name = "", AkronSetupSection section = AkronSetupSection.Whole) {
+        AkronSetupPack pack = Capture(settings, session, name, section);
         AkronArchive.WriteSinglePayloadArchive(
             path,
             new AkronArchiveManifest {
-                Kind = ProfileArchiveKind,
+                Kind = SetupArchiveKind,
                 KindVersion = 1,
                 CreatedAt = pack.CreatedUtc,
                 Target = new AkronArchiveTarget { Game = "Celeste" }
             },
-            ProfileArchivePayload,
+            SetupArchivePayload,
             JsonSerializer.Serialize(pack, JsonOptions));
     }
 
-    public static AkronProfilePack Read(string path) {
-        string payload = AkronArchive.ReadSinglePayloadArchive(path, ProfileArchiveKind, ProfileArchivePayload, MaxProfilePayloadBytes, out _);
-        AkronProfilePack pack = JsonSerializer.Deserialize<AkronProfilePack>(payload, JsonOptions);
-        if (pack == null || !string.Equals(pack.Format, ProfilePackFormat, StringComparison.Ordinal) || pack.State == null) {
-            throw new InvalidDataException("Unsupported profile pack.");
+    public static AkronSetupPack Read(string path) {
+        string payload = AkronArchive.ReadSinglePayloadArchive(path, SetupArchiveKind, SetupArchivePayload, MaxSetupPayloadBytes, out _);
+        AkronSetupPack pack = JsonSerializer.Deserialize<AkronSetupPack>(payload, JsonOptions);
+        if (pack == null || !string.Equals(pack.Format, SetupPackFormat, StringComparison.Ordinal) || pack.State == null) {
+            throw new InvalidDataException("Unsupported setup pack.");
         }
 
         return pack;
     }
 
-    public static string FormatSection(AkronProfileSection section) {
+    public static string FormatSection(AkronSetupSection section) {
         return NormalizeSection(section) switch {
-            AkronProfileSection.StartPos => "StartPos",
-            AkronProfileSection.Keybinds => "Keybinds",
-            AkronProfileSection.AutoKill => "Auto Kill",
-            AkronProfileSection.AutoDeafen => "Auto Deafen",
-            AkronProfileSection.Recorder => "Recorder",
-            AkronProfileSection.Audio => "Audio",
-            AkronProfileSection.Hud => "HUD",
+            AkronSetupSection.StartPos => "StartPos",
+            AkronSetupSection.Keybinds => "Keybinds",
+            AkronSetupSection.AutoKill => "Auto Kill",
+            AkronSetupSection.AutoDeafen => "Auto Deafen",
+            AkronSetupSection.Recorder => "Recorder",
+            AkronSetupSection.Audio => "Audio",
+            AkronSetupSection.Hud => "HUD",
             _ => "Whole"
         };
     }
 
-    public static bool TryParseSection(string value, out AkronProfileSection section) {
+    public static bool TryParseSection(string value, out AkronSetupSection section) {
         switch ((value ?? string.Empty).Trim().ToLowerInvariant().Replace("_", "-").Replace(" ", "-")) {
             case "":
             case "whole":
             case "all":
-            case "profile":
-                section = AkronProfileSection.Whole;
+            case "setup":
+                section = AkronSetupSection.Whole;
                 return true;
             case "startpos":
             case "start-pos":
-                section = AkronProfileSection.StartPos;
+                section = AkronSetupSection.StartPos;
                 return true;
             case "keybind":
             case "keybinds":
             case "bindings":
-                section = AkronProfileSection.Keybinds;
+                section = AkronSetupSection.Keybinds;
                 return true;
             case "autokill":
             case "auto-kill":
-                section = AkronProfileSection.AutoKill;
+                section = AkronSetupSection.AutoKill;
                 return true;
             case "autodeafen":
             case "auto-deafen":
-                section = AkronProfileSection.AutoDeafen;
+                section = AkronSetupSection.AutoDeafen;
                 return true;
             case "recorder":
             case "recording":
-                section = AkronProfileSection.Recorder;
+                section = AkronSetupSection.Recorder;
                 return true;
             case "audio":
             case "sound":
-                section = AkronProfileSection.Audio;
+                section = AkronSetupSection.Audio;
                 return true;
             case "hud":
             case "labels":
             case "label":
             case "custom-hud":
             case "custom-labels":
-                section = AkronProfileSection.Hud;
+                section = AkronSetupSection.Hud;
                 return true;
             default:
-                section = AkronProfileSection.Whole;
+                section = AkronSetupSection.Whole;
                 return false;
         }
     }
 
-    public static string GetProfileDirectory() {
-        return Path.Combine(Everest.PathGame, "Saves", "AkronProfiles");
+    public static string GetSetupDirectory() {
+        return Path.Combine(Everest.PathGame, "Saves", "AkronSetups");
     }
 
-    private static AkronProfileSection NormalizeSection(AkronProfileSection section) {
-        return Enum.IsDefined(typeof(AkronProfileSection), section) ? section : AkronProfileSection.Whole;
+    private static AkronSetupSection NormalizeSection(AkronSetupSection section) {
+        return Enum.IsDefined(typeof(AkronSetupSection), section) ? section : AkronSetupSection.Whole;
     }
 
-    private static string BuildPackName(AkronModuleSettings settings, string name, AkronProfileSection section) {
+    private static string BuildPackName(AkronModuleSettings settings, string name, AkronSetupSection section) {
         if (!string.IsNullOrWhiteSpace(name)) {
             return name.Trim();
         }
 
-        string profileName = AkronModuleSettings.FormatProfile(settings.ActiveProfile);
-        return section == AkronProfileSection.Whole
-            ? profileName
-            : profileName + " " + FormatSection(section);
+        return section == AkronSetupSection.Whole
+            ? "Akron Setup"
+            : "Akron " + FormatSection(section) + " Setup";
     }
 
-    private static void ApplyStateSection(AkronProfileState target, AkronProfileState source, AkronProfileSection section) {
+    private static void ApplyStateSection(AkronSetupState target, AkronSetupState source, AkronSetupSection section) {
         if (target == null || source == null) {
             return;
         }
 
         switch (section) {
-            case AkronProfileSection.StartPos:
+            case AkronSetupSection.StartPos:
                 CopyStartPosState(target, source);
                 break;
-            case AkronProfileSection.AutoKill:
+            case AkronSetupSection.AutoKill:
                 CopyAutoKillState(target, source);
                 break;
-            case AkronProfileSection.AutoDeafen:
+            case AkronSetupSection.AutoDeafen:
                 CopyAutoDeafenState(target, source);
                 break;
-            case AkronProfileSection.Recorder:
+            case AkronSetupSection.Recorder:
                 CopyRecorderState(target, source);
                 break;
-            case AkronProfileSection.Audio:
+            case AkronSetupSection.Audio:
                 CopyAudioState(target, source);
                 break;
-            case AkronProfileSection.Hud:
+            case AkronSetupSection.Hud:
                 CopyHudState(target, source);
                 break;
         }
     }
 
-    private static void CopyStartPosState(AkronProfileState target, AkronProfileState source) {
+    private static void CopyStartPosState(AkronSetupState target, AkronSetupState source) {
         target.SmartStartPos = source.SmartStartPos;
         target.RespawnAtStartPos = source.RespawnAtStartPos;
         target.StartPosShowLabel = source.StartPosShowLabel;
@@ -476,7 +473,7 @@ public static partial class AkronProfilePacks {
         target.StartPosSlotCount = source.StartPosSlotCount;
     }
 
-    private static void CopyAutoKillState(AkronProfileState target, AkronProfileState source) {
+    private static void CopyAutoKillState(AkronSetupState target, AkronSetupState source) {
         target.AutoKill = source.AutoKill;
         target.AutoKillTimer = source.AutoKillTimer;
         target.AutoKillSeconds = source.AutoKillSeconds;
@@ -490,7 +487,7 @@ public static partial class AkronProfilePacks {
         target.AutoKillAreaHeight = source.AutoKillAreaHeight;
     }
 
-    private static void CopyAutoDeafenState(AkronProfileState target, AkronProfileState source) {
+    private static void CopyAutoDeafenState(AkronSetupState target, AkronSetupState source) {
         target.AutoDeafen = source.AutoDeafen;
         target.AutoDeafenHotkey = source.AutoDeafenHotkey;
         target.AutoDeafenArea = source.AutoDeafenArea;
@@ -502,7 +499,7 @@ public static partial class AkronProfilePacks {
         target.AutoDeafenAreaHeight = source.AutoDeafenAreaHeight;
     }
 
-    private static void CopyRecorderState(AkronProfileState target, AkronProfileState source) {
+    private static void CopyRecorderState(AkronSetupState target, AkronSetupState source) {
         target.RecordingOutputFolder = source.RecordingOutputFolder;
         target.RecordingFilenameTemplate = source.RecordingFilenameTemplate;
         target.RecordingContainerFormat = source.RecordingContainerFormat;
@@ -543,7 +540,7 @@ public static partial class AkronProfilePacks {
         target.RecordingPreset = source.RecordingPreset;
     }
 
-    private static void CopyAudioState(AkronProfileState target, AkronProfileState source) {
+    private static void CopyAudioState(AkronSetupState target, AkronSetupState source) {
         target.AudioSpeed = source.AudioSpeed;
         target.AudioSpeedPolicy = source.AudioSpeedPolicy;
         target.AudioSpeedMultiplier = source.AudioSpeedMultiplier;
@@ -558,19 +555,19 @@ public static partial class AkronProfilePacks {
         target.AudioSplitterSfxDevice = source.AudioSplitterSfxDevice;
     }
 
-    private static void CopyHudState(AkronProfileState target, AkronProfileState source) {
+    private static void CopyHudState(AkronSetupState target, AkronSetupState source) {
         CopyStateProperties(target, source, HudStateProperties);
     }
 
-    private static void CopyStateProperties(AkronProfileState target, AkronProfileState source, IEnumerable<PropertyInfo> properties) {
+    private static void CopyStateProperties(AkronSetupState target, AkronSetupState source, IEnumerable<PropertyInfo> properties) {
         foreach (PropertyInfo property in properties) {
             property.SetValue(target, property.GetValue(source));
         }
     }
 
     private static PropertyInfo[] BuildStatePropertyList(params string[] names) {
-        return names.Select(name => typeof(AkronProfileState).GetProperty(name)
-            ?? throw new InvalidOperationException("Missing Akron profile state property: " + name)).ToArray();
+        return names.Select(name => typeof(AkronSetupState).GetProperty(name)
+            ?? throw new InvalidOperationException("Missing Akron setup state property: " + name)).ToArray();
     }
 
     private static List<AkronRectangleData> CopyRectangles(IEnumerable<AkronRectangleData> rectangles) {
@@ -605,7 +602,7 @@ public static partial class AkronProfilePacks {
             // Some test stubs for Everest's ButtonBinding expose invalid getters.
             // The real game binding object has normal mutable lists, but keeping
             // archive capture tolerant lets non-game tests exercise the rest of
-            // the profile contract.
+            // the setup contract.
             return new AkronButtonBindingPack();
         }
     }
@@ -691,7 +688,7 @@ public static partial class AkronProfilePacks {
         return startPositions;
     }
 
-    private static string ResolveProfilePath(string pathOrName) {
+    private static string ResolveSetupPath(string pathOrName) {
         string trimmed = pathOrName?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(trimmed)) {
             return string.Empty;
@@ -704,13 +701,13 @@ public static partial class AkronProfilePacks {
         string withExtension = trimmed.EndsWith(AkronArchive.Extension, StringComparison.OrdinalIgnoreCase)
             ? trimmed
             : trimmed + AkronArchive.Extension;
-        return Path.Combine(GetProfileDirectory(), withExtension);
+        return Path.Combine(GetSetupDirectory(), withExtension);
     }
 
     private static string SanitizeFileName(string value) {
-        string safe = new string((value ?? "profile")
+        string safe = new string((value ?? "setup")
             .Select(character => Path.GetInvalidFileNameChars().Contains(character) ? '-' : character)
             .ToArray()).Trim('-', ' ');
-        return string.IsNullOrWhiteSpace(safe) ? "profile" : safe;
+        return string.IsNullOrWhiteSpace(safe) ? "setup" : safe;
     }
 }

@@ -413,7 +413,7 @@ public partial class AkronModuleSettings {
         List<AkronRectangleData> copied = CopyAutoKillAreas(areas);
         // The latest rectangle fields are updated with every GUI/command area
         // selection. Keep them authoritative enough to restore one usable area
-        // if a profile snapshot has scalar area data but an empty list.
+        // if a setup snapshot has scalar area data but an empty list.
         if (copied.Count == 0 && width > 0 && height > 0) {
             copied.Add(new AkronRectangleData {
                 X = x,

@@ -11,7 +11,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 ### Fixed
 
 - Prevent Deload Spinners from adding simulated frames to level, session, or journal time.
-- Make Deload Spinners a one-shot action so stale settings and profile imports cannot replay the simulation after restart.
+- Make Deload Spinners a one-shot action so stale settings and setup imports cannot replay the simulation after restart.
 - Keep Mintlify's generated Open Graph previews working by using an SVG docs logo asset instead of the PNG logo path that produced empty generated preview images.
 
 ## 0.1.2-beta.16
@@ -94,7 +94,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Add Spawn Jelly, Spawn Theo, Set Inventory, Dream State, and Core Mode overlay actions.
 - Add Previous Map, Next Map, Previous Checkpoint, and Next Checkpoint creator navigation actions.
 - Put Spawn Jelly and Spawn Theo in Shortcuts as regular action buttons instead of triangle option rows.
-- Add Set Inventory dash and jump configuration, profile persistence, console controls, and optional death restore behavior.
+- Add Set Inventory dash and jump configuration, setup persistence, console controls, and optional death restore behavior.
 - Make Dream State toggle Madeline's dream dash inventory state directly from the Player tab.
 - Make Core Mode configurable as Hot or Cold, add Toggle/Cycle click behavior, and restore the level's original mode when a toggle is turned off.
 - Add console controls and status output for Set Inventory and Core Mode.
@@ -118,8 +118,6 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## 0.1.2-beta.10
 
-- Start fresh installs with no active Akron profile or primary ruleset, so features stay off until explicitly enabled.
-- Add `None` profile and ruleset selections for clearing Akron defaults from commands and overlay UI.
 - Render hover help popups on ImGui's tooltip layer so they stay visible above overlay rows.
 
 ## 0.1.2-beta.9
@@ -132,7 +130,6 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 - Keep only Open Menu, Click Teleport Cursor, and Cursor Zoom Hold bound by default.
 - Keep Open Menu user-customizable while restoring Tab only for missing or empty menu bindings.
-- Stop built-in Casual profile defaults from enabling features automatically.
 
 ## 0.1.2-beta.7
 
@@ -182,4 +179,4 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 ## 0.1.1-beta.1
 
 - Current beta version declared in `everest.yaml`.
-- Public docs cover installation, first run, overlay use, feature policy, rulesets, `.akr` archives, troubleshooting, and contributor workflow.
+- Public docs cover installation, first run, overlay use, feature policy, `.akr` archives, troubleshooting, and contributor workflow.

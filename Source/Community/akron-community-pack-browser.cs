@@ -59,7 +59,7 @@ public sealed partial class AkronOverlay {
 
     private void DrawCommunityPackBrowserContents(string popupId) {
         if (AkronCommunityPacks.CompleteDownloadIfReady(out AkronCommunityPackEntry downloaded, out string downloadedPath, out string downloadMessage)) {
-            bool imported = downloaded != null && AkronProfilePacks.Import(downloadedPath, downloaded.Section);
+            bool imported = downloaded != null && AkronSetupPacks.Import(downloadedPath, downloaded.Section);
             Engine.Scene?.Add(new AkronToast(imported ? "Imported " + downloaded.Title + "." : "Community import failed."));
         } else if (!string.IsNullOrWhiteSpace(downloadMessage)) {
             Engine.Scene?.Add(new AkronToast("Community import failed."));
@@ -94,13 +94,13 @@ public sealed partial class AkronOverlay {
         ImGui.Spacing();
         ImGui.TextDisabled("Category:");
         ImGui.SameLine();
-        DrawCommunityPackSectionChoice("All", AkronProfileSection.Whole, popupId);
+        DrawCommunityPackSectionChoice("All", AkronSetupSection.Whole, popupId);
         ImGui.SameLine();
-        DrawCommunityPackSectionChoice("StartPos", AkronProfileSection.StartPos, popupId);
+        DrawCommunityPackSectionChoice("StartPos", AkronSetupSection.StartPos, popupId);
         ImGui.SameLine();
-        DrawCommunityPackSectionChoice("Auto Kill", AkronProfileSection.AutoKill, popupId);
+        DrawCommunityPackSectionChoice("Auto Kill", AkronSetupSection.AutoKill, popupId);
         ImGui.SameLine();
-        DrawCommunityPackSectionChoice("Auto Deafen", AkronProfileSection.AutoDeafen, popupId);
+        DrawCommunityPackSectionChoice("Auto Deafen", AkronSetupSection.AutoDeafen, popupId);
 
         string mapSid = CurrentCommunityMapSid();
         AkronCommunityPackFilter filter = new AkronCommunityPackFilter {
@@ -162,7 +162,7 @@ public sealed partial class AkronOverlay {
         ImGui.Columns(1);
     }
 
-    private static void DrawCommunityPackSectionChoice(string label, AkronProfileSection section, string popupId) {
+    private static void DrawCommunityPackSectionChoice(string label, AkronSetupSection section, string popupId) {
         bool selected = AkronModule.Settings.CommunityPackSection == section;
         ImGui.PushStyleColor(ImGuiCol.Button, selected ? ToImGuiColor(0xC92735, 1f) : ToImGuiColor(0x2F2F2F, 0.75f));
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ToImGuiColor(0xE03745, 1f));
@@ -175,13 +175,13 @@ public sealed partial class AkronOverlay {
 
     private void DrawCommunityPackDetails(AkronCommunityPackEntry pack, string popupId) {
         TextWrappedLiteral(pack.Title);
-        ImGui.TextDisabled("Type: " + AkronProfilePacks.FormatSection(pack.Section));
+        ImGui.TextDisabled("Type: " + AkronSetupPacks.FormatSection(pack.Section));
         TextDisabledLiteral("Author: " + (string.IsNullOrWhiteSpace(pack.AuthorName) ? "Unknown" : pack.AuthorName));
         ImGui.Separator();
         TextWrappedLiteral(string.IsNullOrWhiteSpace(pack.Description) ? "No description provided." : pack.Description.Trim());
         ImGui.Spacing();
         TextDisabledLiteral("Image: " + (string.IsNullOrWhiteSpace(pack.ImageUrl) ? "placeholder until pack art is supplied." : pack.ImageUrl));
-        TextDisabledLiteral("Avatar: " + (string.IsNullOrWhiteSpace(pack.AuthorAvatarUrl) ? "placeholder until profile art is supplied." : pack.AuthorAvatarUrl));
+        TextDisabledLiteral("Avatar: " + (string.IsNullOrWhiteSpace(pack.AuthorAvatarUrl) ? "placeholder until author art is supplied." : pack.AuthorAvatarUrl));
         if (!string.IsNullOrWhiteSpace(pack.MapUrl)) {
             TextWrappedLiteral("Map link: " + pack.MapUrl);
         }
@@ -233,7 +233,7 @@ public sealed partial class AkronOverlay {
 
         float textX = imageMax.X + 12f;
         float textMaxWidth = Math.Max(80f, max.X - textX - 64f);
-        string metadata = AkronProfilePacks.FormatSection(pack.Section) + " - " +
+        string metadata = AkronSetupPacks.FormatSection(pack.Section) + " - " +
                           (string.IsNullOrWhiteSpace(pack.AuthorName) ? "Unknown" : pack.AuthorName) + " - " +
                           FormatCommunityPackUpdated(pack);
         drawList.AddText(new NumericsVector2(textX, min.Y + 16f), AkronImGuiTheme.ToU32(ToImGuiColor(0xFFFFFF, 1f)), TruncateImGuiText(pack.Title, (int) textMaxWidth));

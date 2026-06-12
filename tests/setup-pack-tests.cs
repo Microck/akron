@@ -5,23 +5,20 @@ using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
 
-public sealed class ProfilePackTests {
+public sealed class SetupPackTests {
     [Fact]
     public void CaptureUsesCustomExportName() {
-        AkronModuleSettings settings = new AkronModuleSettings {
-            ActiveProfile = AkronProfile.Practice
-        };
+        AkronModuleSettings settings = new AkronModuleSettings();
 
-        AkronProfilePack pack = AkronProfilePacks.Capture(settings, session: null, " Named Profile ", AkronProfileSection.Hud);
+        AkronSetupPack pack = AkronSetupPacks.Capture(settings, session: null, " Named Setup ", AkronSetupSection.Hud);
 
-        Assert.Equal("Named Profile", pack.Name);
-        Assert.Equal(AkronProfileSection.Hud, pack.Section);
+        Assert.Equal("Named Setup", pack.Name);
+        Assert.Equal(AkronSetupSection.Hud, pack.Section);
     }
 
     [Fact]
     public void ScopedAudioImportAppliesOnlyAudioState() {
         AkronModuleSettings target = new AkronModuleSettings {
-            ActiveProfile = AkronProfile.Casual,
             SmartStartPos = true,
             StartPosSlotCount = 4,
             AudioSpeed = false,
@@ -31,10 +28,9 @@ public sealed class ProfilePackTests {
         target.SoundVolumes["bird-squawk"] = 100;
         target.SoundVolumeOverrides["bird-squawk"] = false;
 
-        AkronProfilePack pack = new AkronProfilePack {
-            ActiveProfile = AkronProfile.Practice,
-            Section = AkronProfileSection.Audio,
-            State = new AkronProfileState {
+        AkronSetupPack pack = new AkronSetupPack {
+            Section = AkronSetupSection.Audio,
+            State = new AkronSetupState {
                 SmartStartPos = false,
                 StartPosSlotCount = 9,
                 AudioSpeed = true,
@@ -56,9 +52,8 @@ public sealed class ProfilePackTests {
             }
         };
 
-        AkronProfilePacks.Apply(target, session: null, pack, AkronProfileSection.Audio);
+        AkronSetupPacks.Apply(target, session: null, pack, AkronSetupSection.Audio);
 
-        Assert.Equal(AkronProfile.Casual, target.ActiveProfile);
         Assert.True(target.SmartStartPos);
         Assert.Equal(4, target.StartPosSlotCount);
         Assert.True(target.AudioSpeed);
@@ -78,7 +73,6 @@ public sealed class ProfilePackTests {
     [Fact]
     public void ScopedStartPosImportAppliesSlotsWithoutReplacingAudioState() {
         AkronModuleSettings target = new AkronModuleSettings {
-            ActiveProfile = AkronProfile.Accessibility,
             AudioSpeed = true,
             AudioSpeedMultiplier = 1.25f,
             SmartStartPos = false,
@@ -96,10 +90,9 @@ public sealed class ProfilePackTests {
             }
         };
 
-        AkronProfilePack pack = new AkronProfilePack {
-            ActiveProfile = AkronProfile.MapMaker,
-            Section = AkronProfileSection.StartPos,
-            State = new AkronProfileState {
+        AkronSetupPack pack = new AkronSetupPack {
+            Section = AkronSetupSection.StartPos,
+            State = new AkronSetupState {
                 AudioSpeed = false,
                 AudioSpeedMultiplier = 0.5f,
                 SmartStartPos = true,
@@ -123,9 +116,8 @@ public sealed class ProfilePackTests {
             }
         };
 
-        AkronProfilePacks.Apply(target, session, pack, AkronProfileSection.StartPos);
+        AkronSetupPacks.Apply(target, session, pack, AkronSetupSection.StartPos);
 
-        Assert.Equal(AkronProfile.Accessibility, target.ActiveProfile);
         Assert.True(target.AudioSpeed);
         Assert.Equal(1.25f, target.AudioSpeedMultiplier);
         Assert.Equal(125, target.SoundVolumes["bird-squawk"]);
