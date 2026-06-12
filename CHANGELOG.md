@@ -6,6 +6,14 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.19
+
+### Fixed
+
+- Render percent signs literally in tooltip descriptions, including Bloom Level's 0% and 100% text
+- Keep Click Teleport from snapping the camera back when Free Camera is active
+- Fully hide the saving icon when Hide Saving Icon is enabled or game-frame capture is active
+
 ## 0.1.2-beta.18
 
 ### Removed

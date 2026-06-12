@@ -119,6 +119,12 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void PercentTooltipsUseLiteralTextRendering() {
+        Assert.True(AkronOverlay.TooltipTextRequiresUnformattedRendering("0% removes bloom; values over 100% amplify glow."));
+        Assert.False(AkronOverlay.TooltipTextRequiresUnformattedRendering("No percent markers here."));
+    }
+
+    [Fact]
     public void StartPosRowUsesSnapshotSlotPopupKey() {
         Dictionary<string, string> popupKeys = BuildOverlayEntryOptionsPopupKeys("StartPos");
 

@@ -55,8 +55,14 @@ public partial class AkronModule {
         target.Y = Calc.Clamp(target.Y, level.Bounds.Top, level.Bounds.Bottom);
         player.Position = target;
         player.Speed = Vector2.Zero;
-        level.Camera.Position = ClampCameraToRoom(level, player.CameraTarget);
+        if (ShouldClickTeleportMoveCamera(AkronRuntimeOptions.IsFreeCameraActive(level))) {
+            level.Camera.Position = ClampCameraToRoom(level, player.CameraTarget);
+        }
         Engine.Scene?.Add(new AkronToast("Teleported to cursor."));
+    }
+
+    internal static bool ShouldClickTeleportMoveCamera(bool freeCameraActive) {
+        return !freeCameraActive;
     }
 
     private static void UpdateCursorZoom(Level level) {

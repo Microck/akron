@@ -876,10 +876,20 @@ public sealed partial class AkronOverlay {
             : new NumericsVector2(TooltipMaxWidth, 160f);
         NumericsVector2 actualSize = DrawAnchoredTooltipWindow(pendingImGuiTextTooltipAnchor, cachedSize, () => {
             ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + GetTooltipWrapWidth());
-            ImGui.TextWrapped(text);
+            DrawWrappedUnformattedTooltipText(text);
             ImGui.PopTextWrapPos();
         });
         imguiTooltipSizes[tooltipKey] = actualSize;
+    }
+
+    internal static bool TooltipTextRequiresUnformattedRendering(string text) {
+        return !string.IsNullOrEmpty(text) && text.IndexOf('%') >= 0;
+    }
+
+    private static void DrawWrappedUnformattedTooltipText(string text) {
+        // ImGui.TextWrapped treats '%' as a printf marker. Tooltip copy such as
+        // "0%" must be rendered as literal text instead of a format string.
+        ImGui.TextUnformatted(text ?? string.Empty);
     }
 
 }

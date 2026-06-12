@@ -518,6 +518,22 @@ public sealed class ModuleSettingsTests {
     }
 
     [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void ClickTeleportOnlyRecentersCameraOutsideFreeCamera(bool freeCameraActive, bool expected) {
+        Assert.Equal(expected, AkronModule.ShouldClickTeleportMoveCamera(freeCameraActive));
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void HideSavingIconSuppressesAutosaveNotice(bool isCapturingGameFrame, bool hideSavingIcon, bool expected) {
+        Assert.Equal(expected, AkronModule.ShouldSuppressSavingNotice(isCapturingGameFrame, hideSavingIcon));
+    }
+
+    [Theory]
     [InlineData(AkronScreenshotImageFormat.Png, AkronScreenshotImageFormat.Png)]
     [InlineData(AkronScreenshotImageFormat.Jpeg, AkronScreenshotImageFormat.Jpeg)]
     [InlineData((AkronScreenshotImageFormat) 99, AkronScreenshotImageFormat.Png)]

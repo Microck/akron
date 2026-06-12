@@ -375,7 +375,7 @@ public sealed partial class AkronOverlay {
             ImGui.PopStyleColor();
             ImGui.TextUnformatted(DescribeTooltipMeta(entry));
             ImGui.Separator();
-            ImGui.TextWrapped(description);
+            DrawWrappedUnformattedTooltipText(description);
             ImGui.PopTextWrapPos();
         });
         imguiTooltipSizes[tooltipKey] = actualSize;

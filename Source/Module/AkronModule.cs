@@ -130,6 +130,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.ScreenWipe.DrawPrimitives += ScreenWipeOnDrawPrimitives;
         On.Celeste.TextMenu.Update += TextMenuOnUpdate;
         On.Celeste.TextMenu.Button.ConfirmPressed += TextMenuButtonOnConfirmPressed;
+        On.Celeste.AutoSavingNotice.Update += AutoSavingNoticeOnUpdate;
         On.Celeste.AutoSavingNotice.Render += AutoSavingNoticeOnRender;
         On.Monocle.Engine.Update += EngineOnUpdate;
         On.Monocle.Engine.RenderCore += EngineOnRenderCore;
@@ -244,6 +245,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.ScreenWipe.DrawPrimitives -= ScreenWipeOnDrawPrimitives;
         On.Celeste.TextMenu.Update -= TextMenuOnUpdate;
         On.Celeste.TextMenu.Button.ConfirmPressed -= TextMenuButtonOnConfirmPressed;
+        On.Celeste.AutoSavingNotice.Update -= AutoSavingNoticeOnUpdate;
         On.Celeste.AutoSavingNotice.Render -= AutoSavingNoticeOnRender;
         On.Monocle.Engine.Update -= EngineOnUpdate;
         On.Monocle.Engine.RenderCore -= EngineOnRenderCore;
@@ -782,12 +784,26 @@ public partial class AkronModule : EverestModule {
         return currentX;
     }
 
-    private static void AutoSavingNoticeOnRender(On.Celeste.AutoSavingNotice.orig_Render orig, AutoSavingNotice self, Scene scene) {
-        if (AkronCapture.IsCapturingGameFrame || Settings.AutosaveHideSavingIcon) {
+    private static void AutoSavingNoticeOnUpdate(On.Celeste.AutoSavingNotice.orig_Update orig, AutoSavingNotice self, Scene scene) {
+        if (ShouldSuppressSavingNotice(AkronCapture.IsCapturingGameFrame, Settings.AutosaveHideSavingIcon)) {
+            self.Display = false;
+            self.StillVisible = false;
             return;
         }
 
         orig(self, scene);
+    }
+
+    private static void AutoSavingNoticeOnRender(On.Celeste.AutoSavingNotice.orig_Render orig, AutoSavingNotice self, Scene scene) {
+        if (ShouldSuppressSavingNotice(AkronCapture.IsCapturingGameFrame, Settings.AutosaveHideSavingIcon)) {
+            return;
+        }
+
+        orig(self, scene);
+    }
+
+    internal static bool ShouldSuppressSavingNotice(bool isCapturingGameFrame, bool hideSavingIcon) {
+        return isCapturingGameFrame || hideSavingIcon;
     }
 
     private static void EngineOnRenderCore(On.Monocle.Engine.orig_RenderCore orig, Engine self) {
