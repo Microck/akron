@@ -633,17 +633,17 @@ async function openEditFileManager(page, pageSection, submissionId) {
     await fileInput.waitFor({ state: "attached", timeout: 20_000 });
 
     const uploadSlot = await ensureFileUploadSlotAvailable(fileInput);
-    if (!uploadSlot.removedArchivedFile) {
+    if (!uploadSlot.removedFile) {
       return fileInput;
     }
 
     console.log(
-      `Removed archived GameBanana file ${JSON.stringify(uploadSlot.fileName)} to free an upload slot before publishing.`,
+      `Removed ${uploadSlot.fileKind} GameBanana file ${JSON.stringify(uploadSlot.fileName)} to free an upload slot before publishing.`,
     );
     await submitFileManager(page, fileInput);
   }
 
-  throw new Error("GameBanana file limit stayed full after removing archived file rows.");
+  throw new Error("GameBanana file limit stayed full after removing an old file row.");
 }
 
 async function ensureFileUploadSlotAvailable(fileInput) {
@@ -656,25 +656,24 @@ async function ensureFileUploadSlotAvailable(fileInput) {
     const uploadedCount = Number(jQueryData._nCurrentUploadedFiles ?? items.length);
 
     if (!Number.isFinite(slotCount) || uploadedCount < slotCount) {
-      return { removedArchivedFile: false };
+      return { removedFile: false };
     }
 
     const archivedItem = items.find((item) =>
       item.querySelector('.ArchivedInput[type="checkbox"]:checked'),
     );
-    if (!archivedItem) {
-      throw new Error(
-        `GameBanana file limit reached (${uploadedCount}/${slotCount}) and no archived file row is available to remove before upload.`,
-      );
-    }
+    const itemToRemove = archivedItem ?? items[items.length - 1];
 
     const fileName =
-      archivedItem.querySelector("code")?.textContent?.trim() ??
-      archivedItem.querySelector("[title]")?.getAttribute("title") ??
-      archivedItem.textContent?.replace(/\s+/g, " ").trim() ??
+      itemToRemove.querySelector("code")?.textContent?.trim() ??
+      itemToRemove.querySelector("[title]")?.getAttribute("title") ??
+      itemToRemove.textContent?.replace(/\s+/g, " ").trim() ??
       "(unknown)";
 
-    archivedItem.remove();
+    // The GameBanana edit list is newest-first. If there are no archived rows
+    // left to prune, remove the oldest active row so the newest release can be
+    // uploaded and promoted to the first active download.
+    itemToRemove.remove();
 
     if (globalThis.jQuery) {
       const data = globalThis.jQuery(input).data();
@@ -686,7 +685,7 @@ async function ensureFileUploadSlotAvailable(fileInput) {
     list?.dispatchEvent(new Event("input", { bubbles: true }));
     list?.dispatchEvent(new Event("change", { bubbles: true }));
 
-    return { removedArchivedFile: true, fileName };
+    return { removedFile: true, fileKind: archivedItem ? "archived" : "oldest active", fileName };
   });
 }
 
