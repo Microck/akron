@@ -67,6 +67,48 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void FrameStepperBindableActionIsWiredToStepOnce() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-bindable-actions.cs"));
+        int buildStart = source.IndexOf("private static IEnumerable<BindableAction> BuildBindableActions", StringComparison.Ordinal);
+        int popupStart = source.IndexOf("private static bool IsBindableOverlayEntry", buildStart, StringComparison.Ordinal);
+
+        Assert.True(buildStart >= 0);
+        Assert.True(popupStart > buildStart);
+        string buildBindableActions = source[buildStart..popupStart];
+
+        Assert.Contains("string.Equals(entry.Label, \"Frame Stepper\"", buildBindableActions);
+        Assert.Contains("? ExecuteFrameStepOnce", buildBindableActions);
+        Assert.Contains(": entry.Execute", buildBindableActions);
+    }
+
+    [Fact]
+    public void ExecuteFrameStepOnceOnlyRequestsStepWhileFreezeIsActive() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-bindable-actions.cs"));
+        int methodStart = source.IndexOf("private static void ExecuteFrameStepOnce()", StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("private static void SetGrabMode", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(nextMethod > methodStart);
+        string method = source[methodStart..nextMethod];
+
+        Assert.Contains("session?.FreezeGameplay == true", method);
+        Assert.Contains("session.StepFrameRequested = true;", method);
+        Assert.DoesNotContain("ToggleFreeze", method);
+    }
+
+    [Fact]
+    public void OverlayUpdateShortCircuitsWhenGameWindowIsInactive() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/AkronOverlay.cs"));
+        int updateStart = source.IndexOf("public override void Update()", StringComparison.Ordinal);
+        int placementUpdate = source.IndexOf("if (UpdateStartPosPlacement())", updateStart, StringComparison.Ordinal);
+        int inactiveGuard = source.IndexOf("if (!IsGameWindowInputActive())", updateStart, StringComparison.Ordinal);
+
+        Assert.True(updateStart >= 0);
+        Assert.True(placementUpdate > updateStart);
+        Assert.InRange(inactiveGuard, updateStart, placementUpdate);
+    }
+
+    [Fact]
     public void MotionSmoothingRowsStayInGlobalOnlyWhenInstalled() {
         List<string> missingLabels = BuildGlobalEntryLabels(motionSmoothingLoaded: false);
         List<string> loadedLabels = BuildGlobalEntryLabels(motionSmoothingLoaded: true);
