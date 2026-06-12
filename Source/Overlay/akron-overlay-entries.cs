@@ -793,7 +793,10 @@ public sealed partial class AkronOverlay {
     }
 
     private bool MatchesSearch(string tab, ActionEntry entry) {
-        string haystack = tab + " " + entry.Label + " " + SafeDescribeEntryValue(entry) + " " + entry.SearchTerms;
+        // Search must stay on stable row metadata. Dynamic values can scan the
+        // active level, backup folders, or other live state; doing that across
+        // every row while typing makes in-map filtering stall.
+        string haystack = tab + " " + entry.Label + " " + entry.ActionKey + " " + entry.SearchTerms;
         return haystack.IndexOf(searchQuery, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 

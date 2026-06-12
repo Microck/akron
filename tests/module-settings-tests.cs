@@ -1234,6 +1234,15 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
+    public void SearchMatchingIgnoresDynamicEntryValues() {
+        AkronOverlay overlay = CreateOverlayForListTest();
+
+        List<string> labels = BuildFilteredOverlayEntryLabels(overlay, "Level", "No level");
+
+        Assert.Empty(labels);
+    }
+
+    [Fact]
     public void SoundGroupHeadersAreNotBindableActions() {
         Dictionary<string, bool> bindableRows = BuildOverlayEntryBindableExposure("Sound");
 
@@ -2735,6 +2744,10 @@ public sealed class ModuleSettingsTests {
     }
 
     private static AkronOverlay CreateSoundOverlayForListTest() {
+        return CreateOverlayForListTest();
+    }
+
+    private static AkronOverlay CreateOverlayForListTest() {
         AkronOverlay overlay = (AkronOverlay) RuntimeHelpers.GetUninitializedObject(typeof(AkronOverlay));
         SetPrivateFieldToNewStringComparerCollection(overlay, "displayActionEntryCache");
         SetPrivateField(overlay, "expandedSoundGroups", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
