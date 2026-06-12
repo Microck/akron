@@ -6,6 +6,16 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.21
+
+### Fixed
+
+- Detect bottom killboxes accurately for hazard contact and respawn behavior.
+- Keep StartPos-restored audio state intact after loading saved positions.
+- Suppress Akron render surfaces while SpeedrunTool owns state rendering.
+- Repair Air Jumps option handling near hazard and edge cases.
+- Persist player option changes correctly, including Frame Stepper and EVM-related policy behavior.
+
 ## 0.1.2-beta.20
 
 ### Changed

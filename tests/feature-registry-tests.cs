@@ -139,17 +139,20 @@ public sealed class FeatureRegistryTests
     [Fact]
     public void ExtendedVariantPolicyFlagsOnlyUserControlledVariantOptions()
     {
-        Assert.False(AkronPolicy.ShouldFlagExtendedVariantOption(new AkronExtendedVariantOption {
+        Assert.False(AkronPolicy.ShouldFlagExtendedVariantOption(new AkronExtendedVariantOption
+        {
             Label = "Map-controlled variant",
             IsDefault = false,
             IsMapDefined = true
         }));
-        Assert.False(AkronPolicy.ShouldFlagExtendedVariantOption(new AkronExtendedVariantOption {
+        Assert.False(AkronPolicy.ShouldFlagExtendedVariantOption(new AkronExtendedVariantOption
+        {
             Label = "Default variant",
             IsDefault = true,
             IsMapDefined = false
         }));
-        Assert.True(AkronPolicy.ShouldFlagExtendedVariantOption(new AkronExtendedVariantOption {
+        Assert.True(AkronPolicy.ShouldFlagExtendedVariantOption(new AkronExtendedVariantOption
+        {
             Label = "User override",
             IsDefault = false,
             IsMapDefined = false
