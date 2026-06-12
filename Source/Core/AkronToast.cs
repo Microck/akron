@@ -34,7 +34,7 @@ public sealed class AkronToast : Entity {
 
     public override void Render() {
         if (AkronCapture.IsCapturingGameFrame ||
-            AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe() ||
+            AkronModule.ShouldHideAkronRenderSurfaces() ||
             !AkronModule.Settings.LabelSystemVisible ||
             !AkronModule.Settings.ToastLabels) {
             return;

@@ -39,7 +39,8 @@ public static partial class AkronHudRenderer {
             return;
         }
 
-        if (!ignoreDeathWipeSuppression && AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
+        if (AkronModule.ShouldHideAkronRenderSurfacesAfterStateTransition() ||
+            !ignoreDeathWipeSuppression && AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
             return;
         }
 

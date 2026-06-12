@@ -74,7 +74,7 @@ public static partial class AkronHudRenderer {
     public static void RenderAutomationAreasToGameplayBuffer(Level level) {
         if (AkronCapture.IsCapturingGameFrame ||
             level == null ||
-            AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
+            AkronModule.ShouldHideAkronRenderSurfaces()) {
             return;
         }
 

@@ -400,11 +400,32 @@ public sealed class OverlayTests {
         Assert.Contains("RenderAkronLevelHud(postRenderLevel);", source);
         Assert.Contains("if (overlayVisible && !Overlay.RenderImGui())", source);
         Assert.Contains("On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender", source);
+        Assert.Contains("ShouldHideAkronRenderSurfaces()", source);
         Assert.Contains("!ShouldRenderGameplayDebugPass(level)", source);
         Assert.Contains("AkronHudRenderer.RenderAutomationAreasToGameplayBuffer(level);", source);
         Assert.Contains("AkronEntityInspector.RenderHitboxesToGameplayBuffer(level", source);
         Assert.DoesNotContain("RenderAkronHitboxHud(postRenderLevel);", source);
         Assert.DoesNotContain("RenderAutomationDeathAreasToGameplayBuffer", source);
+    }
+
+    [Fact]
+    public void SpeedrunToolStateTransitionsSuppressAkronRenderSurfacesBriefly() {
+        string interopSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Interop/akron-interop.cs"));
+        string moduleSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/AkronModule.cs"));
+        string suppressionSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Runtime/akron-render-transition-suppression.cs"));
+
+        Assert.Contains("Celeste.Mod.SpeedrunTool.ModInterop.SaveLoadInterop+SaveLoadExports", interopSource);
+        Assert.Contains("EnsureSpeedrunToolSaveLoadHooksRegistered", interopSource);
+        Assert.Contains("AkronModule.SuppressAkronRenderSurfacesAfterStateTransition", interopSource);
+        Assert.Contains("UnregisterSpeedrunToolSaveLoadHooks", interopSource);
+        Assert.Contains("AkronInterop.EnsureSpeedrunToolSaveLoadHooksRegistered();", moduleSource);
+        Assert.Contains("AkronInterop.UnregisterSpeedrunToolSaveLoadHooks();", moduleSource);
+        Assert.DoesNotContain("typeof(SpeedrunToolSaveLoadShim).ModInterop()", moduleSource);
+        Assert.DoesNotContain("ModExportName(\"SpeedrunTool.SaveLoad\")", File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/SaveLoad/akron-save-load-exports.cs")));
+        Assert.Contains("UpdateStateTransitionRenderSuppression();", moduleSource);
+        Assert.Contains("private const int StateTransitionRenderSuppressionFrames = 12;", suppressionSource);
+        Assert.Contains("internal static bool ShouldHideAkronRenderSurfaces()", suppressionSource);
+        Assert.Contains("internal static bool ShouldHideAkronRenderSurfacesAfterStateTransition()", suppressionSource);
     }
 
     [Fact]

@@ -105,7 +105,6 @@ public partial class AkronModule : EverestModule {
         try {
             AkronImGuiRenderer.EnsureNativeResolverRegistered();
             typeof(AkronSaveLoadExports).ModInterop();
-            typeof(SpeedrunToolSaveLoadShim).ModInterop();
             AkronSpeedrunToolBroker.Initialize();
             AkronInterop.Initialize();
             AkronNativeSavestateSupport.Initialize();
@@ -223,6 +222,7 @@ public partial class AkronModule : EverestModule {
         SaveAkronSettingsNow("unload");
         AkronLog.Normal(nameof(AkronModule), "unload start");
         AkronBackupActions.NotifyShutdown();
+        AkronInterop.UnregisterSpeedrunToolSaveLoadHooks();
         AkronScreenshotScanner.Unload();
         AkronNativeSavestateSupport.Reset();
         AkronSaveLoadService.ClearRuntimeState();
@@ -317,6 +317,8 @@ public partial class AkronModule : EverestModule {
             orig(self);
         }
         AkronInterop.EnsureSpeedrunToolTabDoesNotStealAkronOverlayBinding();
+        AkronInterop.EnsureSpeedrunToolSaveLoadHooksRegistered();
+        SuppressAkronRenderSurfacesAfterStateTransition();
         Session.CurrentSessionNonce = Guid.NewGuid().ToString("N");
         AkronPolicy.ResetAttempt("New level entry started a clean Akron attempt.");
         Session.DeathsSinceLevelLoad = 0;
@@ -343,6 +345,7 @@ public partial class AkronModule : EverestModule {
     private static void LevelOnUpdate(On.Celeste.Level.orig_Update orig, Level self) {
         RunDeferredScreenWipeAction();
         UpdateDeathWipeRenderSuppression();
+        UpdateStateTransitionRenderSuppression();
         EnsureOverlay(self);
         AkronScreenshotScanner.MaintainActiveScanHost(self);
         AkronAutomationService.ProcessPendingCommands(self);
@@ -627,7 +630,7 @@ public partial class AkronModule : EverestModule {
 
         if (scene is not Level level ||
             AkronCapture.IsCapturingGameFrame ||
-            ShouldHideAkronRenderSurfacesBehindDeathWipe() ||
+            ShouldHideAkronRenderSurfaces() ||
             !ShouldRenderGameplayDebugPass(level)) {
             return;
         }
@@ -853,6 +856,7 @@ public partial class AkronModule : EverestModule {
 
     private static void EngineOnRenderCore(On.Monocle.Engine.orig_RenderCore orig, Engine self) {
         orig(self);
+        UpdateStateTransitionRenderSuppression();
         Scene scene = Engine.Scene;
         bool isLevelScene = scene is Level;
 
@@ -865,7 +869,7 @@ public partial class AkronModule : EverestModule {
             AkronInternalRecorder.CaptureFrame(scene);
         }
 
-        bool hideAkronRenderSurfaces = ShouldHideAkronRenderSurfacesBehindDeathWipe();
+        bool hideAkronRenderSurfaces = ShouldHideAkronRenderSurfaces();
 
         if (!hideAkronRenderSurfaces && scene is Level postRenderLevel) {
             RenderAkronLevelHud(postRenderLevel);

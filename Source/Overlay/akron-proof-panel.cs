@@ -22,7 +22,7 @@ public sealed class AkronProofPanel : Entity {
     }
 
     public override void Render() {
-        if (AkronCapture.IsCapturingGameFrame || AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
+        if (AkronCapture.IsCapturingGameFrame || AkronModule.ShouldHideAkronRenderSurfaces()) {
             return;
         }
 

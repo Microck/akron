@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Celeste;
 using Celeste.Mod;
 using Microsoft.Xna.Framework.Input;
 using MonoMod.ModInterop;
@@ -17,10 +18,29 @@ public static class AkronInterop {
     private static readonly EverestModuleMetadata GravityHelperMetadata = new EverestModuleMetadata { Name = "GravityHelper" };
     private static readonly EverestModuleMetadata CommunalHelperMetadata = new EverestModuleMetadata { Name = "CommunalHelper" };
     private static bool speedrunToolTabConflictMitigated;
+    private static bool speedrunToolSaveLoadHooksRegistered;
+    private static bool speedrunToolSaveLoadHookWarningLogged;
+    private static object speedrunToolSaveLoadHookRegistration;
+    private static MethodInfo speedrunToolSaveLoadUnregisterMethod;
 
     public static void Initialize() {
         typeof(RoomTimerImports).ModInterop();
         typeof(CelesteTasImports).ModInterop();
+        EnsureSpeedrunToolSaveLoadHooksRegistered();
+    }
+
+    public static void UnregisterSpeedrunToolSaveLoadHooks() {
+        try {
+            if (speedrunToolSaveLoadHookRegistration != null && speedrunToolSaveLoadUnregisterMethod != null) {
+                speedrunToolSaveLoadUnregisterMethod.Invoke(null, new[] { speedrunToolSaveLoadHookRegistration });
+            }
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to unregister Speedrun Tool save-load render suppression: " + exception.Message);
+        }
+
+        speedrunToolSaveLoadHookRegistration = null;
+        speedrunToolSaveLoadUnregisterMethod = null;
+        speedrunToolSaveLoadHooksRegistered = false;
     }
 
     public static bool SpeedrunToolLoaded => IsModLoaded(SpeedrunToolMetadata, "SpeedrunTool");
@@ -98,6 +118,44 @@ public static class AkronInterop {
             Logger.Log(LogLevel.Info, nameof(AkronModule), "Removed Tab from Speedrun Tool ToggleSaveLoadUI because Akron owns the Tab overlay binding.");
         } catch (Exception exception) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to mitigate Speedrun Tool Tab conflict: " + exception.Message);
+        }
+    }
+
+    public static void EnsureSpeedrunToolSaveLoadHooksRegistered() {
+        if (speedrunToolSaveLoadHooksRegistered) {
+            return;
+        }
+
+        try {
+            Type saveLoadExportsType = AppDomain.CurrentDomain.GetAssemblies()
+                .Where(assembly => string.Equals(assembly.GetName().Name, "SpeedrunTool", StringComparison.OrdinalIgnoreCase))
+                .Select(assembly => assembly.GetType("Celeste.Mod.SpeedrunTool.ModInterop.SaveLoadInterop+SaveLoadExports"))
+                .FirstOrDefault(type => type != null);
+            MethodInfo registerMethod = saveLoadExportsType?.GetMethod("RegisterSaveLoadAction", BindingFlags.Public | BindingFlags.Static);
+            speedrunToolSaveLoadUnregisterMethod = saveLoadExportsType?.GetMethod("Unregister", BindingFlags.Public | BindingFlags.Static);
+            if (registerMethod == null) {
+                return;
+            }
+
+            Action<Dictionary<Type, Dictionary<string, object>>, Level> afterLoadState =
+                (_, _) => AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
+            Action clearState = AkronModule.SuppressAkronRenderSurfacesAfterStateTransition;
+            Action<Level> beforeLoadState = _ => AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
+
+            speedrunToolSaveLoadHookRegistration = registerMethod.Invoke(null, new object[] {
+                null,
+                afterLoadState,
+                clearState,
+                null,
+                beforeLoadState,
+                null
+            });
+            speedrunToolSaveLoadHooksRegistered = true;
+        } catch (Exception exception) {
+            if (!speedrunToolSaveLoadHookWarningLogged) {
+                Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to register Speedrun Tool save-load render suppression: " + exception.Message);
+                speedrunToolSaveLoadHookWarningLogged = true;
+            }
         }
     }
 
