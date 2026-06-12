@@ -302,17 +302,18 @@ internal sealed class AkronImGuiRenderer : IDisposable {
             graphicsDevice.PresentationParameters.BackBufferHeight);
         io.DisplayFramebufferScale = new NumericsVector2(1f, 1f);
 
+        bool acceptsInput = AkronOverlay.IsGameWindowInputActive();
         MouseState mouse = Mouse.GetState();
         io.AddMousePosEvent(mouse.X, mouse.Y);
-        io.AddMouseButtonEvent(0, mouse.LeftButton == ButtonState.Pressed);
-        io.AddMouseButtonEvent(1, mouse.RightButton == ButtonState.Pressed);
-        io.AddMouseButtonEvent(2, mouse.MiddleButton == ButtonState.Pressed);
-        io.AddMouseButtonEvent(3, mouse.XButton1 == ButtonState.Pressed);
-        io.AddMouseButtonEvent(4, mouse.XButton2 == ButtonState.Pressed);
-        io.AddMouseWheelEvent(0f, (mouse.ScrollWheelValue - scrollWheelValue) / WheelDelta);
+        io.AddMouseButtonEvent(0, acceptsInput && mouse.LeftButton == ButtonState.Pressed);
+        io.AddMouseButtonEvent(1, acceptsInput && mouse.RightButton == ButtonState.Pressed);
+        io.AddMouseButtonEvent(2, acceptsInput && mouse.MiddleButton == ButtonState.Pressed);
+        io.AddMouseButtonEvent(3, acceptsInput && mouse.XButton1 == ButtonState.Pressed);
+        io.AddMouseButtonEvent(4, acceptsInput && mouse.XButton2 == ButtonState.Pressed);
+        io.AddMouseWheelEvent(0f, acceptsInput ? (mouse.ScrollWheelValue - scrollWheelValue) / WheelDelta : 0f);
         scrollWheelValue = mouse.ScrollWheelValue;
 
-        KeyboardState keyboard = Keyboard.GetState();
+        KeyboardState keyboard = acceptsInput ? Keyboard.GetState() : new KeyboardState();
         foreach (Keys key in allKeys) {
             if (TryMapKey(key, out ImGuiKey imguiKey)) {
                 io.AddKeyEvent(imguiKey, keyboard.IsKeyDown(key));

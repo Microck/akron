@@ -45,7 +45,7 @@ public partial class AkronModule {
             respawnTimeElapsed[deadBody] = 0f;
         }
         if (deadBody != null && Settings.RespawnTimeModifier && TryUse(AkronFeatureKind.RespawnTime)) {
-            deadBody.ActionDelay = Math.Max(deadBody.ActionDelay, AkronModuleSettings.ClampRespawnTimeSeconds(Settings.RespawnTimeSeconds));
+            deadBody.ActionDelay = AkronModuleSettings.ClampRespawnTimeSeconds(Settings.RespawnTimeSeconds);
             respawnTimeElapsed[deadBody] = 0f;
         }
         if (deadBody != null || self.Dead) {

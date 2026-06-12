@@ -49,7 +49,10 @@ public sealed partial class AkronOverlay {
                     continue;
                 }
 
-                yield return new BindableAction(BuildActionKey(tabName, entry.Label), tabName + " / " + entry.Label, entry.Execute);
+                Action execute = string.Equals(entry.Label, "Frame Stepper", StringComparison.OrdinalIgnoreCase)
+                    ? ExecuteFrameStepOnce
+                    : entry.Execute;
+                yield return new BindableAction(BuildActionKey(tabName, entry.Label), tabName + " / " + entry.Label, execute);
             }
         }
 
@@ -136,12 +139,7 @@ public sealed partial class AkronOverlay {
         yield return new BindableAction(PopupActionKey("Hazard Accuracy", "Reset"), "Hazard Accuracy / Reset", AkronModule.ResetNoclipAccuracy);
 
         yield return new BindableAction(PopupActionKey("Frame Stepper", "Freeze"), "Frame Stepper / Freeze", AkronActions.ToggleFreeze);
-        yield return new BindableAction(PopupActionKey("Frame Stepper", "Step Once"), "Frame Stepper / Step Once", () => {
-            AkronModuleSession session = AkronModule.Session;
-            if (session?.FreezeGameplay == true) {
-                session.StepFrameRequested = true;
-            }
-        });
+        yield return new BindableAction(PopupActionKey("Frame Stepper", "Step Once"), "Frame Stepper / Step Once", ExecuteFrameStepOnce);
         yield return new BindableAction(PopupActionKey("Frame Stepper", "Repeat"), "Frame Stepper / Hold Repeat", () => AkronModule.Settings.StepHoldRepeat = !AkronModule.Settings.StepHoldRepeat);
         yield return new BindableAction(PopupActionKey("Frame Stepper", "Delay Down"), "Frame Stepper / Delay Down", () => AkronModule.Settings.StepHoldDelayFrames = CycleInt(AkronModule.Settings.StepHoldDelayFrames - 6, 6, 60));
         yield return new BindableAction(PopupActionKey("Frame Stepper", "Delay Up"), "Frame Stepper / Delay Up", () => AkronModule.Settings.StepHoldDelayFrames = CycleInt(AkronModule.Settings.StepHoldDelayFrames + 6, 6, 60));
@@ -184,6 +182,13 @@ public sealed partial class AkronOverlay {
         yield return new BindableAction(PopupActionKey("StartPos", "Clear"), "StartPos / Clear", AkronActions.ClearActiveStartPos);
         yield return new BindableAction(PopupActionKey("StartPos", "Place"), "StartPos / Place", () => AkronModule.Settings.StartPosMousePlacement = !AkronModule.Settings.StartPosMousePlacement);
         yield return new BindableAction(PopupActionKey("StartPos", "Respawn"), "StartPos / Respawn Here", () => AkronModule.Settings.RespawnAtStartPos = !AkronModule.Settings.RespawnAtStartPos);
+    }
+
+    private static void ExecuteFrameStepOnce() {
+        AkronModuleSession session = AkronModule.Session;
+        if (session?.FreezeGameplay == true) {
+            session.StepFrameRequested = true;
+        }
     }
 
     private static void SetGrabMode(GrabModes mode) {

@@ -207,7 +207,7 @@ public sealed partial class AkronOverlay {
         ["TAS Status"] = new[] { "celestetas", "tas", "status", "running" },
         ["Configured TAS File"] = new[] { "celestetas", "tas", "file", "path" },
         ["Play Configured TAS"] = new[] { "celestetas", "tas", "play", "handoff" },
-        ["Extended Variants Master"] = new[] { "variants", "master switch", "cheat" },
+        ["Extended Variants Master"] = new[] { "variants", "master switch", "clean" },
         ["Extended Variants Randomizer"] = new[] { "variant randomizer", "randomizer", "reroll" },
         ["Reset Extended"] = new[] { "variant settings", "reset", "default" },
         ["Reset Vanilla"] = new[] { "vanilla variants", "reset", "default" }

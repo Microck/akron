@@ -42,4 +42,6 @@ CelesteTAS integration detects whether a TAS is active or running and provides a
 Extended Variant Mode interop exposes variant reset, master toggle, and randomizer controls when the mod is loaded. Akron reads and changes individual variant values at runtime, so the available rows depend on the installed Extended Variant Mode option list.
 
 - **Reset Extended** and **Reset Vanilla** are **Regular clean** because they restore defaults without changing live gameplay.
-- **Extended Variants Master** and **Extended Variants Randomizer** toggles are **Cheat** because they change active gameplay rules.
+- **Extended Variants Master** is **Goldberry/Hardlist clean** because some maps need Extended Variant Mode hooks enabled for their own dependencies.
+- **Extended Variants Randomizer** and user-controlled non-default variant options are **Cheat** because they change active gameplay rules.
+- Map-defined variant values are not flagged by Akron when they match Extended Variant Mode's current map-defined value.

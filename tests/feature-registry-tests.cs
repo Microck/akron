@@ -106,7 +106,7 @@ public sealed class FeatureRegistryTests
     [InlineData(AkronFeatureKind.InfiniteDash, AkronStatus.Cheat)]
     [InlineData(AkronFeatureKind.DashCountOverride, AkronStatus.Cheat)]
     [InlineData(AkronFeatureKind.MovementStatMutation, AkronStatus.Cheat)]
-    [InlineData(AkronFeatureKind.ExtendedVariantMode, AkronStatus.Cheat)]
+    [InlineData(AkronFeatureKind.ExtendedVariantMode, AkronStatus.GoldberryHardlistClean)]
     [InlineData(AkronFeatureKind.FastLookout, AkronStatus.Cheat)]
     [InlineData(AkronFeatureKind.LevelEnterSkip, AkronStatus.RegularClean)]
     [InlineData(AkronFeatureKind.DeathPbLossRestart, AkronStatus.RegularClean)]
@@ -134,6 +134,26 @@ public sealed class FeatureRegistryTests
     public void MegaHackStyleCheatIndicatorOnlyFlagsCheatStatus(AkronStatus status, bool expectedFlagged)
     {
         Assert.Equal(expectedFlagged, AkronPolicy.IsMegaHackStyleCheatIndicatorFlagged(status));
+    }
+
+    [Fact]
+    public void ExtendedVariantPolicyFlagsOnlyUserControlledVariantOptions()
+    {
+        Assert.False(AkronPolicy.ShouldFlagExtendedVariantOption(new AkronExtendedVariantOption {
+            Label = "Map-controlled variant",
+            IsDefault = false,
+            IsMapDefined = true
+        }));
+        Assert.False(AkronPolicy.ShouldFlagExtendedVariantOption(new AkronExtendedVariantOption {
+            Label = "Default variant",
+            IsDefault = true,
+            IsMapDefined = false
+        }));
+        Assert.True(AkronPolicy.ShouldFlagExtendedVariantOption(new AkronExtendedVariantOption {
+            Label = "User override",
+            IsDefault = false,
+            IsMapDefined = false
+        }));
     }
 
     [Theory]
@@ -339,7 +359,7 @@ public sealed class FeatureRegistryTests
     [InlineData("Fix Hitbox Pixels", AkronStatus.RegularClean)]
     [InlineData("Show Hitboxes On Death", AkronStatus.RegularClean)]
     [InlineData("Room Timer", AkronStatus.RegularClean)]
-    [InlineData("Extended Variants Master", AkronStatus.Cheat)]
+    [InlineData("Extended Variants Master", AkronStatus.GoldberryHardlistClean)]
     [InlineData("Reset Extended", AkronStatus.RegularClean)]
     [InlineData("Reset Vanilla", AkronStatus.RegularClean)]
     [InlineData("Submission Mode", AkronStatus.GoldberryHardlistClean)]

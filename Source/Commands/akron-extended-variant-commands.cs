@@ -58,6 +58,7 @@ public static partial class AkronCommands {
 
                 AkronExtendedVariants.MasterSwitch = true;
                 AkronExtendedVariants.RandomizerEnabled = randomizer;
+                AkronExtendedVariants.RecordRandomizerCheatUseIfEnabled();
                 Log("evm-randomizer: " + AkronExtendedVariants.RandomizerEnabled.ToString().ToLowerInvariant());
                 return;
             case "display":
@@ -86,6 +87,7 @@ public static partial class AkronCommands {
                 }
 
                 if (AkronExtendedVariants.TryToggleConfigured(variant, out string toggleMessage)) {
+                    AkronExtendedVariants.RecordVariantCheatUseIfUserControlled(variant);
                     Log("evm-toggle: " + toggleMessage);
                 } else {
                     Log("evm-toggle-failed: " + toggleMessage);
@@ -103,6 +105,7 @@ public static partial class AkronCommands {
                 }
 
                 if (AkronExtendedVariants.TrySetConfiguredFromText(variant, value, out string configureMessage)) {
+                    AkronExtendedVariants.RecordVariantCheatUseIfUserControlled(variant);
                     Log("evm-configure: " + configureMessage);
                 } else {
                     Log("evm-configure-failed: " + configureMessage);
@@ -120,6 +123,7 @@ public static partial class AkronCommands {
                 }
 
                 if (AkronExtendedVariants.TrySetFromText(variant, value, out string message)) {
+                    AkronExtendedVariants.RecordVariantCheatUseIfUserControlled(variant);
                     Log("evm-set: " + message);
                 } else {
                     Log("evm-set-failed: " + message);

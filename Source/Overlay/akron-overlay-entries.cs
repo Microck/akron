@@ -753,6 +753,7 @@ public sealed partial class AkronOverlay {
         }
 
         if (AkronExtendedVariants.TrySetValue(option.Name, value, out string message)) {
+            AkronExtendedVariants.RecordVariantCheatUseIfUserControlled(option.Name);
             Engine.Scene?.Add(new AkronToast(message));
         }
     }
@@ -763,6 +764,7 @@ public sealed partial class AkronOverlay {
         }
 
         if (AkronExtendedVariants.TrySetConfiguredValue(option.Name, value, out string message)) {
+            AkronExtendedVariants.RecordVariantCheatUseIfUserControlled(option.Name);
             Engine.Scene?.Add(new AkronToast(message));
         }
     }
@@ -773,6 +775,7 @@ public sealed partial class AkronOverlay {
         }
 
         if (AkronExtendedVariants.TrySetConfiguredFromText(option.Name, value, out string message)) {
+            AkronExtendedVariants.RecordVariantCheatUseIfUserControlled(option.Name);
             Engine.Scene?.Add(new AkronToast(message));
         } else {
             Engine.Scene?.Add(new AkronToast(message));

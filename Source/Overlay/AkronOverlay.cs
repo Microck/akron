@@ -171,6 +171,10 @@ public sealed partial class AkronOverlay : Entity {
         }
     }
 
+    internal static bool IsGameWindowInputActive() {
+        return Engine.Instance == null || Engine.Instance.IsActive;
+    }
+
     public AkronOverlay() {
         Tag = Tags.HUD | Tags.Global | Tags.PauseUpdate;
         Visible = false;
@@ -196,6 +200,12 @@ public sealed partial class AkronOverlay : Entity {
             Active = false;
             SearchInputConsumedThisFrame = false;
             SearchOwnsGameplayInputThisFrame = false;
+            return;
+        }
+
+        if (!IsGameWindowInputActive()) {
+            SearchInputConsumedThisFrame = true;
+            SearchOwnsGameplayInputThisFrame = true;
             return;
         }
 

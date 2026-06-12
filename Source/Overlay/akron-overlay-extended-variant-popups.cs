@@ -15,6 +15,7 @@ public sealed partial class AkronOverlay {
             if (!enabled || AkronModule.TryUse(AkronFeatureKind.ExtendedVariantMode)) {
                 AkronExtendedVariants.MasterSwitch = true;
                 AkronExtendedVariants.RandomizerEnabled = enabled;
+                AkronExtendedVariants.RecordRandomizerCheatUseIfEnabled();
             }
         }
         DrawPopupTooltip("Use the external variant randomizer loop.");
@@ -23,6 +24,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Checkbox("Reroll mode##" + popupId, ref reroll)) {
             if (AkronModule.TryUse(AkronFeatureKind.ExtendedVariantMode)) {
                 AkronExtendedVariants.RandomizerRerollMode = reroll;
+                AkronExtendedVariants.RecordRandomizerCheatUseIfEnabled();
             }
         }
         DrawPopupTooltip("Replace the randomized variant set instead of changing one option at a time.");
@@ -36,7 +38,10 @@ public sealed partial class AkronOverlay {
         DrawIntStepperRow(
             "Interval",
             () => AkronExtendedVariants.RandomizerInterval,
-            value => AkronExtendedVariants.RandomizerInterval = value,
+            value => {
+                AkronExtendedVariants.RandomizerInterval = value;
+                AkronExtendedVariants.RecordRandomizerCheatUseIfEnabled();
+            },
             -5,
             5,
             0,
@@ -47,7 +52,10 @@ public sealed partial class AkronOverlay {
         DrawIntStepperRow(
             "Max",
             () => AkronExtendedVariants.RandomizerMaxEnabled,
-            value => AkronExtendedVariants.RandomizerMaxEnabled = value,
+            value => {
+                AkronExtendedVariants.RandomizerMaxEnabled = value;
+                AkronExtendedVariants.RecordRandomizerCheatUseIfEnabled();
+            },
             -1,
             1,
             0,

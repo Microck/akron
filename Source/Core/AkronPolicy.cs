@@ -252,21 +252,28 @@ public static class AkronPolicy
 
     private static void AddExtendedVariantContributors(List<AkronActiveCheatContributor> contributors)
     {
-        if (!AkronExtendedVariants.Available || AkronFeatureRegistry.Classify(AkronFeatureKind.ExtendedVariantMode) != AkronStatus.Cheat)
+        if (!AkronExtendedVariants.Available)
         {
             return;
         }
 
-        AddIfCheat(contributors, AkronExtendedVariants.MasterSwitch, "Extended Variants Master", "akron_evm master off", AkronFeatureKind.ExtendedVariantMode);
-        AddIfCheat(contributors, AkronExtendedVariants.RandomizerEnabled, "Extended Variants Randomizer", "akron_evm randomizer off", AkronFeatureKind.ExtendedVariantMode);
+        if (AkronExtendedVariants.RandomizerEnabled)
+        {
+            contributors.Add(new AkronActiveCheatContributor("Extended Variants Randomizer", "akron_evm randomizer off", AkronFeatureKind.ExtendedVariantMode));
+        }
 
         foreach (AkronExtendedVariantOption option in AkronExtendedVariants.GetOptions())
         {
-            if (!option.IsDefault)
+            if (ShouldFlagExtendedVariantOption(option))
             {
                 contributors.Add(new AkronActiveCheatContributor(option.Label, "Turn off " + option.Label, AkronFeatureKind.ExtendedVariantMode));
             }
         }
+    }
+
+    internal static bool ShouldFlagExtendedVariantOption(AkronExtendedVariantOption option)
+    {
+        return option != null && !option.IsDefault && !option.IsMapDefined;
     }
 
     private static AkronStatus Max(AkronStatus left, AkronStatus right)

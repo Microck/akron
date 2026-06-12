@@ -16,6 +16,7 @@ public sealed class AkronExtendedVariantOption {
     public object CurrentValue { get; set; }
     public object DefaultValue { get; set; }
     public bool IsDefault { get; set; }
+    public bool IsMapDefined { get; set; }
     public string ConfiguredValueText { get; set; } = string.Empty;
 }
 
@@ -30,6 +31,7 @@ public static class AkronExtendedVariants {
     private static Type uiEntriesType;
     private static Type triggerManagerType;
     private static MethodInfo getCurrentVariantValueMethod;
+    private static MethodInfo getCurrentMapDefinedVariantValueMethod;
     private static MethodInfo setVariantValueMethod;
     private static MethodInfo resetExtendedVariantsMethod;
     private static MethodInfo resetVanillaVariantsMethod;
@@ -327,6 +329,23 @@ public static class AkronExtendedVariants {
         ResetExtended();
     }
 
+    public static bool IsUserControlledVariantActive(string name) {
+        AkronExtendedVariantOption option = GetOption(name);
+        return AkronPolicy.ShouldFlagExtendedVariantOption(option);
+    }
+
+    public static void RecordVariantCheatUseIfUserControlled(string name) {
+        if (IsUserControlledVariantActive(name)) {
+            AkronPolicy.RecordCheatUse("An Extended Variant Mode option changed active gameplay rules.");
+        }
+    }
+
+    public static void RecordRandomizerCheatUseIfEnabled() {
+        if (RandomizerEnabled) {
+            AkronPolicy.RecordCheatUse("Extended Variant Mode randomizer changed active gameplay rules.");
+        }
+    }
+
     public static void ResetExtended() {
         if (Available) {
             resetExtendedVariantsMethod?.Invoke(GetInstance(), Array.Empty<object>());
@@ -581,6 +600,7 @@ public static class AkronExtendedVariants {
 
     private static AkronExtendedVariantOption BuildOption(VariantMetadata metadata) {
         object current = GetCurrentValue(metadata.Variant);
+        object mapDefined = GetCurrentMapDefinedValue(metadata.Variant, metadata.DefaultValue);
         return new AkronExtendedVariantOption {
             Name = metadata.Name,
             Label = metadata.Label,
@@ -588,6 +608,7 @@ public static class AkronExtendedVariants {
             CurrentValue = current,
             DefaultValue = metadata.DefaultValue,
             IsDefault = ValuesMatch(current, metadata.DefaultValue),
+            IsMapDefined = !ValuesMatch(mapDefined, metadata.DefaultValue) && ValuesMatch(current, mapDefined),
             ConfiguredValueText = GetConfiguredValueText(metadata.Name)
         };
     }
@@ -678,6 +699,11 @@ public static class AkronExtendedVariants {
         return getCurrentVariantValueMethod?.Invoke(triggerManager, new[] { variant });
     }
 
+    private static object GetCurrentMapDefinedValue(object variant, object defaultValue) {
+        object triggerManager = GetTriggerManager();
+        return getCurrentMapDefinedVariantValueMethod?.Invoke(triggerManager, new[] { variant }) ?? defaultValue;
+    }
+
     private static bool HasHandler(object variant) {
         return GetHandler(variant) != null;
     }
@@ -762,6 +788,7 @@ public static class AkronExtendedVariants {
         settingsProperty = moduleType.GetProperty("Settings", BindingFlags.Static | BindingFlags.Public);
         variantHandlersField = moduleType.GetField("VariantHandlers", BindingFlags.Instance | BindingFlags.Public);
         getCurrentVariantValueMethod = triggerManagerType.GetMethod("GetCurrentVariantValue", BindingFlags.Instance | BindingFlags.Public);
+        getCurrentMapDefinedVariantValueMethod = triggerManagerType.GetMethod("GetCurrentMapDefinedVariantValue", BindingFlags.Instance | BindingFlags.Public);
         setVariantValueMethod = uiEntriesType.GetMethod("SetVariantValue", BindingFlags.Static | BindingFlags.Public);
         resetExtendedVariantsMethod = moduleType.GetMethod("ResetExtendedVariantsToDefaultSettings", BindingFlags.Instance | BindingFlags.Public);
         resetVanillaVariantsMethod = moduleType.GetMethod("ResetVanillaVariantsToDefaultSettings", BindingFlags.Instance | BindingFlags.Public);
