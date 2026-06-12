@@ -254,6 +254,7 @@ public partial class AkronModuleSettings {
             JumpHack = JumpHack,
             JumpHackInfinite = JumpHackInfinite,
             JumpHackExtraJumps = JumpHackExtraJumps,
+            JumpHackAllowVerticalDashJumps = JumpHackAllowVerticalDashJumps,
             NoFreezeFrames = NoFreezeFrames,
             GroundRefillRules = GroundRefillRules,
             GroundDashRefill = GroundDashRefill,

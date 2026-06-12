@@ -71,7 +71,17 @@ public partial class AkronModule {
         // sample actual death-hazard contact; the Player.Die hook covers the
         // broader hazard set while this keeps "while touching" tint responsive
         // for vanilla spikes.
-        return player.CollideCheck<Spikes>();
+        return player.CollideCheck<Spikes>() ||
+               IsPlayerTouchingBottomKillbox(player);
+    }
+
+    internal static bool IsPlayerTouchingBottomKillbox(Player player) {
+        return player?.Scene is Level level &&
+               IsPlayerTouchingBottomKillbox(player.Top, level.Bounds.Bottom);
+    }
+
+    internal static bool IsPlayerTouchingBottomKillbox(float playerTop, int levelBottom) {
+        return playerTop > levelBottom + 64f;
     }
 
     private static bool IsHazardAccuracyAllowed() {

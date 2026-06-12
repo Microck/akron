@@ -98,6 +98,12 @@ public sealed partial class AkronOverlay {
             99,
             popupId,
             "Used when Infinite jumps is off.");
+
+        bool allowVerticalDashJumps = AkronModule.Settings.JumpHackAllowVerticalDashJumps;
+        if (ImGui.Checkbox("Dash verticals##" + popupId, ref allowVerticalDashJumps)) {
+            AkronModule.Settings.JumpHackAllowVerticalDashJumps = allowVerticalDashJumps;
+        }
+        DrawPopupTooltip("Allow Air Jumps to cancel vertical or upward dash directions. Off keeps vanilla dash-jump direction rules.");
     }
 
     private void DrawCoreModePopupControls(string popupId) {
@@ -178,10 +184,9 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip("Restore the pre-click dash and Air Jumps settings on the next death.");
 
         if (ImGui.Button("Set##" + popupId) && Engine.Scene is Level level) {
-            AkronModule.Settings.SetInventoryRestoreOnDeath = true;
             AkronActions.ApplySetInventory(level);
         }
-        DrawPopupTooltip("Apply the configured inventory to Madeline now and arm the restore-on-death snapshot.");
+        DrawPopupTooltip("Apply the configured inventory to Madeline now. Restore on Death controls whether a snapshot is armed.");
 
         ImGui.TextUnformatted(AkronModule.Settings.SetInventoryRestoreOnDeath
             ? "Restore snapshot is captured on apply."

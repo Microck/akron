@@ -11,6 +11,8 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
+    internal const int PlayerDashState = 2;
+
     private static PlayerDeadBody PlayerOnDie(On.Celeste.Player.orig_Die orig, Player self, Vector2 direction, bool evenIfInvincible, bool registerDeathInStats) {
         Level level = self.Scene as Level;
         Vector2 deathPosition = self.Center;
@@ -280,10 +282,17 @@ public partial class AkronModule {
             return;
         }
 
-        if (!player.InControl ||
+        if (ShouldPreserveVanillaJump(player) ||
+            !player.InControl ||
             !player.CanUnDuck ||
             !Input.Jump.Pressed ||
             TalkComponent.PlayerOver != null && Input.Talk.Pressed) {
+            return;
+        }
+
+        int state = player.StateMachine.State;
+        Vector2 dashDirection = player.DashDir;
+        if (ShouldSkipAirJumpForDashDirection(state, dashDirection, Settings.JumpHackAllowVerticalDashJumps)) {
             return;
         }
 
@@ -296,8 +305,51 @@ public partial class AkronModule {
             return;
         }
 
-        player.Jump();
+        if (ShouldUseSuperJumpForAirJump(state, dashDirection)) {
+            InvokePlayerSuperJump(player);
+        } else {
+            player.Jump();
+        }
         jumpHackAirJumpsUsed++;
+    }
+
+    private static bool ShouldPreserveVanillaJump(Player player) {
+        return ShouldPreserveVanillaJumpForAirJump(GetPlayerJumpGraceTimer(player));
+    }
+
+    private static float GetPlayerJumpGraceTimer(Player player) {
+        if (player == null || PlayerJumpGraceTimerField?.GetValue(player) is not float jumpGraceTimer) {
+            return 0f;
+        }
+
+        return jumpGraceTimer;
+    }
+
+    internal static bool ShouldPreserveVanillaJumpForAirJump(float jumpGraceTimer) {
+        return jumpGraceTimer > 0f;
+    }
+
+    internal static bool ShouldSkipAirJumpForDashDirection(int playerState, Vector2 dashDirection, bool allowVerticalDashJumps) {
+        return playerState == PlayerDashState &&
+               !allowVerticalDashJumps &&
+               !IsVanillaDashJumpDirection(dashDirection);
+    }
+
+    internal static bool ShouldUseSuperJumpForAirJump(int playerState, Vector2 dashDirection) {
+        return playerState == PlayerDashState && IsVanillaDashJumpDirection(dashDirection);
+    }
+
+    internal static bool IsVanillaDashJumpDirection(Vector2 dashDirection) {
+        return Math.Abs(dashDirection.X) > 0.001f && dashDirection.Y >= -0.001f;
+    }
+
+    private static void InvokePlayerSuperJump(Player player) {
+        if (PlayerSuperJumpMethod == null) {
+            player.Jump();
+            return;
+        }
+
+        PlayerSuperJumpMethod.Invoke(player, Array.Empty<object>());
     }
 
     private static void ApplyDashCountOverride(Player player, bool refillCurrent) {

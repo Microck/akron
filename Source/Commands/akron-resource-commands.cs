@@ -586,7 +586,7 @@ public static partial class AkronCommands {
         LogSpeedNumberSettings();
     }
 
-    [Command("akron_air_jumps", "control Air Jumps: on|off|status|infinite on|off|extra <n>")]
+    [Command("akron_air_jumps", "control Air Jumps: on|off|status|infinite on|off|extra <n>|dash-verticals on|off")]
     public static void AirJumps(string action = "status", string value = "") {
         switch (NormalizeToken(action)) {
             case "":
@@ -623,6 +623,14 @@ public static partial class AkronCommands {
                     return;
                 }
                 AkronModule.Settings.JumpHackExtraJumps = AkronModuleSettings.ClampJumpHackExtraJumps(extra);
+                break;
+            case "dashverticals":
+            case "dash-verticals":
+                if (!TryParseBoolean(value, out bool dashVerticals)) {
+                    Log("invalid air-jumps dash-verticals toggle: " + value);
+                    return;
+                }
+                AkronModule.Settings.JumpHackAllowVerticalDashJumps = dashVerticals;
                 break;
             default:
                 Log("unknown air-jumps action: " + action);

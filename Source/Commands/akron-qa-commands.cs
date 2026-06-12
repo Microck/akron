@@ -237,6 +237,7 @@ public static partial class AkronCommands {
         Log("air-jumps: " + AkronModule.Settings.JumpHack.ToString().ToLowerInvariant());
         Log("air-jumps-infinite: " + AkronModule.Settings.JumpHackInfinite.ToString().ToLowerInvariant());
         Log("air-jumps-extra: " + AkronModule.Settings.JumpHackExtraJumps.ToString(CultureInfo.InvariantCulture));
+        Log("air-jumps-dash-verticals: " + AkronModule.Settings.JumpHackAllowVerticalDashJumps.ToString().ToLowerInvariant());
         Log("set-inventory-restore: " + (AkronModule.Session?.SetInventoryRestoreSnapshot != null).ToString().ToLowerInvariant());
         Log("level-core-mode: " + level.CoreMode);
         int gliderCount = 0;

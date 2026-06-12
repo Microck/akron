@@ -237,6 +237,7 @@ public static partial class AkronCommands {
         Log("jump-hack: " + AkronModule.Settings.JumpHack.ToString().ToLowerInvariant());
         Log("jump-hack-infinite: " + AkronModule.Settings.JumpHackInfinite.ToString().ToLowerInvariant());
         Log("jump-hack-extra-jumps: " + AkronModule.Settings.JumpHackExtraJumps.ToString(CultureInfo.InvariantCulture));
+        Log("jump-hack-dash-verticals: " + AkronModule.Settings.JumpHackAllowVerticalDashJumps.ToString().ToLowerInvariant());
         Log("auto-kill: " + AkronModule.Settings.AutoKill.ToString().ToLowerInvariant());
         Log("auto-kill-timer: " + AkronModule.Settings.AutoKillTimer.ToString().ToLowerInvariant());
         Log("auto-kill-seconds: " + AkronModule.Settings.AutoKillSeconds.ToString(CultureInfo.InvariantCulture));

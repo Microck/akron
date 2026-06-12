@@ -312,6 +312,7 @@ public sealed class AkronSetInventorySnapshot {
     public bool JumpHack { get; set; }
     public bool JumpHackInfinite { get; set; }
     public int JumpHackExtraJumps { get; set; }
+    public bool JumpHackAllowVerticalDashJumps { get; set; }
 }
 
 public readonly struct AkronStartPosEntry {

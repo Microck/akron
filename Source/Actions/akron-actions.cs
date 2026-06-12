@@ -83,7 +83,6 @@ public static partial class AkronActions {
             return;
         }
 
-        AkronModule.Settings.SetInventoryRestoreOnDeath = true;
         ApplySetInventory(level);
     }
 
@@ -157,6 +156,7 @@ public static partial class AkronActions {
         AkronModule.Settings.JumpHack = snapshot.JumpHack;
         AkronModule.Settings.JumpHackInfinite = snapshot.JumpHackInfinite;
         AkronModule.Settings.JumpHackExtraJumps = AkronModuleSettings.ClampJumpHackExtraJumps(snapshot.JumpHackExtraJumps);
+        AkronModule.Settings.JumpHackAllowVerticalDashJumps = snapshot.JumpHackAllowVerticalDashJumps;
         ClearSetInventory();
     }
 
@@ -167,7 +167,8 @@ public static partial class AkronActions {
             PlayerDashes = player.Dashes,
             JumpHack = AkronModule.Settings.JumpHack,
             JumpHackInfinite = AkronModule.Settings.JumpHackInfinite,
-            JumpHackExtraJumps = AkronModule.Settings.JumpHackExtraJumps
+            JumpHackExtraJumps = AkronModule.Settings.JumpHackExtraJumps,
+            JumpHackAllowVerticalDashJumps = AkronModule.Settings.JumpHackAllowVerticalDashJumps
         };
     }
 

@@ -83,6 +83,10 @@ public partial class AkronModule : EverestModule {
         typeof(PlayerDeadBody).GetMethod("End", BindingFlags.Instance | BindingFlags.NonPublic);
     private static readonly FieldInfo PlayerDeadBodyDeathEffectField =
         typeof(PlayerDeadBody).GetField("deathEffect", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly MethodInfo PlayerSuperJumpMethod =
+        typeof(Player).GetMethod("SuperJump", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly FieldInfo PlayerJumpGraceTimerField =
+        typeof(Player).GetField("jumpGraceTimer", BindingFlags.Instance | BindingFlags.NonPublic);
     private static readonly MethodInfo EverestSaveSettingsMethod =
         typeof(Everest).GetMethod("_SaveSettings", BindingFlags.Static | BindingFlags.NonPublic);
     private static MethodInfo playerDashCoroutineMethod;
@@ -974,7 +978,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void RescueInvinciblePlayerFromBottomlessFall(Level level, Player player) {
-        if (player.Top <= level.Bounds.Bottom + 64f ||
+        if (!IsPlayerTouchingBottomKillbox(player) ||
             player.StateMachine.State == Player.StReflectionFall ||
             player.StateMachine.State == Player.StTempleFall ||
             level.Transitioning) {

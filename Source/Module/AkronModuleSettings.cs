@@ -290,6 +290,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool JumpHack { get; set; }
     public bool JumpHackInfinite { get; set; } = true;
     public int JumpHackExtraJumps { get; set; } = 1;
+    public bool JumpHackAllowVerticalDashJumps { get; set; }
     public bool NoFreezeFrames { get; set; }
     public bool GroundRefillRules { get; set; }
     public bool GroundDashRefill { get; set; } = true;

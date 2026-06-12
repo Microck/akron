@@ -252,7 +252,7 @@ public sealed class OverlayTests {
     }
 
     [Fact]
-    public void SetInventoryPopupUsesSetButtonAndArmsRestoreSnapshot() {
+    public void SetInventoryPopupUsesSetButtonAndRespectsRestoreCheckbox() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-gameplay-popups.cs"));
         int start = source.IndexOf("private void DrawSetInventoryPopupControls", StringComparison.Ordinal);
         int end = source.IndexOf("private void DrawDreamStatePopupControls", start, StringComparison.Ordinal);
@@ -262,8 +262,22 @@ public sealed class OverlayTests {
         string setInventoryPopup = source[start..end];
 
         Assert.Contains("ImGui.Button(\"Set##\"", setInventoryPopup);
-        Assert.Contains("AkronModule.Settings.SetInventoryRestoreOnDeath = true;", setInventoryPopup);
+        Assert.DoesNotContain("AkronModule.Settings.SetInventoryRestoreOnDeath = true;", setInventoryPopup);
         Assert.DoesNotContain("Apply now##", setInventoryPopup);
+    }
+
+    [Fact]
+    public void AirJumpPopupExposesVerticalDashSuboption() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-gameplay-popups.cs"));
+        int start = source.IndexOf("private void DrawAirJumpsPopupControls", StringComparison.Ordinal);
+        int end = source.IndexOf("private void DrawCoreModePopupControls", start, StringComparison.Ordinal);
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        string airJumpPopup = source[start..end];
+
+        Assert.Contains("Dash verticals##", airJumpPopup);
+        Assert.Contains("JumpHackAllowVerticalDashJumps", airJumpPopup);
     }
 
     [Fact]

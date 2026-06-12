@@ -350,6 +350,7 @@ public static partial class AkronCommands {
         Log("jump-hack: " + AkronModule.Settings.JumpHack.ToString().ToLowerInvariant());
         Log("jump-hack-infinite: " + AkronModule.Settings.JumpHackInfinite.ToString().ToLowerInvariant());
         Log("jump-hack-extra-jumps: " + AkronModule.Settings.JumpHackExtraJumps.ToString(CultureInfo.InvariantCulture));
+        Log("jump-hack-dash-verticals: " + AkronModule.Settings.JumpHackAllowVerticalDashJumps.ToString().ToLowerInvariant());
         Log("respawn-time: " + AkronModule.Settings.RespawnTimeModifier.ToString().ToLowerInvariant());
         Log("respawn-time-seconds: " + AkronModule.Settings.RespawnTimeSeconds.ToString("0.0", CultureInfo.InvariantCulture));
         Log("respawn-time-ignore-speedhack: " + AkronModule.Settings.RespawnTimeIgnoreSpeedhack.ToString().ToLowerInvariant());

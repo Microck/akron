@@ -246,6 +246,7 @@ public partial class AkronModuleSettings {
         JumpHack = resolved.JumpHack;
         JumpHackInfinite = resolved.JumpHackInfinite;
         JumpHackExtraJumps = ClampJumpHackExtraJumps(resolved.JumpHackExtraJumps);
+        JumpHackAllowVerticalDashJumps = resolved.JumpHackAllowVerticalDashJumps;
         NoFreezeFrames = resolved.NoFreezeFrames;
         GroundRefillRules = resolved.GroundRefillRules;
         GroundDashRefill = resolved.GroundDashRefill;

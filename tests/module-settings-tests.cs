@@ -949,6 +949,35 @@ public sealed class ModuleSettingsTests {
     }
 
     [Theory]
+    [InlineData(0f, false)]
+    [InlineData(0.001f, true)]
+    [InlineData(0.1f, true)]
+    public void AirJumpsPreserveVanillaCoyoteJump(float jumpGraceTimer, bool expected) {
+        Assert.Equal(expected, AkronModule.ShouldPreserveVanillaJumpForAirJump(jumpGraceTimer));
+    }
+
+    [Theory]
+    [InlineData(1f, 0f, false, false)]
+    [InlineData(1f, 1f, false, false)]
+    [InlineData(1f, -1f, false, true)]
+    [InlineData(0f, -1f, false, true)]
+    [InlineData(1f, -1f, true, false)]
+    public void AirJumpDashDirectionPolicyKeepsVerticalDashJumpsOptional(float x, float y, bool allowVerticalDashJumps, bool expectedSkip) {
+        Assert.Equal(
+            expectedSkip,
+            AkronModule.ShouldSkipAirJumpForDashDirection(AkronModule.PlayerDashState, TestVector2(x, y), allowVerticalDashJumps));
+    }
+
+    [Theory]
+    [InlineData(1f, 0f, true)]
+    [InlineData(1f, 1f, true)]
+    [InlineData(1f, -1f, false)]
+    [InlineData(0f, 1f, false)]
+    public void AirJumpUsesSuperJumpOnlyForVanillaDashJumpDirections(float x, float y, bool expected) {
+        Assert.Equal(expected, AkronModule.ShouldUseSuperJumpForAirJump(AkronModule.PlayerDashState, TestVector2(x, y)));
+    }
+
+    [Theory]
     [InlineData(-50, -20)]
     [InlineData(-2, -2)]
     [InlineData(0, 0)]
@@ -1564,6 +1593,13 @@ public sealed class ModuleSettingsTests {
     [InlineData(false, true, true)]
     public void HazardAccuracySamplesOnlyMovementAndInvalidContact(bool invalid, bool moved, bool expected) {
         Assert.Equal(expected, AkronModuleSettings.ShouldCountHazardAccuracySample(invalid, moved));
+    }
+
+    [Theory]
+    [InlineData(1163f, 1099, false)]
+    [InlineData(1163.01f, 1099, true)]
+    public void HazardAccuracyTreatsBottomKillboxAsInvalidContact(float playerTop, int levelBottom, bool expected) {
+        Assert.Equal(expected, AkronModule.IsPlayerTouchingBottomKillbox(playerTop, levelBottom));
     }
 
     [Theory]
@@ -2507,6 +2543,7 @@ public sealed class ModuleSettingsTests {
             SetInventoryDashes = 4,
             SetInventoryJumps = 3,
             SetInventoryRestoreOnDeath = true,
+            JumpHackAllowVerticalDashJumps = true,
             MenuActionBindings = new Dictionary<string, string> {
                 ["Shortcuts/Retry"] = "Ctrl+R"
             }
@@ -2530,6 +2567,7 @@ public sealed class ModuleSettingsTests {
         Assert.Equal(4, pack.State.SetInventoryDashes);
         Assert.Equal(3, pack.State.SetInventoryJumps);
         Assert.True(pack.State.SetInventoryRestoreOnDeath);
+        Assert.True(pack.State.JumpHackAllowVerticalDashJumps);
 
         AkronModuleSettings startPosOnly = new AkronModuleSettings { AutoKill = false };
         AkronModuleSession startPosSession = new AkronModuleSession();
@@ -2856,6 +2894,13 @@ public sealed class ModuleSettingsTests {
         MethodInfo? method = typeof(AkronHudRenderer).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         return (bool) method.Invoke(null, new object[] { settings, featureAllowed })!;
+    }
+
+    private static Vector2 TestVector2(float x, float y) {
+        return new Vector2 {
+            X = x,
+            Y = y
+        };
     }
 
     private static void AssertPreviewBounds(AkronOverlay.PracticeAreaSelectionPreviewBounds actual, int x, int y, int width, int height) {
