@@ -4,7 +4,7 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
-    private const int StateTransitionRenderSuppressionFrames = 12;
+    private const int StateTransitionRenderSuppressionFrames = 30;
     private static int stateTransitionRenderSuppressionFrames;
     private static ulong stateTransitionRenderSuppressionLastUpdateFrame;
 

@@ -6,6 +6,12 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.22
+
+### Fixed
+
+- Rebuild FrostHelper spinner renderers after StartPos restores so stale cloned border images do not crash rendering.
+
 ## 0.1.2-beta.21
 
 ### Fixed

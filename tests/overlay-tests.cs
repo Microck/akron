@@ -479,9 +479,24 @@ public sealed class OverlayTests {
         Assert.DoesNotContain("typeof(SpeedrunToolSaveLoadShim).ModInterop()", moduleSource);
         Assert.DoesNotContain("ModExportName(\"SpeedrunTool.SaveLoad\")", File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/SaveLoad/akron-save-load-exports.cs")));
         Assert.Contains("UpdateStateTransitionRenderSuppression();", moduleSource);
-        Assert.Contains("private const int StateTransitionRenderSuppressionFrames = 12;", suppressionSource);
+        Assert.Contains("private const int StateTransitionRenderSuppressionFrames = 30;", suppressionSource);
         Assert.Contains("internal static bool ShouldHideAkronRenderSurfaces()", suppressionSource);
         Assert.Contains("internal static bool ShouldHideAkronRenderSurfacesAfterStateTransition()", suppressionSource);
+    }
+
+    [Fact]
+    public void NativeStartPosRestoresRebuildFrostHelperSpinnerRenderers() {
+        string saveLoadSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/SaveLoad/AkronSaveLoad.cs"));
+
+        Assert.Contains("FrostHelperSpinnerRendererTypeNames", saveLoadSource);
+        Assert.Contains("\"SpinnerConnectorRenderer\"", saveLoadSource);
+        Assert.Contains("\"SpinnerDecoRenderer\"", saveLoadSource);
+        Assert.Contains("\"SpinnerBorderRenderer\"", saveLoadSource);
+        Assert.Contains("RebuildFrostHelperSpinnerRendererRegistrations(level);", saveLoadSource);
+        Assert.Contains("\"FrostHelper.CustomSpinner\"", saveLoadSource);
+        Assert.Contains("\"CreateRenderersIfNeeded\"", saveLoadSource);
+        Assert.Contains("\"RegisterToRenderers\"", saveLoadSource);
+        Assert.Contains("AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();", saveLoadSource);
     }
 
     [Fact]

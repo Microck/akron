@@ -299,6 +299,7 @@ public static partial class AkronSaveLoadService {
             AkronSaveLoadResult brokerResult = AkronSpeedrunToolBroker.Save(normalizedSlotName);
             if (brokerResult == AkronSaveLoadResult.Success) {
                 RuntimeSlots.Remove(normalizedSlotName);
+                AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
                 return AkronSaveLoadResult.Success;
             }
             if (brokerResult != AkronSaveLoadResult.BrokerUnavailable) {
@@ -312,6 +313,7 @@ public static partial class AkronSaveLoadService {
         }
 
         RuntimeSlots[normalizedSlotName] = saveSlot;
+        AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
         return AkronSaveLoadResult.Success;
     }
 
@@ -325,6 +327,7 @@ public static partial class AkronSaveLoadService {
             return AkronSaveLoadResult.Blocked;
         }
 
+        AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
         AkronIgnoreSaveStateComponent.RemoveAll(level);
         try {
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
@@ -674,6 +677,12 @@ public static partial class AkronSaveLoadService {
         return RemoveClonedVisualRuntimeEntities(level);
     }
 
+    private static readonly string[] FrostHelperSpinnerRendererTypeNames = {
+        "SpinnerConnectorRenderer",
+        "SpinnerDecoRenderer",
+        "SpinnerBorderRenderer"
+    };
+
     private static void IgnoreVisualRuntimeEntities(Level level) {
         if (level == null) {
             return;
@@ -699,6 +708,7 @@ public static partial class AkronSaveLoadService {
         }
 
         level.Entities.UpdateLists();
+        RebuildFrostHelperSpinnerRendererRegistrations(level);
         return runtimeVisuals.Count + removedRenderers;
     }
 
@@ -740,7 +750,8 @@ public static partial class AkronSaveLoadService {
         return entity is DustEdges ||
                entity is LightningRenderer ||
                entity is MirrorSurfaces ||
-               entity is SeekerBarrierRenderer;
+               entity is SeekerBarrierRenderer ||
+               IsFrostHelperSpinnerRenderer(entity);
     }
 
     private static bool IsVisualRuntimeObject(object value) {
@@ -748,7 +759,17 @@ public static partial class AkronSaveLoadService {
                string.Equals(value?.GetType().Name, nameof(DustEdges), StringComparison.Ordinal) ||
                string.Equals(value?.GetType().Name, nameof(LightningRenderer), StringComparison.Ordinal) ||
                string.Equals(value?.GetType().Name, nameof(MirrorSurfaces), StringComparison.Ordinal) ||
-               string.Equals(value?.GetType().Name, nameof(SeekerBarrierRenderer), StringComparison.Ordinal);
+               string.Equals(value?.GetType().Name, nameof(SeekerBarrierRenderer), StringComparison.Ordinal) ||
+               IsFrostHelperSpinnerRenderer(value);
+    }
+
+    private static bool IsFrostHelperSpinnerRenderer(object value) {
+        if (value == null || !string.Equals(value.GetType().Namespace, "FrostHelper", StringComparison.Ordinal)) {
+            return false;
+        }
+
+        string typeName = value.GetType().Name;
+        return FrostHelperSpinnerRendererTypeNames.Any(name => string.Equals(typeName, name, StringComparison.Ordinal));
     }
 
     private static void RemoveClonedVisualRuntimeEntity(Level level, Entity entity) {
@@ -761,6 +782,55 @@ public static partial class AkronSaveLoadService {
         level.Tracker.EntityRemoved(entity);
         Engine.Pooler.EntityRemoved(entity);
         AkronEntityListInternals.Remove(level.Entities, entity);
+    }
+
+    private static void RebuildFrostHelperSpinnerRendererRegistrations(Level level) {
+        List<Entity> spinners = AkronEntityListInternals.GetAll(level.Entities)
+            .Concat(level.Entities.ToList())
+            .Where(IsFrostHelperCustomSpinner)
+            .Distinct()
+            .ToList();
+        if (spinners.Count == 0) {
+            return;
+        }
+
+        // FrostHelper's spinner border, connector, and deco renderers are tracked
+        // persistent entities that cache live spinner/image references. Akron drops
+        // cloned copies, then asks the live spinners to create fresh renderer
+        // entities and register themselves before the next gameplay render.
+        foreach (Entity spinner in spinners) {
+            ResetFrostHelperSpinnerRendererRegistration(spinner);
+        }
+        foreach (Entity spinner in spinners) {
+            InvokeFrostHelperSpinnerMethod(spinner, "CreateRenderersIfNeeded");
+        }
+        level.Entities.UpdateLists();
+        foreach (Entity spinner in spinners) {
+            InvokeFrostHelperSpinnerMethod(spinner, "RegisterToRenderers");
+        }
+        level.Entities.UpdateLists();
+    }
+
+    private static bool IsFrostHelperCustomSpinner(Entity entity) {
+        return string.Equals(entity?.GetType().FullName, "FrostHelper.CustomSpinner", StringComparison.Ordinal);
+    }
+
+    private static void ResetFrostHelperSpinnerRendererRegistration(Entity spinner) {
+        FieldInfo registeredField = spinner.GetType().GetField("RegisteredToRenderers", BindingFlags.Instance | BindingFlags.Public);
+        if (registeredField?.FieldType == typeof(bool)) {
+            registeredField.SetValue(spinner, false);
+        }
+    }
+
+    private static void InvokeFrostHelperSpinnerMethod(Entity spinner, string methodName) {
+        MethodInfo method = spinner.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+        try {
+            method?.Invoke(spinner, Array.Empty<object>());
+        } catch (Exception exception) {
+            AkronLog.Warn(nameof(AkronSaveLoadService),
+                "failed to rebuild FrostHelper spinner renderer via " + methodName + "; skipping. " +
+                exception.GetType().Name + ": " + exception.Message);
+        }
     }
 
     private static void UnloadLevel(Level level) {
