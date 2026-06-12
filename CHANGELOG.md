@@ -6,6 +6,20 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.18
+
+### Removed
+
+- Remove Akron profiles, rulesets, built-in preset modes, and related profile/ruleset archives, manifests, commands, and docs
+
+### Fixed
+
+- Keep the gameplay debug pass from running while gameplay is idle so the Akron overlay stays available outside active level play
+- Keep auto kill, auto deafen, and other world-space area overlays aligned with gameplay positions
+- Preserve FrostHelper persisted state when restoring StartPos or savestates
+- Skip non-restorable static members during native state restore
+- Persist modified Akron profile settings across game restarts
+
 ## 0.1.2-beta.17
 
 ### Fixed
