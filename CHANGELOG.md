@@ -6,6 +6,18 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.20
+
+### Changed
+
+- Remove the duplicate Restart Level shortcut so Reload Chapter is the single chapter restart action.
+- Add Viridity to special thanks.
+
+### Fixed
+
+- Persist Akron overlay option changes when toggles, numeric inputs, selector dropdowns, or overlay close events update settings.
+- Hide Celeste's bottom-right save/load icon when Hide Saving Icon is enabled.
+
 ## 0.1.2-beta.19
 
 ### Fixed
