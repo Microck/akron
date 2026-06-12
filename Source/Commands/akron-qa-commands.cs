@@ -266,6 +266,50 @@ public static partial class AkronCommands {
         Log("player-collides-spikes: " + player.CollideCheck<Spikes>().ToString().ToLowerInvariant());
     }
 
+    [Command("akron_qa_sound_sources", "show SoundSource playback telemetry for Akron QA: status|start-player-loop")]
+    public static void QaSoundSources(string action = "status") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        if (NormalizeToken(action) == "startplayerloop") {
+            Player player = level.Tracker.GetEntity<Player>();
+            if (player == null) {
+                Log("sound-source-start-player-loop: missing");
+                return;
+            }
+
+            SoundSource soundSource = new SoundSource(SFX.ui_game_general_text_loop);
+            player.Add(soundSource);
+            soundSource.Play(SFX.ui_game_general_text_loop);
+            Log("sound-source-start-player-loop: requested");
+        }
+
+        int total = 0;
+        int playing = 0;
+        int instancePlaying = 0;
+        int playingWithoutInstance = 0;
+        foreach (Entity entity in AkronEntityListInternals.GetAll(level.Entities)) {
+            foreach (SoundSource soundSource in entity.Components.GetAll<SoundSource>()) {
+                total++;
+                if (soundSource.Playing) {
+                    playing++;
+                    if (soundSource.InstancePlaying) {
+                        instancePlaying++;
+                    } else {
+                        playingWithoutInstance++;
+                    }
+                }
+            }
+        }
+
+        Log("sound-source-total: " + total.ToString(CultureInfo.InvariantCulture));
+        Log("sound-source-playing: " + playing.ToString(CultureInfo.InvariantCulture));
+        Log("sound-source-instance-playing: " + instancePlaying.ToString(CultureInfo.InvariantCulture));
+        Log("sound-source-playing-without-instance: " + playingWithoutInstance.ToString(CultureInfo.InvariantCulture));
+    }
+
     [Command("akron_input_state", "show live Celeste input values for Akron QA")]
     public static void InputState(string _ = "") {
         Log("input-move-x: " + Input.MoveX.Value.ToString(CultureInfo.InvariantCulture));

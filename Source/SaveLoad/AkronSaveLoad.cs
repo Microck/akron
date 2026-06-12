@@ -576,6 +576,7 @@ public static partial class AkronSaveLoadService {
             AkronLevelRenderState.RelinkRendererCameras(level);
             RemoveClonedVisualRuntimeEntities(level);
             AkronVirtualAssetReloadTracker.ReloadDisposedAssets(level);
+            RepairClonedSoundSources(level);
         } else {
             string restoredRoom = savedSession?.Level ?? saveSlot.LevelName;
             Vector2? restoredRespawnPoint = savedSession?.RespawnPoint ?? saveSlot.RespawnPoint;
@@ -644,6 +645,29 @@ public static partial class AkronSaveLoadService {
         }
 
         return true;
+    }
+
+    private static void RepairClonedSoundSources(Level level) {
+        if (level == null) {
+            return;
+        }
+
+        foreach (SoundSource soundSource in AkronEntityListInternals.GetAll(level.Entities)
+                     .Concat(level.Entities.ToList())
+                     .SelectMany(entity => entity.Components.GetAll<SoundSource>())
+                     .Distinct()) {
+            if (!soundSource.Playing ||
+                soundSource.InstancePlaying ||
+                string.IsNullOrWhiteSpace(soundSource.EventName)) {
+                continue;
+            }
+
+            // Full-level StartPos restores clone the logical component state, but
+            // FMOD handles can still be dead after the live level graph is removed.
+            // Replaying only components that were saved as playing keeps looped
+            // object/player sounds alive without inventing new one-shot sounds.
+            soundSource.Play(soundSource.EventName);
+        }
     }
 
     internal static int RemoveClonedDustEdges(Level level) {
