@@ -611,26 +611,83 @@ async function promoteExistingReleaseFile(page, pageSection, submissionId, file)
 }
 
 async function openEditFileManager(page, pageSection, submissionId) {
-  await page.goto(`${gamebananaOrigin}/${pageSection}/edit/${submissionId}`, {
-    waitUntil: "domcontentloaded",
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    await page.goto(`${gamebananaOrigin}/${pageSection}/edit/${submissionId}`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    const permissionMessages = page.locator("#EditFormModule .LogMessages").first();
+    if (await permissionMessages.isVisible().catch(() => false)) {
+      const message = await permissionMessages.innerText();
+      const error = new Error(`GameBanana edit form is not available: ${message}`);
+      error.code = "GAMEBANANA_EDIT_PERMISSION_DENIED";
+      throw error;
+    }
+
+    const mediaTab = page.getByText(/^media$/i).first();
+    if (await mediaTab.isVisible().catch(() => false)) {
+      await mediaTab.click();
+    }
+
+    const fileInput = page.locator('#Files input[type="file"]').first();
+    await fileInput.waitFor({ state: "attached", timeout: 20_000 });
+
+    const uploadSlot = await ensureFileUploadSlotAvailable(fileInput);
+    if (!uploadSlot.removedArchivedFile) {
+      return fileInput;
+    }
+
+    console.log(
+      `Removed archived GameBanana file ${JSON.stringify(uploadSlot.fileName)} to free an upload slot before publishing.`,
+    );
+    await submitFileManager(page, fileInput);
+  }
+
+  throw new Error("GameBanana file limit stayed full after removing archived file rows.");
+}
+
+async function ensureFileUploadSlotAvailable(fileInput) {
+  return fileInput.evaluate((input) => {
+    const wrapper = input.closest(".InputWrapper");
+    const list = wrapper?.querySelector('[id$="_UploadedFiles"]');
+    const items = Array.from(list?.querySelectorAll("li") ?? []);
+    const jQueryData = globalThis.jQuery ? globalThis.jQuery(input).data() : {};
+    const slotCount = Number(jQueryData._nFileSlots ?? items.length);
+    const uploadedCount = Number(jQueryData._nCurrentUploadedFiles ?? items.length);
+
+    if (!Number.isFinite(slotCount) || uploadedCount < slotCount) {
+      return { removedArchivedFile: false };
+    }
+
+    const archivedItem = items.find((item) =>
+      item.querySelector('.ArchivedInput[type="checkbox"]:checked'),
+    );
+    if (!archivedItem) {
+      throw new Error(
+        `GameBanana file limit reached (${uploadedCount}/${slotCount}) and no archived file row is available to remove before upload.`,
+      );
+    }
+
+    const fileName =
+      archivedItem.querySelector("code")?.textContent?.trim() ??
+      archivedItem.querySelector("[title]")?.getAttribute("title") ??
+      archivedItem.textContent?.replace(/\s+/g, " ").trim() ??
+      "(unknown)";
+
+    archivedItem.remove();
+
+    if (globalThis.jQuery) {
+      const data = globalThis.jQuery(input).data();
+      if (Number.isFinite(Number(data._nCurrentUploadedFiles))) {
+        data._nCurrentUploadedFiles = Math.max(0, Number(data._nCurrentUploadedFiles) - 1);
+      }
+    }
+
+    list?.dispatchEvent(new Event("input", { bubbles: true }));
+    list?.dispatchEvent(new Event("change", { bubbles: true }));
+
+    return { removedArchivedFile: true, fileName };
   });
-
-  const permissionMessages = page.locator("#EditFormModule .LogMessages").first();
-  if (await permissionMessages.isVisible().catch(() => false)) {
-    const message = await permissionMessages.innerText();
-    const error = new Error(`GameBanana edit form is not available: ${message}`);
-    error.code = "GAMEBANANA_EDIT_PERMISSION_DENIED";
-    throw error;
-  }
-
-  const mediaTab = page.getByText(/^media$/i).first();
-  if (await mediaTab.isVisible().catch(() => false)) {
-    await mediaTab.click();
-  }
-
-  const fileInput = page.locator('#Files input[type="file"]').first();
-  await fileInput.waitFor({ state: "attached", timeout: 20_000 });
-  return fileInput;
 }
 
 async function submitFileManager(page, fileInput) {
