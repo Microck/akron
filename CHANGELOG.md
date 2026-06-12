@@ -9,6 +9,8 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 ### Fixed
 
 - Keep overlay search responsive while playing a map by filtering on stable row labels and aliases instead of live row values.
+- Hide backup folder paths in Backups > Last Result while Streamer Mode is enabled.
+- Include the implicit Start checkpoint in Creator checkpoint navigation when a map has no checkpoint entity there.
 
 ## 0.1.2-beta.22
 

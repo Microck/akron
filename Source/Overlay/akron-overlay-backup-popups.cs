@@ -44,9 +44,9 @@ public sealed partial class AkronOverlay {
     }
 
     private void DrawBackupStatusPopupControls(string popupId) {
-        ImGui.TextWrapped(AkronBackupActions.LastStatus);
+        ImGui.TextWrapped(AkronBackupActions.LastStatusForDisplay);
         ImGui.TextUnformatted("Last backup: " + AkronBackupActions.DescribeLastBackup());
-        ImGui.TextWrapped("Folder: " + AkronBackupActions.BackupFolder);
+        ImGui.TextWrapped("Folder: " + AkronBackupActions.BackupFolderForDisplay);
         if (ImGui.Button("Create backup now##" + popupId)) {
             AkronBackupActions.CreateBackup("manual");
         }

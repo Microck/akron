@@ -12,6 +12,8 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronActions {
+    private const string ImplicitStartCheckpointName = "Start";
+
     private static bool autoDeafenActive;
 
     public static bool AutoDeafenActive => autoDeafenActive;
@@ -908,7 +910,7 @@ public static partial class AkronActions {
         }
 
         CheckpointData target = checkpoints[(currentIndex + delta + checkpoints.Count) % checkpoints.Count];
-        LoadArea(level.Session.Area, target.Level);
+        LoadArea(level.Session.Area, ResolveCheckpointLevelForLoad(level, target));
     }
 
     public static void SkipCutscene(Level level) {
@@ -1056,24 +1058,83 @@ public static partial class AkronActions {
     }
 
     private static List<CheckpointData> GetCheckpointOrder(Level level) {
-        CheckpointData[] checkpoints = AreaData.GetMode(level.Session.Area)?.Checkpoints;
-        if (checkpoints == null || checkpoints.Length == 0) {
-            return new List<CheckpointData>();
-        }
-
-        return checkpoints
-            .Where(checkpoint => checkpoint != null && !string.IsNullOrWhiteSpace(checkpoint.Level))
-            .ToList();
+        return BuildCheckpointOrder(AreaData.GetMode(level.Session.Area)?.Checkpoints, GetStartLevelName(level));
     }
 
     private static int FindCurrentCheckpointIndex(Level level, List<CheckpointData> checkpoints) {
-        int checkpointId = AreaData.GetCheckpointID(level.Session.Area, level.Session.Level);
-        if (checkpointId >= 0 && checkpointId < checkpoints.Count) {
-            return checkpointId;
+        int roomIndex = checkpoints.FindIndex(checkpoint => string.Equals(checkpoint.Level, level.Session.Level, StringComparison.Ordinal));
+        if (roomIndex >= 0) {
+            return roomIndex;
         }
 
-        int roomIndex = checkpoints.FindIndex(checkpoint => string.Equals(checkpoint.Level, level.Session.Level, StringComparison.Ordinal));
-        return roomIndex >= 0 ? roomIndex : 0;
+        int checkpointId = AreaData.GetCheckpointID(level.Session.Area, level.Session.Level);
+        if (checkpointId >= 0) {
+            CheckpointData[] modeCheckpoints = AreaData.GetMode(level.Session.Area)?.Checkpoints;
+            string checkpointLevel = checkpointId < (modeCheckpoints?.Length ?? 0) ? modeCheckpoints[checkpointId]?.Level : string.Empty;
+            int checkpointIndex = checkpoints.FindIndex(checkpoint => string.Equals(checkpoint.Level, checkpointLevel, StringComparison.Ordinal));
+            if (checkpointIndex >= 0) {
+                return checkpointIndex;
+            }
+        }
+
+        return 0;
+    }
+
+    internal static List<CheckpointData> BuildCheckpointOrder(IEnumerable<CheckpointData> checkpoints, string startLevel) {
+        List<CheckpointData> ordered = (checkpoints ?? Enumerable.Empty<CheckpointData>())
+            .Where(checkpoint => checkpoint != null && !string.IsNullOrWhiteSpace(checkpoint.Level))
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(startLevel) &&
+            ordered.All(checkpoint => !string.Equals(checkpoint.Level, startLevel, StringComparison.Ordinal))) {
+            ordered.Insert(0, CreateCheckpointData(startLevel, ImplicitStartCheckpointName));
+        }
+
+        return ordered;
+    }
+
+    private static CheckpointData CreateCheckpointData(string level, string name) {
+        CheckpointData checkpoint = new CheckpointData(level, name) {
+            Level = level,
+            Name = name
+        };
+        return checkpoint;
+    }
+
+    internal static string ResolveCheckpointLevelForLoad(Level level, CheckpointData checkpoint) {
+        if (checkpoint == null) {
+            return null;
+        }
+
+        string startLevel = GetStartLevelName(level);
+        return ResolveCheckpointLevelForLoad(checkpoint, startLevel, IsImplicitStartCheckpoint(level, checkpoint));
+    }
+
+    internal static string ResolveCheckpointLevelForLoad(CheckpointData checkpoint, string startLevel, bool implicitStartCheckpoint) {
+        if (checkpoint == null) {
+            return null;
+        }
+
+        return implicitStartCheckpoint &&
+               string.Equals(checkpoint.Level, startLevel, StringComparison.Ordinal)
+            ? null
+            : checkpoint.Level;
+    }
+
+    private static bool IsImplicitStartCheckpoint(Level level, CheckpointData checkpoint) {
+        if (checkpoint == null || !string.Equals(checkpoint.Name, ImplicitStartCheckpointName, StringComparison.Ordinal)) {
+            return false;
+        }
+
+        CheckpointData[] checkpoints = AreaData.GetMode(level.Session.Area)?.Checkpoints;
+        return checkpoints == null ||
+               checkpoints.All(candidate => !string.Equals(candidate?.Level, checkpoint.Level, StringComparison.Ordinal));
+    }
+
+    private static string GetStartLevelName(Level level) {
+        return level?.Session?.MapData?.Levels?
+            .FirstOrDefault(room => room != null && !room.Dummy)
+            ?.Name ?? string.Empty;
     }
 
     private static string FormatAreaLabel(AreaData data, AreaKey area) {

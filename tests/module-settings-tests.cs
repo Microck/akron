@@ -1376,6 +1376,33 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
+    public void CheckpointNavigationIncludesImplicitStartCheckpoint() {
+        List<CheckpointData> checkpoints = AkronActions.BuildCheckpointOrder(
+            new[] {
+                CreateCheckpointData("b-00", "Crossing"),
+                CreateCheckpointData("c-00", "Collapse")
+            },
+            "a-00");
+
+        Assert.Equal(new[] { "a-00", "b-00", "c-00" }, checkpoints.Select(checkpoint => checkpoint.Level).ToArray());
+        Assert.Equal("Start", checkpoints[0].Name);
+        Assert.Null(AkronActions.ResolveCheckpointLevelForLoad(checkpoints[0], "a-00", implicitStartCheckpoint: true));
+    }
+
+    [Fact]
+    public void CheckpointNavigationDoesNotDuplicateExplicitStartCheckpoint() {
+        List<CheckpointData> checkpoints = AkronActions.BuildCheckpointOrder(
+            new[] {
+                CreateCheckpointData("a-00", "Start"),
+                CreateCheckpointData("b-00", "Crossing")
+            },
+            "a-00");
+
+        Assert.Equal(new[] { "a-00", "b-00" }, checkpoints.Select(checkpoint => checkpoint.Level).ToArray());
+        Assert.Equal("a-00", AkronActions.ResolveCheckpointLevelForLoad(checkpoints[0], "a-00", implicitStartCheckpoint: false));
+    }
+
+    [Fact]
     public void NumericTogglesUseTriangleOptionsInsteadOfInlineInputs() {
         Dictionary<string, string> levelControls = BuildOverlayEntryControls("Level");
         Dictionary<string, string> playerControls = BuildOverlayEntryControls("Player");
@@ -2207,6 +2234,17 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
+    public void BackupStatusDisplayRedactsBackupFolderInStreamerMode() {
+        string backupFolder = "/tmp/akron/Saves/AkronBackups";
+        string status = "Open folder failed: access denied to " + backupFolder;
+
+        string redacted = AkronBackupActions.FormatBackupTextForDisplay(status, backupFolder, streamerMode: true);
+
+        Assert.Equal("Open folder failed: access denied to AkronBackups", redacted);
+        Assert.DoesNotContain("/tmp/akron", redacted);
+    }
+
+    [Fact]
     public void PathDisplayKeepsFullPathOutsideStreamerMode() {
         AkronModuleSettings settings = new AkronModuleSettings();
 
@@ -2774,6 +2812,13 @@ public sealed class ModuleSettingsTests {
         MethodInfo? invalidate = typeof(AkronOverlay).GetMethod("InvalidateDisplayActionEntryCache", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(invalidate);
         invalidate.Invoke(overlay, Array.Empty<object>());
+    }
+
+    private static CheckpointData CreateCheckpointData(string level, string name) {
+        return new CheckpointData(level, name) {
+            Level = level,
+            Name = name
+        };
     }
 
     private static void SetPrivateField(object target, string fieldName, object value) {

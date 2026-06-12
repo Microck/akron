@@ -34,6 +34,10 @@ public static class AkronBackupActions {
 
     public static string BackupFolder => Path.Combine(GetSavesFolder(), BackupFolderName);
 
+    public static string LastStatusForDisplay => FormatBackupTextForDisplay(LastStatus, BackupFolder, AkronModule.Settings.StreamerMode);
+
+    public static string BackupFolderForDisplay => AkronModule.Settings.FormatPathForDisplay(BackupFolder);
+
     public static void NotifyStartupReady() {
         if (startupBackupAttempted || !AkronModule.Settings.BackupsEnabled || !AkronModule.Settings.BackupsOnStartup) {
             return;
@@ -497,6 +501,18 @@ public static class AkronBackupActions {
 
     private static string GetSavesFolder() {
         return Path.Combine(Everest.PathGame, "Saves");
+    }
+
+    internal static string FormatBackupTextForDisplay(string text, string backupFolder, bool streamerMode) {
+        if (!streamerMode || string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(backupFolder)) {
+            return text ?? string.Empty;
+        }
+
+        string trimmed = Path.GetFullPath(backupFolder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string display = AkronModuleSettings.FormatPathForDisplay(trimmed, streamerMode);
+        return text
+            .Replace(trimmed, display)
+            .Replace(trimmed.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), display);
     }
 
     private static bool IsInsideBackupFolder(string path) {
