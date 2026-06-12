@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -82,6 +83,8 @@ public partial class AkronModule : EverestModule {
         typeof(PlayerDeadBody).GetMethod("End", BindingFlags.Instance | BindingFlags.NonPublic);
     private static readonly FieldInfo PlayerDeadBodyDeathEffectField =
         typeof(PlayerDeadBody).GetField("deathEffect", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly MethodInfo EverestSaveSettingsMethod =
+        typeof(Everest).GetMethod("_SaveSettings", BindingFlags.Static | BindingFlags.NonPublic);
     private static MethodInfo playerDashCoroutineMethod;
     private static ILHook dashCoroutineHook;
     private static MethodInfo lookoutLookRoutineMethod;
@@ -132,6 +135,8 @@ public partial class AkronModule : EverestModule {
         On.Celeste.TextMenu.Button.ConfirmPressed += TextMenuButtonOnConfirmPressed;
         On.Celeste.AutoSavingNotice.Update += AutoSavingNoticeOnUpdate;
         On.Celeste.AutoSavingNotice.Render += AutoSavingNoticeOnRender;
+        On.Celeste.SaveLoadIcon.Show += SaveLoadIconOnShow;
+        On.Celeste.SaveLoadIcon.Render += SaveLoadIconOnRender;
         On.Monocle.Engine.Update += EngineOnUpdate;
         On.Monocle.Engine.RenderCore += EngineOnRenderCore;
         On.Celeste.Level.CompleteArea_bool_bool += LevelOnCompleteArea;
@@ -215,6 +220,7 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Unload() {
+        SaveAkronSettingsNow("unload");
         AkronLog.Normal(nameof(AkronModule), "unload start");
         AkronBackupActions.NotifyShutdown();
         AkronScreenshotScanner.Unload();
@@ -247,6 +253,8 @@ public partial class AkronModule : EverestModule {
         On.Celeste.TextMenu.Button.ConfirmPressed -= TextMenuButtonOnConfirmPressed;
         On.Celeste.AutoSavingNotice.Update -= AutoSavingNoticeOnUpdate;
         On.Celeste.AutoSavingNotice.Render -= AutoSavingNoticeOnRender;
+        On.Celeste.SaveLoadIcon.Show -= SaveLoadIconOnShow;
+        On.Celeste.SaveLoadIcon.Render -= SaveLoadIconOnRender;
         On.Monocle.Engine.Update -= EngineOnUpdate;
         On.Monocle.Engine.RenderCore -= EngineOnRenderCore;
         On.Celeste.Level.CompleteArea_bool_bool -= LevelOnCompleteArea;
@@ -471,6 +479,23 @@ public partial class AkronModule : EverestModule {
         }
 
         orig(file, settings);
+    }
+
+    internal static void SaveAkronSettingsNow(string reason) {
+        try {
+            if (EverestSaveSettingsMethod != null) {
+                if (EverestSaveSettingsMethod.Invoke(null, Array.Empty<object>()) is IEnumerator routine) {
+                    while (routine.MoveNext()) {
+                    }
+                }
+            } else {
+                UserIO.SaveHandler(false, true);
+            }
+
+            AkronLog.Verbose(nameof(AkronModule), "settings saved; reason=" + (reason ?? "unknown"));
+        } catch (Exception exception) {
+            AkronLog.Warn(nameof(AkronModule), "settings save failed; reason=" + (reason ?? "unknown") + "; error=" + exception);
+        }
     }
 
     private static bool ShouldFreezeTimerDuringPause(Level level) {
@@ -803,6 +828,26 @@ public partial class AkronModule : EverestModule {
     }
 
     internal static bool ShouldSuppressSavingNotice(bool isCapturingGameFrame, bool hideSavingIcon) {
+        return isCapturingGameFrame || hideSavingIcon;
+    }
+
+    private static void SaveLoadIconOnShow(On.Celeste.SaveLoadIcon.orig_Show orig, Scene scene) {
+        if (ShouldSuppressSaveLoadIcon(AkronCapture.IsCapturingGameFrame, Settings.AutosaveHideSavingIcon)) {
+            return;
+        }
+
+        orig(scene);
+    }
+
+    private static void SaveLoadIconOnRender(On.Celeste.SaveLoadIcon.orig_Render orig, SaveLoadIcon self) {
+        if (ShouldSuppressSaveLoadIcon(AkronCapture.IsCapturingGameFrame, Settings.AutosaveHideSavingIcon)) {
+            return;
+        }
+
+        orig(self);
+    }
+
+    internal static bool ShouldSuppressSaveLoadIcon(bool isCapturingGameFrame, bool hideSavingIcon) {
         return isCapturingGameFrame || hideSavingIcon;
     }
 

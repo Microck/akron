@@ -231,7 +231,6 @@ public sealed partial class AkronOverlay {
                 return new List<OverlayEntry> {
                     Action("Open Options", () => true, () => "Interface", AkronActions.OpenOptionsShortcut),
                     Action("Retry", () => level != null, () => level != null ? "Ready" : "Unavailable", () => { if (level != null) AkronModule.PerformRetry(level); }),
-                    Action("Restart Level", () => level != null, () => level != null ? "Chapter" : "Unavailable", () => { if (level != null) AkronModule.PerformReloadChapter(level); }),
                     Action("Reload Room", () => level != null, () => AkronModuleSettings.DescribeBinding(AkronModule.Settings.ReloadRoom), () => { if (level != null) AkronModule.PerformReloadRoom(level); }),
                     Action("Reload Chapter", () => level != null, () => AkronModuleSettings.DescribeBinding(AkronModule.Settings.ReloadChapter), () => { if (level != null) AkronModule.PerformReloadChapter(level); }),
                     Action("Spawn Jelly", () => level != null && level.Tracker.GetEntity<Player>() != null, () => level != null ? "Ready" : "Unavailable", () => AkronActions.SpawnJelly(level), "jelly", "glider", "spawn"),

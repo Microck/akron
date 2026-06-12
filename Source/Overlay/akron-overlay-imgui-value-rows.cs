@@ -33,6 +33,7 @@ public sealed partial class AkronOverlay {
             BuildNumericInputFormat(entry));
         if (valueEdited && entryEnabled) {
             entry.SetNumericValue(entry.NumericInteger ? (float) Math.Round(value) : value);
+            AkronModule.SaveAkronSettingsNow("overlay-numeric:" + entry.Label);
             MarkValueEditFreeze();
         }
 
@@ -123,6 +124,7 @@ public sealed partial class AkronOverlay {
 
                     if (ImGui.Selectable(choice.Label + "##selector_choice" + id + "_" + index, selected) && enabled) {
                         choice.Apply();
+                        AkronModule.SaveAkronSettingsNow("overlay-selector:" + entry.Label);
                         searchInputActive = false;
                         searchInputUsesImGui = false;
                         ClearSearchInputFocusRequest();

@@ -416,6 +416,9 @@ public partial class AkronModule {
         }
 
         AkronLog.Verbose(nameof(AkronOverlay), "overlay " + (visible ? "opened" : "closed") + "; source=" + source);
+        if (!visible) {
+            SaveAkronSettingsNow("overlay-closed");
+        }
     }
 
     private static bool IsKeyboardBindingPressed(IReadOnlyCollection<Keys> keys, KeyboardState keyboard, KeyboardState previousKeyboard) {

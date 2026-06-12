@@ -748,6 +748,7 @@ public sealed partial class AkronOverlay : Entity {
         }
 
         AkronShowcaseMarkers.MarkTopLevelToggle(entry.Label, isOn, entry.FeatureKind, source);
+        AkronModule.SaveAkronSettingsNow("overlay-toggle:" + entry.Label);
     }
 
     private void UpdateFallbackScrollWheel() {

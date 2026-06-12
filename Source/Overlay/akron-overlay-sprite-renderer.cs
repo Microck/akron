@@ -418,7 +418,6 @@ public sealed partial class AkronOverlay {
 
         return string.Equals(entry.Label, "Retry", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Uncomplete Level", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(entry.Label, "Restart Level", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Reload Room", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Reload Chapter", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Spawn Jelly", StringComparison.OrdinalIgnoreCase) ||

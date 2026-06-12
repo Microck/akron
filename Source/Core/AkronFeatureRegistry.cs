@@ -175,7 +175,6 @@ public static class AkronFeatureRegistry
         { "Visible", AkronStatus.RegularClean },
         { "Open Options", AkronStatus.GoldberryHardlistClean },
         { "Retry", AkronStatus.RegularClean },
-        { "Restart Level", AkronStatus.RegularClean },
         { "Reload Room", AkronStatus.Cheat },
         { "Reload Chapter", AkronStatus.RegularClean },
         { "Neutral Drop", AkronStatus.Cheat },

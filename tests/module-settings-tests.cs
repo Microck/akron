@@ -531,6 +531,7 @@ public sealed class ModuleSettingsTests {
     [InlineData(true, true, true)]
     public void HideSavingIconSuppressesAutosaveNotice(bool isCapturingGameFrame, bool hideSavingIcon, bool expected) {
         Assert.Equal(expected, AkronModule.ShouldSuppressSavingNotice(isCapturingGameFrame, hideSavingIcon));
+        Assert.Equal(expected, AkronModule.ShouldSuppressSaveLoadIcon(isCapturingGameFrame, hideSavingIcon));
     }
 
     [Theory]
@@ -1218,6 +1219,7 @@ public sealed class ModuleSettingsTests {
     public void RemovedRowsAreNotShownInOverlay() {
         Assert.DoesNotContain("Hide HUD", BuildOverlayEntryLabels("Level"));
         Assert.DoesNotContain("Disable Quick Restart Keybind", BuildOverlayEntryLabels("Interface"));
+        Assert.DoesNotContain("Restart Level", BuildOverlayEntryLabels("Shortcuts"));
     }
 
     [Fact]
