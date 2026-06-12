@@ -1603,6 +1603,15 @@ public sealed class ModuleSettingsTests {
     }
 
     [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public void HazardAccuracyRecordsBottomKillboxBeforeInvincibilityRescue(bool hazardAccuracyAllowed, bool touchingBottomKillbox, bool expected) {
+        Assert.Equal(expected, AkronModule.ShouldRecordBottomKillboxHazardAccuracyBeforeRescue(hazardAccuracyAllowed, touchingBottomKillbox));
+    }
+
+    [Theory]
     [InlineData(-1f, 3f)]
     [InlineData(0f, 3f)]
     [InlineData(0.05f, 0.1f)]

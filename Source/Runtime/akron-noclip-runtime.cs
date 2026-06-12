@@ -84,6 +84,10 @@ public partial class AkronModule {
         return playerTop > levelBottom + 64f;
     }
 
+    internal static bool ShouldRecordBottomKillboxHazardAccuracyBeforeRescue(bool hazardAccuracyAllowed, bool touchingBottomKillbox) {
+        return hazardAccuracyAllowed && touchingBottomKillbox;
+    }
+
     private static bool IsHazardAccuracyAllowed() {
         return Settings.NoclipAccuracy && AkronPolicy.CanUse(AkronFeatureKind.HazardAccuracy).Allowed;
     }

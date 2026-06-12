@@ -244,10 +244,10 @@ public partial class AkronModule {
         if (hazardAccuracyAllowed) {
             AkronPolicy.RecordFeatureUse(AkronFeatureKind.HazardAccuracy);
             EnsureNativeAssistInvincibility();
-            RescueInvinciblePlayerFromBottomlessFall(level, player);
+            RescueInvinciblePlayerFromBottomlessFall(level, player, true);
         } else if (Settings.Invincibility && TryUse(AkronFeatureKind.Invincibility)) {
             EnsureNativeAssistInvincibility();
-            RescueInvinciblePlayerFromBottomlessFall(level, player);
+            RescueInvinciblePlayerFromBottomlessFall(level, player, false);
         } else {
             RestoreNativeAssistInvincibility();
         }

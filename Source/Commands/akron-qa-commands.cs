@@ -322,6 +322,28 @@ public static partial class AkronCommands {
         Log("input-crouch-dash: " + Input.CrouchDash.Check.ToString().ToLowerInvariant());
     }
 
+    [Command("akron_qa_air_jump_policy", "show Air Jumps policy decisions: jumpGrace state dashX dashY allowVerticals")]
+    public static void QaAirJumpPolicy(
+        string jumpGraceTimerText = "0",
+        string playerStateText = "0",
+        string dashXText = "0",
+        string dashYText = "0",
+        string allowVerticalsText = "false") {
+        if (!float.TryParse(jumpGraceTimerText, NumberStyles.Float, CultureInfo.InvariantCulture, out float jumpGraceTimer) ||
+            !int.TryParse(playerStateText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int playerState) ||
+            !float.TryParse(dashXText, NumberStyles.Float, CultureInfo.InvariantCulture, out float dashX) ||
+            !float.TryParse(dashYText, NumberStyles.Float, CultureInfo.InvariantCulture, out float dashY) ||
+            !TryParseBoolean(allowVerticalsText, out bool allowVerticals)) {
+            Log("usage: akron_qa_air_jump_policy <jumpGrace> <state> <dashX> <dashY> <allowVerticals>");
+            return;
+        }
+
+        Vector2 dashDirection = new Vector2(dashX, dashY);
+        Log("air-jump-preserve-vanilla: " + AkronModule.ShouldPreserveVanillaJumpForAirJump(jumpGraceTimer).ToString().ToLowerInvariant());
+        Log("air-jump-skip-dash-direction: " + AkronModule.ShouldSkipAirJumpForDashDirection(playerState, dashDirection, allowVerticals).ToString().ToLowerInvariant());
+        Log("air-jump-use-super-jump: " + AkronModule.ShouldUseSuperJumpForAirJump(playerState, dashDirection).ToString().ToLowerInvariant());
+    }
+
 #if DEBUG
     [Command("akron_qa_stress", "debug-only Akron UI stress mode: on [seed]|off|status|poison-render-state")]
     public static void QaStress(string action = "status", string seedText = "") {

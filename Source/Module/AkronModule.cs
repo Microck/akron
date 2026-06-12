@@ -977,12 +977,17 @@ public partial class AkronModule : EverestModule {
         nativeAssistInvincibilityCaptured = false;
     }
 
-    private static void RescueInvinciblePlayerFromBottomlessFall(Level level, Player player) {
-        if (!IsPlayerTouchingBottomKillbox(player) ||
+    private static void RescueInvinciblePlayerFromBottomlessFall(Level level, Player player, bool recordHazardAccuracy) {
+        bool touchingBottomKillbox = IsPlayerTouchingBottomKillbox(player);
+        if (!touchingBottomKillbox ||
             player.StateMachine.State == Player.StReflectionFall ||
             player.StateMachine.State == Player.StTempleFall ||
             level.Transitioning) {
             return;
+        }
+
+        if (ShouldRecordBottomKillboxHazardAccuracyBeforeRescue(recordHazardAccuracy, touchingBottomKillbox)) {
+            RecordHazardAccuracyInvalidContact(player);
         }
 
         Vector2 respawn = level.Session.RespawnPoint ?? level.GetSpawnPoint(level.Camera.Position);
