@@ -979,7 +979,7 @@ public partial class AkronModule : EverestModule {
 
     private static void RescueInvinciblePlayerFromBottomlessFall(Level level, Player player, bool recordHazardAccuracy) {
         bool touchingBottomKillbox = IsPlayerTouchingBottomKillbox(player);
-        if (!touchingBottomKillbox ||
+        if (!IsPlayerPastBottomKillboxRescueBoundary(player) ||
             player.StateMachine.State == Player.StReflectionFall ||
             player.StateMachine.State == Player.StTempleFall ||
             level.Transitioning) {

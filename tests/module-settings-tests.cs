@@ -1596,10 +1596,17 @@ public sealed class ModuleSettingsTests {
     }
 
     [Theory]
-    [InlineData(1163f, 1099, false)]
-    [InlineData(1163.01f, 1099, true)]
+    [InlineData(180f, 180, false)]
+    [InlineData(180.01f, 180, true)]
     public void HazardAccuracyTreatsBottomKillboxAsInvalidContact(float playerTop, int levelBottom, bool expected) {
         Assert.Equal(expected, AkronModule.IsPlayerTouchingBottomKillbox(playerTop, levelBottom));
+    }
+
+    [Theory]
+    [InlineData(244f, 180, false)]
+    [InlineData(244.01f, 180, true)]
+    public void InvincibilityRescueKeepsBottomlessFallRecoveryBuffer(float playerTop, int levelBottom, bool expected) {
+        Assert.Equal(expected, AkronModule.IsPlayerPastBottomKillboxRescueBoundary(playerTop, levelBottom));
     }
 
     [Theory]

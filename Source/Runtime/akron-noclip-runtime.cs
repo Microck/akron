@@ -81,6 +81,15 @@ public partial class AkronModule {
     }
 
     internal static bool IsPlayerTouchingBottomKillbox(float playerTop, int levelBottom) {
+        return playerTop > levelBottom;
+    }
+
+    internal static bool IsPlayerPastBottomKillboxRescueBoundary(Player player) {
+        return player?.Scene is Level level &&
+               IsPlayerPastBottomKillboxRescueBoundary(player.Top, level.Bounds.Bottom);
+    }
+
+    internal static bool IsPlayerPastBottomKillboxRescueBoundary(float playerTop, int levelBottom) {
         return playerTop > levelBottom + 64f;
     }
 
