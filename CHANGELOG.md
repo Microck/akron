@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.23
+
 ### Fixed
 
 - Keep overlay search responsive while playing a map by filtering on stable row labels and aliases instead of live row values.
