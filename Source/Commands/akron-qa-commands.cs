@@ -322,6 +322,32 @@ public static partial class AkronCommands {
         Log("input-crouch-dash: " + Input.CrouchDash.Check.ToString().ToLowerInvariant());
     }
 
+    [Command("akron_qa_cursor_zoom_frame", "apply one Cursor Zoom frame for live QA: [percent] [screen-x] [screen-y]")]
+    public static void QaCursorZoomFrame(string percentText = "50", string screenXText = "640", string screenYText = "360") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        if (!int.TryParse(percentText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int percent) ||
+            !float.TryParse(screenXText, NumberStyles.Float, CultureInfo.InvariantCulture, out float screenX) ||
+            !float.TryParse(screenYText, NumberStyles.Float, CultureInfo.InvariantCulture, out float screenY)) {
+            Log("usage: akron_qa_cursor_zoom_frame <percent> <screen-x> <screen-y>");
+            return;
+        }
+
+        if (!AkronModule.TryUse(AkronFeatureKind.CursorZoom)) {
+            Log("qa-cursor-zoom-frame: blocked");
+            return;
+        }
+
+        AkronModule.Settings.CursorZoom = true;
+        AkronModule.Settings.CursorZoomAllowZoomOut = percent < 100 || AkronModule.Settings.CursorZoomAllowZoomOut;
+        AkronModule.Settings.CursorZoomPercent = AkronModuleSettings.ClampCursorZoomPercent(percent, AkronModule.Settings.CursorZoomAllowZoomOut);
+        AkronModule.ApplyCursorZoomFrame(level, new Vector2(screenX, screenY));
+        Log("qa-cursor-zoom-frame: " + AkronModule.DescribeCursorZoom(level));
+    }
+
     [Command("akron_qa_air_jump_policy", "show Air Jumps policy decisions: jumpGrace state dashX dashY allowVerticals")]
     public static void QaAirJumpPolicy(
         string jumpGraceTimerText = "0",

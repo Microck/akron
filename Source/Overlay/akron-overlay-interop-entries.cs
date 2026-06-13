@@ -49,6 +49,37 @@ public sealed partial class AkronOverlay {
         };
     }
 
+    private static List<OverlayEntry> BuildExtendedCameraDynamicsEntries() {
+        return new List<OverlayEntry> {
+            Action("ECD Status", () => true, DescribeExtendedCameraDynamicsStatus, () => { }, "extended camera dynamics", "camera", "zoom", "status"),
+            new OverlayEntry(
+                "ECD Zoom Out",
+                () => AkronInterop.ExtendedCameraDynamicsLoaded,
+                () => AkronModule.Settings.CursorZoomAllowZoomOut ? "On" : "Off",
+                () => {
+                    if (!AkronModule.TryUse(AkronFeatureKind.CursorZoom)) {
+                        return;
+                    }
+
+                    bool next = !AkronModule.Settings.CursorZoomAllowZoomOut;
+                    AkronModule.Settings.CursorZoomAllowZoomOut = next;
+                    AkronModule.Settings.CursorZoomPercent = AkronModuleSettings.ClampCursorZoomPercent(AkronModule.Settings.CursorZoomPercent, next);
+                    Engine.Scene?.Add(new AkronToast("ECD zoom out " + (next ? "on" : "off") + "."));
+                },
+                BuildSearchTerms("ECD Zoom Out", new[] { "extended camera dynamics", "cursor zoom", "zoom out" }),
+                true,
+                OverlayEntryControl.Toggle,
+                AkronFeatureKind.CursorZoom),
+            Action("ECD Restore Zooming", () => AkronInterop.ExtendedCameraDynamicsLoaded, () => AkronInterop.AreExtendedCameraHooksActive() ? "Ready" : "Inactive", () => {
+                if (AkronInterop.TryRestoreExtendedCameraAutomaticZooming()) {
+                    Engine.Scene?.Add(new AkronToast("Extended Camera Dynamics automatic zooming restored."));
+                } else {
+                    Engine.Scene?.Add(new AkronToast("Extended Camera Dynamics is unavailable."));
+                }
+            }, "extended camera dynamics", "unstick", "restore", "automatic zoom")
+        };
+    }
+
     private static string DescribeSpeedrunToolStatus() {
         if (!AkronInterop.SpeedrunToolLoaded) {
             return "Missing";
@@ -76,6 +107,18 @@ public sealed partial class AkronOverlay {
         }
 
         return AkronInterop.IsTasActive() ? "Active" : "Idle";
+    }
+
+    private static string DescribeExtendedCameraDynamicsStatus() {
+        if (!AkronInterop.ExtendedCameraDynamicsLoaded) {
+            return "Missing";
+        }
+
+        if (!AkronInterop.ExtendedCameraDynamicsInteropAvailable) {
+            return "Loaded";
+        }
+
+        return AkronInterop.AreExtendedCameraHooksActive() ? "Hooks active" : "Hooks inactive";
     }
 
     private static string DescribeConfiguredTasFile() {

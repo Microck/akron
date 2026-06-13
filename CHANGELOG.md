@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+### Fixed
+
+- Add Extended Camera Dynamics external tool rows, route Cursor Zoom zoom-out through ECD when its hooks are active, and keep Akron from resetting ECD-owned zoom state when inactive.
+
 ## 0.1.2-beta.23
 
 ### Fixed

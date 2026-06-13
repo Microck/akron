@@ -335,6 +335,8 @@ public static partial class AkronCommands {
         Log("interop-roomtimer: " + AkronInterop.RoomTimerAvailable.ToString().ToLowerInvariant());
         Log("interop-celestetas: " + AkronInterop.CelesteTasLoaded.ToString().ToLowerInvariant());
         Log("interop-evm: " + AkronExtendedVariants.Available.ToString().ToLowerInvariant());
+        Log("interop-ecd: " + AkronInterop.ExtendedCameraDynamicsLoaded.ToString().ToLowerInvariant());
+        Log("interop-ecd-hooks: " + AkronInterop.AreExtendedCameraHooksActive().ToString().ToLowerInvariant());
         Log("evm-master: " + (AkronExtendedVariants.Available && AkronExtendedVariants.MasterSwitch).ToString().ToLowerInvariant());
         Log("evm-summary: " + AkronExtendedVariants.StatusSummary);
         Log("evm-randomizer: " + (AkronExtendedVariants.Available && AkronExtendedVariants.RandomizerEnabled).ToString().ToLowerInvariant());

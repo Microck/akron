@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using Celeste;
 using Celeste.Mod;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using MonoMod.ModInterop;
 
@@ -17,15 +18,20 @@ public static class AkronInterop {
     private static readonly EverestModuleMetadata MaddieHelpingHandMetadata = new EverestModuleMetadata { Name = "MaxHelpingHand" };
     private static readonly EverestModuleMetadata GravityHelperMetadata = new EverestModuleMetadata { Name = "GravityHelper" };
     private static readonly EverestModuleMetadata CommunalHelperMetadata = new EverestModuleMetadata { Name = "CommunalHelper" };
+    private static readonly EverestModuleMetadata ExtendedCameraDynamicsMetadata = new EverestModuleMetadata { Name = "ExtendedCameraDynamics" };
     private static bool speedrunToolTabConflictMitigated;
     private static bool speedrunToolSaveLoadHooksRegistered;
     private static bool speedrunToolSaveLoadHookWarningLogged;
+    private static bool extendedCameraDynamicsWarningLogged;
     private static object speedrunToolSaveLoadHookRegistration;
     private static MethodInfo speedrunToolSaveLoadUnregisterMethod;
+    private static Type extendedCameraZoomHooksType;
+    private static PropertyInfo extendedCameraAutomaticZoomingProperty;
 
     public static void Initialize() {
         typeof(RoomTimerImports).ModInterop();
         typeof(CelesteTasImports).ModInterop();
+        typeof(ExtendedCameraDynamicsImports).ModInterop();
         EnsureSpeedrunToolSaveLoadHooksRegistered();
     }
 
@@ -50,6 +56,7 @@ public static class AkronInterop {
     public static bool MaddieHelpingHandLoaded => IsModLoaded(MaddieHelpingHandMetadata, "MaxHelpingHand");
     public static bool GravityHelperLoaded => IsModLoaded(GravityHelperMetadata, "GravityHelper");
     public static bool CommunalHelperLoaded => IsModLoaded(CommunalHelperMetadata, "CommunalHelper");
+    public static bool ExtendedCameraDynamicsLoaded => IsModLoaded(ExtendedCameraDynamicsMetadata, "ExCameraDynamics", "ExtendedCameraDynamics");
     public static bool MotionSmoothingLoaded => AkronMotionSmoothingInterop.Loaded;
     public static bool SpeedrunToolTabConflictMitigated => speedrunToolTabConflictMitigated;
 
@@ -63,6 +70,12 @@ public static class AkronInterop {
         CelesteTasImports.IsTasActive != null &&
         CelesteTasImports.IsTasRunning != null;
 
+    public static bool ExtendedCameraDynamicsInteropAvailable =>
+        ExtendedCameraDynamicsLoaded &&
+        ExtendedCameraDynamicsImports.ExtendedCameraHooksEnabled != null &&
+        ExtendedCameraDynamicsImports.Create_CameraFocus != null &&
+        ExtendedCameraDynamicsImports.Level_ForceZoomToCameraFocus != null;
+
     public static bool IsTasActive() {
         return CelesteTasInteropAvailable && CelesteTasImports.IsTasActive();
     }
@@ -73,6 +86,58 @@ public static class AkronInterop {
 
     public static long? TryGetSpeedrunToolRoomTime() {
         return RoomTimerAvailable ? RoomTimerImports.GetRoomTime() : null;
+    }
+
+    public static bool AreExtendedCameraHooksActive() {
+        if (!ExtendedCameraDynamicsLoaded || ExtendedCameraDynamicsImports.ExtendedCameraHooksEnabled == null) {
+            return false;
+        }
+
+        try {
+            return ExtendedCameraDynamicsImports.ExtendedCameraHooksEnabled();
+        } catch (Exception exception) {
+            LogExtendedCameraDynamicsWarning("Failed to query Extended Camera Dynamics hook state: " + exception.Message);
+            return false;
+        }
+    }
+
+    public static bool TryForceExtendedCameraFocus(Level level, Vector2 worldCenter, float zoom) {
+        if (level == null || !ExtendedCameraDynamicsInteropAvailable) {
+            return false;
+        }
+
+        try {
+            object focus = ExtendedCameraDynamicsImports.Create_CameraFocus(worldCenter, zoom);
+            if (focus == null) {
+                return false;
+            }
+
+            ExtendedCameraDynamicsImports.Level_ForceZoomToCameraFocus(level, focus);
+            return true;
+        } catch (Exception exception) {
+            LogExtendedCameraDynamicsWarning("Failed to force Extended Camera Dynamics focus: " + exception.Message);
+            return false;
+        }
+    }
+
+    public static bool TryRestoreExtendedCameraAutomaticZooming() {
+        if (!ExtendedCameraDynamicsLoaded) {
+            return false;
+        }
+
+        try {
+            extendedCameraZoomHooksType ??= FindType("ExCameraDynamics", "Celeste.Mod.ExCameraDynamics.Code.Hooks.CameraZoomHooks");
+            extendedCameraAutomaticZoomingProperty ??= extendedCameraZoomHooksType?.GetProperty("AutomaticZooming", BindingFlags.Public | BindingFlags.Static);
+            if (extendedCameraAutomaticZoomingProperty == null || !extendedCameraAutomaticZoomingProperty.CanWrite) {
+                return false;
+            }
+
+            extendedCameraAutomaticZoomingProperty.SetValue(null, true);
+            return true;
+        } catch (Exception exception) {
+            LogExtendedCameraDynamicsWarning("Failed to restore Extended Camera Dynamics automatic zooming: " + exception.Message);
+            return false;
+        }
     }
 
     public static void EnsureSpeedrunToolTabDoesNotStealAkronOverlayBinding() {
@@ -174,8 +239,18 @@ public static class AkronInterop {
         items.Add("Gravity Helper: " + (GravityHelperLoaded ? "loaded" : "missing"));
         items.Add("Communal Helper: " + (CommunalHelperLoaded ? "loaded" : "missing"));
         items.Add("Extended Variant Mode: " + (AkronExtendedVariants.Available ? "loaded" : "missing"));
+        items.Add("Extended Camera Dynamics: " + (ExtendedCameraDynamicsLoaded ? "loaded" : "missing"));
         items.Add("Motion Smoothing: " + (MotionSmoothingLoaded ? "loaded" : "missing"));
         return string.Join(" | ", items);
+    }
+
+    private static void LogExtendedCameraDynamicsWarning(string message) {
+        if (extendedCameraDynamicsWarningLogged) {
+            return;
+        }
+
+        extendedCameraDynamicsWarningLogged = true;
+        Logger.Log(LogLevel.Warn, nameof(AkronModule), message);
     }
 
     private static bool IsModLoaded(EverestModuleMetadata metadata, params string[] assemblyNames) {
@@ -208,5 +283,12 @@ public static class AkronInterop {
         public static Func<bool> IsTasRunning = null!;
         public static Func<bool> IsTasRecording = null!;
         public static Action<string, string, string> ShowStudioPopupMessage = null!;
+    }
+
+    [ModImportName("ExtendedCameraDynamics")]
+    private static class ExtendedCameraDynamicsImports {
+        public static Func<bool> ExtendedCameraHooksEnabled = null!;
+        public static Func<Vector2, float, object> Create_CameraFocus = null!;
+        public static Action<Level, object> Level_ForceZoomToCameraFocus = null!;
     }
 }

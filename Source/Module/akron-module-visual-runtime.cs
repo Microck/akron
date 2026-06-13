@@ -70,7 +70,8 @@ public partial class AkronModule {
             cursorZoomHadScrollSample = false;
             cursorZoomLastBindDown = false;
             if (!Settings.CursorZoom) {
-                ResetCursorZoom(level);
+                cursorZoomToggleActive = false;
+                DeactivateCursorZoom(level);
             }
             return;
         }
@@ -90,13 +91,7 @@ public partial class AkronModule {
         }
 
         if (!active) {
-            cursorZoomHadScrollSample = false;
-            level.Zoom = 1f;
-            level.ZoomTarget = 1f;
-            if (Settings.CursorZoomResetOnDeactivate && cursorZoomApplied) {
-                Settings.CursorZoomPercent = 100;
-            }
-            cursorZoomApplied = false;
+            DeactivateCursorZoom(level);
             return;
         }
 
@@ -117,13 +112,57 @@ public partial class AkronModule {
 
         cursorZoomLastScrollValue = mouse.ScrollWheelValue;
         cursorZoomHadScrollSample = true;
+        Vector2 mouseScreenPosition = new Vector2(mouse.X, mouse.Y);
+        ApplyCursorZoomFrame(level, mouseScreenPosition);
+    }
+
+    internal static void ApplyCursorZoomFrame(Level level, Vector2 mouseScreenPosition) {
+        if (level == null) {
+            return;
+        }
+
         Settings.CursorZoomPercent = AkronModuleSettings.ClampCursorZoomPercent(Settings.CursorZoomPercent, Settings.CursorZoomAllowZoomOut);
         float zoom = Settings.CursorZoomPercent / 100f;
-        cursorZoomFocusGamePosition = ClampCursorZoomFocus(AkronScreenProjection.MouseScreenToGame(new Vector2(mouse.X, mouse.Y)), zoom);
+        cursorZoomFocusGamePosition = ClampCursorZoomFocus(AkronScreenProjection.MouseScreenToGame(mouseScreenPosition), zoom);
+        if (ShouldUseExtendedCameraCursorZoom(zoom, Settings.CursorZoomAllowZoomOut, AkronInterop.ExtendedCameraDynamicsInteropAvailable)) {
+            Vector2 worldCenter = CalculateExtendedCameraCursorZoomOutCenter(
+                level.Camera.Position,
+                level.Zoom,
+                level.Tracker.GetEntity<Player>()?.Center);
+            if (AkronInterop.TryForceExtendedCameraFocus(level, worldCenter, zoom)) {
+                cursorZoomApplied = true;
+                cursorZoomOwnedByExtendedCamera = true;
+                return;
+            }
+        }
+
+        zoom = ClampNativeCursorZoom(zoom);
+        cursorZoomFocusGamePosition = ClampCursorZoomFocus(AkronScreenProjection.MouseScreenToGame(mouseScreenPosition), zoom);
         level.Zoom = zoom;
         level.ZoomTarget = zoom;
         level.ZoomFocusPoint = cursorZoomFocusGamePosition;
         cursorZoomApplied = true;
+        cursorZoomOwnedByExtendedCamera = false;
+    }
+
+    private static void DeactivateCursorZoom(Level level) {
+        cursorZoomHadScrollSample = false;
+        if (!cursorZoomApplied) {
+            return;
+        }
+
+        if (Settings.CursorZoomResetOnDeactivate) {
+            Settings.CursorZoomPercent = 100;
+        }
+
+        if (ShouldResetCursorZoomLevelState(cursorZoomApplied, cursorZoomOwnedByExtendedCamera)) {
+            ResetCursorZoomLevelState(level);
+        } else if (cursorZoomOwnedByExtendedCamera) {
+            AkronInterop.TryRestoreExtendedCameraAutomaticZooming();
+        }
+
+        cursorZoomApplied = false;
+        cursorZoomOwnedByExtendedCamera = false;
     }
 
     private static Vector2 ClampCursorZoomFocus(Vector2 focus, float zoom) {
@@ -138,11 +177,31 @@ public partial class AkronModule {
             Calc.Clamp(focus.Y, halfVisibleHeight, 180f - halfVisibleHeight));
     }
 
-    internal static void ResetCursorZoom(Level level) {
-        cursorZoomHadScrollSample = false;
-        cursorZoomApplied = false;
-        cursorZoomToggleActive = false;
-        cursorZoomLastBindDown = false;
+    internal static Vector2 CalculateExtendedCameraCursorZoomOutCenter(Vector2 cameraPosition, float currentZoom, Vector2? playerCenter) {
+        if (playerCenter.HasValue) {
+            return playerCenter.Value;
+        }
+
+        float safeZoom = Math.Max(0.001f, currentZoom);
+        Vector2 center = default;
+        center.X = cameraPosition.X + 160f / safeZoom;
+        center.Y = cameraPosition.Y + 90f / safeZoom;
+        return center;
+    }
+
+    internal static bool ShouldResetCursorZoomLevelState(bool zoomApplied, bool extendedCameraOwnsZoom) {
+        return zoomApplied && !extendedCameraOwnsZoom;
+    }
+
+    internal static bool ShouldUseExtendedCameraCursorZoom(float zoom, bool allowZoomOut, bool extendedCameraAvailable) {
+        return allowZoomOut && zoom < 1f && extendedCameraAvailable;
+    }
+
+    internal static float ClampNativeCursorZoom(float zoom) {
+        return Math.Max(1f, zoom);
+    }
+
+    private static void ResetCursorZoomLevelState(Level level) {
         if (level == null) {
             return;
         }
@@ -150,6 +209,21 @@ public partial class AkronModule {
         level.Zoom = 1f;
         level.ZoomTarget = 1f;
         level.ZoomFocusPoint = new Vector2(160f, 90f);
+    }
+
+    internal static void ResetCursorZoom(Level level) {
+        cursorZoomHadScrollSample = false;
+        bool restoreExtendedCameraZoom = cursorZoomOwnedByExtendedCamera;
+        cursorZoomApplied = false;
+        cursorZoomOwnedByExtendedCamera = false;
+        cursorZoomToggleActive = false;
+        cursorZoomLastBindDown = false;
+        if (restoreExtendedCameraZoom) {
+            AkronInterop.TryRestoreExtendedCameraAutomaticZooming();
+            return;
+        }
+
+        ResetCursorZoomLevelState(level);
     }
 
     internal static string DescribeCursorZoom(Level level) {
@@ -166,10 +240,19 @@ public partial class AkronModule {
                ";reset-on-deactivate=" + Settings.CursorZoomResetOnDeactivate.ToString().ToLowerInvariant() +
                ";mode=" + AkronModuleSettings.NormalizeCursorZoomActivationMode(Settings.CursorZoomActivationMode).ToString().ToLowerInvariant() +
                ";active=" + (cursorZoomApplied || cursorZoomToggleActive).ToString().ToLowerInvariant() +
+               ";owner=" + DescribeCursorZoomOwner() +
                ";hold=" + hold +
                ";zoom=" + liveZoom +
                ";zoom-target=" + targetZoom +
                ";focus=" + focus;
+    }
+
+    internal static string DescribeCursorZoomOwner() {
+        if (!cursorZoomApplied) {
+            return "none";
+        }
+
+        return cursorZoomOwnedByExtendedCamera ? "ecd" : "akron";
     }
 
     private static void ApplyTransitionSpeed(Level level) {

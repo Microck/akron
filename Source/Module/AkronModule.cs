@@ -66,6 +66,7 @@ public partial class AkronModule : EverestModule {
     private static bool cursorZoomHadScrollSample;
     private static Vector2 cursorZoomFocusGamePosition;
     private static bool cursorZoomApplied;
+    private static bool cursorZoomOwnedByExtendedCamera;
     private static bool cursorZoomToggleActive;
     private static bool cursorZoomLastBindDown;
     private static bool pauseTimerFreezeStoppedTimer;

@@ -1,6 +1,6 @@
 ---
 title: Interop
-description: Set up and use Akron's runtime integrations with Motion Smoothing, Speedrun Tool, CelesteTAS, and Extended Variant Mode.
+description: Set up and use Akron's runtime integrations with Motion Smoothing, Speedrun Tool, CelesteTAS, Extended Variant Mode, and Extended Camera Dynamics.
 ---
 
 Akron detects compatible mods at runtime and adds overlay rows automatically. These integrations are optional. If a mod is not installed, its rows do not appear.
@@ -15,6 +15,7 @@ External tool actions can change your attempt status. Check the **Attempt status
 | Speedrun Tool | State capture and restore slots, room timer readout, and Tab key conflict mitigation. |
 | CelesteTAS | TAS status detection and a configured `.tas` file playback action. |
 | Extended Variant Mode | Variant reset, master toggle, and randomizer controls. |
+| Extended Camera Dynamics | Camera hook status and Cursor Zoom zoom-out support. |
 
 ## Motion Smoothing
 
@@ -45,3 +46,11 @@ Extended Variant Mode interop exposes variant reset, master toggle, and randomiz
 - **Extended Variants Master** is **Goldberry/Hardlist clean** because some maps need Extended Variant Mode hooks enabled for their own dependencies.
 - **Extended Variants Randomizer** and user-controlled non-default variant options are **Cheat** because they change active gameplay rules.
 - Map-defined variant values are not flagged by Akron when they match Extended Variant Mode's current map-defined value.
+
+## Extended Camera Dynamics
+
+Extended Camera Dynamics interop exposes camera hook status and an ECD Zoom Out toggle when the mod is loaded. The toggle allows Akron Cursor Zoom to go below 100% through Extended Camera Dynamics when the current map has ECD camera hooks active. ECD zoom-out stays centered on the player. Zooming in above 100% and neutral 100% zoom still use Akron's native cursor-focused Cursor Zoom behavior.
+
+- **ECD Status** is **Regular clean** because it only reports whether the external camera hooks are active.
+- **ECD Zoom Out** is **Cheat** because it extends Akron Cursor Zoom for camera inspection.
+- **ECD Restore Zooming** is **Regular clean** because it returns Extended Camera Dynamics to its automatic camera behavior after a forced Cursor Zoom focus.

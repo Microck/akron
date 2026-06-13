@@ -225,6 +225,8 @@ public sealed partial class AkronOverlay {
                 return BuildCelesteTasEntries();
             case "Extended Variant Mode":
                 return BuildExtendedVariantEntries();
+            case "Extended Camera Dynamics":
+                return BuildExtendedCameraDynamicsEntries();
             case "Labels":
                 return BuildLabelEntries();
             case "Shortcuts":

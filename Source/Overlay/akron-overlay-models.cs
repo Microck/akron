@@ -283,20 +283,23 @@ public sealed partial class AkronOverlay {
     }
 
     private static readonly string[] BaseTabs = { "Global", "Level", "StartPos", "Backups", "Bypass", "Keybinds", "Player", "Sound", "Creator", "Interface", "Labels", "Shortcuts", "Internal Recorder" };
-    private static readonly string[] ExternalToolTabs = { "Speedrun Tool", "CelesteTAS", "Extended Variant Mode" };
+    private static readonly string[] ExternalToolTabs = { "Speedrun Tool", "CelesteTAS", "Extended Variant Mode", "Extended Camera Dynamics" };
 
     private static bool IsExternalToolTab(string tabName) {
         return ExternalToolTabs.Contains(tabName, StringComparer.OrdinalIgnoreCase);
     }
 
     private static string[] GetVisibleTabs() {
-        return BuildVisibleTabs(AkronInterop.SpeedrunToolLoaded, AkronInterop.CelesteTasLoaded, AkronInterop.ExtendedVariantModeLoaded);
+        return BuildVisibleTabs(AkronInterop.SpeedrunToolLoaded, AkronInterop.CelesteTasLoaded, AkronInterop.ExtendedVariantModeLoaded, AkronInterop.ExtendedCameraDynamicsLoaded);
     }
 
-    private static string[] BuildVisibleTabs(bool speedrunToolLoaded, bool celesteTasLoaded, bool extendedVariantModeAvailable) {
+    private static string[] BuildVisibleTabs(bool speedrunToolLoaded, bool celesteTasLoaded, bool extendedVariantModeAvailable, bool extendedCameraDynamicsLoaded) {
         List<string> tabs = new List<string>(BaseTabs);
         if (extendedVariantModeAvailable) {
             tabs.Add("Extended Variant Mode");
+        }
+        if (extendedCameraDynamicsLoaded) {
+            tabs.Add("Extended Camera Dynamics");
         }
         if (speedrunToolLoaded) {
             tabs.Add("Speedrun Tool");

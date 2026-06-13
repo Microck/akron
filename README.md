@@ -60,6 +60,7 @@ some overlay rows appear only when certain external mods are installed or config
 - **[Speedrun Tool](https://gamebanana.com/tools/6597):** status, save-state slots, capture/restore/clear actions, and room timer export when the tool is loaded.
 - **[CelesteTAS](https://gamebanana.com/tools/6715):** tas status, the configured tas file, and launching that configured tas handoff.
 - **[Extended Variant Mode](https://gamebanana.com/mods/53650):** available variant options exposed by the mod.
+- **[Extended Camera Dynamics](https://gamebanana.com/mods/548940):** camera hook status and Cursor Zoom zoom-out support when ECD camera hooks are active.
 
 see the [compatibility](https://akron.micr.dev/docs/troubleshooting/compatibility) and [external integrations](https://akron.micr.dev/docs/feature-guide/external-tools) docs for details.
 

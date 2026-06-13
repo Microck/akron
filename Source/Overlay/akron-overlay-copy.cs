@@ -460,7 +460,10 @@ public sealed partial class AkronOverlay {
         ["Extended Variants Master"] = "Enable or disable the external variant master switch and runtime hooks.",
         ["Extended Variants Randomizer"] = "Open external variant randomizer and on-screen enabled-variant display controls.",
         ["Reset Extended"] = "Reset all non-vanilla external variant settings to their defaults.",
-        ["Reset Vanilla"] = "Reset external vanilla variant wrappers to their defaults."
+        ["Reset Vanilla"] = "Reset external vanilla variant wrappers to their defaults.",
+        ["ECD Status"] = "Show whether Extended Camera Dynamics is loaded and whether its camera hooks are active.",
+        ["ECD Zoom Out"] = "Allow Akron Cursor Zoom to zoom below 100% through Extended Camera Dynamics when its hooks are active. Zoom-out stays centered on the player.",
+        ["ECD Restore Zooming"] = "Return Extended Camera Dynamics to automatic zooming after a forced camera focus."
     };
 
     private static bool TryGetActionDescription(string label, out string description) {

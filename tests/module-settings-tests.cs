@@ -1026,6 +1026,56 @@ public sealed class ModuleSettingsTests {
         Assert.Equal(expected, AkronModuleSettings.ClampCursorZoomStepPercent(input));
     }
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    public void CursorZoomLevelResetIsSkippedWhileExtendedCameraOwnsZoom(bool zoomApplied, bool extendedCameraOwnsZoom, bool expected) {
+        Assert.Equal(expected, AkronModule.ShouldResetCursorZoomLevelState(zoomApplied, extendedCameraOwnsZoom));
+    }
+
+    [Theory]
+    [InlineData(0.5f, true, true, true)]
+    [InlineData(1f, true, true, false)]
+    [InlineData(2f, true, true, false)]
+    [InlineData(0.5f, false, true, false)]
+    [InlineData(0.5f, true, false, false)]
+    public void ExtendedCameraCursorZoomOnlyHandlesAvailableZoomOut(float zoom, bool allowZoomOut, bool extendedCameraAvailable, bool expected) {
+        Assert.Equal(expected, AkronModule.ShouldUseExtendedCameraCursorZoom(zoom, allowZoomOut, extendedCameraAvailable));
+    }
+
+    [Theory]
+    [InlineData(0.25f, 1f)]
+    [InlineData(0.5f, 1f)]
+    [InlineData(1f, 1f)]
+    [InlineData(2f, 2f)]
+    public void NativeCursorZoomNeverZoomsOut(float zoom, float expected) {
+        Assert.Equal(expected, AkronModule.ClampNativeCursorZoom(zoom));
+    }
+
+    [Fact]
+    public void ExtendedCameraCursorZoomOutCentersOnPlayer() {
+        Vector2 center = AkronModule.CalculateExtendedCameraCursorZoomOutCenter(
+            TestVector2(5000f, -7000f),
+            0.2f,
+            TestVector2(8960f, -7408f));
+
+        Assert.Equal(8960f, center.X);
+        Assert.Equal(-7408f, center.Y);
+    }
+
+    [Fact]
+    public void ExtendedCameraCursorZoomOutFallsBackToCurrentCameraCenterWithoutPlayer() {
+        Vector2 center = AkronModule.CalculateExtendedCameraCursorZoomOutCenter(
+            TestVector2(5000f, -7000f),
+            0.2f,
+            null);
+
+        Assert.Equal(5800f, center.X);
+        Assert.Equal(-6550f, center.Y);
+    }
+
     [Fact]
     public void CustomHudLabelDefaultsUseAkronStyleContainers() {
         AkronModuleSettings settings = new AkronModuleSettings();

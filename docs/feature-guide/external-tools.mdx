@@ -1,11 +1,11 @@
 ---
 title: External tools
-description: Options that appear only when Motion Smoothing, Speedrun Tool, CelesteTAS, or Extended Variant Mode is loaded.
+description: Options that appear only when Motion Smoothing, Speedrun Tool, CelesteTAS, Extended Variant Mode, or Extended Camera Dynamics is loaded.
 ---
 
 External tool rows are not part of Akron's base overlay tabs. They appear only when the relevant mod is loaded, and they are documented separately so the main feature pages stay focused on Akron's own options.
 
-Motion Smoothing adds FPS and TPS bypass rows to the Global tab. Its higher-FPS path keeps Celeste physics at 60 FPS while drawing extra frames, so Akron marks FPS Bypass and the physics-neutral smoothing options as **Regular clean**. Object interpolation is stricter because Motion Smoothing documents that it can add 1-2 frames of input delay. Extended Variant Mode can also expose variant-specific rows at runtime; those dynamic rows depend on the installed Extended Variant Mode option list.
+Motion Smoothing adds FPS and TPS bypass rows to the Global tab. Its higher-FPS path keeps Celeste physics at 60 FPS while drawing extra frames, so Akron marks FPS Bypass and the physics-neutral smoothing options as **Regular clean**. Object interpolation is stricter because Motion Smoothing documents that it can add 1-2 frames of input delay. Extended Variant Mode can also expose variant-specific rows at runtime; those dynamic rows depend on the installed Extended Variant Mode option list. Extended Camera Dynamics adds camera status and ECD-backed zoom-out support for Akron Cursor Zoom when its own camera hooks are active. Akron still uses its native Cursor Zoom path for zoom-in and neutral zoom.
 
 | Tool | Option | Control | What it does | Attempt status |
 |---|---|---|---|---|
@@ -25,6 +25,9 @@ Motion Smoothing adds FPS and TPS bypass rows to the Global tab. Its higher-FPS 
 | Extended Variant Mode | Reset Vanilla | Action | Reset external vanilla variant wrappers to their defaults. | Regular clean |
 | Extended Variant Mode | Extended Variants Master | Toggle | Toggle Extended Variant Mode's master switch when the mod is loaded. | Goldberry/Hardlist clean |
 | Extended Variant Mode | Extended Variants Randomizer | Toggle | Open Extended Variant Mode randomizer controls when the mod is loaded. | Cheat |
+| Extended Camera Dynamics | ECD Status | Action | Show whether Extended Camera Dynamics is loaded and whether its camera hooks are active. | Regular clean |
+| Extended Camera Dynamics | ECD Zoom Out | Toggle | Allow Akron Cursor Zoom to zoom below 100% through Extended Camera Dynamics when its hooks are active. ECD zoom-out stays centered on the player; native zoom-in still uses Akron's cursor-focused zoom path. | Cheat |
+| Extended Camera Dynamics | ECD Restore Zooming | Action | Return Extended Camera Dynamics to automatic zooming after a forced camera focus. | Regular clean |
 
 ## Option menus
 

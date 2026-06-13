@@ -13,27 +13,29 @@ namespace Celeste.Mod.Akron.Tests;
 public sealed class OverlayTests {
     [Fact]
     public void ExternalToolTabsAreHiddenWhenTheirModsAreMissing() {
-        string[] visibleTabs = InvokeBuildVisibleTabs(speedrunToolLoaded: false, celesteTasLoaded: false, extendedVariantModeAvailable: false);
+        string[] visibleTabs = InvokeBuildVisibleTabs(speedrunToolLoaded: false, celesteTasLoaded: false, extendedVariantModeAvailable: false, extendedCameraDynamicsLoaded: false);
 
         Assert.DoesNotContain("Speedrun Tool", visibleTabs);
         Assert.DoesNotContain("CelesteTAS", visibleTabs);
         Assert.DoesNotContain("Extended Variant Mode", visibleTabs);
+        Assert.DoesNotContain("Extended Camera Dynamics", visibleTabs);
     }
 
     [Fact]
     public void ExternalToolTabsAppearOnlyForAvailableMods() {
-        string[] visibleTabs = InvokeBuildVisibleTabs(speedrunToolLoaded: true, celesteTasLoaded: true, extendedVariantModeAvailable: true);
+        string[] visibleTabs = InvokeBuildVisibleTabs(speedrunToolLoaded: true, celesteTasLoaded: true, extendedVariantModeAvailable: true, extendedCameraDynamicsLoaded: true);
 
         Assert.Contains("Speedrun Tool", visibleTabs);
         Assert.Contains("CelesteTAS", visibleTabs);
         Assert.Contains("Extended Variant Mode", visibleTabs);
+        Assert.Contains("Extended Camera Dynamics", visibleTabs);
     }
 
     [Fact]
     public void ExternalToolSectionsRemainToggleableForCollapseCommands() {
         string[] toggleableSections = InvokeStaticStringArray("GetToggleableSections");
 
-        foreach (string title in new[] { "Speedrun Tool", "CelesteTAS", "Extended Variant Mode" }) {
+        foreach (string title in new[] { "Speedrun Tool", "CelesteTAS", "Extended Variant Mode", "Extended Camera Dynamics" }) {
             Assert.Contains(title, toggleableSections);
         }
     }
@@ -55,6 +57,7 @@ public sealed class OverlayTests {
         List<string> speedrunToolLabels = BuildOverlayEntryLabels("Speedrun Tool");
         List<string> celesteTasLabels = BuildOverlayEntryLabels("CelesteTAS");
         List<string> extendedVariantModeLabels = BuildOverlayEntryLabels("Extended Variant Mode");
+        List<string> extendedCameraDynamicsLabels = BuildOverlayEntryLabels("Extended Camera Dynamics");
 
         Assert.Contains("SRT Status", speedrunToolLabels);
         Assert.Contains("SRT Slot", speedrunToolLabels);
@@ -64,6 +67,9 @@ public sealed class OverlayTests {
         Assert.Contains("Extended Variants Randomizer", extendedVariantModeLabels);
         Assert.Contains("Reset Extended", extendedVariantModeLabels);
         Assert.Contains("Reset Vanilla", extendedVariantModeLabels);
+        Assert.Contains("ECD Status", extendedCameraDynamicsLabels);
+        Assert.Contains("ECD Zoom Out", extendedCameraDynamicsLabels);
+        Assert.Contains("ECD Restore Zooming", extendedCameraDynamicsLabels);
     }
 
     [Fact]
@@ -117,7 +123,7 @@ public sealed class OverlayTests {
         Assert.DoesNotContain("TPS Bypass", missingLabels);
         Assert.Equal("FPS Bypass", loadedLabels[0]);
         Assert.Equal("TPS Bypass", loadedLabels[1]);
-        Assert.DoesNotContain("Motion Smoothing", InvokeBuildVisibleTabs(speedrunToolLoaded: true, celesteTasLoaded: true, extendedVariantModeAvailable: true));
+        Assert.DoesNotContain("Motion Smoothing", InvokeBuildVisibleTabs(speedrunToolLoaded: true, celesteTasLoaded: true, extendedVariantModeAvailable: true, extendedCameraDynamicsLoaded: true));
     }
 
     [Fact]
@@ -641,9 +647,9 @@ public sealed class OverlayTests {
         return vector;
     }
 
-    private static string[] InvokeBuildVisibleTabs(bool speedrunToolLoaded, bool celesteTasLoaded, bool extendedVariantModeAvailable) {
+    private static string[] InvokeBuildVisibleTabs(bool speedrunToolLoaded, bool celesteTasLoaded, bool extendedVariantModeAvailable, bool extendedCameraDynamicsLoaded) {
         MethodInfo method = typeof(AkronOverlay).GetMethod("BuildVisibleTabs", BindingFlags.Static | BindingFlags.NonPublic)!;
-        return ((IEnumerable<string>) method.Invoke(null, new object[] { speedrunToolLoaded, celesteTasLoaded, extendedVariantModeAvailable })!).ToArray();
+        return ((IEnumerable<string>) method.Invoke(null, new object[] { speedrunToolLoaded, celesteTasLoaded, extendedVariantModeAvailable, extendedCameraDynamicsLoaded })!).ToArray();
     }
 
     private static string[] InvokeStaticStringArray(string methodName) {
