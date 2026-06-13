@@ -280,7 +280,8 @@ public static partial class AkronSetupPacks {
         try {
             pack = Read(path);
             Apply(AkronModule.Settings, AkronModule.Session, pack, section);
-        } catch (Exception ex) when (ex is InvalidDataException || ex is JsonException || ex is IOException || ex is UnauthorizedAccessException) {
+        }
+        catch (Exception ex) when (ex is InvalidDataException || ex is JsonException || ex is IOException || ex is UnauthorizedAccessException) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to import Akron setup archive: " + ex.Message);
             Engine.Scene?.Add(new AkronToast("Unsupported setup pack."));
             return false;
@@ -485,6 +486,23 @@ public static partial class AkronSetupPacks {
         target.AutoKillAreaY = source.AutoKillAreaY;
         target.AutoKillAreaWidth = source.AutoKillAreaWidth;
         target.AutoKillAreaHeight = source.AutoKillAreaHeight;
+        target.AutoKillSpeedCondition = source.AutoKillSpeedCondition;
+        target.AutoKillMinSpeed = source.AutoKillMinSpeed;
+        target.AutoKillMaxSpeed = source.AutoKillMaxSpeed;
+        target.AutoKillHorizontalSpeedCondition = source.AutoKillHorizontalSpeedCondition;
+        target.AutoKillMinHorizontalSpeed = source.AutoKillMinHorizontalSpeed;
+        target.AutoKillMaxHorizontalSpeed = source.AutoKillMaxHorizontalSpeed;
+        target.AutoKillVerticalSpeedCondition = source.AutoKillVerticalSpeedCondition;
+        target.AutoKillMinVerticalSpeed = source.AutoKillMinVerticalSpeed;
+        target.AutoKillMaxVerticalSpeed = source.AutoKillMaxVerticalSpeed;
+        target.AutoKillDashCountCondition = source.AutoKillDashCountCondition;
+        target.AutoKillDashCount = source.AutoKillDashCount;
+        target.AutoKillGroundCondition = source.AutoKillGroundCondition;
+        target.AutoKillHorizontalDirection = source.AutoKillHorizontalDirection;
+        target.AutoKillVerticalDirection = source.AutoKillVerticalDirection;
+        target.AutoKillPlayerStateCondition = source.AutoKillPlayerStateCondition;
+        target.AutoKillPlayerState = source.AutoKillPlayerState;
+        target.AutoKillInvertConditions = source.AutoKillInvertConditions;
     }
 
     private static void CopyAutoDeafenState(AkronSetupState target, AkronSetupState source) {
@@ -585,7 +603,7 @@ public static partial class AkronSetupPacks {
     private static Dictionary<string, AkronButtonBindingPack> CaptureButtonBindings(AkronModuleSettings settings) {
         Dictionary<string, AkronButtonBindingPack> bindings = new Dictionary<string, AkronButtonBindingPack>(StringComparer.Ordinal);
         foreach (PropertyInfo property in ButtonBindingProperties) {
-            bindings[property.Name] = CaptureButtonBinding((ButtonBinding) property.GetValue(settings));
+            bindings[property.Name] = CaptureButtonBinding((ButtonBinding)property.GetValue(settings));
         }
 
         return bindings;
@@ -598,7 +616,8 @@ public static partial class AkronSetupPacks {
                 Buttons = binding?.Buttons?.Where(button => button != 0).Select(button => button.ToString()).ToList() ?? new List<string>(),
                 MouseButtons = binding?.MouseButtons?.Select(button => button.ToString()).ToList() ?? new List<string>()
             };
-        } catch (InvalidProgramException) {
+        }
+        catch (InvalidProgramException) {
             // Some test stubs for Everest's ButtonBinding expose invalid getters.
             // The real game binding object has normal mutable lists, but keeping
             // archive capture tolerant lets non-game tests exercise the rest of

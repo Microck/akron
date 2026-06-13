@@ -236,9 +236,30 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip("Restore the default 250 ms spike threshold.");
     }
 
-    private void DrawPreventDownDashRedirectsPopupControls(string popupId) {
-        DrawPopupChoiceCheckbox("Normal", AkronModule.Settings.PreventDownDashRedirects == AkronPreventDownDashRedirectMode.Normal, () => AkronModule.Settings.PreventDownDashRedirects = AkronPreventDownDashRedirectMode.Normal, popupId, "Restore pure down when no horizontal input is held.");
-        DrawPopupChoiceCheckbox("Diagonal", AkronModule.Settings.PreventDownDashRedirects == AkronPreventDownDashRedirectMode.Diagonal, () => AkronModule.Settings.PreventDownDashRedirects = AkronPreventDownDashRedirectMode.Diagonal, popupId, "Preserve diagonal down redirects.");
+    private void DrawDashRedirectDirectionsPopupControls(string popupId) {
+        DrawDashRedirectDirectionCheckbox("Down", AkronDashRedirectDirection.Down, popupId, "Prevent Celeste from redirecting straight down dashes.");
+        DrawDashRedirectDirectionCheckbox("Down-left", AkronDashRedirectDirection.DownLeft, popupId, "Prevent Celeste from redirecting down-left dashes.");
+        DrawDashRedirectDirectionCheckbox("Down-right", AkronDashRedirectDirection.DownRight, popupId, "Prevent Celeste from redirecting down-right dashes.");
+        DrawDashRedirectDirectionCheckbox("Left", AkronDashRedirectDirection.Left, popupId, "Prevent Celeste from redirecting left dashes.");
+        DrawDashRedirectDirectionCheckbox("Right", AkronDashRedirectDirection.Right, popupId, "Prevent Celeste from redirecting right dashes.");
+        DrawDashRedirectDirectionCheckbox("Up", AkronDashRedirectDirection.Up, popupId, "Prevent Celeste from redirecting straight up dashes.");
+        DrawDashRedirectDirectionCheckbox("Up-left", AkronDashRedirectDirection.UpLeft, popupId, "Prevent Celeste from redirecting up-left dashes.");
+        DrawDashRedirectDirectionCheckbox("Up-right", AkronDashRedirectDirection.UpRight, popupId, "Prevent Celeste from redirecting up-right dashes.");
+        DrawDashRedirectDirectionCheckbox("Down diagonal", AkronDashRedirectDirection.DownLeft | AkronDashRedirectDirection.DownRight, popupId, "Prevent Celeste from redirecting down-left and down-right dashes.");
+        DrawDashRedirectDirectionCheckbox("Up diagonal", AkronDashRedirectDirection.UpLeft | AkronDashRedirectDirection.UpRight, popupId, "Prevent Celeste from redirecting up-left and up-right dashes.");
+        DrawDashRedirectDirectionCheckbox("All", AkronDashRedirectDirection.All, popupId, "Prevent dash redirects for every dash direction.");
+    }
+
+    private void DrawDashRedirectDirectionCheckbox(string label, AkronDashRedirectDirection direction, string popupId, string tooltip) {
+        AkronDashRedirectDirection directions = AkronModuleSettings.NormalizeDashRedirectDirections(AkronModule.Settings.DashRedirectDirections);
+        bool selected = (directions & direction) == direction;
+        if (ImGui.Checkbox(label + "##" + popupId, ref selected)) {
+            directions = selected ? directions | direction : directions & ~direction;
+            AkronModule.Settings.DashRedirectDirections = directions == AkronDashRedirectDirection.None
+                ? AkronDashRedirectDirection.Down
+                : directions;
+        }
+        DrawPopupTooltip(tooltip, label);
     }
 
     private void DrawPopupChoiceCheckbox(string label, bool selected, Action apply, string popupId, string tooltip) {

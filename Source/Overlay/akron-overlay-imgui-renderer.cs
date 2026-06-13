@@ -264,6 +264,9 @@ public sealed partial class AkronOverlay {
         style.Colors[(int) ImGuiCol.Button] = AkronImGuiTheme.FrameBackground;
         style.Colors[(int) ImGuiCol.ButtonHovered] = ToImGuiColor(theme.HeaderHoverColor, 0.32f);
         style.Colors[(int) ImGuiCol.ButtonActive] = ToImGuiColor(theme.HeaderHoverColor, 0.48f);
+        style.Colors[(int) ImGuiCol.Header] = AkronImGuiTheme.FrameBackground;
+        style.Colors[(int) ImGuiCol.HeaderHovered] = AkronImGuiTheme.ButtonHovered;
+        style.Colors[(int) ImGuiCol.HeaderActive] = AkronImGuiTheme.ButtonActive;
         style.Colors[(int) ImGuiCol.PopupBg] = ToImGuiColor(theme.WindowColor);
     }
 

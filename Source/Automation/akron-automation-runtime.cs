@@ -25,7 +25,9 @@ public partial class AkronModule {
             return;
         }
 
-        if (Settings.AutoKillArea && TryGetPlayerAutoKillArea(player, out Rectangle autoKillArea)) {
+        if (Settings.AutoKillArea &&
+            TryGetPlayerAutoKillArea(player, out Rectangle autoKillArea) &&
+            AutoKillAreaConditionsMatch(player)) {
             TriggerAutoKillDeath(player, "Auto kill area triggered.", autoKillArea);
             return;
         }
@@ -78,7 +80,8 @@ public partial class AkronModule {
         pendingAutoKillDeathArea = autoKillArea;
         try {
             player.Die(Vector2.Zero, evenIfInvincible: false);
-        } finally {
+        }
+        finally {
             pendingAutoKillDeathArea = null;
         }
 
@@ -98,6 +101,90 @@ public partial class AkronModule {
 
         autoKillArea = default;
         return false;
+    }
+
+    private static bool AutoKillAreaConditionsMatch(Player player) {
+        bool matches = AutoKillAreaConditionsMatchCore(player);
+        return Settings.AutoKillInvertConditions ? !matches : matches;
+    }
+
+    private static bool AutoKillAreaConditionsMatchCore(Player player) {
+        if (Settings.AutoKillSpeedCondition) {
+            int speed = (int) Math.Round(player.Speed.Length());
+            int minSpeed = AkronModuleSettings.ClampAutoKillSpeed(Settings.AutoKillMinSpeed);
+            int maxSpeed = AkronModuleSettings.ClampAutoKillSpeed(Settings.AutoKillMaxSpeed);
+            if (maxSpeed < minSpeed) {
+                maxSpeed = minSpeed;
+            }
+
+            if (speed < minSpeed || speed > maxSpeed) {
+                return false;
+            }
+        }
+
+        if (Settings.AutoKillHorizontalSpeedCondition) {
+            int speed = (int) Math.Round(Math.Abs(player.Speed.X));
+            int minSpeed = AkronModuleSettings.ClampAutoKillSpeed(Settings.AutoKillMinHorizontalSpeed);
+            int maxSpeed = AkronModuleSettings.ClampAutoKillSpeed(Settings.AutoKillMaxHorizontalSpeed);
+            if (maxSpeed < minSpeed) {
+                maxSpeed = minSpeed;
+            }
+
+            if (speed < minSpeed || speed > maxSpeed) {
+                return false;
+            }
+        }
+
+        if (Settings.AutoKillVerticalSpeedCondition) {
+            int speed = (int) Math.Round(Math.Abs(player.Speed.Y));
+            int minSpeed = AkronModuleSettings.ClampAutoKillSpeed(Settings.AutoKillMinVerticalSpeed);
+            int maxSpeed = AkronModuleSettings.ClampAutoKillSpeed(Settings.AutoKillMaxVerticalSpeed);
+            if (maxSpeed < minSpeed) {
+                maxSpeed = minSpeed;
+            }
+
+            if (speed < minSpeed || speed > maxSpeed) {
+                return false;
+            }
+        }
+
+        if (Settings.AutoKillDashCountCondition &&
+            player.Dashes != AkronModuleSettings.ClampAutoKillDashCount(Settings.AutoKillDashCount)) {
+            return false;
+        }
+
+        AkronAutoKillGroundCondition groundCondition = AkronModuleSettings.NormalizeAutoKillGroundCondition(Settings.AutoKillGroundCondition);
+        if (groundCondition == AkronAutoKillGroundCondition.Grounded && !player.OnGround()) {
+            return false;
+        }
+
+        if (groundCondition == AkronAutoKillGroundCondition.Airborne && player.OnGround()) {
+            return false;
+        }
+
+        if (!AutoKillAxisConditionMatches(Settings.AutoKillHorizontalDirection, player.Speed.X)) {
+            return false;
+        }
+
+        if (!AutoKillAxisConditionMatches(Settings.AutoKillVerticalDirection, player.Speed.Y)) {
+            return false;
+        }
+
+        return !Settings.AutoKillPlayerStateCondition ||
+               player.StateMachine.State == AkronModuleSettings.ClampAutoKillPlayerState(Settings.AutoKillPlayerState);
+    }
+
+    private static bool AutoKillAxisConditionMatches(AkronAutoKillAxisCondition condition, float speed) {
+        switch (AkronModuleSettings.NormalizeAutoKillAxisCondition(condition)) {
+            case AkronAutoKillAxisCondition.Negative:
+                return speed < -0.01f;
+            case AkronAutoKillAxisCondition.Positive:
+                return speed > 0.01f;
+            case AkronAutoKillAxisCondition.Zero:
+                return Math.Abs(speed) <= 0.01f;
+            default:
+                return true;
+        }
     }
 
     private static Rectangle PlayerAutoKillBounds(Player player) {

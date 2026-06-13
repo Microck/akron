@@ -214,7 +214,7 @@ public sealed partial class AkronOverlay {
                string.Equals(label, "Dash Count", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Dash Number", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Speed Number", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(label, "Prevent Down Dash Redirects", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Dash Redirect", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Auto Kill", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Auto Deafen", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Transition Speed", StringComparison.OrdinalIgnoreCase) ||
@@ -554,8 +554,10 @@ public sealed partial class AkronOverlay {
                 : "Off";
         }
 
-        if (string.Equals(label, "Prevent Down Dash Redirects", StringComparison.OrdinalIgnoreCase)) {
-            return AkronModule.Settings.PreventDownDashRedirectsEnabled ? "On" : "Off";
+        if (string.Equals(label, "Dash Redirect", StringComparison.OrdinalIgnoreCase)) {
+            return AkronModule.Settings.DashRedirectEnabled
+                ? FormatDashRedirectDirections(AkronModule.Settings.DashRedirectDirections)
+                : "Off";
         }
 
         if (string.Equals(label, "Auto Kill", StringComparison.OrdinalIgnoreCase)) {
@@ -764,8 +766,8 @@ public sealed partial class AkronOverlay {
             return;
         }
 
-        if (string.Equals(label, "Prevent Down Dash Redirects", StringComparison.OrdinalIgnoreCase)) {
-            AkronModule.Settings.PreventDownDashRedirects = NextPreventDownDashRedirectMode(AkronModule.Settings.PreventDownDashRedirects, delta);
+        if (string.Equals(label, "Dash Redirect", StringComparison.OrdinalIgnoreCase)) {
+            AkronModule.Settings.DashRedirectDirections = NextDashRedirectDirections(AkronModule.Settings.DashRedirectDirections, delta);
             return;
         }
 

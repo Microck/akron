@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Xna.Framework;
 
 namespace Celeste.Mod.Akron;
@@ -198,10 +199,31 @@ public enum AkronCursorZoomActivationMode {
     Toggle
 }
 
-public enum AkronPreventDownDashRedirectMode {
-    Disabled,
-    Normal,
-    Diagonal
+[Flags]
+public enum AkronDashRedirectDirection {
+    None = 0,
+    Down = 1 << 0,
+    DownLeft = 1 << 1,
+    DownRight = 1 << 2,
+    Left = 1 << 3,
+    Right = 1 << 4,
+    UpLeft = 1 << 5,
+    Up = 1 << 6,
+    UpRight = 1 << 7,
+    All = Down | DownLeft | DownRight | Left | Right | UpLeft | Up | UpRight
+}
+
+public enum AkronAutoKillGroundCondition {
+    Any,
+    Grounded,
+    Airborne
+}
+
+public enum AkronAutoKillAxisCondition {
+    Any,
+    Negative,
+    Positive,
+    Zero
 }
 
 public enum AkronOverlayThemePreset {

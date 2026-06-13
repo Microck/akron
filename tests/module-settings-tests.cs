@@ -16,13 +16,15 @@ using XnaButtons = Microsoft.Xna.Framework.Input.Buttons;
 
 namespace Celeste.Mod.Akron.Tests;
 
-public sealed class ModuleSettingsTests {
+public sealed class ModuleSettingsTests
+{
     [Theory]
     [InlineData(AkronStatus.Unclassified, "Unclassified")]
     [InlineData(AkronStatus.GoldberryHardlistClean, "Goldberry/Hardlist clear")]
     [InlineData(AkronStatus.RegularClean, "Normal clear")]
     [InlineData(AkronStatus.Cheat, "Cheat")]
-    public void StatusLabelsMatchPublicUiContract(AkronStatus status, string expected) {
+    public void StatusLabelsMatchPublicUiContract(AkronStatus status, string expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.FormatStatus(status));
     }
 
@@ -32,7 +34,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 20)]
     [InlineData(250, 250)]
     [InlineData(1200, 900)]
-    public void NoclipSpeedClampUsesDefaultAndBounds(int input, int expected) {
+    public void NoclipSpeedClampUsesDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampNoclipSpeed(input));
     }
 
@@ -41,7 +44,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0, 0)]
     [InlineData(12, 12)]
     [InlineData(1200, 999)]
-    public void NoclipAccuracyInvalidLimitClampUsesZeroAsDisabled(int input, int expected) {
+    public void NoclipAccuracyInvalidLimitClampUsesZeroAsDisabled(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampNoclipAccuracyInvalidLimit(input));
     }
 
@@ -52,12 +56,14 @@ public sealed class ModuleSettingsTests {
     [InlineData(180, 180)]
     [InlineData(250, 250)]
     [InlineData(6000, 5000)]
-    public void NoclipAccuracyTintDurationClampUsesDefaultAndBounds(int input, int expected) {
+    public void NoclipAccuracyTintDurationClampUsesDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampNoclipAccuracyTintDurationMs(input));
     }
 
     [Fact]
-    public void HazardAccuracyTintDefaultsUsePlayableFeedbackByDefault() {
+    public void HazardAccuracyTintDefaultsUsePlayableFeedbackByDefault()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.True(settings.NoclipAccuracyTint);
@@ -70,7 +76,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void InputsPerSecondDefaultsAreAVisualCounterOnly() {
+    public void InputsPerSecondDefaultsAreAVisualCounterOnly()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.False(settings.InputsPerSecondCounter);
@@ -86,7 +93,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void DeathStatsDefaultsUseBoundedFormatAndDeathMenuVisibility() {
+    public void DeathStatsDefaultsUseBoundedFormatAndDeathMenuVisibility()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.Equal(AkronModuleSettings.DefaultDeathStatsFormat, settings.DeathStatsFormat);
@@ -98,12 +106,14 @@ public sealed class ModuleSettingsTests {
     [InlineData("", "$C ($B)")]
     [InlineData("{0}/{1}", "$C/$B")]
     [InlineData("deaths $C best $B", "deaths $C best $B")]
-    public void DeathStatsFormatNormalizationKeepsPublicTokens(string input, string expected) {
+    public void DeathStatsFormatNormalizationKeepsPublicTokens(string input, string expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.NormalizeDeathStatsFormat(input));
     }
 
     [Fact]
-    public void DeathStatsFormatterReplacesAkronOwnedTokens() {
+    public void DeathStatsFormatterReplacesAkronOwnedTokens()
+    {
         string text = AkronHudRenderer.FormatDeathStatsText("$C/$B/$A/$T/$L/$S", 2, "5", 10, 99, 3, 1);
 
         Assert.Equal("2/5/10/99/3/1", text);
@@ -113,7 +123,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(4, 1, false, 5)]
     [InlineData(5, 1, true, 5)]
     [InlineData(0, 1, true, 1)]
-    public void DeathStatsMapTotalAvoidsTransitionDoubleCount(int sessionDeaths, int roomDeaths, bool deathTransitionActive, int expected) {
+    public void DeathStatsMapTotalAvoidsTransitionDoubleCount(int sessionDeaths, int roomDeaths, bool deathTransitionActive, int expected)
+    {
         Assert.Equal(expected, AkronHudRenderer.GetSessionMapDeathTotal(sessionDeaths, roomDeaths, deathTransitionActive));
     }
 
@@ -121,7 +132,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(100, 200, 200, 160, 308, 200)]
     [InlineData(1720, 200, 200, 160, 1512, 200)]
     [InlineData(100, 990, 200, 160, 308, 904)]
-    public void AnchoredPopupPlacementStaysBesideRowWithMinimalVerticalShift(int anchorX, int anchorY, int popupWidth, int popupHeight, float expectedX, float expectedY) {
+    public void AnchoredPopupPlacementStaysBesideRowWithMinimalVerticalShift(int anchorX, int anchorY, int popupWidth, int popupHeight, float expectedX, float expectedY)
+    {
         (float x, float y) = AkronOverlay.CalculateAnchoredPopupPosition(
             anchorX,
             anchorY,
@@ -138,7 +150,8 @@ public sealed class ModuleSettingsTests {
     [Theory]
     [InlineData(100, 100, 500, 160, 360, 240, 16, 64)]
     [InlineData(1720, 1060, 220, 160, 1920, 1080, 1492, 904)]
-    public void AnchoredPopupPlacementKeepsViewportMargin(int anchorX, int anchorY, int popupWidth, int popupHeight, int displayWidth, int displayHeight, float expectedX, float expectedY) {
+    public void AnchoredPopupPlacementKeepsViewportMargin(int anchorX, int anchorY, int popupWidth, int popupHeight, int displayWidth, int displayHeight, float expectedX, float expectedY)
+    {
         (float x, float y) = AkronOverlay.CalculateAnchoredPopupPosition(
             anchorX,
             anchorY,
@@ -157,7 +170,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void FreshInstallDefaultsDoNotEnableStatusOrAttemptClassification() {
+    public void FreshInstallDefaultsDoNotEnableStatusOrAttemptClassification()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
         AkronModuleSession session = new AkronModuleSession();
 
@@ -171,7 +185,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void NewlyAddedFeatureDefaultsStartOptIn() {
+    public void NewlyAddedFeatureDefaultsStartOptIn()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.False(settings.SafeMode);
@@ -185,8 +200,15 @@ public sealed class ModuleSettingsTests {
         Assert.False(settings.RoomStatTracker);
         Assert.Equal(AkronRoomStatTimerFreezeMode.PausedOrInactive, settings.RoomStatTimerFreezeMode);
         Assert.False(settings.FreezeTimerWhilePaused);
-        Assert.False(settings.PreventDownDashRedirectsEnabled);
-        Assert.Equal(AkronPreventDownDashRedirectMode.Normal, settings.PreventDownDashRedirects);
+        Assert.False(settings.DashRedirectEnabled);
+        Assert.Equal(AkronDashRedirectDirection.Down, settings.DashRedirectDirections);
+        Assert.False(settings.AutoKillSpeedCondition);
+        Assert.Equal(0, settings.AutoKillMinSpeed);
+        Assert.Equal(1000, settings.AutoKillMaxSpeed);
+        Assert.False(settings.AutoKillDashCountCondition);
+        Assert.Equal(0, settings.AutoKillDashCount);
+        Assert.Equal(AkronAutoKillAxisCondition.Any, settings.AutoKillHorizontalDirection);
+        Assert.Equal(AkronAutoKillAxisCondition.Any, settings.AutoKillVerticalDirection);
         Assert.False(settings.GrabModeOverrideEnabled);
         Assert.Equal(GrabModes.Toggle, settings.GrabModeOverrideMode);
         Assert.False(settings.MadelineHairLength);
@@ -203,7 +225,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void LoggingDefaultsToMaximumDiagnosticsWithBoundedRetention() {
+    public void LoggingDefaultsToMaximumDiagnosticsWithBoundedRetention()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.True(settings.Logging);
@@ -218,7 +241,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 1)]
     [InlineData(50, 50)]
     [InlineData(500, 100)]
-    public void LoggingFileSizeClampKeepsFilesBounded(int input, int expected) {
+    public void LoggingFileSizeClampKeepsFilesBounded(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampLoggingMaxFileSizeMb(input));
     }
 
@@ -227,42 +251,49 @@ public sealed class ModuleSettingsTests {
     [InlineData(0, 0)]
     [InlineData(7, 7)]
     [InlineData(500, 20)]
-    public void LoggingRetentionClampKeepsRotationBounded(int input, int expected) {
+    public void LoggingRetentionClampKeepsRotationBounded(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampLoggingRetainedFiles(input));
     }
 
     [Fact]
-    public void DefaultButtonBindingsStartEmptyExceptMenuAndLeftAltHolds() {
-        IReadOnlyDictionary<string, (XnaButtons Buttons, Keys Key)> allowedDefaults = new Dictionary<string, (XnaButtons, Keys)> {
-            ["ToggleOverlay"] = ((XnaButtons) 0, Keys.Tab),
-            ["ClickTeleportCursor"] = ((XnaButtons) 0, Keys.LeftAlt),
-            ["CursorZoomHold"] = ((XnaButtons) 0, Keys.LeftAlt)
+    public void DefaultButtonBindingsStartEmptyExceptMenuAndLeftAltHolds()
+    {
+        IReadOnlyDictionary<string, (XnaButtons Buttons, Keys Key)> allowedDefaults = new Dictionary<string, (XnaButtons, Keys)>
+        {
+            ["ToggleOverlay"] = ((XnaButtons)0, Keys.Tab),
+            ["ClickTeleportCursor"] = ((XnaButtons)0, Keys.LeftAlt),
+            ["CursorZoomHold"] = ((XnaButtons)0, Keys.LeftAlt)
         };
 
-        foreach (PropertyInfo property in typeof(AkronModuleSettings).GetProperties()) {
+        foreach (PropertyInfo property in typeof(AkronModuleSettings).GetProperties())
+        {
             CustomAttributeData? attribute = property.CustomAttributes
                 .SingleOrDefault(data => data.AttributeType.Name == "DefaultButtonBindingAttribute");
-            if (attribute == null) {
+            if (attribute == null)
+            {
                 continue;
             }
 
             Assert.Equal(2, attribute.ConstructorArguments.Count);
-            XnaButtons buttons = (XnaButtons) Convert.ToInt32(attribute.ConstructorArguments[0].Value, CultureInfo.InvariantCulture);
-            Keys key = (Keys) Convert.ToInt32(attribute.ConstructorArguments[1].Value, CultureInfo.InvariantCulture);
+            XnaButtons buttons = (XnaButtons)Convert.ToInt32(attribute.ConstructorArguments[0].Value, CultureInfo.InvariantCulture);
+            Keys key = (Keys)Convert.ToInt32(attribute.ConstructorArguments[1].Value, CultureInfo.InvariantCulture);
 
-            if (allowedDefaults.TryGetValue(property.Name, out (XnaButtons Buttons, Keys Key) expected)) {
+            if (allowedDefaults.TryGetValue(property.Name, out (XnaButtons Buttons, Keys Key) expected))
+            {
                 Assert.Equal(expected.Buttons, buttons);
                 Assert.Equal(expected.Key, key);
                 continue;
             }
 
-            Assert.Equal((XnaButtons) 0, buttons);
+            Assert.Equal((XnaButtons)0, buttons);
             Assert.Equal(Keys.None, key);
         }
     }
 
     [Fact]
-    public void CurrentKeybindDefaultsClearLegacyButtonBindingsExceptMenuAndLeftAltHolds() {
+    public void CurrentKeybindDefaultsClearLegacyButtonBindingsExceptMenuAndLeftAltHolds()
+    {
         ButtonBinding retry = BuildInitializedButtonBinding(Keys.R);
         ButtonBinding reloadRoom = BuildInitializedButtonBinding(Keys.F6);
         ButtonBinding reloadChapter = BuildInitializedButtonBinding(Keys.F7);
@@ -273,7 +304,8 @@ public sealed class ModuleSettingsTests {
         ButtonBinding cursorZoomHold = BuildInitializedButtonBinding(Keys.Z);
         ButtonBinding previousStartPos = BuildInitializedButtonBinding(Keys.OemMinus);
         ButtonBinding nextStartPos = BuildInitializedButtonBinding(Keys.OemPlus);
-        AkronModuleSettings settings = new AkronModuleSettings {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             Retry = retry,
             ReloadRoom = reloadRoom,
             ReloadChapter = reloadChapter,
@@ -313,8 +345,10 @@ public sealed class ModuleSettingsTests {
         Assert.NotNull(settings.ClickTeleportCursor);
     }
 
-    private static ButtonBinding BuildInitializedButtonBinding(Keys key) {
-        return new ButtonBinding(0, key) {
+    private static ButtonBinding BuildInitializedButtonBinding(Keys key)
+    {
+        return new ButtonBinding(0, key)
+        {
             Keys = key == Keys.None ? new List<Keys>() : new List<Keys> { key },
             Buttons = new List<XnaButtons>(),
             MouseButtons = new List<Monocle.MInput.MouseData.MouseButtons>()
@@ -322,7 +356,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void OverlayToggleDefaultRestoresOnlyMissingBindings() {
+    public void OverlayToggleDefaultRestoresOnlyMissingBindings()
+    {
         Assert.False(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys>(), new List<XnaButtons>()));
         Assert.False(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys> { Keys.None }, new List<XnaButtons>()));
         Assert.True(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys> { Keys.RightShift }, new List<XnaButtons>()));
@@ -333,7 +368,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void OverlayToggleDefaultIsPlainTabOnly() {
+    public void OverlayToggleDefaultIsPlainTabOnly()
+    {
         Assert.True(AkronModuleSettings.ShouldUseDefaultOverlayToggleBinding(
             new List<Keys> { Keys.Tab, Keys.LeftShift },
             new List<XnaButtons>()));
@@ -356,9 +392,12 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void CurrentKeybindDefaultsDropPersistedActionBindings() {
-        AkronModuleSettings settings = new AkronModuleSettings {
-            MenuActionBindings = new Dictionary<string, string> {
+    public void CurrentKeybindDefaultsDropPersistedActionBindings()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
+            MenuActionBindings = new Dictionary<string, string>
+            {
                 ["Shortcuts/Retry"] = "R",
                 ["Level/Freeze Gameplay"] = "RightShift"
             }
@@ -375,12 +414,14 @@ public sealed class ModuleSettingsTests {
     [InlineData(true, false, false, true, true)]
     [InlineData(true, true, false, true, true)]
     [InlineData(true, true, false, false, true)]
-    public void PauseTimerFreezeOnlyReleasesStopsOwnedByAkron(bool stoppedByAkron, bool freezeTimerEnabled, bool canFreezeTimer, bool freezeTimerDuringPause, bool expected) {
+    public void PauseTimerFreezeOnlyReleasesStopsOwnedByAkron(bool stoppedByAkron, bool freezeTimerEnabled, bool canFreezeTimer, bool freezeTimerDuringPause, bool expected)
+    {
         Assert.Equal(expected, AkronModule.ShouldReleasePauseTimerFreezeStop(stoppedByAkron, freezeTimerEnabled, canFreezeTimer, freezeTimerDuringPause));
     }
 
     [Fact]
-    public void ModMenuDescriptionsWrapBeforeTheyCanWidenTheMenu() {
+    public void ModMenuDescriptionsWrapBeforeTheyCanWidenTheMenu()
+    {
         IReadOnlyList<string> lines = AkronModule.WrapModMenuLine(
             "Akron menu rows are bindable in the overlay by right-clicking or Shift-clicking them. These native config UIs remain for built-in keyboard/controller bindings.",
             maxCharacters: 48);
@@ -404,7 +445,8 @@ public sealed class ModuleSettingsTests {
         float menuWidth,
         float displayWidth,
         float justifyX,
-        float expectedX) {
+        float expectedX)
+    {
         Assert.Equal(
             expectedX,
             AkronModule.CalculateSafeTextMenuX(currentX, menuWidth, displayWidth, justifyX));
@@ -416,20 +458,23 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 1)]
     [InlineData(12, 12)]
     [InlineData(120, 100)]
-    public void MadelineHairLengthClampUsesDefaultAndBounds(int input, int expected) {
+    public void MadelineHairLengthClampUsesDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampMadelineHairLength(input));
     }
 
     [Theory]
     [InlineData(AkronMadelineEffectSyncMode.Off, AkronMadelineEffectSyncMode.Off)]
     [InlineData(AkronMadelineEffectSyncMode.MatchHair, AkronMadelineEffectSyncMode.MatchHair)]
-    [InlineData((AkronMadelineEffectSyncMode) 99, AkronMadelineEffectSyncMode.Off)]
-    public void MadelineEffectSyncModeNormalizesToSupportedModes(AkronMadelineEffectSyncMode input, AkronMadelineEffectSyncMode expected) {
+    [InlineData((AkronMadelineEffectSyncMode)99, AkronMadelineEffectSyncMode.Off)]
+    public void MadelineEffectSyncModeNormalizesToSupportedModes(AkronMadelineEffectSyncMode input, AkronMadelineEffectSyncMode expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.NormalizeMadelineEffectSyncMode(input));
     }
 
     [Fact]
-    public void RoomStatTrackerDefaultsExposeUsefulLabelLines() {
+    public void RoomStatTrackerDefaultsExposeUsefulLabelLines()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.Equal(0xFFFFFF, settings.RoomStatTrackerColor);
@@ -456,7 +501,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(AkronRoomStatTimerFreezeMode.PausedInactiveOrCutscene, false, false, false)]
     [InlineData(AkronRoomStatTimerFreezeMode.PausedInactiveOrCutscene, true, false, true)]
     [InlineData(AkronRoomStatTimerFreezeMode.PausedInactiveOrCutscene, false, true, true)]
-    public void RoomStatFreezeModeMatchesPublicOptions(AkronRoomStatTimerFreezeMode mode, bool paused, bool inactive, bool expected) {
+    public void RoomStatFreezeModeMatchesPublicOptions(AkronRoomStatTimerFreezeMode mode, bool paused, bool inactive, bool expected)
+    {
         Assert.Equal(expected, AkronPracticeStats.ShouldFreezeRoomStatTimers(mode, paused, inactive));
     }
 
@@ -464,12 +510,14 @@ public sealed class ModuleSettingsTests {
     [InlineData(AkronRoomStatTimerFreezeMode.Cutscene, false, false, true, true)]
     [InlineData(AkronRoomStatTimerFreezeMode.PausedInactiveOrCutscene, false, false, true, true)]
     [InlineData(AkronRoomStatTimerFreezeMode.PausedOrInactive, false, false, true, false)]
-    public void RoomStatFreezeModeCanIncludeCutscenes(AkronRoomStatTimerFreezeMode mode, bool paused, bool inactive, bool cutscene, bool expected) {
+    public void RoomStatFreezeModeCanIncludeCutscenes(AkronRoomStatTimerFreezeMode mode, bool paused, bool inactive, bool cutscene, bool expected)
+    {
         Assert.Equal(expected, AkronPracticeStats.ShouldFreezeRoomStatTimers(mode, paused, inactive, cutscene));
     }
 
     [Fact]
-    public void RefillClarityDefaultsAreVisibleStateOnly() {
+    public void RefillClarityDefaultsAreVisibleStateOnly()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.False(settings.RefillClarity);
@@ -478,7 +526,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void ScreenshotDefaultsKeepGameFrameCaptureSimple() {
+    public void ScreenshotDefaultsKeepGameFrameCaptureSimple()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.Equal(1, settings.ScreenshotScale);
@@ -520,7 +569,8 @@ public sealed class ModuleSettingsTests {
     [Theory]
     [InlineData(false, true)]
     [InlineData(true, false)]
-    public void ClickTeleportOnlyRecentersCameraOutsideFreeCamera(bool freeCameraActive, bool expected) {
+    public void ClickTeleportOnlyRecentersCameraOutsideFreeCamera(bool freeCameraActive, bool expected)
+    {
         Assert.Equal(expected, AkronModule.ShouldClickTeleportMoveCamera(freeCameraActive));
     }
 
@@ -529,7 +579,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(true, false, true)]
     [InlineData(false, true, true)]
     [InlineData(true, true, true)]
-    public void HideSavingIconSuppressesAutosaveNotice(bool isCapturingGameFrame, bool hideSavingIcon, bool expected) {
+    public void HideSavingIconSuppressesAutosaveNotice(bool isCapturingGameFrame, bool hideSavingIcon, bool expected)
+    {
         Assert.Equal(expected, AkronModule.ShouldSuppressSavingNotice(isCapturingGameFrame, hideSavingIcon));
         Assert.Equal(expected, AkronModule.ShouldSuppressSaveLoadIcon(isCapturingGameFrame, hideSavingIcon));
     }
@@ -537,13 +588,15 @@ public sealed class ModuleSettingsTests {
     [Theory]
     [InlineData(AkronScreenshotImageFormat.Png, AkronScreenshotImageFormat.Png)]
     [InlineData(AkronScreenshotImageFormat.Jpeg, AkronScreenshotImageFormat.Jpeg)]
-    [InlineData((AkronScreenshotImageFormat) 99, AkronScreenshotImageFormat.Png)]
-    public void ScreenshotScannerImageFormatNormalizesToSupportedFormats(AkronScreenshotImageFormat input, AkronScreenshotImageFormat expected) {
+    [InlineData((AkronScreenshotImageFormat)99, AkronScreenshotImageFormat.Png)]
+    public void ScreenshotScannerImageFormatNormalizesToSupportedFormats(AkronScreenshotImageFormat input, AkronScreenshotImageFormat expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.NormalizeScreenshotScannerImageFormat(input));
     }
 
     [Fact]
-    public void InternalRecorderDefaultsMatchEclipseStyleRecordingSurface() {
+    public void InternalRecorderDefaultsMatchEclipseStyleRecordingSurface()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.Equal(AkronModuleSettings.DefaultRecordingFilenameTemplate, settings.RecordingFilenameTemplate);
@@ -568,7 +621,8 @@ public sealed class ModuleSettingsTests {
     [Theory]
     [InlineData("", "{chapter}-{room}-{timestamp}-d{death}-a{attempt}")]
     [InlineData("  {room}-{timestamp}  ", "{room}-{timestamp}")]
-    public void RecordingFilenameTemplateNormalizationUsesPublicTokens(string input, string expected) {
+    public void RecordingFilenameTemplateNormalizationUsesPublicTokens(string input, string expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.NormalizeRecordingFilenameTemplate(input));
     }
 
@@ -577,7 +631,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 1)]
     [InlineData(240, 240)]
     [InlineData(500, 360)]
-    public void RecordingFramerateClampMatchesRecorderRange(int input, int expected) {
+    public void RecordingFramerateClampMatchesRecorderRange(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampRecordingFramerate(input));
     }
 
@@ -586,7 +641,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 1)]
     [InlineData(250, 250)]
     [InlineData(2000, 1000)]
-    public void RecordingBitrateClampMatchesMegabitRange(int input, int expected) {
+    public void RecordingBitrateClampMatchesMegabitRange(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampRecordingBitrateMbps(input));
     }
 
@@ -595,7 +651,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0f, 0f)]
     [InlineData(3.4f, 3.4f)]
     [InlineData(45f, 30f)]
-    public void RecordingEndscreenDurationClampMatchesClearDelayRange(float input, float expected) {
+    public void RecordingEndscreenDurationClampMatchesClearDelayRange(float input, float expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampRecordingEndscreenDurationSeconds(input), precision: 3);
     }
 
@@ -604,7 +661,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 5)]
     [InlineData(30, 30)]
     [InlineData(900, 600)]
-    public void RecordingReplayBufferClampUsesDefaultAndBounds(int input, int expected) {
+    public void RecordingReplayBufferClampUsesDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampRecordingReplayBufferSeconds(input));
     }
 
@@ -612,7 +670,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(AkronRecordingReplayAutoStart.Off, "Off")]
     [InlineData(AkronRecordingReplayAutoStart.InLevels, "In Levels")]
     [InlineData(AkronRecordingReplayAutoStart.Always, "Always")]
-    public void RecordingReplayAutoStartFormattingMatchesUiLabels(AkronRecordingReplayAutoStart mode, string expected) {
+    public void RecordingReplayAutoStartFormattingMatchesUiLabels(AkronRecordingReplayAutoStart mode, string expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.FormatRecordingReplayAutoStart(mode));
     }
 
@@ -629,8 +688,10 @@ public sealed class ModuleSettingsTests {
         AkronRecordingReplayAutoStart autoStart,
         bool manualReplayBuffer,
         bool sceneIsLevel,
-        bool expected) {
-        AkronModuleSettings settings = new AkronModuleSettings {
+        bool expected)
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             RecordingReplayBufferSeconds = bufferSeconds,
             RecordingReplayAutoStart = autoStart
         };
@@ -639,8 +700,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void DisarmingReplayBufferAutoStartClearsCompletionCaptureTriggers() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void DisarmingReplayBufferAutoStartClearsCompletionCaptureTriggers()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             RecordingReplayBufferSeconds = 300,
             RecordingReplayAutoStart = AkronRecordingReplayAutoStart.InLevels,
             RecordingTriggerRoomEntryToClear = true,
@@ -660,7 +723,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0, 0)]
     [InlineData(45, 45)]
     [InlineData(240, 120)]
-    public void RecordingClipSecondsClampAllowsDisabledAndBounds(int input, int expected) {
+    public void RecordingClipSecondsClampAllowsDisabledAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampRecordingClipSeconds(input));
     }
 
@@ -669,7 +733,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0, 0)]
     [InlineData(4, 4)]
     [InlineData(40, 20)]
-    public void RecordingKeyframeClampAllowsEncoderDefaultAndBounds(int input, int expected) {
+    public void RecordingKeyframeClampAllowsEncoderDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampRecordingKeyframeIntervalSeconds(input));
     }
 
@@ -678,7 +743,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 1, 1, 1)]
     [InlineData(3840, 3840, 2160, 2160)]
     [InlineData(20000, 15360, 12000, 8640)]
-    public void RecordingResolutionClampMatchesVisibleAxisRanges(int inputX, int expectedX, int inputY, int expectedY) {
+    public void RecordingResolutionClampMatchesVisibleAxisRanges(int inputX, int expectedX, int inputY, int expectedY)
+    {
         Assert.Equal(expectedX, AkronModuleSettings.ClampRecordingResolutionX(inputX));
         Assert.Equal(expectedY, AkronModuleSettings.ClampRecordingResolutionY(inputY));
     }
@@ -688,7 +754,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0, 0)]
     [InlineData(100, 100)]
     [InlineData(250, 200)]
-    public void RecordingAudioLevelClampMatchesGameTrackMixerRange(int input, int expected) {
+    public void RecordingAudioLevelClampMatchesGameTrackMixerRange(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampRecordingAudioLevel(input));
     }
 
@@ -696,8 +763,10 @@ public sealed class ModuleSettingsTests {
     [InlineData(AkronRecordingPreset.Cpu, AkronRecordingCodec.Libx264, AkronRecordingQualityPreset.Balanced)]
     [InlineData(AkronRecordingPreset.Nvidia, AkronRecordingCodec.H264Nvenc, AkronRecordingQualityPreset.HighQuality)]
     [InlineData(AkronRecordingPreset.Amd, AkronRecordingCodec.H264Amf, AkronRecordingQualityPreset.HighQuality)]
-    public void RecordingPresetAppliesExpectedGameRecorderEncoder(AkronRecordingPreset preset, AkronRecordingCodec codec, AkronRecordingQualityPreset quality) {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void RecordingPresetAppliesExpectedGameRecorderEncoder(AkronRecordingPreset preset, AkronRecordingCodec codec, AkronRecordingQualityPreset quality)
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             RecordingCodec = AkronRecordingCodec.LibVpxVp9,
             RecordingQualityPreset = AkronRecordingQualityPreset.Lossless
         };
@@ -710,8 +779,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void RecordingFfmpegArgumentsUseRawVideoInputAndConfiguredQualityControls() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void RecordingFfmpegArgumentsUseRawVideoInputAndConfiguredQualityControls()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             RecordingRateControl = AkronRecordingRateControl.Cbr,
             RecordingBitrateMbps = 45,
             RecordingKeyframeIntervalSeconds = 3,
@@ -733,8 +804,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void RecordingFfmpegArgumentsKeepHardwarePresetFlagsEncoderSpecific() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void RecordingFfmpegArgumentsKeepHardwarePresetFlagsEncoderSpecific()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             RecordingCodec = AkronRecordingCodec.H264Nvenc,
             RecordingQualityPreset = AkronRecordingQualityPreset.LowImpact
         };
@@ -746,10 +819,12 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void ReplaySegmentSelectionKeepsLateFinalizedNonEmptySegment() {
+    public void ReplaySegmentSelectionKeepsLateFinalizedNonEmptySegment()
+    {
         string folder = Path.Combine(Path.GetTempPath(), "akron-replay-segment-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
-        try {
+        try
+        {
             DateTime startUtc = new DateTime(2026, 5, 5, 15, 23, 22, DateTimeKind.Utc);
             DateTime endUtc = startUtc.AddSeconds(30);
             string oldSegment = WriteReplaySegment(folder, "segment-000000.mkv", startUtc.AddSeconds(-10), 128);
@@ -764,16 +839,20 @@ public sealed class ModuleSettingsTests {
             Assert.DoesNotContain(oldSegment, selected);
             Assert.DoesNotContain(emptySegment, selected);
             Assert.DoesNotContain(futureSegment, selected);
-        } finally {
+        }
+        finally
+        {
             Directory.Delete(folder, true);
         }
     }
 
     [Fact]
-    public void RecordingClipBrowserSortsByConfiguredModeAndSidecarMetadata() {
+    public void RecordingClipBrowserSortsByConfiguredModeAndSidecarMetadata()
+    {
         string folder = Path.Combine(Path.GetTempPath(), "akron-recorder-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
-        try {
+        try
+        {
             string deathClip = Path.Combine(folder, "chapter-a-room-a-last-death.mp4");
             string clearClip = Path.Combine(folder, "chapter-b-room-b-area-clear.mp4");
             File.WriteAllText(deathClip, string.Empty);
@@ -783,7 +862,8 @@ public sealed class ModuleSettingsTests {
             File.SetCreationTimeUtc(deathClip, new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
             File.SetCreationTimeUtc(clearClip, new DateTime(2024, 1, 2, 0, 0, 0, DateTimeKind.Utc));
 
-            AkronModuleSettings settings = new AkronModuleSettings {
+            AkronModuleSettings settings = new AkronModuleSettings
+            {
                 RecordingOutputFolder = folder,
                 RecordingClipBrowserSort = AkronRecordingClipSort.Favorite
             };
@@ -799,23 +879,28 @@ public sealed class ModuleSettingsTests {
             List<AkronRecordingClipInfo> deathOnly = AkronInternalRecorder.ListClips(settings).ToList();
             AkronRecordingClipInfo death = Assert.Single(deathOnly);
             Assert.Equal("last-death", death.Kind);
-        } finally {
+        }
+        finally
+        {
             Directory.Delete(folder, true);
         }
     }
 
     [Fact]
-    public void CompletionClipSelectionUsesClearAndFlagClipsForCurrentChapterInTimelineOrder() {
+    public void CompletionClipSelectionUsesClearAndFlagClipsForCurrentChapterInTimelineOrder()
+    {
         string folder = Path.Combine(Path.GetTempPath(), "akron-completion-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
-        try {
+        try
+        {
             DateTime baseUtc = new DateTime(2026, 5, 10, 12, 0, 0, DateTimeKind.Utc);
             string laterFlag = WriteClipWithSidecar(folder, "chapter-a-room-b-flag.mkv", "completion-flag", baseUtc.AddSeconds(20), baseUtc.AddSeconds(25));
             string earlierClear = WriteClipWithSidecar(folder, "chapter-a-room-a-clear.mkv", "room-clear", baseUtc, baseUtc.AddSeconds(10));
             WriteClipWithSidecar(folder, "chapter-a-room-c-death.mkv", "last-death", baseUtc.AddSeconds(30), baseUtc.AddSeconds(35));
             WriteClipWithSidecar(folder, "chapter-b-room-a-clear.mkv", "room-clear", baseUtc.AddSeconds(40), baseUtc.AddSeconds(45));
 
-            AkronModuleSettings settings = new AkronModuleSettings {
+            AkronModuleSettings settings = new AkronModuleSettings
+            {
                 RecordingOutputFolder = folder
             };
 
@@ -823,13 +908,16 @@ public sealed class ModuleSettingsTests {
 
             Assert.Equal(new[] { earlierClear, laterFlag }, selected.Select(clip => clip.Path));
             Assert.Equal(new[] { "room-clear", "completion-flag" }, selected.Select(clip => clip.Kind));
-        } finally {
+        }
+        finally
+        {
             Directory.Delete(folder, true);
         }
     }
 
     [Fact]
-    public void CompletionConcatArgumentsUseFfmpegConcatCopy() {
+    public void CompletionConcatArgumentsUseFfmpegConcatCopy()
+    {
         string args = AkronInternalRecorder.BuildCompletionConcatArgumentsForTesting("/tmp/clear-list.txt", "/tmp/clear-video.mkv");
 
         Assert.Contains("\"-f\" \"concat\"", args);
@@ -840,7 +928,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void RecordingAudioSupportPlansOnlyFmodGameTracks() {
+    public void RecordingAudioSupportPlansOnlyFmodGameTracks()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.True(AkronInternalAudioRecorder.ShouldCaptureFullMix(settings));
@@ -857,8 +946,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void RecordingMutedAudioRequiresAnIsolatedGameBusTrack() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void RecordingMutedAudioRequiresAnIsolatedGameBusTrack()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             RecordingRecordMutedAudio = true
         };
 
@@ -871,8 +962,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void RecordingAudioSupportCanDisableAllAudioTracks() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void RecordingAudioSupportCanDisableAllAudioTracks()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             RecordingAudioFullMixTrack = false
         };
 
@@ -880,7 +973,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void RecordingAudioMuxArgumentsMapMultipleNamedTracks() {
+    public void RecordingAudioMuxArgumentsMapMultipleNamedTracks()
+    {
         AkronRecordedAudio audio = new AkronRecordedAudio(new[] {
             new AkronRecordedAudioTrack("/tmp/full.s16le", "Full Mix", 48000, 2, 128),
             new AkronRecordedAudioTrack("/tmp/music.s16le", "Music", 48000, 2, 128)
@@ -897,10 +991,12 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void RecordingReplayAudioSliceUsesRequestedTimeWindow() {
+    public void RecordingReplayAudioSliceUsesRequestedTimeWindow()
+    {
         string path = Path.Combine(Path.GetTempPath(), "akron-audio-source-" + Guid.NewGuid().ToString("N") + ".s16le");
-        try {
-            File.WriteAllBytes(path, Enumerable.Range(0, 100).Select(value => (byte) value).ToArray());
+        try
+        {
+            File.WriteAllBytes(path, Enumerable.Range(0, 100).Select(value => (byte)value).ToArray());
             DateTime started = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             AkronRecordedAudio audio = new AkronRecordedAudio(new[] {
                 new AkronRecordedAudioTrack(path, "Full Mix", 10, 1, 100, started, started.AddSeconds(5))
@@ -910,10 +1006,13 @@ public sealed class ModuleSettingsTests {
             AkronRecordedAudioTrack track = Assert.Single(sliced.Tracks);
 
             Assert.Equal(40, track.Bytes);
-            Assert.Equal(Enumerable.Range(20, 40).Select(value => (byte) value).ToArray(), File.ReadAllBytes(track.Path));
+            Assert.Equal(Enumerable.Range(20, 40).Select(value => (byte)value).ToArray(), File.ReadAllBytes(track.Path));
             File.Delete(track.Path);
-        } finally {
-            if (File.Exists(path)) {
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
                 File.Delete(path);
             }
         }
@@ -925,7 +1024,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 1)]
     [InlineData(8, 8)]
     [InlineData(30, 16)]
-    public void ScreenshotScaleClampMatchesPixelScaleRange(int input, int expected) {
+    public void ScreenshotScaleClampMatchesPixelScaleRange(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampScreenshotScale(input));
     }
 
@@ -935,7 +1035,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 1)]
     [InlineData(6, 6)]
     [InlineData(20, 10)]
-    public void FastLookoutMultiplierIsClamped(int input, int expected) {
+    public void FastLookoutMultiplierIsClamped(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampFastLookoutMultiplier(input));
     }
 
@@ -944,7 +1045,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0, 0)]
     [InlineData(3, 3)]
     [InlineData(250, 99)]
-    public void SetInventoryJumpsClampAllowsNoExtraJumps(int input, int expected) {
+    public void SetInventoryJumpsClampAllowsNoExtraJumps(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampSetInventoryJumps(input));
     }
 
@@ -952,7 +1054,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0f, false)]
     [InlineData(0.001f, true)]
     [InlineData(0.1f, true)]
-    public void AirJumpsPreserveVanillaCoyoteJump(float jumpGraceTimer, bool expected) {
+    public void AirJumpsPreserveVanillaCoyoteJump(float jumpGraceTimer, bool expected)
+    {
         Assert.Equal(expected, AkronModule.ShouldPreserveVanillaJumpForAirJump(jumpGraceTimer));
     }
 
@@ -962,7 +1065,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1f, -1f, false, true)]
     [InlineData(0f, -1f, false, true)]
     [InlineData(1f, -1f, true, false)]
-    public void AirJumpDashDirectionPolicyKeepsVerticalDashJumpsOptional(float x, float y, bool allowVerticalDashJumps, bool expectedSkip) {
+    public void AirJumpDashDirectionPolicyKeepsVerticalDashJumpsOptional(float x, float y, bool allowVerticalDashJumps, bool expectedSkip)
+    {
         Assert.Equal(
             expectedSkip,
             AkronModule.ShouldSkipAirJumpForDashDirection(AkronModule.PlayerDashState, TestVector2(x, y), allowVerticalDashJumps));
@@ -973,7 +1077,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1f, 1f, true)]
     [InlineData(1f, -1f, false)]
     [InlineData(0f, 1f, false)]
-    public void AirJumpUsesSuperJumpOnlyForVanillaDashJumpDirections(float x, float y, bool expected) {
+    public void AirJumpUsesSuperJumpOnlyForVanillaDashJumpDirections(float x, float y, bool expected)
+    {
         Assert.Equal(expected, AkronModule.ShouldUseSuperJumpForAirJump(AkronModule.PlayerDashState, TestVector2(x, y)));
     }
 
@@ -983,7 +1088,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0, 0)]
     [InlineData(12, 12)]
     [InlineData(50, 20)]
-    public void CameraOffsetIsClampedToDebugRange(int input, int expected) {
+    public void CameraOffsetIsClampedToDebugRange(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampCameraOffset(input));
     }
 
@@ -996,7 +1102,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(150, 150)]
     [InlineData(700, 700)]
     [InlineData(40000, 32000)]
-    public void CursorZoomPercentIsClampedToInspectionRange(int input, int expected) {
+    public void CursorZoomPercentIsClampedToInspectionRange(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampCursorZoomPercent(input));
     }
 
@@ -1004,15 +1111,17 @@ public sealed class ModuleSettingsTests {
     [InlineData(25, 25)]
     [InlineData(50, 50)]
     [InlineData(40000, 32000)]
-    public void CursorZoomPercentAllowsZoomOutWhenEnabled(int input, int expected) {
+    public void CursorZoomPercentAllowsZoomOutWhenEnabled(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampCursorZoomPercent(input, allowZoomOut: true));
     }
 
     [Theory]
     [InlineData(AkronCursorZoomActivationMode.Hold, AkronCursorZoomActivationMode.Hold)]
     [InlineData(AkronCursorZoomActivationMode.Toggle, AkronCursorZoomActivationMode.Toggle)]
-    [InlineData((AkronCursorZoomActivationMode) 99, AkronCursorZoomActivationMode.Hold)]
-    public void CursorZoomActivationModeNormalizesToSupportedModes(AkronCursorZoomActivationMode input, AkronCursorZoomActivationMode expected) {
+    [InlineData((AkronCursorZoomActivationMode)99, AkronCursorZoomActivationMode.Hold)]
+    public void CursorZoomActivationModeNormalizesToSupportedModes(AkronCursorZoomActivationMode input, AkronCursorZoomActivationMode expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.NormalizeCursorZoomActivationMode(input));
     }
 
@@ -1022,7 +1131,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 1)]
     [InlineData(25, 25)]
     [InlineData(250, 100)]
-    public void CursorZoomStepPercentIsClampedToWheelRange(int input, int expected) {
+    public void CursorZoomStepPercentIsClampedToWheelRange(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampCursorZoomStepPercent(input));
     }
 
@@ -1031,7 +1141,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(false, true, false)]
     [InlineData(true, false, true)]
     [InlineData(true, true, false)]
-    public void CursorZoomLevelResetIsSkippedWhileExtendedCameraOwnsZoom(bool zoomApplied, bool extendedCameraOwnsZoom, bool expected) {
+    public void CursorZoomLevelResetIsSkippedWhileExtendedCameraOwnsZoom(bool zoomApplied, bool extendedCameraOwnsZoom, bool expected)
+    {
         Assert.Equal(expected, AkronModule.ShouldResetCursorZoomLevelState(zoomApplied, extendedCameraOwnsZoom));
     }
 
@@ -1041,7 +1152,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(2f, true, true, false)]
     [InlineData(0.5f, false, true, false)]
     [InlineData(0.5f, true, false, false)]
-    public void ExtendedCameraCursorZoomOnlyHandlesAvailableZoomOut(float zoom, bool allowZoomOut, bool extendedCameraAvailable, bool expected) {
+    public void ExtendedCameraCursorZoomOnlyHandlesAvailableZoomOut(float zoom, bool allowZoomOut, bool extendedCameraAvailable, bool expected)
+    {
         Assert.Equal(expected, AkronModule.ShouldUseExtendedCameraCursorZoom(zoom, allowZoomOut, extendedCameraAvailable));
     }
 
@@ -1050,12 +1162,14 @@ public sealed class ModuleSettingsTests {
     [InlineData(0.5f, 1f)]
     [InlineData(1f, 1f)]
     [InlineData(2f, 2f)]
-    public void NativeCursorZoomNeverZoomsOut(float zoom, float expected) {
+    public void NativeCursorZoomNeverZoomsOut(float zoom, float expected)
+    {
         Assert.Equal(expected, AkronModule.ClampNativeCursorZoom(zoom));
     }
 
     [Fact]
-    public void ExtendedCameraCursorZoomOutCentersOnPlayer() {
+    public void ExtendedCameraCursorZoomOutCentersOnPlayer()
+    {
         Vector2 center = AkronModule.CalculateExtendedCameraCursorZoomOutCenter(
             TestVector2(5000f, -7000f),
             0.2f,
@@ -1066,7 +1180,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void ExtendedCameraCursorZoomOutFallsBackToCurrentCameraCenterWithoutPlayer() {
+    public void ExtendedCameraCursorZoomOutFallsBackToCurrentCameraCenterWithoutPlayer()
+    {
         Vector2 center = AkronModule.CalculateExtendedCameraCursorZoomOutCenter(
             TestVector2(5000f, -7000f),
             0.2f,
@@ -1077,7 +1192,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void CustomHudLabelDefaultsUseAkronStyleContainers() {
+    public void CustomHudLabelDefaultsUseAkronStyleContainers()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.False(settings.LabelSystemVisible);
@@ -1103,7 +1219,8 @@ public sealed class ModuleSettingsTests {
         Assert.True(settings.StartPosLabelStyle.Shadow);
         Assert.True(settings.InputsPerSecondLabelStyle.Shadow);
         Assert.True(settings.CustomHudLabelDefinitions.Count >= 3);
-        foreach (AkronCustomHudLabel label in settings.CustomHudLabelDefinitions) {
+        foreach (AkronCustomHudLabel label in settings.CustomHudLabelDefinitions)
+        {
             Assert.True(label.Visible);
             Assert.Equal(0xFFFFFF, label.Color);
             Assert.Equal(100, label.LineSpacing);
@@ -1121,7 +1238,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void CustomHudLabelDefaultsHideGameplayLabelsOutsideLevels() {
+    public void CustomHudLabelDefaultsHideGameplayLabelsOutsideLevels()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         AkronCustomHudLabel roomTimer = Assert.Single(settings.CustomHudLabelDefinitions, label => label.Name == "Room Timer");
@@ -1136,7 +1254,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void LabelRowOrderNormalizesBuiltInsAndCustomRows() {
+    public void LabelRowOrderNormalizesBuiltInsAndCustomRows()
+    {
         List<AkronCustomHudLabel> labels = new List<AkronCustomHudLabel> {
             new AkronCustomHudLabel { Id = "alpha", Name = "Custom 1" },
             new AkronCustomHudLabel { Id = "beta", Name = "Custom 2" }
@@ -1160,7 +1279,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void ToastsLiveInLabelsWithConfigurableStylePopup() {
+    public void ToastsLiveInLabelsWithConfigurableStylePopup()
+    {
         List<string> defaultLabelOrder = AkronModuleSettings.BuildDefaultLabelRowOrder();
 
         Assert.Contains("Toasts", defaultLabelOrder);
@@ -1168,7 +1288,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void LabelPlayerOverlapIsATopLevelLabelsControl() {
+    public void LabelPlayerOverlapIsATopLevelLabelsControl()
+    {
         List<string> labelRows = BuildOverlayEntryLabels("Labels");
         Dictionary<string, string> controls = BuildOverlayEntryControls("Labels");
 
@@ -1180,7 +1301,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void LabelPlayerOverlapTopLevelActionTogglesEnabledWithoutChangingMode() {
+    public void LabelPlayerOverlapTopLevelActionTogglesEnabledWithoutChangingMode()
+    {
         (Func<string> value, Action execute) = BuildOverlayEntryValueAndExecute("Labels", "Player Overlap");
 
         Assert.Equal("Off", value());
@@ -1195,7 +1317,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void SaveReplayBufferIsThirdInternalRecorderOption() {
+    public void SaveReplayBufferIsThirdInternalRecorderOption()
+    {
         List<string> recorderRows = BuildOverlayEntryLabels("Internal Recorder");
 
         Assert.Equal("Start Recording", recorderRows[0]);
@@ -1204,7 +1327,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void StartPosLabelAndSwitcherLiveInTheirOwnColumns() {
+    public void StartPosLabelAndSwitcherLiveInTheirOwnColumns()
+    {
         List<string> startPosLabels = BuildOverlayEntryLabels("StartPos");
         List<string> labelLabels = AkronModuleSettings.BuildDefaultLabelRowOrder();
 
@@ -1216,7 +1340,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void SoundColumnReplacesBotWithoutRawStartPosSnapshotRows() {
+    public void SoundColumnReplacesBotWithoutRawStartPosSnapshotRows()
+    {
         List<string> soundLabels = BuildOverlayEntryLabels("Sound");
 
         Assert.Equal(
@@ -1241,7 +1366,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void SoundGroupsExposeChildrenOnlyWhenExpanded() {
+    public void SoundGroupsExposeChildrenOnlyWhenExpanded()
+    {
         AkronOverlay overlay = CreateSoundOverlayForListTest();
 
         List<string> collapsedLabels = BuildRuntimeOverlayEntryLabels(overlay, "Sound");
@@ -1261,7 +1387,8 @@ public sealed class ModuleSettingsTests {
     [InlineData("Zip Mover", "Objects", "Zip Mover", "Broken Window")]
     [InlineData("Bird Squawk", "Ambience", "Bird Squawk", "Lightning Ambience")]
     [InlineData("Dialogue", "UI", "Dialogue", "Heart Collect")]
-    public void SoundSearchShowsHeaderAndMatchingCollapsedChild(string query, string expectedGroup, string expectedChild, string unrelatedSibling) {
+    public void SoundSearchShowsHeaderAndMatchingCollapsedChild(string query, string expectedGroup, string expectedChild, string unrelatedSibling)
+    {
         AkronOverlay overlay = CreateSoundOverlayForListTest();
 
         List<string> labels = BuildFilteredOverlayEntryLabels(overlay, "Sound", query);
@@ -1273,7 +1400,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void SoundSearchByGroupNameShowsAllChildren() {
+    public void SoundSearchByGroupNameShowsAllChildren()
+    {
         AkronOverlay overlay = CreateSoundOverlayForListTest();
 
         List<string> labels = BuildFilteredOverlayEntryLabels(overlay, "Sound", "Objects");
@@ -1284,7 +1412,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void SearchMatchingIgnoresDynamicEntryValues() {
+    public void SearchMatchingIgnoresDynamicEntryValues()
+    {
         AkronOverlay overlay = CreateOverlayForListTest();
 
         List<string> labels = BuildFilteredOverlayEntryLabels(overlay, "Level", "No level");
@@ -1293,7 +1422,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void SoundGroupHeadersAreNotBindableActions() {
+    public void SoundGroupHeadersAreNotBindableActions()
+    {
         Dictionary<string, bool> bindableRows = BuildOverlayEntryBindableExposure("Sound");
 
         Assert.False(bindableRows["Player"]);
@@ -1304,14 +1434,16 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void RemovedRowsAreNotShownInOverlay() {
+    public void RemovedRowsAreNotShownInOverlay()
+    {
         Assert.DoesNotContain("Hide HUD", BuildOverlayEntryLabels("Level"));
         Assert.DoesNotContain("Disable Quick Restart Keybind", BuildOverlayEntryLabels("Interface"));
         Assert.DoesNotContain("Restart Level", BuildOverlayEntryLabels("Shortcuts"));
     }
 
     [Fact]
-    public void CommunityPacksOpensStandaloneBrowserInsteadOfTriangleOptions() {
+    public void CommunityPacksOpensStandaloneBrowserInsteadOfTriangleOptions()
+    {
         Dictionary<string, string> interfaceControls = BuildOverlayEntryControls("Interface");
 
         Assert.Equal("Action", interfaceControls["Community Packs"]);
@@ -1319,7 +1451,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void LoggingLivesInInterfaceWithOptionsPopup() {
+    public void LoggingLivesInInterfaceWithOptionsPopup()
+    {
         Dictionary<string, string> interfaceControls = BuildOverlayEntryControls("Interface");
 
         Assert.Equal("Toggle", interfaceControls["Logging"]);
@@ -1329,7 +1462,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void TimescaleUsesDirectNumericInputInsteadOfTriangleOptions() {
+    public void TimescaleUsesDirectNumericInputInsteadOfTriangleOptions()
+    {
         Dictionary<string, string> globalControls = BuildOverlayEntryControls("Global");
 
         Assert.Equal("NumericInput", globalControls["Timescale"]);
@@ -1337,7 +1471,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void GameplayPresentationRowsLiveInTheirChosenCategories() {
+    public void GameplayPresentationRowsLiveInTheirChosenCategories()
+    {
         List<string> levelLabels = BuildOverlayEntryLabels("Level");
         List<string> playerLabels = BuildOverlayEntryLabels("Player");
         List<string> shortcutsLabels = BuildOverlayEntryLabels("Shortcuts");
@@ -1355,7 +1490,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void ReworkedRowsUseExpectedControlsWithPopupConfiguration() {
+    public void ReworkedRowsUseExpectedControlsWithPopupConfiguration()
+    {
         Dictionary<string, string> levelControls = BuildOverlayEntryControls("Level");
         Dictionary<string, string> playerControls = BuildOverlayEntryControls("Player");
         Dictionary<string, string> soundControls = BuildOverlayEntryControls("Sound");
@@ -1366,13 +1502,13 @@ public sealed class ModuleSettingsTests {
         Dictionary<string, string> creatorControls = BuildOverlayEntryControls("Creator");
         Assert.Equal("Toggle", creatorControls["Cursor Zoom"]);
         Assert.Equal("Toggle", creatorControls["Camera Offset"]);
-        Assert.Equal("Toggle", playerControls["Prevent Down Dash Redirects"]);
+        Assert.Equal("Toggle", playerControls["Dash Redirect"]);
         Assert.Equal("Toggle", playerControls["Grab Mode"]);
         Assert.Equal("GroupHeader", soundControls["Ambience"]);
         Assert.True(HasOverlayOptionsPopup("Deload Spinners"));
         Assert.True(HasOverlayOptionsPopup("Light Level"));
         Assert.True(HasOverlayOptionsPopup("Bloom Level"));
-        Assert.True(HasOverlayOptionsPopup("Prevent Down Dash Redirects"));
+        Assert.True(HasOverlayOptionsPopup("Dash Redirect"));
         Assert.True(HasOverlayOptionsPopup("Grab Mode"));
         Assert.True(HasOverlayOptionsPopup("Bird Squawk"));
         Assert.True(HasOverlayOptionsPopup("Cursor Zoom"));
@@ -1380,7 +1516,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void CreatorPanelDropsRedundantAndUnsafeRows() {
+    public void CreatorPanelDropsRedundantAndUnsafeRows()
+    {
         List<string> creatorLabels = BuildOverlayEntryLabels("Creator");
 
         Assert.DoesNotContain("Play Configured TAS", creatorLabels);
@@ -1398,7 +1535,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void CreatorPanelGroupsNavigationActionsByScope() {
+    public void CreatorPanelGroupsNavigationActionsByScope()
+    {
         List<string> creatorLabels = BuildOverlayEntryLabels("Creator");
 
         Assert.Equal(
@@ -1426,7 +1564,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void CheckpointNavigationIncludesImplicitStartCheckpoint() {
+    public void CheckpointNavigationIncludesImplicitStartCheckpoint()
+    {
         List<CheckpointData> checkpoints = AkronActions.BuildCheckpointOrder(
             new[] {
                 CreateCheckpointData("b-00", "Crossing"),
@@ -1440,7 +1579,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void CheckpointNavigationDoesNotDuplicateExplicitStartCheckpoint() {
+    public void CheckpointNavigationDoesNotDuplicateExplicitStartCheckpoint()
+    {
         List<CheckpointData> checkpoints = AkronActions.BuildCheckpointOrder(
             new[] {
                 CreateCheckpointData("a-00", "Start"),
@@ -1453,7 +1593,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void NumericTogglesUseTriangleOptionsInsteadOfInlineInputs() {
+    public void NumericTogglesUseTriangleOptionsInsteadOfInlineInputs()
+    {
         Dictionary<string, string> levelControls = BuildOverlayEntryControls("Level");
         Dictionary<string, string> playerControls = BuildOverlayEntryControls("Player");
         Dictionary<string, string> soundControls = BuildOverlayEntryControls("Sound");
@@ -1471,7 +1612,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void SpawnEntityShortcutsUseButtonRowsInsteadOfTriangleOptions() {
+    public void SpawnEntityShortcutsUseButtonRowsInsteadOfTriangleOptions()
+    {
         Dictionary<string, string> shortcutControls = BuildOverlayEntryControls("Shortcuts");
 
         Assert.Equal("Action", shortcutControls["Spawn Jelly"]);
@@ -1481,7 +1623,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void SoundVolumeOverridesDefaultOff() {
+    public void SoundVolumeOverridesDefaultOff()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.All(AkronEarAid.Sounds, sound => Assert.False(settings.SoundVolumeOverrides[sound.Key]));
@@ -1489,7 +1632,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void KeybindsStackDirectlyUnderBypass() {
+    public void KeybindsStackDirectlyUnderBypass()
+    {
         string[] tabs = GetOverlayTabs();
         int bypassIndex = Array.IndexOf(tabs, "Bypass");
         int keybindsIndex = Array.IndexOf(tabs, "Keybinds");
@@ -1499,7 +1643,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void KeybindOverviewRowsRemainEditable() {
+    public void KeybindOverviewRowsRemainEditable()
+    {
         Dictionary<string, string> controls = BuildOverlayEntryControls("Keybinds");
 
         Assert.Equal("Keybind", controls["Open Menu"]);
@@ -1508,7 +1653,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void ScreenshotCaptureRowsAreSeparateCreatorActions() {
+    public void ScreenshotCaptureRowsAreSeparateCreatorActions()
+    {
         List<string> interfaceLabels = BuildOverlayEntryLabels("Interface");
         List<string> creatorLabels = BuildOverlayEntryLabels("Creator");
 
@@ -1520,8 +1666,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void LabelStyleCloneClampsCurrentStyleSurface() {
-        AkronHudLabelStyleSettings style = AkronModuleSettings.CloneLabelStyle(new AkronHudLabelStyleSettings {
+    public void LabelStyleCloneClampsCurrentStyleSurface()
+    {
+        AkronHudLabelStyleSettings style = AkronModuleSettings.CloneLabelStyle(new AkronHudLabelStyleSettings
+        {
             OffsetX = -4000,
             OffsetY = 4000,
             Scale = 999,
@@ -1545,7 +1693,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void HudCheatIndicatorDefaultsMatchAkronDot() {
+    public void HudCheatIndicatorDefaultsMatchAkronDot()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.False(settings.HudCheatIndicator);
@@ -1557,10 +1706,13 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void HudCheatIndicatorOpacityIncludesBulkLabelOpacity() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void HudCheatIndicatorOpacityIncludesBulkLabelOpacity()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             HudCheatIndicatorOpacity = 50,
-            LabelBulkStyle = new AkronHudLabelStyleSettings {
+            LabelBulkStyle = new AkronHudLabelStyleSettings
+            {
                 Opacity = 40
             }
         };
@@ -1573,7 +1725,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0, 0)]
     [InlineData(36, 36)]
     [InlineData(400, 240)]
-    public void CustomHudLabelPaddingClampUsesDefaultAndBounds(int input, int expected) {
+    public void CustomHudLabelPaddingClampUsesDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampCustomLabelPadding(input));
     }
 
@@ -1582,7 +1735,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0, 0)]
     [InlineData(12, 12)]
     [InlineData(400, 120)]
-    public void CustomHudLabelGapClampUsesDefaultAndBounds(int input, int expected) {
+    public void CustomHudLabelGapClampUsesDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampCustomLabelGap(input));
     }
 
@@ -1592,7 +1746,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(50, 50)]
     [InlineData(125, 125)]
     [InlineData(400, 250)]
-    public void CustomHudLabelLineSpacingClampUsesDefaultAndBounds(int input, int expected) {
+    public void CustomHudLabelLineSpacingClampUsesDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampCustomLabelLineSpacing(input));
     }
 
@@ -1602,12 +1757,14 @@ public sealed class ModuleSettingsTests {
     [InlineData(10, 10)]
     [InlineData(150, 150)]
     [InlineData(450, 400)]
-    public void CustomHudLabelObstructionPaddingClampUsesBounds(int input, int expected) {
+    public void CustomHudLabelObstructionPaddingClampUsesBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampCustomLabelObstructionPaddingPixels(input));
     }
 
     [Fact]
-    public void CustomHudLabelPlayerOverlapUsesConfigurablePadding() {
+    public void CustomHudLabelPlayerOverlapUsesConfigurablePadding()
+    {
         Assert.False(AkronCustomHudLabels.PlayerIntersectsLabelResponseArea(
             100f, 100f, 200f, 40f,
             305f, 120f, 8f, 11f,
@@ -1619,7 +1776,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void CustomHudLabelPlayerOverlapPaddingUsesAbsoluteHudPixels() {
+    public void CustomHudLabelPlayerOverlapPaddingUsesAbsoluteHudPixels()
+    {
         Assert.True(AkronCustomHudLabels.PlayerIntersectsLabelResponseArea(
             100f, 100f, 220f, 32f,
             369f, 112f, 8f, 11f,
@@ -1639,7 +1797,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void AutoDeafenDefaultsAreAreaBasedAndInactive() {
+    public void AutoDeafenDefaultsAreAreaBasedAndInactive()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.False(settings.AutoDeafen);
@@ -1653,8 +1812,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void HazardAccuracyDefaultsResetRuntimeCustomizations() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void HazardAccuracyDefaultsResetRuntimeCustomizations()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             NoclipAccuracyInvalidLimit = 7,
             NoclipAccuracyTint = true,
             NoclipAccuracyTintMode = AkronNoclipAccuracyTintMode.WhileTouching,
@@ -1677,21 +1838,24 @@ public sealed class ModuleSettingsTests {
     [InlineData(false, false, false)]
     [InlineData(true, false, true)]
     [InlineData(false, true, true)]
-    public void HazardAccuracySamplesOnlyMovementAndInvalidContact(bool invalid, bool moved, bool expected) {
+    public void HazardAccuracySamplesOnlyMovementAndInvalidContact(bool invalid, bool moved, bool expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ShouldCountHazardAccuracySample(invalid, moved));
     }
 
     [Theory]
     [InlineData(180f, 180, false)]
     [InlineData(180.01f, 180, true)]
-    public void HazardAccuracyTreatsBottomKillboxAsInvalidContact(float playerTop, int levelBottom, bool expected) {
+    public void HazardAccuracyTreatsBottomKillboxAsInvalidContact(float playerTop, int levelBottom, bool expected)
+    {
         Assert.Equal(expected, AkronModule.IsPlayerTouchingBottomKillbox(playerTop, levelBottom));
     }
 
     [Theory]
     [InlineData(244f, 180, false)]
     [InlineData(244.01f, 180, true)]
-    public void InvincibilityRescueKeepsBottomlessFallRecoveryBuffer(float playerTop, int levelBottom, bool expected) {
+    public void InvincibilityRescueKeepsBottomlessFallRecoveryBuffer(float playerTop, int levelBottom, bool expected)
+    {
         Assert.Equal(expected, AkronModule.IsPlayerPastBottomKillboxRescueBoundary(playerTop, levelBottom));
     }
 
@@ -1700,7 +1864,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(false, true, false)]
     [InlineData(true, false, false)]
     [InlineData(true, true, true)]
-    public void HazardAccuracyRecordsBottomKillboxBeforeInvincibilityRescue(bool hazardAccuracyAllowed, bool touchingBottomKillbox, bool expected) {
+    public void HazardAccuracyRecordsBottomKillboxBeforeInvincibilityRescue(bool hazardAccuracyAllowed, bool touchingBottomKillbox, bool expected)
+    {
         Assert.Equal(expected, AkronModule.ShouldRecordBottomKillboxHazardAccuracyBeforeRescue(hazardAccuracyAllowed, touchingBottomKillbox));
     }
 
@@ -1710,7 +1875,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0.05f, 0.1f)]
     [InlineData(2.5f, 2.5f)]
     [InlineData(30f, 15f)]
-    public void PauseCountdownClampUsesDefaultAndBounds(float input, float expected) {
+    public void PauseCountdownClampUsesDefaultAndBounds(float input, float expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampPauseCountdownSeconds(input), precision: 3);
     }
 
@@ -1720,7 +1886,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 1)]
     [InlineData(120, 120)]
     [InlineData(1200, 1000)]
-    public void ShowTrajectoryFramesClampUsesDefaultAndBounds(int input, int expected) {
+    public void ShowTrajectoryFramesClampUsesDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampShowTrajectoryFrames(input));
     }
 
@@ -1730,7 +1897,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 1)]
     [InlineData(6, 6)]
     [InlineData(20, 12)]
-    public void ShowTrajectoryLineThicknessClampUsesDefaultAndBounds(int input, int expected) {
+    public void ShowTrajectoryLineThicknessClampUsesDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampShowTrajectoryLineThickness(input));
     }
 
@@ -1740,7 +1908,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 1)]
     [InlineData(12, 12)]
     [InlineData(120, 60)]
-    public void ShowTrajectoryFrameHitboxIntervalClampUsesDefaultAndBounds(int input, int expected) {
+    public void ShowTrajectoryFrameHitboxIntervalClampUsesDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampShowTrajectoryFrameHitboxInterval(input));
     }
 
@@ -1750,7 +1919,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 1)]
     [InlineData(60, 60)]
     [InlineData(400, 240)]
-    public void HitboxTrailLengthClampUsesDefaultAndBounds(int input, int expected) {
+    public void HitboxTrailLengthClampUsesDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampHitboxTrailLength(input));
     }
 
@@ -1762,13 +1932,16 @@ public sealed class ModuleSettingsTests {
     [InlineData(3f, 3f)]
     [InlineData(5.5f, 5.5f)]
     [InlineData(12f, 8f)]
-    public void HitboxLineThicknessClampAllowsThinLines(float input, float expected) {
+    public void HitboxLineThicknessClampAllowsThinLines(float input, float expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampHitboxLineThickness(input));
     }
 
     [Fact]
-    public void HitboxStyleResetRestoresTrailDefaults() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void HitboxStyleResetRestoresTrailDefaults()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             ShowHitboxTrail = true,
             HitboxTrailLength = 120,
             HitboxTrailOpacity = 20,
@@ -1796,14 +1969,16 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void HitboxLineThicknessDefaultsToOneNativePixel() {
+    public void HitboxLineThicknessDefaultsToOneNativePixel()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.Equal(5f, settings.HitboxLineThickness);
     }
 
     [Fact]
-    public void HitboxColorDefaultsMatchCelesteTasConvention() {
+    public void HitboxColorDefaultsMatchCelesteTasConvention()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
         AkronSetupState setup = new AkronSetupState();
 
@@ -1826,21 +2001,24 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void PlayerHazardHitboxUsesCelesteTasNormalHurtboxShape() {
+    public void PlayerHazardHitboxUsesCelesteTasNormalHurtboxShape()
+    {
         (int left, int top, int width, int height) = AkronEntityInspector.PixelExactBoundsParts(19f - 4f, 144f - 11f, 8f, 9f);
 
         AssertHitboxBounds(15, 133, 8, 9, left, top, width, height);
     }
 
     [Fact]
-    public void PlayerHazardHitboxFallbackUsesCelesteNormalHurtboxShape() {
+    public void PlayerHazardHitboxFallbackUsesCelesteNormalHurtboxShape()
+    {
         (int left, int top, int width, int height) = AkronEntityInspector.PixelExactBoundsParts(19f - 4f, 144f - 11f, 8f, 9f);
 
         AssertHitboxBounds(15, 133, 8, 9, left, top, width, height);
     }
 
     [Fact]
-    public void PlayerHazardHitboxUsesCelesteTasPixelRounding() {
+    public void PlayerHazardHitboxUsesCelesteTasPixelRounding()
+    {
         (int left, int top, int width, int height) = AkronEntityInspector.PixelExactBoundsParts(19.25f - 4f, 144.75f - 11f, 8f, 9f);
 
         AssertHitboxBounds(15, 133, 9, 10, left, top, width, height);
@@ -1851,43 +2029,53 @@ public sealed class ModuleSettingsTests {
     [InlineData(typeof(DustTrackSpinnerProbe))]
     [InlineData(typeof(DustRotateSpinnerProbe))]
     [InlineData(typeof(TriggerSpikesProbe))]
-    public void HitboxHazardClassifierCoversThreeCHazardTypes(Type entityType) {
+    public void HitboxHazardClassifierCoversThreeCHazardTypes(Type entityType)
+    {
         Entity entity = Assert.IsAssignableFrom<Entity>(Activator.CreateInstance(entityType));
 
         Assert.True(AkronEntityInspector.IsHazard(entity));
     }
 
     [Fact]
-    public void HitboxHazardClassifierDoesNotTreatRefillsAsHazards() {
+    public void HitboxHazardClassifierDoesNotTreatRefillsAsHazards()
+    {
         Assert.False(AkronEntityInspector.IsHazard(new RefillProbe()));
     }
 
-    private static void AssertHitboxBounds(int expectedLeft, int expectedTop, int expectedWidth, int expectedHeight, int left, int top, int width, int height) {
+    private static void AssertHitboxBounds(int expectedLeft, int expectedTop, int expectedWidth, int expectedHeight, int left, int top, int width, int height)
+    {
         Assert.Equal(expectedLeft, left);
         Assert.Equal(expectedTop, top);
         Assert.Equal(expectedWidth, width);
         Assert.Equal(expectedHeight, height);
     }
 
-    private sealed class DustStaticSpinnerProbe : Entity {
+    private sealed class DustStaticSpinnerProbe : Entity
+    {
     }
 
-    private sealed class DustTrackSpinnerProbe : Entity {
+    private sealed class DustTrackSpinnerProbe : Entity
+    {
     }
 
-    private sealed class DustRotateSpinnerProbe : Entity {
+    private sealed class DustRotateSpinnerProbe : Entity
+    {
     }
 
-    private sealed class TriggerSpikesProbe : Entity {
+    private sealed class TriggerSpikesProbe : Entity
+    {
     }
 
-    private sealed class RefillProbe : Entity {
+    private sealed class RefillProbe : Entity
+    {
     }
 
     [Fact]
-    public void ExactColliderPixelRunsUseColliderCollisionInsteadOfBoundingCircleApproximation() {
+    public void ExactColliderPixelRunsUseColliderCollisionInsteadOfBoundingCircleApproximation()
+    {
         const float radius = 4f;
-        bool CircleIntersectsPixel(int x, int y) {
+        bool CircleIntersectsPixel(int x, int y)
+        {
             float nearestX = Math.Clamp(0f, x, x + 1f);
             float nearestY = Math.Clamp(0f, y, y + 1f);
             return nearestX * nearestX + nearestY * nearestY <= radius * radius;
@@ -1901,7 +2089,8 @@ public sealed class ModuleSettingsTests {
 
         Assert.NotEmpty(outlineRuns);
         Assert.True(fillPixelCount >= outlinePixelCount);
-        Assert.All(outlineRuns.SelectMany(ExpandRun), pixel => {
+        Assert.All(outlineRuns.SelectMany(ExpandRun), pixel =>
+        {
             Assert.True(CircleIntersectsPixel(pixel.X, pixel.Y));
             Assert.True(
                 !CircleIntersectsPixel(pixel.X - 1, pixel.Y) ||
@@ -1910,16 +2099,20 @@ public sealed class ModuleSettingsTests {
                 !CircleIntersectsPixel(pixel.X, pixel.Y + 1));
         });
 
-        static IEnumerable<(int X, int Y)> ExpandRun((int X, int Y, int Width) run) {
-            for (int x = run.X; x < run.X + run.Width; x++) {
+        static IEnumerable<(int X, int Y)> ExpandRun((int X, int Y, int Width) run)
+        {
+            for (int x = run.X; x < run.X + run.Width; x++)
+            {
                 yield return (x, run.Y);
             }
         }
     }
 
     [Fact]
-    public void ExactPixelRunsIncludeEveryRectangleEdge() {
-        static bool RectangleIntersectsPixel(int x, int y) {
+    public void ExactPixelRunsIncludeEveryRectangleEdge()
+    {
+        static bool RectangleIntersectsPixel(int x, int y)
+        {
             return x >= 10 && x < 14 && y >= 20 && y < 24;
         }
 
@@ -1935,15 +2128,18 @@ public sealed class ModuleSettingsTests {
         Assert.DoesNotContain((11, 21), outlinePixels);
         Assert.DoesNotContain((12, 22), outlinePixels);
 
-        static IEnumerable<(int X, int Y)> ExpandRun((int X, int Y, int Width) run) {
-            for (int x = run.X; x < run.X + run.Width; x++) {
+        static IEnumerable<(int X, int Y)> ExpandRun((int X, int Y, int Width) run)
+        {
+            for (int x = run.X; x < run.X + run.Width; x++)
+            {
                 yield return (x, run.Y);
             }
         }
     }
 
     [Fact]
-    public void RegularCircleHitboxesUsePixelRunsInsteadOfSmoothCircleSegments() {
+    public void RegularCircleHitboxesUsePixelRunsInsteadOfSmoothCircleSegments()
+    {
         List<(int X, int Y, int Width)> outlineRuns = AkronEntityInspector.PixelCircleRunSegments(0f, 0f, 4f, includeFill: false);
         HashSet<(int X, int Y)> outlinePixels = outlineRuns.SelectMany(ExpandRun).ToHashSet();
 
@@ -1954,16 +2150,20 @@ public sealed class ModuleSettingsTests {
         Assert.Contains((3, 0), outlinePixels);
         Assert.DoesNotContain((0, 0), outlinePixels);
 
-        static IEnumerable<(int X, int Y)> ExpandRun((int X, int Y, int Width) run) {
-            for (int x = run.X; x < run.X + run.Width; x++) {
+        static IEnumerable<(int X, int Y)> ExpandRun((int X, int Y, int Width) run)
+        {
+            for (int x = run.X; x < run.X + run.Width; x++)
+            {
                 yield return (x, run.Y);
             }
         }
     }
 
     [Fact]
-    public void PixelOutlineSamplesIncludeStackedEdgePixelsForVisualConnectors() {
-        static bool Shape(int x, int y) {
+    public void PixelOutlineSamplesIncludeStackedEdgePixelsForVisualConnectors()
+    {
+        static bool Shape(int x, int y)
+        {
             return (x == 0 && y >= 0 && y <= 2) ||
                    (x == 1 && y == 1);
         }
@@ -1980,8 +2180,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void GridOutlineEdgesSkipSharedBordersBetweenStackedCells() {
-        static bool CellFilled(int x, int y) {
+    public void GridOutlineEdgesSkipSharedBordersBetweenStackedCells()
+    {
+        static bool CellFilled(int x, int y)
+        {
             return x == 0 && (y == 0 || y == 1);
         }
 
@@ -1999,7 +2201,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void ShowTrajectoryMapAwareDefaultsAreConservativeAndOptional() {
+    public void ShowTrajectoryMapAwareDefaultsAreConservativeAndOptional()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.False(settings.ShowTrajectoryMapAware);
@@ -2013,7 +2216,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(1, 50)]
     [InlineData(125, 125)]
     [InlineData(400, 300)]
-    public void ResourcePlayerScaleClampUsesDefaultAndBounds(int input, int expected) {
+    public void ResourcePlayerScaleClampUsesDefaultAndBounds(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampResourcePlayerScale(input));
     }
 
@@ -2023,7 +2227,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0.05f, 0.1f)]
     [InlineData(1.5f, 1.5f)]
     [InlineData(10f, 4f)]
-    public void AudioMultiplierClampUsesDefaultAndBounds(float input, float expected) {
+    public void AudioMultiplierClampUsesDefaultAndBounds(float input, float expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampAudioMultiplier(input), precision: 3);
     }
 
@@ -2033,7 +2238,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(59, 60)]
     [InlineData(144, 144)]
     [InlineData(999, 480)]
-    public void FpsTargetClampMatchesMotionSmoothingRange(int input, int expected) {
+    public void FpsTargetClampMatchesMotionSmoothingRange(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampFpsTarget(input));
     }
 
@@ -2043,12 +2249,14 @@ public sealed class ModuleSettingsTests {
     [InlineData(29, 30)]
     [InlineData(120, 120)]
     [InlineData(999, 480)]
-    public void TpsTargetClampKeepsSimulationRateBounded(int input, int expected) {
+    public void TpsTargetClampKeepsSimulationRateBounded(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampTpsTarget(input));
     }
 
     [Fact]
-    public void FrameBypassDefaultsMatchMotionSmoothingReferenceOptions() {
+    public void FrameBypassDefaultsMatchMotionSmoothingReferenceOptions()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.Equal(AkronFrameIncreaseMethod.Interval, settings.FrameBypassMethod);
@@ -2063,7 +2271,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void FrameBypassIntervalRoundsDrawRateToUpdateMultiple() {
+    public void FrameBypassIntervalRoundsDrawRateToUpdateMultiple()
+    {
         AkronFrameBypassRates rates = AkronModuleSettings.ResolveFrameBypassRates(
             fpsBypass: true,
             fpsTarget: 144,
@@ -2078,7 +2287,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void FrameBypassDynamicKeepsArbitraryDrawRate() {
+    public void FrameBypassDynamicKeepsArbitraryDrawRate()
+    {
         AkronFrameBypassRates rates = AkronModuleSettings.ResolveFrameBypassRates(
             fpsBypass: true,
             fpsTarget: 144,
@@ -2097,7 +2307,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0.05f, 0.1f)]
     [InlineData(1.25f, 1.25f)]
     [InlineData(12f, 10f)]
-    public void RespawnTimeClampKeepsAUsableRange(float input, float expected) {
+    public void RespawnTimeClampKeepsAUsableRange(float input, float expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampRespawnTimeSeconds(input), precision: 3);
     }
 
@@ -2107,7 +2318,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0, 0)]
     [InlineData(2, 2)]
     [InlineData(9, 5)]
-    public void StartPosDashClampAllowsNativeOrExplicitDashCounts(int input, int expected) {
+    public void StartPosDashClampAllowsNativeOrExplicitDashCounts(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampStartPosDashes(input));
     }
 
@@ -2117,7 +2329,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0, 0)]
     [InlineData(50, 50)]
     [InlineData(250, 100)]
-    public void StartPosStaminaClampAllowsNativeOrExplicitPercent(int input, int expected) {
+    public void StartPosStaminaClampAllowsNativeOrExplicitPercent(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampStartPosStaminaPercent(input));
     }
 
@@ -2127,12 +2340,14 @@ public sealed class ModuleSettingsTests {
     [InlineData(9, 9)]
     [InlineData(24, 24)]
     [InlineData(120, 99)]
-    public void StartPosSlotCountClampAllowsMoreThanNineSlots(int input, int expected) {
+    public void StartPosSlotCountClampAllowsMoreThanNineSlots(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampStartPosSlotCount(input));
     }
 
     [Fact]
-    public void StartPosCoreActionsHaveIndependentBindings() {
+    public void StartPosCoreActionsHaveIndependentBindings()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
         ButtonBinding set = new ButtonBinding(0, Keys.D1);
         ButtonBinding load = new ButtonBinding(0, Keys.D2);
@@ -2148,8 +2363,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void StartPosSlotUsesIndependentSetting() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void StartPosSlotUsesIndependentSetting()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             ActiveStartPosSlot = 7
         };
 
@@ -2157,14 +2374,16 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void StartPosRespawnIsDisabledByDefault() {
+    public void StartPosRespawnIsDisabledByDefault()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.False(settings.RespawnAtStartPos);
     }
 
     [Fact]
-    public void StartPosDefaultsDoNotApplySpawnConfig() {
+    public void StartPosDefaultsDoNotApplySpawnConfig()
+    {
         AkronStartPos startPos = new AkronStartPos();
 
         Assert.False(startPos.UsesSpawnConfig);
@@ -2179,7 +2398,8 @@ public sealed class ModuleSettingsTests {
     [InlineData("good-before-load", "good-before-load")]
     [InlineData("bad after load", "bad-after-load")]
     [InlineData("../camera:broken?", "camera-broken")]
-    public void DebugSnapshotTagsAreSafeForArtifactNames(string input, string expected) {
+    public void DebugSnapshotTagsAreSafeForArtifactNames(string input, string expected)
+    {
         Assert.Equal(expected, AkronDebugSnapshot.SanitizeTag(input));
     }
 
@@ -2187,13 +2407,16 @@ public sealed class ModuleSettingsTests {
     [InlineData(-999, -128)]
     [InlineData(-34, -34)]
     [InlineData(999, 128)]
-    public void SpeedNumberOffsetClampKeepsHudTextNearPlayer(int input, int expected) {
+    public void SpeedNumberOffsetClampKeepsHudTextNearPlayer(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampSpeedNumberOffsetY(input));
     }
 
     [Fact]
-    public void PlayerNumbersRenderEvenWhenHudLabelsAreHidden() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void PlayerNumbersRenderEvenWhenHudLabelsAreHidden()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             LabelSystemVisible = false,
             DashNumber = true,
             SpeedNumber = true
@@ -2204,8 +2427,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void PlayerNumbersStillRespectTheirOwnToggleAndPolicyGate() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void PlayerNumbersStillRespectTheirOwnToggleAndPolicyGate()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             LabelSystemVisible = true,
             DashNumber = false,
             SpeedNumber = false
@@ -2222,19 +2447,22 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void AkronHudUsesLinearFilteringForScaledText() {
+    public void AkronHudUsesLinearFilteringForScaledText()
+    {
         Assert.Same(SamplerState.LinearClamp, AkronModule.HudSamplerState());
     }
 
     [Fact]
-    public void AreaSelectionPreviewShowsSinglePixelMarkerAtCursorBeforeFirstCorner() {
+    public void AreaSelectionPreviewShowsSinglePixelMarkerAtCursorBeforeFirstCorner()
+    {
         AkronOverlay.PracticeAreaSelectionPreviewBounds preview = AkronOverlay.PracticeAreaSelectionPreviewBoundsFor(12.8f, 20.2f, false, 0f, 0f);
 
         AssertPreviewBounds(preview, 12, 20, 1, 1);
     }
 
     [Fact]
-    public void AreaSelectionPreviewShowsDragRectangleAfterFirstCorner() {
+    public void AreaSelectionPreviewShowsDragRectangleAfterFirstCorner()
+    {
         AkronOverlay.PracticeAreaSelectionPreviewBounds preview = AkronOverlay.PracticeAreaSelectionPreviewBoundsFor(20.2f, 8.8f, true, 4.4f, 18.2f);
 
         AssertPreviewBounds(preview, 4, 8, 17, 11);
@@ -2244,7 +2472,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(-10, 0)]
     [InlineData(65, 65)]
     [InlineData(140, 100)]
-    public void LightLevelClampKeepsReadablePercentRange(int input, int expected) {
+    public void LightLevelClampKeepsReadablePercentRange(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampLightLevelPercent(input));
     }
 
@@ -2252,12 +2481,14 @@ public sealed class ModuleSettingsTests {
     [InlineData(-10, 0)]
     [InlineData(125, 125)]
     [InlineData(450, 300)]
-    public void BloomLevelClampKeepsVisualOverrideRange(int input, int expected) {
+    public void BloomLevelClampKeepsVisualOverrideRange(int input, int expected)
+    {
         Assert.Equal(expected, AkronModuleSettings.ClampBloomLevelPercent(input));
     }
 
     [Fact]
-    public void LowDistractionOverlayIsDerivedFromAllNoiseChannels() {
+    public void LowDistractionOverlayIsDerivedFromAllNoiseChannels()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         settings.SetLowDistractionChannels(true);
@@ -2272,8 +2503,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void StreamerModeOnlyRedactsPathDisplay() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void StreamerModeOnlyRedactsPathDisplay()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             StreamerMode = true
         };
 
@@ -2284,7 +2517,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void BackupStatusDisplayRedactsBackupFolderInStreamerMode() {
+    public void BackupStatusDisplayRedactsBackupFolderInStreamerMode()
+    {
         string backupFolder = "/tmp/akron/Saves/AkronBackups";
         string status = "Open folder failed: access denied to " + backupFolder;
 
@@ -2295,15 +2529,18 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void PathDisplayKeepsFullPathOutsideStreamerMode() {
+    public void PathDisplayKeepsFullPathOutsideStreamerMode()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.Equal("/tmp/akron/proof/clear.json", settings.FormatPathForDisplay("/tmp/akron/proof/clear.json"));
     }
 
     [Fact]
-    public void OneShotRuntimeActionsAreClearedOnSettingsLoad() {
-        AkronModuleSettings settings = new AkronModuleSettings {
+    public void OneShotRuntimeActionsAreClearedOnSettingsLoad()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
             DeloadSpinners = true,
             DeloadSpinnerDelaySeconds = 3f
         };
@@ -2315,7 +2552,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void InputBoardNormalizationClampsInvalidElementsWithoutCompatibilityFallback() {
+    public void InputBoardNormalizationClampsInvalidElementsWithoutCompatibilityFallback()
+    {
         List<AkronInputBoardElement> elements = AkronInputBoard.NormalizeElements(new[] {
             new AkronInputBoardElement {
                 Id = "  key  ",
@@ -2350,7 +2588,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void InputBoardDefaultIsCompactKeyboardWithKeyboardLabels() {
+    public void InputBoardDefaultIsCompactKeyboardWithKeyboardLabels()
+    {
         AkronModuleSettings settings = new AkronModuleSettings();
         List<AkronInputBoardElement> defaults = AkronInputBoard.BuildDefaultElements();
 
@@ -2363,7 +2602,8 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void InputBoardPresetsAreVisiblyDistinctAndUseBoringReadableColors() {
+    public void InputBoardPresetsAreVisiblyDistinctAndUseBoringReadableColors()
+    {
         List<AkronInputBoardElement> split = AkronInputBoard.BuildSplitElements();
         List<AkronInputBoardElement> compact = AkronInputBoard.BuildCompactElements();
         List<AkronInputBoardElement> keyboard = AkronInputBoard.BuildKeyboardElements();
@@ -2377,7 +2617,8 @@ public sealed class ModuleSettingsTests {
         Assert.Contains(split, element => element.Id == "jump-2" && element.X == 24 && element.Y == 96 && element.Width == 90 && element.Label == "Jump");
         Assert.Contains(split, element => element.Id == "up" && element.X == 240 && element.Y == 30 && element.Label == "W");
         Assert.Contains(split, element => element.Id == "right" && element.X == 286 && element.Y == 76 && element.Label == "D");
-        Assert.All(split, element => {
+        Assert.All(split, element =>
+        {
             Assert.Equal(AkronInputBoard.DefaultFillColor, element.FillColor);
             Assert.Equal(AkronInputBoard.DefaultStrokeColor, element.StrokeColor);
             Assert.Equal(AkronInputBoard.DefaultTextColor, element.TextColor);
@@ -2385,18 +2626,22 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void InputBoardParsesCustomKeyboardBindings() {
+    public void InputBoardParsesCustomKeyboardBindings()
+    {
         Assert.True(AkronInputBoard.TryParseKeyBindings("Space, C, LeftShift", out List<Keys> keys));
         Assert.Equal(new[] { Keys.Space, Keys.C, Keys.LeftShift }, keys);
         Assert.False(AkronInputBoard.TryParseKeyBindings("not-a-key", out _));
     }
 
     [Fact]
-    public void ControlDisplayFullPresetArchiveRoundTripsCurrentBoard() {
+    public void ControlDisplayFullPresetArchiveRoundTripsCurrentBoard()
+    {
         string folder = Path.Combine(Path.GetTempPath(), "akron-control-display-preset-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
-        try {
-            AkronModuleSettings source = new AkronModuleSettings {
+        try
+        {
+            AkronModuleSettings source = new AkronModuleSettings
+            {
                 ShowTaps = true,
                 TapDisplayCorner = IndicatorCorner.TopLeft,
                 TapDisplayScale = 145,
@@ -2441,16 +2686,20 @@ public sealed class ModuleSettingsTests {
             Assert.Equal(new[] { Keys.C }, element.KeyBindings);
             Assert.Equal(0xE0E0E0, element.TextColor);
             Assert.Equal(155, element.TextScale);
-        } finally {
+        }
+        finally
+        {
             Directory.Delete(folder, recursive: true);
         }
     }
 
     [Fact]
-    public void CustomHudLabelPackArchiveRoundTripsLabels() {
+    public void CustomHudLabelPackArchiveRoundTripsLabels()
+    {
         string folder = Path.Combine(Path.GetTempPath(), "akron-hud-label-pack-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
-        try {
+        try
+        {
             string path = Path.Combine(folder, "labels.akr");
             List<AkronCustomHudLabel> labels = new List<AkronCustomHudLabel> {
                 new AkronCustomHudLabel {
@@ -2480,17 +2729,22 @@ public sealed class ModuleSettingsTests {
             Assert.Equal(0xC0FFEE, label.Color);
             Assert.True(label.Shadow);
             Assert.Equal(92, label.ShadowOpacity);
-        } finally {
+        }
+        finally
+        {
             Directory.Delete(folder, recursive: true);
         }
     }
 
     [Fact]
-    public void SetupPackArchiveRoundTripsListedSetupSystems() {
+    public void SetupPackArchiveRoundTripsListedSetupSystems()
+    {
         string folder = Path.Combine(Path.GetTempPath(), "akron-setup-pack-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
-        try {
-            AkronModuleSettings source = new AkronModuleSettings {
+        try
+        {
+            AkronModuleSettings source = new AkronModuleSettings
+            {
                 SmartStartPos = true,
                 RespawnAtStartPos = true,
                 StartPosConfiguredDashes = 2,
@@ -2501,6 +2755,13 @@ public sealed class ModuleSettingsTests {
                 AutoKillAreas = new List<AkronRectangleData> {
                     new AkronRectangleData { X = 1, Y = 2, Width = 30, Height = 40 }
                 },
+                AutoKillSpeedCondition = true,
+                AutoKillMinSpeed = 120,
+                AutoKillMaxSpeed = 240,
+                AutoKillDashCountCondition = true,
+                AutoKillDashCount = 1,
+                AutoKillHorizontalDirection = AkronAutoKillAxisCondition.Negative,
+                AutoKillVerticalDirection = AkronAutoKillAxisCondition.Positive,
                 AutoDeafen = true,
                 AutoDeafenHotkey = "Ctrl+Shift+D",
                 AudioSpeed = true,
@@ -2512,16 +2773,20 @@ public sealed class ModuleSettingsTests {
                 RecordingBitrateMbps = 80,
                 RecordingCodec = AkronRecordingCodec.H264Nvenc,
                 RecordingAudioMusicTrack = true,
-                MenuActionBindings = new Dictionary<string, string> {
+                MenuActionBindings = new Dictionary<string, string>
+                {
                     ["Shortcuts/Retry"] = "Ctrl+R"
                 }
             };
             source.SoundVolumes["bird-squawk"] = 42;
             source.SoundVolumeOverrides["bird-squawk"] = true;
 
-            AkronModuleSession sourceSession = new AkronModuleSession {
-                StartPositions = new Dictionary<int, AkronStartPos> {
-                    [3] = new AkronStartPos {
+            AkronModuleSession sourceSession = new AkronModuleSession
+            {
+                StartPositions = new Dictionary<int, AkronStartPos>
+                {
+                    [3] = new AkronStartPos
+                    {
                         Position = new Vector2(12, 34),
                         Room = "a-00",
                         AreaSid = "Celeste/1-ForsakenCity",
@@ -2548,6 +2813,13 @@ public sealed class ModuleSettingsTests {
             Assert.True(imported.AutoKill);
             Assert.True(imported.AutoKillArea);
             Assert.Single(imported.AutoKillAreas);
+            Assert.True(imported.AutoKillSpeedCondition);
+            Assert.Equal(120, imported.AutoKillMinSpeed);
+            Assert.Equal(240, imported.AutoKillMaxSpeed);
+            Assert.True(imported.AutoKillDashCountCondition);
+            Assert.Equal(1, imported.AutoKillDashCount);
+            Assert.Equal(AkronAutoKillAxisCondition.Negative, imported.AutoKillHorizontalDirection);
+            Assert.Equal(AkronAutoKillAxisCondition.Positive, imported.AutoKillVerticalDirection);
             Assert.True(imported.AutoDeafen);
             Assert.Equal("Ctrl+Shift+D", imported.AutoDeafenHotkey);
             Assert.True(imported.AudioSpeed);
@@ -2573,18 +2845,23 @@ public sealed class ModuleSettingsTests {
             Assert.Equal(55, startPos.StaminaPercent);
             Assert.Equal(AkronStartPosFacing.Left, startPos.Facing);
             Assert.True(startPos.Grab);
-        } finally {
+        }
+        finally
+        {
             Directory.Delete(folder, recursive: true);
         }
     }
 
     [Fact]
-    public void SetupPacksDoNotReplaceMachineLocalLoggingSettings() {
-        AkronModuleSettings source = new AkronModuleSettings {
+    public void SetupPacksDoNotReplaceMachineLocalLoggingSettings()
+    {
+        AkronModuleSettings source = new AkronModuleSettings
+        {
             StreamerMode = true
         };
         AkronSetupPack pack = AkronSetupPacks.Capture(source, session: null, "Practice Setup");
-        AkronModuleSettings target = new AkronModuleSettings {
+        AkronModuleSettings target = new AkronModuleSettings
+        {
             Logging = false,
             LoggingLevel = AkronLoggingLevel.Normal,
             LoggingMirrorWarningsToEverest = false,
@@ -2602,8 +2879,10 @@ public sealed class ModuleSettingsTests {
     }
 
     [Fact]
-    public void SetupPackScopedImportsOnlyReplaceRequestedSystems() {
-        AkronModuleSettings source = new AkronModuleSettings {
+    public void SetupPackScopedImportsOnlyReplaceRequestedSystems()
+    {
+        AkronModuleSettings source = new AkronModuleSettings
+        {
             SmartStartPos = true,
             StartPosConfiguredDashes = 2,
             StartPosConfiguredStaminaPercent = 55,
@@ -2614,6 +2893,13 @@ public sealed class ModuleSettingsTests {
             AutoKillAreas = new List<AkronRectangleData> {
                 new AkronRectangleData { X = 1, Y = 2, Width = 30, Height = 40 }
             },
+            AutoKillSpeedCondition = true,
+            AutoKillMinSpeed = 120,
+            AutoKillMaxSpeed = 240,
+            AutoKillDashCountCondition = true,
+            AutoKillDashCount = 1,
+            AutoKillHorizontalDirection = AkronAutoKillAxisCondition.Negative,
+            AutoKillVerticalDirection = AkronAutoKillAxisCondition.Positive,
             AutoDeafen = true,
             AutoDeafenHotkey = "Ctrl+Shift+D",
             RecordingFramerate = 120,
@@ -2657,16 +2943,20 @@ public sealed class ModuleSettingsTests {
             SetInventoryJumps = 3,
             SetInventoryRestoreOnDeath = true,
             JumpHackAllowVerticalDashJumps = true,
-            MenuActionBindings = new Dictionary<string, string> {
+            MenuActionBindings = new Dictionary<string, string>
+            {
                 ["Shortcuts/Retry"] = "Ctrl+R"
             }
         };
         source.SoundVolumes["bird-squawk"] = 42;
         source.SoundVolumeOverrides["bird-squawk"] = true;
 
-        AkronModuleSession sourceSession = new AkronModuleSession {
-            StartPositions = new Dictionary<int, AkronStartPos> {
-                [3] = new AkronStartPos {
+        AkronModuleSession sourceSession = new AkronModuleSession
+        {
+            StartPositions = new Dictionary<int, AkronStartPos>
+            {
+                [3] = new AkronStartPos
+                {
                     Position = new Vector2(12, 34),
                     Room = "a-00",
                     AreaSid = "Celeste/1-ForsakenCity",
@@ -2701,6 +2991,13 @@ public sealed class ModuleSettingsTests {
         Assert.True(autoKillOnly.AutoKillTimer);
         Assert.Equal(12, autoKillOnly.AutoKillSeconds);
         Assert.Single(autoKillOnly.AutoKillAreas);
+        Assert.True(autoKillOnly.AutoKillSpeedCondition);
+        Assert.Equal(120, autoKillOnly.AutoKillMinSpeed);
+        Assert.Equal(240, autoKillOnly.AutoKillMaxSpeed);
+        Assert.True(autoKillOnly.AutoKillDashCountCondition);
+        Assert.Equal(1, autoKillOnly.AutoKillDashCount);
+        Assert.Equal(AkronAutoKillAxisCondition.Negative, autoKillOnly.AutoKillHorizontalDirection);
+        Assert.Equal(AkronAutoKillAxisCondition.Positive, autoKillOnly.AutoKillVerticalDirection);
         Assert.False(autoKillOnly.AutoDeafen);
 
         AkronModuleSettings autoDeafenOnly = new AkronModuleSettings { AutoKill = false };
@@ -2728,7 +3025,8 @@ public sealed class ModuleSettingsTests {
         Assert.True(audioOnly.SoundVolumeOverrides["bird-squawk"]);
         Assert.Equal(60, audioOnly.RecordingFramerate);
 
-        AkronModuleSettings hudOnly = new AkronModuleSettings {
+        AkronModuleSettings hudOnly = new AkronModuleSettings
+        {
             AutoKill = false,
             AudioSpeed = false
         };
@@ -2760,7 +3058,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0, 1, true)]
     [InlineData(0, 2, true)]
     [InlineData(1, 1, false)]
-    public void MadelineNoDashColorStateMatchesVanillaHairInventory(int dashes, int maxDashes, bool expected) {
+    public void MadelineNoDashColorStateMatchesVanillaHairInventory(int dashes, int maxDashes, bool expected)
+    {
         Assert.Equal(expected, AkronModule.IsMadelineNoDashColorState(dashes, maxDashes));
     }
 
@@ -2770,7 +3069,8 @@ public sealed class ModuleSettingsTests {
     [InlineData(0.1f, true)]
     [InlineData(0.15f, false)]
     [InlineData(0.2f, false)]
-    public void FreezeFrameSuppressionKeepsScriptedLongFreezes(float seconds, bool expected) {
+    public void FreezeFrameSuppressionKeepsScriptedLongFreezes(float seconds, bool expected)
+    {
         Assert.Equal(expected, AkronModule.ShouldSuppressFreezeFrames(seconds));
     }
 
@@ -2780,7 +3080,8 @@ public sealed class ModuleSettingsTests {
     [InlineData("RShift+F1", "RightShift+F1")]
     [InlineData("Button:LeftShoulder", "Button:LeftShoulder")]
     [InlineData("Controller:RightStick", "Button:RightStick")]
-    public void MenuBindingsKeepKeyboardBindingsAndAcceptControllerButtons(string stored, string expectedNormalized) {
+    public void MenuBindingsKeepKeyboardBindingsAndAcceptControllerButtons(string stored, string expectedNormalized)
+    {
         object binding = ParseMenuBinding(stored);
 
         Assert.Equal(expectedNormalized, InvokeMenuBindingString(binding, "ToStorageString"));
@@ -2789,20 +3090,23 @@ public sealed class ModuleSettingsTests {
     [Theory]
     [InlineData("RAlt", "RightAlt")]
     [InlineData("RShift+F1", "RightShift+F1")]
-    public void MenuBindingDisplayPreservesRightSideModifiers(string stored, string expectedDisplay) {
+    public void MenuBindingDisplayPreservesRightSideModifiers(string stored, string expectedDisplay)
+    {
         object binding = ParseMenuBinding(stored);
 
         Assert.Equal(expectedDisplay, InvokeMenuBindingString(binding, "ToDisplayString"));
     }
 
     [Fact]
-    public void MenuBindingDisplayUsesControllerButtonNames() {
+    public void MenuBindingDisplayUsesControllerButtonNames()
+    {
         object binding = ParseMenuBinding("Button:LeftShoulder");
 
         Assert.Equal("LB", InvokeMenuBindingString(binding, "ToDisplayString"));
     }
 
-    private static List<string> BuildOverlayEntryLabels(string tab) {
+    private static List<string> BuildOverlayEntryLabels(string tab)
+    {
         MethodInfo? method = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
 
@@ -2815,13 +3119,14 @@ public sealed class ModuleSettingsTests {
             .GetProperty("Label", BindingFlags.Public | BindingFlags.Instance);
         Assert.NotNull(labelProperty);
 
-        return ((System.Collections.IEnumerable) entries)
+        return ((System.Collections.IEnumerable)entries)
             .Cast<object>()
-            .Select(entry => (string) labelProperty.GetValue(entry)!)
+            .Select(entry => (string)labelProperty.GetValue(entry)!)
             .ToList();
     }
 
-    private static List<string> BuildRuntimeOverlayEntryLabels(AkronOverlay overlay, string tab) {
+    private static List<string> BuildRuntimeOverlayEntryLabels(AkronOverlay overlay, string tab)
+    {
         MethodInfo? method = typeof(AkronOverlay).GetMethod("GetDisplayActionEntries", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(method);
 
@@ -2831,18 +3136,21 @@ public sealed class ModuleSettingsTests {
         return ExtractPrivateEntryLabels(entries);
     }
 
-    private static AkronOverlay CreateSoundOverlayForListTest() {
+    private static AkronOverlay CreateSoundOverlayForListTest()
+    {
         return CreateOverlayForListTest();
     }
 
-    private static AkronOverlay CreateOverlayForListTest() {
-        AkronOverlay overlay = (AkronOverlay) RuntimeHelpers.GetUninitializedObject(typeof(AkronOverlay));
+    private static AkronOverlay CreateOverlayForListTest()
+    {
+        AkronOverlay overlay = (AkronOverlay)RuntimeHelpers.GetUninitializedObject(typeof(AkronOverlay));
         SetPrivateFieldToNewStringComparerCollection(overlay, "displayActionEntryCache");
         SetPrivateField(overlay, "expandedSoundGroups", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
         return overlay;
     }
 
-    private static List<string> BuildFilteredOverlayEntryLabels(AkronOverlay overlay, string tab, string query) {
+    private static List<string> BuildFilteredOverlayEntryLabels(AkronOverlay overlay, string tab, string query)
+    {
         overlay.SetSearchQuery(query);
         MethodInfo? method = typeof(AkronOverlay).GetMethod("GetFilteredDisplayActionEntries", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(method);
@@ -2853,10 +3161,11 @@ public sealed class ModuleSettingsTests {
         return ExtractPrivateEntryLabels(entries);
     }
 
-    private static void AddExpandedSoundGroup(AkronOverlay overlay, string groupLabel) {
+    private static void AddExpandedSoundGroup(AkronOverlay overlay, string groupLabel)
+    {
         FieldInfo? field = typeof(AkronOverlay).GetField("expandedSoundGroups", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(field);
-        HashSet<string> groups = (HashSet<string>) field.GetValue(overlay)!;
+        HashSet<string> groups = (HashSet<string>)field.GetValue(overlay)!;
         groups.Add(groupLabel);
 
         MethodInfo? invalidate = typeof(AkronOverlay).GetMethod("InvalidateDisplayActionEntryCache", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -2864,20 +3173,24 @@ public sealed class ModuleSettingsTests {
         invalidate.Invoke(overlay, Array.Empty<object>());
     }
 
-    private static CheckpointData CreateCheckpointData(string level, string name) {
-        return new CheckpointData(level, name) {
+    private static CheckpointData CreateCheckpointData(string level, string name)
+    {
+        return new CheckpointData(level, name)
+        {
             Level = level,
             Name = name
         };
     }
 
-    private static void SetPrivateField(object target, string fieldName, object value) {
+    private static void SetPrivateField(object target, string fieldName, object value)
+    {
         FieldInfo? field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(field);
         field.SetValue(target, value);
     }
 
-    private static void SetPrivateFieldToNewStringComparerCollection(object target, string fieldName) {
+    private static void SetPrivateFieldToNewStringComparerCollection(object target, string fieldName)
+    {
         FieldInfo? field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(field);
         object? value = Activator.CreateInstance(field.FieldType, new object[] { StringComparer.OrdinalIgnoreCase });
@@ -2885,20 +3198,22 @@ public sealed class ModuleSettingsTests {
         field.SetValue(target, value);
     }
 
-    private static List<string> ExtractPrivateEntryLabels(object entries) {
+    private static List<string> ExtractPrivateEntryLabels(object entries)
+    {
         PropertyInfo? labelProperty = entries
             .GetType()
             .GetGenericArguments()[0]
             .GetProperty("Label", BindingFlags.Public | BindingFlags.Instance);
         Assert.NotNull(labelProperty);
 
-        return ((System.Collections.IEnumerable) entries)
+        return ((System.Collections.IEnumerable)entries)
             .Cast<object>()
-            .Select(entry => (string) labelProperty.GetValue(entry)!)
+            .Select(entry => (string)labelProperty.GetValue(entry)!)
             .ToList();
     }
 
-    private static Dictionary<string, string> BuildOverlayEntryControls(string tab) {
+    private static Dictionary<string, string> BuildOverlayEntryControls(string tab)
+    {
         MethodInfo? method = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
 
@@ -2911,16 +3226,17 @@ public sealed class ModuleSettingsTests {
         Assert.NotNull(labelProperty);
         Assert.NotNull(controlProperty);
 
-        return ((System.Collections.IEnumerable) entries)
+        return ((System.Collections.IEnumerable)entries)
             .Cast<object>()
-            .GroupBy(entry => (string) labelProperty.GetValue(entry)!, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(entry => (string)labelProperty.GetValue(entry)!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
                 group => controlProperty.GetValue(group.First())!.ToString()!,
                 StringComparer.OrdinalIgnoreCase);
     }
 
-    private static Dictionary<string, bool> BuildOverlayEntryBindableExposure(string tab) {
+    private static Dictionary<string, bool> BuildOverlayEntryBindableExposure(string tab)
+    {
         MethodInfo? buildEntries = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(buildEntries);
 
@@ -2933,16 +3249,17 @@ public sealed class ModuleSettingsTests {
         Assert.NotNull(labelProperty);
         Assert.NotNull(isBindable);
 
-        return ((System.Collections.IEnumerable) entries)
+        return ((System.Collections.IEnumerable)entries)
             .Cast<object>()
-            .GroupBy(entry => (string) labelProperty.GetValue(entry)!, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(entry => (string)labelProperty.GetValue(entry)!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
-                group => (bool) isBindable.Invoke(null, new[] { group.First() })!,
+                group => (bool)isBindable.Invoke(null, new[] { group.First() })!,
                 StringComparer.OrdinalIgnoreCase);
     }
 
-    private static string BuildOverlayEntryValue(string tab, string label) {
+    private static string BuildOverlayEntryValue(string tab, string label)
+    {
         MethodInfo? method = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
 
@@ -2955,14 +3272,15 @@ public sealed class ModuleSettingsTests {
         Assert.NotNull(labelProperty);
         Assert.NotNull(valueProperty);
 
-        object entry = ((System.Collections.IEnumerable) entries)
+        object entry = ((System.Collections.IEnumerable)entries)
             .Cast<object>()
-            .First(entry => string.Equals((string) labelProperty.GetValue(entry)!, label, StringComparison.OrdinalIgnoreCase));
+            .First(entry => string.Equals((string)labelProperty.GetValue(entry)!, label, StringComparison.OrdinalIgnoreCase));
 
-        return ((Func<string>) valueProperty.GetValue(entry)!)();
+        return ((Func<string>)valueProperty.GetValue(entry)!)();
     }
 
-    private static (Func<string> Value, Action Execute) BuildOverlayEntryValueAndExecute(string tab, string label) {
+    private static (Func<string> Value, Action Execute) BuildOverlayEntryValueAndExecute(string tab, string label)
+    {
         MethodInfo? method = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
 
@@ -2977,26 +3295,29 @@ public sealed class ModuleSettingsTests {
         Assert.NotNull(valueProperty);
         Assert.NotNull(executeProperty);
 
-        object entry = ((System.Collections.IEnumerable) entries)
+        object entry = ((System.Collections.IEnumerable)entries)
             .Cast<object>()
-            .First(entry => string.Equals((string) labelProperty.GetValue(entry)!, label, StringComparison.OrdinalIgnoreCase));
+            .First(entry => string.Equals((string)labelProperty.GetValue(entry)!, label, StringComparison.OrdinalIgnoreCase));
 
-        return ((Func<string>) valueProperty.GetValue(entry)!, (Action) executeProperty.GetValue(entry)!);
+        return ((Func<string>)valueProperty.GetValue(entry)!, (Action)executeProperty.GetValue(entry)!);
     }
 
-    private static bool HasOverlayOptionsPopup(string label) {
+    private static bool HasOverlayOptionsPopup(string label)
+    {
         MethodInfo? method = typeof(AkronOverlay).GetMethod("HasOptionsPopup", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
-        return (bool) method.Invoke(null, new object[] { label })!;
+        return (bool)method.Invoke(null, new object[] { label })!;
     }
 
-    private static string[] GetOverlayTabs() {
+    private static string[] GetOverlayTabs()
+    {
         FieldInfo? field = typeof(AkronOverlay).GetField("BaseTabs", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(field);
-        return (string[]) field.GetValue(null)!;
+        return (string[])field.GetValue(null)!;
     }
 
-    private static object ParseMenuBinding(string value) {
+    private static object ParseMenuBinding(string value)
+    {
         Type? menuBindingType = typeof(AkronOverlay).GetNestedType("MenuBinding", BindingFlags.NonPublic);
         Assert.NotNull(menuBindingType);
 
@@ -3004,45 +3325,52 @@ public sealed class ModuleSettingsTests {
         Assert.NotNull(tryParse);
 
         object?[] arguments = { value, null };
-        Assert.True((bool) tryParse.Invoke(null, arguments)!);
+        Assert.True((bool)tryParse.Invoke(null, arguments)!);
         return arguments[1]!;
     }
 
-    private static string InvokeMenuBindingString(object binding, string methodName) {
+    private static string InvokeMenuBindingString(object binding, string methodName)
+    {
         MethodInfo? method = binding.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
         Assert.NotNull(method);
-        return (string) method.Invoke(binding, Array.Empty<object>())!;
+        return (string)method.Invoke(binding, Array.Empty<object>())!;
     }
 
-    private static bool InvokePlayerNumberGate(string methodName, AkronModuleSettings settings, bool featureAllowed) {
+    private static bool InvokePlayerNumberGate(string methodName, AkronModuleSettings settings, bool featureAllowed)
+    {
         MethodInfo? method = typeof(AkronHudRenderer).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
-        return (bool) method.Invoke(null, new object[] { settings, featureAllowed })!;
+        return (bool)method.Invoke(null, new object[] { settings, featureAllowed })!;
     }
 
-    private static Vector2 TestVector2(float x, float y) {
-        return new Vector2 {
+    private static Vector2 TestVector2(float x, float y)
+    {
+        return new Vector2
+        {
             X = x,
             Y = y
         };
     }
 
-    private static void AssertPreviewBounds(AkronOverlay.PracticeAreaSelectionPreviewBounds actual, int x, int y, int width, int height) {
+    private static void AssertPreviewBounds(AkronOverlay.PracticeAreaSelectionPreviewBounds actual, int x, int y, int width, int height)
+    {
         Assert.Equal(x, actual.X);
         Assert.Equal(y, actual.Y);
         Assert.Equal(width, actual.Width);
         Assert.Equal(height, actual.Height);
     }
 
-    private static string WriteReplaySegment(string folder, string filename, DateTime writeUtc, int bytes) {
+    private static string WriteReplaySegment(string folder, string filename, DateTime writeUtc, int bytes)
+    {
         string path = Path.Combine(folder, filename);
-        File.WriteAllBytes(path, Enumerable.Repeat((byte) 1, bytes).ToArray());
+        File.WriteAllBytes(path, Enumerable.Repeat((byte)1, bytes).ToArray());
         File.SetLastWriteTimeUtc(path, writeUtc);
         File.SetCreationTimeUtc(path, writeUtc);
         return path;
     }
 
-    private static string WriteClipWithSidecar(string folder, string filename, string kind, DateTime startUtc, DateTime endUtc) {
+    private static string WriteClipWithSidecar(string folder, string filename, string kind, DateTime startUtc, DateTime endUtc)
+    {
         string path = Path.Combine(folder, filename);
         File.WriteAllBytes(path, new byte[] { 1, 2, 3, 4 });
         File.WriteAllLines(path + ".akrclip", new[] {

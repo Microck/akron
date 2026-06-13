@@ -111,7 +111,7 @@ public sealed class PerformanceTests {
             FreezeTimerWhilePaused = true,
             NoFreezeFrames = true,
             GroundRefillRules = true,
-            PreventDownDashRedirectsEnabled = true,
+            DashRedirectEnabled = true,
             InfiniteDash = true,
             InfiniteStamina = true,
             DashCountOverride = true,

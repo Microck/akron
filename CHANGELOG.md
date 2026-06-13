@@ -6,6 +6,12 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+### Added
+
+- Add directional Dash Redirect controls for preserving selected dash directions when Celeste would redirect them.
+- Add Auto Kill area conditions for speed ranges, movement direction, current dash count, grounded/airborne state, and player state.
+- Collapse Auto Kill's optional area conditions under a Conditions section so the popup stays focused on method and area selection by default.
+
 ### Fixed
 
 - Add Extended Camera Dynamics external tool rows, route Cursor Zoom zoom-out through ECD when its hooks are active, and keep Akron from resetting ECD-owned zoom state when inactive.

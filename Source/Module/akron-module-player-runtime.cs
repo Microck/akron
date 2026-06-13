@@ -480,33 +480,60 @@ public partial class AkronModule {
     private static void PlayerDashCoroutineIlHook(ILContext il) {
         ILCursor cursor = new ILCursor(il);
         if (!cursor.TryGotoNext(MoveType.After, instruction => instruction.MatchLdfld<Player>("lastAim"))) {
-            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Could not find Player.lastAim in DashCoroutine; down-dash redirect guard is disabled.");
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Could not find Player.lastAim in DashCoroutine; dash redirect guard is disabled.");
             return;
         }
 
-        cursor.EmitDelegate<Func<Vector2, Vector2>>(ApplyDownDashRedirectGuard);
+        cursor.EmitDelegate<Func<Vector2, Vector2>>(ApplyDashRedirectGuard);
     }
 
-    private static Vector2 ApplyDownDashRedirectGuard(Vector2 redirectedAim) {
-        AkronPreventDownDashRedirectMode mode = Settings.PreventDownDashRedirects;
-        if (!Settings.PreventDownDashRedirectsEnabled ||
+    private static Vector2 ApplyDashRedirectGuard(Vector2 redirectedAim) {
+        if (!Settings.DashRedirectEnabled ||
             global::Celeste.SaveData.Instance?.Assists.ThreeSixtyDashing == true ||
-            preRedirectDashAim.Y <= 0.01f ||
-            Math.Abs(redirectedAim.Y) > 0.01f) {
+            preRedirectDashAim.LengthSquared() <= 0.01f ||
+            redirectedAim == preRedirectDashAim ||
+            !ShouldPreventDashRedirect(preRedirectDashAim)) {
             return redirectedAim;
         }
 
-        Vector2 guardedAim = redirectedAim;
-        guardedAim.Y = preRedirectDashAim.Y;
-        if (mode == AkronPreventDownDashRedirectMode.Normal && Math.Abs(Input.Aim.PreviousValue.X) <= 0.01f) {
-            guardedAim.X = 0f;
+        return TryUse(AkronFeatureKind.InputAssistShortcut)
+            ? preRedirectDashAim.EightWayNormal()
+            : redirectedAim;
+    }
+
+    private static bool ShouldPreventDashRedirect(Vector2 originalAim) {
+        AkronDashRedirectDirection directions = AkronModuleSettings.NormalizeDashRedirectDirections(Settings.DashRedirectDirections);
+        return (directions & GetDashRedirectDirection(originalAim)) != 0;
+    }
+
+    private static AkronDashRedirectDirection GetDashRedirectDirection(Vector2 aim) {
+        int x = Math.Abs(aim.X) <= 0.01f ? 0 : Math.Sign(aim.X);
+        int y = Math.Abs(aim.Y) <= 0.01f ? 0 : Math.Sign(aim.Y);
+        if (x < 0 && y < 0) {
+            return AkronDashRedirectDirection.UpLeft;
         }
 
-        if (guardedAim != redirectedAim && TryUse(AkronFeatureKind.InputAssistShortcut)) {
-            return guardedAim.EightWayNormal();
+        if (x > 0 && y < 0) {
+            return AkronDashRedirectDirection.UpRight;
         }
 
-        return redirectedAim;
+        if (x < 0 && y > 0) {
+            return AkronDashRedirectDirection.DownLeft;
+        }
+
+        if (x > 0 && y > 0) {
+            return AkronDashRedirectDirection.DownRight;
+        }
+
+        if (x < 0) {
+            return AkronDashRedirectDirection.Left;
+        }
+
+        if (x > 0) {
+            return AkronDashRedirectDirection.Right;
+        }
+
+        return y < 0 ? AkronDashRedirectDirection.Up : AkronDashRedirectDirection.Down;
     }
 
     private static void LookoutRoutineIlHook(ILContext il) {

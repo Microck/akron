@@ -180,7 +180,7 @@ public sealed partial class AkronOverlay {
                     Toggle("No Trails", () => AkronModule.Settings.NoTrails, value => AkronModule.Settings.SetNoTrails(value)),
                     PolicyToggle("No Respawn Animation", AkronFeatureKind.RespawnAnimation, () => AkronModule.Settings.NoRespawnAnimation, value => AkronModule.Settings.NoRespawnAnimation = value),
                     PolicyToggle("Noclip", AkronFeatureKind.Noclip, () => AkronModule.Settings.Noclip, value => AkronModule.Settings.Noclip = value),
-                    PolicyToggle("Prevent Down Dash Redirects", AkronFeatureKind.InputAssistShortcut, () => AkronModule.Settings.PreventDownDashRedirectsEnabled, value => AkronModule.Settings.PreventDownDashRedirectsEnabled = value, "dash", "redirect", "input assist"),
+                    PolicyToggle("Dash Redirect", AkronFeatureKind.InputAssistShortcut, () => AkronModule.Settings.DashRedirectEnabled, value => AkronModule.Settings.DashRedirectEnabled = value, "dash", "redirect", "input assist"),
                     PolicyToggle("Show Trajectory", AkronFeatureKind.ShowTrajectory, () => AkronModule.Settings.ShowTrajectory, value => AkronModule.Settings.ShowTrajectory = value),
                     PolicyToggle("Speed Number", AkronFeatureKind.SpeedNumber, () => AkronModule.Settings.SpeedNumber, value => AkronModule.Settings.SpeedNumber = value),
                     Toggle("Stamina Bar", () => AkronModule.Settings.StaminaBar, value => AkronModule.Settings.StaminaBar = value)
@@ -886,6 +886,21 @@ public sealed partial class AkronOverlay {
 
         Rectangle latest = areas[areas.Count - 1];
         return "Areas: " + areas.Count + " (latest " + latest.X + ", " + latest.Y + " / " + latest.Width + "x" + latest.Height + ")";
+    }
+
+    private static string DescribeAutoKillConditionsSummary() {
+        int enabled =
+            (AkronModule.Settings.AutoKillSpeedCondition ? 1 : 0) +
+            (AkronModule.Settings.AutoKillHorizontalSpeedCondition ? 1 : 0) +
+            (AkronModule.Settings.AutoKillVerticalSpeedCondition ? 1 : 0) +
+            (AkronModule.Settings.AutoKillDashCountCondition ? 1 : 0) +
+            (AkronModuleSettings.NormalizeAutoKillGroundCondition(AkronModule.Settings.AutoKillGroundCondition) == AkronAutoKillGroundCondition.Any ? 0 : 1) +
+            (AkronModuleSettings.NormalizeAutoKillAxisCondition(AkronModule.Settings.AutoKillHorizontalDirection) == AkronAutoKillAxisCondition.Any ? 0 : 1) +
+            (AkronModuleSettings.NormalizeAutoKillAxisCondition(AkronModule.Settings.AutoKillVerticalDirection) == AkronAutoKillAxisCondition.Any ? 0 : 1) +
+            (AkronModule.Settings.AutoKillPlayerStateCondition ? 1 : 0) +
+            (AkronModule.Settings.AutoKillInvertConditions ? 1 : 0);
+
+        return enabled == 0 ? "none" : enabled + " active";
     }
 
     private static string DescribeAutoDeafenArea() {

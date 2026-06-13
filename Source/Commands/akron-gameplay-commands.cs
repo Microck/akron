@@ -191,9 +191,9 @@ public static partial class AkronCommands {
         LogSetInventorySettings();
     }
 
-    [Command("akron_prevent_down_dash_redirects", "control Prevent Down Dash Redirects: disabled|normal|diagonal|toggle|status")]
-    public static void PreventDownDashRedirects(string action = "status") {
-        SetPreventDownDashRedirects(action);
+    [Command("akron_dash_redirect", "control Dash Redirect: disabled|down|down-diagonal|horizontal|up|up-diagonal|diagonal|all|toggle|status")]
+    public static void DashRedirectDirections(string action = "status") {
+        SetDashRedirect(action);
     }
 
     [Command("akron_step_repeat", "control frozen hold-repeat stepping: on|off|status|delay <frames>|interval <frames>|key <key>|reset-key")]

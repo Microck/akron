@@ -250,7 +250,7 @@ public static partial class AkronCommands {
         setter(next);
     }
 
-    private static bool SetPreventDownDashRedirects(string action) {
+    private static bool SetDashRedirect(string action) {
         switch (NormalizeToken(action)) {
             case "":
             case "status":
@@ -258,28 +258,70 @@ public static partial class AkronCommands {
             case "off":
             case "false":
             case "disabled":
-                AkronModule.Settings.PreventDownDashRedirectsEnabled = false;
+                AkronModule.Settings.DashRedirectEnabled = false;
                 break;
             case "on":
             case "true":
-                AkronModule.Settings.PreventDownDashRedirectsEnabled = true;
+                AkronModule.Settings.DashRedirectEnabled = true;
                 break;
+            case "down":
             case "normal":
-                AkronModule.Settings.PreventDownDashRedirects = AkronPreventDownDashRedirectMode.Normal;
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.Down;
+                break;
+            case "downdiagonal":
+            case "diagonaldown":
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.DownLeft |
+                                                               AkronDashRedirectDirection.DownRight;
+                break;
+            case "updiagonal":
+            case "diagonalup":
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.UpLeft |
+                                                               AkronDashRedirectDirection.UpRight;
                 break;
             case "diagonal":
-                AkronModule.Settings.PreventDownDashRedirects = AkronPreventDownDashRedirectMode.Diagonal;
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.DownLeft |
+                                                               AkronDashRedirectDirection.DownRight |
+                                                               AkronDashRedirectDirection.UpLeft |
+                                                               AkronDashRedirectDirection.UpRight;
+                break;
+            case "horizontal":
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.Left |
+                                                               AkronDashRedirectDirection.Right;
+                break;
+            case "downleft":
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.DownLeft;
+                break;
+            case "downright":
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.DownRight;
+                break;
+            case "up":
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.Up;
+                break;
+            case "upleft":
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.UpLeft;
+                break;
+            case "upright":
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.UpRight;
+                break;
+            case "left":
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.Left;
+                break;
+            case "right":
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.Right;
+                break;
+            case "all":
+                AkronModule.Settings.DashRedirectDirections = AkronDashRedirectDirection.All;
                 break;
             case "toggle":
-                AkronModule.Settings.PreventDownDashRedirectsEnabled = !AkronModule.Settings.PreventDownDashRedirectsEnabled;
+                AkronModule.Settings.DashRedirectEnabled = !AkronModule.Settings.DashRedirectEnabled;
                 break;
             default:
-                Log("unknown prevent-down-dash-redirects action: " + action);
+                Log("unknown dash-redirect action: " + action);
                 return true;
         }
 
-        Log("prevent-down-dash-redirects-enabled: " + AkronModule.Settings.PreventDownDashRedirectsEnabled.ToString().ToLowerInvariant());
-        Log("prevent-down-dash-redirects-mode: " + AkronModule.Settings.PreventDownDashRedirects.ToString().ToLowerInvariant());
+        Log("dash-redirect-enabled: " + AkronModule.Settings.DashRedirectEnabled.ToString().ToLowerInvariant());
+        Log("dash-redirect-directions: " + AkronModule.Settings.DashRedirectDirections.ToString().ToLowerInvariant());
         return true;
     }
 
@@ -681,6 +723,78 @@ public static partial class AkronCommands {
         }
     }
 
+    private static bool TryParseAutoKillGroundCondition(string value, out AkronAutoKillGroundCondition condition) {
+        switch (NormalizeToken(value)) {
+            case "":
+            case "any":
+            case "off":
+                condition = AkronAutoKillGroundCondition.Any;
+                return true;
+            case "ground":
+            case "grounded":
+                condition = AkronAutoKillGroundCondition.Grounded;
+                return true;
+            case "air":
+            case "airborne":
+                condition = AkronAutoKillGroundCondition.Airborne;
+                return true;
+            default:
+                condition = AkronAutoKillGroundCondition.Any;
+                return false;
+        }
+    }
+
+    private static bool TryParseAutoKillAxisCondition(string value, bool horizontal, out AkronAutoKillAxisCondition condition) {
+        switch (NormalizeToken(value)) {
+            case "":
+            case "any":
+            case "off":
+                condition = AkronAutoKillAxisCondition.Any;
+                return true;
+            case "negative":
+            case "minus":
+                condition = AkronAutoKillAxisCondition.Negative;
+                return true;
+            case "positive":
+            case "plus":
+                condition = AkronAutoKillAxisCondition.Positive;
+                return true;
+            case "zero":
+            case "still":
+            case "stationary":
+                condition = AkronAutoKillAxisCondition.Zero;
+                return true;
+            case "left":
+                condition = AkronAutoKillAxisCondition.Negative;
+                return horizontal;
+            case "right":
+                condition = AkronAutoKillAxisCondition.Positive;
+                return horizontal;
+            case "up":
+                condition = AkronAutoKillAxisCondition.Negative;
+                return !horizontal;
+            case "down":
+                condition = AkronAutoKillAxisCondition.Positive;
+                return !horizontal;
+            default:
+                condition = AkronAutoKillAxisCondition.Any;
+                return false;
+        }
+    }
+
+    private static string DescribeAutoKillAxisCondition(AkronAutoKillAxisCondition condition, bool horizontal) {
+        switch (AkronModuleSettings.NormalizeAutoKillAxisCondition(condition)) {
+            case AkronAutoKillAxisCondition.Negative:
+                return horizontal ? "left" : "up";
+            case AkronAutoKillAxisCondition.Positive:
+                return horizontal ? "right" : "down";
+            case AkronAutoKillAxisCondition.Zero:
+                return "still";
+            default:
+                return "any";
+        }
+    }
+
     private static string FormatVector(Vector2 value) {
         return value.X.ToString("0.##", CultureInfo.InvariantCulture) + ", " + value.Y.ToString("0.##", CultureInfo.InvariantCulture);
     }
@@ -688,7 +802,8 @@ public static partial class AkronCommands {
     private static string SafeStatusValue(Func<string> describe, string fallback) {
         try {
             return describe();
-        } catch {
+        }
+        catch {
             return fallback;
         }
     }

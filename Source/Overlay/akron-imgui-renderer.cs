@@ -349,6 +349,9 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         style.Colors[(int) ImGuiCol.Button] = AkronImGuiTheme.Transparent;
         style.Colors[(int) ImGuiCol.ButtonHovered] = AkronImGuiTheme.ButtonHovered;
         style.Colors[(int) ImGuiCol.ButtonActive] = AkronImGuiTheme.ButtonActive;
+        style.Colors[(int) ImGuiCol.Header] = AkronImGuiTheme.FrameBackground;
+        style.Colors[(int) ImGuiCol.HeaderHovered] = AkronImGuiTheme.ButtonHovered;
+        style.Colors[(int) ImGuiCol.HeaderActive] = AkronImGuiTheme.ButtonActive;
         style.Colors[(int) ImGuiCol.FrameBg] = AkronImGuiTheme.FrameBackground;
         style.Colors[(int) ImGuiCol.FrameBgHovered] = AkronImGuiTheme.ButtonHovered;
         style.Colors[(int) ImGuiCol.FrameBgActive] = AkronImGuiTheme.ButtonActive;

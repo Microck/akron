@@ -251,8 +251,8 @@ public partial class AkronModuleSettings {
         GroundRefillRules = resolved.GroundRefillRules;
         GroundDashRefill = resolved.GroundDashRefill;
         GroundStaminaRefill = resolved.GroundStaminaRefill;
-        PreventDownDashRedirectsEnabled = resolved.PreventDownDashRedirectsEnabled;
-        PreventDownDashRedirects = NormalizePreventDownDashRedirectMode(resolved.PreventDownDashRedirects);
+        DashRedirectEnabled = resolved.DashRedirectEnabled;
+        DashRedirectDirections = NormalizeDashRedirectDirections(resolved.DashRedirectDirections);
         GrabModeOverrideEnabled = resolved.GrabModeOverrideEnabled;
         GrabModeOverrideMode = resolved.GrabModeOverrideMode;
         AutoKill = resolved.AutoKill;
@@ -266,6 +266,32 @@ public partial class AkronModuleSettings {
         AutoKillAreaY = resolved.AutoKillAreaY;
         AutoKillAreaWidth = ClampAutoKillAreaSize(resolved.AutoKillAreaWidth);
         AutoKillAreaHeight = ClampAutoKillAreaSize(resolved.AutoKillAreaHeight);
+        AutoKillSpeedCondition = resolved.AutoKillSpeedCondition;
+        AutoKillMinSpeed = ClampAutoKillSpeed(resolved.AutoKillMinSpeed);
+        AutoKillMaxSpeed = ClampAutoKillSpeed(resolved.AutoKillMaxSpeed);
+        if (AutoKillMaxSpeed < AutoKillMinSpeed) {
+            AutoKillMaxSpeed = AutoKillMinSpeed;
+        }
+        AutoKillHorizontalSpeedCondition = resolved.AutoKillHorizontalSpeedCondition;
+        AutoKillMinHorizontalSpeed = ClampAutoKillSpeed(resolved.AutoKillMinHorizontalSpeed);
+        AutoKillMaxHorizontalSpeed = ClampAutoKillSpeed(resolved.AutoKillMaxHorizontalSpeed);
+        if (AutoKillMaxHorizontalSpeed < AutoKillMinHorizontalSpeed) {
+            AutoKillMaxHorizontalSpeed = AutoKillMinHorizontalSpeed;
+        }
+        AutoKillVerticalSpeedCondition = resolved.AutoKillVerticalSpeedCondition;
+        AutoKillMinVerticalSpeed = ClampAutoKillSpeed(resolved.AutoKillMinVerticalSpeed);
+        AutoKillMaxVerticalSpeed = ClampAutoKillSpeed(resolved.AutoKillMaxVerticalSpeed);
+        if (AutoKillMaxVerticalSpeed < AutoKillMinVerticalSpeed) {
+            AutoKillMaxVerticalSpeed = AutoKillMinVerticalSpeed;
+        }
+        AutoKillDashCountCondition = resolved.AutoKillDashCountCondition;
+        AutoKillDashCount = ClampAutoKillDashCount(resolved.AutoKillDashCount);
+        AutoKillGroundCondition = NormalizeAutoKillGroundCondition(resolved.AutoKillGroundCondition);
+        AutoKillHorizontalDirection = NormalizeAutoKillAxisCondition(resolved.AutoKillHorizontalDirection);
+        AutoKillVerticalDirection = NormalizeAutoKillAxisCondition(resolved.AutoKillVerticalDirection);
+        AutoKillPlayerStateCondition = resolved.AutoKillPlayerStateCondition;
+        AutoKillPlayerState = ClampAutoKillPlayerState(resolved.AutoKillPlayerState);
+        AutoKillInvertConditions = resolved.AutoKillInvertConditions;
         AutoDeafen = resolved.AutoDeafen;
         AutoDeafenHotkey = resolved.AutoDeafenHotkey ?? DefaultAutoDeafenHotkey;
         AutoDeafenArea = resolved.AutoDeafenArea;

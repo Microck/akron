@@ -15,202 +15,203 @@ public sealed partial class AkronOverlay {
         string previousOptionsPopupLabel = activeOptionsPopupLabel;
         activeOptionsPopupLabel = entry.Label;
         try {
-        if (entry.IsCustomHudLabelRow) {
-            SelectCustomHudLabel(entry.CustomHudLabelId);
-            DrawCustomHudLabelsPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "StartPos Snapshot Slot", StringComparison.OrdinalIgnoreCase)) {
-            DrawSavestateSlotPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Grab Mode", StringComparison.OrdinalIgnoreCase)) {
-            DrawGrabModePopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Overlay Appearance", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(entry.Label, "Theme", StringComparison.OrdinalIgnoreCase)) {
-            DrawOverlayAppearancePopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Logging", StringComparison.OrdinalIgnoreCase)) {
-            DrawLoggingPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Keybinds", StringComparison.OrdinalIgnoreCase)) {
-            DrawKeybindsPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Export Setup", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(entry.Label, "Import Setup", StringComparison.OrdinalIgnoreCase)) {
-            DrawSetupPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Confirm Actions", StringComparison.OrdinalIgnoreCase)) {
-            DrawConfirmActionsPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Noclip", StringComparison.OrdinalIgnoreCase)) {
-            DrawNoclipPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Hazard Accuracy", StringComparison.OrdinalIgnoreCase)) {
-            DrawHazardAccuracyPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Air Jumps", StringComparison.OrdinalIgnoreCase)) {
-            DrawAirJumpsPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Core Mode", StringComparison.OrdinalIgnoreCase)) {
-            DrawCoreModePopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Set Inventory", StringComparison.OrdinalIgnoreCase)) {
-            DrawSetInventoryPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Dream State", StringComparison.OrdinalIgnoreCase)) {
-            DrawDreamStatePopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Frame Stepper", StringComparison.OrdinalIgnoreCase)) {
-            DrawFrameStepperPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Respawn Time", StringComparison.OrdinalIgnoreCase)) {
-            DrawRespawnTimePopupControls(popupId);
-        } else if (IsPauseTimerLabel(entry.Label)) {
-            DrawPauseCountdownPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Fast Lookout", StringComparison.OrdinalIgnoreCase)) {
-            DrawFastLookoutPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "No Death Wipe", StringComparison.OrdinalIgnoreCase)) {
-            DrawNoDeathWipePopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Allow Low Volume", StringComparison.OrdinalIgnoreCase)) {
-            DrawAllowLowVolumePopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Audio Speed", StringComparison.OrdinalIgnoreCase)) {
-            DrawAudioSpeedPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Pitch Shift", StringComparison.OrdinalIgnoreCase)) {
-            DrawPitchShiftPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "FPS Bypass", StringComparison.OrdinalIgnoreCase)) {
-            DrawFpsBypassPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "TPS Bypass", StringComparison.OrdinalIgnoreCase)) {
-            DrawTpsBypassPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Safe Mode", StringComparison.OrdinalIgnoreCase)) {
-            DrawSafeModePopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Screenshake", StringComparison.OrdinalIgnoreCase)) {
-            DrawScreenshakePopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Light Level", StringComparison.OrdinalIgnoreCase)) {
-            DrawLightLevelPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Bloom Level", StringComparison.OrdinalIgnoreCase)) {
-            DrawBloomLevelPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Screen Tint", StringComparison.OrdinalIgnoreCase)) {
-            DrawScreenTintPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Lag Pauser", StringComparison.OrdinalIgnoreCase)) {
-            DrawLagPauserPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Golden Start", StringComparison.OrdinalIgnoreCase)) {
-            DrawGoldenStartPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Free Camera", StringComparison.OrdinalIgnoreCase)) {
-            DrawFreeCameraPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Camera Offset", StringComparison.OrdinalIgnoreCase)) {
-            DrawCameraOffsetPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Cursor Zoom", StringComparison.OrdinalIgnoreCase)) {
-            DrawCursorZoomPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Show Trajectory", StringComparison.OrdinalIgnoreCase)) {
-            DrawShowTrajectoryPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Control Display", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(entry.Label, "Show Taps", StringComparison.OrdinalIgnoreCase)) {
-            DrawShowTapsPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Inputs per second", StringComparison.OrdinalIgnoreCase)) {
-            DrawInputsPerSecondPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Visible", StringComparison.OrdinalIgnoreCase)) {
-            DrawLabelSystemPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Player Overlap", StringComparison.OrdinalIgnoreCase)) {
-            DrawLabelPlayerOverlapPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Room", StringComparison.OrdinalIgnoreCase)) {
-            DrawBuiltInLabelStylePopupControls("Color", () => AkronModule.Settings.RoomLabelColor, value => AkronModule.Settings.RoomLabelColor = value, AkronModule.Settings.RoomLabelStyle, popupId);
-        } else if (string.Equals(entry.Label, "Death Stats", StringComparison.OrdinalIgnoreCase)) {
-            DrawDeathStatsPopupControls(popupId);
-            DrawBuiltInLabelStylePopupControls("Color", () => AkronModule.Settings.DeathStatsColor, value => AkronModule.Settings.DeathStatsColor = value, AkronModule.Settings.DeathStatsLabelStyle, popupId);
-        } else if (string.Equals(entry.Label, "Room Timer", StringComparison.OrdinalIgnoreCase)) {
-            DrawBuiltInLabelStylePopupControls("Color", () => AkronModule.Settings.RoomTimerColor, value => AkronModule.Settings.RoomTimerColor = value, AkronModule.Settings.RoomTimerLabelStyle, popupId);
-        } else if (string.Equals(entry.Label, "Room Stat Tracker", StringComparison.OrdinalIgnoreCase)) {
-            DrawRoomStatTrackerPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Attempts", StringComparison.OrdinalIgnoreCase)) {
-            DrawBuiltInLabelStylePopupControls("Color", () => AkronModule.Settings.TotalAttemptsColor, value => AkronModule.Settings.TotalAttemptsColor = value, AkronModule.Settings.TotalAttemptsLabelStyle, popupId);
-        } else if (string.Equals(entry.Label, "Status", StringComparison.OrdinalIgnoreCase)) {
-            DrawBuiltInLabelStylePopupControls("Color", () => AkronModule.Settings.StatusLabelsColor, value => AkronModule.Settings.StatusLabelsColor = value, AkronModule.Settings.StatusLabelsLabelStyle, popupId);
-        } else if (string.Equals(entry.Label, "Toasts", StringComparison.OrdinalIgnoreCase)) {
-            DrawToastLabelPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "StartPos HUD", StringComparison.OrdinalIgnoreCase)) {
-            DrawStartPosLabelPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Custom", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(entry.Label, "Custom HUD Labels", StringComparison.OrdinalIgnoreCase)) {
-            DrawCustomHudLabelsPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Refill Clarity", StringComparison.OrdinalIgnoreCase)) {
-            DrawRefillClarityPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Room Capture", StringComparison.OrdinalIgnoreCase)) {
-            DrawScreenshotCapturePopupControls(popupId, chapter: false);
-        } else if (string.Equals(entry.Label, "Map Capture", StringComparison.OrdinalIgnoreCase)) {
-            DrawScreenshotCapturePopupControls(popupId, chapter: true);
-        } else if (string.Equals(entry.Label, "Autosave", StringComparison.OrdinalIgnoreCase)) {
-            DrawAutosavePopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Deload Spinners", StringComparison.OrdinalIgnoreCase)) {
-            DrawDeloadSpinnersPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Dash Stats", StringComparison.OrdinalIgnoreCase)) {
-            DrawCounterStatsPopupControls(true, popupId);
-        } else if (string.Equals(entry.Label, "Jump Stats", StringComparison.OrdinalIgnoreCase)) {
-            DrawCounterStatsPopupControls(false, popupId);
-        } else if (string.Equals(entry.Label, "Audio Splitter", StringComparison.OrdinalIgnoreCase)) {
-            DrawAudioSplitterPopupControls(popupId);
-        } else if (TryGetSoundDefinitionByLabel(entry.Label, out AkronEarAid.SoundDefinition sound)) {
-            DrawSoundVolumePopupControls(sound, popupId);
-        } else if (string.Equals(entry.Label, "Replay Settings", StringComparison.OrdinalIgnoreCase)) {
-            DrawRecorderReplayPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Output", StringComparison.OrdinalIgnoreCase)) {
-            DrawRecorderOutputPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Codec", StringComparison.OrdinalIgnoreCase)) {
-            DrawRecorderEncoderPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Audio", StringComparison.OrdinalIgnoreCase)) {
-            DrawRecorderAudioPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Clip Triggers", StringComparison.OrdinalIgnoreCase)) {
-            DrawRecorderClipTriggersPopupControls(popupId);
-        } else if (IsRecorderTextOptionsLabel(entry.Label)) {
-            DrawRecorderTextPopupControls(entry.Label, popupId);
-        } else if (string.Equals(entry.Label, "Cheat Indicator", StringComparison.OrdinalIgnoreCase)) {
-            DrawHudCheatIndicatorPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Berry Obtain Options", StringComparison.OrdinalIgnoreCase)) {
-            DrawBerryObtainOptionsPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Auto Kill", StringComparison.OrdinalIgnoreCase)) {
-            DrawAutoKillPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Auto Deafen", StringComparison.OrdinalIgnoreCase)) {
-            DrawAutoDeafenPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Transition Speed", StringComparison.OrdinalIgnoreCase)) {
-            DrawTransitionSpeedPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "StartPos", StringComparison.OrdinalIgnoreCase)) {
-            DrawStartPosPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "StartPos Switcher", StringComparison.OrdinalIgnoreCase)) {
-            DrawStartPosSwitcherPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Place StartPos", StringComparison.OrdinalIgnoreCase)) {
-            DrawPlaceStartPosPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Restore", StringComparison.OrdinalIgnoreCase)) {
-            DrawRestoreBackupPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Last Result", StringComparison.OrdinalIgnoreCase)) {
-            DrawBackupStatusPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Triggers", StringComparison.OrdinalIgnoreCase)) {
-            DrawBackupTriggersPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Retention", StringComparison.OrdinalIgnoreCase)) {
-            DrawBackupRetentionPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Input History", StringComparison.OrdinalIgnoreCase)) {
-            DrawInputDisplayPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Stamina Bar", StringComparison.OrdinalIgnoreCase)) {
-            DrawStaminaBarPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Dash Bar", StringComparison.OrdinalIgnoreCase)) {
-            DrawDashBarPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Dash Count", StringComparison.OrdinalIgnoreCase)) {
-            DrawDashCountPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Dash Number", StringComparison.OrdinalIgnoreCase)) {
-            DrawDashNumberPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Speed Number", StringComparison.OrdinalIgnoreCase)) {
-            DrawSpeedNumberPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Ground Refills", StringComparison.OrdinalIgnoreCase)) {
-            DrawGroundRefillsPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Prevent Down Dash Redirects", StringComparison.OrdinalIgnoreCase)) {
-            DrawPreventDownDashRedirectsPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Madeline Colors", StringComparison.OrdinalIgnoreCase)) {
-            DrawMadelineColorsPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Madeline Hair Length", StringComparison.OrdinalIgnoreCase)) {
-            DrawMadelineHairLengthPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Madeline Effect Sync", StringComparison.OrdinalIgnoreCase)) {
-            DrawMadelineEffectSyncPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Trail Visibility", StringComparison.OrdinalIgnoreCase)) {
-            DrawTrailVisibilityPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Custom Trail", StringComparison.OrdinalIgnoreCase)) {
-            DrawCustomTrailPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Golden Transparency", StringComparison.OrdinalIgnoreCase)) {
-            DrawGoldenTransparencyPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Show Hitboxes", StringComparison.OrdinalIgnoreCase)) {
-            DrawHitboxPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Show Hitbox Trail", StringComparison.OrdinalIgnoreCase)) {
-            DrawHitboxTrailPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Show Hitboxes On Death", StringComparison.OrdinalIgnoreCase)) {
-            DrawHitboxOnDeathPopupControls(popupId);
-        } else if (string.Equals(entry.Label, "Extended Variants Randomizer", StringComparison.OrdinalIgnoreCase)) {
-            DrawExtendedVariantsRandomizerPopupControls(popupId);
-        } else if (HasExtendedVariantOptionsPopup(entry.Label)) {
-            DrawExtendedVariantPopupControls(entry.Label, popupId);
+            if (entry.IsCustomHudLabelRow) {
+                SelectCustomHudLabel(entry.CustomHudLabelId);
+                DrawCustomHudLabelsPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "StartPos Snapshot Slot", StringComparison.OrdinalIgnoreCase)) {
+                DrawSavestateSlotPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Grab Mode", StringComparison.OrdinalIgnoreCase)) {
+                DrawGrabModePopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Overlay Appearance", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(entry.Label, "Theme", StringComparison.OrdinalIgnoreCase)) {
+                DrawOverlayAppearancePopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Logging", StringComparison.OrdinalIgnoreCase)) {
+                DrawLoggingPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Keybinds", StringComparison.OrdinalIgnoreCase)) {
+                DrawKeybindsPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Export Setup", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(entry.Label, "Import Setup", StringComparison.OrdinalIgnoreCase)) {
+                DrawSetupPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Confirm Actions", StringComparison.OrdinalIgnoreCase)) {
+                DrawConfirmActionsPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Noclip", StringComparison.OrdinalIgnoreCase)) {
+                DrawNoclipPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Hazard Accuracy", StringComparison.OrdinalIgnoreCase)) {
+                DrawHazardAccuracyPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Air Jumps", StringComparison.OrdinalIgnoreCase)) {
+                DrawAirJumpsPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Core Mode", StringComparison.OrdinalIgnoreCase)) {
+                DrawCoreModePopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Set Inventory", StringComparison.OrdinalIgnoreCase)) {
+                DrawSetInventoryPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Dream State", StringComparison.OrdinalIgnoreCase)) {
+                DrawDreamStatePopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Frame Stepper", StringComparison.OrdinalIgnoreCase)) {
+                DrawFrameStepperPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Respawn Time", StringComparison.OrdinalIgnoreCase)) {
+                DrawRespawnTimePopupControls(popupId);
+            } else if (IsPauseTimerLabel(entry.Label)) {
+                DrawPauseCountdownPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Fast Lookout", StringComparison.OrdinalIgnoreCase)) {
+                DrawFastLookoutPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "No Death Wipe", StringComparison.OrdinalIgnoreCase)) {
+                DrawNoDeathWipePopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Allow Low Volume", StringComparison.OrdinalIgnoreCase)) {
+                DrawAllowLowVolumePopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Audio Speed", StringComparison.OrdinalIgnoreCase)) {
+                DrawAudioSpeedPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Pitch Shift", StringComparison.OrdinalIgnoreCase)) {
+                DrawPitchShiftPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "FPS Bypass", StringComparison.OrdinalIgnoreCase)) {
+                DrawFpsBypassPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "TPS Bypass", StringComparison.OrdinalIgnoreCase)) {
+                DrawTpsBypassPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Safe Mode", StringComparison.OrdinalIgnoreCase)) {
+                DrawSafeModePopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Screenshake", StringComparison.OrdinalIgnoreCase)) {
+                DrawScreenshakePopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Light Level", StringComparison.OrdinalIgnoreCase)) {
+                DrawLightLevelPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Bloom Level", StringComparison.OrdinalIgnoreCase)) {
+                DrawBloomLevelPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Screen Tint", StringComparison.OrdinalIgnoreCase)) {
+                DrawScreenTintPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Lag Pauser", StringComparison.OrdinalIgnoreCase)) {
+                DrawLagPauserPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Golden Start", StringComparison.OrdinalIgnoreCase)) {
+                DrawGoldenStartPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Free Camera", StringComparison.OrdinalIgnoreCase)) {
+                DrawFreeCameraPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Camera Offset", StringComparison.OrdinalIgnoreCase)) {
+                DrawCameraOffsetPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Cursor Zoom", StringComparison.OrdinalIgnoreCase)) {
+                DrawCursorZoomPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Show Trajectory", StringComparison.OrdinalIgnoreCase)) {
+                DrawShowTrajectoryPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Control Display", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(entry.Label, "Show Taps", StringComparison.OrdinalIgnoreCase)) {
+                DrawShowTapsPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Inputs per second", StringComparison.OrdinalIgnoreCase)) {
+                DrawInputsPerSecondPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Visible", StringComparison.OrdinalIgnoreCase)) {
+                DrawLabelSystemPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Player Overlap", StringComparison.OrdinalIgnoreCase)) {
+                DrawLabelPlayerOverlapPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Room", StringComparison.OrdinalIgnoreCase)) {
+                DrawBuiltInLabelStylePopupControls("Color", () => AkronModule.Settings.RoomLabelColor, value => AkronModule.Settings.RoomLabelColor = value, AkronModule.Settings.RoomLabelStyle, popupId);
+            } else if (string.Equals(entry.Label, "Death Stats", StringComparison.OrdinalIgnoreCase)) {
+                DrawDeathStatsPopupControls(popupId);
+                DrawBuiltInLabelStylePopupControls("Color", () => AkronModule.Settings.DeathStatsColor, value => AkronModule.Settings.DeathStatsColor = value, AkronModule.Settings.DeathStatsLabelStyle, popupId);
+            } else if (string.Equals(entry.Label, "Room Timer", StringComparison.OrdinalIgnoreCase)) {
+                DrawBuiltInLabelStylePopupControls("Color", () => AkronModule.Settings.RoomTimerColor, value => AkronModule.Settings.RoomTimerColor = value, AkronModule.Settings.RoomTimerLabelStyle, popupId);
+            } else if (string.Equals(entry.Label, "Room Stat Tracker", StringComparison.OrdinalIgnoreCase)) {
+                DrawRoomStatTrackerPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Attempts", StringComparison.OrdinalIgnoreCase)) {
+                DrawBuiltInLabelStylePopupControls("Color", () => AkronModule.Settings.TotalAttemptsColor, value => AkronModule.Settings.TotalAttemptsColor = value, AkronModule.Settings.TotalAttemptsLabelStyle, popupId);
+            } else if (string.Equals(entry.Label, "Status", StringComparison.OrdinalIgnoreCase)) {
+                DrawBuiltInLabelStylePopupControls("Color", () => AkronModule.Settings.StatusLabelsColor, value => AkronModule.Settings.StatusLabelsColor = value, AkronModule.Settings.StatusLabelsLabelStyle, popupId);
+            } else if (string.Equals(entry.Label, "Toasts", StringComparison.OrdinalIgnoreCase)) {
+                DrawToastLabelPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "StartPos HUD", StringComparison.OrdinalIgnoreCase)) {
+                DrawStartPosLabelPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Custom", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(entry.Label, "Custom HUD Labels", StringComparison.OrdinalIgnoreCase)) {
+                DrawCustomHudLabelsPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Refill Clarity", StringComparison.OrdinalIgnoreCase)) {
+                DrawRefillClarityPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Room Capture", StringComparison.OrdinalIgnoreCase)) {
+                DrawScreenshotCapturePopupControls(popupId, chapter: false);
+            } else if (string.Equals(entry.Label, "Map Capture", StringComparison.OrdinalIgnoreCase)) {
+                DrawScreenshotCapturePopupControls(popupId, chapter: true);
+            } else if (string.Equals(entry.Label, "Autosave", StringComparison.OrdinalIgnoreCase)) {
+                DrawAutosavePopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Deload Spinners", StringComparison.OrdinalIgnoreCase)) {
+                DrawDeloadSpinnersPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Dash Stats", StringComparison.OrdinalIgnoreCase)) {
+                DrawCounterStatsPopupControls(true, popupId);
+            } else if (string.Equals(entry.Label, "Jump Stats", StringComparison.OrdinalIgnoreCase)) {
+                DrawCounterStatsPopupControls(false, popupId);
+            } else if (string.Equals(entry.Label, "Audio Splitter", StringComparison.OrdinalIgnoreCase)) {
+                DrawAudioSplitterPopupControls(popupId);
+            } else if (TryGetSoundDefinitionByLabel(entry.Label, out AkronEarAid.SoundDefinition sound)) {
+                DrawSoundVolumePopupControls(sound, popupId);
+            } else if (string.Equals(entry.Label, "Replay Settings", StringComparison.OrdinalIgnoreCase)) {
+                DrawRecorderReplayPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Output", StringComparison.OrdinalIgnoreCase)) {
+                DrawRecorderOutputPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Codec", StringComparison.OrdinalIgnoreCase)) {
+                DrawRecorderEncoderPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Audio", StringComparison.OrdinalIgnoreCase)) {
+                DrawRecorderAudioPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Clip Triggers", StringComparison.OrdinalIgnoreCase)) {
+                DrawRecorderClipTriggersPopupControls(popupId);
+            } else if (IsRecorderTextOptionsLabel(entry.Label)) {
+                DrawRecorderTextPopupControls(entry.Label, popupId);
+            } else if (string.Equals(entry.Label, "Cheat Indicator", StringComparison.OrdinalIgnoreCase)) {
+                DrawHudCheatIndicatorPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Berry Obtain Options", StringComparison.OrdinalIgnoreCase)) {
+                DrawBerryObtainOptionsPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Auto Kill", StringComparison.OrdinalIgnoreCase)) {
+                DrawAutoKillPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Auto Deafen", StringComparison.OrdinalIgnoreCase)) {
+                DrawAutoDeafenPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Transition Speed", StringComparison.OrdinalIgnoreCase)) {
+                DrawTransitionSpeedPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "StartPos", StringComparison.OrdinalIgnoreCase)) {
+                DrawStartPosPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "StartPos Switcher", StringComparison.OrdinalIgnoreCase)) {
+                DrawStartPosSwitcherPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Place StartPos", StringComparison.OrdinalIgnoreCase)) {
+                DrawPlaceStartPosPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Restore", StringComparison.OrdinalIgnoreCase)) {
+                DrawRestoreBackupPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Last Result", StringComparison.OrdinalIgnoreCase)) {
+                DrawBackupStatusPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Triggers", StringComparison.OrdinalIgnoreCase)) {
+                DrawBackupTriggersPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Retention", StringComparison.OrdinalIgnoreCase)) {
+                DrawBackupRetentionPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Input History", StringComparison.OrdinalIgnoreCase)) {
+                DrawInputDisplayPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Stamina Bar", StringComparison.OrdinalIgnoreCase)) {
+                DrawStaminaBarPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Dash Bar", StringComparison.OrdinalIgnoreCase)) {
+                DrawDashBarPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Dash Count", StringComparison.OrdinalIgnoreCase)) {
+                DrawDashCountPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Dash Number", StringComparison.OrdinalIgnoreCase)) {
+                DrawDashNumberPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Speed Number", StringComparison.OrdinalIgnoreCase)) {
+                DrawSpeedNumberPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Ground Refills", StringComparison.OrdinalIgnoreCase)) {
+                DrawGroundRefillsPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Dash Redirect", StringComparison.OrdinalIgnoreCase)) {
+                DrawDashRedirectDirectionsPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Madeline Colors", StringComparison.OrdinalIgnoreCase)) {
+                DrawMadelineColorsPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Madeline Hair Length", StringComparison.OrdinalIgnoreCase)) {
+                DrawMadelineHairLengthPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Madeline Effect Sync", StringComparison.OrdinalIgnoreCase)) {
+                DrawMadelineEffectSyncPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Trail Visibility", StringComparison.OrdinalIgnoreCase)) {
+                DrawTrailVisibilityPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Custom Trail", StringComparison.OrdinalIgnoreCase)) {
+                DrawCustomTrailPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Golden Transparency", StringComparison.OrdinalIgnoreCase)) {
+                DrawGoldenTransparencyPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Show Hitboxes", StringComparison.OrdinalIgnoreCase)) {
+                DrawHitboxPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Show Hitbox Trail", StringComparison.OrdinalIgnoreCase)) {
+                DrawHitboxTrailPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Show Hitboxes On Death", StringComparison.OrdinalIgnoreCase)) {
+                DrawHitboxOnDeathPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Extended Variants Randomizer", StringComparison.OrdinalIgnoreCase)) {
+                DrawExtendedVariantsRandomizerPopupControls(popupId);
+            } else if (HasExtendedVariantOptionsPopup(entry.Label)) {
+                DrawExtendedVariantPopupControls(entry.Label, popupId);
+            }
         }
-        } finally {
+        finally {
             activeOptionsPopupLabel = previousOptionsPopupLabel;
         }
     }
@@ -421,11 +422,42 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip(tooltip, label);
     }
 
-    private static string FormatPreventDownDashRedirectMode(AkronPreventDownDashRedirectMode mode) {
-        return mode switch {
-            AkronPreventDownDashRedirectMode.Normal => "Normal",
-            AkronPreventDownDashRedirectMode.Diagonal => "Diagonal",
-            _ => "Disabled"
+    private static string FormatDashRedirectDirections(AkronDashRedirectDirection directions) {
+        directions = AkronModuleSettings.NormalizeDashRedirectDirections(directions);
+        if (directions == AkronDashRedirectDirection.All) {
+            return "All";
+        }
+
+        if (directions == (AkronDashRedirectDirection.DownLeft | AkronDashRedirectDirection.DownRight)) {
+            return "Down diagonal";
+        }
+
+        if (directions == (AkronDashRedirectDirection.UpLeft | AkronDashRedirectDirection.UpRight)) {
+            return "Up diagonal";
+        }
+
+        if (directions == (AkronDashRedirectDirection.Left | AkronDashRedirectDirection.Right)) {
+            return "Horizontal";
+        }
+
+        if (directions == (AkronDashRedirectDirection.Down | AkronDashRedirectDirection.DownLeft | AkronDashRedirectDirection.DownRight)) {
+            return "Down + diagonal";
+        }
+
+        if (directions == (AkronDashRedirectDirection.Up | AkronDashRedirectDirection.UpLeft | AkronDashRedirectDirection.UpRight)) {
+            return "Up + diagonal";
+        }
+
+        return directions switch {
+            AkronDashRedirectDirection.Down => "Down",
+            AkronDashRedirectDirection.Up => "Up",
+            AkronDashRedirectDirection.Left => "Left",
+            AkronDashRedirectDirection.Right => "Right",
+            AkronDashRedirectDirection.DownLeft => "Down-left",
+            AkronDashRedirectDirection.DownRight => "Down-right",
+            AkronDashRedirectDirection.UpLeft => "Up-left",
+            AkronDashRedirectDirection.UpRight => "Up-right",
+            _ => "Custom"
         };
     }
 
@@ -506,12 +538,16 @@ public sealed partial class AkronOverlay {
         return CycleEnum(mode, modes, delta);
     }
 
-    private static AkronPreventDownDashRedirectMode NextPreventDownDashRedirectMode(AkronPreventDownDashRedirectMode mode, int delta) {
-        AkronPreventDownDashRedirectMode[] modes = {
-            AkronPreventDownDashRedirectMode.Normal,
-            AkronPreventDownDashRedirectMode.Diagonal
+    private static AkronDashRedirectDirection NextDashRedirectDirections(AkronDashRedirectDirection mode, int delta) {
+        AkronDashRedirectDirection[] modes = {
+            AkronDashRedirectDirection.Down,
+            AkronDashRedirectDirection.Down | AkronDashRedirectDirection.DownLeft | AkronDashRedirectDirection.DownRight,
+            AkronDashRedirectDirection.Left | AkronDashRedirectDirection.Right,
+            AkronDashRedirectDirection.Up,
+            AkronDashRedirectDirection.Up | AkronDashRedirectDirection.UpLeft | AkronDashRedirectDirection.UpRight,
+            AkronDashRedirectDirection.All
         };
-        return CycleEnum(mode, modes, delta);
+        return CycleEnum(AkronModuleSettings.NormalizeDashRedirectDirections(mode), modes, delta);
     }
 
     private static GrabModes NextGrabMode(GrabModes mode, int delta) {

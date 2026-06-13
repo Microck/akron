@@ -26,14 +26,14 @@ Akron exposes developer-facing console commands through Everest's debug console 
 | `akron_room_capture <start\|stop\|status\|format <png\|jpg>\|markers <on\|off>\|startpos <on\|off>\|autokill <on\|off>\|autodeafen <on\|off>\|removebg <on\|off>\|removefg <on\|off>\|wait <frames>\|horizontal <tiles>\|vertical <tiles>>` | Drive Room Capture. The overlay Room Capture row is the normal player-facing path. |
 | `akron_map_capture <start\|stop\|status\|format <png\|jpg>\|markers <on\|off>\|startpos <on\|off>\|autokill <on\|off>\|autodeafen <on\|off>\|removebg <on\|off>\|removefg <on\|off>\|wait <frames>\|horizontal <tiles>\|vertical <tiles>>` | Drive Map Capture. The overlay Map Capture row is the normal player-facing path. |
 | `akron_startpos <status\|slot <n>\|set\|load\|clear\|prev\|next\|place <on\|off>\|dashes <n>\|stamina <n>\|slots <n>\|facing <current\|left\|right>\|idle <on\|off>\|grab <on\|off>\|label <on\|off>\|respawn <on\|off>>` | Full StartPos control. `akron_save` and `akron_load` provide convenience shortcuts. |
-| `akron_slot <n>` | Set or show the active StartPos slot (1–9). |
+| `akron_slot <n>` | Set or show the active StartPos slot (1-9). |
 | `akron_save [slot]` | Capture StartPos state into the current or specified slot. |
 | `akron_load [slot]` | Restore StartPos state from the current or specified slot. |
 | `akron_save_time_deaths <on\|off\|status>` | Control whether StartPos restores preserve time and death counters. |
 | `akron_freeze <toggle\|on\|off\|status>` | Control gameplay freeze. |
 | `akron_hitboxes <toggle\|on\|off\|status\|sync>` | Control the hitbox overlay. |
 | `akron_inspector <toggle\|on\|off\|status>` | Control the entity inspector. |
-| `akron_timescale <value\|reset>` | Set absolute timescale using invariant-culture parsing (range 0.1–2.0). |
+| `akron_timescale <value\|reset>` | Set absolute timescale using invariant-culture parsing (range 0.1-2.0). |
 | `akron_proof` | Export a proof sidecar JSON file. |
 | `akron_community_packs <status\|url <catalog-url>\|refresh\|category <name>\|search <query>\|list\|import <index>>` | Configure and exercise the community `.akr` catalog. |
 
@@ -62,7 +62,16 @@ Akron exposes developer-facing console commands through Everest's debug console 
 | `akron_journal_snapshot` | Write and compare a journal proof snapshot. |
 | `akron_neutral_drop` | Trigger the Neutral Drop shortcut. |
 | `akron_backboost` | Trigger the Backboost shortcut. |
-| `akron_prevent_down_dash_redirects <disabled\|normal\|diagonal\|toggle\|status>` | Control Prevent Down Dash Redirects mode. |
+| `akron_dash_redirect <disabled\|down\|down-diagonal\|horizontal\|up\|up-diagonal\|diagonal\|all\|toggle\|status>` | Control Dash Redirect directions. Individual directions such as `up-left` also work for automation. |
+| `akron_auto_kill speed <on\|off>`, `min-speed <n>`, `max-speed <n>` | Require a total speed range for area-based Auto Kill. |
+| `akron_auto_kill h-speed <on\|off>`, `min-h-speed <n>`, `max-h-speed <n>` | Require a horizontal speed range for area-based Auto Kill. |
+| `akron_auto_kill v-speed <on\|off>`, `min-v-speed <n>`, `max-v-speed <n>` | Require a vertical speed range for area-based Auto Kill. |
+| `akron_auto_kill horizontal <any\|left\|right\|still>` | Require a horizontal movement direction for area-based Auto Kill. |
+| `akron_auto_kill vertical <any\|up\|down\|still>` | Require a vertical movement direction for area-based Auto Kill. |
+| `akron_auto_kill dash-count <on\|off>`, `dashes <n>` | Require a current dash count for area-based Auto Kill. |
+| `akron_auto_kill ground <any\|grounded\|airborne>` | Require a grounded or airborne state for area-based Auto Kill. |
+| `akron_auto_kill state <on\|off>`, `state-id <n>` | Require an internal player state id for area-based Auto Kill. |
+| `akron_auto_kill invert <on\|off>` | Trigger area-based Auto Kill when enabled conditions fail instead of when they pass. |
 | `akron_step_repeat <on\|off\|status\|delay <frames>\|interval <frames>\|key <key>\|reset-key>` | Control frozen hold-repeat stepping. |
 | `akron_step_frame` | Request one gameplay frame while Akron freeze is active. |
 | `akron_skip_cutscene` | Request a cutscene or dialogue skip. |

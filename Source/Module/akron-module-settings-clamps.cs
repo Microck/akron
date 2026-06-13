@@ -25,10 +25,11 @@ public partial class AkronModuleSettings {
         return invalidContact || playerMoved;
     }
 
-    public static AkronPreventDownDashRedirectMode NormalizePreventDownDashRedirectMode(AkronPreventDownDashRedirectMode mode) {
-        return mode == AkronPreventDownDashRedirectMode.Diagonal
-            ? AkronPreventDownDashRedirectMode.Diagonal
-            : AkronPreventDownDashRedirectMode.Normal;
+    public static AkronDashRedirectDirection NormalizeDashRedirectDirections(AkronDashRedirectDirection directions) {
+        AkronDashRedirectDirection normalized = directions & AkronDashRedirectDirection.All;
+        return normalized == AkronDashRedirectDirection.None
+            ? AkronDashRedirectDirection.Down
+            : normalized;
     }
 
     public void ResetHazardAccuracyDefaults() {
@@ -45,7 +46,8 @@ public partial class AkronModuleSettings {
         if (normalized.Contains("{0}") || normalized.Contains("{1}")) {
             try {
                 normalized = string.Format(normalized, "$C", "$B");
-            } catch {
+            }
+            catch {
                 normalized = DefaultDeathStatsFormat;
             }
         }
@@ -301,6 +303,30 @@ public partial class AkronModuleSettings {
 
     public static int ClampAutoKillAreaSize(int size) {
         return ClampValue(size, 0, 10000);
+    }
+
+    public static int ClampAutoKillSpeed(int speed) {
+        return ClampValue(speed, 0, 5000);
+    }
+
+    public static int ClampAutoKillDashCount(int dashes) {
+        return ClampValue(dashes, 0, 5);
+    }
+
+    public static int ClampAutoKillPlayerState(int state) {
+        return ClampValue(state, 0, 99);
+    }
+
+    public static AkronAutoKillGroundCondition NormalizeAutoKillGroundCondition(AkronAutoKillGroundCondition condition) {
+        return Enum.IsDefined(typeof(AkronAutoKillGroundCondition), condition)
+            ? condition
+            : AkronAutoKillGroundCondition.Any;
+    }
+
+    public static AkronAutoKillAxisCondition NormalizeAutoKillAxisCondition(AkronAutoKillAxisCondition condition) {
+        return Enum.IsDefined(typeof(AkronAutoKillAxisCondition), condition)
+            ? condition
+            : AkronAutoKillAxisCondition.Any;
     }
 
     public static int ClampJumpHackExtraJumps(int jumps) {

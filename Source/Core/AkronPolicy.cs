@@ -205,7 +205,7 @@ public static class AkronPolicy
         AddIfCheat(contributors, settings.NoRespawnAnimation, "No Respawn Animation", "akron_feature no-respawn-animation off", AkronFeatureKind.RespawnAnimation);
         AddIfCheat(contributors, settings.NoFreezeFrames, "No Freeze Frames", "akron_feature no-freeze-frames off", AkronFeatureKind.FreezeFrames);
         AddIfCheat(contributors, settings.GroundRefillRules, "Ground Refills", "akron_feature ground-refills off", AkronFeatureKind.GroundRefillRules);
-        AddIfCheat(contributors, settings.PreventDownDashRedirectsEnabled, "Prevent Down Dash Redirects", "akron_feature prevent-down-dash-redirects off", AkronFeatureKind.InputAssistShortcut);
+        AddIfCheat(contributors, settings.DashRedirectEnabled, "Dash Redirect", "akron_feature dash-redirect off", AkronFeatureKind.InputAssistShortcut);
         AddIfCheat(contributors, settings.InfiniteDash, "Infinite Dash", "akron_feature infinite-dash off", AkronFeatureKind.InfiniteDash);
         AddIfCheat(contributors, settings.InfiniteStamina, "Infinite Stamina", "akron_feature infinite-stamina off", AkronFeatureKind.InfiniteStamina);
         AddIfCheat(contributors, settings.DashCountOverride, "Dash Count", "akron_feature dash-count off", AkronFeatureKind.DashCountOverride);
