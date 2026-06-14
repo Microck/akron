@@ -31,6 +31,11 @@ public static class AkronScreenshotScanner {
     private static bool isScanning;
     private static bool scanCancelled;
     private static string lastExportPath = string.Empty;
+    private static bool hasInitialPlayerState;
+    private static bool initialPlayerVisible;
+    private static bool initialPlayerCollidable;
+    private static Collider initialPlayerCollider;
+    private static int initialPlayerState;
 
     public static bool IsScanning => isScanning;
     public static string LastExportPath => lastExportPath;
@@ -62,8 +67,8 @@ public static class AkronScreenshotScanner {
         }
 
         scanCancelled = true;
-        isScanning = false;
-        Engine.Scene?.Add(new AkronToast("Screenshot scan stopped."));
+        RestoreActivePlayerScanState(Engine.Scene as Level);
+        Engine.Scene?.Add(new AkronToast("Stopping screenshot scan..."));
     }
 
     public static string Describe() {
@@ -113,8 +118,10 @@ public static class AkronScreenshotScanner {
         Vector2 initialSpeed = initialPlayer.Speed;
         bool initialVisible = initialPlayer.Visible;
         bool initialCollidable = initialPlayer.Collidable;
+        Collider initialCollider = initialPlayer.Collider;
         int initialState = initialPlayer.StateMachine.State;
-        while (rooms.Count > 0 && isScanning) {
+        CaptureInitialPlayerState(initialVisible, initialCollidable, initialCollider, initialState);
+        while (rooms.Count > 0 && isScanning && !scanCancelled) {
             Level level = Engine.Scene as Level;
             Player player = level?.Tracker.GetEntity<Player>();
             if (level == null || player == null) {
@@ -148,6 +155,7 @@ public static class AkronScreenshotScanner {
             currentPlayer.Speed = initialSpeed;
             currentPlayer.Visible = initialVisible;
             currentPlayer.Collidable = initialCollidable;
+            currentPlayer.Collider = initialCollider;
             if (currentPlayer.Scene != null) {
                 currentPlayer.StateMachine.State = initialState;
             }
@@ -157,8 +165,43 @@ public static class AkronScreenshotScanner {
         isScanning = false;
         scanCancelled = false;
         scannerHost = null;
+        ClearInitialPlayerState();
         if (!cancelled) {
             Engine.Scene?.Add(new AkronToast("Screenshot scan finished."));
+        }
+    }
+
+    private static void CaptureInitialPlayerState(bool visible, bool collidable, Collider collider, int state) {
+        hasInitialPlayerState = true;
+        initialPlayerVisible = visible;
+        initialPlayerCollidable = collidable;
+        initialPlayerCollider = collider;
+        initialPlayerState = state;
+    }
+
+    private static void ClearInitialPlayerState() {
+        hasInitialPlayerState = false;
+        initialPlayerVisible = false;
+        initialPlayerCollidable = false;
+        initialPlayerCollider = null;
+        initialPlayerState = 0;
+    }
+
+    private static void RestoreActivePlayerScanState(Level level) {
+        if (!hasInitialPlayerState) {
+            return;
+        }
+
+        Player player = level?.Tracker.GetEntity<Player>();
+        if (player == null) {
+            return;
+        }
+
+        player.Visible = initialPlayerVisible;
+        player.Collidable = initialPlayerCollidable;
+        player.Collider = initialPlayerCollider;
+        if (player.Scene != null) {
+            player.StateMachine.State = initialPlayerState;
         }
     }
 
@@ -189,9 +232,7 @@ public static class AkronScreenshotScanner {
             player.Position = spawn;
             player.Speed = Vector2.Zero;
             if (suppressMadeline) {
-                player.Visible = false;
-                player.Collidable = false;
-                player.StateMachine.State = Player.StDummy;
+                SuppressPlayerForScan(player);
             }
             yield return null;
         }
@@ -223,10 +264,7 @@ public static class AkronScreenshotScanner {
             // Keep capture suppression local. Reusing global Hide Player/Noclip
             // would leave persistent user-facing state behind after export.
             if (suppressMadeline) {
-                player.Visible = false;
-                player.Collidable = false;
-                player.Collider = new Hitbox(0f, 0f);
-                player.StateMachine.State = Player.StDummy;
+                SuppressPlayerForScan(player);
             }
             level.CameraLockMode = Level.CameraLockModes.None;
             if (freezeTime) {
@@ -243,7 +281,7 @@ public static class AkronScreenshotScanner {
 
             WriteMetadata(level, bounds, cameraWidth, cameraHeight);
             foreach (AkronScreenshotScanTile tile in BuildScanTiles(bounds, cameraWidth, cameraHeight, stepX, stepY)) {
-                if (!isScanning) {
+                if (!isScanning || scanCancelled) {
                     break;
                 }
 
@@ -252,10 +290,7 @@ public static class AkronScreenshotScanner {
                 player.Position = camera + new Vector2(cameraWidth / 2f, cameraHeight / 2f);
                 player.Speed = Vector2.Zero;
                 if (suppressMadeline) {
-                    player.Visible = false;
-                    player.Collidable = false;
-                    player.Collider = new Hitbox(0f, 0f);
-                    player.StateMachine.State = Player.StDummy;
+                    SuppressPlayerForScan(player);
                 }
 
                 for (int i = 0; i < waitFrames; i++) {
@@ -268,10 +303,7 @@ public static class AkronScreenshotScanner {
                     player.Position = camera + new Vector2(cameraWidth / 2f, cameraHeight / 2f);
                     player.Speed = Vector2.Zero;
                     if (suppressMadeline) {
-                        player.Visible = false;
-                        player.Collidable = false;
-                        player.Collider = new Hitbox(0f, 0f);
-                        player.StateMachine.State = Player.StDummy;
+                        SuppressPlayerForScan(player);
                     }
                 }
 
@@ -303,6 +335,13 @@ public static class AkronScreenshotScanner {
             level.TimeActive = previousTime;
             level.RawTimeActive = previousRawTime;
         }
+    }
+
+    private static void SuppressPlayerForScan(Player player) {
+        player.Visible = false;
+        player.Collidable = false;
+        player.Collider = new Hitbox(0f, 0f);
+        player.StateMachine.State = Player.StDummy;
     }
 
     internal static IReadOnlyList<AkronScreenshotScanTile> BuildScanTiles(Rectangle bounds, float cameraWidth, float cameraHeight, int stepX, int stepY) {

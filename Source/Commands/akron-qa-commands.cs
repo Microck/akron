@@ -227,6 +227,7 @@ public static partial class AkronCommands {
         Log("camera-target: " + FormatVector(player.CameraTarget));
         Log("player-state: " + player.StateMachine.State.ToString(CultureInfo.InvariantCulture));
         Log("player-collidable: " + player.Collidable.ToString().ToLowerInvariant());
+        Log("player-collider: " + FormatCollider(player.Collider));
         Log("player-dead: " + player.Dead.ToString().ToLowerInvariant());
         Log("player-stamina: " + player.Stamina.ToString("0.##", CultureInfo.InvariantCulture));
         Log("player-dashes: " + player.Dashes.ToString(CultureInfo.InvariantCulture));
@@ -265,6 +266,21 @@ public static partial class AkronCommands {
         Log("player-on-ground: " + player.OnGround().ToString().ToLowerInvariant());
         Log("player-collides-solid: " + player.CollideCheck<Solid>().ToString().ToLowerInvariant());
         Log("player-collides-spikes: " + player.CollideCheck<Spikes>().ToString().ToLowerInvariant());
+    }
+
+    private static string FormatCollider(Collider collider) {
+        if (collider == null) {
+            return "none";
+        }
+
+        Rectangle bounds = collider.Bounds;
+        return collider.GetType().Name +
+               ";local=" + FormatVector(collider.Position) +
+               ";size=" + collider.Width.ToString("0.###", CultureInfo.InvariantCulture) + "x" + collider.Height.ToString("0.###", CultureInfo.InvariantCulture) +
+               ";bounds=" + bounds.X.ToString(CultureInfo.InvariantCulture) + "," +
+               bounds.Y.ToString(CultureInfo.InvariantCulture) + "," +
+               bounds.Width.ToString(CultureInfo.InvariantCulture) + "," +
+               bounds.Height.ToString(CultureInfo.InvariantCulture);
     }
 
     [Command("akron_qa_sound_sources", "show SoundSource playback telemetry for Akron QA: status|start-player-loop")]

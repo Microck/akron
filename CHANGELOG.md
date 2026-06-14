@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+### Fixed
+
+- Restore Madeline's collider after room and map capture, including stopped scans, so capture cannot leave her hitbox enlarged or suppressed.
+
 ## 0.1.2-beta.24
 
 ### Added
