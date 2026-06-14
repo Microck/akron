@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.24
+
 ### Added
 
 - Add directional Dash Redirect controls for preserving selected dash directions when Celeste would redirect them.
