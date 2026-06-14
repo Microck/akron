@@ -259,9 +259,32 @@ jobs:
         if: env.TAILSCALE_EXIT_NODE != ''
         run: |
           set -euo pipefail
-          tailscale status
-          curl -fsSL https://ifconfig.me
-          printf '\n'
+          status="$(tailscale status)"
+          printf '%s\n' "$status"
+
+          if ! printf '%s\n' "$status" | grep -E "${TAILSCALE_EXIT_NODE}[[:space:]].*exit node" >/dev/null; then
+            echo "::error::Tailscale did not report ${TAILSCALE_EXIT_NODE} as the active exit node."
+            exit 1
+          fi
+
+          getent hosts gamebanana.com >/dev/null
+
+          egress_urls=(
+            https://ifconfig.me
+            https://api.ipify.org
+            https://checkip.amazonaws.com
+          )
+
+          for egress_url in "${egress_urls[@]}"; do
+            if curl -fsSL --connect-timeout 10 --max-time 20 "$egress_url"; then
+              printf '\n'
+              exit 0
+            fi
+            echo "::warning::Failed to verify egress with ${egress_url}; trying the next endpoint."
+          done
+
+          echo "::error::Could not verify HTTPS egress through the configured Tailscale exit node."
+          exit 1
 
       - name: Publish to GameBanana
         id: publish_gamebanana
