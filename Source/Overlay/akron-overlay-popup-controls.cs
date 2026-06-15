@@ -331,7 +331,7 @@ public sealed partial class AkronOverlay {
         };
     }
 
-    private static bool DrawPopupInputText(string label, ref string value, int maxLength, string popupId, float preferredControlWidth) {
+    private bool DrawPopupInputText(string label, ref string value, int maxLength, string popupId, float preferredControlWidth) {
         float labelWidth = CalculatePopupLabelWidth(preferredControlWidth);
         float controlWidth = CalculatePopupControlWidth(labelWidth, preferredControlWidth, 96f);
         DrawPopupRowLabel(label, labelWidth);
@@ -341,15 +341,19 @@ public sealed partial class AkronOverlay {
         return changed;
     }
 
-    private static void DrawPopupRowLabel(string label, float width) {
+    private void DrawPopupRowLabel(string label, float width) {
         float frameHeight = ImGui.GetFrameHeight();
         float textHeight = ImGui.GetTextLineHeight();
         NumericsVector2 min = ImGui.GetCursorScreenPos();
+        string visibleLabel = TruncateImGuiTextToWidth(label, Math.Max(12f, width - 4f));
         ImGui.GetWindowDrawList().AddText(
             new NumericsVector2(min.X, min.Y + Math.Max(0f, (frameHeight - textHeight) * 0.5f)),
             AkronImGuiTheme.ToU32(AkronImGuiTheme.Muted),
-            TruncateImGuiTextToWidth(label, Math.Max(12f, width - 4f)));
+            visibleLabel);
         ImGui.Dummy(new NumericsVector2(width, frameHeight));
+        if (!string.Equals(visibleLabel, label, StringComparison.Ordinal) && ImGui.IsItemHovered()) {
+            DrawImGuiItemTooltip(label);
+        }
         ImGui.SameLine(0f, ImGui.GetStyle().ItemSpacing.X);
     }
 

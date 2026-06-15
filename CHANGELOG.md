@@ -8,6 +8,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ### Fixed
 
+- Show the full suboption name on hover when a popup label is shortened with ellipses.
 - Restore Madeline's collider after room and map capture, including stopped scans, so capture cannot leave her hitbox enlarged or suppressed.
 
 ## 0.1.2-beta.24
