@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.25
+
 ### Fixed
 
 - Show the full suboption name on hover when a popup label is shortened with ellipses.
