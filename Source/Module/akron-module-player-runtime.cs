@@ -29,7 +29,13 @@ public partial class AkronModule {
             RecordHazardAccuracyInvalidContact(self);
         }
 
-        if (!evenIfInvincible && (hazardAccuracyAllowed || Settings.Invincibility && TryUse(AkronFeatureKind.Invincibility))) {
+        bool nativeAssistInvincibilityAllowed = IsNativeAssistInvincibilityAllowed();
+        bool akronInvincibilityAllowed = IsAkronInvincibilityAllowed();
+        if (ShouldSuppressNormalDeathForAkronInvincibility(evenIfInvincible, hazardAccuracyAllowed, akronInvincibilityAllowed)) {
+            return null;
+        }
+
+        if (!evenIfInvincible && nativeAssistInvincibilityAllowed) {
             EnsureNativeAssistInvincibility();
         }
 
@@ -78,6 +84,18 @@ public partial class AkronModule {
         }
 
         return deadBody;
+    }
+
+    private static void PlayerOnSquish(On.Celeste.Player.orig_OnSquish orig, Player self, CollisionData data) {
+        bool forcedSquish = data.Pusher?.SquishEvenInAssistMode == true;
+        if (ShouldSkipVanillaSquishForAkronInvincibility(
+                IsAkronInvincibilityAllowed(),
+                Settings.InvincibilityCrushCollisionChanges,
+                forcedSquish)) {
+            return;
+        }
+
+        orig(self, data);
     }
 
     private static void PlayerDeadBodyOnUpdate(On.Celeste.PlayerDeadBody.orig_Update orig, PlayerDeadBody self) {
@@ -159,6 +177,7 @@ public partial class AkronModule {
             int dashesBefore = self.Dashes;
             float staminaBefore = self.Stamina;
             orig(self);
+            ApplyAkronSpikeGroundRefill(self);
             ApplyGroundRefillRulesAfterPlayerUpdate(self, wasGrounded, dashesBefore, staminaBefore);
             ApplyPlayerVisibilityOverride(self);
             TrackHazardAccuracy(self);
@@ -210,7 +229,7 @@ public partial class AkronModule {
         }
 
         bool hazardAccuracyAllowed = IsHazardAccuracyAllowed();
-        if (!Settings.Invincibility && !hazardAccuracyAllowed) {
+        if (!IsNativeAssistInvincibilityAllowed()) {
             RestoreNativeAssistInvincibility();
         }
 
@@ -243,10 +262,10 @@ public partial class AkronModule {
 
         if (hazardAccuracyAllowed) {
             AkronPolicy.RecordFeatureUse(AkronFeatureKind.HazardAccuracy);
-            EnsureNativeAssistInvincibility();
             RescueInvinciblePlayerFromBottomlessFall(level, player, true);
-        } else if (Settings.Invincibility && TryUse(AkronFeatureKind.Invincibility)) {
+        } else if (IsNativeAssistInvincibilityAllowed()) {
             EnsureNativeAssistInvincibility();
+        } else if (IsAkronInvincibilityAllowed() && Settings.InvincibilityBottomlessFallRescue) {
             RescueInvinciblePlayerFromBottomlessFall(level, player, false);
         } else {
             RestoreNativeAssistInvincibility();
@@ -343,6 +362,14 @@ public partial class AkronModule {
         return Math.Abs(dashDirection.X) > 0.001f && dashDirection.Y >= -0.001f;
     }
 
+    internal static bool ShouldSuppressNormalDeathForAkronInvincibility(bool evenIfInvincible, bool hazardAccuracyAllowed, bool akronInvincibilityAllowed) {
+        return !evenIfInvincible && (hazardAccuracyAllowed || akronInvincibilityAllowed);
+    }
+
+    internal static bool ShouldSkipVanillaSquishForAkronInvincibility(bool akronInvincibilityAllowed, bool allowCollisionChanges, bool forcedSquish) {
+        return akronInvincibilityAllowed && !allowCollisionChanges && !forcedSquish;
+    }
+
     private static void InvokePlayerSuperJump(Player player) {
         if (PlayerSuperJumpMethod == null) {
             player.Jump();
@@ -394,6 +421,20 @@ public partial class AkronModule {
         }
     }
 
+    private static void ApplyAkronSpikeGroundRefill(Player player) {
+        if (player == null ||
+            player.Dead ||
+            !Settings.InvincibilitySpikeGroundRefills ||
+            !IsAkronInvincibilityAllowed() ||
+            player.Inventory.NoRefills ||
+            !player.OnGround() ||
+            !player.CollideCheck<Spikes>()) {
+            return;
+        }
+
+        player.RefillDash();
+    }
+
     private static int EffectiveDashCountLimit(Player player) {
         if (Settings.DashCountOverride) {
             return AkronModuleSettings.ClampDashCountOverride(Settings.DashCountOverrideValue);
@@ -418,6 +459,81 @@ public partial class AkronModule {
         }
 
         return false;
+    }
+
+    private static bool IsNativeAssistInvincibilityAllowed() {
+        return Settings.Invincibility &&
+               AkronModuleSettings.NormalizeInvincibilityMode(Settings.InvincibilityMode) == AkronInvincibilityMode.Native &&
+               TryUse(AkronFeatureKind.Invincibility);
+    }
+
+    private static bool IsAkronInvincibilityAllowed() {
+        return Settings.Invincibility &&
+               AkronModuleSettings.NormalizeInvincibilityMode(Settings.InvincibilityMode) == AkronInvincibilityMode.Akron &&
+               TryUse(AkronFeatureKind.Invincibility);
+    }
+
+    private static void RisingLavaOnPlayer(On.Celeste.RisingLava.orig_OnPlayer orig, RisingLava self, Player player) {
+        if (!IsAkronInvincibilityAllowed()) {
+            orig(self, player);
+            return;
+        }
+
+        if (Settings.InvincibilityLavaIcePushback) {
+            ApplyRisingLavaPushback(self, player);
+        }
+    }
+
+    private static void SandwichLavaOnPlayer(On.Celeste.SandwichLava.orig_OnPlayer orig, SandwichLava self, Player player) {
+        if (!IsAkronInvincibilityAllowed()) {
+            orig(self, player);
+            return;
+        }
+
+        if (!self.Waiting && Settings.InvincibilityLavaIcePushback) {
+            ApplySandwichLavaPushback(self, player);
+        }
+    }
+
+    private static void ApplyRisingLavaPushback(RisingLava lava, Player player) {
+        float delay = lava.GetFieldValue<float>("delay");
+        if (delay > 0f) {
+            return;
+        }
+
+        float from = lava.Y;
+        float to = lava.Y + 48f;
+        player.Speed.Y = -200f;
+        player.RefillDash();
+        Tween.Set(lava, Tween.TweenMode.Oneshot, 0.4f, Ease.CubeOut, tween => {
+            lava.Y = MathHelper.Lerp(from, to, tween.Eased);
+        });
+        lava.SetFieldValue("delay", 0.5f);
+        lava.GetFieldValue<SoundSource>("loopSfx")?.Param("rising", 0f);
+        Audio.Play("event:/game/general/assist_screenbottom", player.Position);
+    }
+
+    private static void ApplySandwichLavaPushback(SandwichLava lava, Player player) {
+        float delay = lava.GetFieldValue<float>("delay");
+        if (delay > 0f) {
+            return;
+        }
+
+        LavaRect bottomRect = lava.GetFieldValue<LavaRect>("bottomRect");
+        int direction = player.Y > lava.Y + (bottomRect?.Position.Y ?? 0f) - 32f ? 1 : -1;
+        float from = lava.Y;
+        float to = lava.Y + direction * 48f;
+        player.Speed.Y = -direction * 200f;
+        if (direction > 0) {
+            player.RefillDash();
+        }
+
+        Tween.Set(lava, Tween.TweenMode.Oneshot, 0.4f, Ease.CubeOut, tween => {
+            lava.Y = MathHelper.Lerp(from, to, tween.Eased);
+        });
+        lava.SetFieldValue("delay", 0.5f);
+        lava.GetFieldValue<SoundSource>("loopSfx")?.Param("rising", 0f);
+        Audio.Play("event:/game/general/assist_screenbottom", player.Position);
     }
 
     private static void PlayerOnAdded(On.Celeste.Player.orig_Added orig, Player self, Scene scene) {

@@ -147,6 +147,7 @@ public sealed partial class AkronOverlay {
                string.Equals(label, "Grab Mode", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Noclip", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Hazard Accuracy", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Invincibility", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Air Jumps", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Core Mode", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Set Inventory", StringComparison.OrdinalIgnoreCase) ||

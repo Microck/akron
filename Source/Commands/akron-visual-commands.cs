@@ -174,6 +174,111 @@ public static partial class AkronCommands {
         Log("hazard-accuracy-state: " + AkronModule.GetNoclipAccuracySnapshot().Describe());
     }
 
+    [Command("akron_invincibility", "control Invincibility: on|off|toggle|status|mode <akron|native>|bottomless-rescue <on|off>|crush-collision <on|off>|lava-ice-pushback <on|off>|spike-ground-refills <on|off>|defaults")]
+    public static void Invincibility(string action = "status", string value = "") {
+        switch (NormalizeToken(action)) {
+            case "":
+            case "status":
+                break;
+            case "on":
+                if (!AkronModule.TryUse(AkronFeatureKind.Invincibility)) {
+                    Log("invincibility: blocked");
+                    return;
+                }
+                AkronModule.Settings.Invincibility = true;
+                break;
+            case "off":
+                AkronModule.Settings.Invincibility = false;
+                break;
+            case "toggle":
+                if (!AkronModule.Settings.Invincibility && !AkronModule.TryUse(AkronFeatureKind.Invincibility)) {
+                    Log("invincibility: blocked");
+                    return;
+                }
+                AkronModule.Settings.Invincibility = !AkronModule.Settings.Invincibility;
+                break;
+            case "mode":
+                if (!TryParseInvincibilityMode(value, out AkronInvincibilityMode mode)) {
+                    Log("invalid invincibility mode: " + value);
+                    return;
+                }
+                AkronModule.Settings.InvincibilityMode = mode;
+                break;
+            case "bottomlessrescue":
+            case "bottomless":
+            case "rescue":
+                if (!TryParseBoolean(value, out bool bottomlessRescue)) {
+                    Log("invalid invincibility bottomless-rescue: " + value);
+                    return;
+                }
+                AkronModule.Settings.InvincibilityBottomlessFallRescue = bottomlessRescue;
+                break;
+            case "crushcollision":
+            case "crush":
+                if (!TryParseBoolean(value, out bool crushCollisionChanges)) {
+                    Log("invalid invincibility crush-collision: " + value);
+                    return;
+                }
+                AkronModule.Settings.InvincibilityCrushCollisionChanges = crushCollisionChanges;
+                break;
+            case "lavaicepushback":
+            case "lavapushback":
+            case "icepushback":
+                if (!TryParseBoolean(value, out bool lavaIcePushback)) {
+                    Log("invalid invincibility lava-ice-pushback: " + value);
+                    return;
+                }
+                AkronModule.Settings.InvincibilityLavaIcePushback = lavaIcePushback;
+                break;
+            case "spikegroundrefills":
+            case "spikerefills":
+                if (!TryParseBoolean(value, out bool spikeGroundRefills)) {
+                    Log("invalid invincibility spike-ground-refills: " + value);
+                    return;
+                }
+                AkronModule.Settings.InvincibilitySpikeGroundRefills = spikeGroundRefills;
+                break;
+            case "defaults":
+            case "resetdefaults":
+                AkronModule.Settings.InvincibilityMode = AkronInvincibilityMode.Akron;
+                AkronModule.Settings.InvincibilityBottomlessFallRescue = true;
+                AkronModule.Settings.InvincibilityCrushCollisionChanges = true;
+                AkronModule.Settings.InvincibilityLavaIcePushback = true;
+                AkronModule.Settings.InvincibilitySpikeGroundRefills = true;
+                break;
+            default:
+                Log("unknown invincibility action: " + action);
+                return;
+        }
+
+        LogInvincibilityStatus();
+    }
+
+    private static bool TryParseInvincibilityMode(string value, out AkronInvincibilityMode mode) {
+        switch (NormalizeToken(value)) {
+            case "akron":
+            case "custom":
+                mode = AkronInvincibilityMode.Akron;
+                return true;
+            case "native":
+            case "assist":
+                mode = AkronInvincibilityMode.Native;
+                return true;
+            default:
+                mode = AkronInvincibilityMode.Akron;
+                return false;
+        }
+    }
+
+    private static void LogInvincibilityStatus() {
+        Log("invincibility: " + AkronModule.Settings.Invincibility.ToString().ToLowerInvariant());
+        Log("invincibility-mode: " + AkronModuleSettings.NormalizeInvincibilityMode(AkronModule.Settings.InvincibilityMode).ToString().ToLowerInvariant());
+        Log("invincibility-bottomless-fall-rescue: " + AkronModule.Settings.InvincibilityBottomlessFallRescue.ToString().ToLowerInvariant());
+        Log("invincibility-crush-collision-changes: " + AkronModule.Settings.InvincibilityCrushCollisionChanges.ToString().ToLowerInvariant());
+        Log("invincibility-lava-ice-pushback: " + AkronModule.Settings.InvincibilityLavaIcePushback.ToString().ToLowerInvariant());
+        Log("invincibility-spike-ground-refills: " + AkronModule.Settings.InvincibilitySpikeGroundRefills.ToString().ToLowerInvariant());
+    }
+
     [Command("akron_visual_noise", "control visual suppression: particles|trails|glitch|anxiety|distortion|snow|wind-snow|waterfalls|tentacles|heat-distortion <on|off|toggle|status>")]
     public static void VisualNoise(string channel = "status", string action = "status") {
         string normalizedChannel = NormalizeToken(channel);

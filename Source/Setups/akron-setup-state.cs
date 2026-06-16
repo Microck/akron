@@ -352,6 +352,11 @@ public sealed class AkronSetupState {
     public bool NoDeathWipeRunCallbacks { get; set; } = true;
     public bool NoRespawnAnimation { get; set; }
     public bool Invincibility { get; set; }
+    public AkronInvincibilityMode InvincibilityMode { get; set; } = AkronInvincibilityMode.Akron;
+    public bool InvincibilityBottomlessFallRescue { get; set; } = true;
+    public bool InvincibilityCrushCollisionChanges { get; set; } = true;
+    public bool InvincibilityLavaIcePushback { get; set; } = true;
+    public bool InvincibilitySpikeGroundRefills { get; set; } = true;
     public bool RespawnTimeModifier { get; set; }
     public float RespawnTimeSeconds { get; set; } = 1f;
     public bool RespawnTimeIgnoreSpeedhack { get; set; } = true;

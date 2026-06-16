@@ -87,6 +87,12 @@ public partial class AkronModuleSettings {
         return Enum.IsDefined(typeof(AkronLoggingLevel), level) ? level : AkronLoggingLevel.Trace;
     }
 
+    public static AkronInvincibilityMode NormalizeInvincibilityMode(AkronInvincibilityMode mode) {
+        return mode == AkronInvincibilityMode.Native
+            ? AkronInvincibilityMode.Native
+            : AkronInvincibilityMode.Akron;
+    }
+
     public static int ClampLoggingMaxFileSizeMb(int sizeMb) {
         return ClampValue(sizeMb <= 0 ? 5 : sizeMb, 1, 100);
     }

@@ -214,6 +214,57 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip("Allow ground contact to restore stamina while Ground Refills is enabled.");
     }
 
+    private void DrawInvincibilityPopupControls(string popupId) {
+        DrawPopupRowLabel("Mode", CalculatePopupLabelWidth(84f));
+        float choiceColumnX = ImGui.GetCursorPosX();
+        DrawPopupChoiceRadioButton(
+            "Akron",
+            AkronModuleSettings.NormalizeInvincibilityMode(AkronModule.Settings.InvincibilityMode) == AkronInvincibilityMode.Akron,
+            () => AkronModule.Settings.InvincibilityMode = AkronInvincibilityMode.Akron,
+            popupId,
+            "Prevent normal deaths without enabling Celeste Assist invincibility.",
+            choiceColumnX,
+            false);
+        DrawPopupChoiceRadioButton(
+            "Native",
+            AkronModuleSettings.NormalizeInvincibilityMode(AkronModule.Settings.InvincibilityMode) == AkronInvincibilityMode.Native,
+            () => AkronModule.Settings.InvincibilityMode = AkronInvincibilityMode.Native,
+            popupId,
+            "Use Celeste's native Assist invincibility behavior.",
+            choiceColumnX,
+            true);
+
+        if (AkronModuleSettings.NormalizeInvincibilityMode(AkronModule.Settings.InvincibilityMode) != AkronInvincibilityMode.Akron) {
+            return;
+        }
+
+        ImGui.Separator();
+        DrawPopupCheckbox(
+            "Bottomless rescue",
+            () => AkronModule.Settings.InvincibilityBottomlessFallRescue,
+            value => AkronModule.Settings.InvincibilityBottomlessFallRescue = value,
+            popupId,
+            "Teleport back to the room spawn after falling below the bottom killbox.");
+        DrawPopupCheckbox(
+            "Crush collision",
+            () => AkronModule.Settings.InvincibilityCrushCollisionChanges,
+            value => AkronModule.Settings.InvincibilityCrushCollisionChanges = value,
+            popupId,
+            "Let vanilla squish handling run, including moving-block collision changes.");
+        DrawPopupCheckbox(
+            "Lava/ice pushback",
+            () => AkronModule.Settings.InvincibilityLavaIcePushback,
+            value => AkronModule.Settings.InvincibilityLavaIcePushback = value,
+            popupId,
+            "Push lava or ice away and kick Madeline like native Assist invincibility.");
+        DrawPopupCheckbox(
+            "Spike ground refills",
+            () => AkronModule.Settings.InvincibilitySpikeGroundRefills,
+            value => AkronModule.Settings.InvincibilitySpikeGroundRefills = value,
+            popupId,
+            "Allow ground dash refills while Madeline overlaps spikes.");
+    }
+
     private void DrawLagPauserPopupControls(string popupId) {
         DrawIntStepperRow(
             "Threshold ms",

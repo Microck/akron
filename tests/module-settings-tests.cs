@@ -76,6 +76,28 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void InvincibilityDefaultsUseAkronModeWithNativeLikeEffectsEnabled()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings();
+
+        Assert.False(settings.Invincibility);
+        Assert.Equal(AkronInvincibilityMode.Akron, settings.InvincibilityMode);
+        Assert.True(settings.InvincibilityBottomlessFallRescue);
+        Assert.True(settings.InvincibilityCrushCollisionChanges);
+        Assert.True(settings.InvincibilityLavaIcePushback);
+        Assert.True(settings.InvincibilitySpikeGroundRefills);
+    }
+
+    [Theory]
+    [InlineData(AkronInvincibilityMode.Akron, AkronInvincibilityMode.Akron)]
+    [InlineData(AkronInvincibilityMode.Native, AkronInvincibilityMode.Native)]
+    [InlineData((AkronInvincibilityMode) 99, AkronInvincibilityMode.Akron)]
+    public void InvincibilityModeNormalizationFallsBackToAkron(AkronInvincibilityMode input, AkronInvincibilityMode expected)
+    {
+        Assert.Equal(expected, AkronModuleSettings.NormalizeInvincibilityMode(input));
+    }
+
+    [Fact]
     public void InputsPerSecondDefaultsAreAVisualCounterOnly()
     {
         AkronModuleSettings settings = new AkronModuleSettings();
@@ -1867,6 +1889,26 @@ public sealed class ModuleSettingsTests
     public void HazardAccuracyRecordsBottomKillboxBeforeInvincibilityRescue(bool hazardAccuracyAllowed, bool touchingBottomKillbox, bool expected)
     {
         Assert.Equal(expected, AkronModule.ShouldRecordBottomKillboxHazardAccuracyBeforeRescue(hazardAccuracyAllowed, touchingBottomKillbox));
+    }
+
+    [Theory]
+    [InlineData(false, false, false, false)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, false, true, true)]
+    [InlineData(true, true, true, false)]
+    public void AkronInvincibilitySuppressesOnlyNormalDeaths(bool evenIfInvincible, bool hazardAccuracyAllowed, bool akronInvincibilityAllowed, bool expected)
+    {
+        Assert.Equal(expected, AkronModule.ShouldSuppressNormalDeathForAkronInvincibility(evenIfInvincible, hazardAccuracyAllowed, akronInvincibilityAllowed));
+    }
+
+    [Theory]
+    [InlineData(false, false, false, false)]
+    [InlineData(true, false, false, true)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, false, true, false)]
+    public void AkronInvincibilityCanSkipVanillaSquishBeforeCollisionMutates(bool akronInvincibilityAllowed, bool allowCollisionChanges, bool forcedSquish, bool expected)
+    {
+        Assert.Equal(expected, AkronModule.ShouldSkipVanillaSquishForAkronInvincibility(akronInvincibilityAllowed, allowCollisionChanges, forcedSquish));
     }
 
     [Theory]

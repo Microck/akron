@@ -17,6 +17,36 @@ public sealed class SetupPackTests {
     }
 
     [Fact]
+    public void WholeSetupPreservesInvincibilityModeAndAkronSideEffects() {
+        AkronModuleSettings settings = new AkronModuleSettings {
+            Invincibility = true,
+            InvincibilityMode = AkronInvincibilityMode.Native,
+            InvincibilityBottomlessFallRescue = true,
+            InvincibilityCrushCollisionChanges = true,
+            InvincibilityLavaIcePushback = true,
+            InvincibilitySpikeGroundRefills = true
+        };
+
+        AkronSetupPack pack = AkronSetupPacks.Capture(settings, session: null, "Invincibility Setup", AkronSetupSection.Whole);
+        AkronModuleSettings target = new AkronModuleSettings();
+
+        AkronSetupPacks.Apply(target, session: null, pack, AkronSetupSection.Whole);
+
+        Assert.True(pack.State.Invincibility);
+        Assert.Equal(AkronInvincibilityMode.Native, pack.State.InvincibilityMode);
+        Assert.True(pack.State.InvincibilityBottomlessFallRescue);
+        Assert.True(pack.State.InvincibilityCrushCollisionChanges);
+        Assert.True(pack.State.InvincibilityLavaIcePushback);
+        Assert.True(pack.State.InvincibilitySpikeGroundRefills);
+        Assert.True(target.Invincibility);
+        Assert.Equal(AkronInvincibilityMode.Native, target.InvincibilityMode);
+        Assert.True(target.InvincibilityBottomlessFallRescue);
+        Assert.True(target.InvincibilityCrushCollisionChanges);
+        Assert.True(target.InvincibilityLavaIcePushback);
+        Assert.True(target.InvincibilitySpikeGroundRefills);
+    }
+
+    [Fact]
     public void ScopedAudioImportAppliesOnlyAudioState() {
         AkronModuleSettings target = new AkronModuleSettings {
             SmartStartPos = true,

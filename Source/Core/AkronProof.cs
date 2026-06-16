@@ -93,6 +93,11 @@ public static class AkronProof {
         AppendJson(builder, "noclipFloatSpeed", settings.NoclipFloatSpeed.ToString(), true, true);
         AppendJson(builder, "noclipDrawOnTop", settings.NoclipDrawOnTop.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "invincibility", settings.Invincibility.ToString().ToLowerInvariant(), true, true);
+        AppendJson(builder, "invincibilityMode", AkronModuleSettings.NormalizeInvincibilityMode(settings.InvincibilityMode).ToString(), true);
+        AppendJson(builder, "invincibilityBottomlessFallRescue", settings.InvincibilityBottomlessFallRescue.ToString().ToLowerInvariant(), true, true);
+        AppendJson(builder, "invincibilityCrushCollisionChanges", settings.InvincibilityCrushCollisionChanges.ToString().ToLowerInvariant(), true, true);
+        AppendJson(builder, "invincibilityLavaIcePushback", settings.InvincibilityLavaIcePushback.ToString().ToLowerInvariant(), true, true);
+        AppendJson(builder, "invincibilitySpikeGroundRefills", settings.InvincibilitySpikeGroundRefills.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "freezeGameplay", session.FreezeGameplay.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "timescaleMultiplier", session.TimescaleMultiplier.ToString("0.0"), true, true);
         AppendJson(builder, "respawnAtStartPos", settings.RespawnAtStartPos.ToString().ToLowerInvariant(), true, true);

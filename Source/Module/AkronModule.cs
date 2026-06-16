@@ -147,6 +147,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.CompleteArea_bool_bool_bool += LevelOnCompleteArea;
         On.Celeste.Level.RegisterAreaComplete += LevelOnRegisterAreaComplete;
         On.Celeste.Player.Die += PlayerOnDie;
+        On.Celeste.Player.OnSquish += PlayerOnSquish;
         On.Celeste.Player.DashBegin += PlayerOnDashBegin;
         On.Celeste.Player.Render += PlayerOnRender;
         On.Celeste.Player.Update += PlayerOnUpdate;
@@ -157,6 +158,8 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Player.Added += PlayerOnAdded;
         On.Celeste.Player.OnTransition += PlayerOnTransition;
         On.Celeste.PlayerDeadBody.Update += PlayerDeadBodyOnUpdate;
+        On.Celeste.RisingLava.OnPlayer += RisingLavaOnPlayer;
+        On.Celeste.SandwichLava.OnPlayer += SandwichLavaOnPlayer;
         On.Celeste.Strawberry.OnCollect += StrawberryOnCollect;
         On.Celeste.Celeste.Freeze += CelesteOnFreeze;
         On.Celeste.UserIO.SaveHandler += UserIOOnSaveHandler;
@@ -266,6 +269,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.CompleteArea_bool_bool_bool -= LevelOnCompleteArea;
         On.Celeste.Level.RegisterAreaComplete -= LevelOnRegisterAreaComplete;
         On.Celeste.Player.Die -= PlayerOnDie;
+        On.Celeste.Player.OnSquish -= PlayerOnSquish;
         On.Celeste.Player.DashBegin -= PlayerOnDashBegin;
         On.Celeste.Player.Render -= PlayerOnRender;
         On.Celeste.Player.Update -= PlayerOnUpdate;
@@ -276,6 +280,8 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Player.Added -= PlayerOnAdded;
         On.Celeste.Player.OnTransition -= PlayerOnTransition;
         On.Celeste.PlayerDeadBody.Update -= PlayerDeadBodyOnUpdate;
+        On.Celeste.RisingLava.OnPlayer -= RisingLavaOnPlayer;
+        On.Celeste.SandwichLava.OnPlayer -= SandwichLavaOnPlayer;
         On.Celeste.Strawberry.OnCollect -= StrawberryOnCollect;
         On.Celeste.Celeste.Freeze -= CelesteOnFreeze;
         On.Celeste.UserIO.SaveHandler -= UserIOOnSaveHandler;

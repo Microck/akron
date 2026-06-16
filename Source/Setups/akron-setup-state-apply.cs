@@ -362,6 +362,11 @@ public partial class AkronModuleSettings {
         NoDeathWipeRunCallbacks = resolved.NoDeathWipeRunCallbacks;
         NoRespawnAnimation = resolved.NoRespawnAnimation;
         Invincibility = resolved.Invincibility;
+        InvincibilityMode = NormalizeInvincibilityMode(resolved.InvincibilityMode);
+        InvincibilityBottomlessFallRescue = resolved.InvincibilityBottomlessFallRescue;
+        InvincibilityCrushCollisionChanges = resolved.InvincibilityCrushCollisionChanges;
+        InvincibilityLavaIcePushback = resolved.InvincibilityLavaIcePushback;
+        InvincibilitySpikeGroundRefills = resolved.InvincibilitySpikeGroundRefills;
         RespawnTimeModifier = resolved.RespawnTimeModifier;
         RespawnTimeSeconds = ClampRespawnTimeSeconds(resolved.RespawnTimeSeconds);
         RespawnTimeIgnoreSpeedhack = resolved.RespawnTimeIgnoreSpeedhack;

@@ -319,6 +319,11 @@ public static partial class AkronCommands {
         Log("hazard-accuracy-tint-duration-ms: " + AkronModule.Settings.NoclipAccuracyTintDurationMs.ToString(CultureInfo.InvariantCulture));
         Log("hazard-accuracy-state: " + AkronModule.GetNoclipAccuracySnapshot().Describe());
         Log("invincibility: " + AkronModule.Settings.Invincibility.ToString().ToLowerInvariant());
+        Log("invincibility-mode: " + AkronModuleSettings.NormalizeInvincibilityMode(AkronModule.Settings.InvincibilityMode).ToString().ToLowerInvariant());
+        Log("invincibility-bottomless-fall-rescue: " + AkronModule.Settings.InvincibilityBottomlessFallRescue.ToString().ToLowerInvariant());
+        Log("invincibility-crush-collision-changes: " + AkronModule.Settings.InvincibilityCrushCollisionChanges.ToString().ToLowerInvariant());
+        Log("invincibility-lava-ice-pushback: " + AkronModule.Settings.InvincibilityLavaIcePushback.ToString().ToLowerInvariant());
+        Log("invincibility-spike-ground-refills: " + AkronModule.Settings.InvincibilitySpikeGroundRefills.ToString().ToLowerInvariant());
         Log("respawn-time: " + AkronModule.Settings.RespawnTimeModifier.ToString().ToLowerInvariant());
         Log("respawn-time-seconds: " + AkronModule.Settings.RespawnTimeSeconds.ToString("0.0", CultureInfo.InvariantCulture));
         Log("respawn-time-ignore-speedhack: " + AkronModule.Settings.RespawnTimeIgnoreSpeedhack.ToString().ToLowerInvariant());

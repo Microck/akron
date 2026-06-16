@@ -180,6 +180,11 @@ public enum AkronNoclipAccuracyTintMode {
     WhileTouching
 }
 
+public enum AkronInvincibilityMode {
+    Akron,
+    Native
+}
+
 public enum AkronNoDeathWipeMode {
     DeathOnly,
     AllWipes

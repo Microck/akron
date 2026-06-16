@@ -165,7 +165,7 @@ public sealed partial class AkronOverlay {
                     PolicyToggle("Hide Player", AkronFeatureKind.HidePlayer, () => AkronModule.Settings.HidePlayer, value => AkronModule.Settings.HidePlayer = value),
                     PolicyToggle("Infinite Dash", AkronFeatureKind.InfiniteDash, () => AkronModule.Settings.InfiniteDash, value => AkronModule.Settings.InfiniteDash = value),
                     PolicyToggle("Infinite Stamina", AkronFeatureKind.InfiniteStamina, () => AkronModule.Settings.InfiniteStamina, value => AkronModule.Settings.InfiniteStamina = value),
-                    PolicyToggle("Invincibility", AkronFeatureKind.Invincibility, () => AkronModule.Settings.Invincibility, value => AkronModule.Settings.Invincibility = value),
+                    InvincibilityToggle(),
                     PolicyToggle("Madeline Colors", AkronFeatureKind.CustomTrail, () => AkronModule.Settings.MadelineColors, value => AkronModule.Settings.MadelineColors = value),
                     PolicyToggle("Madeline Hair Length", AkronFeatureKind.MadelineHairLength, () => AkronModule.Settings.MadelineHairLength, value => AkronModule.Settings.MadelineHairLength = value),
                     PolicyToggle("Madeline Effect Sync", AkronFeatureKind.MadelineEffectSync, () => AkronModule.Settings.MadelineEffectSync, value => AkronModule.Settings.MadelineEffectSync = value),
@@ -623,6 +623,27 @@ public sealed partial class AkronOverlay {
 
             setter(next);
         }, BuildSearchTerms(label, tags), true, OverlayEntryControl.Toggle, featureKind);
+    }
+
+    private static OverlayEntry InvincibilityToggle() {
+        return new OverlayEntry(
+            "Invincibility",
+            () => true,
+            () => AkronModule.Settings.Invincibility
+                ? AkronModuleSettings.NormalizeInvincibilityMode(AkronModule.Settings.InvincibilityMode).ToString()
+                : "Off",
+            () => {
+                bool next = !AkronModule.Settings.Invincibility;
+                if (next && !AkronModule.TryUse(AkronFeatureKind.Invincibility)) {
+                    return;
+                }
+
+                AkronModule.Settings.Invincibility = next;
+            },
+            BuildSearchTerms("Invincibility", new[] { "assist", "invincible", "death", "cheat", "native", "akron" }),
+            true,
+            OverlayEntryControl.Toggle,
+            AkronFeatureKind.Invincibility);
     }
 
     private static OverlayEntry NumericToggle(

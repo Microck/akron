@@ -38,6 +38,8 @@ public sealed partial class AkronOverlay {
                 DrawNoclipPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Hazard Accuracy", StringComparison.OrdinalIgnoreCase)) {
                 DrawHazardAccuracyPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Invincibility", StringComparison.OrdinalIgnoreCase)) {
+                DrawInvincibilityPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Air Jumps", StringComparison.OrdinalIgnoreCase)) {
                 DrawAirJumpsPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Core Mode", StringComparison.OrdinalIgnoreCase)) {

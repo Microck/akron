@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+### Added
+
+- Add Akron invincibility mode with per-effect controls for bottomless rescue, crush collision changes, lava and ice pushback, and spike ground refills.
+
 ### Fixed
 
 - Fix Creator > Map Capture exports on Linux so room images render the map instead of solid black frames.
