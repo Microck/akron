@@ -33,8 +33,8 @@ public static class AkronCapture {
 
         try {
             pixels = AkronModule.Settings.ScreenshotScannerRemoveBackground
-                ? CaptureTransparentBackground(level, graphicsDevice, captureViewport, scannerOverlays)
-                : CaptureFrame(level, graphicsDevice, captureViewport, scannerOverlays, level.BackgroundColor);
+                ? CaptureTransparentBackground(level, graphicsDevice, captureViewport, originalViewport, scannerOverlays)
+                : CaptureFrame(level, graphicsDevice, captureViewport, originalViewport, scannerOverlays, level.BackgroundColor);
 
             texture = new Texture2D(graphicsDevice, captureViewport.Width, captureViewport.Height, false, SurfaceFormat.Color);
             texture.SetData(pixels);
@@ -68,7 +68,7 @@ public static class AkronCapture {
         return outputPath;
     }
 
-    private static Color[] CaptureTransparentBackground(Level level, GraphicsDevice graphicsDevice, Viewport captureViewport, bool scannerOverlays) {
+    private static Color[] CaptureTransparentBackground(Level level, GraphicsDevice graphicsDevice, Viewport captureViewport, Viewport originalViewport, bool scannerOverlays) {
         Color previousBackgroundColor = level.BackgroundColor;
         float previousBloomStrength = level.Bloom?.Strength ?? 0f;
 
@@ -79,11 +79,11 @@ public static class AkronCapture {
             if (level.Bloom != null) {
                 level.Bloom.Strength = 0f;
             }
-            Color[] whitePixels = CaptureFrame(level, graphicsDevice, captureViewport, scannerOverlays, Color.White);
+            Color[] whitePixels = CaptureFrame(level, graphicsDevice, captureViewport, originalViewport, scannerOverlays, Color.White);
             if (level.Bloom != null) {
                 level.Bloom.Strength = previousBloomStrength;
             }
-            Color[] blackPixels = CaptureFrame(level, graphicsDevice, captureViewport, scannerOverlays, Color.Black);
+            Color[] blackPixels = CaptureFrame(level, graphicsDevice, captureViewport, originalViewport, scannerOverlays, Color.Black);
             return InferTransparentPixels(whitePixels, blackPixels);
         } finally {
             level.BackgroundColor = previousBackgroundColor;
@@ -93,7 +93,7 @@ public static class AkronCapture {
         }
     }
 
-    private static Color[] CaptureFrame(Level level, GraphicsDevice graphicsDevice, Viewport captureViewport, bool scannerOverlays, Color backgroundColor) {
+    private static Color[] CaptureFrame(Level level, GraphicsDevice graphicsDevice, Viewport captureViewport, Viewport originalViewport, bool scannerOverlays, Color backgroundColor) {
         Color previousBackgroundColor = level.BackgroundColor;
         SpeedrunType previousSpeedrunClock = global::Celeste.Settings.Instance.SpeedrunClock;
         object speedrunToolRoomTimerState = null;
@@ -107,18 +107,16 @@ public static class AkronCapture {
             speedrunToolRoomTimerState = AkronSpeedrunToolBroker.SuppressRoomTimerHudForCapture();
             try {
                 level.BeforeRender();
-                graphicsDevice.Viewport = captureViewport;
-                graphicsDevice.SetRenderTarget(null);
-                graphicsDevice.Clear(backgroundColor);
                 level.Render();
                 level.AfterRender();
+                graphicsDevice.GetBackBufferData(captureViewport.Bounds, pixels, 0, pixels.Length);
             } finally {
                 AkronSpeedrunToolBroker.RestoreRoomTimerHudAfterCapture(speedrunToolRoomTimerState);
                 global::Celeste.Settings.Instance.SpeedrunClock = previousSpeedrunClock;
                 IsCapturingGameFrame = false;
                 IsCapturingScannerOverlays = false;
+                graphicsDevice.Viewport = originalViewport;
             }
-            graphicsDevice.GetBackBufferData(captureViewport.Bounds, pixels, 0, pixels.Length);
             return pixels;
         } finally {
             level.BackgroundColor = previousBackgroundColor;

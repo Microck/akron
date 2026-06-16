@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+### Fixed
+
+- Fix Creator > Map Capture exports on Linux so room images render the map instead of solid black frames.
+
 ## 0.1.2-beta.25
 
 ### Fixed
