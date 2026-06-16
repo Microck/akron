@@ -84,7 +84,7 @@ public partial class AkronModuleSettings {
     }
 
     public static AkronLoggingLevel NormalizeLoggingLevel(AkronLoggingLevel level) {
-        return Enum.IsDefined(typeof(AkronLoggingLevel), level) ? level : AkronLoggingLevel.Trace;
+        return Enum.IsDefined(typeof(AkronLoggingLevel), level) ? level : AkronLoggingLevel.Diagnostic;
     }
 
     public static AkronInvincibilityMode NormalizeInvincibilityMode(AkronInvincibilityMode mode) {

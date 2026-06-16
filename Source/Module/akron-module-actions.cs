@@ -242,14 +242,14 @@ public partial class AkronModule {
     }
     public static bool TryUse(AkronFeatureKind feature) {
         AkronPolicyDecision decision = AkronPolicy.CanUse(feature);
-        AkronLog.Trace(nameof(AkronModule), "policy check: " + feature + "; allowed=" + decision.Allowed.ToString().ToLowerInvariant() + "; message=" + decision.Message);
+        AkronLog.RecordPolicyCheck(feature, decision);
         if (!decision.Allowed) {
             Engine.Scene?.Add(new AkronToast(decision.Message));
             return false;
         }
 
         AkronPolicy.RecordFeatureUse(feature);
-        AkronLog.Verbose(nameof(AkronModule), "feature use recorded: " + feature);
+        AkronLog.RecordFeatureUse(feature);
         return true;
     }
 

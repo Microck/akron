@@ -72,7 +72,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int OverlayBlur { get; set; }
     public int OverlayAnimationMs { get; set; } = 80;
     public bool Logging { get; set; } = true;
-    public AkronLoggingLevel LoggingLevel { get; set; } = AkronLoggingLevel.Trace;
+    public AkronLoggingLevel LoggingLevel { get; set; } = AkronLoggingLevel.Diagnostic;
     public bool LoggingMirrorWarningsToEverest { get; set; } = true;
     public int LoggingMaxFileSizeMb { get; set; } = 5;
     public int LoggingRetainedFiles { get; set; } = 5;

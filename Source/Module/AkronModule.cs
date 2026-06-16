@@ -228,6 +228,7 @@ public partial class AkronModule : EverestModule {
 
     public override void Unload() {
         SaveAkronSettingsNow("unload");
+        AkronLog.FlushDiagnosticSummaries();
         AkronLog.Normal(nameof(AkronModule), "unload start");
         AkronBackupActions.NotifyShutdown();
         AkronInterop.UnregisterSpeedrunToolSaveLoadHooks();

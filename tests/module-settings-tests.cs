@@ -247,15 +247,54 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void LoggingDefaultsToMaximumDiagnosticsWithBoundedRetention()
+    public void LoggingDefaultsToPlaytesterSafeDiagnosticsWithBoundedRetention()
     {
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.True(settings.Logging);
-        Assert.Equal(AkronLoggingLevel.Trace, settings.LoggingLevel);
+        Assert.Equal(AkronLoggingLevel.Diagnostic, settings.LoggingLevel);
         Assert.True(settings.LoggingMirrorWarningsToEverest);
         Assert.Equal(5, settings.LoggingMaxFileSizeMb);
         Assert.Equal(5, settings.LoggingRetainedFiles);
+    }
+
+    [Theory]
+    [InlineData(AkronLoggingLevel.Normal, "Normal")]
+    [InlineData(AkronLoggingLevel.Verbose, "Verbose")]
+    [InlineData(AkronLoggingLevel.Diagnostic, "Diagnostic")]
+    [InlineData(AkronLoggingLevel.Trace, "Trace")]
+    [InlineData((AkronLoggingLevel) 99, "Diagnostic")]
+    public void LoggingLevelLabelsMatchPublicUiContract(AkronLoggingLevel level, string expected)
+    {
+        Assert.Equal(expected, AkronLog.FormatLevel(level));
+    }
+
+    [Fact]
+    public void DiagnosticPolicySummaryFormatsCountsInStableFeatureOrder()
+    {
+        Dictionary<AkronFeatureKind, long> counts = new Dictionary<AkronFeatureKind, long>
+        {
+            { AkronFeatureKind.Noclip, 9 },
+            { AkronFeatureKind.RoomLabelOverlay, 2 }
+        };
+
+        string summary = AkronLog.FormatDiagnosticPolicySummary(counts, TimeSpan.FromSeconds(60));
+
+        Assert.Equal("policy checks allowed: RoomLabelOverlay=2, Noclip=9; window-seconds=60", summary);
+    }
+
+    [Fact]
+    public void DiagnosticFeatureUseSummaryFormatsCountsInStableFeatureOrder()
+    {
+        Dictionary<AkronFeatureKind, long> counts = new Dictionary<AkronFeatureKind, long>
+        {
+            { AkronFeatureKind.SpeedNumber, 12 },
+            { AkronFeatureKind.InputViewer, 5 }
+        };
+
+        string summary = AkronLog.FormatDiagnosticFeatureUseSummary(counts, TimeSpan.FromSeconds(60));
+
+        Assert.Equal("feature uses recorded: InputViewer=5, SpeedNumber=12; window-seconds=60", summary);
     }
 
     [Theory]

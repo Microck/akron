@@ -102,6 +102,7 @@ public static partial class AkronCommands {
             "goldentransparency" => SetFeatureToggle(action, AkronFeatureKind.GoldenTransparency, () => AkronModule.Settings.GoldenTransparency, value => AkronModule.Settings.GoldenTransparency = value, "golden-transparency"),
             "lagpauser" => SetFeatureToggle(action, AkronFeatureKind.LagPauser, () => AkronModule.Settings.LagPauser, value => AkronModule.Settings.LagPauser = value, "lag-pauser"),
             "logging" or "logs" => SetPlainToggle(action, () => AkronModule.Settings.Logging, value => {
+                AkronLog.FlushDiagnosticSummaries();
                 AkronModule.Settings.Logging = value;
                 AkronLog.LogSettingsChanged("enabled=" + value.ToString().ToLowerInvariant());
             }, "logging"),

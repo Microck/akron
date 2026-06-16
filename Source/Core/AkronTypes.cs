@@ -77,9 +77,10 @@ public enum AkronFrameIncreaseMethod {
 }
 
 public enum AkronLoggingLevel {
-    Normal,
-    Verbose,
-    Trace
+    Normal = 0,
+    Verbose = 1,
+    Diagnostic = 2,
+    Trace = 3
 }
 
 public enum AkronCameraSmoothingMode {

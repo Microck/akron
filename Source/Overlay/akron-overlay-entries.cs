@@ -540,6 +540,7 @@ public sealed partial class AkronOverlay {
             () => AkronModule.Settings.Logging ? "On" : "Off",
             () => {
                 bool next = !AkronModule.Settings.Logging;
+                AkronLog.FlushDiagnosticSummaries();
                 AkronModule.Settings.Logging = next;
                 AkronLog.LogSettingsChanged("enabled=" + next.ToString().ToLowerInvariant());
             },

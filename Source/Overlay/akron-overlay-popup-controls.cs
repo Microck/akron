@@ -244,17 +244,21 @@ public sealed partial class AkronOverlay {
         ImGui.TextUnformatted("Level: " + AkronLog.FormatLevel(AkronModule.Settings.LoggingLevel));
         DrawLoggingLevelChoice("Normal", AkronLoggingLevel.Normal, popupId);
         DrawLoggingLevelChoice("Verbose", AkronLoggingLevel.Verbose, popupId);
+        DrawLoggingLevelChoice("Diagnostic", AkronLoggingLevel.Diagnostic, popupId);
         DrawLoggingLevelChoice("Trace", AkronLoggingLevel.Trace, popupId);
         ImGui.Separator();
         DrawPopupCheckbox("Mirror warnings", () => AkronModule.Settings.LoggingMirrorWarningsToEverest, value => {
+            AkronLog.FlushDiagnosticSummaries();
             AkronModule.Settings.LoggingMirrorWarningsToEverest = value;
             AkronLog.LogSettingsChanged("mirror-warnings=" + value.ToString().ToLowerInvariant());
         }, popupId, "Send warnings and errors to Everest's shared log as well as Akron's log file.");
         DrawIntStepperRow("Max MB", () => AkronModule.Settings.LoggingMaxFileSizeMb, value => {
+            AkronLog.FlushDiagnosticSummaries();
             AkronModule.Settings.LoggingMaxFileSizeMb = AkronModuleSettings.ClampLoggingMaxFileSizeMb(value);
             AkronLog.LogSettingsChanged("max-file-size-mb=" + AkronModule.Settings.LoggingMaxFileSizeMb.ToString(CultureInfo.InvariantCulture));
         }, -1, 1, 1, 100, popupId, "Rotate the current Akron log when it reaches this many megabytes.");
         DrawIntStepperRow("Retained", () => AkronModule.Settings.LoggingRetainedFiles, value => {
+            AkronLog.FlushDiagnosticSummaries();
             AkronModule.Settings.LoggingRetainedFiles = AkronModuleSettings.ClampLoggingRetainedFiles(value);
             AkronLog.LogSettingsChanged("retained-files=" + AkronModule.Settings.LoggingRetainedFiles.ToString(CultureInfo.InvariantCulture));
         }, -1, 1, 0, 20, popupId, "Keep this many rotated Akron log files.");
@@ -268,6 +272,7 @@ public sealed partial class AkronOverlay {
     private static void DrawLoggingLevelChoice(string label, AkronLoggingLevel level, string popupId) {
         bool selected = AkronModuleSettings.NormalizeLoggingLevel(AkronModule.Settings.LoggingLevel) == level;
         if (ImGui.RadioButton(label + "##logging-level-" + popupId, selected)) {
+            AkronLog.FlushDiagnosticSummaries();
             AkronModule.Settings.LoggingLevel = level;
             AkronLog.LogSettingsChanged("level=" + AkronLog.FormatLevel(level));
         }

@@ -1,14 +1,22 @@
 using Celeste.Mod;
 using Monocle;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text;
 
 namespace Celeste.Mod.Akron;
 
 public static class AkronLog {
     private const string DirectoryName = "AkronLogs";
     private const string CurrentFileName = "akron-current.log";
+    private static readonly TimeSpan DiagnosticSummaryInterval = TimeSpan.FromSeconds(60);
+    private static readonly object DiagnosticSummaryLock = new object();
+    private static readonly Dictionary<AkronFeatureKind, long> DiagnosticAllowedPolicyChecks = new Dictionary<AkronFeatureKind, long>();
+    private static readonly Dictionary<AkronFeatureKind, long> DiagnosticFeatureUses = new Dictionary<AkronFeatureKind, long>();
+    private static DateTime diagnosticPolicyWindowStartedUtc;
+    private static DateTime diagnosticFeatureUseWindowStartedUtc;
 
     public static void Normal(string source, string message) {
         Write(AkronLoggingLevel.Normal, source, message, mirrorLogLevel: null);
@@ -20,6 +28,10 @@ public static class AkronLog {
 
     public static void Trace(string source, string message) {
         Write(AkronLoggingLevel.Trace, source, message, mirrorLogLevel: null);
+    }
+
+    public static void Diagnostic(string source, string message) {
+        Write(AkronLoggingLevel.Diagnostic, source, message, mirrorLogLevel: null);
     }
 
     public static void Info(string source, string message) {
@@ -54,12 +66,93 @@ public static class AkronLog {
         return AkronModuleSettings.NormalizeLoggingLevel(level) switch {
             AkronLoggingLevel.Normal => "Normal",
             AkronLoggingLevel.Verbose => "Verbose",
+            AkronLoggingLevel.Diagnostic => "Diagnostic",
             _ => "Trace"
         };
     }
 
     public static void LogSettingsChanged(string detail) {
+        FlushDiagnosticSummaries();
         Normal(nameof(AkronLog), "logging settings changed: " + detail + "; " + DescribeSettings());
+    }
+
+    public static void RecordPolicyCheck(AkronFeatureKind feature, AkronPolicyDecision decision) {
+        AkronLoggingLevel configured = AkronModuleSettings.NormalizeLoggingLevel(AkronModule.Settings.LoggingLevel);
+        if (!AkronModule.Settings.Logging || configured < AkronLoggingLevel.Diagnostic) {
+            return;
+        }
+
+        if (configured >= AkronLoggingLevel.Trace) {
+            Trace(nameof(AkronModule), FormatPolicyCheckMessage(feature, decision));
+            return;
+        }
+
+        if (!decision.Allowed) {
+            Diagnostic(nameof(AkronModule), "policy check denied: " + feature + "; message=" + decision.Message);
+            return;
+        }
+
+        RecordDiagnosticAllowedPolicyCheck(feature);
+    }
+
+    public static void RecordFeatureUse(AkronFeatureKind feature) {
+        AkronLoggingLevel configured = AkronModuleSettings.NormalizeLoggingLevel(AkronModule.Settings.LoggingLevel);
+        if (!AkronModule.Settings.Logging || configured < AkronLoggingLevel.Verbose) {
+            return;
+        }
+
+        if (configured == AkronLoggingLevel.Diagnostic) {
+            RecordDiagnosticFeatureUse(feature);
+            return;
+        }
+
+        Verbose(nameof(AkronModule), "feature use recorded: " + feature);
+    }
+
+    public static void FlushDiagnosticSummaries() {
+        DateTime now = DateTime.UtcNow;
+        string policyMessage = TakeDiagnosticPolicySummary(now);
+        if (!string.IsNullOrEmpty(policyMessage)) {
+            Diagnostic(nameof(AkronModule), policyMessage);
+        }
+
+        string featureUseMessage = TakeDiagnosticFeatureUseSummary(now);
+        if (!string.IsNullOrEmpty(featureUseMessage)) {
+            Diagnostic(nameof(AkronModule), featureUseMessage);
+        }
+    }
+
+    internal static string FormatDiagnosticPolicySummary(IReadOnlyDictionary<AkronFeatureKind, long> counts, TimeSpan window) {
+        return FormatDiagnosticFeatureCounts("policy checks allowed", counts, window);
+    }
+
+    internal static string FormatDiagnosticFeatureUseSummary(IReadOnlyDictionary<AkronFeatureKind, long> counts, TimeSpan window) {
+        return FormatDiagnosticFeatureCounts("feature uses recorded", counts, window);
+    }
+
+    private static string FormatDiagnosticFeatureCounts(string label, IReadOnlyDictionary<AkronFeatureKind, long> counts, TimeSpan window) {
+        StringBuilder builder = new StringBuilder(label);
+        builder.Append(":");
+        bool any = false;
+        foreach (AkronFeatureKind feature in Enum.GetValues(typeof(AkronFeatureKind))) {
+            if (!counts.TryGetValue(feature, out long count) || count <= 0) {
+                continue;
+            }
+
+            builder.Append(any ? ", " : " ");
+            builder.Append(feature);
+            builder.Append("=");
+            builder.Append(count.ToString(CultureInfo.InvariantCulture));
+            any = true;
+        }
+
+        if (!any) {
+            builder.Append(" none");
+        }
+
+        builder.Append("; window-seconds=");
+        builder.Append(Math.Max(0, (int) Math.Round(window.TotalSeconds)).ToString(CultureInfo.InvariantCulture));
+        return builder.ToString();
     }
 
     private static void Write(AkronLoggingLevel level, string source, string message, LogLevel? mirrorLogLevel) {
@@ -78,6 +171,96 @@ public static class AkronLog {
 
     private static bool ShouldWrite(AkronLoggingLevel level, AkronLoggingLevel configured) {
         return AkronModuleSettings.NormalizeLoggingLevel(level) <= AkronModuleSettings.NormalizeLoggingLevel(configured);
+    }
+
+    private static void RecordDiagnosticAllowedPolicyCheck(AkronFeatureKind feature) {
+        string message = null;
+        DateTime now = DateTime.UtcNow;
+
+        lock (DiagnosticSummaryLock) {
+            if (diagnosticPolicyWindowStartedUtc == default) {
+                diagnosticPolicyWindowStartedUtc = now;
+            }
+
+            if (!DiagnosticAllowedPolicyChecks.TryGetValue(feature, out long count)) {
+                count = 0;
+            }
+            DiagnosticAllowedPolicyChecks[feature] = count + 1;
+
+            if (now - diagnosticPolicyWindowStartedUtc >= DiagnosticSummaryInterval) {
+                message = TakeDiagnosticPolicySummaryLocked(now);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(message)) {
+            Diagnostic(nameof(AkronModule), message);
+        }
+    }
+
+    private static void RecordDiagnosticFeatureUse(AkronFeatureKind feature) {
+        string message = null;
+        DateTime now = DateTime.UtcNow;
+
+        lock (DiagnosticSummaryLock) {
+            if (diagnosticFeatureUseWindowStartedUtc == default) {
+                diagnosticFeatureUseWindowStartedUtc = now;
+            }
+
+            if (!DiagnosticFeatureUses.TryGetValue(feature, out long count)) {
+                count = 0;
+            }
+            DiagnosticFeatureUses[feature] = count + 1;
+
+            if (now - diagnosticFeatureUseWindowStartedUtc >= DiagnosticSummaryInterval) {
+                message = TakeDiagnosticFeatureUseSummaryLocked(now);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(message)) {
+            Diagnostic(nameof(AkronModule), message);
+        }
+    }
+
+    private static string TakeDiagnosticPolicySummary(DateTime now) {
+        lock (DiagnosticSummaryLock) {
+            return TakeDiagnosticPolicySummaryLocked(now);
+        }
+    }
+
+    private static string TakeDiagnosticFeatureUseSummary(DateTime now) {
+        lock (DiagnosticSummaryLock) {
+            return TakeDiagnosticFeatureUseSummaryLocked(now);
+        }
+    }
+
+    private static string TakeDiagnosticPolicySummaryLocked(DateTime now) {
+        if (DiagnosticAllowedPolicyChecks.Count == 0) {
+            diagnosticPolicyWindowStartedUtc = default;
+            return null;
+        }
+
+        TimeSpan window = diagnosticPolicyWindowStartedUtc == default ? TimeSpan.Zero : now - diagnosticPolicyWindowStartedUtc;
+        string message = FormatDiagnosticPolicySummary(DiagnosticAllowedPolicyChecks, window);
+        DiagnosticAllowedPolicyChecks.Clear();
+        diagnosticPolicyWindowStartedUtc = default;
+        return message;
+    }
+
+    private static string TakeDiagnosticFeatureUseSummaryLocked(DateTime now) {
+        if (DiagnosticFeatureUses.Count == 0) {
+            diagnosticFeatureUseWindowStartedUtc = default;
+            return null;
+        }
+
+        TimeSpan window = diagnosticFeatureUseWindowStartedUtc == default ? TimeSpan.Zero : now - diagnosticFeatureUseWindowStartedUtc;
+        string message = FormatDiagnosticFeatureUseSummary(DiagnosticFeatureUses, window);
+        DiagnosticFeatureUses.Clear();
+        diagnosticFeatureUseWindowStartedUtc = default;
+        return message;
+    }
+
+    private static string FormatPolicyCheckMessage(AkronFeatureKind feature, AkronPolicyDecision decision) {
+        return "policy check: " + feature + "; allowed=" + decision.Allowed.ToString().ToLowerInvariant() + "; message=" + decision.Message;
     }
 
     private static void WriteFileLine(AkronLoggingLevel level, string source, string message, AkronModuleSettings settings) {
