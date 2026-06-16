@@ -141,6 +141,13 @@ public partial class AkronModule {
     }
 
     private static void ScreenWipeOnDrawPrimitives(On.Celeste.ScreenWipe.orig_DrawPrimitives orig, VertexPositionColor[] vertices) {
+        // Map Capture reloads rooms internally and captures them synchronously.
+        // Transition wipes are gameplay presentation, not room pixels, so keep
+        // them out of exported scanner tiles without changing normal rendering.
+        if (AkronCapture.IsCapturingGameFrame && AkronScreenshotScanner.IsScanning) {
+            return;
+        }
+
         if (deathWipeRenderSuppressionActive && Engine.Scene is Level level) {
             // Do not hide Akron labels on the death frame before the wipe is
             // actually present. Once primitives begin drawing, route the HUD

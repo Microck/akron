@@ -9,6 +9,8 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 ### Fixed
 
 - Fix Creator > Map Capture exports on Linux so room images render the map instead of solid black frames.
+- Fix Creator > Map Capture scans stalling or under-rendering rooms after moving through a chapter.
+- Skip non-playable filler rooms during Creator > Map Capture so custom maps can finish exporting.
 
 ## 0.1.2-beta.25
 
