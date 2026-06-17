@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+## 0.1.2-beta.27
+
 ### Added
 
 - Add mouse control for Free Camera and an optional Cursor Tools hold bind with per-tool checkboxes for Click Teleport, Cursor Zoom, Free Camera, and Freeze gameplay. Cursor Tools mouse movement is enabled by default while its Free Camera option is active.
