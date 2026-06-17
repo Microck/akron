@@ -115,6 +115,46 @@ public sealed partial class AkronOverlay {
             AkronModule.Settings.FreeCameraFreezeGameplay = freezeGameplay;
         }
         DrawPopupTooltip("Pause the whole level while free camera is active. Madeline is not player-controlled either way.", "Freeze gameplay");
+
+        bool mouseControl = AkronModule.Settings.FreeCameraMouseControl;
+        if (ImGui.Checkbox("Mouse control##" + popupId, ref mouseControl)) {
+            AkronModule.Settings.FreeCameraMouseControl = mouseControl;
+        }
+        DrawPopupTooltip("Pan free camera from the cursor position relative to screen center. Movement keys and controller aim still work.", "Mouse control");
+    }
+
+    private void DrawCursorToolsPopupControls(string popupId) {
+        DrawPopupCheckbox(
+            "Click Teleport",
+            () => AkronModule.Settings.CursorToolsClickTeleport,
+            value => AkronModule.Settings.CursorToolsClickTeleport = value,
+            popupId,
+            "Allow Cursor Tools to teleport Madeline with a left click while the Cursor Tools binding is held.",
+            132f);
+
+        DrawPopupCheckbox(
+            "Cursor Zoom",
+            () => AkronModule.Settings.CursorToolsCursorZoom,
+            value => AkronModule.Settings.CursorToolsCursorZoom = value,
+            popupId,
+            "Allow Cursor Tools to enable cursor-centered zoom while the Cursor Tools binding is held.",
+            132f);
+
+        DrawPopupCheckbox(
+            "Free Camera",
+            () => AkronModule.Settings.CursorToolsFreeCamera,
+            value => AkronModule.Settings.CursorToolsFreeCamera = value,
+            popupId,
+            "Allow Cursor Tools to enable Free Camera while the Cursor Tools binding is held.",
+            132f);
+
+        DrawPopupCheckbox(
+            "Freeze gameplay",
+            () => AkronModule.Settings.CursorToolsFreezeGameplay,
+            value => AkronModule.Settings.CursorToolsFreezeGameplay = value,
+            popupId,
+            "Pause the whole level while Cursor Tools' temporary Free Camera is active.",
+            132f);
     }
 
     private void DrawCameraOffsetPopupControls(string popupId) {

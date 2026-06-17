@@ -46,6 +46,7 @@ public sealed partial class AkronOverlay {
         yield return new KeybindOverviewSpec("Show Hitboxes", BuildActionKey("Level", "Show Hitboxes"), "hitboxes");
         yield return new KeybindOverviewSpec("Freeze Gameplay", BuildActionKey("Level", "Freeze Gameplay"), "pause", "step");
         yield return new KeybindOverviewSpec("Cursor Zoom", BuildActionKey("Creator", "Cursor Zoom"), "cursor", "zoom");
+        yield return new KeybindOverviewSpec("Cursor Tools", BuildActionKey("Creator", "Cursor Tools"), "cursor", "tools", "hold");
         yield return new KeybindOverviewSpec("StartPos Set", PopupActionKey("StartPos", "Set"), "startpos", "practice");
         yield return new KeybindOverviewSpec("StartPos Load", PopupActionKey("StartPos", "Load"), "startpos", "practice");
         yield return new KeybindOverviewSpec("StartPos Clear", PopupActionKey("StartPos", "Clear"), "startpos", "practice");

@@ -87,6 +87,7 @@ public sealed class FeatureRegistryTests
     [InlineData(AkronFeatureKind.PauseMenuVisibility, AkronStatus.RegularClean)]
     [InlineData(AkronFeatureKind.PauseCountdown, AkronStatus.Cheat)]
     [InlineData(AkronFeatureKind.FreeCamera, AkronStatus.Cheat)]
+    [InlineData(AkronFeatureKind.CursorTools, AkronStatus.Cheat)]
     [InlineData(AkronFeatureKind.AudioSpeed, AkronStatus.RegularClean)]
     [InlineData(AkronFeatureKind.SafeModeStats, AkronStatus.Cheat)]
     [InlineData(AkronFeatureKind.TriggerViewer, AkronStatus.Cheat)]

@@ -6,6 +6,17 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+### Added
+
+- Add mouse control for Free Camera and an optional Cursor Tools hold bind with per-tool checkboxes for Click Teleport, Cursor Zoom, Free Camera, and Freeze gameplay. Cursor Tools mouse movement is enabled by default while its Free Camera option is active.
+
+### Fixed
+
+- Keep Madeline visible when Free Camera freezes gameplay or Cursor Tools enables Free Camera.
+- Keep Cursor Tools from freezing gameplay unless its Freeze gameplay suboption is enabled, and allow its Click Teleport option to work without the normal Click Teleport hold bind.
+- Keep Cursor Tools Click Teleport aligned while Cursor Zoom is active, including near clamped edge focus, and move Madeline through the normal movement path so her hair follows during frozen teleports.
+- Keep Freeze Gameplay highlighted while active, keep Cursor Tools popup labels readable, prevent repeated click teleports from desyncing Madeline's hair animation, and keep Cursor Tools click teleports targeted at the clicked cursor position while Free Camera and Cursor Zoom are active.
+
 ## 0.1.2-beta.26
 
 ### Added

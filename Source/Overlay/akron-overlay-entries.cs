@@ -58,7 +58,7 @@ public sealed partial class AkronOverlay {
                     }),
                     Toggle("Confirm Restart", () => AkronModule.Settings.ConfirmRestart, value => AkronModule.Settings.ConfirmRestart = value),
                     Toggle("Confirm Full Reset", () => AkronModule.Settings.ConfirmFullReset, value => AkronModule.Settings.ConfirmFullReset = value),
-                    Action("Freeze Gameplay", () => AkronModule.Session != null, () => AkronModule.Session == null ? "Unavailable" : AkronModule.Session.FreezeGameplay ? "On" : "Off", AkronActions.ToggleFreeze),
+                    Action("Freeze Gameplay", AkronFeatureKind.Freeze, () => AkronModule.Session != null, () => AkronModule.Session == null ? "Unavailable" : AkronModule.Session.FreezeGameplay ? "On" : "Off", AkronActions.ToggleFreeze, true),
                     Action("Core Mode", () => level != null, () => AkronActions.DescribeCoreMode(level), () => AkronActions.ToggleCoreMode(level), true, "core", "hot", "cold", "cycle"),
                     NumericToggle("Respawn Time", AkronFeatureKind.RespawnTime, () => AkronModule.Settings.RespawnTimeModifier, value => AkronModule.Settings.RespawnTimeModifier = value, () => AkronModule.Settings.RespawnTimeSeconds, value => AkronModule.Settings.RespawnTimeSeconds = AkronModuleSettings.ClampRespawnTimeSeconds(value), 0.1f, 10f, "%.2f", "s", false),
                     NumericToggle("Pause Timer", AkronFeatureKind.PauseCountdown, () => AkronModule.Settings.PauseCountdown, value => AkronModule.Settings.PauseCountdown = value, () => AkronModule.Settings.PauseCountdownSeconds, value => AkronModule.Settings.PauseCountdownSeconds = AkronModuleSettings.ClampPauseCountdownSeconds(value), 0.1f, 15f, "%.2f", "s", false),
@@ -151,7 +151,7 @@ public sealed partial class AkronOverlay {
                     PolicyToggle("Dash Count", AkronFeatureKind.DashCountOverride, () => AkronModule.Settings.DashCountOverride, value => AkronModule.Settings.DashCountOverride = value),
                     Toggle("Dash Number", () => AkronModule.Settings.DashNumber, value => AkronModule.Settings.DashNumber = value),
                     NumericToggle("Fast Lookout", AkronFeatureKind.FastLookout, () => AkronModule.Settings.FastLookout, value => AkronModule.Settings.FastLookout = value, () => AkronModule.Settings.FastLookoutMultiplier, value => AkronModule.Settings.FastLookoutMultiplier = AkronModuleSettings.ClampFastLookoutMultiplier((int) Math.Round(value)), 1, 10, "%.0f", "x", true, "lookout", "watchtower"),
-                    PolicyToggle("Frame Stepper", AkronFeatureKind.FrameAdvance, () => AkronModule.Session?.FreezeGameplay == true, value => AkronActions.ToggleFreeze()),
+                    PolicyToggle("Frame Stepper", AkronFeatureKind.FrameAdvance, () => AkronModule.Settings.FrameStepper, value => AkronModule.Settings.FrameStepper = value),
                     Action("Golden Start", () => level != null, () => AkronActions.DescribeGoldenStartHelper(level), () => { if (level != null) AkronActions.GiveGoldenFromStart(level); }, "golden", "give_golden", "proof", "start"),
                     PolicyToggle("Golden Transparency", AkronFeatureKind.GoldenTransparency, () => AkronModule.Settings.GoldenTransparency, value => AkronModule.Settings.GoldenTransparency = value, "golden", "opacity", "berry"),
                     PolicyToggle("Grab Mode", AkronFeatureKind.GrabModeHotkey, () => AkronModule.Settings.GrabModeOverrideEnabled, SetGrabModeOverrideEnabled),
@@ -191,6 +191,7 @@ public sealed partial class AkronOverlay {
             case "Creator":
                 return SortCreatorEntries(new List<OverlayEntry> {
                     PolicyToggle("Free Camera", AkronFeatureKind.FreeCamera, () => AkronModule.Settings.FreeCamera, value => AkronModule.Settings.FreeCamera = value),
+                    PolicyToggle("Cursor Tools", AkronFeatureKind.CursorTools, () => AkronModule.Settings.CursorTools, value => AkronModule.Settings.CursorTools = value, "hold", "cursor", "tools", "click teleport", "free camera"),
                     PolicyToggle("Cursor Zoom", AkronFeatureKind.CursorZoom, () => AkronModule.Settings.CursorZoom, value => {
                         AkronModule.Settings.CursorZoom = value;
                         if (!value) {
@@ -449,11 +450,23 @@ public sealed partial class AkronOverlay {
     }
 
     private static OverlayEntry Action(string label, Func<bool> enabled, Func<string> value, Action action, bool isToggle, params string[] tags) {
+        return Action(label, null, enabled, value, action, isToggle, tags);
+    }
+
+    private static OverlayEntry Action(string label, AkronFeatureKind featureKind, Func<bool> enabled, Func<string> value, Action action, params string[] tags) {
+        return Action(label, featureKind, enabled, value, action, false, tags);
+    }
+
+    private static OverlayEntry Action(string label, AkronFeatureKind featureKind, Func<bool> enabled, Func<string> value, Action action, bool isToggle, params string[] tags) {
+        return Action(label, (AkronFeatureKind?) featureKind, enabled, value, action, isToggle, tags);
+    }
+
+    private static OverlayEntry Action(string label, AkronFeatureKind? featureKind, Func<bool> enabled, Func<string> value, Action action, bool isToggle, params string[] tags) {
         return new OverlayEntry(label, enabled, value, () => {
             if (enabled()) {
                 action();
             }
-        }, BuildSearchTerms(label, tags), isToggle, OverlayEntryControl.Action);
+        }, BuildSearchTerms(label, tags), isToggle, OverlayEntryControl.Action, featureKind);
     }
 
     private static OverlayEntry StartPosRow(Level level) {

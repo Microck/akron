@@ -176,6 +176,7 @@ public static class AkronPolicy
 
         AddIfCheat(contributors, settings.AutoKill, "Auto Kill", "akron_feature auto-kill off", AkronFeatureKind.AutoKill);
         AddIfCheat(contributors, settings.CursorZoom, "Cursor Zoom", "akron_feature cursor-zoom off", AkronFeatureKind.CursorZoom);
+        AddIfCheat(contributors, settings.CursorTools, "Cursor Tools", "akron_feature cursor-tools off", AkronFeatureKind.CursorTools);
         AddIfCheat(contributors, settings.ClickTeleport, "Click Teleport", "akron_feature click-teleport off", AkronFeatureKind.ClickTeleport);
         AddIfCheat(contributors, settings.Noclip, "Noclip", "akron_feature noclip off", AkronFeatureKind.Noclip);
         AddIfCheat(contributors, settings.NoclipAccuracy, "Hazard Accuracy", "akron_feature hazard-accuracy off", AkronFeatureKind.HazardAccuracy);
@@ -217,12 +218,13 @@ public static class AkronPolicy
         AddIfCheat(contributors, settings.ShowTriggers, "Show Triggers", "akron_feature show-triggers off", AkronFeatureKind.TriggerViewer);
         AddIfCheat(contributors, settings.EntityInspector, "Entity Inspector", "akron_feature entity-inspector off", AkronFeatureKind.EntityInspector);
         AddIfCheat(contributors, settings.ShowTrajectory, "Show Trajectory", "akron_feature show-trajectory off", AkronFeatureKind.ShowTrajectory);
+        AddIfCheat(contributors, settings.FrameStepper, "Frame Stepper", "akron_feature frame-stepper off", AkronFeatureKind.FrameAdvance);
         AddIfCheat(contributors, settings.AudioSpeed, "Audio Speed", "akron_feature audio-speed off", AkronFeatureKind.AudioSpeed);
         AddExtendedVariantContributors(contributors);
 
         if (session != null)
         {
-            AddIfCheat(contributors, session.FreezeGameplay, "Frame Stepper / Freeze Gameplay", "akron_feature frame-stepper off", AkronFeatureKind.FrameAdvance);
+            AddIfCheat(contributors, session.FreezeGameplay, "Freeze Gameplay", "akron_freeze off", AkronFeatureKind.Freeze);
             AddIfCheat(contributors, session.TimescaleEnabled && session.TimescaleMultiplier != 1f, "Timescale", "akron_timescale off", AkronFeatureKind.Timescale);
         }
 

@@ -260,6 +260,11 @@ public static partial class AkronCommands {
             return;
         }
 
+        if (!AkronModule.Settings.FrameStepper) {
+            Log("step-frame: ignored because frame stepper is off");
+            return;
+        }
+
         session.StepFrameRequested = true;
         Log("step-frame: requested");
     }
@@ -311,7 +316,9 @@ public static partial class AkronCommands {
         }
 
         Microsoft.Xna.Framework.Vector2 target = new Microsoft.Xna.Framework.Vector2(parsedX, parsedY);
-        player.NaiveMove(target - player.Position);
+        Microsoft.Xna.Framework.Vector2 positionBefore = player.Position;
+        player.NaiveMove(target - positionBefore);
+        AkronModule.MoveHairForTeleport(player, player.Position - positionBefore);
         player.Speed = Microsoft.Xna.Framework.Vector2.Zero;
         Log("position: " + player.Position.X.ToString("0.##", CultureInfo.InvariantCulture) + ", " + player.Position.Y.ToString("0.##", CultureInfo.InvariantCulture));
     }

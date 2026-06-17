@@ -84,6 +84,8 @@ public sealed partial class AkronOverlay {
                 DrawGoldenStartPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Free Camera", StringComparison.OrdinalIgnoreCase)) {
                 DrawFreeCameraPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Cursor Tools", StringComparison.OrdinalIgnoreCase)) {
+                DrawCursorToolsPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Camera Offset", StringComparison.OrdinalIgnoreCase)) {
                 DrawCameraOffsetPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Cursor Zoom", StringComparison.OrdinalIgnoreCase)) {
@@ -365,10 +367,15 @@ public sealed partial class AkronOverlay {
     }
 
     private static float CalculatePopupLabelWidth(float controlWidth) {
+        return CalculatePopupLabelWidth(controlWidth, PopupLabelColumnPreferredWidth);
+    }
+
+    private static float CalculatePopupLabelWidth(float controlWidth, float? preferredLabelWidth) {
         float available = ImGui.GetContentRegionAvail().X;
         float spacing = ImGui.GetStyle().ItemSpacing.X;
+        float preferred = preferredLabelWidth ?? PopupLabelColumnPreferredWidth;
         return Math.Min(
-            PopupLabelColumnPreferredWidth,
+            preferred,
             Math.Max(PopupLabelColumnMinWidth, available - controlWidth - spacing));
     }
 
@@ -422,10 +429,10 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip(tooltip, label);
     }
 
-    private void DrawPopupCheckbox(string label, Func<bool> getter, Action<bool> setter, string popupId, string tooltip) {
+    private void DrawPopupCheckbox(string label, Func<bool> getter, Action<bool> setter, string popupId, string tooltip, float? preferredLabelWidth = null) {
         bool enabled = getter();
         const float checkboxWidth = 24f;
-        DrawPopupRowLabel(label, CalculatePopupLabelWidth(checkboxWidth));
+        DrawPopupRowLabel(label, CalculatePopupLabelWidth(checkboxWidth, preferredLabelWidth));
         if (ImGui.Checkbox("##" + label + popupId, ref enabled)) {
             setter(enabled);
             AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "checkbox", enabled.ToString().ToLowerInvariant());

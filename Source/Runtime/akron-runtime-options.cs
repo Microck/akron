@@ -4,11 +4,13 @@ using System.Reflection;
 using Celeste;
 using FMOD.Studio;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using Monocle;
 
 namespace Celeste.Mod.Akron;
 
 public static class AkronRuntimeOptions {
+    private const float FreeCameraMouseDeadzone = 0.08f;
     private static bool vanillaHudHidden;
     private static Player freeCameraLockedPlayer;
     private static bool freeCameraPlayerStateCaptured;
@@ -130,20 +132,29 @@ public static class AkronRuntimeOptions {
     }
 
     public static string DescribeFreeCamera() {
-        return AkronModule.Settings.FreeCamera
-            ? "Room / " + AkronModule.Settings.FreeCameraSpeed
-            : "Off";
+        if (!AkronModule.IsFreeCameraEffectiveEnabled()) {
+            return "Off";
+        }
+
+        List<string> parts = new List<string> {
+            AkronModule.Settings.FreeCamera ? "Room" : "Held",
+            AkronModule.Settings.FreeCameraSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        };
+        if (AkronModule.IsFreeCameraMouseControlEffectiveEnabled()) {
+            parts.Add("Mouse");
+        }
+        return string.Join(" / ", parts);
     }
 
     public static bool ShouldFreezeGameplayForFreeCamera(Level level) {
         return level != null &&
-               AkronModule.Settings.FreeCamera &&
-               AkronModule.Settings.FreeCameraFreezeGameplay;
+               (AkronModule.Settings.FreeCamera && AkronModule.Settings.FreeCameraFreezeGameplay ||
+                AkronModule.IsCursorToolsFreezeGameplayEffectiveEnabled());
     }
 
     public static bool IsFreeCameraActive(Level level) {
         return level != null &&
-               AkronModule.Settings.FreeCamera &&
+               AkronModule.IsFreeCameraEffectiveEnabled() &&
                AkronPolicy.CanUse(AkronFeatureKind.FreeCamera).Allowed;
     }
 
@@ -396,7 +407,7 @@ public static class AkronRuntimeOptions {
     }
 
     private static void ApplyFreeCamera(Level level, Player player) {
-        if (level == null || !AkronModule.Settings.FreeCamera) {
+        if (level == null || !AkronModule.IsFreeCameraEffectiveEnabled()) {
             RestoreFreeCameraPlayerControl();
             return;
         }
@@ -407,6 +418,10 @@ public static class AkronRuntimeOptions {
         }
 
         LockFreeCameraPlayerControl(player);
+        if (AkronModule.ShouldSuppressFreeCameraMovementForClickTeleport()) {
+            level.Camera.Position = ClampCameraToRoom(level, level.Camera.Position);
+            return;
+        }
 
         Vector2 aim = Input.Aim.Value;
         if (MInput.Keyboard.Check(Microsoft.Xna.Framework.Input.Keys.Left)) {
@@ -422,12 +437,66 @@ public static class AkronRuntimeOptions {
             aim.Y += 1f;
         }
 
-        if (aim != Vector2.Zero) {
+        aim = NormalizeFreeCameraInputAim(aim);
+        if (AkronModule.IsFreeCameraMouseControlEffectiveEnabled()) {
+            MouseState mouse = Mouse.GetState();
+            Vector2 mouseAim = CalculateFreeCameraMouseAim(AkronScreenProjection.MouseScreenToGame(new Vector2(mouse.X, mouse.Y)));
+            aim = ClampFreeCameraAim(new Vector2 {
+                X = aim.X + mouseAim.X,
+                Y = aim.Y + mouseAim.Y
+            });
+        }
+
+        if (VectorLength(aim) > 0f) {
             float speed = AkronModuleSettings.ClampFreeCameraSpeed(AkronModule.Settings.FreeCameraSpeed);
-            level.Camera.Position = ClampCameraToRoom(level, level.Camera.Position + aim.SafeNormalize() * speed * Engine.RawDeltaTime);
+            level.Camera.Position = ClampCameraToRoom(level, new Vector2 {
+                X = level.Camera.Position.X + aim.X * speed * Engine.RawDeltaTime,
+                Y = level.Camera.Position.Y + aim.Y * speed * Engine.RawDeltaTime
+            });
         } else {
             level.Camera.Position = ClampCameraToRoom(level, level.Camera.Position);
         }
+
+    }
+
+    internal static Vector2 CalculateFreeCameraMouseAim(Vector2 mouseGamePosition) {
+        Vector2 aim = new Vector2 {
+            X = (mouseGamePosition.X - 160f) / 160f,
+            Y = (mouseGamePosition.Y - 90f) / 90f
+        };
+        float length = VectorLength(aim);
+        if (length <= FreeCameraMouseDeadzone) {
+            return default;
+        }
+
+        float adjustedLength = Math.Min(1f, (length - FreeCameraMouseDeadzone) / (1f - FreeCameraMouseDeadzone));
+        Vector2 normalized = NormalizeFreeCameraInputAim(aim);
+        return new Vector2 {
+            X = normalized.X * adjustedLength,
+            Y = normalized.Y * adjustedLength
+        };
+    }
+
+    internal static Vector2 NormalizeFreeCameraInputAim(Vector2 aim) {
+        float length = VectorLength(aim);
+        return length <= 0f
+            ? default
+            : new Vector2 {
+                X = aim.X / length,
+                Y = aim.Y / length
+            };
+    }
+
+    internal static Vector2 ClampFreeCameraAim(Vector2 aim) {
+        if (VectorLength(aim) <= 1f) {
+            return aim;
+        }
+
+        return NormalizeFreeCameraInputAim(aim);
+    }
+
+    private static float VectorLength(Vector2 vector) {
+        return (float) Math.Sqrt(vector.X * vector.X + vector.Y * vector.Y);
     }
 
     private static Vector2 ClampCameraToRoom(Level level, Vector2 position) {

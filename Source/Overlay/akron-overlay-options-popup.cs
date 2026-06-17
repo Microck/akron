@@ -167,6 +167,7 @@ public sealed partial class AkronOverlay {
                string.Equals(label, "Screenshake", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Screen Tint", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Free Camera", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Cursor Tools", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Camera Offset", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Cursor Zoom", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Golden Start", StringComparison.OrdinalIgnoreCase) ||
@@ -390,6 +391,12 @@ public sealed partial class AkronOverlay {
 
         if (string.Equals(label, "Free Camera", StringComparison.OrdinalIgnoreCase)) {
             return AkronRuntimeOptions.DescribeFreeCamera();
+        }
+
+        if (string.Equals(label, "Cursor Tools", StringComparison.OrdinalIgnoreCase)) {
+            return AkronModule.Settings.CursorTools
+                ? AkronModuleSettings.DescribeBinding(AkronModule.Settings.CursorToolsHold)
+                : "Off";
         }
 
         if (string.Equals(label, "Cursor Zoom", StringComparison.OrdinalIgnoreCase)) {

@@ -49,7 +49,7 @@ internal static partial class AkronScreenProjection {
 
     public static Vector2 MouseScreenToWorld(Level level, Vector2 mouseScreenPosition) {
         Vector2 gamePosition = RemoveLevelZoom(level, MouseScreenToGame(mouseScreenPosition));
-        return CreateVector2(level.Camera.X + gamePosition.X, level.Camera.Y + gamePosition.Y);
+        return ScreenGameToWorld(level, gamePosition);
     }
 
     public static Vector2 MouseScreenToGame(Vector2 mouseScreenPosition) {
@@ -76,13 +76,16 @@ internal static partial class AkronScreenProjection {
         return CreateVector2(viewport.X, viewport.Y);
     }
 
-    private static Vector2 RemoveLevelZoom(Level level, Vector2 screenGamePosition) {
+    internal static Vector2 RemoveLevelZoom(Level level, Vector2 screenGamePosition) {
         float zoom = CurrentLevelZoom(level);
+        return RemoveLevelZoom(screenGamePosition, zoom, CurrentLevelZoomFocus(level));
+    }
+
+    internal static Vector2 RemoveLevelZoom(Vector2 screenGamePosition, float zoom, Vector2 focus) {
         if (System.Math.Abs(zoom - 1f) < 0.001f) {
             return screenGamePosition;
         }
 
-        Vector2 focus = CurrentLevelZoomFocus(level);
         return CreateVector2(
             focus.X + (screenGamePosition.X - focus.X) / zoom,
             focus.Y + (screenGamePosition.Y - focus.Y) / zoom);
@@ -96,6 +99,16 @@ internal static partial class AkronScreenProjection {
         return CreateVector2(
             focus.X + (screenGamePosition.X - focus.X) * zoom,
             focus.Y + (screenGamePosition.Y - focus.Y) * zoom);
+    }
+
+    internal static Vector2 ScreenGameToWorld(Level level, Vector2 screenGamePosition) {
+        return level == null
+            ? screenGamePosition
+            : ScreenGameToWorld(CreateVector2(level.Camera.X, level.Camera.Y), screenGamePosition);
+    }
+
+    internal static Vector2 ScreenGameToWorld(Vector2 cameraPosition, Vector2 screenGamePosition) {
+        return CreateVector2(cameraPosition.X + screenGamePosition.X, cameraPosition.Y + screenGamePosition.Y);
     }
 
     private static Vector2 CreateVector2(float x, float y) {

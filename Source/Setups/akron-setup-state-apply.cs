@@ -55,6 +55,11 @@ public partial class AkronModuleSettings {
         CursorZoomPercent = ClampCursorZoomPercent(resolved.CursorZoomPercent, CursorZoomAllowZoomOut);
         CursorZoomStepPercent = ClampCursorZoomStepPercent(resolved.CursorZoomStepPercent);
         CursorZoomActivationMode = NormalizeCursorZoomActivationMode(resolved.CursorZoomActivationMode);
+        CursorTools = resolved.CursorTools;
+        CursorToolsClickTeleport = resolved.CursorToolsClickTeleport;
+        CursorToolsCursorZoom = resolved.CursorToolsCursorZoom;
+        CursorToolsFreeCamera = resolved.CursorToolsFreeCamera;
+        CursorToolsFreezeGameplay = resolved.CursorToolsFreezeGameplay;
         RoomLabels = resolved.RoomLabels;
         LabelSystemVisible = resolved.LabelSystemVisible;
         RoomLabelColor = ClampRgb(resolved.RoomLabelColor);
@@ -234,6 +239,7 @@ public partial class AkronModuleSettings {
         FixHitboxPixels = resolved.FixHitboxPixels;
         ShowTriggers = resolved.ShowTriggers;
         EntityInspector = resolved.EntityInspector;
+        FrameStepper = resolved.FrameStepper;
         InfiniteStamina = resolved.InfiniteStamina;
         InfiniteDash = resolved.InfiniteDash;
         SetInventoryDashes = ClampSetInventoryDashes(resolved.SetInventoryDashes);
@@ -420,6 +426,7 @@ public partial class AkronModuleSettings {
         FreeCamera = resolved.FreeCamera;
         FreeCameraSpeed = ClampFreeCameraSpeed(resolved.FreeCameraSpeed);
         FreeCameraFreezeGameplay = resolved.FreeCameraFreezeGameplay;
+        FreeCameraMouseControl = resolved.FreeCameraMouseControl;
         SmartStartPos = resolved.SmartStartPos;
         RespawnAtStartPos = resolved.RespawnAtStartPos;
         StartPosShowLabel = resolved.StartPosShowLabel;

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using Celeste;
 using Microsoft.Xna.Framework;
@@ -8,6 +9,65 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
+    internal static bool ShouldUseCursorToolsHold(bool cursorTools, bool cursorToolsHoldBindingHeld, bool overlayVisible) {
+        return cursorTools && cursorToolsHoldBindingHeld && !overlayVisible;
+    }
+
+    internal static bool IsCursorToolsHoldActive() {
+        return ShouldUseCursorToolsHold(
+            Settings.CursorTools,
+            Settings.CursorToolsHold?.Check ?? false,
+            IsOverlayVisible);
+    }
+
+    internal static bool IsClickTeleportEffectiveEnabled() {
+        return IsCursorToolEffectiveEnabled(Settings.ClickTeleport, IsCursorToolsHoldActive(), Settings.CursorToolsClickTeleport);
+    }
+
+    internal static bool IsClickTeleportCursorActive() {
+        return IsClickTeleportCursorActive(
+            Settings.ClickTeleport,
+            Settings.ClickTeleportCursor?.Check ?? false,
+            IsCursorToolsHoldActive(),
+            Settings.CursorToolsClickTeleport);
+    }
+
+    internal static bool IsCursorZoomEffectiveEnabled() {
+        return IsCursorToolEffectiveEnabled(Settings.CursorZoom, IsCursorToolsHoldActive(), Settings.CursorToolsCursorZoom);
+    }
+
+    internal static bool IsFreeCameraEffectiveEnabled() {
+        return IsCursorToolEffectiveEnabled(Settings.FreeCamera, IsCursorToolsHoldActive(), Settings.CursorToolsFreeCamera);
+    }
+
+    internal static bool IsFreeCameraMouseControlEffectiveEnabled() {
+        return IsFreeCameraMouseControlEffectiveEnabled(
+            Settings.FreeCameraMouseControl,
+            IsCursorToolsHoldActive(),
+            Settings.CursorToolsFreeCamera);
+    }
+
+    internal static bool IsCursorToolEffectiveEnabled(bool savedToolEnabled, bool cursorToolsHoldActive, bool cursorToolsOptionEnabled) {
+        return savedToolEnabled || cursorToolsHoldActive && cursorToolsOptionEnabled;
+    }
+
+    internal static bool IsClickTeleportCursorActive(bool clickTeleportEnabled, bool clickTeleportHoldActive, bool cursorToolsHoldActive, bool cursorToolsClickTeleportEnabled) {
+        return clickTeleportEnabled && clickTeleportHoldActive ||
+               cursorToolsHoldActive && cursorToolsClickTeleportEnabled;
+    }
+
+    internal static bool IsFreeCameraMouseControlEffectiveEnabled(bool freeCameraMouseControlEnabled, bool cursorToolsHoldActive, bool cursorToolsFreeCameraEnabled) {
+        return freeCameraMouseControlEnabled ||
+               cursorToolsHoldActive &&
+               cursorToolsFreeCameraEnabled;
+    }
+
+    internal static bool IsCursorToolsFreezeGameplayEffectiveEnabled() {
+        return IsCursorToolsHoldActive() &&
+               Settings.CursorToolsFreeCamera &&
+               Settings.CursorToolsFreezeGameplay;
+    }
+
     private static void ApplyStartPosMousePlacement(Level level, Player player) {
         if (!Settings.StartPosMousePlacement ||
             Overlay?.IsStartPosPlacementActive == true ||
@@ -31,8 +91,9 @@ public partial class AkronModule {
         AkronActions.SetStartPosAtMouse(level, target);
     }
 
-    private static void ApplyClickTeleport(Level level, Player player) {
-        if (!Settings.ClickTeleport ||
+    private static void CaptureClickTeleportTargetBeforeCameraMovement(Level level, Player player) {
+        pendingClickTeleportTarget = null;
+        if (!IsClickTeleportEffectiveEnabled() ||
             Settings.StartPosMousePlacement ||
             player == null ||
             player.Dead ||
@@ -46,30 +107,103 @@ public partial class AkronModule {
         bool leftDown = mouse.LeftButton == ButtonState.Pressed;
         bool pressed = leftDown && !clickTeleportLastLeftDown;
         clickTeleportLastLeftDown = leftDown;
-        if (!pressed || !TryUse(AkronFeatureKind.ClickTeleport)) {
+        if (!pressed) {
             return;
         }
 
-        Vector2 target = AkronScreenProjection.MouseScreenToWorld(level, new Vector2(mouse.X, mouse.Y));
+        Vector2 target = MouseScreenToWorldForClickTeleport(level, new Vector2(mouse.X, mouse.Y));
         target.X = Calc.Clamp(target.X, level.Bounds.Left, level.Bounds.Right);
         target.Y = Calc.Clamp(target.Y, level.Bounds.Top, level.Bounds.Bottom);
-        player.Position = target;
+        pendingClickTeleportTarget = target;
+    }
+
+    private static void ApplyClickTeleport(Level level, Player player) {
+        if (!IsClickTeleportEffectiveEnabled() ||
+            Settings.StartPosMousePlacement ||
+            player == null ||
+            player.Dead ||
+            IsOverlayVisible ||
+            !ShouldShowClickTeleportCursor()) {
+            pendingClickTeleportTarget = null;
+            return;
+        }
+
+        Vector2? capturedTarget = pendingClickTeleportTarget;
+        pendingClickTeleportTarget = null;
+        if (!capturedTarget.HasValue || !TryUse(AkronFeatureKind.ClickTeleport)) {
+            return;
+        }
+
+        Vector2 target = capturedTarget.Value;
+        Vector2 positionBefore = player.Position;
+        Vector2 requestedDelta = new Vector2 {
+            X = target.X - positionBefore.X,
+            Y = target.Y - positionBefore.Y
+        };
+        player.NaiveMove(requestedDelta);
+        MoveHairForTeleport(player, new Vector2 {
+            X = player.Position.X - positionBefore.X,
+            Y = player.Position.Y - positionBefore.Y
+        });
         player.Speed = Vector2.Zero;
-        if (ShouldClickTeleportMoveCamera(AkronRuntimeOptions.IsFreeCameraActive(level))) {
+        if (ShouldClickTeleportMoveCamera(AkronRuntimeOptions.IsFreeCameraActive(level), IsLevelZoomActive(level))) {
             level.Camera.Position = ClampCameraToRoom(level, player.CameraTarget);
         }
         Engine.Scene?.Add(new AkronToast("Teleported to cursor."));
     }
 
-    internal static bool ShouldClickTeleportMoveCamera(bool freeCameraActive) {
-        return !freeCameraActive;
+    internal static bool ShouldClickTeleportMoveCamera(bool freeCameraActive, bool levelZoomActive) {
+        return !freeCameraActive && !levelZoomActive;
+    }
+
+    internal static bool IsLevelZoomActive(Level level) {
+        return level != null && Math.Abs(level.Zoom - 1f) >= 0.001f;
+    }
+
+    internal static bool ShouldSuppressFreeCameraMovementForClickTeleport() {
+        return pendingClickTeleportTarget.HasValue;
+    }
+
+    internal static Vector2 MouseScreenToWorldForClickTeleport(Level level, Vector2 mouseScreenPosition) {
+        Vector2 mouseGamePosition = AkronScreenProjection.MouseScreenToGame(mouseScreenPosition);
+        float zoom = CurrentClickTeleportLevelZoom(level);
+        Vector2 focus = CurrentClickTeleportZoomFocus(level, mouseGamePosition, zoom);
+        return AkronScreenProjection.ScreenGameToWorld(
+            level,
+            AkronScreenProjection.RemoveLevelZoom(mouseGamePosition, zoom, focus));
+    }
+
+    private static float CurrentClickTeleportLevelZoom(Level level) {
+        if (ShouldShowCursorZoomCursor()) {
+            return ClampNativeCursorZoom(Settings.CursorZoomPercent / 100f);
+        }
+
+        return level == null || level.Zoom <= 0f ? 1f : level.Zoom;
+    }
+
+    private static Vector2 CurrentClickTeleportZoomFocus(Level level, Vector2 mouseGamePosition, float zoom) {
+        if (ShouldShowCursorZoomCursor()) {
+            return ClampCursorZoomFocus(mouseGamePosition, zoom);
+        }
+
+        return level == null ? new Vector2(160f, 90f) : level.ZoomFocusPoint;
+    }
+
+    internal static void MoveHairForTeleport(Player player, Vector2 delta) {
+        if (player?.Hair == null) {
+            return;
+        }
+
+        player.Hair.MoveHairBy(delta);
     }
 
     private static void UpdateCursorZoom(Level level) {
-        if (!Settings.CursorZoom || IsOverlayVisible || !AkronPolicy.CanUse(AkronFeatureKind.CursorZoom).Allowed) {
+        bool cursorToolsHoldActive = IsCursorToolsHoldActive();
+        bool cursorZoomEnabled = IsCursorZoomEffectiveEnabled();
+        if (!cursorZoomEnabled || IsOverlayVisible || !AkronPolicy.CanUse(AkronFeatureKind.CursorZoom).Allowed) {
             cursorZoomHadScrollSample = false;
             cursorZoomLastBindDown = false;
-            if (!Settings.CursorZoom) {
+            if (!cursorZoomEnabled) {
                 cursorZoomToggleActive = false;
                 DeactivateCursorZoom(level);
             }
@@ -77,17 +211,17 @@ public partial class AkronModule {
         }
 
         bool bindDown = Settings.CursorZoomHold?.Check ?? false;
-        bool bindPressed = bindDown && !cursorZoomLastBindDown;
-        cursorZoomLastBindDown = bindDown;
+        bool bindPressed = Settings.CursorZoom && bindDown && !cursorZoomLastBindDown;
+        cursorZoomLastBindDown = Settings.CursorZoom ? bindDown : false;
 
         AkronCursorZoomActivationMode activationMode = AkronModuleSettings.NormalizeCursorZoomActivationMode(Settings.CursorZoomActivationMode);
-        bool active = bindDown;
+        bool active = cursorToolsHoldActive || bindDown;
         if (activationMode == AkronCursorZoomActivationMode.Toggle) {
             if (bindPressed) {
                 cursorZoomToggleActive = !cursorZoomToggleActive;
                 cursorZoomHadScrollSample = false;
             }
-            active = cursorZoomToggleActive;
+            active = cursorToolsHoldActive || cursorZoomToggleActive;
         }
 
         if (!active) {
@@ -228,6 +362,7 @@ public partial class AkronModule {
 
     internal static string DescribeCursorZoom(Level level) {
         string hold = (Settings.CursorZoomHold?.Check ?? false).ToString().ToLowerInvariant();
+        string cursorToolsHold = IsCursorToolsHoldActive().ToString().ToLowerInvariant();
         string focus = cursorZoomApplied
             ? cursorZoomFocusGamePosition.X.ToString("0.#", CultureInfo.InvariantCulture) + "," + cursorZoomFocusGamePosition.Y.ToString("0.#", CultureInfo.InvariantCulture)
             : "unset";
@@ -242,6 +377,7 @@ public partial class AkronModule {
                ";active=" + (cursorZoomApplied || cursorZoomToggleActive).ToString().ToLowerInvariant() +
                ";owner=" + DescribeCursorZoomOwner() +
                ";hold=" + hold +
+               ";cursor-tools-hold=" + cursorToolsHold +
                ";zoom=" + liveZoom +
                ";zoom-target=" + targetZoom +
                ";focus=" + focus;

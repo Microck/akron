@@ -138,7 +138,6 @@ public sealed partial class AkronOverlay {
         });
         yield return new BindableAction(PopupActionKey("Hazard Accuracy", "Reset"), "Hazard Accuracy / Reset", AkronModule.ResetNoclipAccuracy);
 
-        yield return new BindableAction(PopupActionKey("Frame Stepper", "Freeze"), "Frame Stepper / Freeze", AkronActions.ToggleFreeze);
         yield return new BindableAction(PopupActionKey("Frame Stepper", "Step Once"), "Frame Stepper / Step Once", ExecuteFrameStepOnce);
         yield return new BindableAction(PopupActionKey("Frame Stepper", "Repeat"), "Frame Stepper / Hold Repeat", () => AkronModule.Settings.StepHoldRepeat = !AkronModule.Settings.StepHoldRepeat);
         yield return new BindableAction(PopupActionKey("Frame Stepper", "Delay Down"), "Frame Stepper / Delay Down", () => AkronModule.Settings.StepHoldDelayFrames = CycleInt(AkronModule.Settings.StepHoldDelayFrames - 6, 6, 60));
@@ -186,7 +185,7 @@ public sealed partial class AkronOverlay {
 
     private static void ExecuteFrameStepOnce() {
         AkronModuleSession session = AkronModule.Session;
-        if (session?.FreezeGameplay == true) {
+        if (AkronModule.Settings.FrameStepper && session?.FreezeGameplay == true) {
             session.StepFrameRequested = true;
         }
     }
@@ -269,6 +268,7 @@ public sealed partial class AkronOverlay {
             "Next StartPos" => AkronModuleSettings.DescribeBinding(settings.NextStartPos),
             "Click Teleport" => "Hold " + AkronModuleSettings.DescribeBinding(settings.ClickTeleportCursor) + " and click",
             "Cursor Zoom" => "Hold " + AkronModuleSettings.DescribeBinding(settings.CursorZoomHold) + " and scroll",
+            "Cursor Tools" => "Hold " + AkronModuleSettings.DescribeBinding(settings.CursorToolsHold),
             "Reload Room" => AkronModuleSettings.DescribeBinding(settings.ReloadRoom),
             "Reload Chapter" => AkronModuleSettings.DescribeBinding(settings.ReloadChapter),
             "Open Debug Map" => AkronModuleSettings.DescribeBinding(settings.OpenDebugMap),
@@ -663,6 +663,7 @@ public sealed partial class AkronOverlay {
             "Player/Noclip" => null,
             "Player/Hazard Accuracy" => null,
             "Creator/Cursor Zoom" => settings.CursorZoomHold,
+            "Creator/Cursor Tools" => settings.CursorToolsHold,
             "Level/Show Hitboxes" => settings.ToggleHitboxes,
             "Level/Freeze Gameplay" => settings.FreezeGameplay,
             "Shortcuts/Neutral Drop" => null,
@@ -696,6 +697,7 @@ public sealed partial class AkronOverlay {
             case "popup/StartPos/Load Slot 8": settings.LoadStartPosSlot8 = EmptyButtonBinding(); return true;
             case "popup/StartPos/Load Slot 9": settings.LoadStartPosSlot9 = EmptyButtonBinding(); return true;
             case "Creator/Cursor Zoom": settings.CursorZoomHold = EmptyButtonBinding(); return true;
+            case "Creator/Cursor Tools": settings.CursorToolsHold = EmptyButtonBinding(); return true;
             case "Level/Show Hitboxes": settings.ToggleHitboxes = EmptyButtonBinding(); return true;
             case "Level/Freeze Gameplay": settings.FreezeGameplay = EmptyButtonBinding(); return true;
         }

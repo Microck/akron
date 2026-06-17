@@ -47,6 +47,46 @@ public sealed class SetupPackTests {
     }
 
     [Fact]
+    public void WholeSetupPreservesCursorToolAndFreeCameraMouseSettings() {
+        AkronModuleSettings settings = new AkronModuleSettings {
+            CursorZoom = false,
+            CursorTools = true,
+            CursorToolsClickTeleport = false,
+            CursorToolsCursorZoom = true,
+            CursorToolsFreeCamera = false,
+            CursorToolsFreezeGameplay = true,
+            FrameStepper = true,
+            FreeCamera = false,
+            FreeCameraSpeed = 360,
+            FreeCameraFreezeGameplay = false,
+            FreeCameraMouseControl = true,
+            ClickTeleport = false
+        };
+
+        AkronSetupPack pack = AkronSetupPacks.Capture(settings, session: null, "Cursor Tools", AkronSetupSection.Whole);
+        AkronModuleSettings target = new AkronModuleSettings();
+
+        AkronSetupPacks.Apply(target, session: null, pack, AkronSetupSection.Whole);
+
+        Assert.True(pack.State.CursorTools);
+        Assert.False(pack.State.CursorToolsClickTeleport);
+        Assert.True(pack.State.CursorToolsCursorZoom);
+        Assert.False(pack.State.CursorToolsFreeCamera);
+        Assert.True(pack.State.CursorToolsFreezeGameplay);
+        Assert.True(pack.State.FrameStepper);
+        Assert.True(pack.State.FreeCameraMouseControl);
+        Assert.True(target.CursorTools);
+        Assert.False(target.CursorToolsClickTeleport);
+        Assert.True(target.CursorToolsCursorZoom);
+        Assert.False(target.CursorToolsFreeCamera);
+        Assert.True(target.CursorToolsFreezeGameplay);
+        Assert.True(target.FrameStepper);
+        Assert.True(target.FreeCameraMouseControl);
+        Assert.Equal(360, target.FreeCameraSpeed);
+        Assert.False(target.FreeCameraFreezeGameplay);
+    }
+
+    [Fact]
     public void ScopedAudioImportAppliesOnlyAudioState() {
         AkronModuleSettings target = new AkronModuleSettings {
             SmartStartPos = true,

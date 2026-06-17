@@ -98,7 +98,7 @@ public partial class AkronModule {
             AkronActions.ToggleFreeze();
         }
 
-        if (Settings.StepFrame?.Pressed ?? false && Session.FreezeGameplay) {
+        if (Settings.StepFrame?.Pressed ?? false && Settings.FrameStepper && Session.FreezeGameplay) {
             Session.StepFrameRequested = true;
         }
 
@@ -256,7 +256,7 @@ public partial class AkronModule {
     }
 
     private static void UpdateStepHoldRepeat() {
-        if (!Session.FreezeGameplay || !Settings.StepHoldRepeat || !IsKeyboardBindingHeld(Settings.StepFrame?.Keys)) {
+        if (!Settings.FrameStepper || !Session.FreezeGameplay || !Settings.StepHoldRepeat || !IsKeyboardBindingHeld(Settings.StepFrame?.Keys)) {
             Session.StepFrameHoldFrames = 0;
             Session.StepFrameRepeatCountdown = 0;
             return;
@@ -328,7 +328,8 @@ public partial class AkronModule {
         bool shouldShowCursor = Overlay?.Visible == true ||
                                 Overlay?.IsTransientMouseUiActive == true ||
                                 ShouldShowClickTeleportCursor() ||
-                                ShouldShowCursorZoomCursor();
+                                ShouldShowCursorZoomCursor() ||
+                                ShouldShowFreeCameraMouseCursor();
         if (shouldShowCursor) {
             ShowManagedCursorForTransientUi();
             return;
@@ -358,8 +359,7 @@ public partial class AkronModule {
     private static bool ShouldShowClickTeleportCursor() {
         return Engine.Scene is Level &&
                Overlay?.Visible != true &&
-               Settings.ClickTeleport &&
-               (Settings.ClickTeleportCursor?.Check ?? false) &&
+               IsClickTeleportCursorActive() &&
                AkronPolicy.CanUse(AkronFeatureKind.ClickTeleport).Allowed;
     }
 
@@ -367,10 +367,18 @@ public partial class AkronModule {
         AkronCursorZoomActivationMode activationMode = AkronModuleSettings.NormalizeCursorZoomActivationMode(Settings.CursorZoomActivationMode);
         return Engine.Scene is Level &&
                Overlay?.Visible != true &&
-               Settings.CursorZoom &&
-               ((activationMode == AkronCursorZoomActivationMode.Hold && (Settings.CursorZoomHold?.Check ?? false)) ||
+               IsCursorZoomEffectiveEnabled() &&
+               (IsCursorToolsHoldActive() ||
+                (activationMode == AkronCursorZoomActivationMode.Hold && (Settings.CursorZoomHold?.Check ?? false)) ||
                 (activationMode == AkronCursorZoomActivationMode.Toggle && cursorZoomToggleActive)) &&
                AkronPolicy.CanUse(AkronFeatureKind.CursorZoom).Allowed;
+    }
+
+    private static bool ShouldShowFreeCameraMouseCursor() {
+        return Engine.Scene is Level &&
+               Overlay?.Visible != true &&
+               AkronRuntimeOptions.IsFreeCameraActive(Engine.Scene as Level) &&
+               IsFreeCameraMouseControlEffectiveEnabled();
     }
 
     private static void RestoreCursorVisibility() {

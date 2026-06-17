@@ -87,6 +87,7 @@ public static partial class AkronCommands {
         Log("frame-bypass-nasty-mode: " + AkronModule.Settings.FrameBypassSillyMode.ToString().ToLowerInvariant());
         Log("free-camera: " + AkronRuntimeOptions.DescribeFreeCamera());
         Log("free-camera-freeze-gameplay: " + AkronModule.Settings.FreeCameraFreezeGameplay.ToString().ToLowerInvariant());
+        Log("free-camera-mouse-control: " + AkronModule.Settings.FreeCameraMouseControl.ToString().ToLowerInvariant());
         Log("hide-hud: " + AkronRuntimeOptions.DescribeHudVisibility());
         Log("safe-mode-stats: " + AkronRuntimeOptions.DescribeSafeModeStats());
         if (Settings.Instance != null) {
@@ -111,6 +112,13 @@ public static partial class AkronCommands {
         Log("click-teleport: " + AkronModule.Settings.ClickTeleport.ToString().ToLowerInvariant());
         Log("click-teleport-cursor: " + AkronModuleSettings.DescribeBinding(AkronModule.Settings.ClickTeleportCursor));
         Log("click-teleport-cursor-held: " + (AkronModule.Settings.ClickTeleportCursor?.Check ?? false).ToString().ToLowerInvariant());
+        Log("cursor-tools: " + AkronModule.Settings.CursorTools.ToString().ToLowerInvariant());
+        Log("cursor-tools-hold: " + AkronModuleSettings.DescribeBinding(AkronModule.Settings.CursorToolsHold));
+        Log("cursor-tools-held: " + (AkronModule.Settings.CursorToolsHold?.Check ?? false).ToString().ToLowerInvariant());
+        Log("cursor-tools-click-teleport: " + AkronModule.Settings.CursorToolsClickTeleport.ToString().ToLowerInvariant());
+        Log("cursor-tools-cursor-zoom: " + AkronModule.Settings.CursorToolsCursorZoom.ToString().ToLowerInvariant());
+        Log("cursor-tools-free-camera: " + AkronModule.Settings.CursorToolsFreeCamera.ToString().ToLowerInvariant());
+        Log("cursor-tools-freeze-gameplay: " + AkronModule.Settings.CursorToolsFreezeGameplay.ToString().ToLowerInvariant());
         Log("cursor-zoom: " + AkronModule.DescribeCursorZoom(Engine.Scene as Level));
         Log("cursor-zoom-hold: " + AkronModuleSettings.DescribeBinding(AkronModule.Settings.CursorZoomHold));
         Log("room-labels: " + AkronModule.Settings.RoomLabels.ToString().ToLowerInvariant());
@@ -229,6 +237,7 @@ public static partial class AkronCommands {
         Log("last-death-visible: " + AkronEntityInspector.HasVisibleLastDeathHitbox().ToString().ToLowerInvariant());
         Log("last-death-object: " + (string.IsNullOrWhiteSpace(session?.LastDeathEntityType) ? "unset" : session.LastDeathEntityType));
         Log("inspector: " + AkronModule.Settings.EntityInspector.ToString().ToLowerInvariant());
+        Log("frame-stepper: " + AkronModule.Settings.FrameStepper.ToString().ToLowerInvariant());
         Log("step-hold-repeat: " + AkronModule.Settings.StepHoldRepeat.ToString().ToLowerInvariant());
         Log("step-repeat-delay: " + AkronModule.Settings.StepHoldDelayFrames.ToString(CultureInfo.InvariantCulture));
         Log("step-repeat-interval: " + AkronModule.Settings.StepHoldIntervalFrames.ToString(CultureInfo.InvariantCulture));

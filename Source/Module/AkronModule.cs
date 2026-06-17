@@ -62,6 +62,7 @@ public partial class AkronModule : EverestModule {
     private static Vector2 hazardAccuracyLastPosition;
     private static int forcedTrailFrame;
     private static bool clickTeleportLastLeftDown;
+    private static Vector2? pendingClickTeleportTarget;
     private static int cursorZoomLastScrollValue;
     private static bool cursorZoomHadScrollSample;
     private static Vector2 cursorZoomFocusGamePosition;

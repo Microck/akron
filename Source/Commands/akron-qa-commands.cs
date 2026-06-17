@@ -223,6 +223,14 @@ public static partial class AkronCommands {
         Log("player-position: " + FormatVector(player.Position));
         Log("player-speed: " + FormatVector(player.Speed));
         Log("player-depth: " + player.Depth.ToString(CultureInfo.InvariantCulture));
+        Log("player-visible: " + player.Visible.ToString().ToLowerInvariant());
+        if (player.Hair?.Nodes != null && player.Hair.Nodes.Count > 0) {
+            Log("player-hair-root: " + FormatVector(player.Hair.Nodes[0]));
+            Log("player-hair-offset: " + FormatVector(player.Hair.Nodes[0] - player.Position));
+        } else {
+            Log("player-hair-root: unavailable");
+            Log("player-hair-offset: unavailable");
+        }
         Log("camera-position: " + FormatVector(level.Camera.Position));
         Log("camera-target: " + FormatVector(player.CameraTarget));
         Log("player-state: " + player.StateMachine.State.ToString(CultureInfo.InvariantCulture));

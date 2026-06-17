@@ -552,6 +552,7 @@ public enum AkronFeatureKind {
     LevelEnterSkip,
     DeathPbLossRestart,
     CameraOffset,
+    CursorTools,
     CursorZoom,
     UnsafeNativeSavestateOverride,
     SubmissionMode,

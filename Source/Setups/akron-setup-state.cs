@@ -55,6 +55,11 @@ public sealed class AkronSetupState {
     public bool CursorZoomAllowZoomOut { get; set; }
     public bool CursorZoomResetOnDeactivate { get; set; }
     public AkronCursorZoomActivationMode CursorZoomActivationMode { get; set; } = AkronCursorZoomActivationMode.Hold;
+    public bool CursorTools { get; set; }
+    public bool CursorToolsClickTeleport { get; set; } = true;
+    public bool CursorToolsCursorZoom { get; set; } = true;
+    public bool CursorToolsFreeCamera { get; set; } = true;
+    public bool CursorToolsFreezeGameplay { get; set; }
     public bool RoomLabels { get; set; }
     public bool LabelSystemVisible { get; set; }
     public int RoomLabelColor { get; set; } = 0xFFFFFF;
@@ -233,6 +238,7 @@ public sealed class AkronSetupState {
     public bool FixHitboxPixels { get; set; }
     public bool ShowTriggers { get; set; }
     public bool EntityInspector { get; set; }
+    public bool FrameStepper { get; set; }
     public bool InfiniteStamina { get; set; }
     public bool InfiniteDash { get; set; }
     public int SetInventoryDashes { get; set; } = 2;
@@ -410,6 +416,7 @@ public sealed class AkronSetupState {
     public bool FreeCamera { get; set; }
     public int FreeCameraSpeed { get; set; } = 240;
     public bool FreeCameraFreezeGameplay { get; set; } = true;
+    public bool FreeCameraMouseControl { get; set; }
     public bool SmartStartPos { get; set; }
     public bool RespawnAtStartPos { get; set; }
     public bool StartPosShowLabel { get; set; }

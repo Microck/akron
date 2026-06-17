@@ -103,6 +103,19 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void FreezeGameplayAndFrameStepperUseSeparateFeatureKinds() {
+        Dictionary<string, AkronFeatureKind?> levelKinds = BuildOverlayEntryFeatureKinds("Level");
+        Dictionary<string, AkronFeatureKind?> playerKinds = BuildOverlayEntryFeatureKinds("Player");
+        Dictionary<string, bool> levelToggleStates = BuildOverlayEntryIsToggles("Level");
+        Dictionary<string, bool> playerToggleStates = BuildOverlayEntryIsToggles("Player");
+
+        Assert.Equal(AkronFeatureKind.Freeze, levelKinds["Freeze Gameplay"]);
+        Assert.Equal(AkronFeatureKind.FrameAdvance, playerKinds["Frame Stepper"]);
+        Assert.True(levelToggleStates["Freeze Gameplay"]);
+        Assert.True(playerToggleStates["Frame Stepper"]);
+    }
+
+    [Fact]
     public void OverlayUpdateShortCircuitsWhenGameWindowIsInactive() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/AkronOverlay.cs"));
         int updateStart = source.IndexOf("public override void Update()", StringComparison.Ordinal);
@@ -354,6 +367,75 @@ public sealed class OverlayTests {
 
         Assert.Equal(40f, projected.X);
         Assert.Equal(70f, projected.Y);
+    }
+
+    [Fact]
+    public void WorldProjectionRemovesLevelZoomAroundFocus() {
+        Vector2 unzoomed = AkronScreenProjection.RemoveLevelZoom(TestVector(40f, 70f), 2f, TestVector(160f, 90f));
+
+        Assert.Equal(100f, unzoomed.X);
+        Assert.Equal(80f, unzoomed.Y);
+    }
+
+    [Fact]
+    public void WorldProjectionRemovesZoomForCursorToolsTeleportNearClampedFocus() {
+        Vector2 unzoomed = AkronScreenProjection.RemoveLevelZoom(TestVector(280f, 90f), 2f, TestVector(240f, 90f));
+        Vector2 renderedAgain = AkronScreenProjection.ApplyLevelZoom(unzoomed, 2f, TestVector(240f, 90f));
+
+        Assert.Equal(260f, unzoomed.X);
+        Assert.Equal(90f, unzoomed.Y);
+        Assert.Equal(280f, renderedAgain.X);
+        Assert.Equal(90f, renderedAgain.Y);
+    }
+
+    [Fact]
+    public void ClickTeleportUsesPlayerHairMoveHairByForTeleportAnimationState() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/akron-module-visual-runtime.cs"));
+        int methodStart = source.IndexOf("internal static void MoveHairForTeleport", StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("private static void UpdateCursorZoom", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(nextMethod > methodStart);
+        string method = source[methodStart..nextMethod];
+
+        Assert.Contains("player.Hair.MoveHairBy(delta);", method);
+        Assert.DoesNotContain("player.Hair.Nodes", method);
+    }
+
+    [Fact]
+    public void ClickTeleportSamplesMouseTargetBeforeFreeCameraCanMoveTheCamera() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/akron-module-player-runtime.cs"));
+        int methodStart = source.IndexOf("private static void ApplyEnabledRuntimeFeatures", StringComparison.Ordinal);
+        int captureTarget = source.IndexOf("CaptureClickTeleportTargetBeforeCameraMovement(level, player);", methodStart, StringComparison.Ordinal);
+        int applyRuntimeOptions = source.IndexOf("AkronRuntimeOptions.Apply(level, player);", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.InRange(captureTarget, methodStart, applyRuntimeOptions - 1);
+    }
+
+    [Fact]
+    public void ClickTeleportTargetUsesCurrentCursorZoomFocusBeforeRuntimeCameraMovement() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/akron-module-visual-runtime.cs"));
+        int methodStart = source.IndexOf("internal static Vector2 MouseScreenToWorldForClickTeleport", StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("private static float CurrentClickTeleportLevelZoom", methodStart, StringComparison.Ordinal);
+        int focusMethodStart = source.IndexOf("private static Vector2 CurrentClickTeleportZoomFocus", StringComparison.Ordinal);
+        int moveHairMethodStart = source.IndexOf("internal static void MoveHairForTeleport", focusMethodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(nextMethod > methodStart);
+        Assert.Contains("CurrentClickTeleportZoomFocus(level, mouseGamePosition, zoom)", source[methodStart..nextMethod]);
+        Assert.Contains("ClampCursorZoomFocus(mouseGamePosition, zoom)", source[focusMethodStart..moveHairMethodStart]);
+    }
+
+    [Fact]
+    public void FreeCameraDoesNotMoveOnTheClickTeleportFrame() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Runtime/akron-runtime-options.cs"));
+        int methodStart = source.IndexOf("private static void ApplyFreeCamera", StringComparison.Ordinal);
+        int suppressMovement = source.IndexOf("ShouldSuppressFreeCameraMovementForClickTeleport", methodStart, StringComparison.Ordinal);
+        int readAim = source.IndexOf("Vector2 aim = Input.Aim.Value;", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.InRange(suppressMovement, methodStart, readAim - 1);
     }
 
     [Fact]
@@ -701,6 +783,36 @@ public sealed class OverlayTests {
             .ToDictionary(
                 entry => (string) labelProperty.GetValue(entry)!,
                 entry => (string) (popupKeyProperty.GetValue(entry) ?? string.Empty),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static Dictionary<string, AkronFeatureKind?> BuildOverlayEntryFeatureKinds(string tab) {
+        MethodInfo method = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static)!;
+        object entries = method.Invoke(null, new object?[] { tab, null })!;
+        Type entryType = entries.GetType().GetGenericArguments()[0];
+        PropertyInfo labelProperty = entryType.GetProperty("Label", BindingFlags.Public | BindingFlags.Instance)!;
+        PropertyInfo featureKindProperty = entryType.GetProperty("FeatureKind", BindingFlags.Public | BindingFlags.Instance)!;
+
+        return ((System.Collections.IEnumerable) entries)
+            .Cast<object>()
+            .ToDictionary(
+                entry => (string) labelProperty.GetValue(entry)!,
+                entry => (AkronFeatureKind?) featureKindProperty.GetValue(entry),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static Dictionary<string, bool> BuildOverlayEntryIsToggles(string tab) {
+        MethodInfo method = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static)!;
+        object entries = method.Invoke(null, new object?[] { tab, null })!;
+        Type entryType = entries.GetType().GetGenericArguments()[0];
+        PropertyInfo labelProperty = entryType.GetProperty("Label", BindingFlags.Public | BindingFlags.Instance)!;
+        PropertyInfo isToggleProperty = entryType.GetProperty("IsToggle", BindingFlags.Public | BindingFlags.Instance)!;
+
+        return ((System.Collections.IEnumerable) entries)
+            .Cast<object>()
+            .ToDictionary(
+                entry => (string) labelProperty.GetValue(entry)!,
+                entry => (bool) isToggleProperty.GetValue(entry)!,
                 StringComparer.OrdinalIgnoreCase);
     }
 

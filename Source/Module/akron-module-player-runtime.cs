@@ -234,6 +234,7 @@ public partial class AkronModule {
         }
 
         Player player = level.Tracker.GetEntity<Player>();
+        CaptureClickTeleportTargetBeforeCameraMovement(level, player);
         AkronRuntimeOptions.Apply(level, player);
         if (player == null) {
             return;
@@ -274,8 +275,8 @@ public partial class AkronModule {
         ApplyAutoKill(level, player);
         ApplyAutoDeafen(level, player);
         ApplyStartPosMousePlacement(level, player);
-        ApplyClickTeleport(level, player);
         UpdateCursorZoom(level);
+        ApplyClickTeleport(level, player);
         ApplyTransitionSpeed(level);
         ApplyVisualPlayerOverrides(player);
 

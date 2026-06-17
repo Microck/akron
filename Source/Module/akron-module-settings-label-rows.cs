@@ -139,6 +139,7 @@ public partial class AkronModuleSettings {
         settings.CycleFrameBypassCameraSmoothing = CreateEmptyButtonBinding();
         settings.ClickTeleportCursor = CreateLeftAltHoldBinding();
         settings.CursorZoomHold = CreateLeftAltHoldBinding();
+        settings.CursorToolsHold = CreateLeftAltHoldBinding();
     }
 
     public static List<string> BuildDefaultLabelRowOrder() {

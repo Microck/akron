@@ -117,6 +117,11 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool CursorZoomAllowZoomOut { get; set; }
     public bool CursorZoomResetOnDeactivate { get; set; }
     public AkronCursorZoomActivationMode CursorZoomActivationMode { get; set; } = AkronCursorZoomActivationMode.Hold;
+    public bool CursorTools { get; set; }
+    public bool CursorToolsClickTeleport { get; set; } = true;
+    public bool CursorToolsCursorZoom { get; set; } = true;
+    public bool CursorToolsFreeCamera { get; set; } = true;
+    public bool CursorToolsFreezeGameplay { get; set; }
 
     [DefaultButtonBinding(0, Keys.Tab)]
     public ButtonBinding ToggleOverlay { get; set; }
@@ -223,6 +228,9 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     [DefaultButtonBinding(0, Keys.LeftAlt)]
     public ButtonBinding CursorZoomHold { get; set; }
 
+    [DefaultButtonBinding(0, Keys.LeftAlt)]
+    public ButtonBinding CursorToolsHold { get; set; }
+
     public bool ReducedVisualNoise { get; set; }
     public bool NoParticles { get; set; }
     public bool NoTrails { get; set; }
@@ -274,6 +282,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int HitboxDeathColor { get; set; } = DefaultHitboxDeathColor;
     public int HitboxDeathPlayerColor { get; set; } = DefaultHitboxDeathPlayerColor;
     public bool EntityInspector { get; set; }
+    public bool FrameStepper { get; set; }
     public bool StepHoldRepeat { get; set; }
     public int StepHoldDelayFrames { get; set; } = 18;
     public int StepHoldIntervalFrames { get; set; } = 4;
@@ -602,6 +611,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool FreeCamera { get; set; }
     public int FreeCameraSpeed { get; set; } = 240;
     public bool FreeCameraFreezeGameplay { get; set; } = true;
+    public bool FreeCameraMouseControl { get; set; }
     public bool SmartStartPos { get; set; }
     public bool RespawnAtStartPos { get; set; }
     public bool StartPosShowLabel { get; set; }

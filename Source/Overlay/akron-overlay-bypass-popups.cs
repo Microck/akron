@@ -30,11 +30,13 @@ public sealed partial class AkronOverlay
             return;
         }
 
-        if (ImGui.Button("Step once##" + popupId, new NumericsVector2(112f, 0f)) && AkronModule.Session.FreezeGameplay)
+        if (ImGui.Button("Step once##" + popupId, new NumericsVector2(112f, 0f)) &&
+            AkronModule.Settings.FrameStepper &&
+            AkronModule.Session.FreezeGameplay)
         {
             AkronModule.Session.StepFrameRequested = true;
         }
-        DrawPopupTooltip("Advance one frame. Only works while Freeze Gameplay is on.");
+        DrawPopupTooltip("Advance one frame. Only works while Frame Stepper and Freeze Gameplay are on.");
 
         bool repeat = AkronModule.Settings.StepHoldRepeat;
         if (ImGui.Checkbox("Hold key repeats##" + popupId, ref repeat))

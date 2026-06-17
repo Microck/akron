@@ -324,7 +324,8 @@ public sealed class ModuleSettingsTests
         {
             ["ToggleOverlay"] = ((XnaButtons)0, Keys.Tab),
             ["ClickTeleportCursor"] = ((XnaButtons)0, Keys.LeftAlt),
-            ["CursorZoomHold"] = ((XnaButtons)0, Keys.LeftAlt)
+            ["CursorZoomHold"] = ((XnaButtons)0, Keys.LeftAlt),
+            ["CursorToolsHold"] = ((XnaButtons)0, Keys.LeftAlt)
         };
 
         foreach (PropertyInfo property in typeof(AkronModuleSettings).GetProperties())
@@ -363,6 +364,7 @@ public sealed class ModuleSettingsTests
         ButtonBinding toggleHitboxes = BuildInitializedButtonBinding(Keys.H);
         ButtonBinding freezeGameplay = BuildInitializedButtonBinding(Keys.F);
         ButtonBinding cursorZoomHold = BuildInitializedButtonBinding(Keys.Z);
+        ButtonBinding cursorToolsHold = BuildInitializedButtonBinding(Keys.C);
         ButtonBinding previousStartPos = BuildInitializedButtonBinding(Keys.OemMinus);
         ButtonBinding nextStartPos = BuildInitializedButtonBinding(Keys.OemPlus);
         AkronModuleSettings settings = new AkronModuleSettings
@@ -375,6 +377,7 @@ public sealed class ModuleSettingsTests
             ToggleHitboxes = toggleHitboxes,
             FreezeGameplay = freezeGameplay,
             CursorZoomHold = cursorZoomHold,
+            CursorToolsHold = cursorToolsHold,
             PreviousStartPos = previousStartPos,
             NextStartPos = nextStartPos
         };
@@ -389,6 +392,7 @@ public sealed class ModuleSettingsTests
         Assert.NotSame(toggleHitboxes, settings.ToggleHitboxes);
         Assert.NotSame(freezeGameplay, settings.FreezeGameplay);
         Assert.NotSame(cursorZoomHold, settings.CursorZoomHold);
+        Assert.NotSame(cursorToolsHold, settings.CursorToolsHold);
         Assert.NotSame(previousStartPos, settings.PreviousStartPos);
         Assert.NotSame(nextStartPos, settings.NextStartPos);
 
@@ -400,6 +404,7 @@ public sealed class ModuleSettingsTests
         Assert.NotNull(settings.ToggleHitboxes);
         Assert.NotNull(settings.FreezeGameplay);
         Assert.NotNull(settings.CursorZoomHold);
+        Assert.NotNull(settings.CursorToolsHold);
         Assert.NotNull(settings.PreviousStartPos);
         Assert.NotNull(settings.NextStartPos);
         Assert.NotNull(settings.ToggleOverlay);
@@ -616,6 +621,12 @@ public sealed class ModuleSettingsTests
         Assert.False(settings.CursorZoomAllowZoomOut);
         Assert.False(settings.CursorZoomResetOnDeactivate);
         Assert.Equal(AkronCursorZoomActivationMode.Hold, settings.CursorZoomActivationMode);
+        Assert.False(settings.CursorTools);
+        Assert.True(settings.CursorToolsClickTeleport);
+        Assert.True(settings.CursorToolsCursorZoom);
+        Assert.True(settings.CursorToolsFreeCamera);
+        Assert.False(settings.CursorToolsFreezeGameplay);
+        Assert.False(settings.FrameStepper);
         Assert.False(settings.SubmissionMode);
         Assert.False(settings.ProofRecorderGuard);
         Assert.False(settings.EndScreenHelper);
@@ -625,14 +636,71 @@ public sealed class ModuleSettingsTests
         Assert.Equal(55, settings.GoldenTransparencyOpacity);
         Assert.False(settings.LagPauser);
         Assert.Equal(250, settings.LagPauserThresholdMs);
+        Assert.False(settings.FreeCameraMouseControl);
     }
 
     [Theory]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    public void ClickTeleportOnlyRecentersCameraOutsideFreeCamera(bool freeCameraActive, bool expected)
+    [InlineData(false, true, false, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(true, true, true, false)]
+    [InlineData(true, true, false, true)]
+    public void CursorToolsHoldRequiresSettingBindingAndHiddenOverlay(bool enabled, bool bindingHeld, bool overlayVisible, bool expected)
     {
-        Assert.Equal(expected, AkronModule.ShouldClickTeleportMoveCamera(freeCameraActive));
+        Assert.Equal(expected, AkronModule.ShouldUseCursorToolsHold(enabled, bindingHeld, overlayVisible));
+    }
+
+    [Theory]
+    [InlineData(false, false, true, false)]
+    [InlineData(false, true, false, false)]
+    [InlineData(false, true, true, true)]
+    [InlineData(true, false, false, true)]
+    public void CursorToolsEffectiveToolRequiresHoldAndChildOption(bool savedToolEnabled, bool cursorToolsHeld, bool childOptionEnabled, bool expected)
+    {
+        Assert.Equal(expected, AkronModule.IsCursorToolEffectiveEnabled(savedToolEnabled, cursorToolsHeld, childOptionEnabled));
+    }
+
+    [Theory]
+    [InlineData(false, false, true, true, true)]
+    [InlineData(false, true, false, false, false)]
+    [InlineData(false, false, true, false, false)]
+    [InlineData(true, false, false, false, false)]
+    [InlineData(true, true, false, false, true)]
+    public void ClickTeleportCursorUsesNormalBindOrCursorTools(bool clickTeleportEnabled, bool clickTeleportHoldActive, bool cursorToolsHeld, bool cursorToolsClickTeleport, bool expected)
+    {
+        Assert.Equal(expected, AkronModule.IsClickTeleportCursorActive(clickTeleportEnabled, clickTeleportHoldActive, cursorToolsHeld, cursorToolsClickTeleport));
+    }
+
+    [Theory]
+    [InlineData(false, true, true, true)]
+    [InlineData(false, true, false, false)]
+    [InlineData(true, false, false, true)]
+    public void CursorToolsFreeCameraUsesMouseControlByDefault(bool freeCameraMouseControl, bool cursorToolsHeld, bool cursorToolsFreeCamera, bool expected)
+    {
+        Assert.Equal(expected, AkronModule.IsFreeCameraMouseControlEffectiveEnabled(freeCameraMouseControl, cursorToolsHeld, cursorToolsFreeCamera));
+    }
+
+    [Theory]
+    [InlineData(160f, 90f, 0f, 0f)]
+    [InlineData(166f, 90f, 0f, 0f)]
+    [InlineData(320f, 90f, 1f, 0f)]
+    [InlineData(0f, 90f, -1f, 0f)]
+    [InlineData(160f, 180f, 0f, 1f)]
+    public void FreeCameraMouseAimUsesScreenCenterDeadzoneAndEdges(float mouseX, float mouseY, float expectedX, float expectedY)
+    {
+        Vector2 aim = AkronRuntimeOptions.CalculateFreeCameraMouseAim(TestVector2(mouseX, mouseY));
+
+        Assert.Equal(expectedX, aim.X, precision: 3);
+        Assert.Equal(expectedY, aim.Y, precision: 3);
+    }
+
+    [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    public void ClickTeleportOnlyRecentersCameraOutsideFreeCameraAndZoom(bool freeCameraActive, bool levelZoomActive, bool expected)
+    {
+        Assert.Equal(expected, AkronModule.ShouldClickTeleportMoveCamera(freeCameraActive, levelZoomActive));
     }
 
     [Theory]
@@ -1562,6 +1630,7 @@ public sealed class ModuleSettingsTests
         Assert.Equal("Toggle", levelControls["Bloom Level"]);
         Dictionary<string, string> creatorControls = BuildOverlayEntryControls("Creator");
         Assert.Equal("Toggle", creatorControls["Cursor Zoom"]);
+        Assert.Equal("Toggle", creatorControls["Cursor Tools"]);
         Assert.Equal("Toggle", creatorControls["Camera Offset"]);
         Assert.Equal("Toggle", playerControls["Dash Redirect"]);
         Assert.Equal("Toggle", playerControls["Grab Mode"]);
@@ -1573,6 +1642,7 @@ public sealed class ModuleSettingsTests
         Assert.True(HasOverlayOptionsPopup("Grab Mode"));
         Assert.True(HasOverlayOptionsPopup("Bird Squawk"));
         Assert.True(HasOverlayOptionsPopup("Cursor Zoom"));
+        Assert.True(HasOverlayOptionsPopup("Cursor Tools"));
         Assert.True(HasOverlayOptionsPopup("Camera Offset"));
     }
 
@@ -1603,6 +1673,7 @@ public sealed class ModuleSettingsTests
         Assert.Equal(
             new[] {
                 "Camera Offset",
+                "Cursor Tools",
                 "Cursor Zoom",
                 "Entity Inspector",
                 "Free Camera",
