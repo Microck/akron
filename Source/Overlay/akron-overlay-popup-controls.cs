@@ -205,6 +205,8 @@ public sealed partial class AkronOverlay {
                 DrawGoldenTransparencyPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Show Hitboxes", StringComparison.OrdinalIgnoreCase)) {
                 DrawHitboxPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Entity Inspector", StringComparison.OrdinalIgnoreCase)) {
+                DrawEntityInspectorPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Show Hitbox Trail", StringComparison.OrdinalIgnoreCase)) {
                 DrawHitboxTrailPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Show Hitboxes On Death", StringComparison.OrdinalIgnoreCase)) {

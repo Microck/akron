@@ -220,7 +220,7 @@ public sealed partial class AkronOverlay {
         return visible;
     }
 
-    private static float CurrentOverlayScale() {
+    internal static float CurrentOverlayScale() {
         return AkronModuleSettings.ClampOverlayScale(AkronModule.Settings.OverlayScale) / 100f;
     }
 
@@ -228,7 +228,7 @@ public sealed partial class AkronOverlay {
         return value * CurrentOverlayScale();
     }
 
-    private static void ApplyOverlayThemePreset(float scale) {
+    internal static void ApplyOverlayThemePreset(float scale) {
         ImGui.GetIO().FontGlobalScale = scale;
         ImGui.StyleColorsDark();
 
@@ -357,7 +357,8 @@ public sealed partial class AkronOverlay {
                         selectedTabIndex == tabIndex;
         bool entryEnabled = entry.Enabled();
         bool hasOptionsPopup = entry.HasOptionsPopup;
-        bool activeState = ShouldReadEntryValueForActiveState(entry) && IsOnState(entry.Value());
+        bool activeState = entry.Active?.Invoke() == true ||
+                           ShouldReadEntryValueForActiveState(entry) && IsOnState(entry.Value());
         bool searchMatch = !string.IsNullOrWhiteSpace(searchQuery) && entry.Control != OverlayEntryControl.SearchInput && MatchesSearch(entry.Tab, entry);
         activeState = activeState || searchMatch;
         string id = "##akron_" + entry.Tab + "_" + entry.ActionKey + "_" + index;

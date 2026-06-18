@@ -216,6 +216,13 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding ToggleEntityInspector { get; set; }
 
+    [DefaultButtonBinding(0, Keys.LeftAlt)]
+    public ButtonBinding EntityInspectorCursorHold { get; set; }
+    public AkronInspectorPinPlacement EntityInspectorPinPlacement { get; set; } = AkronInspectorPinPlacement.NearClick;
+    public int EntityInspectorPinX { get; set; } = 16;
+    public int EntityInspectorPinY { get; set; } = 16;
+    public bool EntityInspectorPinShowPropertiesByDefault { get; set; } = true;
+
     [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding ToggleFrameBypass { get; set; }
 
@@ -282,6 +289,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int HitboxDeathColor { get; set; } = DefaultHitboxDeathColor;
     public int HitboxDeathPlayerColor { get; set; } = DefaultHitboxDeathPlayerColor;
     public bool EntityInspector { get; set; }
+    public AkronInspectorPinFilter InspectorPinFilter { get; set; } = AkronInspectorPinFilter.Both;
     public bool FrameStepper { get; set; }
     public bool StepHoldRepeat { get; set; }
     public int StepHoldDelayFrames { get; set; } = 18;

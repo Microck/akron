@@ -536,6 +536,9 @@ public sealed partial class AkronOverlay {
             } else if (bindingCaptureAutoDeafenHotkey) {
                 AkronActions.RestoreAutoDeafen();
                 AkronModule.Settings.AutoDeafenHotkey = string.Empty;
+            } else if (bindingCaptureButtonBindingSetter != null) {
+                bindingCaptureButtonBindingSetter(AkronModuleSettings.CreateEmptyButtonBinding());
+                menuBindingRevision++;
             } else {
                 ClearMenuBinding(bindingCaptureActionKey);
             }
@@ -547,6 +550,9 @@ public sealed partial class AkronOverlay {
             MenuBinding binding = MenuBinding.FromButton(button);
             if (bindingCaptureOverlayToggle) {
                 SetOverlayToggleBinding(binding);
+            } else if (bindingCaptureButtonBindingSetter != null) {
+                bindingCaptureButtonBindingSetter(ToButtonBinding(binding));
+                menuBindingRevision++;
             } else {
                 SetMenuBinding(bindingCaptureActionKey, binding);
             }
@@ -564,6 +570,9 @@ public sealed partial class AkronOverlay {
                 MenuBinding binding = MenuBinding.FromKeyboardState(key, pressedKeys);
                 if (bindingCaptureOverlayToggle) {
                     SetOverlayToggleBinding(binding);
+                } else if (bindingCaptureButtonBindingSetter != null) {
+                    bindingCaptureButtonBindingSetter(ToButtonBinding(binding));
+                    menuBindingRevision++;
                 } else {
                     SetMenuBinding(bindingCaptureActionKey, binding);
                 }
@@ -583,6 +592,7 @@ public sealed partial class AkronOverlay {
         bindingCaptureDisplayName = displayName;
         bindingCaptureOverlayToggle = false;
         bindingCaptureAutoDeafenHotkey = false;
+        bindingCaptureButtonBindingSetter = null;
         bindingCaptureWaitingForRelease = true;
     }
 
@@ -590,6 +600,7 @@ public sealed partial class AkronOverlay {
         bindingCaptureActionKey = OverlayToggleActionKey;
         bindingCaptureDisplayName = "Open Overlay";
         bindingCaptureOverlayToggle = true;
+        bindingCaptureButtonBindingSetter = null;
         bindingCaptureWaitingForRelease = true;
     }
 
@@ -598,6 +609,16 @@ public sealed partial class AkronOverlay {
         bindingCaptureDisplayName = "Auto Deafen Discord hotkey";
         bindingCaptureOverlayToggle = false;
         bindingCaptureAutoDeafenHotkey = true;
+        bindingCaptureButtonBindingSetter = null;
+        bindingCaptureWaitingForRelease = true;
+    }
+
+    private void StartButtonBindingCapture(string displayName, Action<ButtonBinding> setter) {
+        bindingCaptureActionKey = "__akron_button_binding";
+        bindingCaptureDisplayName = displayName;
+        bindingCaptureOverlayToggle = false;
+        bindingCaptureAutoDeafenHotkey = false;
+        bindingCaptureButtonBindingSetter = setter;
         bindingCaptureWaitingForRelease = true;
     }
 
@@ -606,6 +627,7 @@ public sealed partial class AkronOverlay {
         bindingCaptureDisplayName = string.Empty;
         bindingCaptureOverlayToggle = false;
         bindingCaptureAutoDeafenHotkey = false;
+        bindingCaptureButtonBindingSetter = null;
         bindingCaptureWaitingForRelease = false;
     }
 
@@ -664,6 +686,7 @@ public sealed partial class AkronOverlay {
             "Player/Hazard Accuracy" => null,
             "Creator/Cursor Zoom" => settings.CursorZoomHold,
             "Creator/Cursor Tools" => settings.CursorToolsHold,
+            "Creator/Entity Inspector" => settings.ToggleEntityInspector,
             "Level/Show Hitboxes" => settings.ToggleHitboxes,
             "Level/Freeze Gameplay" => settings.FreezeGameplay,
             "Shortcuts/Neutral Drop" => null,
@@ -698,6 +721,7 @@ public sealed partial class AkronOverlay {
             case "popup/StartPos/Load Slot 9": settings.LoadStartPosSlot9 = EmptyButtonBinding(); return true;
             case "Creator/Cursor Zoom": settings.CursorZoomHold = EmptyButtonBinding(); return true;
             case "Creator/Cursor Tools": settings.CursorToolsHold = EmptyButtonBinding(); return true;
+            case "Creator/Entity Inspector": settings.ToggleEntityInspector = EmptyButtonBinding(); return true;
             case "Level/Show Hitboxes": settings.ToggleHitboxes = EmptyButtonBinding(); return true;
             case "Level/Freeze Gameplay": settings.FreezeGameplay = EmptyButtonBinding(); return true;
         }
@@ -792,6 +816,13 @@ public sealed partial class AkronOverlay {
         AkronModule.Settings.ToggleOverlay.Buttons = binding.ToButtonList();
         AkronModuleSettings.EnsureCurrentOverlayToggleDefault(AkronModule.Settings);
         menuBindingRevision++;
+    }
+
+    private static ButtonBinding ToButtonBinding(MenuBinding binding) {
+        ButtonBinding buttonBinding = AkronModuleSettings.CreateEmptyButtonBinding();
+        buttonBinding.Keys = binding.ToKeyList();
+        buttonBinding.Buttons = binding.ToButtonList();
+        return buttonBinding;
     }
 
     private static void ResetOverlayToggleBinding() {

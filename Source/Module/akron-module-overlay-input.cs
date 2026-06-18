@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Celeste;
@@ -14,6 +15,7 @@ public partial class AkronModule {
     private static KeyboardState previousStartPosHotkeyKeyboard;
     private static bool cursorVisibilityCaptured;
     private static bool previousMouseVisible;
+    private static bool entityInspectorPickModeArmed;
 
     private static void HandleHotkeys(Level level) {
         if (Overlay?.IsTransientMouseUiActive == true && IsOverlayTogglePressed()) {
@@ -163,6 +165,9 @@ public partial class AkronModule {
             }
 
             Settings.EntityInspector = next;
+            if (!next) {
+                ClearEntityInspectorPickMode();
+            }
         }
 
         AkronOverlay.ExecuteCustomBoundActions(level);
@@ -362,6 +367,7 @@ public partial class AkronModule {
     private static void UpdateOverlayCursorState() {
         bool shouldShowCursor = Overlay?.Visible == true ||
                                 Overlay?.IsTransientMouseUiActive == true ||
+                                ShouldShowEntityInspectorCursor() ||
                                 ShouldShowClickTeleportCursor() ||
                                 ShouldShowCursorZoomCursor() ||
                                 ShouldShowFreeCameraMouseCursor();
@@ -396,6 +402,110 @@ public partial class AkronModule {
                Overlay?.Visible != true &&
                IsClickTeleportCursorActive() &&
                AkronPolicy.CanUse(AkronFeatureKind.ClickTeleport).Allowed;
+    }
+
+    internal static bool ShouldShowEntityInspectorCursor() {
+        return Engine.Scene is Level &&
+               ShouldShowEntityInspectorCursor(
+                   Settings.EntityInspector,
+                   entityInspectorPickModeArmed || IsEntityInspectorCursorHoldActive(),
+                   Overlay?.Visible == true,
+                   AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed);
+    }
+
+    internal static void ArmEntityInspectorPickMode() {
+        entityInspectorPickModeArmed = true;
+        RefreshOverlayCursorState();
+    }
+
+    internal static void ClearEntityInspectorPickMode() {
+        if (!entityInspectorPickModeArmed) {
+            return;
+        }
+
+        entityInspectorPickModeArmed = false;
+        RefreshOverlayCursorState();
+    }
+
+    internal static bool IsEntityInspectorCursorHoldActive() {
+        return IsButtonBindingHeld(AkronModuleSettings.ResolveEntityInspectorCursorHoldBinding(Settings));
+    }
+
+    internal static bool ShouldShowEntityInspectorCursor(bool entityInspector, bool cursorHoldBindingHeld, bool overlayVisible, bool policyAllowed) {
+        return entityInspector &&
+               cursorHoldBindingHeld &&
+               !overlayVisible &&
+               policyAllowed;
+    }
+
+    private static bool IsButtonBindingHeld(ButtonBinding binding) {
+        if (binding == null) {
+            return false;
+        }
+
+        bool sawReadableRawBinding = false;
+        if (TryGetButtonBindingKeys(binding, out IReadOnlyCollection<Keys> keys)) {
+            sawReadableRawBinding = true;
+            if (IsKeyboardBindingHeld(keys, Keyboard.GetState())) {
+                return true;
+            }
+        }
+
+        if (TryGetButtonBindingButtons(binding, out IReadOnlyCollection<Buttons> buttons)) {
+            sawReadableRawBinding = true;
+            if (IsGamepadBindingHeld(buttons)) {
+                return true;
+            }
+        }
+
+        if (sawReadableRawBinding) {
+            return false;
+        }
+
+        try {
+            if (binding.Check) {
+                return true;
+            }
+        } catch (InvalidProgramException) {
+            // Modifier-only defaults can be malformed in old persisted settings.
+            // Keep the documented Left Alt hold usable instead of failing closed.
+            return Keyboard.GetState().IsKeyDown(Keys.LeftAlt);
+        }
+
+        return false;
+    }
+
+    private static bool TryGetButtonBindingKeys(ButtonBinding binding, out IReadOnlyCollection<Keys> keys) {
+        try {
+            keys = binding.Keys;
+            return true;
+        } catch (InvalidProgramException) {
+            keys = null;
+            return false;
+        }
+    }
+
+    private static bool TryGetButtonBindingButtons(ButtonBinding binding, out IReadOnlyCollection<Buttons> buttons) {
+        try {
+            buttons = binding.Buttons;
+            return true;
+        } catch (InvalidProgramException) {
+            buttons = null;
+            return false;
+        }
+    }
+
+    private static bool IsGamepadBindingHeld(IReadOnlyCollection<Buttons> buttons) {
+        if (buttons == null ||
+            Input.Gamepad < 0 ||
+            Input.Gamepad >= MInput.GamePads.Length) {
+            return false;
+        }
+
+        return buttons
+            .Where(button => button != 0)
+            .All(button => MInput.GamePads[Input.Gamepad].CurrentState.IsButtonDown(button)) &&
+               buttons.Any(button => button != 0);
     }
 
     private static bool ShouldShowCursorZoomCursor() {
@@ -475,6 +585,15 @@ public partial class AkronModule {
         }
 
         return normalizedKeys.All(key => keyboard.IsKeyDown(key));
+    }
+
+    private static bool IsKeyboardBindingHeld(IReadOnlyCollection<Keys> keys, KeyboardState keyboard) {
+        if (keys == null || keys.Count == 0) {
+            return false;
+        }
+
+        List<Keys> normalizedKeys = keys.Where(key => key != Keys.None).Distinct().ToList();
+        return normalizedKeys.Count > 0 && normalizedKeys.All(key => keyboard.IsKeyDown(key));
     }
 
     private static bool IsStartPosBindingPressed(ButtonBinding binding, KeyboardState keyboard, KeyboardState previousKeyboard) {

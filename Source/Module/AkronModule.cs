@@ -167,6 +167,7 @@ public partial class AkronModule : EverestModule {
         On.FMOD.Studio.EventDescription.createInstance += EventDescriptionOnCreateInstance;
         Everest.Events.Level.OnPause += LevelOnPause;
         Everest.Events.Level.OnUnpause += LevelOnUnpause;
+        AkronEntityInspector.LoadInspectorPin();
         MethodInfo dashCoroutineMethod = ResolvePlayerDashCoroutineMethod();
         if (dashCoroutineMethod != null) {
             dashCoroutineHook = new ILHook(dashCoroutineMethod, PlayerDashCoroutineIlHook);
@@ -290,6 +291,7 @@ public partial class AkronModule : EverestModule {
         On.FMOD.Studio.EventDescription.createInstance -= EventDescriptionOnCreateInstance;
         Everest.Events.Level.OnPause -= LevelOnPause;
         Everest.Events.Level.OnUnpause -= LevelOnUnpause;
+        AkronEntityInspector.UnloadInspectorPin();
         dashCoroutineHook?.Dispose();
         dashCoroutineHook = null;
         lookoutRoutineHook?.Dispose();
@@ -373,6 +375,7 @@ public partial class AkronModule : EverestModule {
             AkronInputHistory.RecordInputsPerSecondFrame();
         }
         UpdateDeathStatsTimer();
+        AkronEntityInspector.UpdateInspectorPin(self);
 
         bool overlayUpdated = false;
         if (Overlay?.Visible == true || Overlay?.IsStartPosPlacementActive == true || Settings.StartPosMousePlacement) {
@@ -655,6 +658,7 @@ public partial class AkronModule : EverestModule {
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
         try {
             AkronHudRenderer.RenderAutomationAreasToGameplayBuffer(level);
+            AkronEntityInspector.RenderInspectorPinOutlinesToGameplayBuffer(level);
             AkronEntityInspector.RenderHitboxesToGameplayBuffer(level, level.Tracker.GetEntity<Player>());
         } finally {
             Draw.SpriteBatch.End();
@@ -675,7 +679,9 @@ public partial class AkronModule : EverestModule {
         bool selectingArea = TryGetPracticeAreaSelectionPreview(level, isAutoDeafen: false, out _, out _) ||
                              TryGetPracticeAreaSelectionPreview(level, isAutoDeafen: true, out _, out _);
 
-        return showHitboxes || showAutoKillArea || showAutoDeafenArea || selectingArea;
+        bool showInspectorPin = settings.EntityInspector && AkronEntityInspector.HasInspectorPinSelection();
+
+        return showHitboxes || showInspectorPin || showAutoKillArea || showAutoDeafenArea || selectingArea;
     }
 
     internal static SamplerState HudSamplerState() {
@@ -893,6 +899,11 @@ public partial class AkronModule : EverestModule {
         }
 
         bool overlayVisible = Overlay?.Visible == true || Overlay?.IsStartPosPlacementActive == true;
+        Level inspectorPinLevel = scene as Level;
+        bool inspectorPinVisible = !overlayVisible &&
+                                   !hideAkronRenderSurfaces &&
+                                   inspectorPinLevel != null &&
+                                   AkronEntityInspector.ShouldRenderInspectorPinImGui(inspectorPinLevel);
         AkronPerformanceTelemetry.RecordRenderFrame(overlayVisible);
         if (overlayVisible && !renderCoreDiagnosticLogged) {
             renderCoreDiagnosticLogged = true;
@@ -922,6 +933,8 @@ public partial class AkronModule : EverestModule {
             } finally {
                 Draw.SpriteBatch.End();
             }
+        } else if (inspectorPinVisible) {
+            AkronEntityInspector.RenderInspectorPinImGui(inspectorPinLevel);
         }
     }
 

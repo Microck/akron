@@ -32,7 +32,8 @@ public sealed partial class AkronOverlay {
             bool reorderable = false,
             string customHudLabelId = null,
             bool isAddCustomLabelRow = false,
-            string soundGroupLabel = null) {
+            string soundGroupLabel = null,
+            Func<bool> active = null) {
             Label = label;
             Enabled = enabled;
             Value = value;
@@ -57,6 +58,7 @@ public sealed partial class AkronOverlay {
             CustomHudLabelId = customHudLabelId;
             IsAddCustomLabelRow = isAddCustomLabelRow;
             SoundGroupLabel = soundGroupLabel;
+            Active = active;
         }
 
         public string Label { get; }
@@ -83,6 +85,7 @@ public sealed partial class AkronOverlay {
         public string CustomHudLabelId { get; }
         public bool IsAddCustomLabelRow { get; }
         public string SoundGroupLabel { get; }
+        public Func<bool> Active { get; }
     }
 
     private sealed class ActionEntry {
@@ -112,6 +115,7 @@ public sealed partial class AkronOverlay {
             IsAddCustomLabelRow = entry.IsAddCustomLabelRow;
             IsCustomHudLabelRow = !string.IsNullOrWhiteSpace(CustomHudLabelId);
             SoundGroupLabel = entry.SoundGroupLabel;
+            Active = entry.Active;
             HasOptionsPopup = entry.Control != OverlayEntryControl.Keybind &&
                               entry.Control != OverlayEntryControl.KeybindReadOnly &&
                               entry.Control != OverlayEntryControl.SearchInput &&
@@ -145,6 +149,7 @@ public sealed partial class AkronOverlay {
         public bool IsCustomHudLabelRow { get; }
         public bool IsAddCustomLabelRow { get; }
         public string SoundGroupLabel { get; }
+        public Func<bool> Active { get; }
 
         public void SetNumericValue(float value) {
             if (NumericSetter == null) {

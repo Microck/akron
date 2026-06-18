@@ -4,11 +4,17 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
-## Unreleased
+## 0.1.2-beta.28
+
+### Added
+
+- Add Inspector Pin to Entity Inspector: click entities or triggers in-game, cycle overlapping hits, view runtime and source-bound map properties, and copy an inspection report.
+- Credit viddie's Inspector Pin suggestion in the docs.
 
 ### Fixed
 
 - Let Celeste's Journal shortcut take priority over Akron's default Tab overlay bind in the overworld.
+- Keep Entity Inspector's submenu aligned with Akron's ImGui HUD style, make the row enter a visible pick mode, add report placement/detail defaults, keep fixed report corners anchored across size changes, and keep titlebar-collapsed reports reopenable.
 
 ## 0.1.2-beta.27
 

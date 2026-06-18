@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Reflection;
 using Celeste;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using Monocle;
 
 namespace Celeste.Mod.Akron;
@@ -131,6 +132,59 @@ public static partial class AkronCommands {
             AkronLevelRenderState.RelinkRendererCameras(level);
         };
         Log("qa-warp-room: room=" + room.Name);
+    }
+
+    [Command("akron_qa_inspector_pin_world", "pin the entity inspector at a world coordinate for Akron live automation: x y")]
+    public static void QaInspectorPinWorld(string x = "", string y = "") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        if (!float.TryParse(x, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedX) ||
+            !float.TryParse(y, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedY)) {
+            Log("usage: akron_qa_inspector_pin_world <x> <y>");
+            return;
+        }
+
+        if (!AkronModule.Settings.EntityInspector) {
+            SetPolicyToggle(AkronFeatureKind.EntityInspector, () => AkronModule.Settings.EntityInspector, value => AkronModule.Settings.EntityInspector = value);
+        }
+
+        string outcome = AkronEntityInspector.PinInspectorAtWorldPointForQa(level, new Vector2(parsedX, parsedY));
+        Log("qa-inspector-pin-world: " + outcome);
+    }
+
+    [Command("akron_qa_inspector_cursor_state", "show Entity Inspector cursor activation state for Akron live automation")]
+    public static void QaInspectorCursorState(string _ = "") {
+        Log("qa-inspector-cursor-setting: " + AkronModule.Settings.EntityInspector.ToString().ToLowerInvariant());
+        Log("qa-inspector-cursor-binding: " + AkronModuleSettings.DescribeBinding(AkronModuleSettings.ResolveEntityInspectorCursorHoldBinding(AkronModule.Settings)));
+        Log("qa-inspector-cursor-left-alt: " + Keyboard.GetState().IsKeyDown(Keys.LeftAlt).ToString().ToLowerInvariant());
+        Log("qa-inspector-cursor-hold: " + AkronModule.IsEntityInspectorCursorHoldActive().ToString().ToLowerInvariant());
+        Log("qa-inspector-cursor-visible: " + AkronModule.ShouldShowEntityInspectorCursor().ToString().ToLowerInvariant());
+        Log("qa-inspector-engine-mouse-visible: " + Engine.Instance.IsMouseVisible.ToString().ToLowerInvariant());
+    }
+
+    [Command("akron_qa_inspector_probe_screen", "show Entity Inspector hit-test diagnostics at screen coordinates: [x] [y]")]
+    public static void QaInspectorProbeScreen(string x = "", string y = "") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        Vector2 screenPoint;
+        if (string.IsNullOrWhiteSpace(x) && string.IsNullOrWhiteSpace(y)) {
+            MouseState mouse = Mouse.GetState();
+            screenPoint = new Vector2(mouse.X, mouse.Y);
+        } else if (float.TryParse(x, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedX) &&
+                   float.TryParse(y, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedY)) {
+            screenPoint = new Vector2(parsedX, parsedY);
+        } else {
+            Log("usage: akron_qa_inspector_probe_screen [x y]");
+            return;
+        }
+
+        Log("qa-inspector-probe-screen: " + AkronEntityInspector.DiagnoseInspectorPinScreenPointForQa(level, screenPoint));
     }
 
     private static AreaData GetQaAreaData(int areaId, string commandName) {

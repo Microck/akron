@@ -198,7 +198,7 @@ public sealed partial class AkronOverlay {
                             AkronModule.ResetCursorZoom(level);
                         }
                     }, "mouse", "cursor", "scroll", "zoom", "magnifier"),
-                    PolicyToggle("Entity Inspector", AkronFeatureKind.EntityInspector, () => AkronModule.Settings.EntityInspector, value => AkronModule.Settings.EntityInspector = value),
+                    EntityInspectorRow(),
                     Action("Export Room Times", () => AkronInterop.SpeedrunToolLoaded, () => AkronInterop.RoomTimerAvailable ? "Speedrun Tool" : "Unavailable", AkronActions.ExportRoomTimes),
                     Action("Room Capture", () => level != null, AkronScreenshotScanner.Describe, () => { if (level != null) AkronScreenshotScanner.ScanRoom(level); }, "screenshot tool", "scan room", "export"),
                     Action("Map Capture", () => level != null, AkronScreenshotScanner.Describe, () => { if (level != null) AkronScreenshotScanner.ScanChapter(level); }, "screenshot tool", "scan map", "scan chapter", "export"),
@@ -637,6 +637,35 @@ public sealed partial class AkronOverlay {
 
             setter(next);
         }, BuildSearchTerms(label, tags), true, OverlayEntryControl.Toggle, featureKind);
+    }
+
+    private static OverlayEntry EntityInspectorRow() {
+        return new OverlayEntry(
+            "Entity Inspector",
+            () => true,
+            () => AkronModule.Settings.EntityInspector
+                ? AkronEntityInspector.NormalizeInspectorPinFilter(AkronModule.Settings.InspectorPinFilter).ToString()
+                : "Off",
+            () => {
+                bool next = !AkronModule.Settings.EntityInspector;
+                if (next && !AkronModule.TryUse(AkronFeatureKind.EntityInspector)) {
+                    return;
+                }
+
+                AkronModule.Settings.EntityInspector = next;
+                if (next) {
+                    AkronModule.ArmEntityInspectorPickMode();
+                    AkronModule.SetOverlayVisible(Engine.Scene, false);
+                } else {
+                    AkronModule.ClearEntityInspectorPickMode();
+                }
+            },
+            BuildSearchTerms("Entity Inspector", new[] { "inspector", "entity", "trigger", "pin", "click", "properties" }),
+            true,
+            OverlayEntryControl.Toggle,
+            AkronFeatureKind.EntityInspector,
+            forceOptionsPopup: true,
+            active: () => AkronModule.Settings.EntityInspector);
     }
 
     private static OverlayEntry InvincibilityToggle() {

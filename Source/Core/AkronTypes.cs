@@ -41,6 +41,15 @@ public enum AkronHudPlacement {
     Right
 }
 
+public enum AkronInspectorPinPlacement {
+    NearClick,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+    Custom
+}
+
 public enum AkronStaminaPlayerBarPosition {
     Above,
     Below

@@ -323,6 +323,7 @@ public sealed class ModuleSettingsTests
         IReadOnlyDictionary<string, (XnaButtons Buttons, Keys Key)> allowedDefaults = new Dictionary<string, (XnaButtons, Keys)>
         {
             ["ToggleOverlay"] = ((XnaButtons)0, Keys.Tab),
+            ["EntityInspectorCursorHold"] = ((XnaButtons)0, Keys.LeftAlt),
             ["ClickTeleportCursor"] = ((XnaButtons)0, Keys.LeftAlt),
             ["CursorZoomHold"] = ((XnaButtons)0, Keys.LeftAlt),
             ["CursorToolsHold"] = ((XnaButtons)0, Keys.LeftAlt)
@@ -363,6 +364,7 @@ public sealed class ModuleSettingsTests
         ButtonBinding loadState = BuildInitializedButtonBinding(Keys.F9);
         ButtonBinding toggleHitboxes = BuildInitializedButtonBinding(Keys.H);
         ButtonBinding freezeGameplay = BuildInitializedButtonBinding(Keys.F);
+        ButtonBinding entityInspectorCursorHold = BuildInitializedButtonBinding(Keys.I);
         ButtonBinding cursorZoomHold = BuildInitializedButtonBinding(Keys.Z);
         ButtonBinding cursorToolsHold = BuildInitializedButtonBinding(Keys.C);
         ButtonBinding previousStartPos = BuildInitializedButtonBinding(Keys.OemMinus);
@@ -376,6 +378,7 @@ public sealed class ModuleSettingsTests
             LoadState = loadState,
             ToggleHitboxes = toggleHitboxes,
             FreezeGameplay = freezeGameplay,
+            EntityInspectorCursorHold = entityInspectorCursorHold,
             CursorZoomHold = cursorZoomHold,
             CursorToolsHold = cursorToolsHold,
             PreviousStartPos = previousStartPos,
@@ -391,6 +394,7 @@ public sealed class ModuleSettingsTests
         Assert.NotSame(loadState, settings.LoadState);
         Assert.NotSame(toggleHitboxes, settings.ToggleHitboxes);
         Assert.NotSame(freezeGameplay, settings.FreezeGameplay);
+        Assert.NotSame(entityInspectorCursorHold, settings.EntityInspectorCursorHold);
         Assert.NotSame(cursorZoomHold, settings.CursorZoomHold);
         Assert.NotSame(cursorToolsHold, settings.CursorToolsHold);
         Assert.NotSame(previousStartPos, settings.PreviousStartPos);
@@ -403,6 +407,7 @@ public sealed class ModuleSettingsTests
         Assert.NotNull(settings.LoadState);
         Assert.NotNull(settings.ToggleHitboxes);
         Assert.NotNull(settings.FreezeGameplay);
+        Assert.NotNull(settings.EntityInspectorCursorHold);
         Assert.NotNull(settings.CursorZoomHold);
         Assert.NotNull(settings.CursorToolsHold);
         Assert.NotNull(settings.PreviousStartPos);
@@ -472,6 +477,39 @@ public sealed class ModuleSettingsTests
         AkronModuleSettings.EnsureCurrentKeybindDefaults(settings);
 
         Assert.Empty(settings.MenuActionBindings);
+    }
+
+    [Fact]
+    public void EntityInspectorCursorHoldDefaultsOnlyWhenMissing()
+    {
+        AkronModuleSettings missingSettings = new AkronModuleSettings
+        {
+            EntityInspectorCursorHold = null
+        };
+        ButtonBinding missingDefault = AkronModuleSettings.ResolveEntityInspectorCursorHoldBinding(missingSettings);
+
+        Assert.NotNull(missingDefault);
+        Assert.Null(missingSettings.EntityInspectorCursorHold);
+    }
+
+    [Fact]
+    public void EntityInspectorCursorHoldUsesDefaultForMalformedPersistedBinding()
+    {
+        ButtonBinding malformedBinding = new ButtonBinding(0, Keys.LeftAlt)
+        {
+            Keys = null,
+            Buttons = null,
+            MouseButtons = new List<Monocle.MInput.MouseData.MouseButtons>()
+        };
+        AkronModuleSettings malformedSettings = new AkronModuleSettings
+        {
+            EntityInspectorCursorHold = malformedBinding
+        };
+
+        ButtonBinding resolved = AkronModuleSettings.ResolveEntityInspectorCursorHoldBinding(malformedSettings);
+
+        Assert.NotNull(resolved);
+        Assert.NotSame(malformedBinding, resolved);
     }
 
     [Theory]
@@ -647,6 +685,17 @@ public sealed class ModuleSettingsTests
     public void CursorToolsHoldRequiresSettingBindingAndHiddenOverlay(bool enabled, bool bindingHeld, bool overlayVisible, bool expected)
     {
         Assert.Equal(expected, AkronModule.ShouldUseCursorToolsHold(enabled, bindingHeld, overlayVisible));
+    }
+
+    [Theory]
+    [InlineData(false, true, false, true, false)]
+    [InlineData(true, false, false, true, false)]
+    [InlineData(true, true, true, true, false)]
+    [InlineData(true, true, false, false, false)]
+    [InlineData(true, true, false, true, true)]
+    public void EntityInspectorCursorRequiresInspectorHoldHiddenOverlayAndPolicy(bool entityInspector, bool bindingHeld, bool overlayVisible, bool policyAllowed, bool expected)
+    {
+        Assert.Equal(expected, AkronModule.ShouldShowEntityInspectorCursor(entityInspector, bindingHeld, overlayVisible, policyAllowed));
     }
 
     [Theory]
@@ -2150,6 +2199,90 @@ public sealed class ModuleSettingsTests
         Assert.Equal(settings.HitboxOtherColor, setup.HitboxOtherColor);
         Assert.Equal(settings.HitboxDeathColor, setup.HitboxDeathColor);
         Assert.Equal(settings.HitboxDeathPlayerColor, setup.HitboxDeathPlayerColor);
+    }
+
+    [Fact]
+    public void InspectorPinFilterDefaultsToBoth()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings();
+
+        Assert.Equal(AkronInspectorPinFilter.Both, settings.InspectorPinFilter);
+    }
+
+    [Theory]
+    [InlineData(AkronInspectorPinFilter.Entities, AkronInspectorPinFilter.Entities)]
+    [InlineData(AkronInspectorPinFilter.Triggers, AkronInspectorPinFilter.Triggers)]
+    [InlineData(AkronInspectorPinFilter.Both, AkronInspectorPinFilter.Both)]
+    [InlineData((AkronInspectorPinFilter) 99, AkronInspectorPinFilter.Both)]
+    public void InspectorPinFilterNormalizationFallsBackToBoth(AkronInspectorPinFilter input, AkronInspectorPinFilter expected)
+    {
+        Assert.Equal(expected, AkronEntityInspector.NormalizeInspectorPinFilter(input));
+    }
+
+    [Fact]
+    public void InspectorPinValueFormatterUsesInvariantJsonLikeShapes()
+    {
+        Dictionary<object, object> dictionary = new Dictionary<object, object>
+        {
+            { "z", 2 },
+            { 1, "number-key" },
+            { "a", new Vector2 { X = 1.5f, Y = float.PositiveInfinity } }
+        };
+
+        Assert.Equal("\"quote\\\"line\\n\"", AkronEntityInspector.FormatInspectorValue("quote\"line\n"));
+        Assert.Equal("true", AkronEntityInspector.FormatInspectorValue(true));
+        Assert.Equal("\"NaN\"", AkronEntityInspector.FormatInspectorValue(float.NaN));
+        Assert.Equal("{ \"x\": 1.5, \"y\": \"Infinity\" }", AkronEntityInspector.FormatInspectorValue(new Vector2 { X = 1.5f, Y = float.PositiveInfinity }));
+        Assert.Equal("[1, \"x\"]", AkronEntityInspector.FormatInspectorValue(new object[] { 1, "x" }));
+        Assert.Equal("{ \"1\": \"number-key\", \"a\": { \"x\": 1.5, \"y\": \"Infinity\" }, \"z\": 2 }", AkronEntityInspector.FormatInspectorValue(dictionary));
+        Assert.Equal("{ \"unsupported\": \"Celeste.Mod.Akron.Tests.ModuleSettingsTests\" }", AkronEntityInspector.FormatInspectorValue(this));
+    }
+
+    [Fact]
+    public void InspectorPinCopyReportUsesDisplayedRows()
+    {
+        AkronInspectorReportData data = new AkronInspectorReportData
+        {
+            Filter = AkronInspectorPinFilter.Both,
+            Room = "room-01",
+            MapSid = "Celeste/1-ForsakenCity",
+            RoomSessionId = 7,
+            StackIndex = 1,
+            StackCount = 3,
+            StackSignature = "7|Both|10,11,12",
+            Category = "Trigger",
+            DisplayName = "CameraTargetTrigger",
+            FullTypeName = "Celeste.CameraTargetTrigger",
+            InspectorId = 11,
+            SourceId = "room-01:42",
+            Position = new Vector2 { X = 12f, Y = 34f },
+            Center = new Vector2 { X = 20f, Y = 40f },
+            ColliderKind = "Hitbox",
+            ColliderBounds = new Rectangle(12, 34, 16, 12),
+            ColliderArea = 192f,
+            Depth = -1000000,
+            Active = true,
+            Visible = false,
+            Collidable = false,
+            MapPlacementLabel = "Everest source-bound",
+            SourceObjectCount = 2,
+            SourceOrdinal = 1
+        };
+        data.RuntimeRows.Add(new AkronInspectorPropertyRow("visible", "false"));
+        data.PlacementRows.Add(new AkronInspectorPropertyRow("mapName", "cameraTargetTrigger"));
+        data.AuthoredRows.Add(new AkronInspectorPropertyRow("values.width", "16"));
+        data.StackEntries.Add("10:Celeste.Spring");
+        data.StackEntries.Add("11:Celeste.CameraTargetTrigger");
+
+        string report = AkronEntityInspector.BuildCopyReport(data);
+
+        Assert.Contains("filter: Both", report);
+        Assert.Contains("cycle: 2/3", report);
+        Assert.Contains("- 11:Celeste.CameraTargetTrigger", report);
+        Assert.Contains("mapPlacement: Everest source-bound", report);
+        Assert.Contains("runtime:\n  visible: false", report);
+        Assert.Contains("placement:\n  mapName: cameraTargetTrigger", report);
+        Assert.Contains("authoredProperties:\n  values.width: 16", report);
     }
 
     [Fact]

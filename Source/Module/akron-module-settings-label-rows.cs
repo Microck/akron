@@ -51,6 +51,27 @@ public partial class AkronModuleSettings {
         return binding;
     }
 
+    public static ButtonBinding ResolveEntityInspectorCursorHoldBinding(AkronModuleSettings settings) {
+        ButtonBinding binding = settings?.EntityInspectorCursorHold;
+        return IsUninitializedButtonBinding(binding)
+            ? CreateLeftAltHoldBinding()
+            : binding;
+    }
+
+    private static bool IsUninitializedButtonBinding(ButtonBinding binding) {
+        if (binding == null) {
+            return true;
+        }
+
+        try {
+            return binding.Keys == null &&
+                   binding.Buttons == null &&
+                   (binding.MouseButtons == null || !binding.MouseButtons.Any());
+        } catch (InvalidProgramException) {
+            return true;
+        }
+    }
+
     public static void EnsureCurrentOverlayToggleDefault(AkronModuleSettings settings) {
         if (settings == null) {
             return;
@@ -135,6 +156,7 @@ public partial class AkronModuleSettings {
         settings.LoadStartPosSlot9 = CreateEmptyButtonBinding();
         settings.ToggleHitboxes = CreateEmptyButtonBinding();
         settings.ToggleEntityInspector = CreateEmptyButtonBinding();
+        settings.EntityInspectorCursorHold = CreateLeftAltHoldBinding();
         settings.ToggleFrameBypass = CreateEmptyButtonBinding();
         settings.CycleFrameBypassCameraSmoothing = CreateEmptyButtonBinding();
         settings.ClickTeleportCursor = CreateLeftAltHoldBinding();

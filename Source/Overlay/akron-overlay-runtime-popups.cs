@@ -4,6 +4,7 @@ using System.Linq;
 using Celeste;
 using ImGuiNET;
 using Monocle;
+using NumericsVector2 = System.Numerics.Vector2;
 
 namespace Celeste.Mod.Akron;
 
@@ -95,6 +96,163 @@ public sealed partial class AkronOverlay {
             AkronModule.Settings.ResetHitboxStyle();
         }
         DrawPopupTooltip("Restore Akron's default hitbox colors, line thickness, outline, and fill opacity.");
+    }
+
+    private void DrawEntityInspectorPopupControls(string popupId) {
+        AkronInspectorPinFilter filter = AkronEntityInspector.NormalizeInspectorPinFilter(AkronModule.Settings.InspectorPinFilter);
+        DrawPopupRowLabel("Target", CalculatePopupLabelWidth(96f));
+        float choiceColumnX = ImGui.GetCursorPosX();
+        DrawPopupChoiceRadioButton(
+            "Entities",
+            filter == AkronInspectorPinFilter.Entities,
+            () => AkronModule.Settings.InspectorPinFilter = AkronInspectorPinFilter.Entities,
+            popupId,
+            "Pin non-trigger entities when clicking in the gameplay viewport.",
+            choiceColumnX,
+            false);
+        DrawPopupChoiceRadioButton(
+            "Triggers",
+            filter == AkronInspectorPinFilter.Triggers,
+            () => AkronModule.Settings.InspectorPinFilter = AkronInspectorPinFilter.Triggers,
+            popupId,
+            "Pin trigger areas when clicking in the gameplay viewport.",
+            choiceColumnX,
+            true);
+        DrawPopupChoiceRadioButton(
+            "Both",
+            filter == AkronInspectorPinFilter.Both,
+            () => AkronModule.Settings.InspectorPinFilter = AkronInspectorPinFilter.Both,
+            popupId,
+            "Pin entities and triggers, with click cycling for overlapping hits.",
+            choiceColumnX,
+            true);
+
+        ImGui.Separator();
+        DrawEntityInspectorBindingRow(
+            AkronModuleSettings.ResolveEntityInspectorCursorHoldBinding(AkronModule.Settings),
+            value => AkronModule.Settings.EntityInspectorCursorHold = value,
+            AkronModuleSettings.CreateLeftAltHoldBinding(),
+            popupId,
+            "Hold this while Entity Inspector is enabled to show the cursor and click entities.");
+
+        ImGui.Separator();
+        DrawEntityInspectorReportPlacementRows(popupId);
+    }
+
+    private void DrawEntityInspectorReportPlacementRows(string popupId) {
+        AkronInspectorPinPlacement placement = AkronModule.Settings.EntityInspectorPinPlacement;
+        DrawPopupRowLabel("Report", CalculatePopupLabelWidth(112f));
+        float choiceColumnX = ImGui.GetCursorPosX();
+        DrawPopupChoiceRadioButton(
+            "Near click",
+            placement == AkronInspectorPinPlacement.NearClick,
+            () => AkronModule.Settings.EntityInspectorPinPlacement = AkronInspectorPinPlacement.NearClick,
+            popupId,
+            "Open the report beside the clicked object.",
+            choiceColumnX,
+            false);
+        DrawPopupChoiceRadioButton(
+            "Top left",
+            placement == AkronInspectorPinPlacement.TopLeft,
+            () => AkronModule.Settings.EntityInspectorPinPlacement = AkronInspectorPinPlacement.TopLeft,
+            popupId,
+            "Open the report at the top-left of the screen.",
+            choiceColumnX,
+            true);
+        DrawPopupChoiceRadioButton(
+            "Top right",
+            placement == AkronInspectorPinPlacement.TopRight,
+            () => AkronModule.Settings.EntityInspectorPinPlacement = AkronInspectorPinPlacement.TopRight,
+            popupId,
+            "Open the report at the top-right of the screen.",
+            choiceColumnX,
+            true);
+        DrawPopupChoiceRadioButton(
+            "Bottom left",
+            placement == AkronInspectorPinPlacement.BottomLeft,
+            () => AkronModule.Settings.EntityInspectorPinPlacement = AkronInspectorPinPlacement.BottomLeft,
+            popupId,
+            "Open the report at the bottom-left of the screen.",
+            choiceColumnX,
+            true);
+        DrawPopupChoiceRadioButton(
+            "Bottom right",
+            placement == AkronInspectorPinPlacement.BottomRight,
+            () => AkronModule.Settings.EntityInspectorPinPlacement = AkronInspectorPinPlacement.BottomRight,
+            popupId,
+            "Open the report at the bottom-right of the screen.",
+            choiceColumnX,
+            true);
+        DrawPopupChoiceRadioButton(
+            "Custom",
+            placement == AkronInspectorPinPlacement.Custom,
+            () => AkronModule.Settings.EntityInspectorPinPlacement = AkronInspectorPinPlacement.Custom,
+            popupId,
+            "Use the last dragged report position.",
+            choiceColumnX,
+            true);
+
+        DrawPopupRowLabel("Details", CalculatePopupLabelWidth(112f));
+        choiceColumnX = ImGui.GetCursorPosX();
+        DrawPopupChoiceRadioButton(
+            "Expanded",
+            AkronModule.Settings.EntityInspectorPinShowPropertiesByDefault,
+            () => AkronModule.Settings.EntityInspectorPinShowPropertiesByDefault = true,
+            popupId,
+            "Show the full report by default when pinning an object.",
+            choiceColumnX,
+            false);
+        DrawPopupChoiceRadioButton(
+            "Collapsed",
+            !AkronModule.Settings.EntityInspectorPinShowPropertiesByDefault,
+            () => AkronModule.Settings.EntityInspectorPinShowPropertiesByDefault = false,
+            popupId,
+            "Start with details hidden behind the Properties button.",
+            choiceColumnX,
+            true);
+    }
+
+    private void DrawEntityInspectorBindingRow(
+        ButtonBinding binding,
+        Action<ButtonBinding> setter,
+        ButtonBinding defaultBinding,
+        string popupId,
+        string tooltip) {
+        const float bindingButtonWidth = 172f;
+        const float actionButtonWidth = 54f;
+        float labelWidth = CalculatePopupLabelWidth(bindingButtonWidth);
+        string bindingText = AkronModuleSettings.DescribeBinding(binding);
+
+        DrawPopupRowLabel("Cursor", labelWidth);
+        ImGui.PushStyleColor(ImGuiCol.Button, AkronImGuiTheme.FrameBackground);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, AkronImGuiTheme.ButtonHovered);
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, AkronImGuiTheme.ButtonActive);
+        if (ImGui.Button(bindingText + "##entity-inspector-cursor-bind-field-" + popupId, new NumericsVector2(bindingButtonWidth, 0f))) {
+            StartButtonBindingCapture("Entity Inspector / Cursor hold", setter);
+        }
+        ImGui.PopStyleColor(3);
+        DrawPopupTooltip(tooltip, "Cursor hold");
+
+        DrawPopupRowLabel("", labelWidth);
+        float spacing = ImGui.GetStyle().ItemSpacing.X;
+        if (ImGui.Button("Bind##entity-inspector-cursor-bind-" + popupId, new NumericsVector2(actionButtonWidth, 0f))) {
+            StartButtonBindingCapture("Entity Inspector / Cursor hold", setter);
+        }
+        DrawPopupTooltip("Capture a keyboard chord or controller button.", "Cursor hold");
+
+        ImGui.SameLine(0f, spacing);
+        if (ImGui.Button("Clear##entity-inspector-cursor-clear-" + popupId, new NumericsVector2(actionButtonWidth, 0f))) {
+            setter(AkronModuleSettings.CreateEmptyButtonBinding());
+            menuBindingRevision++;
+        }
+        DrawPopupTooltip("Clear this binding.", "Cursor hold");
+
+        ImGui.SameLine(0f, spacing);
+        if (ImGui.Button("Default##entity-inspector-cursor-default-" + popupId, new NumericsVector2(actionButtonWidth + 10f, 0f))) {
+            setter(defaultBinding);
+            menuBindingRevision++;
+        }
+        DrawPopupTooltip("Restore Akron's default binding.", "Cursor hold");
     }
 
     private void DrawHitboxTrailPopupControls(string popupId) {

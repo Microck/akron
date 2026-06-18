@@ -569,8 +569,107 @@ public sealed class OverlayTests {
         Assert.Contains("!ShouldRenderGameplayDebugPass(level)", source);
         Assert.Contains("AkronHudRenderer.RenderAutomationAreasToGameplayBuffer(level);", source);
         Assert.Contains("AkronEntityInspector.RenderHitboxesToGameplayBuffer(level", source);
+        Assert.Contains("AkronEntityInspector.ShouldRenderInspectorPinImGui(inspectorPinLevel)", source);
+        Assert.Contains("AkronEntityInspector.RenderInspectorPinImGui(inspectorPinLevel);", source);
+        Assert.DoesNotContain("RenderInspectorPinHud", File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-entity-inspector-pin.cs")));
         Assert.DoesNotContain("RenderAkronHitboxHud(postRenderLevel);", source);
         Assert.DoesNotContain("RenderAutomationDeathAreasToGameplayBuffer", source);
+    }
+
+    [Fact]
+    public void InspectorPinPopupUsesAkronImGuiPanelTheme() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-entity-inspector-pin.cs"));
+
+        Assert.Contains("AkronOverlay.ApplyOverlayThemePreset(scale);", source);
+        Assert.Contains("AkronModuleSettings.ClampOverlayOpacity(AkronModule.Settings.OverlayOpacity)", source);
+        Assert.Contains("ImGui.Begin(\"Inspector Pin \" + cycle + \"##akron_inspector_pin\", flags)", source);
+        Assert.Contains("DrawInspectorPinInfoRow(\"Target\", data.Filter.ToString())", source);
+        Assert.DoesNotContain("DrawInspectorPinFilterRadios", source);
+        Assert.DoesNotContain("akron_inspector_filter_entities", source);
+        Assert.Contains("SaveInspectorPinWindowPosition", source);
+        Assert.Contains("!inspectorPinPositionInitialized || IsFixedInspectorPinPlacement(placement)", source);
+        Assert.Contains("private static bool IsFixedInspectorPinPlacement", source);
+        Assert.Contains("inspectorPinPositionInitialized = false;", source);
+        Assert.Contains("collapsedWindowPos = ImGui.GetWindowPos()", source);
+        Assert.Contains("collapsedWindowSize = ImGui.GetWindowSize()", source);
+        Assert.Contains("inspectorPinCardRect = ToRectangle(", source);
+        Assert.DoesNotContain("ImGuiWindowFlags.NoMove", source);
+        Assert.Contains("DrawInspectorPinRows(data.RuntimeRows)", source);
+        Assert.Contains("DrawInspectorPinRows(data.PlacementRows)", source);
+        Assert.Contains("DrawInspectorPinRows(data.AuthoredRows)", source);
+        Assert.Contains("\"Copy\"", source);
+        Assert.Contains("CopyInspectorReport(BuildVisibleCopyReport(data, inspectorPinPropertiesOpen))", source);
+        Assert.Contains("internal static string BuildVisibleCopyReport(AkronInspectorReportData data, bool includeProperties)", source);
+        Assert.DoesNotContain("Copy Report", source);
+        Assert.DoesNotContain("more in copy report", source);
+        Assert.DoesNotContain("ImGuiWindowFlags.NoTitleBar", source);
+        Assert.DoesNotContain("DrawInspectorPinActionButton", source);
+        Assert.DoesNotContain("ImGui.PushStyleColor(ImGuiCol.Button", source);
+        Assert.DoesNotContain("AddRectFilled", source);
+    }
+
+    [Fact]
+    public void EntityInspectorRowUsesSettingForActiveColorAndPopupBindings() {
+        string entriesSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-entries.cs"));
+        string imguiRendererSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-imgui-renderer.cs"));
+        string spriteRendererSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-sprite-renderer.cs"));
+        string popupSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-runtime-popups.cs"));
+        string moduleInputSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/akron-module-overlay-input.cs"));
+        string inspectorSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-entity-inspector-pin.cs"));
+        int popupStart = popupSource.IndexOf("private void DrawEntityInspectorPopupControls", StringComparison.Ordinal);
+        int popupEnd = popupSource.IndexOf("private void DrawEntityInspectorBindingRow", popupStart, StringComparison.Ordinal);
+
+        Assert.True(popupStart >= 0);
+        Assert.True(popupEnd > popupStart);
+        string entityInspectorPopup = popupSource[popupStart..popupEnd];
+
+        Assert.Contains("active: () => AkronModule.Settings.EntityInspector", entriesSource);
+        Assert.Contains("AkronModule.ArmEntityInspectorPickMode();", entriesSource);
+        Assert.Contains("AkronModule.SetOverlayVisible(Engine.Scene, false);", entriesSource);
+        Assert.Contains("entry.Active?.Invoke() == true", imguiRendererSource);
+        Assert.Contains("action.Entry.Active?.Invoke() == true", spriteRendererSource);
+        Assert.Contains("DrawPopupRowLabel(\"Target\"", entityInspectorPopup);
+        Assert.Contains("DrawPopupChoiceRadioButton(", entityInspectorPopup);
+        Assert.Contains("\"Entities\"", entityInspectorPopup);
+        Assert.Contains("\"Triggers\"", entityInspectorPopup);
+        Assert.Contains("\"Both\"", entityInspectorPopup);
+        Assert.Contains("AkronModule.Settings.EntityInspectorCursorHold", entityInspectorPopup);
+        Assert.Contains("DrawPopupRowLabel(\"Cursor\"", popupSource);
+        Assert.Contains("DrawEntityInspectorReportPlacementRows(popupId)", entityInspectorPopup);
+        Assert.Contains("EntityInspectorPinPlacement", popupSource);
+        Assert.Contains("EntityInspectorPinShowPropertiesByDefault", popupSource);
+        Assert.Contains("\"Near click\"", popupSource);
+        Assert.Contains("\"Top left\"", popupSource);
+        Assert.Contains("\"Top right\"", popupSource);
+        Assert.Contains("\"Bottom left\"", popupSource);
+        Assert.Contains("\"Bottom right\"", popupSource);
+        Assert.Contains("\"Custom\"", popupSource);
+        Assert.Contains("\"Expanded\"", popupSource);
+        Assert.Contains("\"Collapsed\"", popupSource);
+        Assert.DoesNotContain("Enabled##", entityInspectorPopup);
+        Assert.DoesNotContain("DrawEntityInspectorTargetButton", popupSource);
+        Assert.DoesNotContain("AkronModule.Settings.CursorToolsHold", entityInspectorPopup);
+        Assert.DoesNotContain("AkronModule.Settings.CursorZoomHold", entityInspectorPopup);
+        Assert.DoesNotContain("AkronModule.Settings.ClickTeleportCursor", entityInspectorPopup);
+        Assert.Contains("StartButtonBindingCapture(\"Entity Inspector / Cursor hold\"", popupSource);
+        Assert.Contains("entityInspectorPickModeArmed || IsEntityInspectorCursorHoldActive()", moduleInputSource);
+        Assert.Contains("IsEntityInspectorCursorHoldActive()", moduleInputSource);
+        Assert.Contains("IsButtonBindingHeld(AkronModuleSettings.ResolveEntityInspectorCursorHoldBinding(Settings))", moduleInputSource);
+        Assert.Contains("ShouldShowEntityInspectorCursor()", moduleInputSource);
+        Assert.Contains("AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed", inspectorSource);
+        Assert.DoesNotContain("!AkronModule.ShouldShowEntityInspectorCursor()", inspectorSource);
+        Assert.Contains("InspectorPinProbeRadiusPixels", inspectorSource);
+        Assert.Contains("TryGetInspectorHitBounds", inspectorSource);
+        Assert.Contains("record.SourceData.Width > 0", inspectorSource);
+        Assert.Contains("ColliderBacked", inspectorSource);
+        Assert.Contains("EnumerateInspectorEntities", inspectorSource);
+        Assert.Contains("entities.Add(level.SolidTiles)", inspectorSource);
+        Assert.DoesNotContain("entity is PlayerDeadBody || entity is SolidTiles", inspectorSource);
+        int ignoreStart = inspectorSource.IndexOf("private static bool ShouldIgnoreInspectorPinGameplayClick", StringComparison.Ordinal);
+        int ignoreEnd = inspectorSource.IndexOf("private static bool IsInsideGameplayViewport", ignoreStart, StringComparison.Ordinal);
+        Assert.True(ignoreStart >= 0);
+        Assert.True(ignoreEnd > ignoreStart);
+        Assert.DoesNotContain("WantCaptureMouse", inspectorSource[ignoreStart..ignoreEnd]);
     }
 
     [Fact]
