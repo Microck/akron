@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Celeste.Mod.Akron;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
@@ -266,8 +267,28 @@ public sealed class OverlayTests {
     [InlineData("Celeste.Mod.UI.OuiModOptions", false)]
     [InlineData("Celeste.OuiMainMenu", false)]
     [InlineData(null, false)]
-    public void GlobalOverlayToggleIsSuppressedOnlyInEverestModToggler(string? ouiTypeName, bool expected) {
+    public void GlobalOverlayToggleIsAlwaysSuppressedOnlyInEverestModToggler(string? ouiTypeName, bool expected) {
         Assert.Equal(expected, AkronModule.ShouldSuppressGlobalOverlayToggleForOuiType(ouiTypeName));
+    }
+
+    [Theory]
+    [InlineData("Celeste.OuiChapterSelect", true)]
+    [InlineData("Celeste.OuiJournal", true)]
+    [InlineData("Celeste.OuiChapterPanel", false)]
+    [InlineData("Celeste.OuiMainMenu", false)]
+    [InlineData("Celeste.Mod.UI.OuiModOptions", false)]
+    [InlineData(null, false)]
+    public void PlainTabOverlayToggleGivesJournalPriorityInJournalOuiStates(string? ouiTypeName, bool expected) {
+        Assert.Equal(expected, AkronModule.ShouldGiveJournalPriorityForOverlayToggle(
+            ouiTypeName,
+            new List<Keys> { Keys.Tab }));
+    }
+
+    [Fact]
+    public void ModifiedTabOverlayToggleDoesNotGiveJournalPriority() {
+        List<Keys> modifiedTab = new List<Keys> { Keys.Tab, Keys.LeftControl };
+
+        Assert.False(AkronModule.ShouldGiveJournalPriorityForOverlayToggle("Celeste.OuiChapterSelect", modifiedTab));
     }
 
     [Fact]

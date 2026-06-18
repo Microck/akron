@@ -8,6 +8,8 @@ namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
     private const string EverestModTogglerOuiTypeName = "Celeste.Mod.UI.OuiModToggler";
+    private const string CelesteChapterSelectOuiTypeName = "Celeste.OuiChapterSelect";
+    private const string CelesteJournalOuiTypeName = "Celeste.OuiJournal";
     private static KeyboardState previousOverlayToggleKeyboard;
     private static KeyboardState previousStartPosHotkeyKeyboard;
     private static bool cursorVisibilityCaptured;
@@ -245,9 +247,42 @@ public partial class AkronModule {
         return string.Equals(ouiTypeName, EverestModTogglerOuiTypeName, System.StringComparison.Ordinal);
     }
 
+    internal static bool ShouldGiveJournalPriorityForOverlayToggle(string ouiTypeName, ButtonBinding binding) {
+        return IsJournalPriorityOuiType(ouiTypeName) &&
+               binding != null &&
+               IsPlainTabKeyboardBinding(binding.Keys);
+    }
+
+    internal static bool ShouldGiveJournalPriorityForOverlayToggle(string ouiTypeName, IReadOnlyCollection<Keys> keys) {
+        return IsJournalPriorityOuiType(ouiTypeName) && IsPlainTabKeyboardBinding(keys);
+    }
+
+    private static bool IsJournalPriorityOuiType(string ouiTypeName) {
+        return string.Equals(ouiTypeName, CelesteChapterSelectOuiTypeName, System.StringComparison.Ordinal) ||
+               string.Equals(ouiTypeName, CelesteJournalOuiTypeName, System.StringComparison.Ordinal);
+    }
+
     private static bool ShouldSuppressGlobalOverlayToggle(Scene scene) {
-        return scene is Overworld overworld &&
-               ShouldSuppressGlobalOverlayToggleForOuiType(overworld.Current?.GetType().FullName);
+        if (scene is not Overworld overworld) {
+            return false;
+        }
+
+        string ouiTypeName = overworld.Current?.GetType().FullName;
+        if (ShouldSuppressGlobalOverlayToggleForOuiType(ouiTypeName)) {
+            return true;
+        }
+
+        AkronModuleSettings.EnsureCurrentOverlayToggleDefault(Settings);
+        return ShouldGiveJournalPriorityForOverlayToggle(ouiTypeName, Settings.ToggleOverlay);
+    }
+
+    private static bool IsPlainTabKeyboardBinding(IReadOnlyCollection<Keys> keys) {
+        if (keys == null || keys.Count == 0) {
+            return false;
+        }
+
+        List<Keys> normalizedKeys = keys.Where(key => key != Keys.None).Distinct().ToList();
+        return normalizedKeys.Count == 1 && normalizedKeys[0] == Keys.Tab;
     }
 
     private static void RefreshOverlayToggleKeyboardState() {

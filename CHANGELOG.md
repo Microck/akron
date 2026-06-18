@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## Unreleased
 
+### Fixed
+
+- Let Celeste's Journal shortcut take priority over Akron's default Tab overlay bind in the overworld.
+
 ## 0.1.2-beta.27
 
 ### Added
