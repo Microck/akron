@@ -383,7 +383,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Checkbox("Noclip + hide Madeline##" + popupId, ref suppressMadeline)) {
             AkronModule.Settings.ScreenshotScannerNoclipHideMadeline = suppressMadeline;
         }
-        DrawPopupTooltip("During capture, put Madeline in a dummy non-collidable hidden state without changing the global Noclip or Hide Player settings.");
+        DrawPopupTooltip("During capture, put Madeline in a dummy non-collidable hidden state without changing the global Noclip or Hide Player settings.", "Noclip + hide Madeline");
 
         bool removeBg = AkronModule.Settings.ScreenshotScannerRemoveBackground;
         if (ImGui.Checkbox("Remove background##" + popupId, ref removeBg)) {
@@ -439,6 +439,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Button("Save now##" + popupId)) {
             AkronAutosave.SaveNow();
         }
+        DrawPopupTooltip("Save the current file through Akron's autosave path.", "Save now");
     }
 
     private void DrawDeloadSpinnersPopupControls(string popupId) {

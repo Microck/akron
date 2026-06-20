@@ -68,6 +68,7 @@ public sealed partial class AkronOverlay {
             BuildSearchTerms("Add Custom", new[] { "custom label", "hud label", "new label" }),
             false,
             OverlayEntryControl.Action,
+            AkronFeatureKind.CustomHudLabels,
             actionKeyOverride: BuildActionKey("Labels", "+ Custom"),
             isAddCustomLabelRow: true));
         return entries;
@@ -129,6 +130,7 @@ public sealed partial class AkronOverlay {
             BuildSearchTerms(displayName, new[] { "custom label", "hud label", "template" }),
             true,
             OverlayEntryControl.Toggle,
+            AkronFeatureKind.CustomHudLabels,
             actionKeyOverride: BuildActionKey("Labels", rowOrderKey),
             forceOptionsPopup: true,
             optionsPopupKey: BuildActionKey("Labels", rowOrderKey),

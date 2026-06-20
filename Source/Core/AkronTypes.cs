@@ -573,7 +573,8 @@ public enum AkronFeatureKind {
     GoldenTransparency,
     LagPauser,
     Logging,
-    JournalSnapshotCompare
+    JournalSnapshotCompare,
+    Backups
 }
 
 public readonly struct FeatureDefinition {

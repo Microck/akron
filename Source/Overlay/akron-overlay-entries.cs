@@ -117,12 +117,12 @@ public sealed partial class AkronOverlay {
                 };
             case "Backups":
                 return new List<OverlayEntry> {
-                    Toggle("Enabled", () => AkronModule.Settings.BackupsEnabled, value => AkronModule.Settings.BackupsEnabled = value, "backup", "save", "zip"),
-                    Action("Create Now", () => AkronModule.Settings.BackupsEnabled, () => AkronModule.Settings.BackupsEnabled ? "Now" : "Disabled", () => AkronBackupActions.CreateBackup("manual"), "manual", "zip", "save"),
-                    Action("Restore", () => AkronBackupActions.ListBackups().Count > 0, AkronBackupActions.DescribeBackupSummary, () => ApplyOptionsPopupDelta("Restore", 1), "restore", "browser", "save"),
-                    Action("Last Result", () => true, () => AkronBackupActions.DescribeLastBackup(), () => ApplyOptionsPopupDelta("Last Result", 1), "status", "last backup", "errors"),
-                    Action("Triggers", () => true, DescribeBackupTriggers, () => ApplyOptionsPopupDelta("Triggers", 1), "startup", "shutdown", "save", "chapter", "interval"),
-                    Action("Retention", () => true, DescribeBackupRetention, () => ApplyOptionsPopupDelta("Retention", 1), "delete", "age", "count", "size", "keep")
+                    Toggle("Enabled", AkronFeatureKind.Backups, () => AkronModule.Settings.BackupsEnabled, value => AkronModule.Settings.BackupsEnabled = value, "backup", "save", "zip"),
+                    Action("Create Now", AkronFeatureKind.Backups, () => AkronModule.Settings.BackupsEnabled, () => AkronModule.Settings.BackupsEnabled ? "Now" : "Disabled", () => AkronBackupActions.CreateBackup("manual"), "manual", "zip", "save"),
+                    Action("Restore", AkronFeatureKind.Backups, () => AkronBackupActions.ListBackups().Count > 0, AkronBackupActions.DescribeBackupSummary, () => ApplyOptionsPopupDelta("Restore", 1), "restore", "browser", "save"),
+                    Action("Last Result", AkronFeatureKind.Backups, () => true, () => AkronBackupActions.DescribeLastBackup(), () => ApplyOptionsPopupDelta("Last Result", 1), "status", "last backup", "errors"),
+                    Action("Triggers", AkronFeatureKind.Backups, () => true, DescribeBackupTriggers, () => ApplyOptionsPopupDelta("Triggers", 1), "startup", "shutdown", "save", "chapter", "interval"),
+                    Action("Retention", AkronFeatureKind.Backups, () => true, DescribeBackupRetention, () => ApplyOptionsPopupDelta("Retention", 1), "delete", "age", "count", "size", "keep")
                 };
             case "Bypass":
                 return new List<OverlayEntry> {
@@ -543,7 +543,15 @@ public sealed partial class AkronOverlay {
     }
 
     private static OverlayEntry Toggle(string label, Func<bool> getter, Action<bool> setter, params string[] tags) {
-        return new OverlayEntry(label, () => true, () => getter() ? "On" : "Off", () => setter(!getter()), BuildSearchTerms(label, tags), true, OverlayEntryControl.Toggle);
+        return Toggle(label, null, getter, setter, tags);
+    }
+
+    private static OverlayEntry Toggle(string label, AkronFeatureKind featureKind, Func<bool> getter, Action<bool> setter, params string[] tags) {
+        return Toggle(label, (AkronFeatureKind?) featureKind, getter, setter, tags);
+    }
+
+    private static OverlayEntry Toggle(string label, AkronFeatureKind? featureKind, Func<bool> getter, Action<bool> setter, params string[] tags) {
+        return new OverlayEntry(label, () => true, () => getter() ? "On" : "Off", () => setter(!getter()), BuildSearchTerms(label, tags), true, OverlayEntryControl.Toggle, featureKind);
     }
 
     private static OverlayEntry LoggingToggle() {

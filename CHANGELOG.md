@@ -11,6 +11,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Add Inspector Pin to Entity Inspector: click entities or triggers in-game, cycle overlapping hits, view runtime and source-bound map properties, and copy an inspection report.
 - Credit viddie's Inspector Pin suggestion in the docs.
 
+### Changed
+
+- Update overlay row and popup classification labels to match the latest dcheat classification list, including Backups, Logging, Autosave, recorder, custom label, keybind, and gameplay-mutating utility classifications.
+
 ### Fixed
 
 - Let Celeste's Journal shortcut take priority over Akron's default Tab overlay bind in the overworld.
