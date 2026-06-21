@@ -84,6 +84,8 @@ public sealed partial class AkronOverlay {
                 DrawGoldenStartPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Free Camera", StringComparison.OrdinalIgnoreCase)) {
                 DrawFreeCameraPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Click Teleport", StringComparison.OrdinalIgnoreCase)) {
+                DrawClickTeleportPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Cursor Tools", StringComparison.OrdinalIgnoreCase)) {
                 DrawCursorToolsPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Camera Offset", StringComparison.OrdinalIgnoreCase)) {

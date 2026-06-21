@@ -65,7 +65,7 @@ public partial class AkronModuleSettings {
             CursorZoomStepPercent = ClampCursorZoomStepPercent(CursorZoomStepPercent),
             CursorZoomActivationMode = NormalizeCursorZoomActivationMode(CursorZoomActivationMode),
             CursorTools = CursorTools,
-            CursorToolsClickTeleport = CursorToolsClickTeleport,
+            CursorToolsClickAction = NormalizeCursorToolsClickAction(CursorToolsClickAction),
             CursorToolsCursorZoom = CursorToolsCursorZoom,
             CursorToolsFreeCamera = CursorToolsFreeCamera,
             CursorToolsFreezeGameplay = CursorToolsFreezeGameplay,

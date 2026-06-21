@@ -167,6 +167,7 @@ public sealed partial class AkronOverlay {
                string.Equals(label, "Screenshake", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Screen Tint", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Free Camera", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Click Teleport", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Cursor Tools", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Camera Offset", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Cursor Zoom", StringComparison.OrdinalIgnoreCase) ||

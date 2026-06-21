@@ -165,6 +165,30 @@ public static partial class AkronCommands {
         Log("qa-inspector-engine-mouse-visible: " + Engine.Instance.IsMouseVisible.ToString().ToLowerInvariant());
     }
 
+    [Command("akron_qa_inspector_stack_state", "show Entity Inspector hover and pinned stacks for Akron live automation")]
+    public static void QaInspectorStackState(string _ = "") {
+        Log("qa-inspector-stack-state: " + AkronEntityInspector.DescribeInspectorStacksForQa());
+    }
+
+    [Command("akron_qa_inspector_scan_targets", "scan visible Entity Inspector targets for Akron live automation: [step-pixels] [limit] [max-per-type]")]
+    public static void QaInspectorScanTargets(string stepPixels = "40", string limit = "80", string maxPerType = "8") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        if (!int.TryParse(stepPixels, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedStepPixels) ||
+            !int.TryParse(limit, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedLimit) ||
+            !int.TryParse(maxPerType, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedMaxPerType)) {
+            Log("usage: akron_qa_inspector_scan_targets [step-pixels] [limit] [max-per-type]");
+            return;
+        }
+
+        foreach (string line in AkronEntityInspector.ScanInspectorTargetsForQa(level, parsedStepPixels, parsedLimit, parsedMaxPerType)) {
+            Log("qa-inspector-scan-target: " + line);
+        }
+    }
+
     [Command("akron_qa_inspector_probe_screen", "show Entity Inspector hit-test diagnostics at screen coordinates: [x] [y]")]
     public static void QaInspectorProbeScreen(string x = "", string y = "") {
         Level level = RequireLevel();

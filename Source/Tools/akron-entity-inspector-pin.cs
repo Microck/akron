@@ -87,6 +87,7 @@ internal sealed class AkronInspectorReportData
 public static partial class AkronEntityInspector
 {
     private const float InspectorPinCycleTolerancePixels = 8f;
+    private const float InspectorHighlightOutlineThickness = 5f;
     private const int InspectorPinProbeRadiusPixels = 3;
     private const int InspectorPinFallbackSourceSize = 8;
     private static readonly ReferenceEqualityComparer ReferenceComparer = new ReferenceEqualityComparer();
@@ -94,6 +95,7 @@ public static partial class AkronEntityInspector
     private static readonly Dictionary<Entity, InspectorSourceRecord> sourceRecords = new Dictionary<Entity, InspectorSourceRecord>(ReferenceComparer);
     private static readonly Dictionary<EntityData, InspectorSourceOrdinalState> sourceOrdinalStates = new Dictionary<EntityData, InspectorSourceOrdinalState>(ReferenceComparer);
     private static readonly List<InspectorHit> currentStack = new List<InspectorHit>();
+    private static readonly List<InspectorHit> previewStack = new List<InspectorHit>();
     private static readonly Rectangle emptyHudRect = new Rectangle(0, 0, 0, 0);
     private static Rectangle inspectorPinCardRect = emptyHudRect;
     private static bool inspectorPinLastLeftDown;
@@ -106,6 +108,7 @@ public static partial class AkronEntityInspector
     private static Vector2 inspectorPinAnchorScreen;
     private static Entity inspectorPinSelectedEntity;
     private static int inspectorPinSelectedIndex;
+    private static int inspectorPinPreviewSelectedIndex;
     private static int inspectorPinCopiedUntilFrame;
     private static AkronInspectorPinFilter inspectorPinLastFilter = AkronInspectorPinFilter.Both;
     private static AkronInspectorPinPlacement inspectorPinLastPlacement = AkronInspectorPinPlacement.NearClick;
@@ -126,10 +129,10 @@ public static partial class AkronEntityInspector
     public static void UpdateInspectorPin(Level level)
     {
         AkronInspectorPinFilter filter = NormalizeInspectorPinFilter(AkronModule.Settings.InspectorPinFilter);
-        if (!AkronModule.Settings.EntityInspector || level == null)
+        if (level == null || (!AkronModule.Settings.EntityInspector && !AkronModule.Settings.CursorTools))
         {
             inspectorPinLastLeftDown = false;
-            AkronModule.ClearEntityInspectorPickMode();
+            ClearInspectorPinPreview();
             ClearInspectorPinSelection();
             return;
         }
@@ -144,6 +147,8 @@ public static partial class AkronEntityInspector
         ClearInspectorPinIfSelectedObjectRemoved(level);
 
         MouseState mouse = Mouse.GetState();
+        UpdateInspectorPinHoverPreview(level, filter, mouse);
+
         bool leftDown = mouse.LeftButton == ButtonState.Pressed;
         bool pressed = leftDown && !inspectorPinLastLeftDown;
         inspectorPinLastLeftDown = leftDown;
@@ -159,6 +164,7 @@ public static partial class AkronEntityInspector
         }
 
         if (ShouldIgnoreInspectorPinGameplayClick(level) ||
+            !AkronModule.ShouldShowEntityInspectorCursor() ||
             !AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed)
         {
             return;
@@ -244,40 +250,209 @@ public static partial class AkronEntityInspector
                ";first=" + first;
     }
 
+    internal static List<string> ScanInspectorTargetsForQa(Level level, int stepPixels, int limit, int maxPerType)
+    {
+        List<string> lines = new List<string>();
+        if (level == null)
+        {
+            lines.Add("missing-level");
+            return lines;
+        }
+
+        stepPixels = Calc.Clamp(stepPixels, 8, 160);
+        limit = Calc.Clamp(limit, 1, 200);
+        maxPerType = Calc.Clamp(maxPerType, 1, 50);
+        AkronInspectorPinFilter filter = NormalizeInspectorPinFilter(AkronModule.Settings.InspectorPinFilter);
+        Viewport viewport = Engine.Viewport;
+        float scale = AkronScreenProjection.CurrentViewportScale();
+        float left = viewport.X;
+        float top = viewport.Y;
+        float right = left + 320f * scale;
+        float bottom = top + 180f * scale;
+        HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
+        Dictionary<string, int> countsByType = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        for (float y = top + stepPixels * 0.5f; y < bottom && lines.Count < limit; y += stepPixels)
+        {
+            for (float x = left + stepPixels * 0.5f; x < right && lines.Count < limit; x += stepPixels)
+            {
+                Vector2 screenPoint = new Vector2(x, y);
+                Vector2 gamePoint = AkronScreenProjection.MouseScreenToGame(screenPoint);
+                Vector2 worldPoint = AkronScreenProjection.MouseScreenToWorld(level, screenPoint);
+                Point probePixel = new Point((int)Math.Floor(worldPoint.X), (int)Math.Floor(worldPoint.Y));
+                List<InspectorHit> hits = BuildInspectorHitStack(level, filter, screenPoint, gamePoint, worldPoint, probePixel);
+                for (int stackIndex = 0; stackIndex < hits.Count && lines.Count < limit; stackIndex++)
+                {
+                    InspectorHit hit = hits[stackIndex];
+                    string typeName = hit.Entity.GetType().FullName ?? hit.Entity.GetType().Name;
+                    countsByType.TryGetValue(typeName, out int typeCount);
+                    if (typeCount >= maxPerType)
+                    {
+                        continue;
+                    }
+
+                    string signature = hit.InspectorId.ToString(CultureInfo.InvariantCulture) + "|" +
+                                       FormatRectangle(hit.Bounds) + "|" +
+                                       typeName;
+                    if (!seen.Add(signature))
+                    {
+                        continue;
+                    }
+
+                    countsByType[typeName] = typeCount + 1;
+                    lines.Add("target=" + lines.Count.ToString(CultureInfo.InvariantCulture) +
+                              ";stack=" + (stackIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + hits.Count.ToString(CultureInfo.InvariantCulture) +
+                              ";type=" + typeName +
+                              ";bounds=" + FormatRectangle(hit.Bounds) +
+                              ";screen=" + FormatVector(screenPoint) +
+                              ";world=" + FormatVector(worldPoint));
+                }
+            }
+        }
+
+        lines.Insert(0, "count=" + (lines.Count).ToString(CultureInfo.InvariantCulture) +
+                        ";step=" + stepPixels.ToString(CultureInfo.InvariantCulture) +
+                        ";limit=" + limit.ToString(CultureInfo.InvariantCulture) +
+                        ";maxPerType=" + maxPerType.ToString(CultureInfo.InvariantCulture));
+        return lines;
+    }
+
     public static void RenderInspectorPinOutlinesToGameplayBuffer(Level level)
     {
-        if (!AkronModule.Settings.EntityInspector || level == null || currentStack.Count == 0)
+        if (level == null)
         {
             return;
         }
 
-        Rectangle cameraBounds = CameraWorldBounds(level);
-        for (int index = 0; index < currentStack.Count; index++)
+        renderingToGameplayBuffer = true;
+        try
         {
-            InspectorHit hit = currentStack[index];
-            if (hit.Entity?.Collider == null || !IntersectsCamera(hit.Entity.Collider, cameraBounds))
+            Rectangle cameraBounds = CameraWorldBounds(level);
+            RenderInspectorHitStack(
+                level,
+                previewStack,
+                inspectorPinPreviewSelectedIndex,
+                new Color(96, 224, 255) * 0.9f,
+                new Color(96, 224, 255) * 0.35f,
+                new Color(96, 224, 255) * 0.14f,
+                cameraBounds);
+            RenderInspectorHitStack(
+                level,
+                currentStack,
+                inspectorPinSelectedIndex,
+                new Color(255, 191, 64) * 0.95f,
+                new Color(255, 191, 64) * 0.35f,
+                new Color(255, 191, 64) * 0.16f,
+                cameraBounds);
+        }
+        finally
+        {
+            renderingToGameplayBuffer = false;
+        }
+    }
+
+    public static bool HasInspectorPinPreview()
+    {
+        return previewStack.Count > 0;
+    }
+
+    internal static string DescribeInspectorStacksForQa()
+    {
+        return "preview=" + DescribeInspectorStackForQa(previewStack, inspectorPinPreviewSelectedIndex) +
+               ";current=" + DescribeInspectorStackForQa(currentStack, inspectorPinSelectedIndex);
+    }
+
+    private static string DescribeInspectorStackForQa(List<InspectorHit> stack, int selectedIndex)
+    {
+        if (stack.Count == 0)
+        {
+            return "0";
+        }
+
+        int clampedIndex = Calc.Clamp(selectedIndex, 0, stack.Count - 1);
+        InspectorHit selected = stack[clampedIndex];
+        return stack.Count.ToString(CultureInfo.InvariantCulture) +
+               ";selected=" + (clampedIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + stack.Count.ToString(CultureInfo.InvariantCulture) +
+               ";bounds=" + FormatRectangle(selected.Bounds) +
+               ";first=" + (selected.Entity?.GetType().FullName ?? selected.Entity?.GetType().Name ?? "none");
+    }
+
+    private static void RenderInspectorHitStack(
+        Level level,
+        List<InspectorHit> stack,
+        int selectedIndex,
+        Color selectedColor,
+        Color otherColor,
+        Color fillColor,
+        Rectangle cameraBounds)
+    {
+        for (int index = 0; index < stack.Count; index++)
+        {
+            InspectorHit hit = stack[index];
+            if (hit.Entity == null || !hit.Bounds.Intersects(cameraBounds))
+            {
+                continue;
+            }
+            if (hit.Entity is not SolidTiles && hit.Entity.Collider != null && !IntersectsCamera(hit.Entity.Collider, cameraBounds))
             {
                 continue;
             }
 
-            bool selected = index == inspectorPinSelectedIndex;
-            Color color = selected
-                ? new Color(255, 191, 64) * 0.95f
-                : new Color(255, 191, 64) * 0.35f;
+            bool selected = index == selectedIndex;
+            Color color = selected ? selectedColor : otherColor;
 
             if (selected && hit.IsTrigger)
             {
+                DrawInspectorWorldRect(level, hit.Bounds, color, fillColor, dashed: true);
                 DrawDashedWorldRect(level, hit.Bounds, color);
                 continue;
             }
 
-            DrawCollider(level, hit.Entity.Collider, color, cameraBounds);
+            if (hit.Entity is SolidTiles)
+            {
+                DrawInspectorWorldRect(level, hit.Bounds, color, selected ? fillColor : Color.Transparent, dashed: false);
+                continue;
+            }
+
+            if (hit.Entity.Collider != null)
+            {
+                DrawInspectorWorldRect(level, hit.Bounds, color, selected ? fillColor : Color.Transparent, dashed: false);
+                DrawCollider(level, hit.Entity.Collider, color, cameraBounds);
+            }
+            else
+            {
+                DrawInspectorWorldRect(level, hit.Bounds, color, selected ? fillColor : Color.Transparent, dashed: false);
+            }
+        }
+    }
+
+    private static void DrawInspectorWorldRect(Level level, Rectangle worldBounds, Color outlineColor, Color fillColor, bool dashed)
+    {
+        if (worldBounds.Width <= 0 || worldBounds.Height <= 0)
+        {
+            return;
+        }
+
+        frameDrawCalls++;
+        AkronHudRect rect = WorldToHitboxSurfaceRect(level, worldBounds);
+        if (fillColor.A > 0)
+        {
+            Draw.Rect(rect.X, rect.Y, rect.Width, rect.Height, fillColor);
+        }
+
+        float outlineThickness = dashed
+            ? InspectorHighlightOutlineThickness * 0.75f
+            : InspectorHighlightOutlineThickness;
+        DrawThickHollowRect(rect.X, rect.Y, rect.Width, rect.Height, Color.Black * 0.9f, outlineThickness + 5f);
+        if (!dashed)
+        {
+            DrawThickHollowRect(rect.X, rect.Y, rect.Width, rect.Height, outlineColor, outlineThickness);
         }
     }
 
     public static bool ShouldRenderInspectorPinImGui(Level level)
     {
-        return AkronModule.Settings.EntityInspector &&
+        return (AkronModule.Settings.EntityInspector || AkronModule.Settings.CursorTools) &&
                level != null &&
                inspectorPinSelectedEntity != null &&
                currentStack.Count > 0;
@@ -341,7 +516,7 @@ public static partial class AkronEntityInspector
     internal static string BuildCopyReport(AkronInspectorReportData data)
     {
         StringBuilder builder = new StringBuilder();
-        builder.AppendLine("Akron Inspector Pin Report");
+        builder.AppendLine("Akron Entity Inspector Report");
         builder.AppendLine("akronVersion: " + AkronModule.Instance?.Metadata?.VersionString);
         builder.AppendLine("filter: " + data.Filter);
         builder.AppendLine("room: " + data.Room);
@@ -395,7 +570,7 @@ public static partial class AkronEntityInspector
         }
 
         StringBuilder builder = new StringBuilder();
-        builder.AppendLine("Akron Inspector Pin Report");
+        builder.AppendLine("Akron Entity Inspector Report");
         builder.AppendLine("akronVersion: " + AkronModule.Instance?.Metadata?.VersionString);
         builder.AppendLine("target: " + data.Filter);
         builder.AppendLine("selected: " + data.Category + " " + data.DisplayName);
@@ -494,6 +669,50 @@ public static partial class AkronEntityInspector
         inspectorPinCardRect = emptyHudRect;
     }
 
+    private static void ClearInspectorPinPreview()
+    {
+        previewStack.Clear();
+        inspectorPinPreviewSelectedIndex = 0;
+    }
+
+    private static void UpdateInspectorPinHoverPreview(Level level, AkronInspectorPinFilter filter, MouseState mouse)
+    {
+        if (!AkronModule.Settings.EntityInspectorPinHoverPreview ||
+            !AkronModule.ShouldShowEntityInspectorCursor() ||
+            !AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed)
+        {
+            ClearInspectorPinPreview();
+            return;
+        }
+
+        Vector2 screenPoint = new Vector2(mouse.X, mouse.Y);
+        if (!IsInsideGameplayViewport(screenPoint))
+        {
+            ClearInspectorPinPreview();
+            return;
+        }
+
+        Vector2 gamePoint = AkronScreenProjection.MouseScreenToGame(screenPoint);
+        Vector2 worldPoint = AkronScreenProjection.MouseScreenToWorld(level, screenPoint);
+        Point probePixel = new Point((int)Math.Floor(worldPoint.X), (int)Math.Floor(worldPoint.Y));
+        List<InspectorHit> hits = BuildInspectorHitStack(level, filter, screenPoint, gamePoint, worldPoint, probePixel);
+        previewStack.Clear();
+        if (hits.Count == 0)
+        {
+            inspectorPinPreviewSelectedIndex = 0;
+            return;
+        }
+
+        previewStack.AddRange(hits);
+        string signature = BuildInspectorStackSignature(filter, hits);
+        bool sameStack = string.Equals(signature, inspectorPinStackSignature, StringComparison.Ordinal) &&
+                         Vector2.Distance(screenPoint, inspectorPinAnchorScreen) <= InspectorPinCycleTolerancePixels &&
+                         currentStack.Count == hits.Count;
+        inspectorPinPreviewSelectedIndex = sameStack
+            ? (inspectorPinSelectedIndex + 1) % previewStack.Count
+            : 0;
+    }
+
     private static void ClearInspectorPinIfSelectedObjectRemoved(Level level)
     {
         if (inspectorPinSelectedEntity == null)
@@ -571,7 +790,7 @@ public static partial class AkronEntityInspector
                 continue;
             }
 
-            if (!TryGetInspectorHitBounds(level, entity, out Rectangle bounds, out bool colliderBacked))
+            if (!TryGetInspectorHitBounds(level, entity, probe, probePixel, out Rectangle bounds, out bool colliderBacked))
             {
                 continue;
             }
@@ -646,8 +865,18 @@ public static partial class AkronEntityInspector
         };
     }
 
-    private static bool TryGetInspectorHitBounds(Level level, Entity entity, out Rectangle bounds, out bool colliderBacked)
+    private static bool TryGetInspectorHitBounds(Level level, Entity entity, Rectangle probe, Point probePixel, out Rectangle bounds, out bool colliderBacked)
     {
+        if (entity is SolidTiles solidTiles)
+        {
+            Grid grid = solidTiles.Grid ?? (entity.Collider as Grid);
+            if (TryGetSolidTileProbeBounds(grid, probe, probePixel, out bounds))
+            {
+                colliderBacked = true;
+                return true;
+            }
+        }
+
         if (entity?.Collider != null)
         {
             bounds = ColliderWorldBounds(entity.Collider);
@@ -679,6 +908,55 @@ public static partial class AkronEntityInspector
         bounds = ToRectangle(topLeft.X, topLeft.Y, width, height);
         colliderBacked = false;
         return true;
+    }
+
+    private static bool TryGetSolidTileProbeBounds(Grid grid, Rectangle probe, Point probePixel, out Rectangle bounds)
+    {
+        bounds = default;
+        if (grid == null || grid.IsEmpty || grid.CellWidth <= 0f || grid.CellHeight <= 0f)
+        {
+            return false;
+        }
+
+        int minCellX = ClampCellIndex((int)Math.Floor((probe.Left - grid.AbsoluteLeft) / grid.CellWidth), grid.CellsX);
+        int maxCellX = ClampCellIndex((int)Math.Ceiling((probe.Right - grid.AbsoluteLeft) / grid.CellWidth), grid.CellsX);
+        int minCellY = ClampCellIndex((int)Math.Floor((probe.Top - grid.AbsoluteTop) / grid.CellHeight), grid.CellsY);
+        int maxCellY = ClampCellIndex((int)Math.Ceiling((probe.Bottom - grid.AbsoluteTop) / grid.CellHeight), grid.CellsY);
+        float bestDistance = float.MaxValue;
+
+        for (int cellY = minCellY; cellY < maxCellY; cellY++)
+        {
+            for (int cellX = minCellX; cellX < maxCellX; cellX++)
+            {
+                if (!grid[cellX, cellY])
+                {
+                    continue;
+                }
+
+                Rectangle cellBounds = new Rectangle(
+                    (int)Math.Floor(grid.AbsoluteLeft + cellX * grid.CellWidth),
+                    (int)Math.Floor(grid.AbsoluteTop + cellY * grid.CellHeight),
+                    (int)Math.Ceiling(grid.CellWidth),
+                    (int)Math.Ceiling(grid.CellHeight));
+                if (cellBounds.Contains(probePixel))
+                {
+                    bounds = cellBounds;
+                    return true;
+                }
+
+                float centerX = cellBounds.Left + cellBounds.Width * 0.5f;
+                float centerY = cellBounds.Top + cellBounds.Height * 0.5f;
+                float distance = (centerX - probePixel.X) * (centerX - probePixel.X) +
+                                 (centerY - probePixel.Y) * (centerY - probePixel.Y);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bounds = cellBounds;
+                }
+            }
+        }
+
+        return bestDistance < float.MaxValue;
     }
 
     private static bool IntersectsProbe(Collider collider, Rectangle bounds, Rectangle probe)
@@ -1020,7 +1298,7 @@ public static partial class AkronEntityInspector
             ImGuiWindowFlags.NoSavedSettings |
             ImGuiWindowFlags.AlwaysAutoResize;
 
-        bool visible = ImGui.Begin("Inspector Pin " + cycle + "##akron_inspector_pin", flags);
+        bool visible = ImGui.Begin("Entity Inspector " + cycle + "##akron_inspector_pin", flags);
         if (!visible)
         {
             NumericsVector2 collapsedWindowPos = ImGui.GetWindowPos();
@@ -1062,7 +1340,7 @@ public static partial class AkronEntityInspector
         }
 
         ImGui.Spacing();
-        float buttonWidth = Math.Max(112f * scale, (ImGui.GetContentRegionAvail().X - 8f * scale) / 2f);
+        float buttonWidth = Math.Max(96f * scale, (ImGui.GetContentRegionAvail().X - 16f * scale) / 3f);
         if (ImGui.Button((inspectorPinPropertiesOpen ? "Hide Properties" : "Properties") + "##akron_inspector_pin_properties", new NumericsVector2(buttonWidth, 0f)))
         {
             inspectorPinPropertiesOpen = !inspectorPinPropertiesOpen;
@@ -1077,6 +1355,14 @@ public static partial class AkronEntityInspector
         {
             CopyInspectorReport(BuildVisibleCopyReport(data, inspectorPinPropertiesOpen));
             inspectorPinCopiedUntilFrame = (int)Engine.FrameCounter + 54;
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Close##akron_inspector_pin_close", new NumericsVector2(buttonWidth, 0f)))
+        {
+            ClearInspectorPinSelection();
+            inspectorPinCardRect = emptyHudRect;
+            ImGui.End();
+            return;
         }
 
         NumericsVector2 windowPos = ImGui.GetWindowPos();

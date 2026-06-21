@@ -15,7 +15,6 @@ public partial class AkronModule {
     private static KeyboardState previousStartPosHotkeyKeyboard;
     private static bool cursorVisibilityCaptured;
     private static bool previousMouseVisible;
-    private static bool entityInspectorPickModeArmed;
 
     private static void HandleHotkeys(Level level) {
         if (Overlay?.IsTransientMouseUiActive == true && IsOverlayTogglePressed()) {
@@ -165,9 +164,6 @@ public partial class AkronModule {
             }
 
             Settings.EntityInspector = next;
-            if (!next) {
-                ClearEntityInspectorPickMode();
-            }
         }
 
         AkronOverlay.ExecuteCustomBoundActions(level);
@@ -407,24 +403,10 @@ public partial class AkronModule {
     internal static bool ShouldShowEntityInspectorCursor() {
         return Engine.Scene is Level &&
                ShouldShowEntityInspectorCursor(
-                   Settings.EntityInspector,
-                   entityInspectorPickModeArmed || IsEntityInspectorCursorHoldActive(),
+                   Settings.EntityInspector || Settings.CursorTools,
+                   IsEntityInspectorCursorHoldActive() || IsCursorToolsInspectorPinActive(),
                    Overlay?.Visible == true,
                    AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed);
-    }
-
-    internal static void ArmEntityInspectorPickMode() {
-        entityInspectorPickModeArmed = true;
-        RefreshOverlayCursorState();
-    }
-
-    internal static void ClearEntityInspectorPickMode() {
-        if (!entityInspectorPickModeArmed) {
-            return;
-        }
-
-        entityInspectorPickModeArmed = false;
-        RefreshOverlayCursorState();
     }
 
     internal static bool IsEntityInspectorCursorHoldActive() {

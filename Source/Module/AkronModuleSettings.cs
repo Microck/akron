@@ -118,7 +118,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool CursorZoomResetOnDeactivate { get; set; }
     public AkronCursorZoomActivationMode CursorZoomActivationMode { get; set; } = AkronCursorZoomActivationMode.Hold;
     public bool CursorTools { get; set; }
-    public bool CursorToolsClickTeleport { get; set; } = true;
+    public AkronCursorToolsClickAction CursorToolsClickAction { get; set; } = AkronCursorToolsClickAction.ClickTeleport;
     public bool CursorToolsCursorZoom { get; set; } = true;
     public bool CursorToolsFreeCamera { get; set; } = true;
     public bool CursorToolsFreezeGameplay { get; set; }
@@ -222,6 +222,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int EntityInspectorPinX { get; set; } = 16;
     public int EntityInspectorPinY { get; set; } = 16;
     public bool EntityInspectorPinShowPropertiesByDefault { get; set; } = true;
+    public bool EntityInspectorPinHoverPreview { get; set; } = true;
 
     [DefaultButtonBinding(0, Keys.None)]
     public ButtonBinding ToggleFrameBypass { get; set; }

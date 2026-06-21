@@ -679,7 +679,8 @@ public partial class AkronModule : EverestModule {
         bool selectingArea = TryGetPracticeAreaSelectionPreview(level, isAutoDeafen: false, out _, out _) ||
                              TryGetPracticeAreaSelectionPreview(level, isAutoDeafen: true, out _, out _);
 
-        bool showInspectorPin = settings.EntityInspector && AkronEntityInspector.HasInspectorPinSelection();
+        bool showInspectorPin = AkronEntityInspector.HasInspectorPinSelection() ||
+                                AkronEntityInspector.HasInspectorPinPreview();
 
         return showHitboxes || showInspectorPin || showAutoKillArea || showAutoDeafenArea || selectingArea;
     }

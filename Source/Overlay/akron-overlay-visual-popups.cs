@@ -123,14 +123,50 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip("Pan free camera from the cursor position relative to screen center. Movement keys and controller aim still work.", "Mouse control");
     }
 
+    private void DrawClickTeleportPopupControls(string popupId) {
+        DrawCursorHoldBindingRow(
+            "Click Teleport / Cursor hold",
+            "click-teleport",
+            AkronModule.Settings.ClickTeleportCursor,
+            value => AkronModule.Settings.ClickTeleportCursor = value,
+            AkronModuleSettings.CreateLeftAltHoldBinding(),
+            popupId,
+            "Hold this while Click Teleport is enabled, then left-click in the gameplay viewport to teleport.");
+    }
+
     private void DrawCursorToolsPopupControls(string popupId) {
-        DrawPopupCheckbox(
+        DrawCursorHoldBindingRow(
+            "Cursor Tools / Cursor hold",
+            "cursor-tools",
+            AkronModule.Settings.CursorToolsHold,
+            value => AkronModule.Settings.CursorToolsHold = value,
+            AkronModuleSettings.CreateLeftAltHoldBinding(),
+            popupId,
+            "Hold this while Cursor Tools is enabled to temporarily activate the selected cursor tools.");
+
+        ImGui.Separator();
+
+        AkronCursorToolsClickAction clickAction = AkronModuleSettings.NormalizeCursorToolsClickAction(AkronModule.Settings.CursorToolsClickAction);
+        DrawPopupRowLabel("Click action", CalculatePopupLabelWidth(132f));
+        float choiceColumnX = ImGui.GetCursorPosX();
+        DrawPopupChoiceRadioButton(
             "Click Teleport",
-            () => AkronModule.Settings.CursorToolsClickTeleport,
-            value => AkronModule.Settings.CursorToolsClickTeleport = value,
+            clickAction == AkronCursorToolsClickAction.ClickTeleport,
+            () => AkronModule.Settings.CursorToolsClickAction = AkronCursorToolsClickAction.ClickTeleport,
             popupId,
             "Allow Cursor Tools to teleport Madeline with a left click while the Cursor Tools binding is held.",
-            132f);
+            choiceColumnX,
+            false);
+        DrawPopupChoiceRadioButton(
+            "Entity Inspector",
+            clickAction == AkronCursorToolsClickAction.InspectorPin,
+            () => AkronModule.Settings.CursorToolsClickAction = AkronCursorToolsClickAction.InspectorPin,
+            popupId,
+            "Allow Cursor Tools to inspect the hovered object with a left click while the Cursor Tools binding is held.",
+            choiceColumnX,
+            true);
+
+        ImGui.Separator();
 
         DrawPopupCheckbox(
             "Cursor Zoom",
@@ -197,6 +233,17 @@ public sealed partial class AkronOverlay {
     }
 
     private void DrawCursorZoomPopupControls(string popupId) {
+        DrawCursorHoldBindingRow(
+            "Cursor Zoom / Cursor hold",
+            "cursor-zoom",
+            AkronModule.Settings.CursorZoomHold,
+            value => AkronModule.Settings.CursorZoomHold = value,
+            AkronModuleSettings.CreateLeftAltHoldBinding(),
+            popupId,
+            "Hold or press this while Cursor Zoom is enabled, depending on the selected activation mode.");
+
+        ImGui.Separator();
+
         DrawIntStepperRow(
             "Zoom",
             () => AkronModule.Settings.CursorZoomPercent,

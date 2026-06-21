@@ -582,7 +582,7 @@ public sealed class OverlayTests {
 
         Assert.Contains("AkronOverlay.ApplyOverlayThemePreset(scale);", source);
         Assert.Contains("AkronModuleSettings.ClampOverlayOpacity(AkronModule.Settings.OverlayOpacity)", source);
-        Assert.Contains("ImGui.Begin(\"Inspector Pin \" + cycle + \"##akron_inspector_pin\", flags)", source);
+        Assert.Contains("ImGui.Begin(\"Entity Inspector \" + cycle + \"##akron_inspector_pin\", flags)", source);
         Assert.Contains("DrawInspectorPinInfoRow(\"Target\", data.Filter.ToString())", source);
         Assert.DoesNotContain("DrawInspectorPinFilterRadios", source);
         Assert.DoesNotContain("akron_inspector_filter_entities", source);
@@ -598,6 +598,8 @@ public sealed class OverlayTests {
         Assert.Contains("DrawInspectorPinRows(data.PlacementRows)", source);
         Assert.Contains("DrawInspectorPinRows(data.AuthoredRows)", source);
         Assert.Contains("\"Copy\"", source);
+        Assert.Contains("\"Close##akron_inspector_pin_close\"", source);
+        Assert.Contains("ClearInspectorPinSelection();", source);
         Assert.Contains("CopyInspectorReport(BuildVisibleCopyReport(data, inspectorPinPropertiesOpen))", source);
         Assert.Contains("internal static string BuildVisibleCopyReport(AkronInspectorReportData data, bool includeProperties)", source);
         Assert.DoesNotContain("Copy Report", source);
@@ -617,15 +619,15 @@ public sealed class OverlayTests {
         string moduleInputSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/akron-module-overlay-input.cs"));
         string inspectorSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-entity-inspector-pin.cs"));
         int popupStart = popupSource.IndexOf("private void DrawEntityInspectorPopupControls", StringComparison.Ordinal);
-        int popupEnd = popupSource.IndexOf("private void DrawEntityInspectorBindingRow", popupStart, StringComparison.Ordinal);
+        int popupEnd = popupSource.IndexOf("private void DrawCursorHoldBindingRow", popupStart, StringComparison.Ordinal);
 
         Assert.True(popupStart >= 0);
         Assert.True(popupEnd > popupStart);
         string entityInspectorPopup = popupSource[popupStart..popupEnd];
 
         Assert.Contains("active: () => AkronModule.Settings.EntityInspector", entriesSource);
-        Assert.Contains("AkronModule.ArmEntityInspectorPickMode();", entriesSource);
-        Assert.Contains("AkronModule.SetOverlayVisible(Engine.Scene, false);", entriesSource);
+        Assert.DoesNotContain("AkronModule.ArmEntityInspectorPickMode();", entriesSource);
+        Assert.DoesNotContain("AkronModule.SetOverlayVisible(Engine.Scene, false);", entriesSource);
         Assert.Contains("entry.Active?.Invoke() == true", imguiRendererSource);
         Assert.Contains("action.Entry.Active?.Invoke() == true", spriteRendererSource);
         Assert.Contains("DrawPopupRowLabel(\"Target\"", entityInspectorPopup);
@@ -634,6 +636,8 @@ public sealed class OverlayTests {
         Assert.Contains("\"Triggers\"", entityInspectorPopup);
         Assert.Contains("\"Both\"", entityInspectorPopup);
         Assert.Contains("AkronModule.Settings.EntityInspectorCursorHold", entityInspectorPopup);
+        Assert.Contains("AkronModule.Settings.EntityInspectorPinHoverPreview", entityInspectorPopup);
+        Assert.Contains("\"Hover preview\"", entityInspectorPopup);
         Assert.Contains("DrawPopupRowLabel(\"Cursor\"", popupSource);
         Assert.Contains("DrawEntityInspectorReportPlacementRows(popupId)", entityInspectorPopup);
         Assert.Contains("EntityInspectorPinPlacement", popupSource);
@@ -651,25 +655,77 @@ public sealed class OverlayTests {
         Assert.DoesNotContain("AkronModule.Settings.CursorToolsHold", entityInspectorPopup);
         Assert.DoesNotContain("AkronModule.Settings.CursorZoomHold", entityInspectorPopup);
         Assert.DoesNotContain("AkronModule.Settings.ClickTeleportCursor", entityInspectorPopup);
-        Assert.Contains("StartButtonBindingCapture(\"Entity Inspector / Cursor hold\"", popupSource);
-        Assert.Contains("entityInspectorPickModeArmed || IsEntityInspectorCursorHoldActive()", moduleInputSource);
+        Assert.Contains("\"Entity Inspector / Cursor hold\"", entityInspectorPopup);
+        Assert.Contains("StartButtonBindingCapture(displayName, setter)", popupSource);
+        Assert.DoesNotContain("entityInspectorPickModeArmed", moduleInputSource);
+        Assert.DoesNotContain("ArmEntityInspectorPickMode", moduleInputSource);
+        Assert.DoesNotContain("ClearEntityInspectorPickMode", moduleInputSource);
+        Assert.Contains("IsEntityInspectorCursorHoldActive() || IsCursorToolsInspectorPinActive()", moduleInputSource);
         Assert.Contains("IsEntityInspectorCursorHoldActive()", moduleInputSource);
         Assert.Contains("IsButtonBindingHeld(AkronModuleSettings.ResolveEntityInspectorCursorHoldBinding(Settings))", moduleInputSource);
         Assert.Contains("ShouldShowEntityInspectorCursor()", moduleInputSource);
         Assert.Contains("AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed", inspectorSource);
-        Assert.DoesNotContain("!AkronModule.ShouldShowEntityInspectorCursor()", inspectorSource);
+        int updateStart = inspectorSource.IndexOf("public static void UpdateInspectorPin", StringComparison.Ordinal);
+        int previewStart = inspectorSource.IndexOf("private static void UpdateInspectorPinHoverPreview", StringComparison.Ordinal);
+        Assert.True(updateStart >= 0);
+        Assert.True(previewStart > updateStart);
+        Assert.Contains("!AkronModule.ShouldShowEntityInspectorCursor()", inspectorSource[updateStart..previewStart]);
         Assert.Contains("InspectorPinProbeRadiusPixels", inspectorSource);
         Assert.Contains("TryGetInspectorHitBounds", inspectorSource);
+        Assert.Contains("TryGetSolidTileProbeBounds", inspectorSource);
         Assert.Contains("record.SourceData.Width > 0", inspectorSource);
         Assert.Contains("ColliderBacked", inspectorSource);
         Assert.Contains("EnumerateInspectorEntities", inspectorSource);
         Assert.Contains("entities.Add(level.SolidTiles)", inspectorSource);
+        Assert.Contains("UpdateInspectorPinHoverPreview", inspectorSource);
+        Assert.Contains("previewStack", inspectorSource);
+        Assert.Contains("renderingToGameplayBuffer = true;", inspectorSource);
+        Assert.Contains("renderingToGameplayBuffer = false;", inspectorSource);
+        Assert.Contains("DrawInspectorWorldRect(level, hit.Bounds, color, selected ? fillColor : Color.Transparent, dashed: false)", inspectorSource);
+        Assert.Contains("private const float InspectorHighlightOutlineThickness", inspectorSource);
+        Assert.Contains("Color.Black * 0.9f", inspectorSource);
+        Assert.Contains("if (hit.Entity is SolidTiles)", inspectorSource);
+        Assert.DoesNotContain("DrawWorldRect(level, hit.Bounds, color);", inspectorSource);
+        Assert.Contains("HasInspectorPinPreview()", inspectorSource);
         Assert.DoesNotContain("entity is PlayerDeadBody || entity is SolidTiles", inspectorSource);
         int ignoreStart = inspectorSource.IndexOf("private static bool ShouldIgnoreInspectorPinGameplayClick", StringComparison.Ordinal);
         int ignoreEnd = inspectorSource.IndexOf("private static bool IsInsideGameplayViewport", ignoreStart, StringComparison.Ordinal);
         Assert.True(ignoreStart >= 0);
         Assert.True(ignoreEnd > ignoreStart);
         Assert.DoesNotContain("WantCaptureMouse", inspectorSource[ignoreStart..ignoreEnd]);
+    }
+
+    [Fact]
+    public void CursorFeaturePopupsExposeCustomCursorBindings() {
+        string popupRouterSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-popup-controls.cs"));
+        string optionsSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-options-popup.cs"));
+        string visualPopupSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-visual-popups.cs"));
+        string runtimePopupSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-runtime-popups.cs"));
+
+        Assert.Contains("string.Equals(entry.Label, \"Click Teleport\"", popupRouterSource);
+        Assert.Contains("string.Equals(label, \"Click Teleport\"", optionsSource);
+
+        Assert.Contains("DrawClickTeleportPopupControls", visualPopupSource);
+        Assert.Contains("AkronModule.Settings.ClickTeleportCursor", visualPopupSource);
+        Assert.Contains("StartButtonBindingCapture(displayName, setter)", runtimePopupSource);
+        Assert.Contains("Bind##\" + idPrefix + \"-cursor-bind-\"", runtimePopupSource);
+        Assert.Contains("Clear##\" + idPrefix + \"-cursor-clear-\"", runtimePopupSource);
+        Assert.Contains("Default##\" + idPrefix + \"-cursor-default-\"", runtimePopupSource);
+        Assert.Contains("\"Click Teleport / Cursor hold\"", visualPopupSource);
+
+        Assert.Contains("DrawCursorToolsPopupControls", visualPopupSource);
+        Assert.Contains("AkronModule.Settings.CursorToolsHold", visualPopupSource);
+        Assert.Contains("\"Cursor Tools / Cursor hold\"", visualPopupSource);
+        Assert.Contains("AkronModule.Settings.CursorToolsClickAction", visualPopupSource);
+        Assert.Contains("AkronCursorToolsClickAction.ClickTeleport", visualPopupSource);
+        Assert.Contains("AkronCursorToolsClickAction.InspectorPin", visualPopupSource);
+        Assert.Contains("\"Click action\"", visualPopupSource);
+        Assert.Contains("\"Entity Inspector\"", visualPopupSource);
+
+        Assert.Contains("DrawCursorZoomPopupControls", visualPopupSource);
+        Assert.Contains("AkronModule.Settings.CursorZoomHold", visualPopupSource);
+        Assert.Contains("\"Cursor Zoom / Cursor hold\"", visualPopupSource);
+        Assert.Contains("AkronModuleSettings.CreateLeftAltHoldBinding()", visualPopupSource);
     }
 
     [Fact]

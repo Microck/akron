@@ -661,12 +661,6 @@ public sealed partial class AkronOverlay {
                 }
 
                 AkronModule.Settings.EntityInspector = next;
-                if (next) {
-                    AkronModule.ArmEntityInspectorPickMode();
-                    AkronModule.SetOverlayVisible(Engine.Scene, false);
-                } else {
-                    AkronModule.ClearEntityInspectorPickMode();
-                }
             },
             BuildSearchTerms("Entity Inspector", new[] { "inspector", "entity", "trigger", "pin", "click", "properties" }),
             true,

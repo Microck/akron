@@ -660,7 +660,7 @@ public sealed class ModuleSettingsTests
         Assert.False(settings.CursorZoomResetOnDeactivate);
         Assert.Equal(AkronCursorZoomActivationMode.Hold, settings.CursorZoomActivationMode);
         Assert.False(settings.CursorTools);
-        Assert.True(settings.CursorToolsClickTeleport);
+        Assert.Equal(AkronCursorToolsClickAction.ClickTeleport, settings.CursorToolsClickAction);
         Assert.True(settings.CursorToolsCursorZoom);
         Assert.True(settings.CursorToolsFreeCamera);
         Assert.False(settings.CursorToolsFreezeGameplay);
@@ -726,6 +726,15 @@ public sealed class ModuleSettingsTests
     public void CursorToolsFreeCameraUsesMouseControlByDefault(bool freeCameraMouseControl, bool cursorToolsHeld, bool cursorToolsFreeCamera, bool expected)
     {
         Assert.Equal(expected, AkronModule.IsFreeCameraMouseControlEffectiveEnabled(freeCameraMouseControl, cursorToolsHeld, cursorToolsFreeCamera));
+    }
+
+    [Theory]
+    [InlineData(AkronCursorToolsClickAction.ClickTeleport, AkronCursorToolsClickAction.ClickTeleport)]
+    [InlineData(AkronCursorToolsClickAction.InspectorPin, AkronCursorToolsClickAction.InspectorPin)]
+    [InlineData((AkronCursorToolsClickAction)99, AkronCursorToolsClickAction.ClickTeleport)]
+    public void CursorToolsClickActionNormalizesToSupportedModes(AkronCursorToolsClickAction action, AkronCursorToolsClickAction expected)
+    {
+        Assert.Equal(expected, AkronModuleSettings.NormalizeCursorToolsClickAction(action));
     }
 
     [Theory]

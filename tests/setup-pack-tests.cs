@@ -51,7 +51,7 @@ public sealed class SetupPackTests {
         AkronModuleSettings settings = new AkronModuleSettings {
             CursorZoom = false,
             CursorTools = true,
-            CursorToolsClickTeleport = false,
+            CursorToolsClickAction = AkronCursorToolsClickAction.InspectorPin,
             CursorToolsCursorZoom = true,
             CursorToolsFreeCamera = false,
             CursorToolsFreezeGameplay = true,
@@ -69,14 +69,14 @@ public sealed class SetupPackTests {
         AkronSetupPacks.Apply(target, session: null, pack, AkronSetupSection.Whole);
 
         Assert.True(pack.State.CursorTools);
-        Assert.False(pack.State.CursorToolsClickTeleport);
+        Assert.Equal(AkronCursorToolsClickAction.InspectorPin, pack.State.CursorToolsClickAction);
         Assert.True(pack.State.CursorToolsCursorZoom);
         Assert.False(pack.State.CursorToolsFreeCamera);
         Assert.True(pack.State.CursorToolsFreezeGameplay);
         Assert.True(pack.State.FrameStepper);
         Assert.True(pack.State.FreeCameraMouseControl);
         Assert.True(target.CursorTools);
-        Assert.False(target.CursorToolsClickTeleport);
+        Assert.Equal(AkronCursorToolsClickAction.InspectorPin, target.CursorToolsClickAction);
         Assert.True(target.CursorToolsCursorZoom);
         Assert.False(target.CursorToolsFreeCamera);
         Assert.True(target.CursorToolsFreezeGameplay);

@@ -56,7 +56,7 @@ public sealed class AkronSetupState {
     public bool CursorZoomResetOnDeactivate { get; set; }
     public AkronCursorZoomActivationMode CursorZoomActivationMode { get; set; } = AkronCursorZoomActivationMode.Hold;
     public bool CursorTools { get; set; }
-    public bool CursorToolsClickTeleport { get; set; } = true;
+    public AkronCursorToolsClickAction CursorToolsClickAction { get; set; } = AkronCursorToolsClickAction.ClickTeleport;
     public bool CursorToolsCursorZoom { get; set; } = true;
     public bool CursorToolsFreeCamera { get; set; } = true;
     public bool CursorToolsFreezeGameplay { get; set; }

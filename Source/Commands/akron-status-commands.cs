@@ -115,7 +115,7 @@ public static partial class AkronCommands {
         Log("cursor-tools: " + AkronModule.Settings.CursorTools.ToString().ToLowerInvariant());
         Log("cursor-tools-hold: " + AkronModuleSettings.DescribeBinding(AkronModule.Settings.CursorToolsHold));
         Log("cursor-tools-held: " + (AkronModule.Settings.CursorToolsHold?.Check ?? false).ToString().ToLowerInvariant());
-        Log("cursor-tools-click-teleport: " + AkronModule.Settings.CursorToolsClickTeleport.ToString().ToLowerInvariant());
+        Log("cursor-tools-click-action: " + AkronModuleSettings.NormalizeCursorToolsClickAction(AkronModule.Settings.CursorToolsClickAction));
         Log("cursor-tools-cursor-zoom: " + AkronModule.Settings.CursorToolsCursorZoom.ToString().ToLowerInvariant());
         Log("cursor-tools-free-camera: " + AkronModule.Settings.CursorToolsFreeCamera.ToString().ToLowerInvariant());
         Log("cursor-tools-freeze-gameplay: " + AkronModule.Settings.CursorToolsFreezeGameplay.ToString().ToLowerInvariant());

@@ -214,6 +214,11 @@ public enum AkronCursorZoomActivationMode {
     Toggle
 }
 
+public enum AkronCursorToolsClickAction {
+    ClickTeleport,
+    InspectorPin
+}
+
 [Flags]
 public enum AkronDashRedirectDirection {
     None = 0,

@@ -150,6 +150,12 @@ public partial class AkronModuleSettings {
             : AkronCursorZoomActivationMode.Hold;
     }
 
+    public static AkronCursorToolsClickAction NormalizeCursorToolsClickAction(AkronCursorToolsClickAction action) {
+        return action == AkronCursorToolsClickAction.InspectorPin
+            ? AkronCursorToolsClickAction.InspectorPin
+            : AkronCursorToolsClickAction.ClickTeleport;
+    }
+
     public static int ClampGoldenTransparencyOpacity(int opacity) {
         return ClampOpacity(opacity <= 0 ? 55 : opacity);
     }

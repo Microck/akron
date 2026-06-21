@@ -8,9 +8,9 @@ The Creator tab is for map inspection and documentation work. Warps, independent
 | Option | Control | What it does | Attempt status |
 |---|---|---|---|
 | Free Camera | Toggle | Pan the camera freely inside the current room while Madeline is not player-controlled. | Cheat |
-| Cursor Tools | Toggle | Temporarily enable selected cursor-driven tools while holding one cursor-tools bind. | Cheat |
+| Cursor Tools | Toggle | Temporarily enable selected cursor-driven tools while holding one cursor-tools bind. Its left-click action can be Click Teleport or Entity Inspector. | Cheat |
 | Cursor Zoom | Toggle | Hold the cursor bind and use the mouse wheel to magnify the area under the cursor. | Cheat |
-| Entity Inspector | Toggle | Enter a cursor pick mode for pinning entities or triggers and reading runtime and map-source details. | Cheat |
+| Entity Inspector | Toggle | Enable cursor-held pinning for entities or triggers, highlighting hovered and pinned targets, and reading runtime and map-source details. | Cheat |
 | Room Capture | Action | Capture overlapping tiles across the current room. | Goldberry/Hardlist clean |
 | Map Capture | Action | Capture each room in the current map. | Goldberry/Hardlist clean |
 | Previous Room | Action | Move the selected map room cursor to the previous available room. | Regular clean |
@@ -31,7 +31,8 @@ Rows with a triangle expose the controls listed below.
 | Free Camera | Speed | Set camera pan speed in world pixels per second. | Cheat |
 | Free Camera | Freeze gameplay | Pause the whole level while free camera is active. | Cheat |
 | Free Camera | Mouse control | Pan the active free camera from cursor position relative to screen center. | Cheat |
-| Cursor Tools | Click Teleport | Include Click Teleport in the temporary hold workflow. | Cheat |
+| Cursor Tools | Click action: Click Teleport | Make Cursor Tools left-click teleport Madeline while the Cursor Tools bind is held. | Cheat |
+| Cursor Tools | Click action: Entity Inspector | Make Cursor Tools left-click inspect the hovered entity or trigger while the Cursor Tools bind is held. | Cheat |
 | Cursor Tools | Cursor Zoom | Include Cursor Zoom in the temporary hold workflow. | Cheat |
 | Cursor Tools | Free Camera | Include Free Camera in the temporary hold workflow. | Cheat |
 | Cursor Tools | Freeze gameplay | Pause the whole level while Cursor Tools' temporary Free Camera is active. | Cheat |
@@ -42,8 +43,9 @@ Rows with a triangle expose the controls listed below.
 | Cursor Zoom | Reset on deactivate | Reset the configured zoom back to 100% whenever Hold is released or Toggle is turned off. | Cheat |
 | Cursor Zoom | Scroll step | Percent added or removed for each mouse-wheel notch. | Cheat |
 | Cursor Zoom | Reset zoom | Return the level camera to neutral 1.0x without changing whether Cursor Zoom is enabled. | Cheat |
-| Entity Inspector | Target | Choose whether inspector clicks pin entities, triggers, or both. | Cheat |
-| Entity Inspector | Cursor | Choose the hold bind that shows the gameplay cursor while Entity Inspector is enabled. | Cheat |
+| Entity Inspector | Target | Choose whether cursor-held inspector clicks pin entities, triggers, or both. | Cheat |
+| Entity Inspector | Cursor | Choose the hold bind that shows the gameplay cursor and enables cursor-held inspection while Entity Inspector is enabled. | Cheat |
+| Entity Inspector | Hover preview | Highlight the object that the next cursor-held Entity Inspector click will select. | Cheat |
 | Entity Inspector | Report | Choose where pinned reports open: near the click, in a fixed screen corner, or at the last dragged custom position. | Cheat |
 | Entity Inspector | Details | Choose whether pinned reports start expanded or with properties hidden behind the Properties button. | Cheat |
 | Room Capture | Capture Room | Capture overlapping tiles across the current room. | Goldberry/Hardlist clean |

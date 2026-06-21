@@ -21,7 +21,10 @@ public partial class AkronModule {
     }
 
     internal static bool IsClickTeleportEffectiveEnabled() {
-        return IsCursorToolEffectiveEnabled(Settings.ClickTeleport, IsCursorToolsHoldActive(), Settings.CursorToolsClickTeleport);
+        return IsCursorToolEffectiveEnabled(
+            Settings.ClickTeleport,
+            IsCursorToolsHoldActive(),
+            AkronModuleSettings.NormalizeCursorToolsClickAction(Settings.CursorToolsClickAction) == AkronCursorToolsClickAction.ClickTeleport);
     }
 
     internal static bool IsClickTeleportCursorActive() {
@@ -29,7 +32,12 @@ public partial class AkronModule {
             Settings.ClickTeleport,
             Settings.ClickTeleportCursor?.Check ?? false,
             IsCursorToolsHoldActive(),
-            Settings.CursorToolsClickTeleport);
+            AkronModuleSettings.NormalizeCursorToolsClickAction(Settings.CursorToolsClickAction) == AkronCursorToolsClickAction.ClickTeleport);
+    }
+
+    internal static bool IsCursorToolsInspectorPinActive() {
+        return IsCursorToolsHoldActive() &&
+               AkronModuleSettings.NormalizeCursorToolsClickAction(Settings.CursorToolsClickAction) == AkronCursorToolsClickAction.InspectorPin;
     }
 
     internal static bool IsCursorZoomEffectiveEnabled() {

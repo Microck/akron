@@ -8,8 +8,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ### Added
 
-- Add Inspector Pin to Entity Inspector: click entities or triggers in-game, cycle overlapping hits, view runtime and source-bound map properties, and copy an inspection report.
-- Credit viddie's Inspector Pin suggestion in the docs.
+- Add Entity Inspector cursor pinning: hold the inspector cursor bind to click entities or triggers in-game, cycle overlapping hits, view runtime and source-bound map properties, and copy an inspection report.
+- Add Entity Inspector close and hover-preview controls, highlight pinned and hovered targets, keep solid-tile highlights scoped to the hovered tile, and let Cursor Tools use Entity Inspector as its left-click action.
+- Add cursor hold binding controls to the Click Teleport, Cursor Tools, and Cursor Zoom popups while keeping Left Alt as the default.
+- Credit viddie's Entity Inspector suggestion in the docs.
 
 ### Changed
 
@@ -18,7 +20,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 ### Fixed
 
 - Let Celeste's Journal shortcut take priority over Akron's default Tab overlay bind in the overworld.
-- Keep Entity Inspector's submenu aligned with Akron's ImGui HUD style, make the row enter a visible pick mode, add report placement/detail defaults, keep fixed report corners anchored across size changes, and keep titlebar-collapsed reports reopenable.
+- Keep Entity Inspector's submenu aligned with Akron's ImGui HUD style, require the cursor hold bind for gameplay pinning, add report placement/detail defaults, keep fixed report corners anchored across size changes, and keep titlebar-collapsed reports reopenable.
 
 ## 0.1.2-beta.27
 
