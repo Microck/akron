@@ -131,6 +131,28 @@ public sealed partial class AkronOverlay {
         openOptionsLabel = string.Empty;
     }
 
+    private bool IsAnyOptionsPopupOpen() {
+        return !string.IsNullOrWhiteSpace(openOptionsLabel);
+    }
+
+    private void SuppressBackgroundActionRowsUntilMouseMoves() {
+        suppressBackgroundActionRowsUntilMouseMoves = true;
+        backgroundActionRowsSuppressionMouse = MInput.Mouse.Position;
+    }
+
+    private bool IsBackgroundActionRowsSuppressedAfterPopupClose() {
+        if (!suppressBackgroundActionRowsUntilMouseMoves) {
+            return false;
+        }
+
+        if (Vector2.DistanceSquared(MInput.Mouse.Position, backgroundActionRowsSuppressionMouse) <= 4f) {
+            return true;
+        }
+
+        suppressBackgroundActionRowsUntilMouseMoves = false;
+        return false;
+    }
+
     private bool IsOptionsPopupOpen(string label) {
         return string.Equals(openOptionsLabel, label, StringComparison.OrdinalIgnoreCase);
     }
@@ -224,6 +246,7 @@ public sealed partial class AkronOverlay {
                string.Equals(label, "Madeline Colors", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Madeline Hair Length", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Madeline Effect Sync", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "Death Particles", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Trail Visibility", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Custom Trail", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Show Hitboxes", StringComparison.OrdinalIgnoreCase) ||

@@ -162,12 +162,27 @@ public sealed class OverlayTests {
     }
 
     [Theory]
-    [InlineData(true, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
-    [InlineData(false, true, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
-    [InlineData(false, false, true, AkronOverlay.OverlayCancelAction.CloseCommunityPackBrowser)]
-    [InlineData(false, false, false, AkronOverlay.OverlayCancelAction.KeepOverlayOpen)]
-    public void CancelInputDoesNotCloseBaseOverlay(bool searchInputActive, bool hasSearchQuery, bool communityPackBrowserOpen, AkronOverlay.OverlayCancelAction expected) {
-        Assert.Equal(expected, AkronOverlay.ResolveCancelAction(searchInputActive, hasSearchQuery, communityPackBrowserOpen));
+    [InlineData(true, false, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
+    [InlineData(false, true, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
+    [InlineData(false, false, true, false, AkronOverlay.OverlayCancelAction.CloseOptionsPopup)]
+    [InlineData(false, false, false, true, AkronOverlay.OverlayCancelAction.CloseCommunityPackBrowser)]
+    [InlineData(false, false, false, false, AkronOverlay.OverlayCancelAction.KeepOverlayOpen)]
+    public void CancelInputDoesNotCloseBaseOverlay(bool searchInputActive, bool hasSearchQuery, bool optionsPopupOpen, bool communityPackBrowserOpen, AkronOverlay.OverlayCancelAction expected) {
+        Assert.Equal(expected, AkronOverlay.ResolveCancelAction(searchInputActive, hasSearchQuery, optionsPopupOpen, communityPackBrowserOpen));
+    }
+
+    [Fact]
+    public void OptionsPopupBlocksBackgroundActionRows() {
+        string overlay = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/AkronOverlay.cs"));
+        string optionsPopup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-options-popup.cs"));
+        string renderer = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-imgui-renderer.cs"));
+
+        Assert.Contains("private bool IsAnyOptionsPopupOpen()", optionsPopup);
+        Assert.Contains("IsAnyOptionsPopupOpen() || IsBackgroundActionRowsSuppressedAfterPopupClose()", overlay);
+        Assert.Contains("SuppressBackgroundActionRowsUntilMouseMoves();", File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-imgui-popups.cs")));
+        Assert.Contains("IsBackgroundActionRowsSuppressedAfterPopupClose()", renderer);
+        Assert.Contains("ImGui.BeginDisabled();", renderer);
+        Assert.Contains("!backgroundRowInputBlocked", renderer);
     }
 
     [Theory]
@@ -201,16 +216,35 @@ public sealed class OverlayTests {
         List<string> shortcutLabels = BuildOverlayEntryLabels("Shortcuts");
 
         Assert.Contains("Core Mode", levelLabels);
+        Assert.Contains("Death Particles", playerLabels);
         Assert.Contains("Set Inventory", playerLabels);
         Assert.Contains("Dream State", playerLabels);
         Assert.Contains("Spawn Jelly", shortcutLabels);
         Assert.Contains("Spawn Theo", shortcutLabels);
 
         Assert.True(HasOverlayOptionsPopup("Core Mode"));
+        Assert.True(HasOverlayOptionsPopup("Death Particles"));
         Assert.True(HasOverlayOptionsPopup("Set Inventory"));
         Assert.True(HasOverlayOptionsPopup("Dream State"));
         Assert.False(HasOverlayOptionsPopup("Spawn Jelly"));
         Assert.False(HasOverlayOptionsPopup("Spawn Theo"));
+    }
+
+    [Fact]
+    public void DeathParticleCustomShapeEditorUsesDrawableCanvas() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-madeline-popups.cs"));
+        int methodStart = source.IndexOf("private void DrawDeathParticleCanvas", StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("private void DrawCustomTrailPopupControls", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(nextMethod > methodStart);
+        string method = source[methodStart..nextMethod];
+
+        Assert.Contains("ImGui.InvisibleButton", method);
+        Assert.Contains("AddRectFilled", method);
+        Assert.Contains("ImGuiMouseButton.Left", method);
+        Assert.Contains("ImGuiMouseButton.Right", method);
+        Assert.DoesNotContain("ImGui.Checkbox", method);
     }
 
     [Fact]

@@ -5,6 +5,94 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronCommands {
+    [Command("akron_death_particles", "control Death Particles: on|off|status|shape <preset>|duration <seconds>|color-mode <hair|custom>|primary <hex>|flash <hex>|outline <hex>|custom-shape <64 bits>")]
+    public static void DeathParticles(string action = "status", string value = "") {
+        switch (NormalizeToken(action)) {
+            case "":
+            case "status":
+                break;
+            case "on":
+                if (!AkronModule.TryUse(AkronFeatureKind.DeathVisuals)) {
+                    Log("death-particles: blocked");
+                    return;
+                }
+                AkronModule.Settings.CustomDeathParticles = true;
+                break;
+            case "off":
+                AkronModule.Settings.CustomDeathParticles = false;
+                break;
+            case "toggle":
+                if (!AkronModule.Settings.CustomDeathParticles && !AkronModule.TryUse(AkronFeatureKind.DeathVisuals)) {
+                    Log("death-particles: blocked");
+                    return;
+                }
+                AkronModule.Settings.CustomDeathParticles = !AkronModule.Settings.CustomDeathParticles;
+                break;
+            case "shape":
+                if (!TryParseDeathParticleShape(value, out AkronDeathParticleShape shape)) {
+                    Log("invalid death-particles shape: " + value);
+                    return;
+                }
+                AkronModule.Settings.DeathParticleShape = shape;
+                break;
+            case "duration":
+                if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float duration)) {
+                    Log("invalid death-particles duration: " + value);
+                    return;
+                }
+                AkronModule.Settings.DeathParticleDurationSeconds = AkronModuleSettings.ClampDeathParticleDurationSeconds(duration);
+                break;
+            case "colormode":
+            case "mode":
+                switch (NormalizeToken(value)) {
+                    case "hair":
+                    case "vanilla":
+                        AkronModule.Settings.DeathParticleColorMode = AkronDeathParticleColorMode.Hair;
+                        break;
+                    case "custom":
+                        AkronModule.Settings.DeathParticleColorMode = AkronDeathParticleColorMode.Custom;
+                        break;
+                    default:
+                        Log("invalid death-particles color-mode: " + value);
+                        return;
+                }
+                break;
+            case "primary":
+            case "color":
+                if (!TryParseRgb(value, out int primaryColor)) {
+                    Log("invalid death-particles primary color: " + value);
+                    return;
+                }
+                AkronModule.Settings.DeathParticleColor = primaryColor;
+                AkronModule.Settings.DeathParticleColorMode = AkronDeathParticleColorMode.Custom;
+                break;
+            case "flash":
+                if (!TryParseRgb(value, out int flashColor)) {
+                    Log("invalid death-particles flash color: " + value);
+                    return;
+                }
+                AkronModule.Settings.DeathParticleFlashColor = flashColor;
+                break;
+            case "outline":
+                if (!TryParseRgb(value, out int outlineColor)) {
+                    Log("invalid death-particles outline color: " + value);
+                    return;
+                }
+                AkronModule.Settings.DeathParticleOutlineColor = outlineColor;
+                break;
+            case "customshape":
+            case "mask":
+                AkronModule.Settings.DeathParticleCustomShape = AkronModuleSettings.NormalizeDeathParticleCustomShape(value);
+                AkronModule.Settings.DeathParticleShape = AkronDeathParticleShape.Custom;
+                break;
+            default:
+                Log("unknown death-particles action: " + action);
+                return;
+        }
+
+        LogDeathParticleSettings();
+    }
+
     [Command("akron_noclip", "control fly noclip: on|off|status|speed <n>|float-speed <n>|draw-on-top <on|off>|hide-player <on|off>")]
     public static void Noclip(string action = "status", string value = "") {
         switch (NormalizeToken(action)) {
@@ -172,6 +260,47 @@ public static partial class AkronCommands {
         Log("hazard-accuracy-tint-opacity: " + AkronModule.Settings.NoclipAccuracyTintOpacity.ToString(CultureInfo.InvariantCulture));
         Log("hazard-accuracy-tint-duration-ms: " + AkronModule.Settings.NoclipAccuracyTintDurationMs.ToString(CultureInfo.InvariantCulture));
         Log("hazard-accuracy-state: " + AkronModule.GetNoclipAccuracySnapshot().Describe());
+    }
+
+    private static void LogDeathParticleSettings() {
+        Log("death-particles: " + AkronModule.Settings.CustomDeathParticles.ToString().ToLowerInvariant());
+        Log("death-particles-color-mode: " + AkronModule.Settings.DeathParticleColorMode);
+        Log("death-particles-primary: " + FormatRgb(AkronModule.Settings.DeathParticleColor));
+        Log("death-particles-flash: " + FormatRgb(AkronModule.Settings.DeathParticleFlashColor));
+        Log("death-particles-outline: " + FormatRgb(AkronModule.Settings.DeathParticleOutlineColor));
+        Log("death-particles-shape: " + AkronModule.Settings.DeathParticleShape);
+        Log("death-particles-duration: " + AkronModule.Settings.DeathParticleDurationSeconds.ToString("0.###", CultureInfo.InvariantCulture));
+        Log("death-particles-mask: " + AkronModuleSettings.NormalizeDeathParticleCustomShape(AkronModule.Settings.DeathParticleCustomShape));
+        Log("death-particles-render: " + AkronModule.DescribeDeathParticleRenderTelemetry());
+    }
+
+    private static bool TryParseDeathParticleShape(string value, out AkronDeathParticleShape shape) {
+        switch (NormalizeToken(value)) {
+            case "vanilla":
+                shape = AkronDeathParticleShape.Vanilla;
+                return true;
+            case "circle":
+                shape = AkronDeathParticleShape.Circle;
+                return true;
+            case "square":
+                shape = AkronDeathParticleShape.Square;
+                return true;
+            case "diamond":
+                shape = AkronDeathParticleShape.Diamond;
+                return true;
+            case "plus":
+                shape = AkronDeathParticleShape.Plus;
+                return true;
+            case "star":
+                shape = AkronDeathParticleShape.Star;
+                return true;
+            case "custom":
+                shape = AkronDeathParticleShape.Custom;
+                return true;
+            default:
+                shape = AkronDeathParticleShape.Vanilla;
+                return false;
+        }
     }
 
     [Command("akron_invincibility", "control Invincibility: on|off|toggle|status|mode <akron|native>|bottomless-rescue <on|off>|crush-collision <on|off>|lava-ice-pushback <on|off>|spike-ground-refills <on|off>|defaults")]

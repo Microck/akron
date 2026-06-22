@@ -199,6 +199,8 @@ public sealed partial class AkronOverlay {
                 DrawMadelineHairLengthPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Madeline Effect Sync", StringComparison.OrdinalIgnoreCase)) {
                 DrawMadelineEffectSyncPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Death Particles", StringComparison.OrdinalIgnoreCase)) {
+                DrawDeathParticlesPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Trail Visibility", StringComparison.OrdinalIgnoreCase)) {
                 DrawTrailVisibilityPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Custom Trail", StringComparison.OrdinalIgnoreCase)) {

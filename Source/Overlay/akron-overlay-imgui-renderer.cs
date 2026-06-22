@@ -363,29 +363,42 @@ public sealed partial class AkronOverlay {
         activeState = activeState || searchMatch;
         string id = "##akron_" + entry.Tab + "_" + entry.ActionKey + "_" + index;
         OptionEntryPress optionPress = OptionEntryPress.None;
+        bool backgroundRowInputBlocked = IsBackgroundActionRowInputBlocked();
 
         ImGui.BeginGroup();
+        if (backgroundRowInputBlocked) {
+            ImGui.PushStyleVar(ImGuiStyleVar.DisabledAlpha, 1f);
+            ImGui.BeginDisabled();
+        }
+
         bool pressed;
-        if (entry.Control == OverlayEntryControl.GroupHeader) {
-            pressed = DrawImGuiGroupHeaderEntry(entry, id, entryEnabled);
-        } else if (entry.Control == OverlayEntryControl.SearchInput) {
-            pressed = DrawImGuiSearchEntry(entry, id, entryEnabled);
-        } else if (entry.Control == OverlayEntryControl.Keybind || entry.Control == OverlayEntryControl.KeybindReadOnly) {
-            pressed = DrawImGuiKeybindEntry(entry, id, entryEnabled, entry.Control == OverlayEntryControl.KeybindReadOnly);
-        } else if (entry.Control == OverlayEntryControl.StartPosActions) {
-            optionPress = DrawImGuiStartPosEntry(entry, id, activeState, entryEnabled);
-            pressed = optionPress != OptionEntryPress.None;
-        } else if (entry.Control == OverlayEntryControl.NumericInput) {
-            optionPress = DrawImGuiNumericEntry(entry, id, activeState, entryEnabled, hasOptionsPopup);
-            pressed = optionPress != OptionEntryPress.None;
-        } else if (entry.Control == OverlayEntryControl.Selector) {
-            optionPress = DrawImGuiSelectorEntry(entry, id, activeState, entryEnabled, hasOptionsPopup);
-            pressed = optionPress != OptionEntryPress.None;
-        } else if (hasOptionsPopup) {
-            optionPress = DrawImGuiOptionEntry(entry, id, activeState, entryEnabled);
-            pressed = optionPress != OptionEntryPress.None;
-        } else {
-            pressed = DrawImGuiPlainEntry(entry, id, activeState, entryEnabled);
+        try {
+            if (entry.Control == OverlayEntryControl.GroupHeader) {
+                pressed = DrawImGuiGroupHeaderEntry(entry, id, entryEnabled);
+            } else if (entry.Control == OverlayEntryControl.SearchInput) {
+                pressed = DrawImGuiSearchEntry(entry, id, entryEnabled);
+            } else if (entry.Control == OverlayEntryControl.Keybind || entry.Control == OverlayEntryControl.KeybindReadOnly) {
+                pressed = DrawImGuiKeybindEntry(entry, id, entryEnabled, entry.Control == OverlayEntryControl.KeybindReadOnly);
+            } else if (entry.Control == OverlayEntryControl.StartPosActions) {
+                optionPress = DrawImGuiStartPosEntry(entry, id, activeState, entryEnabled);
+                pressed = optionPress != OptionEntryPress.None;
+            } else if (entry.Control == OverlayEntryControl.NumericInput) {
+                optionPress = DrawImGuiNumericEntry(entry, id, activeState, entryEnabled, hasOptionsPopup);
+                pressed = optionPress != OptionEntryPress.None;
+            } else if (entry.Control == OverlayEntryControl.Selector) {
+                optionPress = DrawImGuiSelectorEntry(entry, id, activeState, entryEnabled, hasOptionsPopup);
+                pressed = optionPress != OptionEntryPress.None;
+            } else if (hasOptionsPopup) {
+                optionPress = DrawImGuiOptionEntry(entry, id, activeState, entryEnabled);
+                pressed = optionPress != OptionEntryPress.None;
+            } else {
+                pressed = DrawImGuiPlainEntry(entry, id, activeState, entryEnabled);
+            }
+        } finally {
+            if (backgroundRowInputBlocked) {
+                ImGui.EndDisabled();
+                ImGui.PopStyleVar();
+            }
         }
         ImGui.EndGroup();
 
@@ -396,10 +409,11 @@ public sealed partial class AkronOverlay {
         bool optionButtonHovered = IsImGuiOptionsButtonHovered(entry, rowMin, rowMax);
         bool bindingContextRequested = entry.Control != OverlayEntryControl.KeybindReadOnly &&
                                        entry.Control != OverlayEntryControl.GroupHeader &&
+                                       !backgroundRowInputBlocked &&
                                        rowHovered &&
                                        (ImGui.IsMouseClicked(ImGuiMouseButton.Right) ||
                                         (ImGui.IsMouseClicked(ImGuiMouseButton.Left) && IsShiftDown()));
-        if (rowHovered) {
+        if (rowHovered && !backgroundRowInputBlocked) {
             selectedPanel = SelectionPanel.Actions;
             selectedActionIndex = index;
             if (tabIndex >= 0) {
@@ -407,7 +421,7 @@ public sealed partial class AkronOverlay {
             }
         }
 
-        DrawLabelRowReorderTarget(entry, rowHovered, rowActive, rowMin, rowMax);
+        DrawLabelRowReorderTarget(entry, rowHovered && !backgroundRowInputBlocked, rowActive && !backgroundRowInputBlocked, rowMin, rowMax);
 
         if ((pressed || bindingContextRequested) && searchInputActive && entry.Control != OverlayEntryControl.SearchInput) {
             searchInputActive = false;
@@ -415,7 +429,7 @@ public sealed partial class AkronOverlay {
             ClearSearchInputFocusRequest();
         }
 
-        if (pressed && entryEnabled && !labelRowDragActive && !suppressImGuiRowPressesThisFrame && !bindingContextRequested && entry.Control != OverlayEntryControl.SearchInput) {
+        if (pressed && entryEnabled && !labelRowDragActive && !backgroundRowInputBlocked && !bindingContextRequested && entry.Control != OverlayEntryControl.SearchInput) {
             selectedPanel = SelectionPanel.Actions;
             selectedActionIndex = index;
             if (tabIndex >= 0) {
@@ -446,13 +460,19 @@ public sealed partial class AkronOverlay {
         }
 
         DrawImGuiBindingContext(entry, bindingContextRequested);
-        DrawImGuiActionTooltip(entry, rowHovered && !optionButtonHovered);
+        DrawImGuiActionTooltip(entry, rowHovered && !backgroundRowInputBlocked && !optionButtonHovered);
         if (hasOptionsPopup) {
             RecordImGuiOptionsPopupAnchor(entry, rowMin, rowMax);
             if (IsOptionsPopupOpen(entry.OptionsPopupKey)) {
                 pendingImGuiOptionsPopupEntry = entry;
             }
         }
+    }
+
+    private bool IsBackgroundActionRowInputBlocked() {
+        return IsAnyOptionsPopupOpen() ||
+               suppressImGuiRowPressesThisFrame ||
+               IsBackgroundActionRowsSuppressedAfterPopupClose();
     }
 
     private static bool IsImGuiOptionsButtonHovered(ActionEntry entry, NumericsVector2 rowMin, NumericsVector2 rowMax) {

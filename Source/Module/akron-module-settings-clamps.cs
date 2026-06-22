@@ -383,6 +383,37 @@ public partial class AkronModuleSettings {
             : AkronMadelineEffectSyncMode.Off;
     }
 
+    public static AkronDeathParticleColorMode NormalizeDeathParticleColorMode(AkronDeathParticleColorMode mode) {
+        return Enum.IsDefined(typeof(AkronDeathParticleColorMode), mode)
+            ? mode
+            : AkronDeathParticleColorMode.Hair;
+    }
+
+    public static AkronDeathParticleShape NormalizeDeathParticleShape(AkronDeathParticleShape shape) {
+        return Enum.IsDefined(typeof(AkronDeathParticleShape), shape)
+            ? shape
+            : AkronDeathParticleShape.Vanilla;
+    }
+
+    public static float ClampDeathParticleDurationSeconds(float seconds) {
+        return seconds <= 0f ? 0.834f : ClampValue(seconds, 0.1f, 3f);
+    }
+
+    public static string NormalizeDeathParticleCustomShape(string shape) {
+        if (string.IsNullOrWhiteSpace(shape)) {
+            return DefaultDeathParticleCustomShape;
+        }
+
+        string normalized = new string(shape.Where(character => character == '0' || character == '1').ToArray());
+        if (normalized.Length < 64) {
+            normalized = normalized.PadRight(64, '0');
+        } else if (normalized.Length > 64) {
+            normalized = normalized.Substring(0, 64);
+        }
+
+        return normalized.Contains('1') ? normalized : DefaultDeathParticleCustomShape;
+    }
+
     public static float ClampTransitionSpeedMultiplier(float multiplier) {
         return multiplier <= 0f ? 1f : ClampValue(multiplier, 0.1f, 3f);
     }

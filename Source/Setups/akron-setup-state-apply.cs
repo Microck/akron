@@ -324,6 +324,14 @@ public partial class AkronModuleSettings {
         MadelineDeathEffectSync = NormalizeMadelineEffectSyncMode(resolved.MadelineDeathEffectSync);
         MadelineFeatherColorSync = NormalizeMadelineEffectSyncMode(resolved.MadelineFeatherColorSync);
         MadelineCrownColorSync = NormalizeMadelineEffectSyncMode(resolved.MadelineCrownColorSync);
+        CustomDeathParticles = resolved.CustomDeathParticles;
+        DeathParticleColorMode = NormalizeDeathParticleColorMode(resolved.DeathParticleColorMode);
+        DeathParticleColor = ClampRgb(resolved.DeathParticleColor);
+        DeathParticleFlashColor = ClampRgb(resolved.DeathParticleFlashColor);
+        DeathParticleOutlineColor = ClampRgb(resolved.DeathParticleOutlineColor);
+        DeathParticleShape = NormalizeDeathParticleShape(resolved.DeathParticleShape);
+        DeathParticleDurationSeconds = ClampDeathParticleDurationSeconds(resolved.DeathParticleDurationSeconds);
+        DeathParticleCustomShape = NormalizeDeathParticleCustomShape(resolved.DeathParticleCustomShape);
         Noclip = resolved.Noclip;
         NoclipSpeed = ClampNoclipSpeed(resolved.NoclipSpeed);
         NoclipFloatSpeed = ClampNoclipFloatSpeed(resolved.NoclipFloatSpeed);

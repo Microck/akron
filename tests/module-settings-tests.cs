@@ -245,6 +245,73 @@ public sealed class ModuleSettingsTests
         Assert.Equal(AkronMadelineEffectSyncMode.MatchHair, settings.MadelineDeathEffectSync);
         Assert.Equal(AkronMadelineEffectSyncMode.MatchHair, settings.MadelineFeatherColorSync);
         Assert.Equal(AkronMadelineEffectSyncMode.MatchHair, settings.MadelineCrownColorSync);
+        Assert.False(settings.CustomDeathParticles);
+        Assert.Equal(AkronDeathParticleColorMode.Hair, settings.DeathParticleColorMode);
+        Assert.Equal(AkronDeathParticleShape.Vanilla, settings.DeathParticleShape);
+        Assert.Equal(0.834f, settings.DeathParticleDurationSeconds);
+        Assert.Equal(AkronModuleSettings.DefaultDeathParticleCustomShape, settings.DeathParticleCustomShape);
+    }
+
+    [Theory]
+    [InlineData(-1f, 0.834f)]
+    [InlineData(0f, 0.834f)]
+    [InlineData(0.05f, 0.1f)]
+    [InlineData(1.25f, 1.25f)]
+    [InlineData(5f, 3f)]
+    public void DeathParticleDurationClampUsesVanillaDefaultAndBounds(float input, float expected)
+    {
+        Assert.Equal(expected, AkronModuleSettings.ClampDeathParticleDurationSeconds(input));
+    }
+
+    [Theory]
+    [InlineData(0.5f, 0.834f, 0.5f)]
+    [InlineData(0.5f, 0.417f, 1f)]
+    [InlineData(0.5f, 1.668f, 0.25f)]
+    [InlineData(0.5f, 3f, 0.139f)]
+    public void DeathParticleDurationRemapsVisualEaseWithoutChangingEngineDuration(float vanillaEase, float durationSeconds, float expected)
+    {
+        Assert.Equal(expected, AkronModule.ResolveDeathParticleVisualEase(vanillaEase, durationSeconds), precision: 3);
+    }
+
+    [Fact]
+    public void CustomDeathParticlesDoNotHookEngineDuration()
+    {
+        string moduleSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/AkronModule.cs"));
+        string runtimeSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Runtime/akron-death-particles.cs"));
+
+        Assert.DoesNotContain("DeathEffect.ctor", moduleSource);
+        Assert.DoesNotContain(".Duration =", runtimeSource);
+        Assert.Contains("DeathEffect.Render += DeathEffectOnRender", moduleSource);
+        Assert.Contains("DeathEffect.Draw += DeathEffectOnDraw", moduleSource);
+    }
+
+    [Fact]
+    public void CustomDeathParticleMasksUseScaledPixelTexture()
+    {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Runtime/akron-death-particles.cs"));
+        int start = source.IndexOf("private static void DrawMaskedDeathParticleLayer", StringComparison.Ordinal);
+        int end = source.IndexOf("internal static string ResolveDeathParticleMask", start, StringComparison.Ordinal);
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        string method = source[start..end];
+
+        Assert.Contains("Draw.Pixel.Draw(", method);
+        Assert.Contains("new Vector2(pixelSize, pixelSize)", method);
+        Assert.DoesNotContain("Draw.Rect(", method);
+    }
+
+    [Fact]
+    public void DeathParticleCustomShapeNormalizesToEightByEightMask()
+    {
+        Assert.Equal(AkronModuleSettings.DefaultDeathParticleCustomShape, AkronModuleSettings.NormalizeDeathParticleCustomShape(null));
+        Assert.Equal(AkronModuleSettings.DefaultDeathParticleCustomShape, AkronModuleSettings.NormalizeDeathParticleCustomShape("0000"));
+
+        string normalized = AkronModuleSettings.NormalizeDeathParticleCustomShape("1x0 1");
+
+        Assert.Equal(64, normalized.Length);
+        Assert.StartsWith("101", normalized);
+        Assert.All(normalized, character => Assert.Contains(character, new[] { '0', '1' }));
     }
 
     [Fact]

@@ -403,6 +403,7 @@ public sealed partial class AkronOverlay {
         ["Madeline Colors"] = "Customize Madeline's dash-state hair colors without flattening every state to one color.",
         ["Madeline Hair Length"] = "Customize Madeline's normal dash-state hair segment counts.",
         ["Madeline Effect Sync"] = "Match selected player visual effects to Madeline's active hair color.",
+        ["Death Particles"] = "Customize death-burst particle colors, lifetime, preset shape, or a custom 8x8 pixel shape.",
         ["Trail Visibility"] = "Choose vanilla, hidden, or forced player trail rendering.",
         ["Force Ghost Trail"] = "Force Celeste player trail ghosts continuously.",
         ["No Ghost Trail"] = "Suppress Celeste player trail ghosts.",

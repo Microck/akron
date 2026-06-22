@@ -94,6 +94,7 @@ public sealed partial class AkronOverlay {
         if (!openedImGuiOptionsPopupThisFrame &&
             IsAnyImGuiMouseClicked() &&
             !ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows | ImGuiHoveredFlags.AllowWhenBlockedByActiveItem)) {
+            SuppressBackgroundActionRowsUntilMouseMoves();
             CloseOptionsPopup();
             ImGui.End();
             ImGui.PopStyleColor();

@@ -159,6 +159,8 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Player.Added += PlayerOnAdded;
         On.Celeste.Player.OnTransition += PlayerOnTransition;
         On.Celeste.PlayerDeadBody.Update += PlayerDeadBodyOnUpdate;
+        On.Celeste.DeathEffect.Render += DeathEffectOnRender;
+        On.Celeste.DeathEffect.Draw += DeathEffectOnDraw;
         On.Celeste.RisingLava.OnPlayer += RisingLavaOnPlayer;
         On.Celeste.SandwichLava.OnPlayer += SandwichLavaOnPlayer;
         On.Celeste.Strawberry.OnCollect += StrawberryOnCollect;
@@ -283,6 +285,8 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Player.Added -= PlayerOnAdded;
         On.Celeste.Player.OnTransition -= PlayerOnTransition;
         On.Celeste.PlayerDeadBody.Update -= PlayerDeadBodyOnUpdate;
+        On.Celeste.DeathEffect.Render -= DeathEffectOnRender;
+        On.Celeste.DeathEffect.Draw -= DeathEffectOnDraw;
         On.Celeste.RisingLava.OnPlayer -= RisingLavaOnPlayer;
         On.Celeste.SandwichLava.OnPlayer -= SandwichLavaOnPlayer;
         On.Celeste.Strawberry.OnCollect -= StrawberryOnCollect;

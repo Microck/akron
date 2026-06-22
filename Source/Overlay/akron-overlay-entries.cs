@@ -169,6 +169,7 @@ public sealed partial class AkronOverlay {
                     PolicyToggle("Madeline Colors", AkronFeatureKind.CustomTrail, () => AkronModule.Settings.MadelineColors, value => AkronModule.Settings.MadelineColors = value),
                     PolicyToggle("Madeline Hair Length", AkronFeatureKind.MadelineHairLength, () => AkronModule.Settings.MadelineHairLength, value => AkronModule.Settings.MadelineHairLength = value),
                     PolicyToggle("Madeline Effect Sync", AkronFeatureKind.MadelineEffectSync, () => AkronModule.Settings.MadelineEffectSync, value => AkronModule.Settings.MadelineEffectSync = value),
+                    PolicyToggle("Death Particles", AkronFeatureKind.DeathVisuals, () => AkronModule.Settings.CustomDeathParticles, value => AkronModule.Settings.CustomDeathParticles = value),
                     Action("Set Inventory", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeSetInventory(level), () => AkronActions.ToggleSetInventory(level), true, "inventory", "dash count", "dashes", "space ruins"),
                     Action("Dream State", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeDreamState(level), () => AkronActions.ToggleDreamState(level), "dream dash", "dream blocks", "inventory"),
                     PolicyToggle("No Death Effect", AkronFeatureKind.DeathVisuals, () => AkronModule.Settings.NoDeathEffect, value => AkronModule.Settings.NoDeathEffect = value),

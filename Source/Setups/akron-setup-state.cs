@@ -323,6 +323,14 @@ public sealed class AkronSetupState {
     public AkronMadelineEffectSyncMode MadelineDeathEffectSync { get; set; } = AkronMadelineEffectSyncMode.MatchHair;
     public AkronMadelineEffectSyncMode MadelineFeatherColorSync { get; set; } = AkronMadelineEffectSyncMode.MatchHair;
     public AkronMadelineEffectSyncMode MadelineCrownColorSync { get; set; } = AkronMadelineEffectSyncMode.MatchHair;
+    public bool CustomDeathParticles { get; set; }
+    public AkronDeathParticleColorMode DeathParticleColorMode { get; set; } = AkronDeathParticleColorMode.Hair;
+    public int DeathParticleColor { get; set; } = 0xAC3232;
+    public int DeathParticleFlashColor { get; set; } = 0xFFFFFF;
+    public int DeathParticleOutlineColor { get; set; } = 0x000000;
+    public AkronDeathParticleShape DeathParticleShape { get; set; } = AkronDeathParticleShape.Vanilla;
+    public float DeathParticleDurationSeconds { get; set; } = 0.834f;
+    public string DeathParticleCustomShape { get; set; } = AkronModuleSettings.DefaultDeathParticleCustomShape;
     public bool Noclip { get; set; }
     public int NoclipSpeed { get; set; } = 240;
     public int NoclipFloatSpeed { get; set; } = 90;

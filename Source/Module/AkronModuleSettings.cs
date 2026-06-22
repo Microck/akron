@@ -27,6 +27,9 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public const int DefaultHitboxDeathColor = 0x8B0000;
     public const int DefaultHitboxDeathPlayerColor = 0xF5F5F5;
     public const string DefaultScreenshotScannerExportPath = "AkronScreenshotTool_Exports";
+    public const string DefaultDeathParticleCustomShape = "0000000000111100001111000011110000111100001111000000000000000000";
+    public const int DeathParticleCanvasSize = 8;
+    public const int DeathParticleCanvasCells = DeathParticleCanvasSize * DeathParticleCanvasSize;
     private bool fpsBypass;
     private int fpsBypassTarget = 120;
     private bool tpsBypass;
@@ -380,6 +383,14 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public AkronMadelineEffectSyncMode MadelineDeathEffectSync { get; set; } = AkronMadelineEffectSyncMode.MatchHair;
     public AkronMadelineEffectSyncMode MadelineFeatherColorSync { get; set; } = AkronMadelineEffectSyncMode.MatchHair;
     public AkronMadelineEffectSyncMode MadelineCrownColorSync { get; set; } = AkronMadelineEffectSyncMode.MatchHair;
+    public bool CustomDeathParticles { get; set; }
+    public AkronDeathParticleColorMode DeathParticleColorMode { get; set; } = AkronDeathParticleColorMode.Hair;
+    public int DeathParticleColor { get; set; } = 0xAC3232;
+    public int DeathParticleFlashColor { get; set; } = 0xFFFFFF;
+    public int DeathParticleOutlineColor { get; set; } = 0x000000;
+    public AkronDeathParticleShape DeathParticleShape { get; set; } = AkronDeathParticleShape.Vanilla;
+    public float DeathParticleDurationSeconds { get; set; } = 0.834f;
+    public string DeathParticleCustomShape { get; set; } = DefaultDeathParticleCustomShape;
     public bool Noclip { get; set; }
     public int NoclipSpeed { get; set; } = 240;
     public int NoclipFloatSpeed { get; set; } = 90;

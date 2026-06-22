@@ -1,5 +1,6 @@
 using System;
 using ImGuiNET;
+using NumericsVector2 = System.Numerics.Vector2;
 
 namespace Celeste.Mod.Akron;
 
@@ -117,6 +118,121 @@ public sealed partial class AkronOverlay {
                 : AkronMadelineEffectSyncMode.MatchHair);
         }
         DrawPopupTooltip(tooltip);
+    }
+
+    private void DrawDeathParticlesPopupControls(string popupId) {
+        if (ImGui.Button("Color: " + FormatDeathParticleColorMode(AkronModule.Settings.DeathParticleColorMode) + "##" + popupId)) {
+            AkronModule.Settings.DeathParticleColorMode = AkronModule.Settings.DeathParticleColorMode == AkronDeathParticleColorMode.Hair
+                ? AkronDeathParticleColorMode.Custom
+                : AkronDeathParticleColorMode.Hair;
+        }
+        DrawPopupTooltip("Hair uses the death effect's current Madeline hair color; Custom uses the configured particle color.");
+
+        if (ImGui.Button("Shape: " + AkronModuleSettings.NormalizeDeathParticleShape(AkronModule.Settings.DeathParticleShape) + "##" + popupId)) {
+            AkronModule.Settings.DeathParticleShape = NextDeathParticleShape(AkronModule.Settings.DeathParticleShape);
+        }
+        DrawPopupTooltip("Cycle between vanilla, geometric presets, and the custom canvas shape.");
+
+        DrawFloatValueRow(
+            "Duration",
+            () => AkronModule.Settings.DeathParticleDurationSeconds,
+            value => AkronModule.Settings.DeathParticleDurationSeconds = AkronModuleSettings.ClampDeathParticleDurationSeconds(value),
+            -0.05f,
+            0.05f,
+            0.1f,
+            3f,
+            "%.2f",
+            popupId,
+            "Death-particle lifetime in seconds. Vanilla is about 0.83.");
+
+        DrawHitboxColorRow("Primary", () => AkronModule.Settings.DeathParticleColor, value => AkronModule.Settings.DeathParticleColor = value, popupId, "Custom primary particle color.");
+        DrawHitboxColorRow("Flash", () => AkronModule.Settings.DeathParticleFlashColor, value => AkronModule.Settings.DeathParticleFlashColor = value, popupId, "Alternate flash color used by the vanilla flicker cadence.");
+        DrawHitboxColorRow("Outline", () => AkronModule.Settings.DeathParticleOutlineColor, value => AkronModule.Settings.DeathParticleOutlineColor = value, popupId, "One-pixel particle outline color.");
+
+        ImGui.Separator();
+        DrawDeathParticleCanvas(popupId);
+    }
+
+    private static AkronDeathParticleShape NextDeathParticleShape(AkronDeathParticleShape shape) {
+        return AkronModuleSettings.NormalizeDeathParticleShape(shape) switch {
+            AkronDeathParticleShape.Vanilla => AkronDeathParticleShape.Circle,
+            AkronDeathParticleShape.Circle => AkronDeathParticleShape.Square,
+            AkronDeathParticleShape.Square => AkronDeathParticleShape.Diamond,
+            AkronDeathParticleShape.Diamond => AkronDeathParticleShape.Plus,
+            AkronDeathParticleShape.Plus => AkronDeathParticleShape.Star,
+            AkronDeathParticleShape.Star => AkronDeathParticleShape.Custom,
+            _ => AkronDeathParticleShape.Vanilla
+        };
+    }
+
+    private static string FormatDeathParticleColorMode(AkronDeathParticleColorMode mode) {
+        return AkronModuleSettings.NormalizeDeathParticleColorMode(mode) == AkronDeathParticleColorMode.Custom
+            ? "Custom"
+            : "Hair";
+    }
+
+    private void DrawDeathParticleCanvas(string popupId) {
+        string mask = AkronModuleSettings.NormalizeDeathParticleCustomShape(AkronModule.Settings.DeathParticleCustomShape);
+        char[] pixels = mask.ToCharArray();
+        bool changed = false;
+        const float cellSize = 16f;
+        float canvasSize = AkronModuleSettings.DeathParticleCanvasSize * cellSize;
+
+        DrawPopupRowLabel("Custom shape", CalculatePopupLabelWidth(canvasSize));
+        NumericsVector2 canvasMin = ImGui.GetCursorScreenPos();
+        NumericsVector2 canvasMax = new NumericsVector2(canvasMin.X + canvasSize, canvasMin.Y + canvasSize);
+        ImGui.InvisibleButton("##death-particle-canvas-" + popupId, new NumericsVector2(canvasSize, canvasSize));
+
+        bool painting = ImGui.IsItemHovered() && ImGui.IsMouseDown(ImGuiMouseButton.Left);
+        bool erasing = ImGui.IsItemHovered() && ImGui.IsMouseDown(ImGuiMouseButton.Right);
+        if (painting || erasing) {
+            NumericsVector2 mouse = ImGui.GetMousePos();
+            int column = (int) Math.Floor((mouse.X - canvasMin.X) / cellSize);
+            int row = (int) Math.Floor((mouse.Y - canvasMin.Y) / cellSize);
+            if (row >= 0 &&
+                row < AkronModuleSettings.DeathParticleCanvasSize &&
+                column >= 0 &&
+                column < AkronModuleSettings.DeathParticleCanvasSize) {
+                int index = row * AkronModuleSettings.DeathParticleCanvasSize + column;
+                char next = painting ? '1' : '0';
+                if (pixels[index] != next) {
+                    pixels[index] = next;
+                    changed = true;
+                }
+            }
+        }
+
+        uint inactiveColor = AkronImGuiTheme.ToU32(AkronImGuiTheme.FrameBackground);
+        uint activeColor = AkronImGuiTheme.ToU32(ToImGuiColor(AkronModule.Settings.DeathParticleColor));
+        uint gridColor = AkronImGuiTheme.ToU32(AkronImGuiTheme.Muted);
+        ImGui.GetWindowDrawList().AddRectFilled(canvasMin, canvasMax, inactiveColor);
+        for (int row = 0; row < AkronModuleSettings.DeathParticleCanvasSize; row++) {
+            for (int column = 0; column < AkronModuleSettings.DeathParticleCanvasSize; column++) {
+                int index = row * AkronModuleSettings.DeathParticleCanvasSize + column;
+                NumericsVector2 cellMin = new NumericsVector2(canvasMin.X + column * cellSize, canvasMin.Y + row * cellSize);
+                NumericsVector2 cellMax = new NumericsVector2(cellMin.X + cellSize, cellMin.Y + cellSize);
+                if (pixels[index] == '1') {
+                    ImGui.GetWindowDrawList().AddRectFilled(
+                        new NumericsVector2(cellMin.X + 1f, cellMin.Y + 1f),
+                        new NumericsVector2(cellMax.X - 1f, cellMax.Y - 1f),
+                        activeColor);
+                }
+
+                ImGui.GetWindowDrawList().AddRect(cellMin, cellMax, gridColor);
+            }
+        }
+        DrawPopupTooltip("Left-drag to paint; right-drag to erase. The mask is used when Shape is Custom.", "Custom shape");
+
+        if (changed) {
+            AkronModule.Settings.DeathParticleCustomShape = AkronModuleSettings.NormalizeDeathParticleCustomShape(new string(pixels));
+            AkronModule.Settings.DeathParticleShape = AkronDeathParticleShape.Custom;
+        }
+
+        if (ImGui.Button("Reset custom##" + popupId)) {
+            AkronModule.Settings.DeathParticleCustomShape = AkronModuleSettings.DefaultDeathParticleCustomShape;
+            AkronModule.Settings.DeathParticleShape = AkronDeathParticleShape.Custom;
+        }
+        DrawPopupTooltip("Restore the custom canvas to a simple filled block.");
     }
 
     private void DrawCustomTrailPopupControls(string popupId) {

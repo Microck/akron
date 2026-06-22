@@ -261,6 +261,21 @@ public enum AkronMadelineEffectSyncMode {
     MatchHair
 }
 
+public enum AkronDeathParticleColorMode {
+    Hair,
+    Custom
+}
+
+public enum AkronDeathParticleShape {
+    Vanilla,
+    Circle,
+    Square,
+    Diamond,
+    Plus,
+    Star,
+    Custom
+}
+
 public enum AkronNoclipAccuracyTintMode {
     OnInvalidEntry,
     WhileTouching
