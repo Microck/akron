@@ -7,9 +7,34 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronCommands {
-    [Command("akron_auto_kill", "control auto kill: on|off|status|timer on|off|seconds <n>|area <x,y,w,h>|area-add <x,y,w,h>|area-clear|show-area on|off|show-on-death on|off|speed on|off|min-speed <n>|max-speed <n>|h-speed on|off|min-h-speed <n>|max-h-speed <n>|v-speed on|off|min-v-speed <n>|max-v-speed <n>|dash-count on|off|dashes <n>|ground any|grounded|airborne|horizontal any|left|right|still|vertical any|up|down|still|state on|off|state-id <n>|invert on|off")]
+    [Command("akron_auto_kill", "control auto kill: on|off|status|timer on|off|seconds <n>|area <x,y,w,h>|area-add <x,y,w,h>|area-select <n>|area-clear-selected|area-clear|default <condition-action>|default-from-selected|show-area on|off|show-on-death on|off|speed on|off|min-speed <n>|max-speed <n>|h-speed on|off|min-h-speed <n>|max-h-speed <n>|v-speed on|off|min-v-speed <n>|max-v-speed <n>|dash-count on|off|dashes <n>|ground any|grounded|airborne|horizontal any|left|right|still|vertical any|up|down|still|state on|off|state-id <n>|invert on|off")]
     public static void AutoKill(string action = "status", string value = "", string part2 = "", string part3 = "", string part4 = "") {
-        switch (NormalizeToken(action)) {
+        string normalizedAction = NormalizeToken(action);
+        bool editDefaults = normalizedAction is "default" or "defaults" or "template";
+        if (editDefaults) {
+            action = value;
+            value = part2;
+            part2 = part3;
+            part3 = part4;
+            part4 = "";
+            normalizedAction = NormalizeToken(action);
+        }
+
+        bool TryGetConditionTarget(out AkronAutoKillAreaData selectedArea) {
+            if (editDefaults) {
+                selectedArea = AkronModule.GetAutoKillDefaultAreaConditions();
+                return true;
+            }
+
+            if (AkronModule.TryGetSelectedAutoKillArea(out selectedArea)) {
+                return true;
+            }
+
+            Log("auto-kill: no selected area");
+            return false;
+        }
+
+        switch (normalizedAction) {
             case "":
             case "status":
                 break;
@@ -73,9 +98,32 @@ public static partial class AkronCommands {
                 AkronModule.AddAutoKillArea(addedArea);
                 AkronModule.Settings.AutoKill = true;
                 break;
+            case "areaselect":
+            case "selectarea":
+                if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int requestedAreaNumber) ||
+                    !AkronModule.TrySelectAutoKillArea(requestedAreaNumber - 1)) {
+                    Log("invalid auto-kill area index: " + value);
+                    return;
+                }
+                break;
+            case "areaclearselected":
+            case "clearselectedarea":
+                if (!AkronModule.RemoveSelectedAutoKillArea()) {
+                    Log("auto-kill: no selected area");
+                    return;
+                }
+                break;
             case "areaclear":
             case "cleararea":
                 AkronModule.ClearAutoKillArea();
+                break;
+            case "defaultfromselected":
+            case "usedefaultfromselected":
+            case "useselectedasdefault":
+                if (!AkronModule.UseSelectedAutoKillAreaAsDefault()) {
+                    Log("auto-kill: no selected area");
+                    return;
+                }
                 break;
             case "showarea":
                 if (!TryParseBoolean(value, out bool showArea)) {
@@ -98,21 +146,30 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill speed condition toggle: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillSpeedCondition = speedCondition;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData speedArea)) {
+                    return;
+                }
+                speedArea.SpeedCondition = speedCondition;
                 break;
             case "minspeed":
                 if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int minSpeed)) {
                     Log("invalid auto-kill min-speed: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillMinSpeed = AkronModuleSettings.ClampAutoKillSpeed(minSpeed);
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData minSpeedArea)) {
+                    return;
+                }
+                minSpeedArea.MinSpeed = AkronModuleSettings.ClampAutoKillSpeed(minSpeed);
                 break;
             case "maxspeed":
                 if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int maxSpeed)) {
                     Log("invalid auto-kill max-speed: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillMaxSpeed = AkronModuleSettings.ClampAutoKillSpeed(maxSpeed);
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData maxSpeedArea)) {
+                    return;
+                }
+                maxSpeedArea.MaxSpeed = AkronModuleSettings.ClampAutoKillSpeed(maxSpeed);
                 break;
             case "hspeed":
             case "horizontalspeed":
@@ -120,7 +177,10 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill horizontal speed condition toggle: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillHorizontalSpeedCondition = horizontalSpeedCondition;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData horizontalSpeedArea)) {
+                    return;
+                }
+                horizontalSpeedArea.HorizontalSpeedCondition = horizontalSpeedCondition;
                 break;
             case "minhspeed":
             case "minhorizontalspeed":
@@ -128,7 +188,10 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill min-h-speed: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillMinHorizontalSpeed = AkronModuleSettings.ClampAutoKillSpeed(minHorizontalSpeed);
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData minHorizontalSpeedArea)) {
+                    return;
+                }
+                minHorizontalSpeedArea.MinHorizontalSpeed = AkronModuleSettings.ClampAutoKillSpeed(minHorizontalSpeed);
                 break;
             case "maxhspeed":
             case "maxhorizontalspeed":
@@ -136,7 +199,10 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill max-h-speed: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillMaxHorizontalSpeed = AkronModuleSettings.ClampAutoKillSpeed(maxHorizontalSpeed);
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData maxHorizontalSpeedArea)) {
+                    return;
+                }
+                maxHorizontalSpeedArea.MaxHorizontalSpeed = AkronModuleSettings.ClampAutoKillSpeed(maxHorizontalSpeed);
                 break;
             case "vspeed":
             case "verticalspeed":
@@ -144,7 +210,10 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill vertical speed condition toggle: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillVerticalSpeedCondition = verticalSpeedCondition;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData verticalSpeedArea)) {
+                    return;
+                }
+                verticalSpeedArea.VerticalSpeedCondition = verticalSpeedCondition;
                 break;
             case "minvspeed":
             case "minverticalspeed":
@@ -152,7 +221,10 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill min-v-speed: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillMinVerticalSpeed = AkronModuleSettings.ClampAutoKillSpeed(minVerticalSpeed);
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData minVerticalSpeedArea)) {
+                    return;
+                }
+                minVerticalSpeedArea.MinVerticalSpeed = AkronModuleSettings.ClampAutoKillSpeed(minVerticalSpeed);
                 break;
             case "maxvspeed":
             case "maxverticalspeed":
@@ -160,7 +232,10 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill max-v-speed: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillMaxVerticalSpeed = AkronModuleSettings.ClampAutoKillSpeed(maxVerticalSpeed);
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData maxVerticalSpeedArea)) {
+                    return;
+                }
+                maxVerticalSpeedArea.MaxVerticalSpeed = AkronModuleSettings.ClampAutoKillSpeed(maxVerticalSpeed);
                 break;
             case "dashcount":
             case "dashcondition":
@@ -168,27 +243,42 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill dash-count condition toggle: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillDashCountCondition = dashCondition;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData dashArea)) {
+                    return;
+                }
+                dashArea.DashCountCondition = dashCondition;
                 break;
             case "dashes":
                 if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int dashes)) {
                     Log("invalid auto-kill dashes: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillDashCount = AkronModuleSettings.ClampAutoKillDashCount(dashes);
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData dashesArea)) {
+                    return;
+                }
+                dashesArea.DashCount = AkronModuleSettings.ClampAutoKillDashCount(dashes);
                 break;
             case "ground":
                 if (!TryParseAutoKillGroundCondition(value, out AkronAutoKillGroundCondition groundCondition)) {
                     Log("invalid auto-kill ground condition: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillGroundCondition = groundCondition;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData groundArea)) {
+                    return;
+                }
+                groundArea.GroundCondition = groundCondition;
                 break;
             case "grounded":
-                AkronModule.Settings.AutoKillGroundCondition = AkronAutoKillGroundCondition.Grounded;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData groundedArea)) {
+                    return;
+                }
+                groundedArea.GroundCondition = AkronAutoKillGroundCondition.Grounded;
                 break;
             case "airborne":
-                AkronModule.Settings.AutoKillGroundCondition = AkronAutoKillGroundCondition.Airborne;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData airborneArea)) {
+                    return;
+                }
+                airborneArea.GroundCondition = AkronAutoKillGroundCondition.Airborne;
                 break;
             case "horizontal":
             case "hdir":
@@ -197,13 +287,22 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill horizontal direction: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillHorizontalDirection = horizontalCondition;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData horizontalArea)) {
+                    return;
+                }
+                horizontalArea.HorizontalDirection = horizontalCondition;
                 break;
             case "left":
-                AkronModule.Settings.AutoKillHorizontalDirection = AkronAutoKillAxisCondition.Negative;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData leftArea)) {
+                    return;
+                }
+                leftArea.HorizontalDirection = AkronAutoKillAxisCondition.Negative;
                 break;
             case "right":
-                AkronModule.Settings.AutoKillHorizontalDirection = AkronAutoKillAxisCondition.Positive;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData rightArea)) {
+                    return;
+                }
+                rightArea.HorizontalDirection = AkronAutoKillAxisCondition.Positive;
                 break;
             case "vertical":
             case "vdir":
@@ -212,18 +311,30 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill vertical direction: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillVerticalDirection = verticalCondition;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData verticalArea)) {
+                    return;
+                }
+                verticalArea.VerticalDirection = verticalCondition;
                 break;
             case "up":
-                AkronModule.Settings.AutoKillVerticalDirection = AkronAutoKillAxisCondition.Negative;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData upArea)) {
+                    return;
+                }
+                upArea.VerticalDirection = AkronAutoKillAxisCondition.Negative;
                 break;
             case "down":
-                AkronModule.Settings.AutoKillVerticalDirection = AkronAutoKillAxisCondition.Positive;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData downArea)) {
+                    return;
+                }
+                downArea.VerticalDirection = AkronAutoKillAxisCondition.Positive;
                 break;
             case "still":
             case "stationary":
-                AkronModule.Settings.AutoKillHorizontalDirection = AkronAutoKillAxisCondition.Zero;
-                AkronModule.Settings.AutoKillVerticalDirection = AkronAutoKillAxisCondition.Zero;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData stillArea)) {
+                    return;
+                }
+                stillArea.HorizontalDirection = AkronAutoKillAxisCondition.Zero;
+                stillArea.VerticalDirection = AkronAutoKillAxisCondition.Zero;
                 break;
             case "state":
             case "statecondition":
@@ -231,7 +342,10 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill state condition toggle: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillPlayerStateCondition = stateCondition;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData stateArea)) {
+                    return;
+                }
+                stateArea.PlayerStateCondition = stateCondition;
                 break;
             case "stateid":
             case "playerstate":
@@ -239,7 +353,10 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill state-id: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillPlayerState = AkronModuleSettings.ClampAutoKillPlayerState(playerState);
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData playerStateArea)) {
+                    return;
+                }
+                playerStateArea.PlayerState = AkronModuleSettings.ClampAutoKillPlayerState(playerState);
                 break;
             case "invert":
             case "inverse":
@@ -247,39 +364,55 @@ public static partial class AkronCommands {
                     Log("invalid auto-kill invert toggle: " + value);
                     return;
                 }
-                AkronModule.Settings.AutoKillInvertConditions = invert;
+                if (!TryGetConditionTarget(out AkronAutoKillAreaData invertArea)) {
+                    return;
+                }
+                invertArea.InvertConditions = invert;
                 break;
             default:
                 Log("unknown auto-kill action: " + action);
                 return;
         }
 
-        Rectangle rect = AkronModule.GetAutoKillArea();
+        bool hasSelectedArea = AkronModule.TryGetSelectedAutoKillArea(out AkronAutoKillAreaData statusArea);
+        bool hasConditionStatus = editDefaults || hasSelectedArea;
+        if (editDefaults) {
+            statusArea = AkronModule.GetAutoKillDefaultAreaConditions();
+        }
+        int selectedAreaNumber = hasSelectedArea ? AkronModule.GetSelectedAutoKillAreaIndex() + 1 : 0;
+        Rectangle rect = hasSelectedArea ? AkronModule.GetSelectedAutoKillArea() : AkronModule.GetAutoKillArea();
         Log("auto-kill: " + AkronModule.Settings.AutoKill.ToString().ToLowerInvariant());
         Log("auto-kill-timer: " + AkronModule.Settings.AutoKillTimer.ToString().ToLowerInvariant());
         Log("auto-kill-seconds: " + AkronModule.Settings.AutoKillSeconds.ToString(CultureInfo.InvariantCulture));
         Log("auto-kill-area: " + AkronModule.Settings.AutoKillArea.ToString().ToLowerInvariant());
         Log("auto-kill-area-count: " + AkronModule.GetAutoKillAreas().Count.ToString(CultureInfo.InvariantCulture));
+        Log("auto-kill-selected-area: " + selectedAreaNumber.ToString(CultureInfo.InvariantCulture));
         Log("auto-kill-area-rect: " + rect.X.ToString(CultureInfo.InvariantCulture) + ", " + rect.Y.ToString(CultureInfo.InvariantCulture) + ", " + rect.Width.ToString(CultureInfo.InvariantCulture) + ", " + rect.Height.ToString(CultureInfo.InvariantCulture));
+        Log("auto-kill-condition-target: " + (editDefaults ? "default" : "selected"));
         Log("auto-kill-show-area: " + AkronModule.Settings.AutoKillShowArea.ToString().ToLowerInvariant());
         Log("auto-kill-show-area-on-death: " + AkronModule.Settings.AutoKillShowAreaOnDeath.ToString().ToLowerInvariant());
-        Log("auto-kill-speed-condition: " + AkronModule.Settings.AutoKillSpeedCondition.ToString().ToLowerInvariant());
-        Log("auto-kill-min-speed: " + AkronModule.Settings.AutoKillMinSpeed.ToString(CultureInfo.InvariantCulture));
-        Log("auto-kill-max-speed: " + AkronModule.Settings.AutoKillMaxSpeed.ToString(CultureInfo.InvariantCulture));
-        Log("auto-kill-horizontal-speed-condition: " + AkronModule.Settings.AutoKillHorizontalSpeedCondition.ToString().ToLowerInvariant());
-        Log("auto-kill-min-horizontal-speed: " + AkronModule.Settings.AutoKillMinHorizontalSpeed.ToString(CultureInfo.InvariantCulture));
-        Log("auto-kill-max-horizontal-speed: " + AkronModule.Settings.AutoKillMaxHorizontalSpeed.ToString(CultureInfo.InvariantCulture));
-        Log("auto-kill-vertical-speed-condition: " + AkronModule.Settings.AutoKillVerticalSpeedCondition.ToString().ToLowerInvariant());
-        Log("auto-kill-min-vertical-speed: " + AkronModule.Settings.AutoKillMinVerticalSpeed.ToString(CultureInfo.InvariantCulture));
-        Log("auto-kill-max-vertical-speed: " + AkronModule.Settings.AutoKillMaxVerticalSpeed.ToString(CultureInfo.InvariantCulture));
-        Log("auto-kill-dash-count-condition: " + AkronModule.Settings.AutoKillDashCountCondition.ToString().ToLowerInvariant());
-        Log("auto-kill-dash-count: " + AkronModule.Settings.AutoKillDashCount.ToString(CultureInfo.InvariantCulture));
-        Log("auto-kill-ground-condition: " + AkronModule.Settings.AutoKillGroundCondition.ToString().ToLowerInvariant());
-        Log("auto-kill-horizontal-direction: " + DescribeAutoKillAxisCondition(AkronModule.Settings.AutoKillHorizontalDirection, horizontal: true));
-        Log("auto-kill-vertical-direction: " + DescribeAutoKillAxisCondition(AkronModule.Settings.AutoKillVerticalDirection, horizontal: false));
-        Log("auto-kill-state-condition: " + AkronModule.Settings.AutoKillPlayerStateCondition.ToString().ToLowerInvariant());
-        Log("auto-kill-state-id: " + AkronModule.Settings.AutoKillPlayerState.ToString(CultureInfo.InvariantCulture));
-        Log("auto-kill-invert-conditions: " + AkronModule.Settings.AutoKillInvertConditions.ToString().ToLowerInvariant());
+        if (!hasConditionStatus) {
+            Log("auto-kill-area-conditions: none");
+            return;
+        }
+
+        Log("auto-kill-speed-condition: " + statusArea.SpeedCondition.ToString().ToLowerInvariant());
+        Log("auto-kill-min-speed: " + statusArea.MinSpeed.ToString(CultureInfo.InvariantCulture));
+        Log("auto-kill-max-speed: " + statusArea.MaxSpeed.ToString(CultureInfo.InvariantCulture));
+        Log("auto-kill-horizontal-speed-condition: " + statusArea.HorizontalSpeedCondition.ToString().ToLowerInvariant());
+        Log("auto-kill-min-horizontal-speed: " + statusArea.MinHorizontalSpeed.ToString(CultureInfo.InvariantCulture));
+        Log("auto-kill-max-horizontal-speed: " + statusArea.MaxHorizontalSpeed.ToString(CultureInfo.InvariantCulture));
+        Log("auto-kill-vertical-speed-condition: " + statusArea.VerticalSpeedCondition.ToString().ToLowerInvariant());
+        Log("auto-kill-min-vertical-speed: " + statusArea.MinVerticalSpeed.ToString(CultureInfo.InvariantCulture));
+        Log("auto-kill-max-vertical-speed: " + statusArea.MaxVerticalSpeed.ToString(CultureInfo.InvariantCulture));
+        Log("auto-kill-dash-count-condition: " + statusArea.DashCountCondition.ToString().ToLowerInvariant());
+        Log("auto-kill-dash-count: " + statusArea.DashCount.ToString(CultureInfo.InvariantCulture));
+        Log("auto-kill-ground-condition: " + statusArea.GroundCondition.ToString().ToLowerInvariant());
+        Log("auto-kill-horizontal-direction: " + DescribeAutoKillAxisCondition(statusArea.HorizontalDirection, horizontal: true));
+        Log("auto-kill-vertical-direction: " + DescribeAutoKillAxisCondition(statusArea.VerticalDirection, horizontal: false));
+        Log("auto-kill-state-condition: " + statusArea.PlayerStateCondition.ToString().ToLowerInvariant());
+        Log("auto-kill-state-id: " + statusArea.PlayerState.ToString(CultureInfo.InvariantCulture));
+        Log("auto-kill-invert-conditions: " + statusArea.InvertConditions.ToString().ToLowerInvariant());
     }
 
     [Command("akron_auto_deafen", "control auto deafen: on|off|status|hotkey <combo>|hotkey-clear|test|area <x,y,w,h>|area-add <x,y,w,h>|area-clear|show-area on|off|restore")]

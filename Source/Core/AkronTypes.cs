@@ -145,6 +145,82 @@ public sealed class AkronRectangleData {
     }
 }
 
+public sealed class AkronAutoKillAreaData {
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public bool SpeedCondition { get; set; }
+    public int MinSpeed { get; set; }
+    public int MaxSpeed { get; set; } = 1000;
+    public bool HorizontalSpeedCondition { get; set; }
+    public int MinHorizontalSpeed { get; set; }
+    public int MaxHorizontalSpeed { get; set; } = 1000;
+    public bool VerticalSpeedCondition { get; set; }
+    public int MinVerticalSpeed { get; set; }
+    public int MaxVerticalSpeed { get; set; } = 1000;
+    public bool DashCountCondition { get; set; }
+    public int DashCount { get; set; }
+    public AkronAutoKillGroundCondition GroundCondition { get; set; }
+    public AkronAutoKillAxisCondition HorizontalDirection { get; set; }
+    public AkronAutoKillAxisCondition VerticalDirection { get; set; }
+    public bool PlayerStateCondition { get; set; }
+    public int PlayerState { get; set; }
+    public bool InvertConditions { get; set; }
+
+    public AkronAutoKillAreaData() {
+    }
+
+    public AkronAutoKillAreaData(Rectangle rectangle) {
+        X = rectangle.X;
+        Y = rectangle.Y;
+        Width = rectangle.Width;
+        Height = rectangle.Height;
+    }
+
+    public AkronAutoKillAreaData(AkronAutoKillAreaData source) {
+        if (source == null) {
+            return;
+        }
+
+        X = source.X;
+        Y = source.Y;
+        Width = source.Width;
+        Height = source.Height;
+        SpeedCondition = source.SpeedCondition;
+        MinSpeed = source.MinSpeed;
+        MaxSpeed = source.MaxSpeed;
+        HorizontalSpeedCondition = source.HorizontalSpeedCondition;
+        MinHorizontalSpeed = source.MinHorizontalSpeed;
+        MaxHorizontalSpeed = source.MaxHorizontalSpeed;
+        VerticalSpeedCondition = source.VerticalSpeedCondition;
+        MinVerticalSpeed = source.MinVerticalSpeed;
+        MaxVerticalSpeed = source.MaxVerticalSpeed;
+        DashCountCondition = source.DashCountCondition;
+        DashCount = source.DashCount;
+        GroundCondition = source.GroundCondition;
+        HorizontalDirection = source.HorizontalDirection;
+        VerticalDirection = source.VerticalDirection;
+        PlayerStateCondition = source.PlayerStateCondition;
+        PlayerState = source.PlayerState;
+        InvertConditions = source.InvertConditions;
+    }
+
+    public Rectangle ToRectangle() {
+        return new Rectangle(X, Y, Width, Height);
+    }
+
+    public AkronAutoKillAreaData CopyWithRectangle(Rectangle rectangle) {
+        AkronAutoKillAreaData copy = new AkronAutoKillAreaData(this) {
+            X = rectangle.X,
+            Y = rectangle.Y,
+            Width = rectangle.Width,
+            Height = rectangle.Height
+        };
+        return copy;
+    }
+}
+
 public readonly struct AkronNoclipAccuracySnapshot {
     public AkronNoclipAccuracySnapshot(int samples, int invalidSamples, int invalidEntries, int invalidLimit, bool invalidNow) {
         Samples = samples;

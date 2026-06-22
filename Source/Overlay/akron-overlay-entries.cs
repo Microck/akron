@@ -951,20 +951,21 @@ public sealed partial class AkronOverlay {
         }
 
         Rectangle latest = areas[areas.Count - 1];
-        return "Areas: " + areas.Count + " (latest " + latest.X + ", " + latest.Y + " / " + latest.Width + "x" + latest.Height + ")";
+        int selected = AkronModule.GetSelectedAutoKillAreaIndex() + 1;
+        return "Areas: " + areas.Count + " (selected #" + selected + ", latest " + latest.X + ", " + latest.Y + " / " + latest.Width + "x" + latest.Height + ")";
     }
 
-    private static string DescribeAutoKillConditionsSummary() {
+    private static string DescribeAutoKillConditionsSummary(AkronAutoKillAreaData area) {
         int enabled =
-            (AkronModule.Settings.AutoKillSpeedCondition ? 1 : 0) +
-            (AkronModule.Settings.AutoKillHorizontalSpeedCondition ? 1 : 0) +
-            (AkronModule.Settings.AutoKillVerticalSpeedCondition ? 1 : 0) +
-            (AkronModule.Settings.AutoKillDashCountCondition ? 1 : 0) +
-            (AkronModuleSettings.NormalizeAutoKillGroundCondition(AkronModule.Settings.AutoKillGroundCondition) == AkronAutoKillGroundCondition.Any ? 0 : 1) +
-            (AkronModuleSettings.NormalizeAutoKillAxisCondition(AkronModule.Settings.AutoKillHorizontalDirection) == AkronAutoKillAxisCondition.Any ? 0 : 1) +
-            (AkronModuleSettings.NormalizeAutoKillAxisCondition(AkronModule.Settings.AutoKillVerticalDirection) == AkronAutoKillAxisCondition.Any ? 0 : 1) +
-            (AkronModule.Settings.AutoKillPlayerStateCondition ? 1 : 0) +
-            (AkronModule.Settings.AutoKillInvertConditions ? 1 : 0);
+            (area.SpeedCondition ? 1 : 0) +
+            (area.HorizontalSpeedCondition ? 1 : 0) +
+            (area.VerticalSpeedCondition ? 1 : 0) +
+            (area.DashCountCondition ? 1 : 0) +
+            (AkronModuleSettings.NormalizeAutoKillGroundCondition(area.GroundCondition) == AkronAutoKillGroundCondition.Any ? 0 : 1) +
+            (AkronModuleSettings.NormalizeAutoKillAxisCondition(area.HorizontalDirection) == AkronAutoKillAxisCondition.Any ? 0 : 1) +
+            (AkronModuleSettings.NormalizeAutoKillAxisCondition(area.VerticalDirection) == AkronAutoKillAxisCondition.Any ? 0 : 1) +
+            (area.PlayerStateCondition ? 1 : 0) +
+            (area.InvertConditions ? 1 : 0);
 
         return enabled == 0 ? "none" : enabled + " active";
     }

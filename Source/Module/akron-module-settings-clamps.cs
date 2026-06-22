@@ -435,8 +435,47 @@ public partial class AkronModuleSettings {
         return value > maximum ? maximum : value;
     }
 
-    private static List<AkronRectangleData> CopyAutoKillAreas(IEnumerable<AkronRectangleData> areas) {
-        return (areas ?? Enumerable.Empty<AkronRectangleData>())
+    private static List<AkronAutoKillAreaData> CopyAutoKillAreas(IEnumerable<AkronAutoKillAreaData> areas) {
+        return (areas ?? Enumerable.Empty<AkronAutoKillAreaData>())
+            .Where(area => area != null && area.Width > 0 && area.Height > 0)
+            .Select(CopyAutoKillArea)
+            .ToList();
+    }
+
+    private static AkronAutoKillAreaData CopyAutoKillArea(AkronAutoKillAreaData area) {
+        int minSpeed = ClampAutoKillSpeed(area.MinSpeed);
+        int maxSpeed = ClampAutoKillSpeed(area.MaxSpeed);
+        int minHorizontalSpeed = ClampAutoKillSpeed(area.MinHorizontalSpeed);
+        int maxHorizontalSpeed = ClampAutoKillSpeed(area.MaxHorizontalSpeed);
+        int minVerticalSpeed = ClampAutoKillSpeed(area.MinVerticalSpeed);
+        int maxVerticalSpeed = ClampAutoKillSpeed(area.MaxVerticalSpeed);
+        return new AkronAutoKillAreaData {
+            X = area.X,
+            Y = area.Y,
+            Width = ClampAutoKillAreaSize(area.Width),
+            Height = ClampAutoKillAreaSize(area.Height),
+            SpeedCondition = area.SpeedCondition,
+            MinSpeed = minSpeed,
+            MaxSpeed = Math.Max(minSpeed, maxSpeed),
+            HorizontalSpeedCondition = area.HorizontalSpeedCondition,
+            MinHorizontalSpeed = minHorizontalSpeed,
+            MaxHorizontalSpeed = Math.Max(minHorizontalSpeed, maxHorizontalSpeed),
+            VerticalSpeedCondition = area.VerticalSpeedCondition,
+            MinVerticalSpeed = minVerticalSpeed,
+            MaxVerticalSpeed = Math.Max(minVerticalSpeed, maxVerticalSpeed),
+            DashCountCondition = area.DashCountCondition,
+            DashCount = ClampAutoKillDashCount(area.DashCount),
+            GroundCondition = NormalizeAutoKillGroundCondition(area.GroundCondition),
+            HorizontalDirection = NormalizeAutoKillAxisCondition(area.HorizontalDirection),
+            VerticalDirection = NormalizeAutoKillAxisCondition(area.VerticalDirection),
+            PlayerStateCondition = area.PlayerStateCondition,
+            PlayerState = ClampAutoKillPlayerState(area.PlayerState),
+            InvertConditions = area.InvertConditions
+        };
+    }
+
+    private static List<AkronRectangleData> CopyAutoAreasWithLatest(IEnumerable<AkronRectangleData> areas, int x, int y, int width, int height) {
+        List<AkronRectangleData> copied = (areas ?? Enumerable.Empty<AkronRectangleData>())
             .Where(area => area != null && area.Width > 0 && area.Height > 0)
             .Select(area => new AkronRectangleData {
                 X = area.X,
@@ -445,10 +484,6 @@ public partial class AkronModuleSettings {
                 Height = ClampAutoKillAreaSize(area.Height)
             })
             .ToList();
-    }
-
-    private static List<AkronRectangleData> CopyAutoAreasWithLatest(IEnumerable<AkronRectangleData> areas, int x, int y, int width, int height) {
-        List<AkronRectangleData> copied = CopyAutoKillAreas(areas);
         // The latest rectangle fields are updated with every GUI/command area
         // selection. Keep them authoritative enough to restore one usable area
         // if a setup snapshot has scalar area data but an empty list.

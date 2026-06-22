@@ -26,9 +26,15 @@ public static partial class AkronHudRenderer {
         }
 
         int lineThickness = AutomationAreaGamePixelThickness();
-        foreach (Rectangle area in AkronModule.GetAutoKillAreas()) {
+        int selectedAreaIndex = AkronModule.GetSelectedAutoKillAreaIndex();
+        List<Rectangle> autoKillAreas = AkronModule.GetAutoKillAreas();
+        for (int index = 0; index < autoKillAreas.Count; index++) {
+            Rectangle area = autoKillAreas[index];
             if (area.Width > 0 && area.Height > 0) {
-                DrawWorldRect(level, area, Color.OrangeRed, 0.14f, lineThickness);
+                bool selected = index == selectedAreaIndex;
+                Color color = selected ? Color.Lerp(Color.OrangeRed, Color.White, 0.35f) : Color.OrangeRed;
+                float fillAlpha = selected ? 0.28f : 0.14f;
+                DrawWorldRect(level, area, color, fillAlpha, lineThickness);
             }
         }
 

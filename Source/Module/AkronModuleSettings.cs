@@ -323,28 +323,12 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool AutoKillArea { get; set; }
     public bool AutoKillShowArea { get; set; } = true;
     public bool AutoKillShowAreaOnDeath { get; set; }
-    public List<AkronRectangleData> AutoKillAreas { get; set; } = new List<AkronRectangleData>();
+    public AkronAutoKillAreaData AutoKillDefaultAreaConditions { get; set; } = new AkronAutoKillAreaData();
+    public List<AkronAutoKillAreaData> AutoKillAreas { get; set; } = new List<AkronAutoKillAreaData>();
     public int AutoKillAreaX { get; set; }
     public int AutoKillAreaY { get; set; }
     public int AutoKillAreaWidth { get; set; }
     public int AutoKillAreaHeight { get; set; }
-    public bool AutoKillSpeedCondition { get; set; }
-    public int AutoKillMinSpeed { get; set; }
-    public int AutoKillMaxSpeed { get; set; } = 1000;
-    public bool AutoKillHorizontalSpeedCondition { get; set; }
-    public int AutoKillMinHorizontalSpeed { get; set; }
-    public int AutoKillMaxHorizontalSpeed { get; set; } = 1000;
-    public bool AutoKillVerticalSpeedCondition { get; set; }
-    public int AutoKillMinVerticalSpeed { get; set; }
-    public int AutoKillMaxVerticalSpeed { get; set; } = 1000;
-    public bool AutoKillDashCountCondition { get; set; }
-    public int AutoKillDashCount { get; set; }
-    public AkronAutoKillGroundCondition AutoKillGroundCondition { get; set; }
-    public AkronAutoKillAxisCondition AutoKillHorizontalDirection { get; set; }
-    public AkronAutoKillAxisCondition AutoKillVerticalDirection { get; set; }
-    public bool AutoKillPlayerStateCondition { get; set; }
-    public int AutoKillPlayerState { get; set; }
-    public bool AutoKillInvertConditions { get; set; }
     public bool AutoDeafen { get; set; }
     public string AutoDeafenHotkey { get; set; } = DefaultAutoDeafenHotkey;
     public bool AutoDeafenArea { get; set; }

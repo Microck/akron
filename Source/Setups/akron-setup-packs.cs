@@ -481,28 +481,12 @@ public static partial class AkronSetupPacks {
         target.AutoKillArea = source.AutoKillArea;
         target.AutoKillShowArea = source.AutoKillShowArea;
         target.AutoKillShowAreaOnDeath = source.AutoKillShowAreaOnDeath;
-        target.AutoKillAreas = CopyRectangles(source.AutoKillAreas);
+        target.AutoKillDefaultAreaConditions = CopyAutoKillArea(source.AutoKillDefaultAreaConditions ?? new AkronAutoKillAreaData());
+        target.AutoKillAreas = CopyAutoKillAreas(source.AutoKillAreas);
         target.AutoKillAreaX = source.AutoKillAreaX;
         target.AutoKillAreaY = source.AutoKillAreaY;
         target.AutoKillAreaWidth = source.AutoKillAreaWidth;
         target.AutoKillAreaHeight = source.AutoKillAreaHeight;
-        target.AutoKillSpeedCondition = source.AutoKillSpeedCondition;
-        target.AutoKillMinSpeed = source.AutoKillMinSpeed;
-        target.AutoKillMaxSpeed = source.AutoKillMaxSpeed;
-        target.AutoKillHorizontalSpeedCondition = source.AutoKillHorizontalSpeedCondition;
-        target.AutoKillMinHorizontalSpeed = source.AutoKillMinHorizontalSpeed;
-        target.AutoKillMaxHorizontalSpeed = source.AutoKillMaxHorizontalSpeed;
-        target.AutoKillVerticalSpeedCondition = source.AutoKillVerticalSpeedCondition;
-        target.AutoKillMinVerticalSpeed = source.AutoKillMinVerticalSpeed;
-        target.AutoKillMaxVerticalSpeed = source.AutoKillMaxVerticalSpeed;
-        target.AutoKillDashCountCondition = source.AutoKillDashCountCondition;
-        target.AutoKillDashCount = source.AutoKillDashCount;
-        target.AutoKillGroundCondition = source.AutoKillGroundCondition;
-        target.AutoKillHorizontalDirection = source.AutoKillHorizontalDirection;
-        target.AutoKillVerticalDirection = source.AutoKillVerticalDirection;
-        target.AutoKillPlayerStateCondition = source.AutoKillPlayerStateCondition;
-        target.AutoKillPlayerState = source.AutoKillPlayerState;
-        target.AutoKillInvertConditions = source.AutoKillInvertConditions;
     }
 
     private static void CopyAutoDeafenState(AkronSetupState target, AkronSetupState source) {
@@ -598,6 +582,17 @@ public static partial class AkronSetupPacks {
                 Height = rectangle.Height
             })
             .ToList();
+    }
+
+    private static List<AkronAutoKillAreaData> CopyAutoKillAreas(IEnumerable<AkronAutoKillAreaData> areas) {
+        return (areas ?? Enumerable.Empty<AkronAutoKillAreaData>())
+            .Where(area => area != null)
+            .Select(CopyAutoKillArea)
+            .ToList();
+    }
+
+    private static AkronAutoKillAreaData CopyAutoKillArea(AkronAutoKillAreaData area) {
+        return new AkronAutoKillAreaData(area);
     }
 
     private static Dictionary<string, AkronButtonBindingPack> CaptureButtonBindings(AkronModuleSettings settings) {

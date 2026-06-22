@@ -63,15 +63,17 @@ Akron exposes developer-facing console commands through Everest's debug console 
 | `akron_neutral_drop` | Trigger the Neutral Drop shortcut. |
 | `akron_backboost` | Trigger the Backboost shortcut. |
 | `akron_dash_redirect <disabled\|down\|down-diagonal\|horizontal\|up\|up-diagonal\|diagonal\|all\|toggle\|status>` | Control Dash Redirect directions. Individual directions such as `up-left` also work for automation. |
-| `akron_auto_kill speed <on\|off>`, `min-speed <n>`, `max-speed <n>` | Require a total speed range for area-based Auto Kill. |
-| `akron_auto_kill h-speed <on\|off>`, `min-h-speed <n>`, `max-h-speed <n>` | Require a horizontal speed range for area-based Auto Kill. |
-| `akron_auto_kill v-speed <on\|off>`, `min-v-speed <n>`, `max-v-speed <n>` | Require a vertical speed range for area-based Auto Kill. |
-| `akron_auto_kill horizontal <any\|left\|right\|still>` | Require a horizontal movement direction for area-based Auto Kill. |
-| `akron_auto_kill vertical <any\|up\|down\|still>` | Require a vertical movement direction for area-based Auto Kill. |
-| `akron_auto_kill dash-count <on\|off>`, `dashes <n>` | Require a current dash count for area-based Auto Kill. |
-| `akron_auto_kill ground <any\|grounded\|airborne>` | Require a grounded or airborne state for area-based Auto Kill. |
-| `akron_auto_kill state <on\|off>`, `state-id <n>` | Require an internal player state id for area-based Auto Kill. |
-| `akron_auto_kill invert <on\|off>` | Trigger area-based Auto Kill when enabled conditions fail instead of when they pass. |
+| `akron_auto_kill area <x,y,w,h>`, `area-add <x,y,w,h>`, `area-select <n>`, `area-clear-selected`, `area-clear` | Replace, add, select, remove, or clear Auto Kill areas. Area numbers are one-based. |
+| `akron_auto_kill default <condition-action>`, `default-from-selected` | Edit the default condition template copied into newly placed Auto Kill areas, or copy the selected area's conditions into that template. |
+| `akron_auto_kill speed <on\|off>`, `min-speed <n>`, `max-speed <n>` | Require a total speed range for the selected Auto Kill area. |
+| `akron_auto_kill h-speed <on\|off>`, `min-h-speed <n>`, `max-h-speed <n>` | Require a horizontal speed range for the selected Auto Kill area. |
+| `akron_auto_kill v-speed <on\|off>`, `min-v-speed <n>`, `max-v-speed <n>` | Require a vertical speed range for the selected Auto Kill area. |
+| `akron_auto_kill horizontal <any\|left\|right\|still>` | Require a horizontal movement direction for the selected Auto Kill area. |
+| `akron_auto_kill vertical <any\|up\|down\|still>` | Require a vertical movement direction for the selected Auto Kill area. |
+| `akron_auto_kill dash-count <on\|off>`, `dashes <n>` | Require a current dash count for the selected Auto Kill area. |
+| `akron_auto_kill ground <any\|grounded\|airborne>` | Require a grounded or airborne state for the selected Auto Kill area. |
+| `akron_auto_kill state <on\|off>`, `state-id <n>` | Require an internal player state id for the selected Auto Kill area. |
+| `akron_auto_kill invert <on\|off>` | Trigger the selected Auto Kill area when enabled conditions fail instead of when they pass. |
 | `akron_step_repeat <on\|off\|status\|delay <frames>\|interval <frames>\|key <key>\|reset-key>` | Control frozen hold-repeat stepping. |
 | `akron_step_frame` | Request one gameplay frame while Akron freeze is active. |
 | `akron_skip_cutscene` | Request a cutscene or dialogue skip. |

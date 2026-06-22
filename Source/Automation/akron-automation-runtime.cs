@@ -9,6 +9,7 @@ namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
     private static Rectangle? pendingAutoKillDeathArea;
+    private static int selectedAutoKillAreaIndex;
 
     private static void ApplyAutoKill(Level level, Player player) {
         if (!Settings.AutoKill ||
@@ -26,8 +27,7 @@ public partial class AkronModule {
         }
 
         if (Settings.AutoKillArea &&
-            TryGetPlayerAutoKillArea(player, out Rectangle autoKillArea) &&
-            AutoKillAreaConditionsMatch(player)) {
+            TryGetPlayerAutoKillArea(player, out Rectangle autoKillArea)) {
             TriggerAutoKillDeath(player, "Auto kill area triggered.", autoKillArea);
             return;
         }
@@ -90,10 +90,12 @@ public partial class AkronModule {
 
     private static bool TryGetPlayerAutoKillArea(Player player, out Rectangle autoKillArea) {
         Rectangle playerBounds = PlayerAutoKillBounds(player);
-        foreach (Rectangle area in GetAutoKillAreas()) {
+        foreach (AkronAutoKillAreaData areaData in Settings.AutoKillAreas ?? new List<AkronAutoKillAreaData>()) {
+            Rectangle area = AutoKillAreaRectangle(areaData);
             if (area.Width > 0 &&
                 area.Height > 0 &&
-                area.Intersects(playerBounds)) {
+                area.Intersects(playerBounds) &&
+                AutoKillAreaConditionsMatch(player, areaData)) {
                 autoKillArea = area;
                 return true;
             }
@@ -103,16 +105,42 @@ public partial class AkronModule {
         return false;
     }
 
-    private static bool AutoKillAreaConditionsMatch(Player player) {
-        bool matches = AutoKillAreaConditionsMatchCore(player);
-        return Settings.AutoKillInvertConditions ? !matches : matches;
+    private static bool AutoKillAreaConditionsMatch(Player player, AkronAutoKillAreaData area) {
+        float totalSpeed = player.Speed.Length();
+        return AutoKillAreaConditionsMatch(
+            area,
+            totalSpeed,
+            player.Speed.X,
+            player.Speed.Y,
+            player.Dashes,
+            player.OnGround(),
+            player.StateMachine.State);
     }
 
-    private static bool AutoKillAreaConditionsMatchCore(Player player) {
-        if (Settings.AutoKillSpeedCondition) {
-            int speed = (int) Math.Round(player.Speed.Length());
-            int minSpeed = AkronModuleSettings.ClampAutoKillSpeed(Settings.AutoKillMinSpeed);
-            int maxSpeed = AkronModuleSettings.ClampAutoKillSpeed(Settings.AutoKillMaxSpeed);
+    internal static bool AutoKillAreaConditionsMatch(
+        AkronAutoKillAreaData area,
+        float totalSpeed,
+        float horizontalSpeed,
+        float verticalSpeed,
+        int dashes,
+        bool onGround,
+        int playerState) {
+        bool matches = AutoKillAreaConditionsMatchCore(area, totalSpeed, horizontalSpeed, verticalSpeed, dashes, onGround, playerState);
+        return area.InvertConditions ? !matches : matches;
+    }
+
+    private static bool AutoKillAreaConditionsMatchCore(
+        AkronAutoKillAreaData area,
+        float totalSpeed,
+        float horizontalSpeed,
+        float verticalSpeed,
+        int dashes,
+        bool onGround,
+        int playerState) {
+        if (area.SpeedCondition) {
+            int speed = (int) Math.Round(totalSpeed);
+            int minSpeed = AkronModuleSettings.ClampAutoKillSpeed(area.MinSpeed);
+            int maxSpeed = AkronModuleSettings.ClampAutoKillSpeed(area.MaxSpeed);
             if (maxSpeed < minSpeed) {
                 maxSpeed = minSpeed;
             }
@@ -122,10 +150,10 @@ public partial class AkronModule {
             }
         }
 
-        if (Settings.AutoKillHorizontalSpeedCondition) {
-            int speed = (int) Math.Round(Math.Abs(player.Speed.X));
-            int minSpeed = AkronModuleSettings.ClampAutoKillSpeed(Settings.AutoKillMinHorizontalSpeed);
-            int maxSpeed = AkronModuleSettings.ClampAutoKillSpeed(Settings.AutoKillMaxHorizontalSpeed);
+        if (area.HorizontalSpeedCondition) {
+            int speed = (int) Math.Round(Math.Abs(horizontalSpeed));
+            int minSpeed = AkronModuleSettings.ClampAutoKillSpeed(area.MinHorizontalSpeed);
+            int maxSpeed = AkronModuleSettings.ClampAutoKillSpeed(area.MaxHorizontalSpeed);
             if (maxSpeed < minSpeed) {
                 maxSpeed = minSpeed;
             }
@@ -135,10 +163,10 @@ public partial class AkronModule {
             }
         }
 
-        if (Settings.AutoKillVerticalSpeedCondition) {
-            int speed = (int) Math.Round(Math.Abs(player.Speed.Y));
-            int minSpeed = AkronModuleSettings.ClampAutoKillSpeed(Settings.AutoKillMinVerticalSpeed);
-            int maxSpeed = AkronModuleSettings.ClampAutoKillSpeed(Settings.AutoKillMaxVerticalSpeed);
+        if (area.VerticalSpeedCondition) {
+            int speed = (int) Math.Round(Math.Abs(verticalSpeed));
+            int minSpeed = AkronModuleSettings.ClampAutoKillSpeed(area.MinVerticalSpeed);
+            int maxSpeed = AkronModuleSettings.ClampAutoKillSpeed(area.MaxVerticalSpeed);
             if (maxSpeed < minSpeed) {
                 maxSpeed = minSpeed;
             }
@@ -148,30 +176,30 @@ public partial class AkronModule {
             }
         }
 
-        if (Settings.AutoKillDashCountCondition &&
-            player.Dashes != AkronModuleSettings.ClampAutoKillDashCount(Settings.AutoKillDashCount)) {
+        if (area.DashCountCondition &&
+            dashes != AkronModuleSettings.ClampAutoKillDashCount(area.DashCount)) {
             return false;
         }
 
-        AkronAutoKillGroundCondition groundCondition = AkronModuleSettings.NormalizeAutoKillGroundCondition(Settings.AutoKillGroundCondition);
-        if (groundCondition == AkronAutoKillGroundCondition.Grounded && !player.OnGround()) {
+        AkronAutoKillGroundCondition groundCondition = AkronModuleSettings.NormalizeAutoKillGroundCondition(area.GroundCondition);
+        if (groundCondition == AkronAutoKillGroundCondition.Grounded && !onGround) {
             return false;
         }
 
-        if (groundCondition == AkronAutoKillGroundCondition.Airborne && player.OnGround()) {
+        if (groundCondition == AkronAutoKillGroundCondition.Airborne && onGround) {
             return false;
         }
 
-        if (!AutoKillAxisConditionMatches(Settings.AutoKillHorizontalDirection, player.Speed.X)) {
+        if (!AutoKillAxisConditionMatches(area.HorizontalDirection, horizontalSpeed)) {
             return false;
         }
 
-        if (!AutoKillAxisConditionMatches(Settings.AutoKillVerticalDirection, player.Speed.Y)) {
+        if (!AutoKillAxisConditionMatches(area.VerticalDirection, verticalSpeed)) {
             return false;
         }
 
-        return !Settings.AutoKillPlayerStateCondition ||
-               player.StateMachine.State == AkronModuleSettings.ClampAutoKillPlayerState(Settings.AutoKillPlayerState);
+        return !area.PlayerStateCondition ||
+               playerState == AkronModuleSettings.ClampAutoKillPlayerState(area.PlayerState);
     }
 
     private static bool AutoKillAxisConditionMatches(AkronAutoKillAxisCondition condition, float speed) {
@@ -207,27 +235,105 @@ public partial class AkronModule {
         return GetAutoKillAreas().FirstOrDefault();
     }
 
+    public static Rectangle GetSelectedAutoKillArea() {
+        return TryGetSelectedAutoKillArea(out AkronAutoKillAreaData area)
+            ? AutoKillAreaRectangle(area)
+            : default;
+    }
+
+    public static AkronAutoKillAreaData GetAutoKillDefaultAreaConditions() {
+        Settings.AutoKillDefaultAreaConditions ??= new AkronAutoKillAreaData();
+        return Settings.AutoKillDefaultAreaConditions;
+    }
+
+    public static bool UseSelectedAutoKillAreaAsDefault() {
+        if (!TryGetSelectedAutoKillArea(out AkronAutoKillAreaData area)) {
+            return false;
+        }
+
+        Settings.AutoKillDefaultAreaConditions = new AkronAutoKillAreaData(area) {
+            X = 0,
+            Y = 0,
+            Width = 0,
+            Height = 0
+        };
+        return true;
+    }
+
     public static List<Rectangle> GetAutoKillAreas() {
-        List<Rectangle> areas = (Settings.AutoKillAreas ?? new List<AkronRectangleData>())
+        List<Rectangle> areas = (Settings.AutoKillAreas ?? new List<AkronAutoKillAreaData>())
             .Where(area => area != null && area.Width > 0 && area.Height > 0)
-            .Select(area => new Rectangle(
-                area.X,
-                area.Y,
-                AkronModuleSettings.ClampAutoKillAreaSize(area.Width),
-                AkronModuleSettings.ClampAutoKillAreaSize(area.Height)))
+            .Select(AutoKillAreaRectangle)
             .ToList();
 
         return areas;
     }
 
+    public static int GetAutoKillAreaCount() {
+        return GetAutoKillAreas().Count;
+    }
+
+    public static int GetSelectedAutoKillAreaIndex() {
+        int count = Settings.AutoKillAreas?.Count ?? 0;
+        if (count <= 0) {
+            selectedAutoKillAreaIndex = 0;
+            return 0;
+        }
+
+        selectedAutoKillAreaIndex = Math.Max(0, Math.Min(selectedAutoKillAreaIndex, count - 1));
+        return selectedAutoKillAreaIndex;
+    }
+
+    public static bool TrySelectAutoKillArea(int index) {
+        int count = Settings.AutoKillAreas?.Count ?? 0;
+        if (index < 0 || index >= count) {
+            return false;
+        }
+
+        selectedAutoKillAreaIndex = index;
+        SetLatestAutoKillArea(Settings.AutoKillAreas[index]);
+        return true;
+    }
+
+    public static bool TryGetSelectedAutoKillArea(out AkronAutoKillAreaData area) {
+        int count = Settings.AutoKillAreas?.Count ?? 0;
+        if (count <= 0) {
+            selectedAutoKillAreaIndex = 0;
+            area = null;
+            return false;
+        }
+
+        int index = GetSelectedAutoKillAreaIndex();
+        area = Settings.AutoKillAreas[index];
+        return area != null && area.Width > 0 && area.Height > 0;
+    }
+
+    public static bool RemoveSelectedAutoKillArea() {
+        if (!TryGetSelectedAutoKillArea(out _)) {
+            return false;
+        }
+
+        Settings.AutoKillAreas.RemoveAt(selectedAutoKillAreaIndex);
+        if (Settings.AutoKillAreas.Count == 0) {
+            ClearAutoKillArea();
+            return true;
+        }
+
+        selectedAutoKillAreaIndex = Math.Min(selectedAutoKillAreaIndex, Settings.AutoKillAreas.Count - 1);
+        Settings.AutoKillArea = true;
+        SetLatestAutoKillArea(Settings.AutoKillAreas[selectedAutoKillAreaIndex]);
+        return true;
+    }
+
     public static void SetAutoKillArea(Rectangle area) {
-        Settings.AutoKillAreas = new List<AkronRectangleData>();
+        Settings.AutoKillAreas = new List<AkronAutoKillAreaData>();
+        selectedAutoKillAreaIndex = 0;
         AddAutoKillArea(area);
     }
 
     public static void AddAutoKillArea(Rectangle area) {
         if (Settings.AutoKillAreas == null) {
-            Settings.AutoKillAreas = new List<AkronRectangleData>();
+            Settings.AutoKillAreas = new List<AkronAutoKillAreaData>();
         }
 
         Rectangle clamped = new Rectangle(
@@ -239,11 +345,9 @@ public partial class AkronModule {
             return;
         }
 
-        Settings.AutoKillAreas.Add(new AkronRectangleData(clamped));
-        Settings.AutoKillAreaX = area.X;
-        Settings.AutoKillAreaY = area.Y;
-        Settings.AutoKillAreaWidth = clamped.Width;
-        Settings.AutoKillAreaHeight = clamped.Height;
+        Settings.AutoKillAreas.Add(GetAutoKillDefaultAreaConditions().CopyWithRectangle(clamped));
+        selectedAutoKillAreaIndex = Settings.AutoKillAreas.Count - 1;
+        SetLatestAutoKillArea(Settings.AutoKillAreas[selectedAutoKillAreaIndex]);
         Settings.AutoKillArea = Settings.AutoKillAreas.Count > 0;
         Settings.AutoKillTimer = false;
         Settings.AutoKillShowArea = true;
@@ -252,11 +356,31 @@ public partial class AkronModule {
     public static void ClearAutoKillArea() {
         Settings.AutoKillArea = false;
         Settings.AutoKillTimer = true;
-        Settings.AutoKillAreas = new List<AkronRectangleData>();
+        Settings.AutoKillAreas = new List<AkronAutoKillAreaData>();
         Settings.AutoKillAreaX = 0;
         Settings.AutoKillAreaY = 0;
         Settings.AutoKillAreaWidth = 0;
         Settings.AutoKillAreaHeight = 0;
+    }
+
+    private static Rectangle AutoKillAreaRectangle(AkronAutoKillAreaData area) {
+        if (area == null) {
+            return default;
+        }
+
+        return new Rectangle(
+            area.X,
+            area.Y,
+            AkronModuleSettings.ClampAutoKillAreaSize(area.Width),
+            AkronModuleSettings.ClampAutoKillAreaSize(area.Height));
+    }
+
+    private static void SetLatestAutoKillArea(AkronAutoKillAreaData area) {
+        Rectangle rectangle = AutoKillAreaRectangle(area);
+        Settings.AutoKillAreaX = rectangle.X;
+        Settings.AutoKillAreaY = rectangle.Y;
+        Settings.AutoKillAreaWidth = rectangle.Width;
+        Settings.AutoKillAreaHeight = rectangle.Height;
     }
 
     public static Rectangle GetAutoDeafenArea() {

@@ -53,10 +53,12 @@ public sealed partial class AkronOverlay {
         }
         DrawPopupTooltip("Show Auto Kill rectangles during Show Hitboxes On Death.");
 
-        if (ImGui.CollapsingHeader("Conditions: " + DescribeAutoKillConditionsSummary() + "##" + popupId)) {
-            DrawAutoKillConditionControls(popupId);
+        AkronAutoKillAreaData defaultAreaConditions = AkronModule.GetAutoKillDefaultAreaConditions();
+        string defaultHeader = "Default conditions for new areas: " + DescribeAutoKillConditionsSummary(defaultAreaConditions) + "##" + popupId;
+        if (ImGui.CollapsingHeader(defaultHeader)) {
+            DrawAutoKillConditionControls(popupId + "-default", defaultAreaConditions);
         }
-        DrawPopupTooltip("Optional area-only filters for speed, dashes, grounded state, movement direction, player state, and inverted matching.");
+        DrawPopupTooltip("Conditions copied into each Auto Kill area when it is placed. Existing areas keep their own conditions.");
 
         if (ImGui.Button("Select Area##" + popupId)) {
             BeginAutoKillAreaSelection();
@@ -73,19 +75,56 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip("Remove all selected auto-kill rectangles.");
 
         ImGui.TextUnformatted(DescribeAutoKillArea());
+
+        int areaCount = AkronModule.GetAutoKillAreaCount();
+        if (areaCount > 0 && AkronModule.TryGetSelectedAutoKillArea(out AkronAutoKillAreaData selectedArea)) {
+            int selectedIndex = AkronModule.GetSelectedAutoKillAreaIndex();
+            ImGui.TextUnformatted("Selected area: #" + (selectedIndex + 1) + " of " + areaCount);
+
+            if (ImGui.Button("Previous##" + popupId)) {
+                AkronModule.TrySelectAutoKillArea(selectedIndex <= 0 ? areaCount - 1 : selectedIndex - 1);
+            }
+            DrawPopupTooltip("Select the previous Auto Kill area for editing.");
+
+            ImGui.SameLine();
+            if (ImGui.Button("Next##" + popupId)) {
+                AkronModule.TrySelectAutoKillArea(selectedIndex >= areaCount - 1 ? 0 : selectedIndex + 1);
+            }
+            DrawPopupTooltip("Select the next Auto Kill area for editing.");
+
+            ImGui.SameLine();
+            if (ImGui.Button("Clear Selected##" + popupId)) {
+                AkronModule.RemoveSelectedAutoKillArea();
+            }
+            DrawPopupTooltip("Remove only the highlighted Auto Kill area.");
+
+            if (ImGui.Button("Use Selected as Default##" + popupId)) {
+                AkronModule.UseSelectedAutoKillAreaAsDefault();
+            }
+            DrawPopupTooltip("Copy the highlighted area's conditions into the default used by newly placed Auto Kill areas.");
+
+            string header = "Conditions for Area #" + (AkronModule.GetSelectedAutoKillAreaIndex() + 1) + ": " + DescribeAutoKillConditionsSummary(selectedArea) + "##" + popupId;
+            if (ImGui.CollapsingHeader(header)) {
+                DrawAutoKillConditionControls(popupId, selectedArea);
+            }
+            DrawPopupTooltip("Optional filters for the highlighted Auto Kill area: speed, dashes, grounded state, movement direction, player state, and inverted matching.");
+        } else {
+            ImGui.TextUnformatted("Selected area: none");
+            DrawPopupTooltip("Place an Auto Kill area before editing per-area conditions.");
+        }
     }
 
-    private void DrawAutoKillConditionControls(string popupId) {
-        bool speedCondition = AkronModule.Settings.AutoKillSpeedCondition;
+    private void DrawAutoKillConditionControls(string popupId, AkronAutoKillAreaData area) {
+        bool speedCondition = area.SpeedCondition;
         if (ImGui.Checkbox("Require speed range##" + popupId, ref speedCondition)) {
-            AkronModule.Settings.AutoKillSpeedCondition = speedCondition;
+            area.SpeedCondition = speedCondition;
         }
         DrawPopupTooltip("Only trigger area kills while Madeline's absolute speed is inside the configured range.");
 
         DrawIntStepperRow(
             "Min speed",
-            () => AkronModule.Settings.AutoKillMinSpeed,
-            value => AkronModule.Settings.AutoKillMinSpeed = AkronModuleSettings.ClampAutoKillSpeed(value),
+            () => area.MinSpeed,
+            value => area.MinSpeed = AkronModuleSettings.ClampAutoKillSpeed(value),
             -50,
             50,
             0,
@@ -95,8 +134,8 @@ public sealed partial class AkronOverlay {
 
         DrawIntStepperRow(
             "Max speed",
-            () => AkronModule.Settings.AutoKillMaxSpeed,
-            value => AkronModule.Settings.AutoKillMaxSpeed = AkronModuleSettings.ClampAutoKillSpeed(value),
+            () => area.MaxSpeed,
+            value => area.MaxSpeed = AkronModuleSettings.ClampAutoKillSpeed(value),
             -50,
             50,
             0,
@@ -104,16 +143,16 @@ public sealed partial class AkronOverlay {
             popupId,
             "Maximum absolute speed allowed for area-based Auto Kill.");
 
-        bool horizontalSpeedCondition = AkronModule.Settings.AutoKillHorizontalSpeedCondition;
+        bool horizontalSpeedCondition = area.HorizontalSpeedCondition;
         if (ImGui.Checkbox("Require horizontal speed##" + popupId, ref horizontalSpeedCondition)) {
-            AkronModule.Settings.AutoKillHorizontalSpeedCondition = horizontalSpeedCondition;
+            area.HorizontalSpeedCondition = horizontalSpeedCondition;
         }
         DrawPopupTooltip("Only trigger area kills while Madeline's absolute horizontal speed is inside the configured range.");
 
         DrawIntStepperRow(
             "Min H speed",
-            () => AkronModule.Settings.AutoKillMinHorizontalSpeed,
-            value => AkronModule.Settings.AutoKillMinHorizontalSpeed = AkronModuleSettings.ClampAutoKillSpeed(value),
+            () => area.MinHorizontalSpeed,
+            value => area.MinHorizontalSpeed = AkronModuleSettings.ClampAutoKillSpeed(value),
             -50,
             50,
             0,
@@ -123,8 +162,8 @@ public sealed partial class AkronOverlay {
 
         DrawIntStepperRow(
             "Max H speed",
-            () => AkronModule.Settings.AutoKillMaxHorizontalSpeed,
-            value => AkronModule.Settings.AutoKillMaxHorizontalSpeed = AkronModuleSettings.ClampAutoKillSpeed(value),
+            () => area.MaxHorizontalSpeed,
+            value => area.MaxHorizontalSpeed = AkronModuleSettings.ClampAutoKillSpeed(value),
             -50,
             50,
             0,
@@ -132,16 +171,16 @@ public sealed partial class AkronOverlay {
             popupId,
             "Maximum absolute horizontal speed allowed for area-based Auto Kill.");
 
-        bool verticalSpeedCondition = AkronModule.Settings.AutoKillVerticalSpeedCondition;
+        bool verticalSpeedCondition = area.VerticalSpeedCondition;
         if (ImGui.Checkbox("Require vertical speed##" + popupId, ref verticalSpeedCondition)) {
-            AkronModule.Settings.AutoKillVerticalSpeedCondition = verticalSpeedCondition;
+            area.VerticalSpeedCondition = verticalSpeedCondition;
         }
         DrawPopupTooltip("Only trigger area kills while Madeline's absolute vertical speed is inside the configured range.");
 
         DrawIntStepperRow(
             "Min V speed",
-            () => AkronModule.Settings.AutoKillMinVerticalSpeed,
-            value => AkronModule.Settings.AutoKillMinVerticalSpeed = AkronModuleSettings.ClampAutoKillSpeed(value),
+            () => area.MinVerticalSpeed,
+            value => area.MinVerticalSpeed = AkronModuleSettings.ClampAutoKillSpeed(value),
             -50,
             50,
             0,
@@ -151,8 +190,8 @@ public sealed partial class AkronOverlay {
 
         DrawIntStepperRow(
             "Max V speed",
-            () => AkronModule.Settings.AutoKillMaxVerticalSpeed,
-            value => AkronModule.Settings.AutoKillMaxVerticalSpeed = AkronModuleSettings.ClampAutoKillSpeed(value),
+            () => area.MaxVerticalSpeed,
+            value => area.MaxVerticalSpeed = AkronModuleSettings.ClampAutoKillSpeed(value),
             -50,
             50,
             0,
@@ -160,16 +199,16 @@ public sealed partial class AkronOverlay {
             popupId,
             "Maximum absolute vertical speed allowed for area-based Auto Kill.");
 
-        bool dashCondition = AkronModule.Settings.AutoKillDashCountCondition;
+        bool dashCondition = area.DashCountCondition;
         if (ImGui.Checkbox("Require dash count##" + popupId, ref dashCondition)) {
-            AkronModule.Settings.AutoKillDashCountCondition = dashCondition;
+            area.DashCountCondition = dashCondition;
         }
         DrawPopupTooltip("Only trigger area kills while Madeline has the configured current dash count.");
 
         DrawIntStepperRow(
             "Dash count",
-            () => AkronModule.Settings.AutoKillDashCount,
-            value => AkronModule.Settings.AutoKillDashCount = AkronModuleSettings.ClampAutoKillDashCount(value),
+            () => area.DashCount,
+            value => area.DashCount = AkronModuleSettings.ClampAutoKillDashCount(value),
             -1,
             1,
             0,
@@ -179,34 +218,34 @@ public sealed partial class AkronOverlay {
 
         DrawPopupRowLabel("Ground", CalculatePopupLabelWidth(120f));
         float groundColumnX = ImGui.GetCursorPosX();
-        DrawPopupChoiceRadioButton("Any", AkronModule.Settings.AutoKillGroundCondition == AkronAutoKillGroundCondition.Any, () => AkronModule.Settings.AutoKillGroundCondition = AkronAutoKillGroundCondition.Any, popupId, "Do not require grounded or airborne state.", groundColumnX, false);
-        DrawPopupChoiceRadioButton("Grounded", AkronModule.Settings.AutoKillGroundCondition == AkronAutoKillGroundCondition.Grounded, () => AkronModule.Settings.AutoKillGroundCondition = AkronAutoKillGroundCondition.Grounded, popupId, "Only trigger area kills while Madeline is on the ground.", groundColumnX, true);
-        DrawPopupChoiceRadioButton("Airborne", AkronModule.Settings.AutoKillGroundCondition == AkronAutoKillGroundCondition.Airborne, () => AkronModule.Settings.AutoKillGroundCondition = AkronAutoKillGroundCondition.Airborne, popupId, "Only trigger area kills while Madeline is airborne.", groundColumnX, true);
+        DrawPopupChoiceRadioButton("Any", area.GroundCondition == AkronAutoKillGroundCondition.Any, () => area.GroundCondition = AkronAutoKillGroundCondition.Any, popupId, "Do not require grounded or airborne state.", groundColumnX, false);
+        DrawPopupChoiceRadioButton("Grounded", area.GroundCondition == AkronAutoKillGroundCondition.Grounded, () => area.GroundCondition = AkronAutoKillGroundCondition.Grounded, popupId, "Only trigger area kills while Madeline is on the ground.", groundColumnX, true);
+        DrawPopupChoiceRadioButton("Airborne", area.GroundCondition == AkronAutoKillGroundCondition.Airborne, () => area.GroundCondition = AkronAutoKillGroundCondition.Airborne, popupId, "Only trigger area kills while Madeline is airborne.", groundColumnX, true);
 
         DrawPopupRowLabel("Horizontal", CalculatePopupLabelWidth(120f));
         float horizontalColumnX = ImGui.GetCursorPosX();
-        DrawPopupChoiceRadioButton("Any", AkronModule.Settings.AutoKillHorizontalDirection == AkronAutoKillAxisCondition.Any, () => AkronModule.Settings.AutoKillHorizontalDirection = AkronAutoKillAxisCondition.Any, popupId, "Do not require horizontal movement direction.", horizontalColumnX, false);
-        DrawPopupChoiceRadioButton("Left", AkronModule.Settings.AutoKillHorizontalDirection == AkronAutoKillAxisCondition.Negative, () => AkronModule.Settings.AutoKillHorizontalDirection = AkronAutoKillAxisCondition.Negative, popupId, "Only trigger area kills while Madeline is moving left.", horizontalColumnX, true);
-        DrawPopupChoiceRadioButton("Right", AkronModule.Settings.AutoKillHorizontalDirection == AkronAutoKillAxisCondition.Positive, () => AkronModule.Settings.AutoKillHorizontalDirection = AkronAutoKillAxisCondition.Positive, popupId, "Only trigger area kills while Madeline is moving right.", horizontalColumnX, true);
-        DrawPopupChoiceRadioButton("Still", AkronModule.Settings.AutoKillHorizontalDirection == AkronAutoKillAxisCondition.Zero, () => AkronModule.Settings.AutoKillHorizontalDirection = AkronAutoKillAxisCondition.Zero, popupId, "Only trigger area kills while Madeline has no horizontal speed.", horizontalColumnX, true);
+        DrawPopupChoiceRadioButton("Any", area.HorizontalDirection == AkronAutoKillAxisCondition.Any, () => area.HorizontalDirection = AkronAutoKillAxisCondition.Any, popupId, "Do not require horizontal movement direction.", horizontalColumnX, false);
+        DrawPopupChoiceRadioButton("Left", area.HorizontalDirection == AkronAutoKillAxisCondition.Negative, () => area.HorizontalDirection = AkronAutoKillAxisCondition.Negative, popupId, "Only trigger area kills while Madeline is moving left.", horizontalColumnX, true);
+        DrawPopupChoiceRadioButton("Right", area.HorizontalDirection == AkronAutoKillAxisCondition.Positive, () => area.HorizontalDirection = AkronAutoKillAxisCondition.Positive, popupId, "Only trigger area kills while Madeline is moving right.", horizontalColumnX, true);
+        DrawPopupChoiceRadioButton("Still", area.HorizontalDirection == AkronAutoKillAxisCondition.Zero, () => area.HorizontalDirection = AkronAutoKillAxisCondition.Zero, popupId, "Only trigger area kills while Madeline has no horizontal speed.", horizontalColumnX, true);
 
         DrawPopupRowLabel("Vertical", CalculatePopupLabelWidth(120f));
         float verticalColumnX = ImGui.GetCursorPosX();
-        DrawPopupChoiceRadioButton("Any", AkronModule.Settings.AutoKillVerticalDirection == AkronAutoKillAxisCondition.Any, () => AkronModule.Settings.AutoKillVerticalDirection = AkronAutoKillAxisCondition.Any, popupId, "Do not require vertical movement direction.", verticalColumnX, false);
-        DrawPopupChoiceRadioButton("Up", AkronModule.Settings.AutoKillVerticalDirection == AkronAutoKillAxisCondition.Negative, () => AkronModule.Settings.AutoKillVerticalDirection = AkronAutoKillAxisCondition.Negative, popupId, "Only trigger area kills while Madeline is moving up.", verticalColumnX, true);
-        DrawPopupChoiceRadioButton("Down", AkronModule.Settings.AutoKillVerticalDirection == AkronAutoKillAxisCondition.Positive, () => AkronModule.Settings.AutoKillVerticalDirection = AkronAutoKillAxisCondition.Positive, popupId, "Only trigger area kills while Madeline is moving down.", verticalColumnX, true);
-        DrawPopupChoiceRadioButton("Still", AkronModule.Settings.AutoKillVerticalDirection == AkronAutoKillAxisCondition.Zero, () => AkronModule.Settings.AutoKillVerticalDirection = AkronAutoKillAxisCondition.Zero, popupId, "Only trigger area kills while Madeline has no vertical speed.", verticalColumnX, true);
+        DrawPopupChoiceRadioButton("Any", area.VerticalDirection == AkronAutoKillAxisCondition.Any, () => area.VerticalDirection = AkronAutoKillAxisCondition.Any, popupId, "Do not require vertical movement direction.", verticalColumnX, false);
+        DrawPopupChoiceRadioButton("Up", area.VerticalDirection == AkronAutoKillAxisCondition.Negative, () => area.VerticalDirection = AkronAutoKillAxisCondition.Negative, popupId, "Only trigger area kills while Madeline is moving up.", verticalColumnX, true);
+        DrawPopupChoiceRadioButton("Down", area.VerticalDirection == AkronAutoKillAxisCondition.Positive, () => area.VerticalDirection = AkronAutoKillAxisCondition.Positive, popupId, "Only trigger area kills while Madeline is moving down.", verticalColumnX, true);
+        DrawPopupChoiceRadioButton("Still", area.VerticalDirection == AkronAutoKillAxisCondition.Zero, () => area.VerticalDirection = AkronAutoKillAxisCondition.Zero, popupId, "Only trigger area kills while Madeline has no vertical speed.", verticalColumnX, true);
 
-        bool stateCondition = AkronModule.Settings.AutoKillPlayerStateCondition;
+        bool stateCondition = area.PlayerStateCondition;
         if (ImGui.Checkbox("Require player state##" + popupId, ref stateCondition)) {
-            AkronModule.Settings.AutoKillPlayerStateCondition = stateCondition;
+            area.PlayerStateCondition = stateCondition;
         }
         DrawPopupTooltip("Only trigger area kills while Madeline's internal player state matches the configured state id.");
 
         DrawIntStepperRow(
             "State id",
-            () => AkronModule.Settings.AutoKillPlayerState,
-            value => AkronModule.Settings.AutoKillPlayerState = AkronModuleSettings.ClampAutoKillPlayerState(value),
+            () => area.PlayerState,
+            value => area.PlayerState = AkronModuleSettings.ClampAutoKillPlayerState(value),
             -1,
             1,
             0,
@@ -214,9 +253,9 @@ public sealed partial class AkronOverlay {
             popupId,
             "Internal Player.StateMachine state id required for area-based Auto Kill. Normal grounded movement is usually 0.");
 
-        bool invertConditions = AkronModule.Settings.AutoKillInvertConditions;
+        bool invertConditions = area.InvertConditions;
         if (ImGui.Checkbox("Invert conditions##" + popupId, ref invertConditions)) {
-            AkronModule.Settings.AutoKillInvertConditions = invertConditions;
+            area.InvertConditions = invertConditions;
         }
         DrawPopupTooltip("Trigger inside the area when enabled conditions fail instead of when they pass.");
     }

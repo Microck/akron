@@ -224,13 +224,14 @@ public sealed class ModuleSettingsTests
         Assert.False(settings.FreezeTimerWhilePaused);
         Assert.False(settings.DashRedirectEnabled);
         Assert.Equal(AkronDashRedirectDirection.Down, settings.DashRedirectDirections);
-        Assert.False(settings.AutoKillSpeedCondition);
-        Assert.Equal(0, settings.AutoKillMinSpeed);
-        Assert.Equal(1000, settings.AutoKillMaxSpeed);
-        Assert.False(settings.AutoKillDashCountCondition);
-        Assert.Equal(0, settings.AutoKillDashCount);
-        Assert.Equal(AkronAutoKillAxisCondition.Any, settings.AutoKillHorizontalDirection);
-        Assert.Equal(AkronAutoKillAxisCondition.Any, settings.AutoKillVerticalDirection);
+        AkronAutoKillAreaData autoKillArea = new AkronAutoKillAreaData();
+        Assert.False(autoKillArea.SpeedCondition);
+        Assert.Equal(0, autoKillArea.MinSpeed);
+        Assert.Equal(1000, autoKillArea.MaxSpeed);
+        Assert.False(autoKillArea.DashCountCondition);
+        Assert.Equal(0, autoKillArea.DashCount);
+        Assert.Equal(AkronAutoKillAxisCondition.Any, autoKillArea.HorizontalDirection);
+        Assert.Equal(AkronAutoKillAxisCondition.Any, autoKillArea.VerticalDirection);
         Assert.False(settings.GrabModeOverrideEnabled);
         Assert.Equal(GrabModes.Toggle, settings.GrabModeOverrideMode);
         Assert.False(settings.MadelineHairLength);
@@ -627,6 +628,72 @@ public sealed class ModuleSettingsTests
         Assert.False(settings.RefillClarity);
         Assert.Equal(AkronModuleSettings.DefaultRefillClarityColor, settings.RefillClarityColor);
         Assert.Equal(100, settings.RefillClarityOpacity);
+    }
+
+    [Fact]
+    public void AutoKillAreaConditionsMatchUsesAreaSpecificConditions()
+    {
+        AkronAutoKillAreaData fastArea = new AkronAutoKillAreaData
+        {
+            SpeedCondition = true,
+            MinSpeed = 200,
+            MaxSpeed = 300
+        };
+        AkronAutoKillAreaData slowArea = new AkronAutoKillAreaData
+        {
+            SpeedCondition = true,
+            MinSpeed = 0,
+            MaxSpeed = 100
+        };
+
+        Assert.True(AkronModule.AutoKillAreaConditionsMatch(fastArea, totalSpeed: 240f, horizontalSpeed: 240f, verticalSpeed: 0f, dashes: 1, onGround: true, playerState: 0));
+        Assert.False(AkronModule.AutoKillAreaConditionsMatch(slowArea, totalSpeed: 240f, horizontalSpeed: 240f, verticalSpeed: 0f, dashes: 1, onGround: true, playerState: 0));
+    }
+
+    [Fact]
+    public void AutoKillAreaConditionsInvertPerArea()
+    {
+        AkronAutoKillAreaData area = new AkronAutoKillAreaData
+        {
+            DashCountCondition = true,
+            DashCount = 1,
+            InvertConditions = true
+        };
+
+        Assert.False(AkronModule.AutoKillAreaConditionsMatch(area, totalSpeed: 0f, horizontalSpeed: 0f, verticalSpeed: 0f, dashes: 1, onGround: true, playerState: 0));
+        Assert.True(AkronModule.AutoKillAreaConditionsMatch(area, totalSpeed: 0f, horizontalSpeed: 0f, verticalSpeed: 0f, dashes: 0, onGround: true, playerState: 0));
+    }
+
+    [Fact]
+    public void AutoKillAreaCopiesDefaultConditionsWhenPlaced()
+    {
+        AkronAutoKillAreaData defaults = new AkronAutoKillAreaData
+        {
+            SpeedCondition = true,
+            MinSpeed = 200,
+            MaxSpeed = 300,
+            DashCountCondition = true,
+            DashCount = 1
+        };
+
+        Rectangle rectangle = default;
+        rectangle.X = 10;
+        rectangle.Y = 20;
+        rectangle.Width = 30;
+        rectangle.Height = 40;
+        AkronAutoKillAreaData placedArea = defaults.CopyWithRectangle(rectangle);
+        defaults.MinSpeed = 500;
+        defaults.DashCount = 2;
+
+        Assert.Equal(10, placedArea.X);
+        Assert.Equal(20, placedArea.Y);
+        Assert.Equal(30, placedArea.Width);
+        Assert.Equal(40, placedArea.Height);
+        Assert.True(placedArea.SpeedCondition);
+        Assert.Equal(200, placedArea.MinSpeed);
+        Assert.Equal(300, placedArea.MaxSpeed);
+        Assert.True(placedArea.DashCountCondition);
+        Assert.Equal(1, placedArea.DashCount);
     }
 
     [Fact]
@@ -3046,16 +3113,26 @@ public sealed class ModuleSettingsTests
                 StartPosConfiguredFacing = AkronStartPosFacing.Left,
                 AutoKill = true,
                 AutoKillArea = true,
-                AutoKillAreas = new List<AkronRectangleData> {
-                    new AkronRectangleData { X = 1, Y = 2, Width = 30, Height = 40 }
+                AutoKillDefaultAreaConditions = new AkronAutoKillAreaData {
+                    HorizontalSpeedCondition = true,
+                    MinHorizontalSpeed = 80,
+                    MaxHorizontalSpeed = 180
                 },
-                AutoKillSpeedCondition = true,
-                AutoKillMinSpeed = 120,
-                AutoKillMaxSpeed = 240,
-                AutoKillDashCountCondition = true,
-                AutoKillDashCount = 1,
-                AutoKillHorizontalDirection = AkronAutoKillAxisCondition.Negative,
-                AutoKillVerticalDirection = AkronAutoKillAxisCondition.Positive,
+                AutoKillAreas = new List<AkronAutoKillAreaData> {
+                    new AkronAutoKillAreaData {
+                        X = 1,
+                        Y = 2,
+                        Width = 30,
+                        Height = 40,
+                        SpeedCondition = true,
+                        MinSpeed = 120,
+                        MaxSpeed = 240,
+                        DashCountCondition = true,
+                        DashCount = 1,
+                        HorizontalDirection = AkronAutoKillAxisCondition.Negative,
+                        VerticalDirection = AkronAutoKillAxisCondition.Positive
+                    }
+                },
                 AutoDeafen = true,
                 AutoDeafenHotkey = "Ctrl+Shift+D",
                 AudioSpeed = true,
@@ -3106,14 +3183,17 @@ public sealed class ModuleSettingsTests
             Assert.Equal(2, imported.StartPosConfiguredDashes);
             Assert.True(imported.AutoKill);
             Assert.True(imported.AutoKillArea);
-            Assert.Single(imported.AutoKillAreas);
-            Assert.True(imported.AutoKillSpeedCondition);
-            Assert.Equal(120, imported.AutoKillMinSpeed);
-            Assert.Equal(240, imported.AutoKillMaxSpeed);
-            Assert.True(imported.AutoKillDashCountCondition);
-            Assert.Equal(1, imported.AutoKillDashCount);
-            Assert.Equal(AkronAutoKillAxisCondition.Negative, imported.AutoKillHorizontalDirection);
-            Assert.Equal(AkronAutoKillAxisCondition.Positive, imported.AutoKillVerticalDirection);
+            Assert.True(imported.AutoKillDefaultAreaConditions.HorizontalSpeedCondition);
+            Assert.Equal(80, imported.AutoKillDefaultAreaConditions.MinHorizontalSpeed);
+            Assert.Equal(180, imported.AutoKillDefaultAreaConditions.MaxHorizontalSpeed);
+            AkronAutoKillAreaData importedAutoKillArea = Assert.Single(imported.AutoKillAreas);
+            Assert.True(importedAutoKillArea.SpeedCondition);
+            Assert.Equal(120, importedAutoKillArea.MinSpeed);
+            Assert.Equal(240, importedAutoKillArea.MaxSpeed);
+            Assert.True(importedAutoKillArea.DashCountCondition);
+            Assert.Equal(1, importedAutoKillArea.DashCount);
+            Assert.Equal(AkronAutoKillAxisCondition.Negative, importedAutoKillArea.HorizontalDirection);
+            Assert.Equal(AkronAutoKillAxisCondition.Positive, importedAutoKillArea.VerticalDirection);
             Assert.True(imported.AutoDeafen);
             Assert.Equal("Ctrl+Shift+D", imported.AutoDeafenHotkey);
             Assert.True(imported.AudioSpeed);
@@ -3184,16 +3264,26 @@ public sealed class ModuleSettingsTests
             AutoKillTimer = true,
             AutoKillSeconds = 12,
             AutoKillArea = true,
-            AutoKillAreas = new List<AkronRectangleData> {
-                new AkronRectangleData { X = 1, Y = 2, Width = 30, Height = 40 }
+            AutoKillDefaultAreaConditions = new AkronAutoKillAreaData {
+                HorizontalSpeedCondition = true,
+                MinHorizontalSpeed = 80,
+                MaxHorizontalSpeed = 180
             },
-            AutoKillSpeedCondition = true,
-            AutoKillMinSpeed = 120,
-            AutoKillMaxSpeed = 240,
-            AutoKillDashCountCondition = true,
-            AutoKillDashCount = 1,
-            AutoKillHorizontalDirection = AkronAutoKillAxisCondition.Negative,
-            AutoKillVerticalDirection = AkronAutoKillAxisCondition.Positive,
+            AutoKillAreas = new List<AkronAutoKillAreaData> {
+                new AkronAutoKillAreaData {
+                    X = 1,
+                    Y = 2,
+                    Width = 30,
+                    Height = 40,
+                    SpeedCondition = true,
+                    MinSpeed = 120,
+                    MaxSpeed = 240,
+                    DashCountCondition = true,
+                    DashCount = 1,
+                    HorizontalDirection = AkronAutoKillAxisCondition.Negative,
+                    VerticalDirection = AkronAutoKillAxisCondition.Positive
+                }
+            },
             AutoDeafen = true,
             AutoDeafenHotkey = "Ctrl+Shift+D",
             RecordingFramerate = 120,
@@ -3284,14 +3374,17 @@ public sealed class ModuleSettingsTests
         Assert.True(autoKillOnly.AutoKill);
         Assert.True(autoKillOnly.AutoKillTimer);
         Assert.Equal(12, autoKillOnly.AutoKillSeconds);
-        Assert.Single(autoKillOnly.AutoKillAreas);
-        Assert.True(autoKillOnly.AutoKillSpeedCondition);
-        Assert.Equal(120, autoKillOnly.AutoKillMinSpeed);
-        Assert.Equal(240, autoKillOnly.AutoKillMaxSpeed);
-        Assert.True(autoKillOnly.AutoKillDashCountCondition);
-        Assert.Equal(1, autoKillOnly.AutoKillDashCount);
-        Assert.Equal(AkronAutoKillAxisCondition.Negative, autoKillOnly.AutoKillHorizontalDirection);
-        Assert.Equal(AkronAutoKillAxisCondition.Positive, autoKillOnly.AutoKillVerticalDirection);
+        Assert.True(autoKillOnly.AutoKillDefaultAreaConditions.HorizontalSpeedCondition);
+        Assert.Equal(80, autoKillOnly.AutoKillDefaultAreaConditions.MinHorizontalSpeed);
+        Assert.Equal(180, autoKillOnly.AutoKillDefaultAreaConditions.MaxHorizontalSpeed);
+        AkronAutoKillAreaData scopedAutoKillArea = Assert.Single(autoKillOnly.AutoKillAreas);
+        Assert.True(scopedAutoKillArea.SpeedCondition);
+        Assert.Equal(120, scopedAutoKillArea.MinSpeed);
+        Assert.Equal(240, scopedAutoKillArea.MaxSpeed);
+        Assert.True(scopedAutoKillArea.DashCountCondition);
+        Assert.Equal(1, scopedAutoKillArea.DashCount);
+        Assert.Equal(AkronAutoKillAxisCondition.Negative, scopedAutoKillArea.HorizontalDirection);
+        Assert.Equal(AkronAutoKillAxisCondition.Positive, scopedAutoKillArea.VerticalDirection);
         Assert.False(autoKillOnly.AutoDeafen);
 
         AkronModuleSettings autoDeafenOnly = new AkronModuleSettings { AutoKill = false };
