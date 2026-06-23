@@ -4,15 +4,24 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
-## 0.1.2-beta.29
+## 0.1.2-beta.30
 
 ### Added
 
 - Add Death Particles customization for color mode, preset shapes, custom canvas masks, and particle duration.
+- Let each Auto Kill area keep its own conditions, copy configured defaults into newly placed areas, and highlight the selected area brighter while its conditions are edited.
+
+### Fixed
+
+- Prevent submenu clicks from selecting or activating overlay rows behind the popup.
+
+## 0.1.2-beta.29
+
+### Added
+
 - Add Entity Inspector cursor pinning: hold the inspector cursor bind to click entities or triggers in-game, cycle overlapping hits, view runtime and source-bound map properties, and copy an inspection report.
 - Add Entity Inspector close and hover-preview controls, highlight pinned and hovered targets, keep solid-tile highlights scoped to the hovered tile, and let Cursor Tools use Entity Inspector as its left-click action.
 - Add cursor hold binding controls to the Click Teleport, Cursor Tools, and Cursor Zoom popups while keeping Left Alt as the default.
-- Let each Auto Kill area keep its own conditions, copy configured defaults into newly placed areas, and highlight the selected area brighter while its conditions are edited.
 
 ### Changed
 
@@ -20,7 +29,6 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ### Fixed
 
-- Prevent submenu clicks from selecting or activating overlay rows behind the popup.
 - Let Celeste's Journal shortcut take priority over Akron's default Tab overlay bind in the overworld.
 - Keep Entity Inspector's submenu aligned with Akron's ImGui HUD style, require the cursor hold bind for gameplay pinning, add report placement/detail defaults, keep fixed report corners anchored across size changes, and keep titlebar-collapsed reports reopenable.
 
