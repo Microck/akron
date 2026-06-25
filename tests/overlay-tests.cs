@@ -210,6 +210,21 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void CapturingStartPosKeepsCapturedSlotActive() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Actions/akron-startpos-actions.cs"));
+        int methodStart = source.IndexOf("private static void CaptureStartPos", StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("private static void ApplyPlacedStartPosBeforeCapture", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(nextMethod > methodStart);
+        string method = source[methodStart..nextMethod];
+
+        Assert.Contains("AkronModule.Session.StartPositions[slot]", method);
+        Assert.DoesNotContain("SetStartPosSlot", method);
+        Assert.DoesNotContain("NextStartPosSlot", source);
+    }
+
+    [Fact]
     public void Issue18RowsStayInExistingGameplayTabs() {
         List<string> levelLabels = BuildOverlayEntryLabels("Level");
         List<string> playerLabels = BuildOverlayEntryLabels("Player");

@@ -4,6 +4,13 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## 0.1.2-beta.32
+
+### Fixed
+
+- Keep regular StartPos captures on the active slot after Set, so Load immediately returns to the captured position.
+- Let imported and shared StartPos entries without runtime snapshots remain selectable and load as position-only starts.
+
 ## 0.1.2-beta.31
 
 ### Fixed

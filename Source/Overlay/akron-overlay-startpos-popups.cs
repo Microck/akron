@@ -12,7 +12,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Button("Set##startpos_set" + popupId) && Engine.Scene is Level setLevel) {
             AkronActions.SetStartPos(setLevel);
         }
-        DrawPopupTooltip("Capture the current player state into the active StartPos slot, then advance to the next slot.");
+        DrawPopupTooltip("Capture the current player state into the active StartPos slot.");
 
         ImGui.SameLine();
         if (ImGui.Button("Load##startpos_load" + popupId) && Engine.Scene is Level loadLevel) {
@@ -101,7 +101,7 @@ public sealed partial class AkronOverlay {
     }
 
     private void DrawStartPosConfigControls(string popupId) {
-        DrawIntStepperRow("Slot count", () => AkronModule.Settings.StartPosSlotCount, value => AkronModule.Settings.StartPosSlotCount = AkronModuleSettings.ClampStartPosSlotCount(value), -1, 1, 1, 99, popupId, "How many StartPos slots the slot selector and auto-advance cycle through.");
+        DrawIntStepperRow("Slot count", () => AkronModule.Settings.StartPosSlotCount, value => AkronModule.Settings.StartPosSlotCount = AkronModuleSettings.ClampStartPosSlotCount(value), -1, 1, 1, 99, popupId, "How many StartPos slots the selector and previous/next controls cycle through.");
         DrawIntStepperRow("Dashes", () => ActiveStartPosDashes(), SetActiveStartPosDashes, -1, 1, -1, 5, popupId, "-1 keeps the native/current dash count. 0-5 force that many dashes after spawning.");
         DrawIntStepperRow("Stamina %", () => ActiveStartPosStaminaPercent(), SetActiveStartPosStaminaPercent, -5, 5, -1, 100, popupId, "-1 keeps native/current stamina. 0-100 forces stamina after spawning.");
         DrawPopupChoiceCombo(

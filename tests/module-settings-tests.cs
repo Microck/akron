@@ -2821,6 +2821,25 @@ public sealed class ModuleSettingsTests
         Assert.False(startPos.Grab);
     }
 
+    [Fact]
+    public void ImportedStartPosEntriesDoNotRequireRuntimeSnapshots()
+    {
+        AkronStartPos imported = new AkronStartPos
+        {
+            AreaSid = "Example/Map",
+            StateSlotName = string.Empty
+        };
+        AkronStartPos capturedWithoutState = new AkronStartPos
+        {
+            AreaSid = "Example/Map",
+            StateSlotName = "Akron StartPos missing test slot"
+        };
+
+        Assert.True(InvokeStartPosInArea(imported, "Example/Map"));
+        Assert.False(InvokeStartPosInArea(imported, "Other/Map"));
+        Assert.False(InvokeStartPosInArea(capturedWithoutState, "Example/Map"));
+    }
+
     [Theory]
     [InlineData("", "snapshot")]
     [InlineData("good-before-load", "good-before-load")]
@@ -3795,6 +3814,13 @@ public sealed class ModuleSettingsTests
         MethodInfo? method = typeof(AkronHudRenderer).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         return (bool)method.Invoke(null, new object[] { settings, featureAllowed })!;
+    }
+
+    private static bool InvokeStartPosInArea(AkronStartPos startPos, string areaSid)
+    {
+        MethodInfo? method = typeof(AkronActions).GetMethod("IsStartPosInArea", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        return (bool)method.Invoke(null, new object[] { startPos, areaSid })!;
     }
 
     private static Vector2 TestVector2(float x, float y)

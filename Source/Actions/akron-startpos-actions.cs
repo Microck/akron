@@ -79,7 +79,6 @@ public static partial class AkronActions {
             StateSlotName = stateSlotName
         };
         Engine.Scene?.Add(new AkronToast(toast));
-        SetStartPosSlot(NextStartPosSlot(slot));
     }
 
     private static void ApplyPlacedStartPosBeforeCapture(Level level, Player player, Vector2 position) {
@@ -529,14 +528,23 @@ public static partial class AkronActions {
         return level != null &&
                startPos != null &&
                string.Equals(startPos.Room, level.Session.Level, StringComparison.Ordinal) &&
-               AkronSaveLoadService.HasRuntimeState(startPos.StateSlotName);
+               HasRestorableStartPosState(startPos);
     }
 
     private static bool IsStartPosInArea(AkronStartPos startPos, string areaSid) {
         return startPos != null &&
-               AkronSaveLoadService.HasRuntimeState(startPos.StateSlotName) &&
+               HasRestorableStartPosState(startPos) &&
                (string.IsNullOrWhiteSpace(startPos.AreaSid) ||
                 string.Equals(startPos.AreaSid, areaSid, StringComparison.Ordinal));
+    }
+
+    private static bool HasRestorableStartPosState(AkronStartPos startPos) {
+        // Setup-pack imports only carry a position and spawn config, not a
+        // native runtime snapshot. RestoreStartPos handles that imported path
+        // when StateSlotName is empty, so list/load gates must not reject it.
+        return startPos != null &&
+               (string.IsNullOrWhiteSpace(startPos.StateSlotName) ||
+                AkronSaveLoadService.HasRuntimeState(startPos.StateSlotName));
     }
 
     private static Dictionary<string, int> BuildRoomOrder(Level level) {
@@ -566,10 +574,6 @@ public static partial class AkronActions {
 
     public static void ShiftStartPosSlot(int delta) {
         SetStartPosSlot(WrapStartPosSlot(AkronModule.Settings.ActiveStartPosSlot + delta));
-    }
-
-    private static int NextStartPosSlot(int slot) {
-        return WrapStartPosSlot(slot + 1);
     }
 
     private static int WrapStartPosSlot(int slot) {
