@@ -42,12 +42,13 @@ public sealed partial class AkronOverlay {
         }
 
         string[] visibleTabs = GetVisibleTabs();
-        ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, level, columnXPositions.Count, menuTop, displayHeight);
+        Dictionary<string, List<ActionEntry>> actionEntriesByTab = BuildVisibleTabActionEntries(visibleTabs, level);
+        ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, actionEntriesByTab, columnXPositions.Count, menuTop, displayHeight);
         List<float> columnBottoms = columnXPositions.Select(_ => menuTop).ToList();
         List<int> columnSectionCounts = columnXPositions.Select(_ => 0).ToList();
         for (int tabIndex = 0; tabIndex < visibleTabs.Length; tabIndex++) {
             string tabName = visibleTabs[tabIndex];
-            List<ActionEntry> entries = GetFilteredDisplayActionEntries(tabName, level);
+            List<ActionEntry> entries = actionEntriesByTab[tabName];
             if (!string.IsNullOrWhiteSpace(searchQuery) && entries.Count == 0) {
                 continue;
             }

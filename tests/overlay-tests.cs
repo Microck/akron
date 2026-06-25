@@ -611,6 +611,18 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void Issue72OverlayRenderDoesNotRefilterRowsDuringExternalToolPlacement() {
+        string layoutSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-layout.cs"));
+        string rendererSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-imgui-renderer.cs"));
+        string planMethod = ExtractMethod(layoutSource, "private ExternalToolPlacementPlan BuildExternalToolPlacementPlan");
+        string drawMethod = ExtractMethod(rendererSource, "private void DrawImGuiMenu()");
+
+        Assert.Contains("BuildVisibleTabActionEntries(visibleTabs, level)", drawMethod);
+        Assert.Contains("BuildExternalToolPlacementPlan(visibleTabs, actionEntriesByTab", drawMethod);
+        Assert.DoesNotContain("GetFilteredDisplayActionEntries", planMethod);
+    }
+
+    [Fact]
     public void InspectorPinPopupUsesAkronImGuiPanelTheme() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-entity-inspector-pin.cs"));
 
@@ -1038,6 +1050,28 @@ public sealed class OverlayTests {
     private static bool HasOverlayOptionsPopup(string label) {
         MethodInfo method = typeof(AkronOverlay).GetMethod("HasOptionsPopup", BindingFlags.NonPublic | BindingFlags.Static)!;
         return (bool) method.Invoke(null, new object[] { label })!;
+    }
+
+    private static string ExtractMethod(string source, string signature) {
+        int methodStart = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(methodStart >= 0);
+
+        int bodyStart = source.IndexOf('{', methodStart);
+        Assert.True(bodyStart > methodStart);
+
+        int depth = 0;
+        for (int index = bodyStart; index < source.Length; index++) {
+            if (source[index] == '{') {
+                depth++;
+            } else if (source[index] == '}') {
+                depth--;
+                if (depth == 0) {
+                    return source[methodStart..(index + 1)];
+                }
+            }
+        }
+
+        throw new InvalidOperationException("Could not extract method: " + signature);
     }
 
     private static HashSet<string> GetCollapsedWindowTitles(AkronOverlay overlay) {

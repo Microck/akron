@@ -69,12 +69,13 @@ public sealed partial class AkronOverlay {
         }
 
         string[] visibleTabs = GetVisibleTabs();
-        ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, level, columnXPositions.Count, menuTop, ScreenHeight);
+        Dictionary<string, List<ActionEntry>> actionEntriesByTab = BuildVisibleTabActionEntries(visibleTabs, level);
+        ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, actionEntriesByTab, columnXPositions.Count, menuTop, ScreenHeight);
         List<float> columnBottoms = columnXPositions.Select(_ => menuTop).ToList();
         List<int> columnSectionCounts = columnXPositions.Select(_ => 0).ToList();
         for (int tabIndex = 0; tabIndex < visibleTabs.Length; tabIndex++) {
             string tabName = visibleTabs[tabIndex];
-            List<ActionEntry> tabEntries = GetFilteredDisplayActionEntries(tabName, level);
+            List<ActionEntry> tabEntries = actionEntriesByTab[tabName];
             if (!string.IsNullOrWhiteSpace(searchQuery) && tabEntries.Count == 0) {
                 continue;
             }
@@ -91,6 +92,15 @@ public sealed partial class AkronOverlay {
             columnBottoms[columnIndex] = y + GetStackedActionSectionHeight(tabName, height) + ColumnStackGap;
             columnSectionCounts[columnIndex]++;
         }
+    }
+
+    private Dictionary<string, List<ActionEntry>> BuildVisibleTabActionEntries(string[] visibleTabs, Level level) {
+        Dictionary<string, List<ActionEntry>> actionEntriesByTab = new Dictionary<string, List<ActionEntry>>(StringComparer.OrdinalIgnoreCase);
+        foreach (string tabName in visibleTabs) {
+            actionEntriesByTab[tabName] = GetFilteredDisplayActionEntries(tabName, level);
+        }
+
+        return actionEntriesByTab;
     }
 
     private List<ActionEntry> GetDisplayActionEntries(string tabName, Level level) {
@@ -231,7 +241,7 @@ public sealed partial class AkronOverlay {
         return FindShortestColumn(columnBottoms, cappedColumns, index => true);
     }
 
-    private ExternalToolPlacementPlan BuildExternalToolPlacementPlan(string[] visibleTabs, Level level, int availableColumns, float menuTop, float screenHeight) {
+    private ExternalToolPlacementPlan BuildExternalToolPlacementPlan(string[] visibleTabs, IReadOnlyDictionary<string, List<ActionEntry>> actionEntriesByTab, int availableColumns, float menuTop, float screenHeight) {
         ExternalToolPlacementPlan plan = new ExternalToolPlacementPlan(availableColumns);
         if (!visibleTabs.Any(IsExternalToolTab)) {
             return plan;
@@ -241,7 +251,9 @@ public sealed partial class AkronOverlay {
         List<int> columnSectionCounts = Enumerable.Repeat(0, availableColumns).ToList();
 
         foreach (string tabName in visibleTabs.Where(tab => !IsExternalToolTab(tab))) {
-            List<ActionEntry> entries = GetFilteredDisplayActionEntries(tabName, level);
+            if (!actionEntriesByTab.TryGetValue(tabName, out List<ActionEntry> entries)) {
+                continue;
+            }
             if (!string.IsNullOrWhiteSpace(searchQuery) && entries.Count == 0) {
                 continue;
             }
@@ -253,7 +265,9 @@ public sealed partial class AkronOverlay {
         }
 
         foreach (string tabName in visibleTabs.Where(IsExternalToolTab)) {
-            List<ActionEntry> entries = GetFilteredDisplayActionEntries(tabName, level);
+            if (!actionEntriesByTab.TryGetValue(tabName, out List<ActionEntry> entries)) {
+                continue;
+            }
             if (!string.IsNullOrWhiteSpace(searchQuery) && entries.Count == 0) {
                 continue;
             }
