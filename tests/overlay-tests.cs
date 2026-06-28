@@ -616,13 +616,14 @@ public sealed class OverlayTests {
     }
 
     [Fact]
-    public void AkronOverlayStaysOnFinalRenderPassWhileWorldDebugGeometryUsesGameplayPass() {
+    public void AkronOverlayStaysOnFinalRenderPassWhileWorldDebugGeometryUsesSplitPasses() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/AkronModule.cs"));
 
         Assert.DoesNotContain("On.Celeste.Level.Render += LevelOnRender", source);
         Assert.DoesNotContain("private static void LevelOnRender(", source);
         Assert.Contains("On.Monocle.Engine.RenderCore += EngineOnRenderCore", source);
         Assert.Contains("RenderAkronLevelHud(postRenderLevel);", source);
+        Assert.DoesNotContain("AkronEntityInspector.RenderHitboxesToHud(level", source);
         Assert.Contains("if (overlayVisible && !Overlay.RenderImGui())", source);
         Assert.Contains("On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender", source);
         Assert.Contains("ShouldHideAkronRenderSurfaces()", source);

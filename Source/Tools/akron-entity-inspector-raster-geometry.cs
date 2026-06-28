@@ -19,24 +19,26 @@ public static partial class AkronEntityInspector {
         int right = sampleX + width;
         int bottom = sampleY + height;
         for (int y = top; y < bottom; y++) {
-            int runStart = -1;
+            int runStart = 0;
+            bool hasRun = false;
             for (int x = left; x < right; x++) {
                 bool collides = collidesPixel(x, y);
                 bool shouldDraw = collides && (includeFill || IsExactEdgePixel(collidesPixel, x, y));
                 if (shouldDraw) {
-                    if (runStart < 0) {
+                    if (!hasRun) {
                         runStart = x;
+                        hasRun = true;
                     }
                     continue;
                 }
 
-                if (runStart >= 0) {
+                if (hasRun) {
                     runs.Add((runStart, y, x - runStart));
-                    runStart = -1;
+                    hasRun = false;
                 }
             }
 
-            if (runStart >= 0) {
+            if (hasRun) {
                 runs.Add((runStart, y, right - runStart));
             }
         }

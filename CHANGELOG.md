@@ -4,6 +4,12 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## 0.1.2-beta.33
+
+### Fixed
+
+- Keep hitbox rendering aligned with Celeste's gameplay camera and live collider data.
+
 ## 0.1.2-beta.32
 
 ### Fixed

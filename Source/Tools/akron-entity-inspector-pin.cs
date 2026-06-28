@@ -312,6 +312,9 @@ public static partial class AkronEntityInspector
                               ";stack=" + (stackIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + hits.Count.ToString(CultureInfo.InvariantCulture) +
                               ";type=" + typeName +
                               ";bounds=" + FormatRectangle(hit.Bounds) +
+                              ";position=" + FormatVector(hit.Entity.Position) +
+                              ";center=" + FormatVector(hit.Entity.Center) +
+                              ";collider=" + FormatColliderTree(hit.Entity.Collider) +
                               ";screen=" + FormatVector(screenPoint) +
                               ";world=" + FormatVector(worldPoint));
                 }
@@ -1629,6 +1632,32 @@ public static partial class AkronEntityInspector
                rectangle.Y.ToString(CultureInfo.InvariantCulture) + " " +
                rectangle.Width.ToString(CultureInfo.InvariantCulture) + "x" +
                rectangle.Height.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatColliderTree(Collider collider)
+    {
+        if (collider == null)
+        {
+            return "none";
+        }
+
+        if (collider is ColliderList colliderList)
+        {
+            return "ColliderList[" + string.Join(",", colliderList.colliders.Select(FormatColliderTree)) + "]";
+        }
+
+        Rectangle bounds = ColliderWorldBounds(collider);
+        if (collider is Circle circle)
+        {
+            return "Circle(abs=" + FormatVector(new Vector2(circle.AbsoluteX, circle.AbsoluteY)) +
+                   "/r=" + FormatFloat(circle.Radius) +
+                   "/bounds=" + FormatRectangle(bounds) + ")";
+        }
+
+        return collider.GetType().Name +
+               "(abs=" + FormatVector(new Vector2(collider.AbsoluteX, collider.AbsoluteY)) +
+               "/size=" + FormatFloat(collider.Width) + "x" + FormatFloat(collider.Height) +
+               "/bounds=" + FormatRectangle(bounds) + ")";
     }
 
     private static string FormatFloat(float value)

@@ -2454,11 +2454,12 @@ public sealed class ModuleSettingsTests
     }
 
     [Theory]
+    [InlineData(typeof(CrystalStaticSpinnerProbe))]
     [InlineData(typeof(DustStaticSpinnerProbe))]
     [InlineData(typeof(DustTrackSpinnerProbe))]
     [InlineData(typeof(DustRotateSpinnerProbe))]
     [InlineData(typeof(TriggerSpikesProbe))]
-    public void HitboxHazardClassifierCoversThreeCHazardTypes(Type entityType)
+    public void HitboxHazardClassifierCoversCsideHazardTypes(Type entityType)
     {
         Entity entity = Assert.IsAssignableFrom<Entity>(Activator.CreateInstance(entityType));
 
@@ -2471,12 +2472,30 @@ public sealed class ModuleSettingsTests
         Assert.False(AkronEntityInspector.IsHazard(new RefillProbe()));
     }
 
+    [Fact]
+    public void HitboxRendererUsesLiveColliderTraversalInsteadOfArtificialSpinnerGeometry()
+    {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-entity-inspector.cs"));
+
+        Assert.Contains("case ColliderList colliderList:", source);
+        Assert.Contains("foreach (Collider child in colliderList.colliders)", source);
+        Assert.Contains("DrawExactColliderPixels(level, child, color, cameraBounds);", source);
+        Assert.DoesNotContain("ShouldDrawLineAndCircleSpinnerHitbox", source);
+        Assert.DoesNotContain("SpinnerColliderPart", source);
+        Assert.DoesNotContain("SpinnerCompositeCenter", source);
+        Assert.DoesNotContain("SpinnerLineBounds", source);
+    }
+
     private static void AssertHitboxBounds(int expectedLeft, int expectedTop, int expectedWidth, int expectedHeight, int left, int top, int width, int height)
     {
         Assert.Equal(expectedLeft, left);
         Assert.Equal(expectedTop, top);
         Assert.Equal(expectedWidth, width);
         Assert.Equal(expectedHeight, height);
+    }
+
+    private sealed class CrystalStaticSpinnerProbe : Entity
+    {
     }
 
     private sealed class DustStaticSpinnerProbe : Entity
@@ -2567,6 +2586,21 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void ExactPixelRunsPreserveRunsStartingAtNegativeWorldX()
+    {
+        static bool NegativeRectangleIntersectsPixel(int x, int y)
+        {
+            return x >= -4 && x < -1 && y >= 2 && y < 4;
+        }
+
+        List<(int X, int Y, int Width)> fillRuns =
+            AkronEntityInspector.ExactPixelRunSegments(-6, 0, 8, 6, NegativeRectangleIntersectsPixel, includeFill: true);
+
+        Assert.Contains((-4, 2, 3), fillRuns);
+        Assert.Contains((-4, 3, 3), fillRuns);
+    }
+
+    [Fact]
     public void RegularCircleHitboxesUsePixelRunsInsteadOfSmoothCircleSegments()
     {
         List<(int X, int Y, int Width)> outlineRuns = AkronEntityInspector.PixelCircleRunSegments(0f, 0f, 4f, includeFill: false);
@@ -2578,6 +2612,27 @@ public sealed class ModuleSettingsTests
         Assert.Contains((3, -1), outlinePixels);
         Assert.Contains((3, 0), outlinePixels);
         Assert.DoesNotContain((0, 0), outlinePixels);
+
+        static IEnumerable<(int X, int Y)> ExpandRun((int X, int Y, int Width) run)
+        {
+            for (int x = run.X; x < run.X + run.Width; x++)
+            {
+                yield return (x, run.Y);
+            }
+        }
+    }
+
+    [Fact]
+    public void RegularCircleHitboxesPreserveNegativeWorldCoordinates()
+    {
+        List<(int X, int Y, int Width)> outlineRuns = AkronEntityInspector.PixelCircleRunSegments(-144f, 24f, 6f, includeFill: false);
+        HashSet<(int X, int Y)> outlinePixels = outlineRuns.SelectMany(ExpandRun).ToHashSet();
+
+        Assert.NotEmpty(outlineRuns);
+        Assert.Contains((-144, 18), outlinePixels);
+        Assert.Contains((-150, 24), outlinePixels);
+        Assert.Contains((-139, 24), outlinePixels);
+        Assert.All(outlinePixels, pixel => Assert.True(pixel.X < 0));
 
         static IEnumerable<(int X, int Y)> ExpandRun((int X, int Y, int Width) run)
         {
