@@ -8,6 +8,8 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ### Fixed
 
+- Persist overlay category collapse state across restarts.
+- Keep Entity Inspector pin popups on-screen, make same-target click cycling close after the last hit, reduce duplicate collapsed details, align pin targeting during zoomed-out views, and remove extra rectangular highlights from collider-backed targets.
 - Keep regular StartPos captures on the active slot after Set, so Load immediately returns to the captured position.
 - Let imported and shared StartPos entries without runtime snapshots remain selectable and load as position-only starts.
 

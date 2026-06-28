@@ -26,6 +26,9 @@ public partial class AkronModule : EverestModule {
 
     public override Type SettingsType => typeof(AkronModuleSettings);
     public static AkronModuleSettings Settings => (AkronModuleSettings) Instance._Settings;
+    internal static AkronModuleSettings TryGetSettings() {
+        return Instance?._Settings as AkronModuleSettings;
+    }
 
     public override Type SessionType => typeof(AkronModuleSession);
     public static AkronModuleSession Session => (AkronModuleSession) Instance._Session;

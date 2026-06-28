@@ -187,8 +187,7 @@ public sealed partial class AkronOverlay : Entity {
         // native room snapshots prevents StartPos restores from cloning stale
         // UI internals back over the live overlay.
         Add(new AkronIgnoreSaveStateComponent(based: false));
-        ExpandAllWindows();
-        CollapseExternalToolWindowsByDefault();
+        ApplyPersistedWindowCollapseState();
     }
 
     public override void Update() {
@@ -673,20 +672,34 @@ public sealed partial class AkronOverlay : Entity {
             collapsedWindowTitles.Remove(title);
         }
         pendingImGuiCollapseSync.Add(title);
+        PersistWindowCollapseState();
     }
 
-    private void ExpandAllWindows() {
+    private void ApplyPersistedWindowCollapseState() {
         collapsedWindowTitles.Clear();
+        HashSet<string> toggleableSections = new HashSet<string>(GetToggleableSections(), StringComparer.OrdinalIgnoreCase);
+        foreach (string title in AkronModule.TryGetSettings()?.CollapsedOverlaySections ?? Enumerable.Empty<string>()) {
+            if (toggleableSections.Contains(title)) {
+                collapsedWindowTitles.Add(title);
+            }
+        }
+
         foreach (string title in GetToggleableSections()) {
             pendingImGuiCollapseSync.Add(title);
         }
     }
 
-    private void CollapseExternalToolWindowsByDefault() {
-        foreach (string title in GetVisibleTabs().Where(tab => ExternalToolTabs.Contains(tab))) {
-            collapsedWindowTitles.Add(title);
-            pendingImGuiCollapseSync.Add(title);
+    private void PersistWindowCollapseState() {
+        AkronModuleSettings settings = AkronModule.TryGetSettings();
+        if (settings == null) {
+            return;
         }
+
+        settings.CollapsedOverlaySections = collapsedWindowTitles
+            .Where(title => GetToggleableSections().Contains(title, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(title => title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        AkronModule.SaveAkronSettingsNow("overlay-collapse");
     }
 
     private void SelectAdjacentPanel(int delta) {

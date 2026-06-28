@@ -768,6 +768,7 @@ public sealed class ModuleSettingsTests
     {
         AkronModuleSettings settings = new AkronModuleSettings();
 
+        Assert.Equal(new[] { "Speedrun Tool", "CelesteTAS", "Extended Variant Mode", "Extended Camera Dynamics" }, settings.CollapsedOverlaySections);
         Assert.Equal(1, settings.ScreenshotScale);
         Assert.False(settings.ScreenshotStatus);
         Assert.Equal(AkronScreenshotImageFormat.Png, settings.ScreenshotScannerImageFormat);

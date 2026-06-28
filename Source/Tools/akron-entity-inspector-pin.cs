@@ -49,6 +49,7 @@ internal sealed class AkronInspectorReportData
     public string Category { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string FullTypeName { get; set; } = string.Empty;
+    public string MapName { get; set; } = string.Empty;
     public string Room { get; set; } = string.Empty;
     public string MapSid { get; set; } = string.Empty;
     public string SourceId { get; set; } = string.Empty;
@@ -66,8 +67,10 @@ internal sealed class AkronInspectorReportData
     public float ColliderArea { get; set; }
     public float Depth { get; set; }
     public Vector2 Position { get; set; }
+    public Vector2? LocalPosition { get; set; }
     public Vector2 Center { get; set; }
     public Rectangle ColliderBounds { get; set; }
+    public Point? MapSize { get; set; }
     public Vector2 ClickScreenPoint { get; set; }
     public Vector2 ClickGamePoint { get; set; }
     public Vector2 ClickWorldPoint { get; set; }
@@ -176,7 +179,7 @@ public static partial class AkronEntityInspector
         }
 
         Vector2 gamePoint = AkronScreenProjection.MouseScreenToGame(screenPoint);
-        Vector2 worldPoint = AkronScreenProjection.MouseScreenToWorld(level, screenPoint);
+        Vector2 worldPoint = AkronScreenProjection.MouseScreenToWorld(level, screenPoint, clampToViewport: false);
         Point probePixel = new Point((int)Math.Floor(worldPoint.X), (int)Math.Floor(worldPoint.Y));
         List<InspectorHit> hits = BuildInspectorHitStack(level, filter, screenPoint, gamePoint, worldPoint, probePixel);
         if (hits.Count == 0)
@@ -218,6 +221,11 @@ public static partial class AkronEntityInspector
                          Vector2.Distance(screenPoint, inspectorPinAnchorScreen) <= InspectorPinCycleTolerancePixels &&
                          currentStack.Count == hits.Count;
         ApplyInspectorPinHits(screenPoint, signature, hits, sameStack);
+        if (!HasInspectorPinSelection())
+        {
+            return "cleared";
+        }
+
         InspectorHit selected = currentStack[inspectorPinSelectedIndex];
         return "pinned: " + (selected.Entity.GetType().FullName ?? selected.Entity.GetType().Name) +
                ";stack=" + (inspectorPinSelectedIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + currentStack.Count.ToString(CultureInfo.InvariantCulture);
@@ -232,7 +240,7 @@ public static partial class AkronEntityInspector
 
         AkronInspectorPinFilter filter = NormalizeInspectorPinFilter(AkronModule.Settings.InspectorPinFilter);
         Vector2 gamePoint = AkronScreenProjection.MouseScreenToGame(screenPoint);
-        Vector2 worldPoint = AkronScreenProjection.MouseScreenToWorld(level, screenPoint);
+        Vector2 worldPoint = AkronScreenProjection.MouseScreenToWorld(level, screenPoint, clampToViewport: false);
         Point probePixel = new Point((int)Math.Floor(worldPoint.X), (int)Math.Floor(worldPoint.Y));
         List<InspectorHit> hits = BuildInspectorHitStack(level, filter, screenPoint, gamePoint, worldPoint, probePixel);
         string first = hits.Count == 0
@@ -278,7 +286,7 @@ public static partial class AkronEntityInspector
             {
                 Vector2 screenPoint = new Vector2(x, y);
                 Vector2 gamePoint = AkronScreenProjection.MouseScreenToGame(screenPoint);
-                Vector2 worldPoint = AkronScreenProjection.MouseScreenToWorld(level, screenPoint);
+                Vector2 worldPoint = AkronScreenProjection.MouseScreenToWorld(level, screenPoint, clampToViewport: false);
                 Point probePixel = new Point((int)Math.Floor(worldPoint.X), (int)Math.Floor(worldPoint.Y));
                 List<InspectorHit> hits = BuildInspectorHitStack(level, filter, screenPoint, gamePoint, worldPoint, probePixel);
                 for (int stackIndex = 0; stackIndex < hits.Count && lines.Count < limit; stackIndex++)
@@ -416,7 +424,12 @@ public static partial class AkronEntityInspector
 
             if (hit.Entity.Collider != null)
             {
-                DrawInspectorWorldRect(level, hit.Bounds, color, selected ? fillColor : Color.Transparent, dashed: false);
+                if (hit.IsTrigger)
+                {
+                    DrawInspectorWorldRect(level, hit.Bounds, color, selected ? fillColor : Color.Transparent, dashed: false);
+                    continue;
+                }
+
                 DrawCollider(level, hit.Entity.Collider, color, cameraBounds);
             }
             else
@@ -574,8 +587,14 @@ public static partial class AkronEntityInspector
         builder.AppendLine("akronVersion: " + AkronModule.Instance?.Metadata?.VersionString);
         builder.AppendLine("target: " + data.Filter);
         builder.AppendLine("selected: " + data.Category + " " + data.DisplayName);
+        builder.AppendLine("type: " + FormatCompactType(data));
         builder.AppendLine("room: " + data.Room);
-        builder.AppendLine("position: " + FormatVector(data.Position));
+        builder.AppendLine("position: " + FormatCompactPosition(data));
+        string size = FormatCompactSize(data);
+        if (!string.IsNullOrWhiteSpace(size))
+        {
+            builder.AppendLine("size: " + size);
+        }
         builder.AppendLine("cycle: " + (data.StackIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + data.StackCount.ToString(CultureInfo.InvariantCulture));
         if (data.Filter == AkronInspectorPinFilter.Both && data.StackCount > 1)
         {
@@ -693,7 +712,7 @@ public static partial class AkronEntityInspector
         }
 
         Vector2 gamePoint = AkronScreenProjection.MouseScreenToGame(screenPoint);
-        Vector2 worldPoint = AkronScreenProjection.MouseScreenToWorld(level, screenPoint);
+        Vector2 worldPoint = AkronScreenProjection.MouseScreenToWorld(level, screenPoint, clampToViewport: false);
         Point probePixel = new Point((int)Math.Floor(worldPoint.X), (int)Math.Floor(worldPoint.Y));
         List<InspectorHit> hits = BuildInspectorHitStack(level, filter, screenPoint, gamePoint, worldPoint, probePixel);
         previewStack.Clear();
@@ -708,9 +727,20 @@ public static partial class AkronEntityInspector
         bool sameStack = string.Equals(signature, inspectorPinStackSignature, StringComparison.Ordinal) &&
                          Vector2.Distance(screenPoint, inspectorPinAnchorScreen) <= InspectorPinCycleTolerancePixels &&
                          currentStack.Count == hits.Count;
-        inspectorPinPreviewSelectedIndex = sameStack
-            ? (inspectorPinSelectedIndex + 1) % previewStack.Count
-            : 0;
+        if (sameStack)
+        {
+            int nextIndex = inspectorPinSelectedIndex + 1;
+            if (nextIndex >= previewStack.Count)
+            {
+                ClearInspectorPinPreview();
+                return;
+            }
+
+            inspectorPinPreviewSelectedIndex = nextIndex;
+            return;
+        }
+
+        inspectorPinPreviewSelectedIndex = 0;
     }
 
     private static void ClearInspectorPinIfSelectedObjectRemoved(Level level)
@@ -1067,9 +1097,13 @@ public static partial class AkronEntityInspector
         currentStack.AddRange(hits);
         inspectorPinStackSignature = signature;
         inspectorPinAnchorScreen = screenPoint;
-        inspectorPinSelectedIndex = sameStack
-            ? (inspectorPinSelectedIndex + 1) % currentStack.Count
-            : 0;
+        if (sameStack && inspectorPinSelectedIndex + 1 >= currentStack.Count)
+        {
+            ClearInspectorPinSelection();
+            return;
+        }
+
+        inspectorPinSelectedIndex = sameStack ? inspectorPinSelectedIndex + 1 : 0;
         inspectorPinSelectedEntity = currentStack[inspectorPinSelectedIndex].Entity;
         if (!sameStack)
         {
@@ -1207,6 +1241,9 @@ public static partial class AkronEntityInspector
         EntityData source = binding.SourceData;
         LevelData room = level.Session.MapData.Get(level.Session.Level);
         Vector2 roomOffset = room?.Position ?? Vector2.Zero;
+        data.MapName = source.Name ?? string.Empty;
+        data.LocalPosition = source.Position;
+        data.MapSize = new Point(source.Width, source.Height);
         data.PlacementRows.Add(new AkronInspectorPropertyRow("room", data.Room));
         data.PlacementRows.Add(new AkronInspectorPropertyRow("category", data.Category));
         data.PlacementRows.Add(new AkronInspectorPropertyRow("mapName", source.Name ?? string.Empty));
@@ -1303,6 +1340,8 @@ public static partial class AkronEntityInspector
         {
             NumericsVector2 collapsedWindowPos = ImGui.GetWindowPos();
             NumericsVector2 collapsedWindowSize = ImGui.GetWindowSize();
+            collapsedWindowPos = ClampInspectorPinImGuiPosition(displaySize, collapsedWindowSize, collapsedWindowPos);
+            ImGui.SetWindowPos(collapsedWindowPos);
             SaveInspectorPinWindowPosition(collapsedWindowPos, position, placement);
             inspectorPinCardRect = ToRectangle(
                 collapsedWindowPos.X,
@@ -1316,8 +1355,14 @@ public static partial class AkronEntityInspector
         DrawInspectorPinInfoRow("Target", data.Filter.ToString());
         ImGui.Separator();
         DrawInspectorPinInfoRow("Selected", data.Category + " " + data.DisplayName);
+        DrawInspectorPinInfoRow("Type", FormatCompactType(data));
         DrawInspectorPinInfoRow("Room", data.Room);
-        DrawInspectorPinInfoRow("Position", FormatVector(data.Position));
+        DrawInspectorPinInfoRow("Position", FormatCompactPosition(data));
+        string compactSize = FormatCompactSize(data);
+        if (!string.IsNullOrWhiteSpace(compactSize))
+        {
+            DrawInspectorPinInfoRow("Size", compactSize);
+        }
         DrawInspectorPinInfoRow("Cycle", cycle);
         if (data.Filter == AkronInspectorPinFilter.Both && data.StackCount > 1)
         {
@@ -1367,6 +1412,12 @@ public static partial class AkronEntityInspector
 
         NumericsVector2 windowPos = ImGui.GetWindowPos();
         NumericsVector2 windowSize = ImGui.GetWindowSize();
+        NumericsVector2 clampedWindowPos = ClampInspectorPinImGuiPosition(displaySize, windowSize, windowPos);
+        if (NumericsVector2.DistanceSquared(windowPos, clampedWindowPos) > 0.5f)
+        {
+            ImGui.SetWindowPos(clampedWindowPos);
+            windowPos = clampedWindowPos;
+        }
         SaveInspectorPinWindowPosition(windowPos, position, placement);
         inspectorPinCardRect = ToRectangle(windowPos.X, windowPos.Y, windowSize.X, windowSize.Y);
         ImGui.End();
@@ -1429,6 +1480,14 @@ public static partial class AkronEntityInspector
         return new NumericsVector2(
             Calc.Clamp(x, 8f, Math.Max(8f, displaySize.X - expectedSize.X - 8f)),
             Calc.Clamp(y, 8f, Math.Max(8f, displaySize.Y - expectedSize.Y - 8f)));
+    }
+
+    private static NumericsVector2 ClampInspectorPinImGuiPosition(NumericsVector2 displaySize, NumericsVector2 windowSize, NumericsVector2 position)
+    {
+        const float margin = 8f;
+        return new NumericsVector2(
+            Calc.Clamp(position.X, margin, Math.Max(margin, displaySize.X - windowSize.X - margin)),
+            Calc.Clamp(position.Y, margin, Math.Max(margin, displaySize.Y - windowSize.Y - margin)));
     }
 
     private static void SaveInspectorPinWindowPosition(NumericsVector2 windowPos, NumericsVector2 expectedPosition, AkronInspectorPinPlacement placement)
@@ -1525,6 +1584,43 @@ public static partial class AkronEntityInspector
     private static string FormatVector(Vector2 vector)
     {
         return FormatFloat(vector.X) + ", " + FormatFloat(vector.Y);
+    }
+
+    private static string FormatCompactType(AkronInspectorReportData data)
+    {
+        if (!string.IsNullOrWhiteSpace(data.MapName))
+        {
+            return data.MapName + " (" + data.FullTypeName + ")";
+        }
+
+        return data.FullTypeName;
+    }
+
+    private static string FormatCompactPosition(AkronInspectorReportData data)
+    {
+        if (data.LocalPosition.HasValue)
+        {
+            return FormatVector(data.Position) + " (" + FormatVector(data.LocalPosition.Value) + ")";
+        }
+
+        return FormatVector(data.Position);
+    }
+
+    private static string FormatCompactSize(AkronInspectorReportData data)
+    {
+        if (data.MapSize.HasValue && (data.MapSize.Value.X > 0 || data.MapSize.Value.Y > 0))
+        {
+            return data.MapSize.Value.X.ToString(CultureInfo.InvariantCulture) + "x" +
+                   data.MapSize.Value.Y.ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (data.ColliderBounds.Width > 0 || data.ColliderBounds.Height > 0)
+        {
+            return data.ColliderBounds.Width.ToString(CultureInfo.InvariantCulture) + "x" +
+                   data.ColliderBounds.Height.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return string.Empty;
     }
 
     private static string FormatRectangle(Rectangle rectangle)

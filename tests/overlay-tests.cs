@@ -161,6 +161,17 @@ public sealed class OverlayTests {
         Assert.Contains("Global", GetCollapsedWindowTitles(overlay));
     }
 
+    [Fact]
+    public void OverlayCollapseStateUsesSettingsPersistence() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/AkronOverlay.cs"));
+
+        Assert.Contains("ApplyPersistedWindowCollapseState();", source);
+        Assert.Contains("AkronModule.TryGetSettings()?.CollapsedOverlaySections", source);
+        Assert.Contains("PersistWindowCollapseState();", source);
+        Assert.Contains("SaveAkronSettingsNow(\"overlay-collapse\")", source);
+        Assert.DoesNotContain("CollapseExternalToolWindowsByDefault", source);
+    }
+
     [Theory]
     [InlineData(true, false, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
     [InlineData(false, true, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
@@ -653,8 +664,13 @@ public sealed class OverlayTests {
         Assert.Contains("inspectorPinPositionInitialized = false;", source);
         Assert.Contains("collapsedWindowPos = ImGui.GetWindowPos()", source);
         Assert.Contains("collapsedWindowSize = ImGui.GetWindowSize()", source);
+        Assert.Contains("ClampInspectorPinImGuiPosition(displaySize, windowSize, windowPos)", source);
+        Assert.Contains("ClampInspectorPinImGuiPosition(displaySize, collapsedWindowSize, collapsedWindowPos)", source);
         Assert.Contains("inspectorPinCardRect = ToRectangle(", source);
         Assert.DoesNotContain("ImGuiWindowFlags.NoMove", source);
+        Assert.Contains("DrawInspectorPinInfoRow(\"Type\", FormatCompactType(data))", source);
+        Assert.Contains("DrawInspectorPinInfoRow(\"Position\", FormatCompactPosition(data))", source);
+        Assert.Contains("DrawInspectorPinInfoRow(\"Size\", compactSize)", source);
         Assert.Contains("DrawInspectorPinRows(data.RuntimeRows)", source);
         Assert.Contains("DrawInspectorPinRows(data.PlacementRows)", source);
         Assert.Contains("DrawInspectorPinRows(data.AuthoredRows)", source);
@@ -663,6 +679,8 @@ public sealed class OverlayTests {
         Assert.Contains("ClearInspectorPinSelection();", source);
         Assert.Contains("CopyInspectorReport(BuildVisibleCopyReport(data, inspectorPinPropertiesOpen))", source);
         Assert.Contains("internal static string BuildVisibleCopyReport(AkronInspectorReportData data, bool includeProperties)", source);
+        Assert.Contains("builder.AppendLine(\"type: \" + FormatCompactType(data))", source);
+        Assert.Contains("builder.AppendLine(\"position: \" + FormatCompactPosition(data))", source);
         Assert.DoesNotContain("Copy Report", source);
         Assert.DoesNotContain("more in copy report", source);
         Assert.DoesNotContain("ImGuiWindowFlags.NoTitleBar", source);
@@ -735,14 +753,19 @@ public sealed class OverlayTests {
         Assert.Contains("TryGetInspectorHitBounds", inspectorSource);
         Assert.Contains("TryGetSolidTileProbeBounds", inspectorSource);
         Assert.Contains("record.SourceData.Width > 0", inspectorSource);
+        Assert.Contains("MouseScreenToWorld(level, screenPoint, clampToViewport: false)", inspectorSource);
         Assert.Contains("ColliderBacked", inspectorSource);
         Assert.Contains("EnumerateInspectorEntities", inspectorSource);
         Assert.Contains("entities.Add(level.SolidTiles)", inspectorSource);
         Assert.Contains("UpdateInspectorPinHoverPreview", inspectorSource);
         Assert.Contains("previewStack", inspectorSource);
+        Assert.Contains("ClearInspectorPinPreview();", inspectorSource);
+        Assert.Contains("if (sameStack && inspectorPinSelectedIndex + 1 >= currentStack.Count)", inspectorSource);
+        Assert.Contains("return \"cleared\";", inspectorSource);
         Assert.Contains("renderingToGameplayBuffer = true;", inspectorSource);
         Assert.Contains("renderingToGameplayBuffer = false;", inspectorSource);
-        Assert.Contains("DrawInspectorWorldRect(level, hit.Bounds, color, selected ? fillColor : Color.Transparent, dashed: false)", inspectorSource);
+        Assert.Contains("DrawCollider(level, hit.Entity.Collider, color, cameraBounds);", inspectorSource);
+        Assert.DoesNotContain("DrawInspectorWorldRect(level, hit.Bounds, color, selected ? fillColor : Color.Transparent, dashed: false);\n                DrawCollider(level, hit.Entity.Collider, color, cameraBounds);", inspectorSource);
         Assert.Contains("private const float InspectorHighlightOutlineThickness", inspectorSource);
         Assert.Contains("Color.Black * 0.9f", inspectorSource);
         Assert.Contains("if (hit.Entity is SolidTiles)", inspectorSource);

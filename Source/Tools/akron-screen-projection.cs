@@ -47,19 +47,29 @@ internal static partial class AkronScreenProjection {
             zoomedGamePosition.Y * scale + offset.Y);
     }
 
-    public static Vector2 MouseScreenToWorld(Level level, Vector2 mouseScreenPosition) {
-        Vector2 gamePosition = RemoveLevelZoom(level, MouseScreenToGame(mouseScreenPosition));
+    public static Vector2 MouseScreenToWorld(Level level, Vector2 mouseScreenPosition, bool clampToViewport = true) {
+        // Lookouts and other level zooms can make the rendered world extend
+        // outside the vanilla 320x180 camera rectangle. Zoom-aware tools can
+        // opt out of clamping the intermediate game coordinate so targeting
+        // matches the wider rendered view.
+        Vector2 gamePosition = RemoveLevelZoom(level, MouseScreenToGame(mouseScreenPosition, clampToViewport));
         return ScreenGameToWorld(level, gamePosition);
     }
 
-    public static Vector2 MouseScreenToGame(Vector2 mouseScreenPosition) {
+    public static Vector2 MouseScreenToGame(Vector2 mouseScreenPosition, bool clampToViewport = true) {
         float scale = CurrentViewportScale();
         Vector2 offset = CurrentViewportOffset();
         float viewportX = mouseScreenPosition.X - offset.X;
         float viewportY = mouseScreenPosition.Y - offset.Y;
+        float gameX = viewportX / scale;
+        float gameY = viewportY / scale;
+        if (!clampToViewport) {
+            return CreateVector2(gameX, gameY);
+        }
+
         return CreateVector2(
-            Calc.Clamp(viewportX / scale, 0f, GameWidth),
-            Calc.Clamp(viewportY / scale, 0f, GameHeight));
+            Calc.Clamp(gameX, 0f, GameWidth),
+            Calc.Clamp(gameY, 0f, GameHeight));
     }
 
     public static float CurrentViewportScale() {

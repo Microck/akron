@@ -98,6 +98,12 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool FloatingButtonInLevels { get; set; } = true;
     public bool FloatingButtonInMenus { get; set; }
     public bool SearchAutofocus { get; set; }
+    public List<string> CollapsedOverlaySections { get; set; } = new List<string> {
+        "Speedrun Tool",
+        "CelesteTAS",
+        "Extended Variant Mode",
+        "Extended Camera Dynamics"
+    };
     public bool MenuBindingsInGameOnly { get; set; } = true;
     public bool ConfirmRetry { get; set; }
     public bool ConfirmRestart { get; set; }
