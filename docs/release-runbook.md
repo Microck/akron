@@ -49,10 +49,27 @@ The workflow checks required publishing configuration before publishing to GameB
 1. Merge approved work into `main`.
 2. Confirm `main` is green.
 3. Pick the release version `X.Y.Z`.
-4. Update `CHANGELOG.md` before tagging. The workflow extracts release notes from either `## X.Y.Z` or `## [X.Y.Z]`; the matching section must exist.
-5. Update docs under `docs/` for user-facing changes.
-6. Check for hardcoded version, file id, or release text references that need to change.
-7. Run the local release preflight:
+4. Audit every commit since the previous release tag before writing release notes:
+
+```bash
+release_ref="${RELEASE_REF:-HEAD}"
+previous_tag="$(git describe --tags --abbrev=0 --match 'v*' "${release_ref}^")"
+git log --reverse --decorate --oneline "${previous_tag}..${release_ref}"
+git log --reverse --format='%h %s%n%b' "${previous_tag}..${release_ref}"
+git diff --name-status "${previous_tag}..${release_ref}"
+```
+
+For each commit in that range, either add a concrete user-facing note to the new
+`CHANGELOG.md` section or write down why it is intentionally omitted, such as a
+test-only, docs-only, CI-only, or internal refactor commit. Do not leave notes
+for commits after `previous_tag` under the previous version's changelog section.
+If a commit message references issues or feedback, inspect that commit before
+summarizing it; do not rely on the latest commit alone.
+
+5. Update `CHANGELOG.md` before tagging. The workflow extracts release notes from either `## X.Y.Z` or `## [X.Y.Z]`; the matching section must exist and must cover the audited commit range.
+6. Update docs under `docs/` for user-facing changes.
+7. Check for hardcoded version, file id, or release text references that need to change.
+8. Run the local release preflight:
 
 ```bash
 make preflight-release
