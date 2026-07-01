@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -104,6 +105,7 @@ public partial class AkronModule : EverestModule {
     private static Vector2 preRedirectDashAim;
     private static readonly ConditionalWeakTable<Refill, RefillClaritySpriteState> RefillClaritySpriteStates =
         new ConditionalWeakTable<Refill, RefillClaritySpriteState>();
+    private static readonly Dictionary<string, RefillClaritySourceFrame[]> RefillClaritySourceFrameCache = new Dictionary<string, RefillClaritySourceFrame[]>();
     private static readonly Dictionary<string, MTexture[]> RefillClarityFrameCache = new Dictionary<string, MTexture[]>();
     private static readonly List<VirtualTexture> RefillClarityFrameTextures = new List<VirtualTexture>();
 
@@ -769,14 +771,13 @@ public partial class AkronModule : EverestModule {
             return cached;
         }
 
-        string path = twoDashes ? "objects/refillTwo/idlenr" : "objects/refill/idlenr";
-        List<MTexture> sourceFrames = GFX.Game.GetAtlasSubtextures(path);
-        if (sourceFrames == null || sourceFrames.Count == 0) {
+        RefillClaritySourceFrame[] sourceFrames = GetRefillClaritySourceFrames(twoDashes);
+        if (sourceFrames == null || sourceFrames.Length == 0) {
             return null;
         }
 
-        MTexture[] frames = new MTexture[sourceFrames.Count];
-        for (int index = 0; index < sourceFrames.Count; index++) {
+        MTexture[] frames = new MTexture[sourceFrames.Length];
+        for (int index = 0; index < sourceFrames.Length; index++) {
             frames[index] = CreateRefillClarityFrame(sourceFrames[index], key + "|" + index.ToString(CultureInfo.InvariantCulture), color, opacity);
         }
 
@@ -784,11 +785,50 @@ public partial class AkronModule : EverestModule {
         return frames;
     }
 
-    private static MTexture CreateRefillClarityFrame(MTexture source, string key, int rgb, int opacity) {
-        int width = source.Width;
-        int height = source.Height;
-        Color[] pixels = new Color[width * height];
-        source.Texture.Texture_Safe.GetData(0, source.ClipRect, pixels, 0, pixels.Length);
+    private static RefillClaritySourceFrame[] GetRefillClaritySourceFrames(bool twoDashes) {
+        string key = twoDashes ? "two" : "one";
+        if (RefillClaritySourceFrameCache.TryGetValue(key, out RefillClaritySourceFrame[] cached)) {
+            return cached;
+        }
+
+        Assembly assembly = typeof(AkronModule).Assembly;
+        string resourcePrefix = twoDashes
+            ? "Celeste.Mod.Akron.Resources.RefillClarity.RefillTwo."
+            : "Celeste.Mod.Akron.Resources.RefillClarity.Refill.";
+        string[] resourceNames = assembly.GetManifestResourceNames()
+            .Where(name => name.StartsWith(resourcePrefix, StringComparison.OrdinalIgnoreCase) &&
+                           name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (resourceNames.Length == 0 || Engine.Graphics?.GraphicsDevice == null) {
+            return null;
+        }
+
+        RefillClaritySourceFrame[] frames = new RefillClaritySourceFrame[resourceNames.Length];
+        for (int index = 0; index < resourceNames.Length; index++) {
+            frames[index] = LoadRefillClaritySourceFrame(assembly, resourceNames[index]);
+        }
+
+        RefillClaritySourceFrameCache[key] = frames;
+        return frames;
+    }
+
+    private static RefillClaritySourceFrame LoadRefillClaritySourceFrame(Assembly assembly, string resourceName) {
+        using Stream stream = assembly.GetManifestResourceStream(resourceName);
+        if (stream == null) {
+            throw new InvalidOperationException("Unable to open embedded Refill Clarity resource: " + resourceName);
+        }
+
+        using Texture2D texture = Texture2D.FromStream(Engine.Graphics.GraphicsDevice, stream);
+        Color[] pixels = new Color[texture.Width * texture.Height];
+        texture.GetData(pixels);
+        return new RefillClaritySourceFrame(texture.Width, texture.Height, pixels);
+    }
+
+    private static MTexture CreateRefillClarityFrame(RefillClaritySourceFrame source, string key, int rgb, int opacity) {
+        Color[] pixels = new Color[source.Pixels.Length];
+        Array.Copy(source.Pixels, pixels, source.Pixels.Length);
 
         byte red = (byte) ((rgb >> 16) & 0xFF);
         byte green = (byte) ((rgb >> 8) & 0xFF);
@@ -796,6 +836,7 @@ public partial class AkronModule : EverestModule {
         for (int index = 0; index < pixels.Length; index++) {
             Color pixel = pixels[index];
             if (!IsBetterRefillGemsOutlinePixel(pixel)) {
+                pixels[index] = PremultiplyTexturePixel(pixel);
                 continue;
             }
 
@@ -807,10 +848,10 @@ public partial class AkronModule : EverestModule {
                 alpha);
         }
 
-        VirtualTexture texture = VirtualContent.CreateTexture("akron-refill-clarity-" + key, width, height, Color.Transparent);
+        VirtualTexture texture = VirtualContent.CreateTexture("akron-refill-clarity-" + key, source.Width, source.Height, Color.Transparent);
         texture.Texture_Safe.SetData(pixels);
         RefillClarityFrameTextures.Add(texture);
-        return new MTexture(texture, source.DrawOffset, source.Width, source.Height);
+        return new MTexture(texture, Vector2.Zero, source.Width, source.Height);
     }
 
     private static bool IsBetterRefillGemsOutlinePixel(Color pixel) {
@@ -818,6 +859,18 @@ public partial class AkronModule : EverestModule {
                pixel.R == 255 &&
                pixel.G == 41 &&
                pixel.B == 41;
+    }
+
+    private static Color PremultiplyTexturePixel(Color pixel) {
+        if (pixel.A == 0) {
+            return Color.Transparent;
+        }
+
+        return new Color(
+            (byte) (pixel.R * pixel.A / 255),
+            (byte) (pixel.G * pixel.A / 255),
+            (byte) (pixel.B * pixel.A / 255),
+            pixel.A);
     }
 
     private static void RestoreRefillClaritySprite(Sprite sprite, string path, RefillClaritySpriteState state) {
@@ -838,6 +891,19 @@ public partial class AkronModule : EverestModule {
 
         RefillClarityFrameTextures.Clear();
         RefillClarityFrameCache.Clear();
+        RefillClaritySourceFrameCache.Clear();
+    }
+
+    private readonly struct RefillClaritySourceFrame {
+        public RefillClaritySourceFrame(int width, int height, Color[] pixels) {
+            Width = width;
+            Height = height;
+            Pixels = pixels;
+        }
+
+        public int Width { get; }
+        public int Height { get; }
+        public Color[] Pixels { get; }
     }
 
     private sealed class RefillClaritySpriteState {
