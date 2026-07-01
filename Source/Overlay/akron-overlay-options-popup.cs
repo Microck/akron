@@ -510,7 +510,9 @@ public sealed partial class AkronOverlay {
         }
 
         if (string.Equals(label, "Refill Clarity", StringComparison.OrdinalIgnoreCase)) {
-            return AkronModule.Settings.RefillClarity ? AkronModule.Settings.RefillClarityOpacity + "%" : "Off";
+            return AkronModule.Settings.RefillClarity
+                ? FormatRgb(AkronModule.Settings.RefillClarityColor) + " / " + AkronModule.Settings.RefillClarityOpacity + "%"
+                : "Off";
         }
 
         if (string.Equals(label, "Cheat Indicator", StringComparison.OrdinalIgnoreCase)) {

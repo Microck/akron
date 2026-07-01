@@ -44,7 +44,6 @@ public static partial class AkronHudRenderer {
             return;
         }
 
-        RenderRefillClarity(level);
         RenderTriggerViewer(level);
         RenderTrajectory(level, player);
         RenderStartPosMousePreview(level, player);

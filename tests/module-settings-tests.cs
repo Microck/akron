@@ -698,6 +698,25 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void RefillClarityRecognizesCustomOneUseRefillEntities()
+    {
+        Assert.True(AkronHudRenderer.ShouldRenderRefillClarityOutline(MakeLive(new CustomOneUseRefillProbe())));
+        Assert.True(AkronHudRenderer.ShouldRenderRefillClarityOutline(MakeLive(new CustomOnlyOnceRefillProbe())));
+        Assert.False(AkronHudRenderer.ShouldRenderRefillClarityOutline(MakeLive(new CustomReusableRefillProbe())));
+        Assert.False(AkronHudRenderer.ShouldRenderRefillClarityOutline(MakeLive(new CustomOneUseGemProbe())));
+        Assert.False(AkronHudRenderer.ShouldRenderRefillClarityOutline(MakeLive(new CustomOneUseRefillProbe(), visible: false)));
+    }
+
+    [Fact]
+    public void EntityInspectorCyclingUsesStableStackIdentityInsteadOfClickPosition()
+    {
+        Assert.True(AkronEntityInspector.IsSameInspectorStackForCycling("7|Both|10,11", "7|Both|10,11", 2, 2));
+        Assert.False(AkronEntityInspector.IsSameInspectorStackForCycling("7|Both|10,12", "7|Both|10,11", 2, 2));
+        Assert.False(AkronEntityInspector.IsSameInspectorStackForCycling("7|Both|10,11", "7|Both|10,11", 1, 2));
+        Assert.False(AkronEntityInspector.IsSameInspectorStackForCycling("7|Both|10,11", "7|Both|10,11", 2, 0));
+    }
+
+    [Fact]
     public void AutoKillAreaConditionsMatchUsesAreaSpecificConditions()
     {
         AkronAutoKillAreaData fastArea = new AkronAutoKillAreaData
@@ -2516,6 +2535,33 @@ public sealed class ModuleSettingsTests
 
     private sealed class RefillProbe : Entity
     {
+    }
+
+    private sealed class CustomOneUseRefillProbe : Entity
+    {
+        public bool oneUse = true;
+    }
+
+    private sealed class CustomReusableRefillProbe : Entity
+    {
+        public bool oneUse = false;
+    }
+
+    private sealed class CustomOnlyOnceRefillProbe : Entity
+    {
+        public bool onlyOnce { get; } = true;
+    }
+
+    private sealed class CustomOneUseGemProbe : Entity
+    {
+        public bool oneUse = true;
+    }
+
+    private static T MakeLive<T>(T entity, bool visible = true, bool collidable = true) where T : Entity
+    {
+        entity.Visible = visible;
+        entity.Collidable = collidable;
+        return entity;
     }
 
     [Fact]

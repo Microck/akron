@@ -329,9 +329,9 @@ public sealed partial class AkronOverlay {
             0,
             100,
             popupId,
-            "Overlay opacity for visible one-use refill outlines.");
+            "Sprite outline opacity for visible one-use refills.");
 
-        DrawHitboxColorRow("Outline", () => AkronModule.Settings.RefillClarityColor, value => AkronModule.Settings.RefillClarityColor = AkronModuleSettings.ClampRgb(value), popupId, "Outline color for visible one-use refills.");
+        DrawHitboxColorRow("Outline", () => AkronModule.Settings.RefillClarityColor, value => AkronModule.Settings.RefillClarityColor = AkronModuleSettings.ClampRgb(value), popupId, "Sprite outline color for visible one-use refills.");
     }
 
     private void DrawScreenshotCapturePopupControls(string popupId, bool chapter) {

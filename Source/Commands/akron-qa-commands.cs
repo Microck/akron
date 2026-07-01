@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using Celeste;
 using Microsoft.Xna.Framework;
@@ -209,6 +210,139 @@ public static partial class AkronCommands {
         }
 
         Log("qa-inspector-probe-screen: " + AkronEntityInspector.DiagnoseInspectorPinScreenPointForQa(level, screenPoint));
+    }
+
+    [Command("akron_qa_refill_clarity_probe", "spawn a custom refill-like QA probe and enable Refill Clarity: [x] [y] [one-use|reusable]")]
+    public static void QaRefillClarityProbe(string x = "", string y = "", string mode = "one-use") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        Vector2 position = ResolveQaWorldPosition(level, x, y);
+        bool oneUse = NormalizeToken(mode) != "reusable" && NormalizeToken(mode) != "false";
+        AkronQaCustomRefillProbe probe = new AkronQaCustomRefillProbe(position, oneUse);
+        level.Add(probe);
+        level.Entities.UpdateLists();
+        EnsureRefillClarityEnabled();
+
+        Log("qa-refill-clarity-probe: type=" + probe.GetType().FullName +
+            ";one-use=" + probe.oneUse.ToString().ToLowerInvariant() +
+            ";position=" + FormatVector(probe.Position) +
+            ";enabled=" + AkronModule.Settings.RefillClarity.ToString().ToLowerInvariant() +
+            ";eligible=" + AkronHudRenderer.ShouldRenderRefillClarityOutline(probe).ToString().ToLowerInvariant());
+        if (AkronHudRenderer.TryGetRefillClarityBounds(probe, out Rectangle bounds)) {
+            Log("qa-refill-clarity-probe-bounds: " + FormatRectangle(bounds));
+        }
+    }
+
+    [Command("akron_qa_refill_clarity_dash_crystal", "spawn a real dash crystal and enable Refill Clarity: [x] [y] [one-use|reusable] [one-dash|two-dash]")]
+    public static void QaRefillClarityDashCrystal(string x = "", string y = "", string mode = "one-use", string dashMode = "one-dash") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        Vector2 position = ResolveQaWorldPosition(level, x, y);
+        bool oneUse = NormalizeToken(mode) != "reusable" && NormalizeToken(mode) != "false";
+        bool twoDashes = NormalizeToken(dashMode) == "two-dash" || NormalizeToken(dashMode) == "twodash" || NormalizeToken(dashMode) == "two";
+        EnsureRefillClarityEnabled();
+        Refill refill = new Refill(position, twoDashes, oneUse);
+        level.Add(refill);
+        level.Entities.UpdateLists();
+
+        Log("qa-refill-clarity-dash-crystal: type=" + refill.GetType().FullName +
+            ";one-use=" + refill.oneUse.ToString().ToLowerInvariant() +
+            ";two-dashes=" + twoDashes.ToString().ToLowerInvariant() +
+            ";position=" + FormatVector(refill.Position) +
+            ";enabled=" + AkronModule.Settings.RefillClarity.ToString().ToLowerInvariant() +
+            ";eligible=" + AkronHudRenderer.ShouldRenderRefillClarityOutline(refill).ToString().ToLowerInvariant());
+        if (AkronHudRenderer.TryGetRefillClarityBounds(refill, out Rectangle bounds)) {
+            Log("qa-refill-clarity-dash-crystal-bounds: " + FormatRectangle(bounds));
+        }
+    }
+
+    [Command("akron_qa_refill_clarity_style", "set Refill Clarity style for live verification: [rrggbb] [opacity]")]
+    public static void QaRefillClarityStyle(string color = "FF2929", string opacity = "100") {
+        if (!TryParseQaRgb(color, out int parsedColor)) {
+            Log("usage: akron_qa_refill_clarity_style <rrggbb> [opacity]");
+            return;
+        }
+
+        if (!int.TryParse(opacity, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedOpacity)) {
+            Log("usage: akron_qa_refill_clarity_style <rrggbb> [opacity]");
+            return;
+        }
+
+        EnsureRefillClarityEnabled();
+        AkronModule.Settings.RefillClarityColor = AkronModuleSettings.ClampRgb(parsedColor);
+        AkronModule.Settings.RefillClarityOpacity = AkronModuleSettings.ClampOpacity(parsedOpacity);
+        Log("qa-refill-clarity-style: color=" + AkronModule.Settings.RefillClarityColor.ToString("X6", CultureInfo.InvariantCulture) +
+            ";opacity=" + AkronModule.Settings.RefillClarityOpacity.ToString(CultureInfo.InvariantCulture));
+    }
+
+    [Command("akron_qa_refill_clarity_state", "report visible one-use entities eligible for Refill Clarity")]
+    public static void QaRefillClarityState(string _ = "") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        int count = 0;
+        foreach (Entity entity in level.Entities.Where(entity => AkronHudRenderer.TryGetRefillClarityBounds(entity, out Rectangle _))) {
+            AkronHudRenderer.TryGetRefillClarityBounds(entity, out Rectangle bounds);
+            Log("qa-refill-clarity-target: type=" + (entity.GetType().FullName ?? entity.GetType().Name) +
+                ";position=" + FormatVector(entity.Position) +
+                ";bounds=" + FormatRectangle(bounds));
+            count++;
+        }
+
+        Log("qa-refill-clarity: enabled=" + AkronModule.Settings.RefillClarity.ToString().ToLowerInvariant() +
+            ";count=" + count.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private static Vector2 ResolveQaWorldPosition(Level level, string x, string y) {
+        if (float.TryParse(x, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedX) &&
+            float.TryParse(y, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedY)) {
+            return new Vector2(parsedX, parsedY);
+        }
+
+        Player player = level.Tracker.GetEntity<Player>();
+        if (player != null) {
+            return player.Center + new Vector2(24f, -8f);
+        }
+
+        return level.Camera.Position + new Vector2(160f, 90f);
+    }
+
+    private static string FormatRectangle(Rectangle rectangle) {
+        return rectangle.X.ToString(CultureInfo.InvariantCulture) + "," +
+               rectangle.Y.ToString(CultureInfo.InvariantCulture) + " " +
+               rectangle.Width.ToString(CultureInfo.InvariantCulture) + "x" +
+               rectangle.Height.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static void EnsureRefillClarityEnabled() {
+        if (!AkronModule.Settings.RefillClarity) {
+            SetPolicyToggle(AkronFeatureKind.RefillClarity, () => AkronModule.Settings.RefillClarity, value => AkronModule.Settings.RefillClarity = value);
+        }
+    }
+
+    private static bool TryParseQaRgb(string value, out int rgb) {
+        rgb = 0;
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+
+        string normalized = value.Trim();
+        if (normalized.StartsWith("#", StringComparison.Ordinal)) {
+            normalized = normalized.Substring(1);
+        } else if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) {
+            normalized = normalized.Substring(2);
+        }
+
+        return normalized.Length <= 6 &&
+               int.TryParse(normalized, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out rgb);
     }
 
     private static AreaData GetQaAreaData(int areaId, string commandName) {
@@ -584,5 +718,17 @@ public static partial class AkronCommands {
         }
 
         LogPlayerSummary(player);
+    }
+
+    private sealed class AkronQaCustomRefillProbe : Entity {
+        public readonly bool oneUse;
+
+        public AkronQaCustomRefillProbe(Vector2 position, bool oneUse) : base(position) {
+            this.oneUse = oneUse;
+            Collider = new Hitbox(12f, 12f, -6f, -6f);
+            Visible = true;
+            Collidable = true;
+            Active = true;
+        }
     }
 }

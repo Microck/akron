@@ -4,10 +4,21 @@ using Monocle;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronHudRenderer {
+    private static readonly string[] RefillClarityOneUseMemberNames = {
+        "oneUse",
+        "OneUse",
+        "oneuse",
+        "_oneUse",
+        "_OneUse",
+        "_oneuse",
+        "onlyOnce"
+    };
+    private static readonly Dictionary<Type, Func<Entity, bool?>> RefillClarityOneUseReaders = new Dictionary<Type, Func<Entity, bool?>>();
     private static bool renderingAutomationAreasToGameplayBuffer;
 
     private static void RenderAutoKillArea(Level level) {
@@ -93,35 +104,113 @@ public static partial class AkronHudRenderer {
         }
     }
 
-    private static void RenderRefillClarity(Level level) {
-        AkronModuleSettings settings = AkronModule.Settings;
-        if (AkronCapture.IsCapturingGameFrame ||
-            level == null ||
-            !settings.RefillClarity ||
-            !AkronPolicy.CanUse(AkronFeatureKind.RefillClarity).Allowed) {
-            return;
+    internal static bool ShouldRenderRefillClarityOutline(Entity entity) {
+        return entity != null &&
+               entity.Visible &&
+               entity.Collidable &&
+               IsRefillClarityCandidate(entity) &&
+               TryGetRefillClarityOneUse(entity, out bool oneUse) &&
+               oneUse;
+    }
+
+    internal static bool TryGetRefillClarityBounds(Entity entity, out Rectangle bounds) {
+        bounds = default;
+        if (!ShouldRenderRefillClarityOutline(entity)) {
+            return false;
         }
 
-        Color color = ColorFromRgb(settings.RefillClarityColor);
-        float opacity = AkronModuleSettings.ClampOpacity(settings.RefillClarityOpacity) / 100f;
-        if (!level.Tracker.Entities.TryGetValue(typeof(Refill), out List<Entity> refillEntities)) {
-            return;
+        bounds = entity.Collider != null
+            ? ColliderWorldBounds(entity.Collider)
+            : new Rectangle((int) Math.Floor(entity.X - 6f), (int) Math.Floor(entity.Y - 6f), 12, 12);
+        return bounds.Width > 0 && bounds.Height > 0;
+    }
+
+    private static bool IsRefillClarityCandidate(Entity entity) {
+        if (entity is Refill) {
+            return true;
         }
 
-        foreach (Refill refill in refillEntities.OfType<Refill>()) {
-            if (refill == null || !refill.Visible || !refill.Collidable || !refill.oneUse) {
-                continue;
+        Type type = entity.GetType();
+        string typeName = type.FullName ?? type.Name;
+        if (typeName.IndexOf("Refill", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
+        string sourceName = GetRefillClaritySourceName(entity);
+        return sourceName.IndexOf("refill", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static string GetRefillClaritySourceName(Entity entity) {
+        try {
+            return entity.SourceData?.Name ?? string.Empty;
+        } catch (Exception) {
+            // SourceData is only a fallback for generated/custom entities; some
+            // runtime-only objects expose a publicized getter that is unsafe here.
+            return string.Empty;
+        }
+    }
+
+    private static bool TryGetRefillClarityOneUse(Entity entity, out bool oneUse) {
+        if (entity is Refill refill) {
+            oneUse = refill.oneUse;
+            return true;
+        }
+
+        Func<Entity, bool?> reader = GetRefillClarityOneUseReader(entity.GetType());
+        bool? reflectedValue = reader(entity);
+        oneUse = reflectedValue == true;
+        return reflectedValue.HasValue;
+    }
+
+    private static Func<Entity, bool?> GetRefillClarityOneUseReader(Type type) {
+        if (RefillClarityOneUseReaders.TryGetValue(type, out Func<Entity, bool?> cached)) {
+            return cached;
+        }
+
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        foreach (string memberName in RefillClarityOneUseMemberNames) {
+            FieldInfo field = FindBooleanField(type, memberName, flags);
+            if (field != null) {
+                Func<Entity, bool?> reader = entity => (bool) field.GetValue(entity);
+                RefillClarityOneUseReaders[type] = reader;
+                return reader;
             }
 
-            Rectangle bounds = refill.Collider != null
-                ? ColliderWorldBounds(refill.Collider)
-                : new Rectangle((int) Math.Floor(refill.X - 6f), (int) Math.Floor(refill.Y - 6f), 12, 12);
-            if (!level.Bounds.Intersects(bounds)) {
-                continue;
+            PropertyInfo property = FindBooleanProperty(type, memberName, flags);
+            if (property != null) {
+                Func<Entity, bool?> reader = entity => (bool) property.GetValue(entity);
+                RefillClarityOneUseReaders[type] = reader;
+                return reader;
             }
-
-            DrawWorldRect(level, bounds, color, 0.06f * opacity, 2);
         }
+
+        Func<Entity, bool?> missing = _ => null;
+        RefillClarityOneUseReaders[type] = missing;
+        return missing;
+    }
+
+    private static FieldInfo FindBooleanField(Type type, string memberName, BindingFlags flags) {
+        for (Type current = type; current != null; current = current.BaseType) {
+            FieldInfo field = current.GetField(memberName, flags);
+            if (field?.FieldType == typeof(bool)) {
+                return field;
+            }
+        }
+
+        return null;
+    }
+
+    private static PropertyInfo FindBooleanProperty(Type type, string memberName, BindingFlags flags) {
+        for (Type current = type; current != null; current = current.BaseType) {
+            PropertyInfo property = current.GetProperty(memberName, flags);
+            if (property?.PropertyType == typeof(bool) &&
+                property.GetIndexParameters().Length == 0 &&
+                property.GetMethod != null) {
+                return property;
+            }
+        }
+
+        return null;
     }
 
     private static void DrawWorldRect(Level level, Rectangle worldBounds, Color color, float fillAlpha, int thickness) {

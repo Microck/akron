@@ -11,6 +11,8 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Persist overlay category collapse state across restarts.
 - Keep hitbox rendering aligned with Celeste's gameplay camera and live collider data.
 - Keep Entity Inspector pin popups on-screen, make same-target click cycling close after the last hit, reduce duplicate collapsed details, align pin targeting during zoomed-out views, and remove extra rectangular highlights from collider-backed targets.
+- Let Refill Clarity use Better Refill Gems-style sprite replacement for one-use dash crystals while keeping its color and opacity controls live.
+- Let Entity Inspector click cycling continue when the next click lands on a different pixel of the same target stack.
 
 ## 0.1.2-beta.32
 

@@ -89,7 +89,6 @@ internal sealed class AkronInspectorReportData
 
 public static partial class AkronEntityInspector
 {
-    private const float InspectorPinCycleTolerancePixels = 8f;
     private const float InspectorHighlightOutlineThickness = 5f;
     private const int InspectorPinProbeRadiusPixels = 3;
     private const int InspectorPinFallbackSourceSize = 8;
@@ -189,9 +188,7 @@ public static partial class AkronEntityInspector
         }
 
         string signature = BuildInspectorStackSignature(filter, hits);
-        bool sameStack = string.Equals(signature, inspectorPinStackSignature, StringComparison.Ordinal) &&
-                         Vector2.Distance(screenPoint, inspectorPinAnchorScreen) <= InspectorPinCycleTolerancePixels &&
-                         currentStack.Count == hits.Count;
+        bool sameStack = IsSameInspectorStackForCycling(signature, inspectorPinStackSignature, currentStack.Count, hits.Count);
 
         ApplyInspectorPinHits(screenPoint, signature, hits, sameStack);
     }
@@ -217,9 +214,7 @@ public static partial class AkronEntityInspector
         }
 
         string signature = BuildInspectorStackSignature(filter, hits);
-        bool sameStack = string.Equals(signature, inspectorPinStackSignature, StringComparison.Ordinal) &&
-                         Vector2.Distance(screenPoint, inspectorPinAnchorScreen) <= InspectorPinCycleTolerancePixels &&
-                         currentStack.Count == hits.Count;
+        bool sameStack = IsSameInspectorStackForCycling(signature, inspectorPinStackSignature, currentStack.Count, hits.Count);
         ApplyInspectorPinHits(screenPoint, signature, hits, sameStack);
         if (!HasInspectorPinSelection())
         {
@@ -727,9 +722,7 @@ public static partial class AkronEntityInspector
 
         previewStack.AddRange(hits);
         string signature = BuildInspectorStackSignature(filter, hits);
-        bool sameStack = string.Equals(signature, inspectorPinStackSignature, StringComparison.Ordinal) &&
-                         Vector2.Distance(screenPoint, inspectorPinAnchorScreen) <= InspectorPinCycleTolerancePixels &&
-                         currentStack.Count == hits.Count;
+        bool sameStack = IsSameInspectorStackForCycling(signature, inspectorPinStackSignature, currentStack.Count, hits.Count);
         if (sameStack)
         {
             int nextIndex = inspectorPinSelectedIndex + 1;
@@ -1092,6 +1085,13 @@ public static partial class AkronEntityInspector
         return inspectorPinRoomSessionId.ToString(CultureInfo.InvariantCulture) +
                "|" + filter +
                "|" + string.Join(",", hits.Select(hit => hit.InspectorId.ToString(CultureInfo.InvariantCulture)));
+    }
+
+    internal static bool IsSameInspectorStackForCycling(string signature, string currentSignature, int currentStackCount, int hitCount)
+    {
+        return hitCount > 0 &&
+               currentStackCount == hitCount &&
+               string.Equals(signature, currentSignature, StringComparison.Ordinal);
     }
 
     private static void ApplyInspectorPinHits(Vector2 screenPoint, string signature, List<InspectorHit> hits, bool sameStack)

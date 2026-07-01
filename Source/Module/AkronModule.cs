@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Celeste;
 using Celeste.Editor;
@@ -101,6 +102,8 @@ public partial class AkronModule : EverestModule {
     private static readonly FieldInfo LevelEnterSessionField =
         typeof(LevelEnter).GetField("session", BindingFlags.Instance | BindingFlags.NonPublic);
     private static Vector2 preRedirectDashAim;
+    private static readonly ConditionalWeakTable<Refill, RefillClaritySpriteState> RefillClaritySpriteStates =
+        new ConditionalWeakTable<Refill, RefillClaritySpriteState>();
 
     public AkronModule() {
         Instance = this;
@@ -145,6 +148,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.AutoSavingNotice.Render += AutoSavingNoticeOnRender;
         On.Celeste.SaveLoadIcon.Show += SaveLoadIconOnShow;
         On.Celeste.SaveLoadIcon.Render += SaveLoadIconOnRender;
+        On.Celeste.Refill.ctor_Vector2_bool_bool += RefillOnCtor;
         On.Monocle.Engine.Update += EngineOnUpdate;
         On.Monocle.Engine.RenderCore += EngineOnRenderCore;
         On.Celeste.Level.CompleteArea_bool_bool += LevelOnCompleteArea;
@@ -271,6 +275,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.AutoSavingNotice.Render -= AutoSavingNoticeOnRender;
         On.Celeste.SaveLoadIcon.Show -= SaveLoadIconOnShow;
         On.Celeste.SaveLoadIcon.Render -= SaveLoadIconOnRender;
+        On.Celeste.Refill.ctor_Vector2_bool_bool -= RefillOnCtor;
         On.Monocle.Engine.Update -= EngineOnUpdate;
         On.Monocle.Engine.RenderCore -= EngineOnRenderCore;
         On.Celeste.Level.CompleteArea_bool_bool -= LevelOnCompleteArea;
@@ -401,6 +406,7 @@ public partial class AkronModule : EverestModule {
             UpdateOverlayCursorState();
         }
 
+        RefreshRefillClaritySprites(self);
         ApplyEnabledRuntimeFeatures(self);
         UpdateLagPauser(self);
         UpdateGoldenTransparency(self);
@@ -690,6 +696,88 @@ public partial class AkronModule : EverestModule {
                                 AkronEntityInspector.HasInspectorPinPreview();
 
         return showHitboxes || showInspectorPin || showAutoKillArea || showAutoDeafenArea || selectingArea;
+    }
+
+    private static void RefillOnCtor(On.Celeste.Refill.orig_ctor_Vector2_bool_bool orig, Refill self, Vector2 position, bool twoDashes, bool oneUse) {
+        orig(self, position, twoDashes, oneUse);
+        ApplyRefillClaritySprite(self, twoDashes, oneUse);
+    }
+
+    private static void RefreshRefillClaritySprites(Level level) {
+        if (level?.Tracker == null) {
+            return;
+        }
+
+        foreach (Refill refill in level.Entities.OfType<Refill>()) {
+            DynData<Refill> refillData = new DynData<Refill>(refill);
+            ApplyRefillClaritySprite(refill, refillData.Get<bool>("twoDashes"), refillData.Get<bool>("oneUse"));
+        }
+    }
+
+    private static void ApplyRefillClaritySprite(Refill refill, bool twoDashes, bool oneUse) {
+        if (!oneUse ||
+            !Settings.RefillClarity ||
+            !AkronPolicy.CanUse(AkronFeatureKind.RefillClarity).Allowed) {
+            if (RefillClaritySpriteStates.TryGetValue(refill, out RefillClaritySpriteState inactiveState)) {
+                inactiveState.OutlineSprite?.RemoveSelf();
+                inactiveState.OutlineSprite = null;
+                inactiveState.Applied = false;
+            }
+            return;
+        }
+
+        string path = twoDashes ? "objects/refillTwo/" : "objects/refill/";
+        DynData<Refill> refillData = new DynData<Refill>(refill);
+        Sprite sprite = refillData.Get<Sprite>("sprite");
+        RefillClaritySpriteState state = RefillClaritySpriteStates.GetValue(refill, _ => new RefillClaritySpriteState());
+
+        if (!state.Applied) {
+            sprite.Path = path + "idlebody";
+            if (!sprite.Has("akron-idlebody")) {
+                sprite.AddLoop("akron-idlebody", "", 0.1f);
+            }
+            sprite.Play("akron-idlebody");
+
+            Sprite outline = new Sprite(GFX.Game, path + "idleoutline");
+            outline.AddLoop("akron-idleoutline", "", 0.1f);
+            outline.Play("akron-idleoutline");
+            refill.Add(outline);
+
+            state.OutlineSprite = outline;
+            state.Applied = true;
+        }
+
+        ApplyRefillClarityOutlineStyle(sprite, state.OutlineSprite);
+    }
+
+    private static void ApplyRefillClarityOutlineStyle(Sprite bodySprite, Sprite outlineSprite) {
+        if (bodySprite == null || outlineSprite == null) {
+            return;
+        }
+
+        float opacity = AkronModuleSettings.ClampOpacity(Settings.RefillClarityOpacity) / 100f;
+        Color color = ColorFromRgb(AkronModuleSettings.ClampRgb(Settings.RefillClarityColor)) * opacity;
+
+        // The outline is a second sprite layer generated from the Better Refill
+        // Gems pixels. Syncing transform/frame keeps it attached to vanilla
+        // wobble and animation while allowing Akron's color controls to affect
+        // only the clarity outline.
+        outlineSprite.Position = bodySprite.Position;
+        outlineSprite.Origin = bodySprite.Origin;
+        outlineSprite.Scale = bodySprite.Scale;
+        outlineSprite.Rotation = bodySprite.Rotation;
+        outlineSprite.Effects = bodySprite.Effects;
+        outlineSprite.Visible = bodySprite.Visible && color.A > 0;
+        outlineSprite.Color = color;
+        outlineSprite.Rate = bodySprite.Rate;
+        if (outlineSprite.CurrentAnimationTotalFrames > 0) {
+            outlineSprite.SetAnimationFrame(bodySprite.CurrentAnimationFrame % outlineSprite.CurrentAnimationTotalFrames);
+        }
+    }
+
+    private sealed class RefillClaritySpriteState {
+        public bool Applied;
+        public Sprite OutlineSprite;
     }
 
     internal static SamplerState HudSamplerState() {
