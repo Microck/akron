@@ -104,6 +104,8 @@ public partial class AkronModule : EverestModule {
     private static Vector2 preRedirectDashAim;
     private static readonly ConditionalWeakTable<Refill, RefillClaritySpriteState> RefillClaritySpriteStates =
         new ConditionalWeakTable<Refill, RefillClaritySpriteState>();
+    private static readonly Dictionary<string, MTexture[]> RefillClarityFrameCache = new Dictionary<string, MTexture[]>();
+    private static readonly List<VirtualTexture> RefillClarityFrameTextures = new List<VirtualTexture>();
 
     public AkronModule() {
         Instance = this;
@@ -314,6 +316,7 @@ public partial class AkronModule : EverestModule {
         RestoreNativeAssistInvincibility();
         RestoreNoclipDepth();
         RestorePlayerVisibilityOverride();
+        ClearRefillClarityFrameCache();
         ResetNoclipAccuracy();
         AkronActions.RestoreAutoDeafen();
         AkronActions.RestoreLowVolumeBypass();
@@ -715,69 +718,133 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void ApplyRefillClaritySprite(Refill refill, bool twoDashes, bool oneUse) {
+        string path = twoDashes ? "objects/refillTwo/" : "objects/refill/";
+        DynData<Refill> refillData = new DynData<Refill>(refill);
+        Sprite sprite = refillData.Get<Sprite>("sprite");
+
         if (!oneUse ||
             !Settings.RefillClarity ||
             !AkronPolicy.CanUse(AkronFeatureKind.RefillClarity).Allowed) {
             if (RefillClaritySpriteStates.TryGetValue(refill, out RefillClaritySpriteState inactiveState)) {
-                inactiveState.OutlineSprite?.RemoveSelf();
-                inactiveState.OutlineSprite = null;
-                inactiveState.Applied = false;
+                RestoreRefillClaritySprite(sprite, path, inactiveState);
             }
             return;
         }
 
-        string path = twoDashes ? "objects/refillTwo/" : "objects/refill/";
-        DynData<Refill> refillData = new DynData<Refill>(refill);
-        Sprite sprite = refillData.Get<Sprite>("sprite");
         RefillClaritySpriteState state = RefillClaritySpriteStates.GetValue(refill, _ => new RefillClaritySpriteState());
+        int color = AkronModuleSettings.ClampRgb(Settings.RefillClarityColor);
+        int opacity = AkronModuleSettings.ClampOpacity(Settings.RefillClarityOpacity);
 
-        if (!state.Applied) {
-            sprite.Path = path + "idlebody";
-            if (!sprite.Has("akron-idlebody")) {
-                sprite.AddLoop("akron-idlebody", "", 0.1f);
-            }
-            sprite.Play("akron-idlebody");
-
-            Sprite outline = new Sprite(GFX.Game, path + "idleoutline");
-            outline.AddLoop("akron-idleoutline", "", 0.1f);
-            outline.Play("akron-idleoutline");
-            refill.Add(outline);
-
-            state.OutlineSprite = outline;
-            state.Applied = true;
+        if (state.Applied &&
+            state.TwoDashes == twoDashes &&
+            state.Color == color &&
+            state.Opacity == opacity) {
+            return;
         }
 
-        ApplyRefillClarityOutlineStyle(sprite, state.OutlineSprite);
+        MTexture[] frames = GetRefillClarityFrames(twoDashes, color, opacity);
+        if (frames == null || frames.Length == 0) {
+            return;
+        }
+
+        sprite.Path = path + "idlenr";
+        if (sprite.Has("idlenr")) {
+            Sprite.Animation animation = sprite.Animations["idlenr"];
+            animation.Delay = 0.1f;
+            animation.Frames = frames;
+        } else {
+            sprite.AddLoop("idlenr", 0.1f, frames);
+        }
+
+        sprite.Play("idlenr");
+        state.Applied = true;
+        state.TwoDashes = twoDashes;
+        state.Color = color;
+        state.Opacity = opacity;
     }
 
-    private static void ApplyRefillClarityOutlineStyle(Sprite bodySprite, Sprite outlineSprite) {
-        if (bodySprite == null || outlineSprite == null) {
-            return;
+    private static MTexture[] GetRefillClarityFrames(bool twoDashes, int color, int opacity) {
+        string key = (twoDashes ? "two" : "one") + "|" + color.ToString("X6", CultureInfo.InvariantCulture) + "|" + opacity.ToString(CultureInfo.InvariantCulture);
+        if (RefillClarityFrameCache.TryGetValue(key, out MTexture[] cached)) {
+            return cached;
         }
 
-        float opacity = AkronModuleSettings.ClampOpacity(Settings.RefillClarityOpacity) / 100f;
-        Color color = ColorFromRgb(AkronModuleSettings.ClampRgb(Settings.RefillClarityColor)) * opacity;
-
-        // The outline is a second sprite layer generated from the Better Refill
-        // Gems pixels. Syncing transform/frame keeps it attached to vanilla
-        // wobble and animation while allowing Akron's color controls to affect
-        // only the clarity outline.
-        outlineSprite.Position = bodySprite.Position;
-        outlineSprite.Origin = bodySprite.Origin;
-        outlineSprite.Scale = bodySprite.Scale;
-        outlineSprite.Rotation = bodySprite.Rotation;
-        outlineSprite.Effects = bodySprite.Effects;
-        outlineSprite.Visible = bodySprite.Visible && color.A > 0;
-        outlineSprite.Color = color;
-        outlineSprite.Rate = bodySprite.Rate;
-        if (outlineSprite.CurrentAnimationTotalFrames > 0) {
-            outlineSprite.SetAnimationFrame(bodySprite.CurrentAnimationFrame % outlineSprite.CurrentAnimationTotalFrames);
+        string path = twoDashes ? "objects/refillTwo/idlenr" : "objects/refill/idlenr";
+        List<MTexture> sourceFrames = GFX.Game.GetAtlasSubtextures(path);
+        if (sourceFrames == null || sourceFrames.Count == 0) {
+            return null;
         }
+
+        MTexture[] frames = new MTexture[sourceFrames.Count];
+        for (int index = 0; index < sourceFrames.Count; index++) {
+            frames[index] = CreateRefillClarityFrame(sourceFrames[index], key + "|" + index.ToString(CultureInfo.InvariantCulture), color, opacity);
+        }
+
+        RefillClarityFrameCache[key] = frames;
+        return frames;
+    }
+
+    private static MTexture CreateRefillClarityFrame(MTexture source, string key, int rgb, int opacity) {
+        int width = source.Width;
+        int height = source.Height;
+        Color[] pixels = new Color[width * height];
+        source.Texture.Texture_Safe.GetData(0, source.ClipRect, pixels, 0, pixels.Length);
+
+        byte red = (byte) ((rgb >> 16) & 0xFF);
+        byte green = (byte) ((rgb >> 8) & 0xFF);
+        byte blue = (byte) (rgb & 0xFF);
+        for (int index = 0; index < pixels.Length; index++) {
+            Color pixel = pixels[index];
+            if (!IsBetterRefillGemsOutlinePixel(pixel)) {
+                continue;
+            }
+
+            byte alpha = (byte) Math.Round(pixel.A * (opacity / 100f));
+            pixels[index] = new Color(
+                (byte) (red * alpha / 255),
+                (byte) (green * alpha / 255),
+                (byte) (blue * alpha / 255),
+                alpha);
+        }
+
+        VirtualTexture texture = VirtualContent.CreateTexture("akron-refill-clarity-" + key, width, height, Color.Transparent);
+        texture.Texture_Safe.SetData(pixels);
+        RefillClarityFrameTextures.Add(texture);
+        return new MTexture(texture, source.DrawOffset, source.Width, source.Height);
+    }
+
+    private static bool IsBetterRefillGemsOutlinePixel(Color pixel) {
+        return pixel.A > 0 &&
+               pixel.R == 255 &&
+               pixel.G == 41 &&
+               pixel.B == 41;
+    }
+
+    private static void RestoreRefillClaritySprite(Sprite sprite, string path, RefillClaritySpriteState state) {
+        if (sprite != null && state.Applied) {
+            sprite.Path = path + "idle";
+            if (sprite.Has("idle")) {
+                sprite.Play("idle");
+            }
+        }
+
+        state.Applied = false;
+    }
+
+    private static void ClearRefillClarityFrameCache() {
+        foreach (VirtualTexture texture in RefillClarityFrameTextures) {
+            texture.Dispose();
+        }
+
+        RefillClarityFrameTextures.Clear();
+        RefillClarityFrameCache.Clear();
     }
 
     private sealed class RefillClaritySpriteState {
         public bool Applied;
-        public Sprite OutlineSprite;
+        public bool TwoDashes;
+        public int Color;
+        public int Opacity;
     }
 
     internal static SamplerState HudSamplerState() {

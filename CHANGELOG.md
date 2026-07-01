@@ -4,6 +4,12 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## 0.1.2-beta.35
+
+### Fixed
+
+- Keep Refill Clarity on the Better Refill Gems single-sprite replacement path while still applying Akron's color and opacity settings.
+
 ## 0.1.2-beta.34
 
 ### Fixed
