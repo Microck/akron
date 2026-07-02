@@ -5,7 +5,7 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronCommands {
-    [Command("akron_room_capture", "control Room Capture: start|stop|status|format <png|jpg>|markers <on|off>|startpos <on|off>|autokill <on|off>|autodeafen <on|off>|removebg <on|off>|removefg <on|off>|wait <frames>|horizontal <tiles>|vertical <tiles>")]
+    [Command("akron_room_capture", "control Room Capture: start|stop|status|format <png|jpg>|markers <on|off>|startpos <on|off>|autokill <on|off>|autodeafen <on|off>|downscale <on|off>|removebg <on|off>|removefg <on|off>|wait <frames>|horizontal <tiles>|vertical <tiles>")]
     public static void RoomCapture(string action = "status", string value = "") {
         Level level = Engine.Scene as Level;
         if (!ApplyScreenshotCaptureSetting(action, value, out bool handled)) {
@@ -33,7 +33,7 @@ public static partial class AkronCommands {
         LogScreenshotCaptureSettings();
     }
 
-    [Command("akron_map_capture", "control Map Capture: start|stop|status|format <png|jpg>|markers <on|off>|startpos <on|off>|autokill <on|off>|autodeafen <on|off>|removebg <on|off>|removefg <on|off>|wait <frames>|horizontal <tiles>|vertical <tiles>")]
+    [Command("akron_map_capture", "control Map Capture: start|stop|status|format <png|jpg>|markers <on|off>|startpos <on|off>|autokill <on|off>|autodeafen <on|off>|downscale <on|off>|removebg <on|off>|removefg <on|off>|wait <frames>|horizontal <tiles>|vertical <tiles>")]
     public static void MapCapture(string action = "status", string value = "") {
         Level level = Engine.Scene as Level;
         if (!ApplyScreenshotCaptureSetting(action, value, out bool handled)) {
@@ -108,6 +108,15 @@ public static partial class AkronCommands {
                 }
                 AkronModule.Settings.ScreenshotScannerExportAutoDeafenAreas = autoDeafenAreas;
                 return true;
+            case "downscale":
+            case "downscalemap":
+            case "mapdownscale":
+                if (!TryParseBoolean(value, out bool downscaleMap)) {
+                    Log("usage: capture downscale <on|off>");
+                    return false;
+                }
+                AkronModule.Settings.ScreenshotScannerDownscaleMapCapture = downscaleMap;
+                return true;
             case "removebg":
             case "removebackground":
             case "background":
@@ -164,6 +173,7 @@ public static partial class AkronCommands {
         Log("capture-markers-startpos: " + AkronModule.Settings.ScreenshotScannerExportStartPositions.ToString().ToLowerInvariant());
         Log("capture-markers-autokill: " + AkronModule.Settings.ScreenshotScannerExportAutoKillAreas.ToString().ToLowerInvariant());
         Log("capture-markers-autodeafen: " + AkronModule.Settings.ScreenshotScannerExportAutoDeafenAreas.ToString().ToLowerInvariant());
+        Log("capture-map-downscale: " + AkronModule.Settings.ScreenshotScannerDownscaleMapCapture.ToString().ToLowerInvariant());
         Log("capture-freeze-time: " + AkronModule.Settings.ScreenshotScannerFreezeTime.ToString().ToLowerInvariant());
         Log("capture-noclip-hide-madeline: " + AkronModule.Settings.ScreenshotScannerNoclipHideMadeline.ToString().ToLowerInvariant());
         Log("capture-remove-background: " + AkronModule.Settings.ScreenshotScannerRemoveBackground.ToString().ToLowerInvariant());

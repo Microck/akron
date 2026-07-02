@@ -354,9 +354,17 @@ public sealed partial class AkronOverlay {
             AkronModule.Settings.ScreenshotScannerExportPath = AkronModuleSettings.NormalizeScreenshotScannerExportPath(exportPath);
             MarkValueEditFreeze();
         }
-        DrawPopupTooltip("Relative to the Celeste install folder, matching ScreenshotTool's export layout.");
+        DrawPopupTooltip("Relative to the Celeste install folder.");
 
         DrawScreenshotScannerFormatRow(popupId);
+
+        if (chapter) {
+            bool downscaleMap = AkronModule.Settings.ScreenshotScannerDownscaleMapCapture;
+            if (ImGui.Checkbox("Downscale map##" + popupId, ref downscaleMap)) {
+                AkronModule.Settings.ScreenshotScannerDownscaleMapCapture = downscaleMap;
+            }
+            DrawPopupTooltip("Limit very large map.png outputs to safer dimensions. Leave off for true 1:1 capture pixels.");
+        }
 
         DrawIntStepperRow("Wait", () => AkronModule.Settings.ScreenshotScannerWaitFrames, value => AkronModule.Settings.ScreenshotScannerWaitFrames = AkronModuleSettings.ClampScreenshotScannerWaitFrames(value), -1, 1, 0, 240, popupId, "Frames to wait before each tile capture.");
         DrawIntStepperRow("Horizontal", () => AkronModule.Settings.ScreenshotScannerHorizontalOffsetTiles, value => AkronModule.Settings.ScreenshotScannerHorizontalOffsetTiles = AkronModuleSettings.ClampScreenshotScannerOffsetTiles(value), -1, 1, 1, 80, popupId, "Horizontal tile offset between captures.");

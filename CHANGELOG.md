@@ -10,6 +10,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 - Let Skip Cutscene run Celeste's active cutscene skip callback instead of leaving the level stuck in a skipping cutscene state.
 - Let Akron's internal recorder find host FFmpeg and its Linux libraries from inside the Steam Runtime sandbox.
+- Write merged room collages after Room Capture and world-space `map.png` outputs after Map Capture, with scanner markers drawn after stitching at one game pixel and a Downscale option for safer large map exports.
 - Prefer the most specific matching SFX volume group so broad sound fragments do not shadow narrower controls such as Ridge Wind.
 - Keep Pause Countdown from subtracting level clock time twice while waiting after unpause.
 - Tighten several verified overlay, HUD, input, backup, StartPos, and runtime helper paths found during the player-visible checklist pass.

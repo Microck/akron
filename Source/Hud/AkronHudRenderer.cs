@@ -32,10 +32,6 @@ public static partial class AkronHudRenderer {
         Player player = level.Tracker.GetEntity<Player>();
 
         if (AkronCapture.IsCapturingGameFrame) {
-            if (AkronCapture.IsCapturingScannerOverlays) {
-                RenderScannerExportOverlays(level, player);
-            }
-
             return;
         }
 
