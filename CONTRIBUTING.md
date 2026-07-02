@@ -107,7 +107,23 @@ Disclosure fields must be factual. Do not claim human review, testing, verificat
 - `agent_version`: What version of the tool, extension, CLI, or agent was used?
   Provide the exact version shown by the tool when available.
 - `model_used`: What model was used?
-  This field must name the actual model. `unknown`, `default`, `auto`, `latest`, blank values, and guessed model names are not valid.
+  Provide the exact model identifier as exposed by the tool, CLI, or API.
+  This is the identifier the provider uses to route requests — not the
+  product name, marketing label, or abbreviation.
+  Examples of valid identifiers: `openai/gpt-5.5`, `anthropic/claude-sonnet-5`,
+  `zhipuai/glm-5.2`, `google/gemini-3-pro`, `deepseek/deepseek-v4`.
+  Use the `lab/model-name` convention. If you are unsure of the canonical
+  identifier, check https://models.dev or the provider's API documentation.
+
+  These values are NOT valid: `unknown`, `default`, `auto`, `latest`, `GPT-5`,
+  `Claude`, `Codex`, blank, or any guessed or abbreviated name.
+
+  If the tool does not expose the underlying model identifier (for example,
+  a tool that auto-routes or hides the model), state the exact tool name and
+  version, and write `model_not_exposed` in this field with an explanation
+  of why the model could not be identified. A PR with `model_not_exposed`
+  may be returned for revision unless the tool genuinely provides no way to
+  determine the model.
 - `human_testing`: What tests, checks, screenshots, live Celeste verification, or manual review did a human perform?
   This must describe real human testing that actually happened. If no human testing was performed, the pull request is not ready.
 - `contribution_summary`: One sentence describing what changed.
