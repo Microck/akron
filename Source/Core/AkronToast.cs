@@ -15,11 +15,14 @@ public sealed class AkronToast : Entity {
     private const float StackGap = 6f;
     private static int nextSequence;
     private readonly string message;
+    private readonly bool forceVisible;
     private readonly int sequence;
-    private float timer = 2.8f;
+    private float timer;
 
-    public AkronToast(string message) {
+    public AkronToast(string message, bool forceVisible = false, float durationSeconds = 2.8f) {
         this.message = message;
+        this.forceVisible = forceVisible;
+        timer = Math.Max(0.1f, durationSeconds);
         sequence = ++nextSequence;
         Tag = Tags.HUD | Tags.Global | Tags.PauseUpdate;
     }
@@ -35,8 +38,7 @@ public sealed class AkronToast : Entity {
     public override void Render() {
         if (AkronCapture.IsCapturingGameFrame ||
             AkronModule.ShouldHideAkronRenderSurfaces() ||
-            !AkronModule.Settings.LabelSystemVisible ||
-            !AkronModule.Settings.ToastLabels) {
+            (!forceVisible && (!AkronModule.Settings.LabelSystemVisible || !AkronModule.Settings.ToastLabels))) {
             return;
         }
 

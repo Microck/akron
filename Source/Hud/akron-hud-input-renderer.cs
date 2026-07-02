@@ -20,7 +20,7 @@ public static partial class AkronHudRenderer {
         float scale = (settings.InputHistoryCompact ? 0.30f : 0.36f) * styleScale;
         float rowHeight = (settings.InputHistoryCompact ? 23f : 29f) * styleScale * (AkronModuleSettings.ClampCustomLabelLineSpacing(style.LineSpacing) / 100f);
         float width = (settings.InputHistoryCompact ? 126f : 156f) * styleScale;
-        float screenWidth = Engine.Width > 0 ? Engine.Width : 1280f;
+        float screenWidth = ResolveHudViewportSize().X;
         float x = (settings.InputHistoryPlacement == AkronHudPlacement.Right ? screenWidth - width - HudEdgePadding : HudEdgePadding + 8f) + style.OffsetX;
         float y = (settings.InputHistoryPlacement == AkronHudPlacement.Right ? 72f : leftColumnY) + style.OffsetY;
         float layoutY = y;
@@ -154,7 +154,7 @@ public static partial class AkronHudRenderer {
         string text = FormatInputsPerSecondHudText(snapshot, settings);
         Vector2 textSize = ActiveFont.Measure(text) * textScale;
 
-        float screenWidth = Engine.Width > 0 ? Engine.Width : 1280f;
+        float screenWidth = ResolveHudViewportSize().X;
         float x = (settings.InputsPerSecondPlacement == AkronHudPlacement.Right ? screenWidth - HudEdgePadding - textSize.X : HudEdgePadding) + style.OffsetX;
         float y = (settings.InputsPerSecondPlacement == AkronHudPlacement.Right ? 72f : leftColumnY) + style.OffsetY;
         float layoutY = y;

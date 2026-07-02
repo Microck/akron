@@ -108,6 +108,7 @@ public static partial class AkronInternalRecorder {
             RedirectStandardError = true,
             CreateNoWindow = true
         };
+        ConfigureFfmpegStartInfo(startInfo);
 
         try {
             Process process = Process.Start(startInfo);
@@ -244,6 +245,7 @@ public static partial class AkronInternalRecorder {
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+            ConfigureFfmpegStartInfo(startInfo);
 
             using Process process = Process.Start(startInfo);
             if (process == null) {
@@ -451,10 +453,49 @@ public static partial class AkronInternalRecorder {
         }
 
         if (Path.DirectorySeparatorChar == '/') {
+            string steamRuntimeHostTool = "/run/host/usr/bin/ffmpeg";
+            if (File.Exists(steamRuntimeHostTool)) {
+                return steamRuntimeHostTool;
+            }
+
             return "/usr/bin/ffmpeg";
         }
 
         return "ffmpeg";
+    }
+
+    private static void ConfigureFfmpegStartInfo(ProcessStartInfo startInfo) {
+        if (!IsSteamRuntimeHostTool(startInfo.FileName)) {
+            return;
+        }
+
+        // Steam Linux Runtime exposes the host binary under /run/host, but the
+        // process still inherits the container library path. Prepend the host
+        // library directories so host FFmpeg can resolve its own dependencies.
+        string[] hostLibraryDirectories = {
+            "/run/host/usr/lib/x86_64-linux-gnu",
+            "/run/host/usr/lib/x86_64-linux-gnu/pulseaudio",
+            "/run/host/lib/x86_64-linux-gnu",
+            "/run/host/usr/lib",
+            "/run/host/lib"
+        };
+
+        string hostPath = string.Join(
+            Path.PathSeparator.ToString(),
+            hostLibraryDirectories.Where(Directory.Exists));
+        if (string.IsNullOrWhiteSpace(hostPath)) {
+            return;
+        }
+
+        string inherited = startInfo.EnvironmentVariables["LD_LIBRARY_PATH"];
+        startInfo.EnvironmentVariables["LD_LIBRARY_PATH"] = string.IsNullOrWhiteSpace(inherited)
+            ? hostPath
+            : hostPath + Path.PathSeparator + inherited;
+    }
+
+    private static bool IsSteamRuntimeHostTool(string path) {
+        return !string.IsNullOrWhiteSpace(path) &&
+            path.StartsWith("/run/host/", StringComparison.Ordinal);
     }
 
     private static string ResolveFfmpegWorkingDirectory(string preferredDirectory = null) {

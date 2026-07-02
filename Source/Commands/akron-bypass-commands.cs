@@ -6,7 +6,7 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronCommands {
-    [Command("akron_bypass", "control Bypass options: status|low-volume on/off|volume <music> <sfx>|instant-complete|unlock-a-sides|unlock-b-sides|unlock-c-sides|unlock-all-levels|unlock-golden-berries|unlock-paths|obtain-room-berries|obtain-chapter-berries|berry-options")]
+    [Command("akron_bypass", "control Bypass options: status|low-volume on/off|volume <music> <sfx>|instant-complete|uncomplete|unlock-a-sides|unlock-b-sides|unlock-c-sides|unlock-all-levels|unlock-golden-berries|unlock-paths|obtain-room-berries|obtain-chapter-berries|berry-options")]
     public static void Bypass(string action = "status", string value = "", string extra = "") {
         string normalized = NormalizeToken(action);
         switch (normalized) {
@@ -46,6 +46,13 @@ public static partial class AkronCommands {
                 if (level != null) {
                     AkronActions.InstantComplete(level);
                     Log("instant-complete: requested");
+                }
+                return;
+            case "uncomplete":
+            case "uncompletelevel":
+                Level uncompleteLevel = RequireLevel();
+                if (uncompleteLevel != null) {
+                    Log("uncomplete-level: " + (AkronActions.UncompleteCurrentLevel(uncompleteLevel) ? "applied" : "blocked"));
                 }
                 return;
             case "unlockpaths":
@@ -102,7 +109,7 @@ public static partial class AkronCommands {
                 return;
             default:
                 Log("unknown bypass action: " + action);
-                Log("usage: akron_bypass status|low-volume on/off|volume <music> <sfx>|instant-complete|unlock-a-sides|unlock-b-sides|unlock-c-sides|unlock-all-levels|unlock-golden-berries|unlock-paths|obtain-room-berries|obtain-chapter-berries|berry-options <regular|golden|moon> on/off");
+                Log("usage: akron_bypass status|low-volume on/off|volume <music> <sfx>|instant-complete|uncomplete|unlock-a-sides|unlock-b-sides|unlock-c-sides|unlock-all-levels|unlock-golden-berries|unlock-paths|obtain-room-berries|obtain-chapter-berries|berry-options <regular|golden|moon> on/off");
                 return;
         }
     }

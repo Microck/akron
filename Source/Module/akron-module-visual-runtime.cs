@@ -143,6 +143,29 @@ public partial class AkronModule {
         }
 
         Vector2 target = capturedTarget.Value;
+        ApplyClickTeleportTarget(level, player, target);
+    }
+
+    internal static bool ApplyClickTeleportForQa(Level level, Vector2 mouseScreenPosition, out Vector2 target) {
+        target = Vector2.Zero;
+        Player player = level?.Tracker.GetEntity<Player>();
+        if (!IsClickTeleportEffectiveEnabled() ||
+            Settings.StartPosMousePlacement ||
+            player == null ||
+            player.Dead ||
+            IsOverlayVisible ||
+            !TryUse(AkronFeatureKind.ClickTeleport)) {
+            return false;
+        }
+
+        target = MouseScreenToWorldForClickTeleport(level, mouseScreenPosition);
+        target.X = Calc.Clamp(target.X, level.Bounds.Left, level.Bounds.Right);
+        target.Y = Calc.Clamp(target.Y, level.Bounds.Top, level.Bounds.Bottom);
+        ApplyClickTeleportTarget(level, player, target);
+        return true;
+    }
+
+    private static void ApplyClickTeleportTarget(Level level, Player player, Vector2 target) {
         Vector2 positionBefore = player.Position;
         Vector2 requestedDelta = new Vector2 {
             X = target.X - positionBefore.X,

@@ -4,6 +4,15 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Unreleased
+
+### Fixed
+
+- Let Skip Cutscene run Celeste's active cutscene skip callback instead of leaving the level stuck in a skipping cutscene state.
+- Let Akron's internal recorder find host FFmpeg and its Linux libraries from inside the Steam Runtime sandbox.
+- Prefer the most specific matching SFX volume group so broad sound fragments do not shadow narrower controls such as Ridge Wind.
+- Tighten several verified overlay, HUD, input, backup, StartPos, and runtime helper paths found during the player-visible checklist pass.
+
 ## 0.1.2-beta.36
 
 ### Changed

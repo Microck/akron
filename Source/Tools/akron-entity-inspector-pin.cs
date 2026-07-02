@@ -368,6 +368,39 @@ public static partial class AkronEntityInspector
                ";current=" + DescribeInspectorStackForQa(currentStack, inspectorPinSelectedIndex);
     }
 
+    internal static string ExerciseInspectorPinControlsForQa(Level level)
+    {
+        if (level == null || !HasInspectorPinSelection())
+        {
+            return "missing-selection";
+        }
+
+        AkronInspectorReportData data = BuildInspectorReportData(level, currentStack[inspectorPinSelectedIndex], currentStack, inspectorPinSelectedIndex);
+        bool propertiesBefore = inspectorPinPropertiesOpen;
+        string visibleReport = BuildVisibleCopyReport(data, propertiesBefore);
+        inspectorPinPropertiesOpen = !inspectorPinPropertiesOpen;
+        string collapsedReport = BuildVisibleCopyReport(data, inspectorPinPropertiesOpen);
+        inspectorPinPropertiesOpen = propertiesBefore;
+        ClearInspectorPinSelection();
+
+        return "copy-lines=" + CountReportLines(visibleReport).ToString(CultureInfo.InvariantCulture) +
+               ";copy-has-header=" + visibleReport.StartsWith("Akron Entity Inspector Report", StringComparison.Ordinal).ToString().ToLowerInvariant() +
+               ";properties-before=" + propertiesBefore.ToString().ToLowerInvariant() +
+               ";toggled-properties=" + (!propertiesBefore).ToString().ToLowerInvariant() +
+               ";toggled-copy-lines=" + CountReportLines(collapsedReport).ToString(CultureInfo.InvariantCulture) +
+               ";closed-selection=" + (!HasInspectorPinSelection()).ToString().ToLowerInvariant();
+    }
+
+    private static int CountReportLines(string report)
+    {
+        if (string.IsNullOrEmpty(report))
+        {
+            return 0;
+        }
+
+        return report.Split('\n').Length;
+    }
+
     private static string DescribeInspectorStackForQa(List<InspectorHit> stack, int selectedIndex)
     {
         if (stack.Count == 0)

@@ -48,6 +48,10 @@ public static class AkronRuntimeOptions {
         ApplySafeModeStatFreeze(level);
     }
 
+    public static void ApplyScreenshakeAfterLevelUpdate(Level level) {
+        ApplyScreenshake(level, afterLevelUpdate: true);
+    }
+
     public static string DescribeVisualTuning() {
         List<string> active = new List<string>();
         if (AkronModule.Settings.LightLevel) {
@@ -172,14 +176,15 @@ public static class AkronRuntimeOptions {
                AkronModule.Settings.PauseCountdownHidePauseTint;
     }
 
-    public static void HoldSceneClockForFreeCameraFreeze(Level level) {
+    public static void HoldSceneClockForSkippedLevelUpdate(Level level) {
         if (level == null) {
             return;
         }
 
         // Scene.BeforeUpdate runs before Level.Update and advances these clocks
-        // even when this hook skips the actual level update. Restore that frame's
-        // increment so "Freeze gameplay" also freezes timers and time-driven scene effects.
+        // even when Akron intentionally skips the actual level update. Restore
+        // that frame's increment so paused/frozen gameplay also freezes timers
+        // and time-driven scene effects.
         if (!level.Paused) {
             level.TimeActive = Math.Max(0f, level.TimeActive - Engine.DeltaTime);
         }
@@ -283,18 +288,31 @@ public static class AkronRuntimeOptions {
         HiddenPauseHudVisibility.Clear();
     }
 
-    private static void ApplyScreenshake(Level level) {
+    private static void ApplyScreenshake(Level level, bool afterLevelUpdate = false) {
         if (level == null) {
             return;
         }
 
+        int intensity = AkronModuleSettings.ClampScreenshakeIntensity(AkronModule.Settings.ScreenshakeIntensity);
         bool disabled = AkronModule.Settings.Screenshake &&
-                        AkronModuleSettings.ClampScreenshakeIntensity(AkronModule.Settings.ScreenshakeIntensity) <= 0 &&
+                        intensity <= 0 &&
                         AkronModule.TryUse(AkronFeatureKind.Screenshake);
         SetMember(level, "DisableScreenShake", disabled);
         if (disabled) {
             SetMember(level, "ShakeVector", Vector2.Zero);
+            return;
         }
+
+        if (!afterLevelUpdate ||
+            !AkronModule.Settings.Screenshake ||
+            intensity >= 100 ||
+            !AkronModule.TryUse(AkronFeatureKind.Screenshake) ||
+            !TryGetMemberValue(level, "ShakeVector", out object shakeVector) ||
+            shakeVector is not Vector2 vector) {
+            return;
+        }
+
+        SetMember(level, "ShakeVector", vector * (intensity / 100f));
     }
 
     private static void ApplyVisualTuning(Level level) {

@@ -168,6 +168,7 @@ public static partial class AkronInternalRecorder {
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+            ConfigureFfmpegStartInfo(startInfo);
 
             using Process process = Process.Start(startInfo);
             if (process == null) {
@@ -275,6 +276,7 @@ public static partial class AkronInternalRecorder {
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+            ConfigureFfmpegStartInfo(startInfo);
 
             using Process process = Process.Start(startInfo);
             if (process == null) {

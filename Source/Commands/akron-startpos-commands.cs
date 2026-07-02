@@ -73,7 +73,7 @@ public static partial class AkronCommands {
         Log(AkronModule.DescribeSavestateResult("Load", result, AkronModule.Settings.ActiveSavestateSlot));
     }
 
-    [Command("akron_startpos", "Akron StartPos: status|slot <n>|set|load|clear|prev|next|place <on|off>|dashes <n>|stamina <n>|slots <n>|facing <current|left|right>|idle <on|off>|grab <on|off>|label <on|off>|respawn <on|off>")]
+    [Command("akron_startpos", "Akron StartPos: status|slot <n>|set|load|clear|prev|next|place <on|off>|dashes <n>|stamina <n>|slots <n>|facing <current|left|right>|idle <on|off>|grab <on|off>|label <on|off>|respawn <on|off>|smart <on|off>")]
     public static void StartPos(string action = "status", string value = "") {
         Level level = RequireLevel();
         if (level == null) {
@@ -180,6 +180,14 @@ public static partial class AkronCommands {
                 if (!ApplyStartPosRespawnAction(value)) {
                     return;
                 }
+                break;
+            case "smart":
+            case "smartstartpos":
+                if (!TryParseBoolean(value, out bool smart)) {
+                    Log("usage: akron_startpos smart <on|off>");
+                    return;
+                }
+                AkronModule.Settings.SmartStartPos = smart;
                 break;
             default:
                 Log("unknown startpos action: " + action);

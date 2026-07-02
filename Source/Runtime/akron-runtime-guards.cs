@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using Celeste;
@@ -10,6 +11,8 @@ namespace Celeste.Mod.Akron;
 public partial class AkronModule {
     private static bool proofRecorderGuardWarningShown;
     private static float pauseCountdownTimer;
+    private static double pauseCountdownEndTimestamp;
+    private static long lastLagPauserUpdateTimestamp;
 
     private static void LevelOnPause(Level level, int startIndex, bool minimal, bool quickReset) {
         if (level == null || !Settings.PauseTracker || !TryUse(AkronFeatureKind.PauseTracker)) {
@@ -36,21 +39,50 @@ public partial class AkronModule {
         if (level == null ||
             !Settings.PauseCountdown ||
             !TryUse(AkronFeatureKind.PauseCountdown)) {
-            pauseCountdownTimer = 0f;
+            ClearPauseCountdown();
             return;
         }
 
         pauseCountdownTimer = AkronModuleSettings.ClampPauseCountdownSeconds(Settings.PauseCountdownSeconds);
+        pauseCountdownEndTimestamp = Stopwatch.GetTimestamp() + pauseCountdownTimer * Stopwatch.Frequency;
+    }
+
+    internal static void NotifyPauseForQa(Level level) {
+        LevelOnPause(level, 0, minimal: false, quickReset: false);
+    }
+
+    internal static void NotifyUnpauseForQa(Level level) {
+        LevelOnUnpause(level);
     }
 
     private static bool UpdatePauseCountdown(Level level) {
-        if (pauseCountdownTimer <= 0f) {
+        float remaining = GetPauseCountdownRemaining();
+        if (remaining <= 0f) {
+            ClearPauseCountdown();
             return false;
         }
 
-        pauseCountdownTimer = Math.Max(0f, pauseCountdownTimer - Math.Max(0f, Engine.RawDeltaTime));
-        AkronRuntimeOptions.HoldSceneClockForFreeCameraFreeze(level);
-        return pauseCountdownTimer > 0f;
+        pauseCountdownTimer = remaining;
+            AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(level);
+        return true;
+    }
+
+    private static float GetPauseCountdownRemaining() {
+        if (pauseCountdownTimer <= 0f) {
+            return 0f;
+        }
+
+        if (pauseCountdownEndTimestamp <= 0d) {
+            return Math.Max(0f, pauseCountdownTimer);
+        }
+
+        double remaining = (pauseCountdownEndTimestamp - Stopwatch.GetTimestamp()) / Stopwatch.Frequency;
+        return (float) Math.Max(0d, remaining);
+    }
+
+    private static void ClearPauseCountdown() {
+        pauseCountdownTimer = 0f;
+        pauseCountdownEndTimestamp = 0d;
     }
 
     private static void ResetProofRuntimeTelemetry() {
@@ -61,6 +93,7 @@ public partial class AkronModule {
         Session.PauseTrackerCurrentPauseStartedAt = -1f;
         Session.LagPauserTriggerCount = 0;
         Session.LagPauserLastSpikeMs = 0f;
+        lastLagPauserUpdateTimestamp = 0L;
         Session.UsedGoldenStartHelper = false;
         Session.UsedJournalSnapshotCompare = false;
         Session.LastJournalSnapshotPath = string.Empty;
@@ -68,6 +101,12 @@ public partial class AkronModule {
     }
 
     private static void UpdateLagPauser(Level level) {
+        long now = Stopwatch.GetTimestamp();
+        float spikeMs = lastLagPauserUpdateTimestamp > 0L
+            ? (float) ((now - lastLagPauserUpdateTimestamp) * 1000d / Stopwatch.Frequency)
+            : 0f;
+        lastLagPauserUpdateTimestamp = now;
+
         if (level == null ||
             level.Paused ||
             !Settings.LagPauser ||
@@ -75,7 +114,6 @@ public partial class AkronModule {
             return;
         }
 
-        float spikeMs = Engine.RawDeltaTime * 1000f;
         if (spikeMs < AkronModuleSettings.ClampLagPauserThresholdMs(Settings.LagPauserThresholdMs)) {
             return;
         }
@@ -98,7 +136,7 @@ public partial class AkronModule {
         }
 
         proofRecorderGuardWarningShown = true;
-        Engine.Scene?.Add(new AkronToast("Submission mode: proof recorder is not armed."));
+        Engine.Scene?.Add(new AkronToast("Submission mode: proof recorder is not armed.", forceVisible: true));
     }
 
     private static void UpdateGoldenTransparency(Level level) {
@@ -160,7 +198,7 @@ public partial class AkronModule {
         );
     }
 
-    public static float PauseCountdownRemaining => Math.Max(0f, pauseCountdownTimer);
+    public static float PauseCountdownRemaining => GetPauseCountdownRemaining();
 
-    public static bool IsPauseCountdownActive => pauseCountdownTimer > 0f;
+    public static bool IsPauseCountdownActive => GetPauseCountdownRemaining() > 0f;
 }

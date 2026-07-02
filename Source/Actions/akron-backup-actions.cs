@@ -181,6 +181,16 @@ public static class AkronBackupActions {
         RestoreBackupConfirmed(backup);
     }
 
+    internal static void RestoreBackupForQa(AkronBackupEntry backup) {
+        RestoreBackupConfirmed(backup);
+    }
+
+    internal static void ApplyRetentionForQa() {
+        lock (Sync) {
+            ApplyRetention();
+        }
+    }
+
     public static void SetPinned(AkronBackupEntry backup, bool pinned) {
         if (backup == null || string.IsNullOrWhiteSpace(backup.Path)) {
             return;

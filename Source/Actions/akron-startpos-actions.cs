@@ -471,6 +471,10 @@ public static partial class AkronActions {
             return null;
         }
 
+        if (slot < MinPositionSlot) {
+            return null;
+        }
+
         int clampedSlot = NormalizePositionSlot(slot);
         return AkronModule.Session.StartPositions.TryGetValue(clampedSlot, out AkronStartPos startPos)
             ? startPos

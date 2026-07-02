@@ -77,6 +77,7 @@ public partial class AkronModule : EverestModule {
     private static bool cursorZoomLastBindDown;
     private static bool pauseTimerFreezeStoppedTimer;
     private static bool captureSuppressionHooksInstalled;
+    private static int fastLookoutPatchedConstantCount;
     private static bool startPosPlacementLastLeftDown;
     private static int jumpHackAirJumpsUsed;
     private static readonly Dictionary<PlayerDeadBody, float> respawnTimeElapsed = new Dictionary<PlayerDeadBody, float>();
@@ -395,16 +396,18 @@ public partial class AkronModule : EverestModule {
         AkronEntityInspector.UpdateInspectorPin(self);
 
         bool overlayUpdated = false;
-        if (Overlay?.Visible == true || Overlay?.IsStartPosPlacementActive == true || Settings.StartPosMousePlacement) {
+        if (Overlay?.Visible == true || Overlay?.IsTransientMouseUiActive == true || Settings.StartPosMousePlacement) {
             UpdateOverlayCursorState();
             Overlay.Active = false;
             Overlay.Update();
             overlayUpdated = true;
             UpdateOverlayCursorState();
             if (Overlay.SearchOwnsGameplayInputThisFrame) {
+                AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
                 return;
             }
             if (Settings.PauseGameplayInMenu) {
+                AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
                 return;
             }
         } else {
@@ -419,13 +422,14 @@ public partial class AkronModule : EverestModule {
         AkronActions.ApplyLowVolumeBypass();
         UpdateNoclipAccuracyTintTimer();
         if (UpdatePauseCountdown(self)) {
+            AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
             if (!overlayUpdated) {
                 Overlay?.Update();
             }
             return;
         }
         if (AkronRuntimeOptions.ShouldFreezeGameplayForFreeCamera(self)) {
-            AkronRuntimeOptions.HoldSceneClockForFreeCameraFreeze(self);
+            AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
             if (!overlayUpdated) {
                 Overlay?.Update();
             }
@@ -433,6 +437,7 @@ public partial class AkronModule : EverestModule {
         }
 
         if (Session.FreezeGameplay && !Session.StepFrameRequested) {
+            AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
             if (!overlayUpdated) {
                 Overlay?.Update();
             }
@@ -440,6 +445,7 @@ public partial class AkronModule : EverestModule {
         }
         Session.StepFrameRequested = false;
         orig(self);
+        AkronRuntimeOptions.ApplyScreenshakeAfterLevelUpdate(self);
         ApplyJumpHackAfterPlayerUpdate(self);
         ClearLastDeathHitboxAfterRespawn(self);
         AkronPracticeStats.OnLevelUpdate(self);
@@ -585,7 +591,7 @@ public partial class AkronModule : EverestModule {
             AkronOverlay.ExecuteCustomBoundActions(scene);
         }
 
-        if (Overlay?.Visible == true || Overlay?.IsStartPosPlacementActive == true || Settings.StartPosMousePlacement) {
+        if (Overlay?.Visible == true || Overlay?.IsTransientMouseUiActive == true || Settings.StartPosMousePlacement) {
             UpdateOverlayCursorState();
             Overlay.Active = false;
             Overlay.Update();

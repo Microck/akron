@@ -340,6 +340,8 @@ public static partial class AkronCommands {
 
     private static void LogVisualTuningSettings() {
         Log("visual-tuning: " + AkronRuntimeOptions.DescribeVisualTuning());
+        Log("screenshake: " + AkronModule.Settings.Screenshake.ToString().ToLowerInvariant());
+        Log("screenshake-intensity: " + AkronModule.Settings.ScreenshakeIntensity.ToString(CultureInfo.InvariantCulture));
         Log("light-level: " + AkronModule.Settings.LightLevel.ToString().ToLowerInvariant());
         Log("light-level-percent: " + AkronModule.Settings.LightLevelPercent.ToString(CultureInfo.InvariantCulture));
         Log("bloom-level: " + AkronModule.Settings.BloomLevel.ToString().ToLowerInvariant());

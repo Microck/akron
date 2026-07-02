@@ -148,6 +148,26 @@ public partial class AkronModule {
         }
     }
 
+    internal static IEnumerable<string> DescribeDeathVisualStateForQa(Level level) {
+        if (level == null) {
+            yield return "qa-death-level: missing";
+            yield break;
+        }
+
+        List<PlayerDeadBody> deadBodies = level.Entities.OfType<PlayerDeadBody>().ToList();
+        yield return "qa-death-body-count: " + deadBodies.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        for (int index = 0; index < deadBodies.Count; index++) {
+            PlayerDeadBody deadBody = deadBodies[index];
+            bool hasDeathEffect = PlayerDeadBodyDeathEffectField?.GetValue(deadBody) is DeathEffect;
+            yield return "qa-death-body-" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                         ": visible=" + deadBody.Visible.ToString().ToLowerInvariant() +
+                         ";action-delay=" + deadBody.ActionDelay.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) +
+                         ";death-effect=" + hasDeathEffect.ToString().ToLowerInvariant() +
+                         ";tracked-respawn=" + respawnTimeElapsed.ContainsKey(deadBody).ToString().ToLowerInvariant() +
+                         ";tracked-no-effect=" + noDeathEffectBodies.Contains(deadBody).ToString().ToLowerInvariant();
+        }
+    }
+
     private static AkronStartPos ApplyPracticeRespawnPoint(Player player) {
         if (player.Scene is not Level level) {
             return null;
@@ -618,6 +638,11 @@ public partial class AkronModule {
             : redirectedAim;
     }
 
+    internal static Vector2 ApplyDashRedirectGuardForQa(Vector2 originalAim, Vector2 redirectedAim) {
+        preRedirectDashAim = originalAim;
+        return ApplyDashRedirectGuard(redirectedAim);
+    }
+
     private static bool ShouldPreventDashRedirect(Vector2 originalAim) {
         AkronDashRedirectDirection directions = AkronModuleSettings.NormalizeDashRedirectDirections(Settings.DashRedirectDirections);
         return (directions & GetDashRedirectDirection(originalAim)) != 0;
@@ -667,19 +692,30 @@ public partial class AkronModule {
             patched++;
         }
 
+        fastLookoutPatchedConstantCount = patched;
         if (patched == 0) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Could not find Lookout movement constants; Fast Lookout is disabled.");
         }
     }
 
     private static float ApplyFastLookoutMultiplier(float vanillaValue) {
+        return ApplyFastLookoutMultiplier(vanillaValue, Settings.FastLookoutHold?.Check == true);
+    }
+
+    private static float ApplyFastLookoutMultiplier(float vanillaValue, bool holdPressed) {
         if (!Settings.FastLookout ||
-            Settings.FastLookoutHold?.Check != true ||
+            !holdPressed ||
             !AkronPolicy.CanUse(AkronFeatureKind.FastLookout).Allowed) {
             return vanillaValue;
         }
 
         return vanillaValue * AkronModuleSettings.ClampFastLookoutMultiplier(Settings.FastLookoutMultiplier);
+    }
+
+    internal static int FastLookoutPatchedConstantCount => fastLookoutPatchedConstantCount;
+
+    internal static float ApplyFastLookoutMultiplierForQa(float vanillaValue, bool holdPressed) {
+        return ApplyFastLookoutMultiplier(vanillaValue, holdPressed);
     }
 
     private static void PlayerOnJump(On.Celeste.Player.orig_Jump orig, Player self, bool particles, bool playSfx) {

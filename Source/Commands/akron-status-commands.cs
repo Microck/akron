@@ -210,6 +210,8 @@ public static partial class AkronCommands {
         Log("hide-waterfalls: " + AkronModule.Settings.HideWaterfalls.ToString().ToLowerInvariant());
         Log("hide-tentacles: " + AkronModule.Settings.HideTentacles.ToString().ToLowerInvariant());
         Log("hide-heat-distortion: " + AkronModule.Settings.HideHeatDistortion.ToString().ToLowerInvariant());
+        Log("screenshake: " + AkronModule.Settings.Screenshake.ToString().ToLowerInvariant());
+        Log("screenshake-intensity: " + AkronModule.Settings.ScreenshakeIntensity.ToString(CultureInfo.InvariantCulture));
         Log("light-level: " + AkronModule.Settings.LightLevel.ToString().ToLowerInvariant());
         Log("light-level-percent: " + AkronModule.Settings.LightLevelPercent.ToString(CultureInfo.InvariantCulture));
         Log("bloom-level: " + AkronModule.Settings.BloomLevel.ToString().ToLowerInvariant());
@@ -222,6 +224,7 @@ public static partial class AkronCommands {
         Log("no-death-wipe: " + AkronModule.Settings.NoDeathWipe.ToString().ToLowerInvariant());
         Log("no-death-wipe-mode: " + AkronModule.Settings.NoDeathWipeMode);
         Log("no-death-wipe-run-callbacks: " + AkronModule.Settings.NoDeathWipeRunCallbacks.ToString().ToLowerInvariant());
+        Log("no-respawn-animation: " + AkronModule.Settings.NoRespawnAnimation.ToString().ToLowerInvariant());
         Log("hitboxes: " + AkronModule.Settings.HitboxViewer.ToString().ToLowerInvariant());
         Log("fix-hitbox-pixels: " + AkronModule.Settings.FixHitboxPixels.ToString().ToLowerInvariant());
         Log("hitbox-active-only: " + AkronModule.Settings.HitboxActiveOnly.ToString().ToLowerInvariant());

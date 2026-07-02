@@ -39,6 +39,10 @@ public static partial class AkronCustomHudLabels {
             return;
         }
 
+        if (!ActiveFontReady()) {
+            return;
+        }
+
         EnsureLabels();
         AkronHudRect? playerHudRect = ResolvePlayerHudRect(level, player);
         LabelLayout layout = new LabelLayout(
@@ -487,6 +491,15 @@ public static partial class AkronCustomHudLabels {
 
     private static string[] SplitLines(string text) {
         return (text ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+    }
+
+    private static bool ActiveFontReady() {
+        try {
+            ActiveFont.Measure("Ag");
+            return true;
+        } catch (Exception) {
+            return false;
+        }
     }
 
     private static LabelStyle ResolveStyle(AkronCustomHudLabel label) {

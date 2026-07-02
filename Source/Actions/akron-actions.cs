@@ -925,7 +925,11 @@ public static partial class AkronActions {
 
         level.SkippingCutscene = true;
         FieldInfo onCutsceneSkipField = typeof(Level).GetField("onCutsceneSkip", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        if (onCutsceneSkipField?.GetValue(level) is Action onCutsceneSkip) {
+        object onCutsceneSkipValue = onCutsceneSkipField?.GetValue(level);
+        if (onCutsceneSkipValue is Action<Level> onCutsceneSkipWithLevel) {
+            onCutsceneSkipWithLevel(level);
+            onCutsceneSkipField.SetValue(level, null);
+        } else if (onCutsceneSkipValue is Action onCutsceneSkip) {
             onCutsceneSkip();
             onCutsceneSkipField.SetValue(level, null);
         }

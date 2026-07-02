@@ -140,6 +140,15 @@ public partial class AkronModule {
         return deathWipeRenderSuppressionActive && deathWipeRenderSuppressionHasDrawnPrimitives;
     }
 
+    internal static string DescribeDeathWipeStateForQa(Scene scene) {
+        return "qa-death-wipe: suppress-out=" + ShouldSuppressScreenWipe(scene, wipeIn: false).ToString().ToLowerInvariant() +
+               ";suppress-in=" + ShouldSuppressScreenWipe(scene, wipeIn: true).ToString().ToLowerInvariant() +
+               ";active=" + deathWipeRenderSuppressionActive.ToString().ToLowerInvariant() +
+               ";awaiting-in=" + deathWipeRenderSuppressionAwaitingWipeIn.ToString().ToLowerInvariant() +
+               ";drawn=" + deathWipeRenderSuppressionHasDrawnPrimitives.ToString().ToLowerInvariant() +
+               ";fallback-frames=" + deathWipeRenderSuppressionFallbackFrames.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     private static void ScreenWipeOnDrawPrimitives(On.Celeste.ScreenWipe.orig_DrawPrimitives orig, VertexPositionColor[] vertices) {
         // Map Capture reloads rooms internally and captures them synchronously.
         // Transition wipes are gameplay presentation, not room pixels, so keep

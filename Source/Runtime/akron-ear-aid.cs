@@ -100,26 +100,48 @@ public static class AkronEarAid {
             return;
         }
 
-        foreach (SoundDefinition sound in Sounds) {
-            if (!Matches(eventName, sound)) {
-                continue;
-            }
-
-            if (OverrideEnabled(sound.Key)) {
-                int volume = VolumeFor(sound.Key);
-                instance.setVolume(volume / 100f);
-            }
+        SoundDefinition sound = FindBestMatch(eventName);
+        if (sound == null) {
             return;
+        }
+
+        if (OverrideEnabled(sound.Key)) {
+            int volume = VolumeFor(sound.Key);
+            instance.setVolume(volume / 100f);
         }
     }
 
-    private static bool Matches(string eventName, SoundDefinition sound) {
-        foreach (string fragment in sound.EventFragments) {
-            if (!string.IsNullOrWhiteSpace(fragment) && eventName.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0) {
-                return true;
+    public static float VolumeForEventNameForTesting(string eventName) {
+        SoundDefinition sound = FindBestMatch(eventName ?? string.Empty);
+        if (sound != null) {
+            return OverrideEnabled(sound.Key) ? VolumeFor(sound.Key) / 100f : 1f;
+        }
+
+        return 1f;
+    }
+
+    private static SoundDefinition FindBestMatch(string eventName) {
+        SoundDefinition best = null;
+        int bestScore = 0;
+        foreach (SoundDefinition sound in Sounds) {
+            int score = MatchScore(eventName, sound);
+            if (score > bestScore) {
+                best = sound;
+                bestScore = score;
             }
         }
 
-        return false;
+        return best;
+    }
+
+    private static int MatchScore(string eventName, SoundDefinition sound) {
+        int score = 0;
+        foreach (string fragment in sound.EventFragments) {
+            if (!string.IsNullOrWhiteSpace(fragment) && eventName.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0) {
+                score++;
+            }
+        }
+
+        return score;
     }
 }
