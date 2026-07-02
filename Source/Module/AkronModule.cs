@@ -422,7 +422,6 @@ public partial class AkronModule : EverestModule {
         AkronActions.ApplyLowVolumeBypass();
         UpdateNoclipAccuracyTintTimer();
         if (UpdatePauseCountdown(self)) {
-            AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
             if (!overlayUpdated) {
                 Overlay?.Update();
             }

@@ -63,7 +63,7 @@ public partial class AkronModule {
         }
 
         pauseCountdownTimer = remaining;
-            AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(level);
+        AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(level);
         return true;
     }
 
