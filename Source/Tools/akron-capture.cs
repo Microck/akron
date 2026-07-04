@@ -9,10 +9,8 @@ namespace Celeste.Mod.Akron;
 
 public static class AkronCapture {
     private static string pendingPath = string.Empty;
-    private static bool pendingScannerOverlays;
 
     internal static bool IsCapturingGameFrame { get; private set; }
-    internal static bool IsCapturingScannerOverlays { get; private set; }
 
     public static string Capture(Level level) {
         if (string.IsNullOrWhiteSpace(pendingPath)) {
@@ -20,9 +18,7 @@ public static class AkronCapture {
         }
 
         string outputPath = pendingPath;
-        bool scannerOverlays = pendingScannerOverlays;
         pendingPath = string.Empty;
-        pendingScannerOverlays = false;
 
         GraphicsDevice graphicsDevice = Engine.Instance.GraphicsDevice;
         Viewport captureViewport = Engine.Viewport;
@@ -33,29 +29,30 @@ public static class AkronCapture {
 
         try {
             pixels = AkronModule.Settings.ScreenshotScannerRemoveBackground
-                ? CaptureTransparentBackground(level, graphicsDevice, captureViewport, originalViewport, scannerOverlays)
-                : CaptureFrame(level, graphicsDevice, captureViewport, originalViewport, scannerOverlays, level.BackgroundColor);
+                ? CaptureTransparentBackground(level, graphicsDevice, captureViewport, originalViewport)
+                : CaptureFrame(level, graphicsDevice, captureViewport, originalViewport, level.BackgroundColor);
 
             texture = new Texture2D(graphicsDevice, captureViewport.Width, captureViewport.Height, false, SurfaceFormat.Color);
             texture.SetData(pixels);
 
             int scale = AkronModuleSettings.ClampScreenshotScale(AkronModule.Settings.ScreenshotScale);
-            using FileStream stream = File.Create(outputPath);
-            if (scale <= 1) {
-                SaveTexture(stream, texture, captureViewport.Width, captureViewport.Height);
-            } else {
-                int scaledWidth = captureViewport.Width * scale;
-                int scaledHeight = captureViewport.Height * scale;
+            SaveCapturedTexture(outputPath, stream => {
+                if (scale <= 1) {
+                    SaveTexture(stream, texture, captureViewport.Width, captureViewport.Height);
+                    return;
+                }
+
+                int scaledWidth = ScaledCaptureDimension(captureViewport.Width);
+                int scaledHeight = ScaledCaptureDimension(captureViewport.Height);
                 Color[] scaledPixels = ScalePoint(pixels, captureViewport.Width, captureViewport.Height, scale);
                 scaledTexture = new Texture2D(graphicsDevice, scaledWidth, scaledHeight, false, SurfaceFormat.Color);
                 scaledTexture.SetData(scaledPixels);
                 SaveTexture(stream, scaledTexture, scaledWidth, scaledHeight);
-            }
+            });
         } finally {
             graphicsDevice.SetRenderTarget(null);
             graphicsDevice.Viewport = originalViewport;
             IsCapturingGameFrame = false;
-            IsCapturingScannerOverlays = false;
             texture?.Dispose();
             scaledTexture?.Dispose();
             try {
@@ -68,22 +65,22 @@ public static class AkronCapture {
         return outputPath;
     }
 
-    private static Color[] CaptureTransparentBackground(Level level, GraphicsDevice graphicsDevice, Viewport captureViewport, Viewport originalViewport, bool scannerOverlays) {
+    private static Color[] CaptureTransparentBackground(Level level, GraphicsDevice graphicsDevice, Viewport captureViewport, Viewport originalViewport) {
         Color previousBackgroundColor = level.BackgroundColor;
         float previousBloomStrength = level.Bloom?.Strength ?? 0f;
 
         try {
-            // ScreenshotTool infers alpha by rendering the same frame over white
-            // and black backgrounds. Dropping bloom from the white pass avoids
+            // Alpha is inferred by rendering the same frame over white and
+            // black backgrounds. Dropping bloom from the white pass avoids
             // counting the same glow twice when the two passes are combined.
             if (level.Bloom != null) {
                 level.Bloom.Strength = 0f;
             }
-            Color[] whitePixels = CaptureFrame(level, graphicsDevice, captureViewport, originalViewport, scannerOverlays, Color.White);
+            Color[] whitePixels = CaptureFrame(level, graphicsDevice, captureViewport, originalViewport, Color.White);
             if (level.Bloom != null) {
                 level.Bloom.Strength = previousBloomStrength;
             }
-            Color[] blackPixels = CaptureFrame(level, graphicsDevice, captureViewport, originalViewport, scannerOverlays, Color.Black);
+            Color[] blackPixels = CaptureFrame(level, graphicsDevice, captureViewport, originalViewport, Color.Black);
             return InferTransparentPixels(whitePixels, blackPixels);
         } finally {
             level.BackgroundColor = previousBackgroundColor;
@@ -93,7 +90,7 @@ public static class AkronCapture {
         }
     }
 
-    private static Color[] CaptureFrame(Level level, GraphicsDevice graphicsDevice, Viewport captureViewport, Viewport originalViewport, bool scannerOverlays, Color backgroundColor) {
+    private static Color[] CaptureFrame(Level level, GraphicsDevice graphicsDevice, Viewport captureViewport, Viewport originalViewport, Color backgroundColor) {
         Color previousBackgroundColor = level.BackgroundColor;
         SpeedrunType previousSpeedrunClock = global::Celeste.Settings.Instance.SpeedrunClock;
         object speedrunToolRoomTimerState = null;
@@ -101,7 +98,6 @@ public static class AkronCapture {
         try {
             level.BackgroundColor = backgroundColor;
             IsCapturingGameFrame = true;
-            IsCapturingScannerOverlays = scannerOverlays;
             AkronModule.EnsureCaptureSuppressionHooks();
             global::Celeste.Settings.Instance.SpeedrunClock = SpeedrunType.Off;
             speedrunToolRoomTimerState = AkronSpeedrunToolBroker.SuppressRoomTimerHudForCapture();
@@ -114,7 +110,6 @@ public static class AkronCapture {
                 AkronSpeedrunToolBroker.RestoreRoomTimerHudAfterCapture(speedrunToolRoomTimerState);
                 global::Celeste.Settings.Instance.SpeedrunClock = previousSpeedrunClock;
                 IsCapturingGameFrame = false;
-                IsCapturingScannerOverlays = false;
                 graphicsDevice.Viewport = originalViewport;
             }
             return pixels;
@@ -165,35 +160,53 @@ public static class AkronCapture {
     }
 
     public static string CaptureToPath(Level level, string outputPath) {
-        return CaptureToPath(level, outputPath, includeScannerOverlays: false);
-    }
-
-    public static string CaptureToPath(Level level, string outputPath, bool includeScannerOverlays) {
         string previous = pendingPath;
-        bool previousScannerOverlays = pendingScannerOverlays;
         pendingPath = outputPath;
-        pendingScannerOverlays = includeScannerOverlays;
         try {
             return Capture(level);
         } finally {
             if (pendingPath == outputPath) {
                 pendingPath = string.Empty;
-                pendingScannerOverlays = false;
             }
             if (!string.IsNullOrWhiteSpace(previous)) {
                 pendingPath = previous;
-                pendingScannerOverlays = previousScannerOverlays;
             }
         }
     }
 
-    private static void SaveTexture(Stream stream, Texture2D texture, int width, int height) {
+    internal static int ScaledCaptureDimension(int dimension) {
+        return dimension * AkronModuleSettings.ClampScreenshotScale(AkronModule.Settings.ScreenshotScale);
+    }
+
+    internal static void SaveTexture(Stream stream, Texture2D texture, int width, int height) {
         if (AkronModuleSettings.NormalizeScreenshotScannerImageFormat(AkronModule.Settings.ScreenshotScannerImageFormat) == AkronScreenshotImageFormat.Jpeg) {
             texture.SaveAsJpeg(stream, width, height);
             return;
         }
 
         texture.SaveAsPng(stream, width, height);
+    }
+
+    private static void SaveCapturedTexture(string outputPath, Action<Stream> save) {
+        string tempPath = outputPath + ".tmp";
+        if (File.Exists(tempPath)) {
+            File.Delete(tempPath);
+        }
+
+        try {
+            using (FileStream stream = File.Create(tempPath)) {
+                save(stream);
+            }
+
+            if (File.Exists(outputPath)) {
+                File.Delete(outputPath);
+            }
+            File.Move(tempPath, outputPath);
+        } finally {
+            if (File.Exists(tempPath)) {
+                File.Delete(tempPath);
+            }
+        }
     }
 
     private static Color[] ScalePoint(Color[] source, int width, int height, int scale) {

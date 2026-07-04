@@ -447,6 +447,7 @@ public partial class AkronModuleSettings {
             ScreenshotScannerExportStartPositions = ScreenshotScannerExportStartPositions,
             ScreenshotScannerExportAutoKillAreas = ScreenshotScannerExportAutoKillAreas,
             ScreenshotScannerExportAutoDeafenAreas = ScreenshotScannerExportAutoDeafenAreas,
+            ScreenshotScannerDownscaleMapCapture = ScreenshotScannerDownscaleMapCapture,
             ScreenshotScannerFreezeTime = ScreenshotScannerFreezeTime,
             ScreenshotScannerRemoveBackground = ScreenshotScannerRemoveBackground,
             ScreenshotScannerRemoveForeground = ScreenshotScannerRemoveForeground,

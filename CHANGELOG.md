@@ -4,6 +4,12 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## 0.1.2-beta.38
+
+### Fixed
+
+- Write merged room collages after Room Capture and world-space `map.png` outputs after Map Capture, with scanner markers drawn after stitching at one game pixel and a Downscale option for safer large map exports.
+
 ## 0.1.2-beta.37
 
 ### Fixed

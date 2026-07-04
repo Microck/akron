@@ -57,68 +57,6 @@ public static partial class AkronHudRenderer {
         DrawStartPosMarker(level, player, world, opacity, placed: false);
     }
 
-    private static void RenderScannerExportOverlays(Level level, Player player) {
-        if (level == null || AkronModule.Settings == null) {
-            return;
-        }
-
-        AkronModuleSettings settings = AkronModule.Settings;
-        if (settings.ScreenshotScannerExportAutoKillAreas && settings.AutoKillArea) {
-            foreach (Rectangle area in AkronModule.GetAutoKillAreas()) {
-                if (area.Width > 0 && area.Height > 0) {
-                    DrawWorldRect(level, area, Color.OrangeRed, 0.16f, 2);
-                }
-            }
-        }
-
-        if (settings.ScreenshotScannerExportAutoDeafenAreas && settings.AutoDeafenArea) {
-            foreach (Rectangle area in AkronModule.GetAutoDeafenAreas()) {
-                if (area.Width > 0 && area.Height > 0) {
-                    DrawWorldRect(level, area, Color.DeepSkyBlue, 0.16f, 2);
-                }
-            }
-        }
-
-        if (settings.ScreenshotScannerExportStartPositions) {
-            RenderScannerExportStartPositions(level, player);
-        }
-    }
-
-    private static void RenderScannerExportStartPositions(Level level, Player player) {
-        string areaSid = level.Session.Area.GetSID();
-        string room = level.Session.Level;
-        foreach (KeyValuePair<int, AkronStartPos> pair in AkronModule.Session?.StartPositions ?? new Dictionary<int, AkronStartPos>()) {
-            AkronStartPos startPos = pair.Value;
-            if (startPos == null ||
-                !string.Equals(startPos.AreaSid, areaSid, StringComparison.Ordinal) ||
-                !string.Equals(startPos.Room, room, StringComparison.Ordinal)) {
-                continue;
-            }
-
-            DrawScannerExportStartPosMarker(level, player, pair.Key, startPos.Position);
-        }
-    }
-
-    private static void DrawScannerExportStartPosMarker(Level level, Player player, int slot, Vector2 world) {
-        float opacity = Math.Max(0.45f, AkronModuleSettings.ClampOpacity(AkronModule.Settings.StartPosPreviewOpacity) / 100f);
-        Color accent = ColorFromRgb(AkronModule.Settings.StartPosLabelColor) * opacity;
-        Rectangle hitbox = new Rectangle((int) Math.Round(world.X - 4f), (int) Math.Round(world.Y - 11f), 8, 11);
-        AkronHudRect rect = AkronScreenProjection.WorldToHudRect(level, hitbox);
-        Draw.Rect(rect.X, rect.Y, rect.Width, rect.Height, accent * 0.16f);
-        Draw.HollowRect(rect.X, rect.Y, rect.Width, rect.Height, accent);
-        Draw.Line(new Vector2(rect.X, rect.Y), new Vector2(rect.X + rect.Width, rect.Y + rect.Height), accent * 0.9f);
-        Draw.Line(new Vector2(rect.X + rect.Width, rect.Y), new Vector2(rect.X, rect.Y + rect.Height), accent * 0.9f);
-
-        if (player != null) {
-            DrawStartPosPlayerPreview(level, player, world, opacity * 0.85f);
-        }
-
-        string label = slot.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        float scale = 0.26f;
-        Vector2 labelPosition = new Vector2(rect.X + rect.Width + 3f, rect.Y - 10f);
-        ActiveFont.DrawOutline(label, labelPosition, Vector2.Zero, Vector2.One * scale, accent, 2f, Color.Black * opacity);
-    }
-
     private static bool IsStartPosInCurrentLevel(Level level, AkronStartPos startPos) {
         return startPos != null &&
                string.Equals(startPos.AreaSid, level.Session.Area.GetSID(), StringComparison.Ordinal) &&

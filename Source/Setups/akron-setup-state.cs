@@ -438,6 +438,7 @@ public sealed class AkronSetupState {
     public bool ScreenshotScannerExportStartPositions { get; set; } = true;
     public bool ScreenshotScannerExportAutoKillAreas { get; set; } = true;
     public bool ScreenshotScannerExportAutoDeafenAreas { get; set; } = true;
+    public bool ScreenshotScannerDownscaleMapCapture { get; set; }
     public bool ScreenshotScannerFreezeTime { get; set; } = true;
     public bool ScreenshotScannerRemoveBackground { get; set; }
     public bool ScreenshotScannerRemoveForeground { get; set; }
