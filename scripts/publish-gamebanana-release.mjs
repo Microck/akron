@@ -486,6 +486,7 @@ async function uploadReleaseAssetAndFindFileId(
   hasStoredAuth,
   username,
   password,
+  cookieFallbackAuth = null,
 ) {
   const beforeIds = await getFileRowIds(request, apiSection, submissionId);
   try {
@@ -500,9 +501,39 @@ async function uploadReleaseAssetAndFindFileId(
     ) {
       await logPageState(page, "Stored GameBanana session edit denial");
       await captureDebugArtifact(page, "stored-gamebanana-session-edit-denial");
-      console.log("Stored GameBanana session could not edit the submission; retrying with credentials.");
-      await logIn(page, username, password);
-      await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
+      if (cookieFallbackAuth) {
+        console.log(
+          "Stored GameBanana session could not edit the submission; retrying with GAMEBANANA_COOKIES.",
+        );
+        await cookieFallbackAuth(page);
+        try {
+          await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
+        } catch (cookieError) {
+          if (
+            cookieError instanceof Error &&
+            cookieError.code === "GAMEBANANA_EDIT_PERMISSION_DENIED"
+          ) {
+            await logPageState(page, "GameBanana cookie auth edit denial");
+            await captureDebugArtifact(page, "gamebanana-cookie-auth-edit-denial");
+          } else {
+            await logPageState(page, "GameBanana cookie auth upload failed");
+            await captureDebugArtifact(page, "gamebanana-cookie-auth-upload-failed");
+            throw cookieError;
+          }
+
+          if (!username || !password) {
+            throw cookieError;
+          }
+
+          console.log("GAMEBANANA_COOKIES could not edit the submission; retrying with credentials.");
+          await logIn(page, username, password);
+          await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
+        }
+      } else {
+        console.log("Stored GameBanana session could not edit the submission; retrying with credentials.");
+        await logIn(page, username, password);
+        await uploadReleaseAsset(page, pageSection, submissionId, releaseAsset);
+      }
     } else {
       await logPageState(page, "GameBanana upload failed");
       await captureDebugArtifact(page, "gamebanana-upload-failed");
@@ -941,18 +972,27 @@ async function main() {
     notes: releaseNotes,
     version,
   };
+  const cookies = decodeCookieBundle(cookieBundle);
 
   const browserSession = await createBrowserContext(browserName, storageState);
   const { context } = browserSession;
-  const cookies = storageState ? [] : decodeCookieBundle(cookieBundle);
-  if (storageState && cookieBundle) {
+  const initialCookies = storageState ? [] : cookies;
+  const cookieFallbackAuth = storageState && cookies.length > 0
+    ? async (page) => {
+        const pageContext = page.context();
+        await pageContext.clearCookies();
+        await pageContext.addCookies(cookies);
+        await page.goto(gamebananaOrigin, { waitUntil: "domcontentloaded" });
+      }
+    : null;
+  if (storageState && cookies.length > 0) {
     console.log(
-      "Using GAMEBANANA_STORAGE_STATE; ignoring GAMEBANANA_COOKIES to avoid overriding stored browser auth.",
+      "Using GAMEBANANA_STORAGE_STATE; keeping GAMEBANANA_COOKIES as a fallback if stored auth cannot edit.",
     );
   }
-  if (cookies.length > 0) {
-    await context.addCookies(cookies);
-    console.log(`Loaded ${cookies.length} GameBanana cookies from GAMEBANANA_COOKIES.`);
+  if (initialCookies.length > 0) {
+    await context.addCookies(initialCookies);
+    console.log(`Loaded ${initialCookies.length} GameBanana cookies from GAMEBANANA_COOKIES.`);
   }
   const page = await context.newPage();
 
@@ -991,6 +1031,7 @@ async function main() {
             hasStoredAuth,
             username,
             password,
+            cookieFallbackAuth,
           );
 
         if (replacementFile) {
@@ -1057,6 +1098,7 @@ async function main() {
       hasStoredAuth,
       username,
       password,
+      cookieFallbackAuth,
     );
 
     await waitForFirstActiveFile(page, context.request, apiSection, submissionId, uploadedFileId);
