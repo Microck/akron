@@ -9,6 +9,8 @@ Community Packs opens an in-game browser where you can find and import community
 
 The browser reads packs from a JSON catalog at the configured **Index URL** (shown at the top of the Community Packs window). The default catalog is hosted at `https://akron.micr.dev/catalog/index.json`. You can point this to a custom URL or local `file:///` path. Catalog entries can contain map-specific StartPos, Auto Kill, Auto Deafen, and other scoped `.akr` packs.
 
+The official catalog uses Akron-branded URLs, but the files are stored in Cloudflare R2 behind the website routes. Akron only sees normal HTTPS downloads: `/catalog/index.json` for the pack list, then a direct `.akr` URL when you import a selected pack.
+
 ## Import a Pack
 
 <Steps>
@@ -37,6 +39,19 @@ Community packs use the same `.akr` import path as local exports.
 - **Check the section.** Verify that the pack's section (StartPos, Auto Kill, and so on) matches what you expect.
 - **Attempt-changing imports are policy-visible.** Imported settings that affect attempt counts may appear in status and proof metadata.
 - **Prefer scoped imports.** Use section-specific packs over whole-setup packs when you only need one category.
+- **Only setup archives import.** Public packs must use the current `.akr` setup archive shape: `manifest.json` plus `setup.json`, with `Kind` set to `setup` and setup format `akron-setup-v1`.
+
+## Size Limits
+
+Akron caps catalog and pack downloads before importing:
+
+- Catalog index: 1 MiB.
+- `.akr` pack download: 4 MiB.
+- Setup payload inside an `.akr`: 2 MiB.
+
+The official Discord bot uses the same 4 MiB `.akr` limit before publishing a public catalog pack.
+
+Catalog screenshots can start larger than the stored image. The official bot accepts capture sources up to 64 MiB, then stores an optimized WebP preview capped at 4 MiB so detailed captures can fit inside the public catalog without burning through storage.
 
 ## Catalog Contract
 
