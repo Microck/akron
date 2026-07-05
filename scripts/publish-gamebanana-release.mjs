@@ -915,12 +915,11 @@ async function setGithubOutput(name, value) {
   await appendFile(outputPath, `${name}=${value}\n`, "utf8");
 }
 
-async function createBrowserContext(browserName, storageState) {
-  const contextOptions = storageState
-    ? {
-        storageState,
-      }
-    : {};
+async function createBrowserContext(browserName, storageState, userAgent) {
+  const contextOptions = {
+    ...(storageState ? { storageState } : {}),
+    ...(userAgent ? { userAgent } : {}),
+  };
 
   if (browserName === "cloakbrowser") {
     const { launchContext } = await import("cloakbrowser");
@@ -953,6 +952,7 @@ async function main() {
   const browserName = optionalEnv("GAMEBANANA_BROWSER", "cloakbrowser");
   const storageState = optionalEnv("GAMEBANANA_STORAGE_STATE", "");
   const cookieBundle = optionalEnv("GAMEBANANA_COOKIES", "");
+  const userAgent = optionalEnv("GAMEBANANA_USER_AGENT", "");
   const hasStoredAuth = Boolean(storageState || cookieBundle);
   const username = hasStoredAuth ? optionalEnv("GAMEBANANA_USERNAME", "") : requiredEnv("GAMEBANANA_USERNAME");
   const password = hasStoredAuth ? optionalEnv("GAMEBANANA_PASSWORD", "") : requiredEnv("GAMEBANANA_PASSWORD");
@@ -974,7 +974,7 @@ async function main() {
   };
   const cookies = decodeCookieBundle(cookieBundle);
 
-  const browserSession = await createBrowserContext(browserName, storageState);
+  const browserSession = await createBrowserContext(browserName, storageState, userAgent);
   const { context } = browserSession;
   const initialCookies = storageState ? [] : cookies;
   const cookieFallbackAuth = storageState && cookies.length > 0

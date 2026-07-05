@@ -294,6 +294,7 @@ jobs:
           GAMEBANANA_COOKIES: ${{ secrets.GAMEBANANA_COOKIES }}
           GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
           GAMEBANANA_STORAGE_STATE_B64_GZ: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64_GZ }}
+          GAMEBANANA_USER_AGENT: ${{ vars.GAMEBANANA_USER_AGENT }}
           RELEASE_ASSET: Akron-${{ env.RELEASE_TAG }}.zip
           RELEASE_NAME: Akron ${{ env.RELEASE_TAG }}
           RELEASE_NOTES_FILE: release-notes.md
