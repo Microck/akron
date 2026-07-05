@@ -728,10 +728,18 @@ async function submitFileManager(page, fileInput) {
   await serializeUploadedFileLists(uploadForm);
   await new Promise((resolve) => setTimeout(resolve, 2_000));
 
-  await Promise.all([
-    page.waitForLoadState("networkidle").catch(() => undefined),
-    submitButton.click(),
-  ]);
+  const saveResponse = page
+    .waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().startsWith(page.url().split("#")[0]),
+      { timeout: 30_000 },
+    )
+    .catch(() => null);
+
+  await submitButton.click();
+  await saveResponse;
+  await page.waitForLoadState("networkidle").catch(() => undefined);
 }
 
 async function serializeUploadedFileLists(uploadForm) {
