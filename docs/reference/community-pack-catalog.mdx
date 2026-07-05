@@ -15,6 +15,24 @@ Catalog URLs are HTTPS JSON endpoints. Command examples use this placeholder:
 
 Replace this placeholder with a full catalog URL. Custom URLs enable local testing, self-hosted packs, or recovery if the primary catalog is unavailable.
 
+The official Akron catalog is served at:
+
+```text
+https://akron.micr.dev/catalog/index.json
+```
+
+The Akron website handles the public `akron.micr.dev` catalog routes and rewrites reserved asset paths to Cloudflare R2:
+
+| Public path | R2 object path |
+|---|---|
+| `/catalog/index.json` | `catalog/index.json` |
+| `/maps/<map>/<pack>.akr` | `packs/<map>/<pack>.akr` |
+| `/maps/<map>/<pack>/capture.webp` | `captures/<map>/<pack>.webp` |
+| `/submissions/<path>` | `submissions/<path>` |
+| `/r2-assets/<path>` | `<path>` |
+
+Players and catalog entries should use the Akron-branded URLs. Raw R2 URLs are a storage fallback, not the public catalog contract.
+
 ## JSON shape
 
 The catalog is a JSON document with the following structure. Replace angle-bracket placeholders with valid HTTPS URLs:
@@ -84,18 +102,44 @@ Before adding archives to the catalog, ensure that:
 - The `mapSid` matches the Celeste map SID.
 - The `downloadUrl` is a stable HTTPS URL for the `.akr` file.
 - Catalog metadata is updated whenever the pack changes.
+- The `.akr` is no larger than 4 MiB.
+- Optional catalog image sources are no larger than 64 MiB before optimization.
+- Optimized catalog images stored in R2 are no larger than 4 MiB.
 
-## Validation steps
+## Catalog validation
 
-Before publishing, perform the following validation steps:
+Before publishing, verify the catalog-facing pack contract:
 
 - Verify that the archive contains exactly `manifest.json` and `setup.json`.
-- Verify that the manifest `kind` is `setup`.
+- Verify that the manifest `Kind` is `setup`.
 - Ensure that `setup.json` uses the `akron-setup-v1` format.
 - Verify that the entry `section` matches the setup section, unless a different scope is intended.
 - Confirm that the download URL returns the expected `.akr` archive.
+- Reject `Whole` setup packs from the public Discord catalog.
+
+The official Discord bot also enforces implementation-level safety checks before publishing:
+
+- Open archives in memory and never extract uploaded archives to the filesystem.
+- Reject absolute paths, `..` traversal, nested archives, unexpected files, suspicious compression ratios, oversized JSON payloads, and suspicious command-like or credential-like text.
 
 See [Akron .akr archives](/reference/akr-archives) for the full archive contract and import safety rules.
+
+## Storage and free-tier limits
+
+The official catalog uses Cloudflare R2 Standard storage. Cloudflare's [R2 pricing page](https://developers.cloudflare.com/r2/pricing/) currently lists this free tier:
+
+| Resource | Included free each month |
+|---|---|
+| Storage | 10 GB-month |
+| Class A operations | 1 million requests |
+| Class B operations | 10 million requests |
+| Egress to the Internet | Free |
+
+Class A operations include writes and object listing, such as publishing `.akr` files, optimized images, catalog backups, and `catalog/index.json`. Class B operations include reads, such as fetching the catalog and downloading packs.
+
+For Akron's current limits, the 10 GB-month storage allowance is enough for on the order of 1,000 catalog entries if every entry has both a maximum-size 4 MiB `.akr` and a maximum-size 4 MiB optimized image, before backups and submission archives. Most setup packs and WebP previews should be smaller. Large source captures only live in Discord; R2 stores the optimized WebP. Read operations are the more likely limit if the catalog becomes heavily used: every catalog refresh and pack download is an R2 read unless it is served from an upstream cache.
+
+These limits are Cloudflare R2 limits for Standard storage. They do not apply to R2 Infrequent Access storage, and they do not include any separate hosting limits from Vercel, Mintlify, Discord, or other services.
 
 ## Runtime logic
 
