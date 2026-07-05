@@ -15,6 +15,7 @@ Do not paste real secret values into issues, pull requests, docs, commit message
 | --- | --- | --- | --- |
 | `GAMEBANANA_SUBMISSION_ID` | Yes | `681169` | GameBanana mod id used by the release publisher and README link sync. |
 | `GAMEBANANA_BROWSER` | No | `cloakbrowser` | Browser automation package used by the GameBanana publisher. Defaults to `cloakbrowser`. |
+| `GAMEBANANA_USER_AGENT` | No | Browser user agent string | User agent replayed by the GameBanana publisher when stored auth was captured with a browser profile that GameBanana expects to see again. |
 | `TAILSCALE_EXIT_NODE` | Conditional | `akron-publisher` or `100.x.y.z` | Trusted exit node for GameBanana publishing when GitHub-hosted runner IPs are rejected. |
 | `TAILSCALE_TAGS` | Conditional | `tag:ci` | Tailscale tags assigned to the ephemeral Actions node. Defaults to `tag:ci`. |
 

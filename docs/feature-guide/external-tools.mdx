@@ -7,6 +7,8 @@ External tool rows are not part of Akron's base overlay tabs. They appear only w
 
 Motion Smoothing adds FPS and TPS bypass rows to the Global tab. Its higher-FPS path keeps Celeste physics at 60 FPS while drawing extra frames, so Akron marks FPS Bypass and the physics-neutral smoothing options as **Regular clean**. Object interpolation is stricter because Motion Smoothing documents that it can add 1-2 frames of input delay. Extended Variant Mode can also expose variant-specific rows at runtime; those dynamic rows depend on the installed Extended Variant Mode option list. Extended Camera Dynamics adds camera status and ECD-backed zoom-out support for Akron Cursor Zoom when its own camera hooks are active. Akron still uses its native Cursor Zoom path for zoom-in and neutral zoom.
 
+When Speedrun Tool is loaded, Akron also exposes **Ignore SRT** inside the Lag Pauser option menu on the Level tab. That setting is documented with Lag Pauser because it changes Akron's lag-spike filtering rather than adding a standalone Speedrun Tool row.
+
 | Tool | Option | Control | What it does | Attempt status |
 |---|---|---|---|---|
 | Motion Smoothing | FPS Bypass | Numeric toggle | Raise the draw cadence or enable Motion Smoothing's smoothing pipeline while keeping physics at 60 FPS when TPS Bypass is off. | Regular clean |

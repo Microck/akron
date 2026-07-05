@@ -28,6 +28,7 @@ Repository variables:
 
 - `GAMEBANANA_SUBMISSION_ID`: GameBanana mod id. Current value is `681169`.
 - `GAMEBANANA_BROWSER`: optional browser automation package used by the GameBanana publisher. Defaults to `cloakbrowser`.
+- `GAMEBANANA_USER_AGENT`: optional browser user agent replayed by the GameBanana publisher when the stored auth was captured with a browser profile that GameBanana expects to see again.
 - `TAILSCALE_EXIT_NODE`: optional Tailscale exit node name or Tailscale IP used to route GameBanana publishing through a trusted network.
 - `TAILSCALE_TAGS`: optional comma-separated Tailscale tags for the ephemeral Actions node. Defaults to `tag:ci`.
 

@@ -57,7 +57,7 @@ see the [feature guide](https://akron.micr.dev/docs/feature-guide) for the full 
 some overlay rows appear only when certain external mods are installed or configured. Akron does not depend on, bundle, or replace those tools but instead provides a visual gui for ease of use:
 
 - **[Motion Smoothing](https://gamebanana.com/mods/514173):** controls for motion smoothing's fps/tps bypass settings and related smoothing options.
-- **[Speedrun Tool](https://gamebanana.com/tools/6597):** status, save-state slots, capture/restore/clear actions, and room timer export when the tool is loaded.
+- **[Speedrun Tool](https://gamebanana.com/tools/6597):** status, save-state slots, capture/restore/clear actions, room timer export, plus optional Lag Pauser handling for load-state hitches when the tool is loaded.
 - **[CelesteTAS](https://gamebanana.com/tools/6715):** tas status, the configured tas file, and launching that configured tas handoff.
 - **[Extended Variant Mode](https://gamebanana.com/mods/53650):** available variant options exposed by the mod.
 - **[Extended Camera Dynamics](https://gamebanana.com/mods/548940):** camera hook status and Cursor Zoom zoom-out support when ECD camera hooks are active.
