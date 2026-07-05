@@ -58,6 +58,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int GoldenTransparencyOpacity { get; set; } = 55;
     public bool LagPauser { get; set; }
     public int LagPauserThresholdMs { get; set; } = 250;
+    public bool LagPauserIgnoreSpeedrunToolLoadStates { get; set; }
     // Derived compatibility flag for exported/imported setup state. Runtime UI
     // should derive low-distraction from the visual-noise channel settings.
     public bool LowDistractionOverlay { get; set; }

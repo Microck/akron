@@ -444,6 +444,7 @@ public partial class AkronModule : EverestModule {
         }
         Session.StepFrameRequested = false;
         orig(self);
+        RememberNativeFreezeFrameForLagPauser();
         AkronRuntimeOptions.ApplyScreenshakeAfterLevelUpdate(self);
         ApplyJumpHackAfterPlayerUpdate(self);
         ClearLastDeathHitboxAfterRespawn(self);

@@ -277,6 +277,15 @@ public sealed partial class AkronOverlay {
             popupId,
             "Frame-time spike threshold that triggers the pause while Lag Pauser is toggled on.");
 
+        if (AkronInterop.SpeedrunToolLoaded) {
+            DrawPopupCheckbox(
+                "Ignore SRT",
+                () => AkronModule.Settings.LagPauserIgnoreSpeedrunToolLoadStates,
+                value => AkronModule.Settings.LagPauserIgnoreSpeedrunToolLoadStates = value,
+                popupId,
+                "Ignore Lag Pauser spikes briefly around Speedrun Tool load states.");
+        }
+
         AkronModuleSession session = AkronModule.Session;
         ImGui.TextUnformatted("Triggers: " + (session?.LagPauserTriggerCount.ToString(CultureInfo.InvariantCulture) ?? "0"));
         ImGui.TextUnformatted("Last spike: " + (session?.LagPauserLastSpikeMs.ToString("0.000", CultureInfo.InvariantCulture) ?? "0.000") + " ms");

@@ -202,10 +202,18 @@ public static class AkronInterop {
                 return;
             }
 
-            Action<Dictionary<Type, Dictionary<string, object>>, Level> afterLoadState =
-                (_, _) => AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
-            Action clearState = AkronModule.SuppressAkronRenderSurfacesAfterStateTransition;
-            Action<Level> beforeLoadState = _ => AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
+            Action<Dictionary<Type, Dictionary<string, object>>, Level> afterLoadState = (_, _) => {
+                AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
+                AkronModule.SuppressLagPauserForSpeedrunToolLoadState();
+            };
+            Action clearState = () => {
+                AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
+                AkronModule.SuppressLagPauserForSpeedrunToolLoadState();
+            };
+            Action<Level> beforeLoadState = _ => {
+                AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
+                AkronModule.SuppressLagPauserForSpeedrunToolLoadState();
+            };
 
             speedrunToolSaveLoadHookRegistration = registerMethod.Invoke(null, new object[] {
                 null,

@@ -816,12 +816,18 @@ public sealed class OverlayTests {
     [Fact]
     public void SpeedrunToolStateTransitionsSuppressAkronRenderSurfacesBriefly() {
         string interopSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Interop/akron-interop.cs"));
+        string popupSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-gameplay-popups.cs"));
         string moduleSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/AkronModule.cs"));
         string suppressionSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Runtime/akron-render-transition-suppression.cs"));
 
         Assert.Contains("Celeste.Mod.SpeedrunTool.ModInterop.SaveLoadInterop+SaveLoadExports", interopSource);
         Assert.Contains("EnsureSpeedrunToolSaveLoadHooksRegistered", interopSource);
         Assert.Contains("AkronModule.SuppressAkronRenderSurfacesAfterStateTransition", interopSource);
+        Assert.Contains("AkronModule.SuppressLagPauserForSpeedrunToolLoadState", interopSource);
+        Assert.Contains("Action clearState = () =>", interopSource);
+        Assert.Contains("AkronInterop.SpeedrunToolLoaded", popupSource);
+        Assert.Contains("\"Ignore SRT\"", popupSource);
+        Assert.Contains("LagPauserIgnoreSpeedrunToolLoadStates", popupSource);
         Assert.Contains("UnregisterSpeedrunToolSaveLoadHooks", interopSource);
         Assert.Contains("AkronInterop.EnsureSpeedrunToolSaveLoadHooksRegistered();", moduleSource);
         Assert.Contains("AkronInterop.UnregisterSpeedrunToolSaveLoadHooks();", moduleSource);

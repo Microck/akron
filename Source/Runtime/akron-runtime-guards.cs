@@ -9,10 +9,19 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
+    // Speedrun Tool load states can hitch across the callback boundary, so the
+    // grace window covers the load itself and a short recovery period after it.
+    private const double SpeedrunToolLagPauserIgnoreSeconds = 1.5d;
+    private const double StartPosLagPauserIgnoreSeconds = 1.5d;
+
     private static bool proofRecorderGuardWarningShown;
     private static float pauseCountdownTimer;
     private static double pauseCountdownEndTimestamp;
     private static long lastLagPauserUpdateTimestamp;
+    private static ulong lastLagPauserUpdateFrameCounter;
+    private static bool ignoreNextLagPauserSpikeForNativeFreeze;
+    private static long lagPauserSpeedrunToolIgnoreUntilTimestamp;
+    private static long lagPauserStartPosIgnoreUntilTimestamp;
 
     private static void LevelOnPause(Level level, int startIndex, bool minimal, bool quickReset) {
         if (level == null || !Settings.PauseTracker || !TryUse(AkronFeatureKind.PauseTracker)) {
@@ -94,6 +103,10 @@ public partial class AkronModule {
         Session.LagPauserTriggerCount = 0;
         Session.LagPauserLastSpikeMs = 0f;
         lastLagPauserUpdateTimestamp = 0L;
+        lastLagPauserUpdateFrameCounter = 0UL;
+        ignoreNextLagPauserSpikeForNativeFreeze = false;
+        lagPauserSpeedrunToolIgnoreUntilTimestamp = 0L;
+        lagPauserStartPosIgnoreUntilTimestamp = 0L;
         Session.UsedGoldenStartHelper = false;
         Session.UsedJournalSnapshotCompare = false;
         Session.LastJournalSnapshotPath = string.Empty;
@@ -102,19 +115,29 @@ public partial class AkronModule {
 
     private static void UpdateLagPauser(Level level) {
         long now = Stopwatch.GetTimestamp();
+        ulong frameCounter = Engine.FrameCounter;
         float spikeMs = lastLagPauserUpdateTimestamp > 0L
             ? (float) ((now - lastLagPauserUpdateTimestamp) * 1000d / Stopwatch.Frequency)
             : 0f;
+        ulong skippedEngineFrames = lastLagPauserUpdateFrameCounter > 0UL && frameCounter >= lastLagPauserUpdateFrameCounter
+            ? frameCounter - lastLagPauserUpdateFrameCounter
+            : 0UL;
         lastLagPauserUpdateTimestamp = now;
+        lastLagPauserUpdateFrameCounter = frameCounter;
 
         if (level == null ||
             level.Paused ||
             !Settings.LagPauser ||
             !AkronPolicy.CanUse(AkronFeatureKind.LagPauser).Allowed) {
+            ignoreNextLagPauserSpikeForNativeFreeze = false;
             return;
         }
 
-        if (spikeMs < AkronModuleSettings.ClampLagPauserThresholdMs(Settings.LagPauserThresholdMs)) {
+        bool ignoreNativeFreezeSpike = ignoreNextLagPauserSpikeForNativeFreeze || Engine.FreezeTimer > 0f;
+        bool ignoreIntentionalLoadSpike = IsLagPauserSpeedrunToolIgnoreActive(now) || IsLagPauserStartPosIgnoreActive(now);
+        ignoreNextLagPauserSpikeForNativeFreeze = false;
+
+        if (!ShouldTriggerLagPauser(spikeMs, Settings.LagPauserThresholdMs, ignoreNativeFreezeSpike, ignoreIntentionalLoadSpike, skippedEngineFrames)) {
             return;
         }
 
@@ -122,6 +145,49 @@ public partial class AkronModule {
         Session.LagPauserLastSpikeMs = spikeMs;
         level.Pause();
         Engine.Scene?.Add(new AkronToast("Lag pause: " + Math.Round(spikeMs).ToString(CultureInfo.InvariantCulture) + " ms"));
+    }
+
+    internal static bool ShouldTriggerLagPauser(
+        float spikeMs,
+        int thresholdMs,
+        bool ignoreNativeFreezeSpike,
+        bool ignoreIntentionalLoadSpike,
+        ulong skippedEngineFrames) {
+        return !ignoreNativeFreezeSpike &&
+               !ignoreIntentionalLoadSpike &&
+               skippedEngineFrames <= 1UL &&
+               spikeMs >= AkronModuleSettings.ClampLagPauserThresholdMs(thresholdMs);
+    }
+
+    private static void RememberNativeFreezeFrameForLagPauser() {
+        if (Engine.FreezeTimer > 0f) {
+            ignoreNextLagPauserSpikeForNativeFreeze = true;
+        }
+    }
+
+    internal static void SuppressLagPauserForSpeedrunToolLoadState() {
+        if (!Settings.LagPauserIgnoreSpeedrunToolLoadStates) {
+            return;
+        }
+
+        lagPauserSpeedrunToolIgnoreUntilTimestamp = Stopwatch.GetTimestamp() + (long) (SpeedrunToolLagPauserIgnoreSeconds * Stopwatch.Frequency);
+    }
+
+    internal static bool IsLagPauserSpeedrunToolIgnoreActive(long timestamp) {
+        return Settings.LagPauserIgnoreSpeedrunToolLoadStates &&
+               lagPauserSpeedrunToolIgnoreUntilTimestamp > timestamp;
+    }
+
+    internal static void SuppressLagPauserForNativeStartPosRestore() {
+        SuppressLagPauserForNativeStartPosRestore(Stopwatch.GetTimestamp());
+    }
+
+    internal static void SuppressLagPauserForNativeStartPosRestore(long timestamp) {
+        lagPauserStartPosIgnoreUntilTimestamp = timestamp + (long) (StartPosLagPauserIgnoreSeconds * Stopwatch.Frequency);
+    }
+
+    internal static bool IsLagPauserStartPosIgnoreActive(long timestamp) {
+        return lagPauserStartPosIgnoreUntilTimestamp > timestamp;
     }
 
     private static void UpdateProofRecorderGuard(Level level) {
