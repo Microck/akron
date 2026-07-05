@@ -725,12 +725,61 @@ async function submitFileManager(page, fileInput) {
   const submitButton = uploadForm.locator('button[type="submit"], input[type="submit"]').last();
   await submitButton.waitFor({ state: "visible", timeout: 20_000 });
 
+  await serializeUploadedFileLists(uploadForm);
   await new Promise((resolve) => setTimeout(resolve, 2_000));
 
   await Promise.all([
     page.waitForLoadState("networkidle").catch(() => undefined),
     submitButton.click(),
   ]);
+}
+
+async function serializeUploadedFileLists(uploadForm) {
+  await uploadForm.evaluate((form) => {
+    function serializeInput(input) {
+      if (!input.name) {
+        return null;
+      }
+
+      if ((input.type === "checkbox" || input.type === "radio") && !input.checked) {
+        return null;
+      }
+
+      return {
+        name: input.name,
+        value: input.value,
+      };
+    }
+
+    for (const list of form.querySelectorAll('[id$="_UploadedFiles"]')) {
+      const wrapper = list.closest(".InputWrapper");
+      const hiddenInput = wrapper?.querySelector('input[type="hidden"][id]');
+      if (!hiddenInput) {
+        continue;
+      }
+
+      // GameBanana writes these hidden JSON fields from a submit click handler.
+      // The automation mutates the upload list directly, so write the same
+      // payload explicitly before Save to keep removals and reordering durable.
+      const items = Array.from(list.querySelectorAll("li"));
+      if (list.classList.contains("AdvancedUploadedFiles")) {
+        hiddenInput.value = JSON.stringify(
+          items.map((item) =>
+            Array.from(item.querySelectorAll("input, textarea, select"))
+              .map(serializeInput)
+              .filter(Boolean),
+          ),
+        );
+      } else {
+        hiddenInput.value = JSON.stringify(
+          items
+            .flatMap((item) => Array.from(item.querySelectorAll("input, textarea, select")))
+            .map(serializeInput)
+            .filter(Boolean),
+        );
+      }
+    }
+  });
 }
 
 async function promoteExistingUploadedFile(page, file) {
