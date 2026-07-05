@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check Celeste reference configuration
         run: |
@@ -33,7 +33,7 @@ jobs:
           fi
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
@@ -100,7 +100,7 @@ jobs:
         run: test -f Akron.zip
 
       - name: Upload packaged mod
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Akron
           path: Akron.zip

@@ -40,7 +40,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -71,7 +71,7 @@ jobs:
           fi
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
@@ -219,7 +219,7 @@ jobs:
           fi
 
       - name: Upload packaged mod artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Akron-${{ env.RELEASE_TAG }}
           path: |
@@ -228,7 +228,7 @@ jobs:
           if-no-files-found: error
 
       - name: Setup Node for GameBanana publisher
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
 
@@ -239,7 +239,7 @@ jobs:
           npx cloakbrowser install
 
       - name: Checkout release tooling
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
           path: release-tools/akron
@@ -319,7 +319,7 @@ jobs:
 
       - name: Upload GameBanana debug artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gamebanana-debug-${{ env.RELEASE_TAG }}
           path: ${{ runner.temp }}/gamebanana-debug
@@ -348,7 +348,7 @@ jobs:
           fi
 
       - name: Checkout main for README link sync
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
           path: link-sync/akron
@@ -372,7 +372,7 @@ jobs:
           git push
 
       - name: Checkout Akron website for link sync
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: Microck/akron-website
           token: ${{ secrets.AKRON_WEBSITE_TOKEN }}
