@@ -327,6 +327,10 @@ public static partial class AkronSaveLoadService {
             return AkronSaveLoadResult.Blocked;
         }
 
+        bool suppressLagPauserForStartPos = saveSlot.SlotName.StartsWith("Akron StartPos ", StringComparison.Ordinal);
+        if (suppressLagPauserForStartPos) {
+            AkronModule.SuppressLagPauserForNativeStartPosRestore();
+        }
         AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
         AkronIgnoreSaveStateComponent.RemoveAll(level);
         try {
@@ -347,6 +351,9 @@ public static partial class AkronSaveLoadService {
         } finally {
             AkronDeepClone.ClearSharedState();
             AkronIgnoreSaveStateComponent.ReAddAll(level);
+            if (suppressLagPauserForStartPos) {
+                AkronModule.SuppressLagPauserForNativeStartPosRestore();
+            }
         }
 
         return AkronSaveLoadResult.Success;

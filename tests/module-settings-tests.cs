@@ -207,6 +207,47 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void LagPauserIgnoresNativeFreezeSample()
+    {
+        Assert.False(AkronModule.ShouldTriggerLagPauser(150f, 50, ignoreNativeFreezeSpike: true, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 1UL));
+        Assert.False(AkronModule.ShouldTriggerLagPauser(150f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 9UL));
+    }
+
+    [Fact]
+    public void LagPauserIgnoresSpeedrunToolLoadStateSample()
+    {
+        Assert.False(AkronModule.ShouldTriggerLagPauser(150f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: true, skippedEngineFrames: 1UL));
+    }
+
+    [Fact]
+    public void NativeStartPosRestoreStartsLagPauserGraceWindow()
+    {
+        long timestamp = 1_000_000L;
+        long graceTicks = (long) (1.5d * System.Diagnostics.Stopwatch.Frequency);
+
+        AkronModule.SuppressLagPauserForNativeStartPosRestore(timestamp);
+
+        Assert.True(AkronModule.IsLagPauserStartPosIgnoreActive(timestamp));
+        Assert.True(AkronModule.IsLagPauserStartPosIgnoreActive(timestamp + graceTicks - 1L));
+        Assert.False(AkronModule.IsLagPauserStartPosIgnoreActive(timestamp + graceTicks));
+    }
+
+    [Fact]
+    public void LagPauserThresholdStillRequiresRealSpikeWithoutIgnoreFlags()
+    {
+        Assert.False(AkronModule.ShouldTriggerLagPauser(249f, 250, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 1UL));
+        Assert.True(AkronModule.ShouldTriggerLagPauser(250f, 250, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 1UL));
+    }
+
+    [Fact]
+    public void LagPauserStillTriggersLowThresholdNonFreezeSamples()
+    {
+        Assert.True(AkronModule.ShouldTriggerLagPauser(50f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 1UL));
+        Assert.True(AkronModule.ShouldTriggerLagPauser(149f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 1UL));
+        Assert.False(AkronModule.ShouldTriggerLagPauser(49f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 1UL));
+    }
+
+    [Fact]
     public void NewlyAddedFeatureDefaultsStartOptIn()
     {
         AkronModuleSettings settings = new AkronModuleSettings();
@@ -220,6 +261,7 @@ public sealed class ModuleSettingsTests
         Assert.False(settings.StartPosShowLabel);
         Assert.False(settings.ScreenshotStatus);
         Assert.False(settings.RoomStatTracker);
+        Assert.False(settings.LagPauserIgnoreSpeedrunToolLoadStates);
         Assert.Equal(AkronRoomStatTimerFreezeMode.PausedOrInactive, settings.RoomStatTimerFreezeMode);
         Assert.False(settings.FreezeTimerWhilePaused);
         Assert.False(settings.DashRedirectEnabled);
@@ -2940,6 +2982,24 @@ public sealed class ModuleSettingsTests
         Assert.True(InvokeStartPosInArea(imported, "Example/Map"));
         Assert.False(InvokeStartPosInArea(imported, "Other/Map"));
         Assert.False(InvokeStartPosInArea(capturedWithoutState, "Example/Map"));
+    }
+
+    [Fact]
+    public void NativeStartPosRuntimeSlotsDoNotUseSpeedrunToolBrokerPath()
+    {
+        MethodInfo? method = typeof(AkronSaveLoadService).GetMethod("ShouldBrokerRuntimeState", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object[] { "Akron StartPos 1" })));
+    }
+
+    [Fact]
+    public void NativeStartPosRuntimeRestoreSuppressesLagPauserSpike()
+    {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/SaveLoad/AkronSaveLoad.cs"));
+
+        Assert.Contains("saveSlot.SlotName.StartsWith(\"Akron StartPos \", StringComparison.Ordinal)", source);
+        Assert.Contains("AkronModule.SuppressLagPauserForNativeStartPosRestore();", source);
     }
 
     [Theory]

@@ -18,6 +18,8 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Let Akron's internal recorder find host FFmpeg and its Linux libraries from inside the Steam Runtime sandbox.
 - Prefer the most specific matching SFX volume group so broad sound fragments do not shadow narrower controls such as Ridge Wind.
 - Keep Pause Countdown from subtracting level clock time twice while waiting after unpause.
+- Keep Lag Pauser from counting Celeste's native freeze frames, such as seeker hits, as lag spikes.
+- Add an opt-in Lag Pauser Ignore SRT option that skips Speedrun Tool load-state hitches for a brief grace window.
 - Tighten several verified overlay, HUD, input, backup, StartPos, and runtime helper paths found during the player-visible checklist pass.
 
 ## 0.1.2-beta.36
