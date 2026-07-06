@@ -78,7 +78,7 @@ read the [contributor docs](https://akron.micr.dev/docs/contributing/development
 
 ## support
 
-if Akron helps with your Celeste practice, routing, captures, or setup sharing, optional support is available on [ko-fi](https://ko-fi.com/microck). no features are or will be locked behind donations or a paywall.
+if Akron helps with your Celeste practice, routing, captures, or setup sharing, optional support is available on [ko-fi](https://ko-fi.com/microck). donations help cover ongoing development costs like domain, infrastructure, storage, and hosting, so they help keep the mod maintained. no features are or will be locked behind donations or a paywall.
 
 <p align="left">
   <a href="https://ko-fi.com/microck">
