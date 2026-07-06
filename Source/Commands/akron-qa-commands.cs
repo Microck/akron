@@ -43,6 +43,39 @@ public static partial class AkronCommands {
         Log("area-complete: registered");
     }
 
+    [Command("akron_qa_upload_pack_submit", "submit Upload Pack through the modal path for QA: [startpos|auto-kill|auto-deafen] [anonymous|discord]")]
+    public static void QaUploadPackSubmit(string sectionText = "", string attributionText = "anonymous") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        if (!TryParseQaUploadSection(sectionText, out AkronSetupSection section)) {
+            Log("usage: akron_qa_upload_pack_submit [startpos|auto-kill|auto-deafen] [anonymous|discord]");
+            return;
+        }
+
+        switch (NormalizeToken(attributionText)) {
+            case "":
+            case "anonymous":
+            case "anon":
+                AkronModule.Settings.CommunityPackUploadUseDiscordAttribution = false;
+                break;
+            case "discord":
+                AkronModule.Settings.CommunityPackUploadUseDiscordAttribution = true;
+                break;
+            default:
+                Log("usage: akron_qa_upload_pack_submit [startpos|auto-kill|auto-deafen] [anonymous|discord]");
+                return;
+        }
+
+        AkronModule.Settings.CommunityPackUploadSection = section;
+        AkronCommunityPackUploads.OpenUploadPrompt(level);
+        Log("qa-upload-pack-submit: requested;section=" + AkronSetupPacks.FormatSection(section) +
+            ";attribution=" + (AkronModule.Settings.CommunityPackUploadUseDiscordAttribution ? "discord" : "anonymous"));
+        Log("qa-upload-pack-status: " + AkronCommunityPackUploads.DescribeUploadStatus());
+    }
+
     [Command("akron_qa_startpos_action", "invoke StartPos action paths for prompt QA: save|restore")]
     public static void QaStartPosAction(string action = "restore") {
         Level level = RequireLevel();
@@ -67,6 +100,29 @@ public static partial class AkronCommands {
         }
 
         Log("prompt: " + AkronPromptMenu.DescribeState());
+    }
+
+    private static bool TryParseQaUploadSection(string sectionText, out AkronSetupSection section) {
+        switch (NormalizeToken(sectionText)) {
+            case "":
+                section = AkronCommunityPackUploads.NormalizeUploadSection(AkronModule.Settings.CommunityPackUploadSection);
+                return true;
+            case "start":
+            case "startpos":
+                section = AkronSetupSection.StartPos;
+                return true;
+            case "autokill":
+            case "kill":
+                section = AkronSetupSection.AutoKill;
+                return true;
+            case "autodeafen":
+            case "deafen":
+                section = AkronSetupSection.AutoDeafen;
+                return true;
+            default:
+                section = AkronSetupSection.StartPos;
+                return false;
+        }
     }
 
     [Command("akron_qa_startpos_death_candidate", "show StartPos death respawn selection for QA: [x] [y]")]
