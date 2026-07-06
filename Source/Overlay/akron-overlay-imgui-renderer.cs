@@ -64,6 +64,7 @@ public sealed partial class AkronOverlay {
         }
 
         DrawCommunityPackBrowserWindow();
+        DrawCommunityPackUploadWindow();
         DrawPendingImGuiOptionsPopup();
         DrawPendingImGuiActionTooltip();
         DrawPendingImGuiItemTooltip();
@@ -472,6 +473,8 @@ public sealed partial class AkronOverlay {
 
     private bool IsBackgroundActionRowInputBlocked() {
         return IsAnyOptionsPopupOpen() ||
+               communityPackBrowserOpen ||
+               uploadPackWindowOpen ||
                suppressImGuiRowPressesThisFrame ||
                IsBackgroundActionRowsSuppressedAfterPopupClose();
     }

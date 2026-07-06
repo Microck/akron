@@ -104,7 +104,22 @@ public sealed class OverlayTests {
     }
 
     [Fact]
-    public void UploadPackPopupOnlyOffersSupportedUploadSections() {
+    public void UploadPackWindowOnlyOffersSupportedUploadSections() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-upload-window.cs"));
+        int methodStart = source.IndexOf("private void DrawCommunityPackUploadForm", StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("private static void DrawCommunityPackUploadPreview", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(nextMethod > methodStart);
+        string method = source[methodStart..nextMethod];
+
+        Assert.Contains("DrawCommunityPackUploadSectionChoice(\"StartPos\", AkronSetupSection.StartPos", method);
+        Assert.DoesNotContain("DrawCommunityPackUploadSectionChoice(\"Auto Kill\"", method);
+        Assert.DoesNotContain("DrawCommunityPackUploadSectionChoice(\"Auto Deafen\"", method);
+    }
+
+    [Fact]
+    public void UploadPackRowSubmenuOnlyEditsUploadDefaults() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-popup-controls.cs"));
         int methodStart = source.IndexOf("private void DrawUploadPackPopupControls", StringComparison.Ordinal);
         int nextMethod = source.IndexOf("private void DrawLoggingPopupControls", methodStart, StringComparison.Ordinal);
@@ -113,9 +128,28 @@ public sealed class OverlayTests {
         Assert.True(nextMethod > methodStart);
         string method = source[methodStart..nextMethod];
 
-        Assert.Contains("DrawUploadSectionChoice(\"StartPos\", AkronSetupSection.StartPos", method);
-        Assert.DoesNotContain("DrawUploadSectionChoice(\"Auto Kill\"", method);
-        Assert.DoesNotContain("DrawUploadSectionChoice(\"Auto Deafen\"", method);
+        Assert.Contains("\"Discord ID\"", method);
+        Assert.Contains("\"Click Upload Pack to open the submission form.\"", method);
+        Assert.DoesNotContain("\"Title\"", method);
+        Assert.DoesNotContain("\"Desc\"", method);
+        Assert.DoesNotContain("\"Submit Upload\"", method);
+        Assert.DoesNotContain("DrawCommunityPackUploadSectionChoice", method);
+        Assert.DoesNotContain("DrawUploadSectionChoice", method);
+        Assert.DoesNotContain("DrawUploadAttributionChoice", method);
+    }
+
+    [Fact]
+    public void UploadPackRowOpensStandaloneUploadWindow() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-entries.cs"));
+        int methodStart = source.IndexOf("private static OverlayEntry UploadPackRow", StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("private static OverlayEntry StartPosRow", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(nextMethod > methodStart);
+        string method = source[methodStart..nextMethod];
+
+        Assert.Contains("OpenUploadPackWindow();", method);
+        Assert.DoesNotContain("OpenUploadPrompt", method);
     }
 
     [Fact]

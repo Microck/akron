@@ -1,0 +1,194 @@
+using System;
+using Celeste;
+using ImGuiNET;
+using NumericsVector2 = System.Numerics.Vector2;
+
+namespace Celeste.Mod.Akron;
+
+public sealed partial class AkronOverlay {
+    private void DrawCommunityPackUploadWindow() {
+        if (!uploadPackWindowOpen) {
+            return;
+        }
+
+        NumericsVector2 displaySize = ImGui.GetIO().DisplaySize;
+        NumericsVector2 windowSize = new NumericsVector2(
+            Math.Min(860f, Math.Max(360f, displaySize.X - 96f)),
+            Math.Min(520f, Math.Max(360f, displaySize.Y - 96f)));
+        ImGui.SetNextWindowSize(windowSize, ImGuiCond.Always);
+        ImGui.SetNextWindowPos(
+            new NumericsVector2(
+                Math.Max(24f, (displaySize.X - windowSize.X) * 0.5f),
+                Math.Max(24f, (displaySize.Y - windowSize.Y) * 0.5f)),
+            ImGuiCond.Always);
+        ImGui.SetNextWindowBgAlpha(1f);
+
+        bool open = uploadPackWindowOpen;
+        PushCommunityPackWindowStyle();
+        if (ImGui.Begin(
+            "Upload Pack##akron_community_pack_upload",
+            ref open,
+            ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoSavedSettings)) {
+            DrawCommunityPackUploadContents("window");
+        }
+
+        ImGui.End();
+        PopCommunityPackWindowStyle();
+        uploadPackWindowOpen = open;
+    }
+
+    private void DrawCommunityPackUploadContents(string popupId) {
+        Level level = Scene as Level;
+        if (level == null) {
+            ImGui.TextWrapped("Open Upload Pack while inside a map so Akron can attach the current map SID and capture the full map.");
+            return;
+        }
+
+        AkronModule.Settings.CommunityPackUploadSection = AkronCommunityPackUploads.NormalizeUploadSection(AkronModule.Settings.CommunityPackUploadSection);
+        string mapSid = level.Session?.Area.GetSID() ?? string.Empty;
+        string mapName = string.IsNullOrWhiteSpace(mapSid) ? "No active map" : mapSid;
+        AkronCommunityPackUploadDraft draft = AkronCommunityPackUploads.BuildDraft(
+            level,
+            AkronModule.Settings.CommunityPackUploadSection,
+            AkronModule.Settings.CommunityPackUploadUseDiscordAttribution);
+
+        float availableWidth = Math.Max(320f, ImGui.GetContentRegionAvail().X);
+        float availableHeight = Math.Max(260f, ImGui.GetContentRegionAvail().Y);
+        if (availableWidth < 640f) {
+            DrawCommunityPackUploadForm(level, mapName, popupId);
+            ImGui.Separator();
+            DrawCommunityPackUploadPreview(draft);
+            return;
+        }
+
+        ImGui.Columns(2, "##upload-pack-columns-" + popupId, false);
+        float formWidth = Math.Min(Math.Max(430f, availableWidth * 0.58f), availableWidth - 260f);
+        ImGui.SetColumnWidth(0, formWidth);
+        ImGui.BeginChild("##upload-pack-form-" + popupId, new NumericsVector2(0f, availableHeight), ImGuiChildFlags.None);
+        DrawCommunityPackUploadForm(level, mapName, popupId);
+        ImGui.EndChild();
+
+        ImGui.NextColumn();
+        ImGui.BeginChild("##upload-pack-preview-" + popupId, new NumericsVector2(0f, availableHeight), ImGuiChildFlags.None);
+        DrawCommunityPackUploadPreview(draft);
+        ImGui.EndChild();
+
+        ImGui.Columns(1);
+    }
+
+    private void DrawCommunityPackUploadForm(Level level, string mapName, string popupId) {
+        ImGui.TextDisabled("Map:");
+        ImGui.SameLine();
+        TextWrappedLiteral(mapName);
+
+        ImGui.Spacing();
+        ImGui.TextDisabled("Category:");
+        ImGui.SameLine();
+        DrawCommunityPackUploadSectionChoice("StartPos", AkronSetupSection.StartPos, popupId);
+
+        ImGui.Spacing();
+        ImGui.TextDisabled("Attribution:");
+        ImGui.SameLine();
+        DrawCommunityPackUploadAttributionChoice("Anonymous", false, popupId);
+        ImGui.SameLine();
+        DrawCommunityPackUploadAttributionChoice("Discord", true, popupId);
+
+        if (AkronModule.Settings.CommunityPackUploadUseDiscordAttribution &&
+            string.IsNullOrWhiteSpace(AkronModule.Settings.CommunityPackUploadDiscordUserId)) {
+            ImGui.TextWrapped("Set a saved Discord user ID from the Upload Pack row submenu, or submit anonymously.");
+        }
+
+        ImGui.Spacing();
+        string title = AkronModule.Settings.CommunityPackUploadTitleOverride ?? string.Empty;
+        DrawPopupRowLabel("Title", 92f);
+        ImGui.PushItemWidth(Math.Max(220f, ImGui.GetContentRegionAvail().X - 108f));
+        if (ImGui.InputTextWithHint("##upload-title-" + popupId, "Generated from the current map", ref title, 120)) {
+            AkronModule.Settings.CommunityPackUploadTitleOverride = title.Trim();
+            MarkValueEditFreeze();
+        }
+        if (ImGui.IsItemActive()) {
+            MarkValueEditFreeze();
+        }
+        ImGui.PopItemWidth();
+
+        string description = AkronModule.Settings.CommunityPackUploadDescriptionOverride ?? string.Empty;
+        DrawPopupRowLabel("Desc", 92f);
+        ImGui.PushItemWidth(Math.Max(220f, ImGui.GetContentRegionAvail().X - 108f));
+        if (ImGui.InputTextWithHint("##upload-description-" + popupId, "Generated from the current map", ref description, 240)) {
+            AkronModule.Settings.CommunityPackUploadDescriptionOverride = description.Trim();
+            MarkValueEditFreeze();
+        }
+        if (ImGui.IsItemActive()) {
+            MarkValueEditFreeze();
+        }
+        ImGui.PopItemWidth();
+
+        if (ImGui.Button("Use Generated Text##upload-generated-" + popupId, new NumericsVector2(160f, 28f))) {
+            AkronModule.Settings.CommunityPackUploadTitleOverride = string.Empty;
+            AkronModule.Settings.CommunityPackUploadDescriptionOverride = string.Empty;
+        }
+        DrawPopupTooltip("Blank title and description fields use generated text for the current map and category.");
+
+        ImGui.Separator();
+        bool acceptedTerms = AkronModule.Settings.CommunityPackUploadAcceptedTermsVersion >= AkronCommunityPackUploads.CurrentTermsVersion;
+        if (ImGui.Checkbox("I have permission to share this pack##upload-terms-" + popupId, ref acceptedTerms)) {
+            AkronModule.Settings.CommunityPackUploadAcceptedTermsVersion = acceptedTerms ? AkronCommunityPackUploads.CurrentTermsVersion : 0;
+        }
+        ImGui.TextWrapped("Uploads are reviewed in Discord before publication. Akron captures the full map automatically.");
+
+        ImGui.Spacing();
+        bool busy = AkronCommunityPackUploads.IsUploadInProgress || AkronScreenshotScanner.IsScanning;
+        string buttonLabel = busy ? "Uploading..." : "Submit Upload";
+        if (ImGui.Button(buttonLabel + "##upload-submit-" + popupId, new NumericsVector2(148f, 30f))) {
+            AkronCommunityPackUploads.OpenUploadPrompt(level);
+            if (AkronCommunityPackUploads.IsUploadInProgress || AkronScreenshotScanner.IsScanning) {
+                uploadPackWindowOpen = false;
+            }
+        }
+        DrawPopupTooltip("Create the .akr pack, capture the full map, and submit both for Discord review.");
+    }
+
+    private static void DrawCommunityPackUploadPreview(AkronCommunityPackUploadDraft draft) {
+        TextWrappedLiteral(draft.Title);
+        ImGui.TextDisabled("Type: " + AkronSetupPacks.FormatSection(draft.Section));
+        TextDisabledLiteral("Attribution: " + FormatUploadPackAttribution());
+        if (AkronModule.Settings.CommunityPackUploadUseDiscordAttribution) {
+            TextDisabledLiteral(string.IsNullOrWhiteSpace(AkronModule.Settings.CommunityPackUploadDiscordUserId)
+                ? "Discord user: not saved"
+                : "Discord user: saved");
+        }
+
+        ImGui.Separator();
+        TextWrappedLiteral(draft.Description);
+        ImGui.Spacing();
+        TextDisabledLiteral("Map: " + (string.IsNullOrWhiteSpace(draft.MapSid) ? "No active map" : draft.MapSid));
+        TextDisabledLiteral("Capture: full map");
+        TextDisabledLiteral("Terms: " + (AkronModule.Settings.CommunityPackUploadAcceptedTermsVersion >= AkronCommunityPackUploads.CurrentTermsVersion ? "accepted" : "required"));
+        TextDisabledLiteral("Install ID: private");
+
+        ImGui.Spacing();
+        ImGui.TextWrapped("After submission, the Discord bot posts the pack for review. Publication waits for approval or anonymous conversion.");
+    }
+
+    private static void DrawCommunityPackUploadSectionChoice(string label, AkronSetupSection section, string popupId) {
+        bool selected = AkronModule.Settings.CommunityPackUploadSection == section;
+        ImGui.PushStyleColor(ImGuiCol.Button, selected ? ToImGuiColor(0xC92735, 1f) : ToImGuiColor(0x2F2F2F, 0.75f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ToImGuiColor(0xE03745, 1f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, ToImGuiColor(0xF04C58, 1f));
+        if (ImGui.Button(label + "##upload-section-" + popupId, new NumericsVector2(96f, 28f))) {
+            AkronModule.Settings.CommunityPackUploadSection = section;
+        }
+        ImGui.PopStyleColor(3);
+    }
+
+    private static void DrawCommunityPackUploadAttributionChoice(string label, bool useDiscord, string popupId) {
+        bool selected = AkronModule.Settings.CommunityPackUploadUseDiscordAttribution == useDiscord;
+        ImGui.PushStyleColor(ImGuiCol.Button, selected ? ToImGuiColor(0xC92735, 1f) : ToImGuiColor(0x2F2F2F, 0.75f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ToImGuiColor(0xE03745, 1f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, ToImGuiColor(0xF04C58, 1f));
+        if (ImGui.Button(label + "##upload-attribution-" + popupId, new NumericsVector2(104f, 28f))) {
+            AkronModule.Settings.CommunityPackUploadUseDiscordAttribution = useDiscord;
+        }
+        ImGui.PopStyleColor(3);
+    }
+}

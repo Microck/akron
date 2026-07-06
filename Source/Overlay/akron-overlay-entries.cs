@@ -478,7 +478,7 @@ public sealed partial class AkronOverlay {
             AkronCommunityPackUploads.DescribeOverlayAction,
             () => {
                 if (level != null) {
-                    AkronCommunityPackUploads.OpenUploadPrompt(level);
+                    OpenUploadPackWindow();
                 }
             },
             BuildSearchTerms("Upload Pack", new[] { "community", "upload", ".akr", "discord", "anonymous" }),

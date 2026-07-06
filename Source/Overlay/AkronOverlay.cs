@@ -110,6 +110,7 @@ public sealed partial class AkronOverlay : Entity {
     private bool suppressBackgroundActionRowsUntilMouseMoves;
     private Vector2 backgroundActionRowsSuppressionMouse;
     private static bool communityPackBrowserOpen;
+    private static bool uploadPackWindowOpen;
     private int selectedCommunityPackIndex;
     private Rectangle openOptionsPopupRect;
     private Rectangle openOptionsMinusRect;
@@ -240,7 +241,7 @@ public sealed partial class AkronOverlay : Entity {
         UpdateFallbackScrollWheel();
 
         if (IsCancelPressed(searchInputActive || AkronImGuiRenderer.WantCaptureKeyboard)) {
-            OverlayCancelAction cancelAction = ResolveCancelAction(searchInputActive, !string.IsNullOrEmpty(searchQuery), IsAnyOptionsPopupOpen(), communityPackBrowserOpen);
+            OverlayCancelAction cancelAction = ResolveCancelAction(searchInputActive, !string.IsNullOrEmpty(searchQuery), IsAnyOptionsPopupOpen(), communityPackBrowserOpen || uploadPackWindowOpen);
             if (cancelAction == OverlayCancelAction.ClearSearch) {
                 searchQuery = string.Empty;
                 searchInputActive = false;
@@ -252,6 +253,7 @@ public sealed partial class AkronOverlay : Entity {
                 CloseOptionsPopup();
             } else if (cancelAction == OverlayCancelAction.CloseCommunityPackBrowser) {
                 communityPackBrowserOpen = false;
+                uploadPackWindowOpen = false;
             }
             return;
         }
@@ -392,6 +394,10 @@ public sealed partial class AkronOverlay : Entity {
         ActionEntry selectedEntry = currentEntries[selectedActionIndex];
         if (string.Equals(selectedEntry.Label, "Community Packs", StringComparison.OrdinalIgnoreCase)) {
             OpenCommunityPackBrowser();
+            return true;
+        }
+        if (string.Equals(selectedEntry.Label, "Upload Pack", StringComparison.OrdinalIgnoreCase)) {
+            OpenUploadPackWindow();
             return true;
         }
 

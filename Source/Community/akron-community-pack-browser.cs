@@ -27,6 +27,20 @@ public sealed partial class AkronOverlay {
         ImGui.SetNextWindowBgAlpha(1f);
 
         bool open = communityPackBrowserOpen;
+        PushCommunityPackWindowStyle();
+        if (ImGui.Begin(
+            "Community Packs##akron_community_pack_catalog",
+            ref open,
+            ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoSavedSettings)) {
+            DrawCommunityPackBrowserContents("window");
+        }
+
+        ImGui.End();
+        PopCommunityPackWindowStyle();
+        communityPackBrowserOpen = open;
+    }
+
+    private static void PushCommunityPackWindowStyle() {
         ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 3f);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new NumericsVector2(14f, 12f));
         ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new NumericsVector2(8f, 5f));
@@ -44,17 +58,11 @@ public sealed partial class AkronOverlay {
         ImGui.PushStyleColor(ImGuiCol.Header, ToImGuiColor(0xC92735, 0.9f));
         ImGui.PushStyleColor(ImGuiCol.HeaderHovered, ToImGuiColor(0xE03745, 0.95f));
         ImGui.PushStyleColor(ImGuiCol.HeaderActive, ToImGuiColor(0xF04C58, 1f));
-        if (ImGui.Begin(
-            "Community Packs##akron_community_pack_catalog",
-            ref open,
-            ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoSavedSettings)) {
-            DrawCommunityPackBrowserContents("window");
-        }
+    }
 
-        ImGui.End();
+    private static void PopCommunityPackWindowStyle() {
         ImGui.PopStyleColor(12);
         ImGui.PopStyleVar(5);
-        communityPackBrowserOpen = open;
     }
 
     private void DrawCommunityPackBrowserContents(string popupId) {
