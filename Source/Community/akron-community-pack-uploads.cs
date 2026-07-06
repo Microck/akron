@@ -488,9 +488,6 @@ public static class AkronCommunityPackUploads {
         }
 
         AkronSetupSection section = NormalizeUploadSection(AkronModule.Settings.CommunityPackUploadSection);
-        if (AkronModule.Settings.CommunityPackUploadAcceptedTermsVersion < CurrentTermsVersion) {
-            return "Accept terms";
-        }
         if (AkronModule.Settings.CommunityPackUploadUseDiscordAttribution &&
             string.IsNullOrWhiteSpace(AkronModule.Settings.CommunityPackUploadDiscordUserId)) {
             return "Discord ID";
@@ -511,10 +508,6 @@ public static class AkronCommunityPackUploads {
 
         EnsureInstallId(AkronModule.Settings);
         AkronModule.Settings.CommunityPackUploadSection = NormalizeUploadSection(AkronModule.Settings.CommunityPackUploadSection);
-        if (AkronModule.Settings.CommunityPackUploadAcceptedTermsVersion < CurrentTermsVersion) {
-            Engine.Scene?.Add(new AkronToast("Accept Upload Pack terms first."));
-            return;
-        }
         if (AkronModule.Settings.CommunityPackUploadUseDiscordAttribution &&
             string.IsNullOrWhiteSpace(AkronModule.Settings.CommunityPackUploadDiscordUserId)) {
             Engine.Scene?.Add(new AkronToast("Set a Discord user ID or choose Anonymous."));

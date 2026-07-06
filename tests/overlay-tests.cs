@@ -143,7 +143,9 @@ public sealed class OverlayTests {
         Assert.Contains("DrawPopupRowLabel(\"Map\"", source);
         Assert.Contains("DrawPopupRowLabel(\"Category\"", source);
         Assert.Contains("DrawPopupRowLabel(\"Attribution\"", source);
-        Assert.Contains("I created this pack and it can be shared publicly", source);
+        Assert.DoesNotContain("DrawPopupRowLabel(\"Review\"", source);
+        Assert.DoesNotContain("DrawPopupRowLabel(\"Confirm\"", source);
+        Assert.DoesNotContain("I created this pack and it can be shared publicly", source);
         Assert.DoesNotContain("Use Generated Text", source);
         Assert.DoesNotContain("Preview:", source);
         Assert.DoesNotContain("private void DrawCommunityPackUploadSummary", source);

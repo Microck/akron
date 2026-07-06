@@ -14,7 +14,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 ### Changed
 
 - Document the Community Packs upload and publication architecture without tying the player-facing catalog contract to provider-specific free-tier details.
-- Simplify the Upload Pack popup with aligned fields, clearer public-sharing confirmation text, and no separate preview block.
+- Simplify the Upload Pack popup with aligned fields, generated text shown in editable fields, and no separate preview block.
 
 ## 0.1.2-beta.39
 

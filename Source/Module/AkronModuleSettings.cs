@@ -90,7 +90,6 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public string CommunityPackUploadInstallId { get; set; } = string.Empty;
     public bool CommunityPackUploadUseDiscordAttribution { get; set; }
     public string CommunityPackUploadDiscordUserId { get; set; } = string.Empty;
-    public int CommunityPackUploadAcceptedTermsVersion { get; set; }
     public string CommunityPackUploadTitleOverride { get; set; } = string.Empty;
     public string CommunityPackUploadDescriptionOverride { get; set; } = string.Empty;
     public string CustomOverlayThemeName { get; set; } = "Custom";

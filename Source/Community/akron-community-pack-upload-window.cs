@@ -115,18 +115,9 @@ public sealed partial class AkronOverlay {
                 : description.Trim();
         }
 
-        ImGui.Separator();
-        DrawPopupRowLabel("Review", labelWidth);
-        TextWrappedLiteral("Akron captures the full map and sends this pack to Discord for moderation.");
-
-        bool acceptedTerms = AkronModule.Settings.CommunityPackUploadAcceptedTermsVersion >= AkronCommunityPackUploads.CurrentTermsVersion;
-        DrawPopupRowLabel("Confirm", labelWidth);
-        if (ImGui.Checkbox("I created this pack and it can be shared publicly##upload-terms-" + popupId, ref acceptedTerms)) {
-            AkronModule.Settings.CommunityPackUploadAcceptedTermsVersion = acceptedTerms ? AkronCommunityPackUploads.CurrentTermsVersion : 0;
-        }
-
         bool busy = AkronCommunityPackUploads.IsUploadInProgress || AkronScreenshotScanner.IsScanning;
         string buttonLabel = busy ? "Uploading..." : "Submit Upload";
+        ImGui.Spacing();
         DrawPopupRowLabel("", labelWidth);
         if (ImGui.Button(buttonLabel + "##upload-submit-window", new NumericsVector2(148f, 30f))) {
             AkronCommunityPackUploads.OpenUploadPrompt(level);

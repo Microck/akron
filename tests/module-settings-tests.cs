@@ -1861,7 +1861,6 @@ public sealed class ModuleSettingsTests
         Assert.Equal(string.Empty, settings.CommunityPackUploadInstallId);
         Assert.False(settings.CommunityPackUploadUseDiscordAttribution);
         Assert.Equal(string.Empty, settings.CommunityPackUploadDiscordUserId);
-        Assert.Equal(0, settings.CommunityPackUploadAcceptedTermsVersion);
         Assert.Equal(string.Empty, settings.CommunityPackUploadTitleOverride);
         Assert.Equal(string.Empty, settings.CommunityPackUploadDescriptionOverride);
     }
