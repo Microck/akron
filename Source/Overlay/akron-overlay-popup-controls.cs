@@ -32,6 +32,8 @@ public sealed partial class AkronOverlay {
             } else if (string.Equals(entry.Label, "Export Setup", StringComparison.OrdinalIgnoreCase) ||
                        string.Equals(entry.Label, "Import Setup", StringComparison.OrdinalIgnoreCase)) {
                 DrawSetupPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Upload Pack", StringComparison.OrdinalIgnoreCase)) {
+                DrawUploadPackPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Confirm Actions", StringComparison.OrdinalIgnoreCase)) {
                 DrawConfirmActionsPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Noclip", StringComparison.OrdinalIgnoreCase)) {
@@ -248,6 +250,47 @@ public sealed partial class AkronOverlay {
         ImGui.TextWrapped("Whole applies the full setup. Scoped imports only replace the selected system.");
     }
 
+    private void DrawUploadPackPopupControls(string popupId) {
+        AkronModule.Settings.CommunityPackUploadSection = AkronCommunityPackUploads.NormalizeUploadSection(AkronModule.Settings.CommunityPackUploadSection);
+        ImGui.TextUnformatted("Section: " + AkronSetupPacks.FormatSection(AkronModule.Settings.CommunityPackUploadSection));
+        DrawUploadSectionChoice("StartPos", AkronSetupSection.StartPos, popupId);
+
+        ImGui.Separator();
+        ImGui.TextUnformatted("Attribution: " + FormatUploadPackAttribution());
+        DrawUploadAttributionChoice("Anonymous", false, popupId);
+        DrawUploadAttributionChoice("Discord", true, popupId);
+        if (AkronModule.Settings.CommunityPackUploadUseDiscordAttribution) {
+            string discordUserId = AkronModule.Settings.CommunityPackUploadDiscordUserId ?? string.Empty;
+            if (DrawPopupInputText("Discord ID", ref discordUserId, 32, popupId, 220f)) {
+                AkronModule.Settings.CommunityPackUploadDiscordUserId = discordUserId.Trim();
+            }
+        }
+
+        ImGui.Separator();
+        string title = AkronModule.Settings.CommunityPackUploadTitleOverride ?? string.Empty;
+        if (DrawPopupInputText("Title", ref title, 120, popupId, 280f)) {
+            AkronModule.Settings.CommunityPackUploadTitleOverride = title.Trim();
+        }
+        string description = AkronModule.Settings.CommunityPackUploadDescriptionOverride ?? string.Empty;
+        if (DrawPopupInputText("Desc", ref description, 240, popupId, 360f)) {
+            AkronModule.Settings.CommunityPackUploadDescriptionOverride = description.Trim();
+        }
+        if (ImGui.Button("Use generated text##" + popupId)) {
+            AkronModule.Settings.CommunityPackUploadTitleOverride = string.Empty;
+            AkronModule.Settings.CommunityPackUploadDescriptionOverride = string.Empty;
+        }
+        DrawPopupTooltip("Blank title and description fields use generated text for the current map and section.");
+
+        ImGui.Separator();
+        DrawPopupCheckbox(
+            "Terms",
+            () => AkronModule.Settings.CommunityPackUploadAcceptedTermsVersion >= AkronCommunityPackUploads.CurrentTermsVersion,
+            value => AkronModule.Settings.CommunityPackUploadAcceptedTermsVersion = value ? AkronCommunityPackUploads.CurrentTermsVersion : 0,
+            popupId,
+            "Required before submitting a pack.");
+        ImGui.TextUnformatted("Install ID: private");
+    }
+
     private void DrawLoggingPopupControls(string popupId) {
         ImGui.TextUnformatted("Level: " + AkronLog.FormatLevel(AkronModule.Settings.LoggingLevel));
         DrawLoggingLevelChoice("Normal", AkronLoggingLevel.Normal, popupId);
@@ -291,6 +334,24 @@ public sealed partial class AkronOverlay {
         if (ImGui.RadioButton(label + "##setup-section-" + popupId, selected)) {
             AkronModule.Settings.SetupPackSection = section;
         }
+    }
+
+    private static void DrawUploadSectionChoice(string label, AkronSetupSection section, string popupId) {
+        bool selected = AkronModule.Settings.CommunityPackUploadSection == section;
+        if (ImGui.RadioButton(label + "##upload-section-" + popupId, selected)) {
+            AkronModule.Settings.CommunityPackUploadSection = section;
+        }
+    }
+
+    private static void DrawUploadAttributionChoice(string label, bool useDiscord, string popupId) {
+        bool selected = AkronModule.Settings.CommunityPackUploadUseDiscordAttribution == useDiscord;
+        if (ImGui.RadioButton(label + "##upload-attribution-" + popupId, selected)) {
+            AkronModule.Settings.CommunityPackUploadUseDiscordAttribution = useDiscord;
+        }
+    }
+
+    private static string FormatUploadPackAttribution() {
+        return AkronModule.Settings.CommunityPackUploadUseDiscordAttribution ? "Discord" : "Anonymous";
     }
 
     private static void OpenCommunityPackBrowser() {

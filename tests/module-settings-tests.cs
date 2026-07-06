@@ -9,8 +9,13 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Xunit;
 using XnaButtons = Microsoft.Xna.Framework.Input.Buttons;
 
@@ -1792,6 +1797,321 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void UploadPackLivesBesideCommunityPacksWithOptionsPopup()
+    {
+        Dictionary<string, string> interfaceControls = BuildOverlayEntryControls("Interface");
+
+        Assert.Equal("Action", interfaceControls["Upload Pack"]);
+        Assert.Equal(AkronFeatureKind.ScreenshotTool, BuildOverlayEntryFeatureKind("Interface", "Upload Pack"));
+        Assert.True(AkronFeatureRegistry.TryClassifyUiLabel("Upload Pack", out AkronStatus status));
+        Assert.Equal(AkronStatus.GoldberryHardlistClean, status);
+        Assert.True(HasOverlayOptionsPopup("Upload Pack"));
+        Assert.False(HasOverlayStepperPopup("Upload Pack"));
+    }
+
+    [Fact]
+    public void UploadPackSettingsDefaultToOfficialEndpointAndAnonymousInstall()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings();
+
+        Assert.Equal(AkronCommunityPackUploads.DefaultUploadEndpoint, settings.CommunityPackUploadEndpoint);
+        Assert.Equal(AkronSetupSection.StartPos, settings.CommunityPackUploadSection);
+        Assert.Equal(string.Empty, settings.CommunityPackUploadInstallId);
+        Assert.False(settings.CommunityPackUploadUseDiscordAttribution);
+        Assert.Equal(string.Empty, settings.CommunityPackUploadDiscordUserId);
+        Assert.Equal(0, settings.CommunityPackUploadAcceptedTermsVersion);
+        Assert.Equal(string.Empty, settings.CommunityPackUploadTitleOverride);
+        Assert.Equal(string.Empty, settings.CommunityPackUploadDescriptionOverride);
+    }
+
+    [Fact]
+    public void UploadPackReservationBlocksDuplicateSubmissions()
+    {
+        AkronCommunityPackUploads.ReleaseUploadSlot();
+
+        try {
+            Assert.False(AkronCommunityPackUploads.IsUploadInProgress);
+            Assert.True(AkronCommunityPackUploads.TryReserveUploadSlot());
+            Assert.True(AkronCommunityPackUploads.IsUploadInProgress);
+            Assert.False(AkronCommunityPackUploads.TryReserveUploadSlot());
+        } finally {
+            AkronCommunityPackUploads.ReleaseUploadSlot();
+        }
+
+        Assert.False(AkronCommunityPackUploads.IsUploadInProgress);
+    }
+
+    [Fact]
+    public void UploadPackMetadataMatchesSectionContract()
+    {
+        AkronCommunityPackUploadDraft draft = AkronCommunityPackUploads.BuildDraft(
+            "Glyph/Glyph",
+            "Glyph",
+            AkronSetupSection.StartPos,
+            "123456789012345678",
+            useDiscordAttribution: true);
+
+        Assert.Equal("Glyph StartPos Pack", draft.Title);
+        Assert.Equal("Start positions for practicing Glyph.", draft.Description);
+        Assert.Equal(AkronCommunityPackUploads.DiscordAttribution, draft.AttributionMode);
+        Assert.Equal("123456789012345678", draft.DiscordUserId);
+    }
+
+    [Fact]
+    public void UploadPackRejectsUnscopedAreaSections()
+    {
+        Assert.True(AkronCommunityPackUploads.IsSupportedUploadSection(AkronSetupSection.StartPos));
+        Assert.False(AkronCommunityPackUploads.IsSupportedUploadSection(AkronSetupSection.AutoKill));
+        Assert.False(AkronCommunityPackUploads.IsSupportedUploadSection(AkronSetupSection.AutoDeafen));
+    }
+
+    [Fact]
+    public void UploadPackDraftFallsBackToAnonymousWithoutSavedDiscordUserId()
+    {
+        AkronCommunityPackUploadDraft draft = AkronCommunityPackUploads.BuildDraft(
+            "Glyph/Glyph",
+            "Glyph",
+            AkronSetupSection.StartPos,
+            string.Empty,
+            useDiscordAttribution: true);
+
+        Assert.Equal(AkronCommunityPackUploads.AnonymousAttribution, draft.AttributionMode);
+        Assert.Equal(string.Empty, draft.DiscordUserId);
+    }
+
+    [Fact]
+    public void UploadPackDraftUsesEditableTitleAndDescriptionOverrides()
+    {
+        AkronCommunityPackUploadDraft draft = AkronCommunityPackUploads.BuildDraft(
+            "Glyph/Glyph",
+            "Glyph",
+            AkronSetupSection.StartPos,
+            string.Empty,
+            useDiscordAttribution: false,
+            titleOverride: "Any% practice starts",
+            descriptionOverride: "Curated starts for the current route.");
+
+        Assert.Equal("Any% practice starts", draft.Title);
+        Assert.Equal("Curated starts for the current route.", draft.Description);
+        Assert.Equal(AkronCommunityPackUploads.AnonymousAttribution, draft.AttributionMode);
+    }
+
+    [Fact]
+    public void UploadPackPrepareRequestUsesArchiveCaptureSizesAndAttribution()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-upload-prepare-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string packPath = Path.Combine(directory, "pack.akr");
+        string capturePath = Path.Combine(directory, "capture.webp");
+        try {
+            File.WriteAllBytes(packPath, new byte[] { 1, 2, 3, 4, 5 });
+            File.WriteAllBytes(capturePath, new byte[] { 9, 8, 7 });
+            AkronCommunityPackUploadDraft draft = AkronCommunityPackUploads.BuildDraft(
+                "Glyph/Glyph",
+                "Glyph",
+                AkronSetupSection.StartPos,
+                "123456789012345678",
+                useDiscordAttribution: true);
+
+            AkronCommunityPackUploadPrepareRequest request = AkronCommunityPackUploads.BuildPrepareRequest(
+                draft,
+                packPath,
+                capturePath,
+                "install-id",
+                7);
+
+            Assert.Equal("install-id", request.InstallId);
+            Assert.Equal(7, request.TermsVersion);
+            Assert.Equal(3, request.Capture.SizeBytes);
+            Assert.Equal("image/webp", request.Capture.ContentType);
+            AkronCommunityPackUploadSubmissionInput submission = Assert.Single(request.Submissions);
+            Assert.Equal(AkronSetupSection.StartPos, submission.Section);
+            Assert.Equal("Glyph/Glyph", submission.MapSid);
+            Assert.Equal("Glyph StartPos Pack", submission.Title);
+            Assert.Equal(5, submission.PackSizeBytes);
+            Assert.Equal(AkronCommunityPackUploads.DiscordAttribution, submission.Attribution.Mode);
+            Assert.Equal("123456789012345678", submission.Attribution.DiscordUserId);
+        } finally {
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void UploadPackRequiresFreshMergedMapCaptureImage()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-upload-capture-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            DateTime captureStartedUtc = DateTime.UtcNow;
+            string mapPng = Path.Combine(directory, "map.png");
+            string mapJpg = Path.Combine(directory, "map.jpg");
+            string staleMap = Path.Combine(directory, "stale", "map.png");
+            string mergedRoom = Path.Combine(directory, "merged.png");
+            string roomMetadata = Path.Combine(directory, "room.json");
+
+            Directory.CreateDirectory(Path.GetDirectoryName(staleMap)!);
+            File.WriteAllBytes(mapPng, new byte[] { 1 });
+            File.WriteAllBytes(mapJpg, new byte[] { 1 });
+            File.WriteAllBytes(staleMap, new byte[] { 1 });
+            File.WriteAllBytes(mergedRoom, new byte[] { 1 });
+            File.WriteAllText(roomMetadata, "{}");
+            File.SetLastWriteTimeUtc(staleMap, captureStartedUtc.AddMinutes(-5));
+
+            Assert.True(AkronCommunityPackUploads.IsCompletedMapCaptureForUpload(mapPng, captureStartedUtc));
+            Assert.True(AkronCommunityPackUploads.IsCompletedMapCaptureForUpload(mapJpg, captureStartedUtc));
+            Assert.False(AkronCommunityPackUploads.IsCompletedMapCaptureForUpload(staleMap, captureStartedUtc));
+            Assert.False(AkronCommunityPackUploads.IsCompletedMapCaptureForUpload(mergedRoom, captureStartedUtc));
+            Assert.False(AkronCommunityPackUploads.IsCompletedMapCaptureForUpload(roomMetadata, captureStartedUtc));
+            Assert.False(AkronCommunityPackUploads.IsCompletedMapCaptureForUpload(Path.Combine(directory, "missing", "map.png"), captureStartedUtc));
+        } finally {
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void UploadPackArchiveScopesStartPositionsToCurrentMap()
+    {
+        AkronModuleSession session = new AkronModuleSession {
+            StartPositions = new Dictionary<int, AkronStartPos> {
+                [1] = new AkronStartPos {
+                    Position = new Vector2(12, 34),
+                    Room = "a-00",
+                    AreaSid = "Glyph/Glyph"
+                },
+                [2] = new AkronStartPos {
+                    Position = new Vector2(56, 78),
+                    Room = "b-00",
+                    AreaSid = "Other/Map"
+                }
+            }
+        };
+        AkronModuleSettings settings = new AkronModuleSettings {
+            SmartStartPos = true,
+            AutoKill = true,
+            AutoKillArea = true,
+            AutoDeafen = true,
+            SpeedNumber = true,
+            MenuActionBindings = new Dictionary<string, string> {
+                ["Shortcuts/Retry"] = "Ctrl+R"
+            }
+        };
+
+        AkronSetupPack startPosPack = AkronCommunityPackUploads.BuildScopedUploadPack(
+            settings,
+            session,
+            "Glyph StartPos Pack",
+            AkronSetupSection.StartPos,
+            "Glyph/Glyph");
+        KeyValuePair<int, AkronStartPosPackEntry> start = Assert.Single(startPosPack.StartPositions);
+        Assert.Equal(1, start.Key);
+        Assert.Equal("Glyph/Glyph", start.Value.AreaSid);
+        Assert.True(startPosPack.State.SmartStartPos);
+        Assert.False(startPosPack.State.AutoKill);
+        Assert.False(startPosPack.State.AutoDeafen);
+        Assert.False(startPosPack.State.SpeedNumber);
+        Assert.Empty(startPosPack.ButtonBindings);
+        Assert.Empty(startPosPack.MenuActionBindings);
+    }
+
+    [Fact]
+    public async Task UploadPackClientPreparesUploadsObjectsAndCompletes()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-upload-client-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string packPath = Path.Combine(directory, "pack.akr");
+        string capturePath = Path.Combine(directory, "capture.png");
+        try {
+            File.WriteAllBytes(packPath, new byte[] { 1, 2, 3 });
+            File.WriteAllBytes(capturePath, new byte[] { 4, 5 });
+            AkronCommunityPackUploadDraft draft = AkronCommunityPackUploads.BuildDraft(
+                "Glyph/Glyph",
+                "Glyph",
+                AkronSetupSection.StartPos,
+                string.Empty,
+                useDiscordAttribution: false);
+            AkronCommunityPackUploadPrepareRequest request = AkronCommunityPackUploads.BuildPrepareRequest(
+                draft,
+                packPath,
+                capturePath,
+                "install-id",
+                1);
+            UploadSequenceHandler handler = new UploadSequenceHandler();
+            using HttpClient http = new HttpClient(handler);
+
+            AkronCommunityPackUploadCompleteResponse response = await AkronCommunityPackUploads.UploadAsync(
+                http,
+                "https://uploads.example.test/uploads/",
+                request,
+                packPath,
+                capturePath);
+
+            Assert.Equal("batch-1", response.BatchId);
+            Assert.Equal("queued", response.Status);
+            Assert.Contains("\"installId\":\"install-id\"", handler.PrepareBody);
+            Assert.Contains("\"section\":\"StartPos\"", handler.PrepareBody);
+            Assert.Contains("\"packSizeBytes\":3", handler.PrepareBody);
+            Assert.Equal(new byte[] { 4, 5 }, handler.CaptureBytes);
+            Assert.Equal(new byte[] { 1, 2, 3 }, handler.PackBytes);
+            Assert.Equal("image/png", handler.CaptureContentType);
+            Assert.Equal("application/octet-stream", handler.PackContentType);
+            Assert.Equal(2, handler.CaptureContentLength);
+            Assert.Equal(3, handler.PackContentLength);
+            Assert.Equal("{\"installId\":\"install-id\",\"batchId\":\"batch-1\"}", handler.CompleteBody);
+        } finally {
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task UploadPackClientRejectsPrepareResponseWithoutUploadObjects()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-upload-client-invalid-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string packPath = Path.Combine(directory, "pack.akr");
+        string capturePath = Path.Combine(directory, "capture.png");
+        try {
+            File.WriteAllBytes(packPath, new byte[] { 1, 2, 3 });
+            File.WriteAllBytes(capturePath, new byte[] { 4, 5 });
+            AkronCommunityPackUploadDraft draft = AkronCommunityPackUploads.BuildDraft(
+                "Glyph/Glyph",
+                "Glyph",
+                AkronSetupSection.StartPos,
+                string.Empty,
+                useDiscordAttribution: false);
+            AkronCommunityPackUploadPrepareRequest request = AkronCommunityPackUploads.BuildPrepareRequest(
+                draft,
+                packPath,
+                capturePath,
+                "install-id",
+                1);
+            UploadSequenceHandler handler = new UploadSequenceHandler {
+                PrepareResponseBody = """{"batchId":"batch-1","capture":null,"submissions":[{"submissionId":"submission-1","pack":null}]}"""
+            };
+            using HttpClient http = new HttpClient(handler);
+
+            await Assert.ThrowsAsync<InvalidDataException>(() => AkronCommunityPackUploads.UploadAsync(
+                http,
+                "https://uploads.example.test/uploads/",
+                request,
+                packPath,
+                capturePath));
+
+            Assert.Empty(handler.CaptureBytes);
+            Assert.Empty(handler.PackBytes);
+        } finally {
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void LoggingLivesInInterfaceWithOptionsPopup()
     {
         Dictionary<string, string> interfaceControls = BuildOverlayEntryControls("Interface");
@@ -3545,12 +3865,31 @@ public sealed class ModuleSettingsTests
         Assert.True(pack.State.JumpHackAllowVerticalDashJumps);
 
         AkronModuleSettings startPosOnly = new AkronModuleSettings { AutoKill = false };
-        AkronModuleSession startPosSession = new AkronModuleSession();
+        AkronModuleSession startPosSession = new AkronModuleSession
+        {
+            StartPositions = new Dictionary<int, AkronStartPos>
+            {
+                [3] = new AkronStartPos
+                {
+                    Position = new Vector2(90, 91),
+                    Room = "other-00",
+                    AreaSid = "Other/Map"
+                },
+                [4] = new AkronStartPos
+                {
+                    Position = new Vector2(1, 2),
+                    Room = "old-00",
+                    AreaSid = "Celeste/1-ForsakenCity"
+                }
+            }
+        };
         AkronSetupPacks.Apply(startPosOnly, startPosSession, pack, AkronSetupSection.StartPos);
         Assert.True(startPosOnly.SmartStartPos);
         Assert.Equal(2, startPosOnly.StartPosConfiguredDashes);
         Assert.False(startPosOnly.AutoKill);
-        Assert.Single(startPosSession.StartPositions);
+        Assert.Equal(2, startPosSession.StartPositions.Count);
+        Assert.Equal("Other/Map", startPosSession.StartPositions[3].AreaSid);
+        Assert.Equal("Celeste/1-ForsakenCity", startPosSession.StartPositions[4].AreaSid);
 
         AkronModuleSettings keybindsOnly = new AkronModuleSettings { SmartStartPos = false };
         AkronSetupPacks.Apply(keybindsOnly, new AkronModuleSession(), pack, AkronSetupSection.Keybinds);
@@ -3810,6 +4149,27 @@ public sealed class ModuleSettingsTests
                 StringComparer.OrdinalIgnoreCase);
     }
 
+    private static AkronFeatureKind? BuildOverlayEntryFeatureKind(string tab, string label)
+    {
+        MethodInfo? method = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        object? entries = method.Invoke(null, new object?[] { tab, null });
+        Assert.NotNull(entries);
+
+        Type entryType = entries.GetType().GetGenericArguments()[0];
+        PropertyInfo? labelProperty = entryType.GetProperty("Label", BindingFlags.Public | BindingFlags.Instance);
+        PropertyInfo? featureKindProperty = entryType.GetProperty("FeatureKind", BindingFlags.Public | BindingFlags.Instance);
+        Assert.NotNull(labelProperty);
+        Assert.NotNull(featureKindProperty);
+
+        object entry = ((System.Collections.IEnumerable)entries)
+            .Cast<object>()
+            .First(entry => string.Equals((string)labelProperty.GetValue(entry)!, label, StringComparison.OrdinalIgnoreCase));
+
+        return (AkronFeatureKind?)featureKindProperty.GetValue(entry);
+    }
+
     private static Dictionary<string, bool> BuildOverlayEntryBindableExposure(string tab)
     {
         MethodInfo? buildEntries = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static);
@@ -3880,6 +4240,13 @@ public sealed class ModuleSettingsTests
     private static bool HasOverlayOptionsPopup(string label)
     {
         MethodInfo? method = typeof(AkronOverlay).GetMethod("HasOptionsPopup", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        return (bool)method.Invoke(null, new object[] { label })!;
+    }
+
+    private static bool HasOverlayStepperPopup(string label)
+    {
+        MethodInfo? method = typeof(AkronOverlay).GetMethod("HasStepperPopup", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         return (bool)method.Invoke(null, new object[] { label })!;
     }
@@ -3965,5 +4332,77 @@ public sealed class ModuleSettingsTests
             "endUtc=" + endUtc.ToString("O", CultureInfo.InvariantCulture)
         });
         return path;
+    }
+
+    private sealed class UploadSequenceHandler : HttpMessageHandler
+    {
+        public string PrepareBody { get; private set; } = string.Empty;
+        public string CompleteBody { get; private set; } = string.Empty;
+        public byte[] CaptureBytes { get; private set; } = Array.Empty<byte>();
+        public byte[] PackBytes { get; private set; } = Array.Empty<byte>();
+        public string CaptureContentType { get; private set; } = string.Empty;
+        public string PackContentType { get; private set; } = string.Empty;
+        public long? CaptureContentLength { get; private set; }
+        public long? PackContentLength { get; private set; }
+        public string PrepareResponseBody { get; set; } = """
+        {
+          "batchId": "batch-1",
+          "expiresUtc": "2026-01-01T00:30:00.000Z",
+          "capture": {
+            "objectId": "capture-1",
+            "uploadUrl": "https://uploads.example.test/uploads/objects/capture-1?token=capture-token",
+            "maxBytes": 104857600
+          },
+          "submissions": [
+            {
+              "submissionId": "submission-1",
+              "pack": {
+                "objectId": "pack-1",
+                "uploadUrl": "https://uploads.example.test/uploads/objects/pack-1?token=pack-token",
+                "maxBytes": 4194304
+              }
+            }
+          ]
+        }
+        """;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            string path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            if (request.Method == HttpMethod.Post && path == "/uploads/prepare") {
+                PrepareBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+                return JsonResponse(PrepareResponseBody);
+            }
+
+            if (request.Method == HttpMethod.Put && path == "/uploads/objects/capture-1") {
+                CaptureBytes = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
+                CaptureContentType = request.Content.Headers.ContentType?.MediaType ?? string.Empty;
+                CaptureContentLength = request.Content.Headers.ContentLength;
+                return JsonResponse("""{"ok":true}""");
+            }
+
+            if (request.Method == HttpMethod.Put && path == "/uploads/objects/pack-1") {
+                PackBytes = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
+                PackContentType = request.Content.Headers.ContentType?.MediaType ?? string.Empty;
+                PackContentLength = request.Content.Headers.ContentLength;
+                return JsonResponse("""{"ok":true}""");
+            }
+
+            if (request.Method == HttpMethod.Post && path == "/uploads/complete") {
+                CompleteBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+                return JsonResponse("""{"batchId":"batch-1","status":"queued"}""");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound) {
+                Content = new StringContent("unexpected request: " + request.Method + " " + path, Encoding.UTF8, "text/plain")
+            };
+        }
+
+        private static HttpResponseMessage JsonResponse(string body)
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK) {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            };
+        }
     }
 }

@@ -299,6 +299,7 @@ public static class AkronFeatureRegistry
         { "Import Setup", AkronStatus.RegularClean },
         { "Import Profile", AkronStatus.RegularClean },
         { "Community Packs", AkronStatus.RegularClean },
+        { "Upload Pack", AkronStatus.GoldberryHardlistClean },
         { "Room Capture", AkronStatus.GoldberryHardlistClean },
         { "Map Capture", AkronStatus.GoldberryHardlistClean },
         { "Search", AkronStatus.RegularClean },

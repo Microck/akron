@@ -130,9 +130,9 @@ public static class AkronScreenshotScanner {
         scannerHost.Add(new Coroutine(ScanRooms(player, new Queue<string>(new[] { level.Session.Level }), buildMapComposite: false)));
     }
 
-    public static void ScanChapter(Level level) {
+    public static bool ScanChapter(Level level) {
         if (!TryStart(level, out Player player)) {
-            return;
+            return false;
         }
 
         MapData mapData = GetScanMapData(level);
@@ -155,9 +155,12 @@ public static class AkronScreenshotScanner {
         }
         if (rooms.Count == 0) {
             AkronLog.Warn(nameof(AkronScreenshotScanner), "Map capture has no scannable rooms queued.");
+            isScanning = false;
+            return false;
         }
 
         scannerHost.Add(new Coroutine(ScanRooms(player, rooms, buildMapComposite: true)));
+        return true;
     }
 
     private static MapData GetScanMapData(Level level) {

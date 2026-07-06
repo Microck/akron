@@ -104,6 +104,21 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void UploadPackPopupOnlyOffersSupportedUploadSections() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-popup-controls.cs"));
+        int methodStart = source.IndexOf("private void DrawUploadPackPopupControls", StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("private void DrawLoggingPopupControls", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(nextMethod > methodStart);
+        string method = source[methodStart..nextMethod];
+
+        Assert.Contains("DrawUploadSectionChoice(\"StartPos\", AkronSetupSection.StartPos", method);
+        Assert.DoesNotContain("DrawUploadSectionChoice(\"Auto Kill\"", method);
+        Assert.DoesNotContain("DrawUploadSectionChoice(\"Auto Deafen\"", method);
+    }
+
+    [Fact]
     public void FreezeGameplayAndFrameStepperUseSeparateFeatureKinds() {
         Dictionary<string, AkronFeatureKind?> levelKinds = BuildOverlayEntryFeatureKinds("Level");
         Dictionary<string, AkronFeatureKind?> playerKinds = BuildOverlayEntryFeatureKinds("Player");
