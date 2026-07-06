@@ -106,8 +106,10 @@ public partial class AkronModule : EverestModule {
     private static Vector2 preRedirectDashAim;
     private static readonly ConditionalWeakTable<Refill, RefillClaritySpriteState> RefillClaritySpriteStates =
         new ConditionalWeakTable<Refill, RefillClaritySpriteState>();
-    private static readonly Dictionary<string, RefillClaritySourceFrame[]> RefillClaritySourceFrameCache = new Dictionary<string, RefillClaritySourceFrame[]>();
-    private static readonly Dictionary<string, MTexture[]> RefillClarityFrameCache = new Dictionary<string, MTexture[]>();
+    private static readonly Dictionary<RefillClaritySourceCacheKey, RefillClaritySourceFrame[]> RefillClaritySourceFrameCache =
+        new Dictionary<RefillClaritySourceCacheKey, RefillClaritySourceFrame[]>();
+    private static readonly Dictionary<RefillClarityFrameCacheKey, MTexture[]> RefillClarityFrameCache =
+        new Dictionary<RefillClarityFrameCacheKey, MTexture[]>();
     private static readonly List<VirtualTexture> RefillClarityFrameTextures = new List<VirtualTexture>();
 
     public AkronModule() {
@@ -776,7 +778,7 @@ public partial class AkronModule : EverestModule {
             return;
         }
 
-        MTexture[] frames = GetRefillClarityFrames(twoDashes, color, opacity);
+        MTexture[] frames = GetRefillClarityFrames(sprite, twoDashes, color, opacity);
         if (frames == null || frames.Length == 0) {
             return;
         }
@@ -797,100 +799,165 @@ public partial class AkronModule : EverestModule {
         state.Opacity = opacity;
     }
 
-    private static MTexture[] GetRefillClarityFrames(bool twoDashes, int color, int opacity) {
-        string key = (twoDashes ? "two" : "one") + "|" + color.ToString("X6", CultureInfo.InvariantCulture) + "|" + opacity.ToString(CultureInfo.InvariantCulture);
+    private static MTexture[] GetRefillClarityFrames(Sprite sprite, bool twoDashes, int color, int opacity) {
+        if (!sprite.Has("idle")) {
+            return null;
+        }
+
+        MTexture[] idleFrames = sprite.Animations["idle"].Frames;
+        RefillClarityFrameCacheKey key = GetRefillClarityFrameCacheKey(idleFrames, twoDashes, color, opacity);
         if (RefillClarityFrameCache.TryGetValue(key, out MTexture[] cached)) {
             return cached;
         }
 
-        RefillClaritySourceFrame[] sourceFrames = GetRefillClaritySourceFrames(twoDashes);
+        RefillClaritySourceFrame[] sourceFrames = GetRefillClaritySourceFrames(idleFrames, twoDashes);
         if (sourceFrames == null || sourceFrames.Length == 0) {
             return null;
         }
 
+        string textureKey = RefillClarityFrameCache.Count.ToString(CultureInfo.InvariantCulture);
         MTexture[] frames = new MTexture[sourceFrames.Length];
         for (int index = 0; index < sourceFrames.Length; index++) {
-            frames[index] = CreateRefillClarityFrame(sourceFrames[index], key + "|" + index.ToString(CultureInfo.InvariantCulture), color, opacity);
+            frames[index] = CreateRefillClarityFrame(sourceFrames[index], textureKey + "|" + index.ToString(CultureInfo.InvariantCulture), twoDashes, color, opacity);
         }
 
         RefillClarityFrameCache[key] = frames;
         return frames;
     }
 
-    private static RefillClaritySourceFrame[] GetRefillClaritySourceFrames(bool twoDashes) {
-        string key = twoDashes ? "two" : "one";
+    private static RefillClaritySourceFrame[] GetRefillClaritySourceFrames(MTexture[] idleFrames, bool twoDashes) {
+        RefillClaritySourceCacheKey key = GetRefillClaritySourceFrameCacheKey(idleFrames, twoDashes);
         if (RefillClaritySourceFrameCache.TryGetValue(key, out RefillClaritySourceFrame[] cached)) {
             return cached;
         }
 
-        Assembly assembly = typeof(AkronModule).Assembly;
-        string resourcePrefix = twoDashes
-            ? "Celeste.Mod.Akron.Resources.RefillClarity.RefillTwo."
-            : "Celeste.Mod.Akron.Resources.RefillClarity.Refill.";
-        string[] resourceNames = assembly.GetManifestResourceNames()
-            .Where(name => name.StartsWith(resourcePrefix, StringComparison.OrdinalIgnoreCase) &&
-                           name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        if (resourceNames.Length == 0 || Engine.Graphics?.GraphicsDevice == null) {
+        if (Engine.Graphics?.GraphicsDevice == null) {
             return null;
         }
 
-        RefillClaritySourceFrame[] frames = new RefillClaritySourceFrame[resourceNames.Length];
-        for (int index = 0; index < resourceNames.Length; index++) {
-            frames[index] = LoadRefillClaritySourceFrame(assembly, resourceNames[index]);
+        RefillClaritySourceFrame[] frames = new RefillClaritySourceFrame[idleFrames.Length];
+        for (int index = 0; index < idleFrames.Length; index++) {
+            frames[index] = ReadRefillClaritySourceFrame(idleFrames[index]);
         }
 
         RefillClaritySourceFrameCache[key] = frames;
         return frames;
     }
 
-    private static RefillClaritySourceFrame LoadRefillClaritySourceFrame(Assembly assembly, string resourceName) {
-        using Stream stream = assembly.GetManifestResourceStream(resourceName);
-        if (stream == null) {
-            throw new InvalidOperationException("Unable to open embedded Refill Clarity resource: " + resourceName);
-        }
-
-        using Texture2D texture = Texture2D.FromStream(Engine.Graphics.GraphicsDevice, stream);
-        Color[] pixels = new Color[texture.Width * texture.Height];
-        texture.GetData(pixels);
-        return new RefillClaritySourceFrame(texture.Width, texture.Height, pixels);
+    private static RefillClaritySourceFrame ReadRefillClaritySourceFrame(MTexture frame) {
+        Rectangle clip = frame.ClipRect;
+        Color[] clippedPixels = new Color[clip.Width * clip.Height];
+        frame.Texture.Texture_Safe.GetData(0, clip, clippedPixels, 0, clippedPixels.Length);
+        Color[] pixels = ExpandRefillClaritySourcePixels(
+            clippedPixels,
+            clip.Width,
+            clip.Height,
+            (int) frame.DrawOffset.X,
+            (int) frame.DrawOffset.Y,
+            frame.Width,
+            frame.Height);
+        return new RefillClaritySourceFrame(
+            frame.Width,
+            frame.Height,
+            Vector2.Zero,
+            frame.Width,
+            frame.Height,
+            pixels);
     }
 
-    private static MTexture CreateRefillClarityFrame(RefillClaritySourceFrame source, string key, int rgb, int opacity) {
-        Color[] pixels = new Color[source.Pixels.Length];
-        Array.Copy(source.Pixels, pixels, source.Pixels.Length);
+    internal static T[] ExpandRefillClaritySourcePixels<T>(
+        T[] clippedPixels,
+        int clippedWidth,
+        int clippedHeight,
+        int offsetX,
+        int offsetY,
+        int frameWidth,
+        int frameHeight) {
+        T[] framePixels = new T[frameWidth * frameHeight];
+        for (int y = 0; y < clippedHeight; y++) {
+            Array.Copy(clippedPixels, y * clippedWidth, framePixels, offsetX + (offsetY + y) * frameWidth, clippedWidth);
+        }
 
+        return framePixels;
+    }
+
+    internal static RefillClarityFrameCacheKey GetRefillClarityFrameCacheKey(
+        MTexture[] idleFrames,
+        bool twoDashes,
+        int color,
+        int opacity) {
+        return new RefillClarityFrameCacheKey(idleFrames, twoDashes, color, opacity);
+    }
+
+    internal static RefillClaritySourceCacheKey GetRefillClaritySourceFrameCacheKey(MTexture[] idleFrames, bool twoDashes) {
+        return new RefillClaritySourceCacheKey(idleFrames, twoDashes);
+    }
+
+    private static MTexture CreateRefillClarityFrame(RefillClaritySourceFrame source, string key, bool twoDashes, int rgb, int opacity) {
+        Color[] pixels = BuildRefillClarityPixels(source.Pixels, source.PixelWidth, source.PixelHeight, twoDashes, rgb, opacity);
+        VirtualTexture texture = VirtualContent.CreateTexture("akron-refill-clarity-" + key, source.PixelWidth, source.PixelHeight, Color.Transparent);
+        texture.Texture_Safe.SetData(pixels);
+        RefillClarityFrameTextures.Add(texture);
+        return new MTexture(texture, source.DrawOffset, source.FrameWidth, source.FrameHeight);
+    }
+
+    internal static Color[] BuildRefillClarityPixels(Color[] source, int width, int height, bool twoDashes, int rgb, int opacity) {
+        Color[] pixels = new Color[source.Length];
+        bool[] opaquePixels = new bool[source.Length];
+        for (int index = 0; index < source.Length; index++) {
+            opaquePixels[index] = source[index].A > 0;
+        }
+
+        bool[] outlineMask = BuildRefillClarityOutlineMask(opaquePixels, width, height, twoDashes);
         byte red = (byte) ((rgb >> 16) & 0xFF);
         byte green = (byte) ((rgb >> 8) & 0xFF);
         byte blue = (byte) (rgb & 0xFF);
+        byte outlineAlpha = (byte) Math.Round(255 * (opacity / 100f));
+        Color outline = new Color(
+            (byte) (red * outlineAlpha / 255),
+            (byte) (green * outlineAlpha / 255),
+            (byte) (blue * outlineAlpha / 255),
+            outlineAlpha);
+
         for (int index = 0; index < pixels.Length; index++) {
-            Color pixel = pixels[index];
-            if (!IsBetterRefillGemsOutlinePixel(pixel)) {
+            Color pixel = source[index];
+            if (pixel.A > 0) {
                 pixels[index] = PremultiplyTexturePixel(pixel);
                 continue;
             }
 
-            byte alpha = (byte) Math.Round(pixel.A * (opacity / 100f));
-            pixels[index] = new Color(
-                (byte) (red * alpha / 255),
-                (byte) (green * alpha / 255),
-                (byte) (blue * alpha / 255),
-                alpha);
+            pixels[index] = outlineMask[index] ? outline : Color.Transparent;
         }
 
-        VirtualTexture texture = VirtualContent.CreateTexture("akron-refill-clarity-" + key, source.Width, source.Height, Color.Transparent);
-        texture.Texture_Safe.SetData(pixels);
-        RefillClarityFrameTextures.Add(texture);
-        return new MTexture(texture, Vector2.Zero, source.Width, source.Height);
+        return pixels;
     }
 
-    private static bool IsBetterRefillGemsOutlinePixel(Color pixel) {
-        return pixel.A > 0 &&
-               pixel.R == 255 &&
-               pixel.G == 41 &&
-               pixel.B == 41;
+    internal static bool[] BuildRefillClarityOutlineMask(bool[] opaquePixels, int width, int height, bool twoDashes) {
+        bool[] outlineMask = new bool[opaquePixels.Length];
+        for (int index = 0; index < opaquePixels.Length; index++) {
+            if (opaquePixels[index]) {
+                continue;
+            }
+
+            int x = index % width;
+            int y = index / width;
+            bool horizontalNeighbor = IsOpaqueRefillPixel(opaquePixels, width, height, x - 1, y) ||
+                                      IsOpaqueRefillPixel(opaquePixels, width, height, x + 1, y);
+            bool verticalNeighbor = IsOpaqueRefillPixel(opaquePixels, width, height, x, y - 1) ||
+                                    IsOpaqueRefillPixel(opaquePixels, width, height, x, y + 1);
+
+            // The two-dash sprite is two vertically joined gems. Leaving the
+            // horizontal sides of the join open matches its existing outline
+            // while the normal refill uses an uninterrupted four-neighbor ring.
+            bool centerJoinGap = twoDashes && y == height / 2 && horizontalNeighbor && !verticalNeighbor;
+            outlineMask[index] = (horizontalNeighbor || verticalNeighbor) && !centerJoinGap;
+        }
+
+        return outlineMask;
+    }
+
+    private static bool IsOpaqueRefillPixel(bool[] pixels, int width, int height, int x, int y) {
+        return x >= 0 && x < width && y >= 0 && y < height && pixels[x + y * width];
     }
 
     private static Color PremultiplyTexturePixel(Color pixel) {
@@ -927,15 +994,72 @@ public partial class AkronModule : EverestModule {
     }
 
     private readonly struct RefillClaritySourceFrame {
-        public RefillClaritySourceFrame(int width, int height, Color[] pixels) {
-            Width = width;
-            Height = height;
+        public RefillClaritySourceFrame(int pixelWidth, int pixelHeight, Vector2 drawOffset, int frameWidth, int frameHeight, Color[] pixels) {
+            PixelWidth = pixelWidth;
+            PixelHeight = pixelHeight;
+            DrawOffset = drawOffset;
+            FrameWidth = frameWidth;
+            FrameHeight = frameHeight;
             Pixels = pixels;
         }
 
-        public int Width { get; }
-        public int Height { get; }
+        public int PixelWidth { get; }
+        public int PixelHeight { get; }
+        public Vector2 DrawOffset { get; }
+        public int FrameWidth { get; }
+        public int FrameHeight { get; }
         public Color[] Pixels { get; }
+    }
+
+    internal readonly struct RefillClaritySourceCacheKey : IEquatable<RefillClaritySourceCacheKey> {
+        public RefillClaritySourceCacheKey(MTexture[] frames, bool twoDashes) {
+            Frames = frames;
+            TwoDashes = twoDashes;
+        }
+
+        private MTexture[] Frames { get; }
+        private bool TwoDashes { get; }
+
+        public bool Equals(RefillClaritySourceCacheKey other) {
+            return ReferenceEquals(Frames, other.Frames) && TwoDashes == other.TwoDashes;
+        }
+
+        public override bool Equals(object obj) {
+            return obj is RefillClaritySourceCacheKey other && Equals(other);
+        }
+
+        public override int GetHashCode() {
+            return HashCode.Combine(RuntimeHelpers.GetHashCode(Frames), TwoDashes);
+        }
+    }
+
+    internal readonly struct RefillClarityFrameCacheKey : IEquatable<RefillClarityFrameCacheKey> {
+        public RefillClarityFrameCacheKey(MTexture[] frames, bool twoDashes, int color, int opacity) {
+            Frames = frames;
+            TwoDashes = twoDashes;
+            Color = color;
+            Opacity = opacity;
+        }
+
+        private MTexture[] Frames { get; }
+        private bool TwoDashes { get; }
+        private int Color { get; }
+        private int Opacity { get; }
+
+        public bool Equals(RefillClarityFrameCacheKey other) {
+            return ReferenceEquals(Frames, other.Frames) &&
+                   TwoDashes == other.TwoDashes &&
+                   Color == other.Color &&
+                   Opacity == other.Opacity;
+        }
+
+        public override bool Equals(object obj) {
+            return obj is RefillClarityFrameCacheKey other && Equals(other);
+        }
+
+        public override int GetHashCode() {
+            return HashCode.Combine(RuntimeHelpers.GetHashCode(Frames), TwoDashes, Color, Opacity);
+        }
     }
 
     private sealed class RefillClaritySpriteState {

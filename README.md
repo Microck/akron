@@ -6,7 +6,7 @@
   <a href="https://gamebanana.com/mods/681169"><img src="https://img.shields.io/github/v/release/Microck/akron?display_name=tag&style=flat-square&label=release&color=000000" alt="release badge"></a>
   <a href="https://gamebanana.com/mods/681169"><img src="https://img.shields.io/badge/dynamic/json?style=flat-square&label=downloads&color=000000&query=%24%5B0%5D&url=https%3A%2F%2Fapi.gamebanana.com%2FCore%2FItem%2FData%3Fitemtype%3DMod%26itemid%3D681169%26fields%3Ddownloads" alt="gamebanana downloads badge"></a>
   <a href="https://github.com/Microck/akron/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Microck/akron/ci.yml?branch=main&style=flat-square&label=ci&color=000000" alt="ci badge"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-mit-000000?style=flat-square" alt="license badge"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-CC%20BY--NC--ND%204.0-000000?style=flat-square" alt="license badge"></a>
 </p>
 
 ![Akron overlay](docs/images/akron-overlay-overview.png)
@@ -88,4 +88,4 @@ if Akron helps with your Celeste practice, routing, captures, or setup sharing, 
 
 ## license
 
-Akron is licensed under the [MIT license](LICENSE).
+Akron-owned material is copyright (c) 2026 Microck and licensed under [Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International](LICENSE). Unchanged, attributed, noncommercial redistribution is permitted; distributing modified material is not. Third-party components remain under the separate terms listed in [third-party notices](licenses/third-party-notices.txt).

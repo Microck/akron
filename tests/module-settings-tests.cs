@@ -775,6 +775,81 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void RefillClarityBuildsFourNeighborOutlineWithoutDiagonalPixels()
+    {
+        bool[] opaquePixels = new bool[25];
+        opaquePixels[2 + 2 * 5] = true;
+
+        bool[] outlineMask = AkronModule.BuildRefillClarityOutlineMask(
+            opaquePixels,
+            width: 5,
+            height: 5,
+            twoDashes: false);
+
+        Assert.True(outlineMask[2 + 1 * 5]);
+        Assert.True(outlineMask[1 + 2 * 5]);
+        Assert.False(outlineMask[2 + 2 * 5]);
+        Assert.True(outlineMask[3 + 2 * 5]);
+        Assert.True(outlineMask[2 + 3 * 5]);
+        Assert.False(outlineMask[1 + 1 * 5]);
+        Assert.False(outlineMask[3 + 3 * 5]);
+    }
+
+    [Fact]
+    public void RefillClarityPreservesTwoDashCenterGap()
+    {
+        bool[] opaquePixels = new bool[25];
+        opaquePixels[1 + 2 * 5] = true;
+        opaquePixels[2 + 2 * 5] = true;
+        opaquePixels[3 + 2 * 5] = true;
+
+        bool[] outlineMask = AkronModule.BuildRefillClarityOutlineMask(
+            opaquePixels,
+            width: 5,
+            height: 5,
+            twoDashes: true);
+
+        Assert.False(outlineMask[0 + 2 * 5]);
+        Assert.False(outlineMask[4 + 2 * 5]);
+        Assert.True(outlineMask[1 + 1 * 5]);
+        Assert.True(outlineMask[2 + 3 * 5]);
+    }
+
+    [Fact]
+    public void RefillClarityExpandsTrimmedFramesBeforeBuildingOutline()
+    {
+        int[] framePixels = AkronModule.ExpandRefillClaritySourcePixels(
+            new[] { 42 },
+            clippedWidth: 1,
+            clippedHeight: 1,
+            offsetX: 1,
+            offsetY: 1,
+            frameWidth: 3,
+            frameHeight: 3);
+
+        Assert.Equal(42, framePixels[4]);
+        Assert.Equal(0, framePixels[1]);
+        Assert.Equal(0, framePixels[3]);
+        Assert.Equal(0, framePixels[5]);
+        Assert.Equal(0, framePixels[7]);
+    }
+
+    [Fact]
+    public void RefillClarityCacheIdentityIncludesTheIdleFrameSet()
+    {
+        MTexture[] firstFrames = new MTexture[1];
+        MTexture[] secondFrames = new MTexture[1];
+
+        object firstFrameKey = AkronModule.GetRefillClarityFrameCacheKey(firstFrames, false, 0xFF00FF, 100);
+        object secondFrameKey = AkronModule.GetRefillClarityFrameCacheKey(secondFrames, false, 0xFF00FF, 100);
+        object firstSourceKey = AkronModule.GetRefillClaritySourceFrameCacheKey(firstFrames, false);
+        object secondSourceKey = AkronModule.GetRefillClaritySourceFrameCacheKey(secondFrames, false);
+
+        Assert.NotEqual(firstFrameKey, secondFrameKey);
+        Assert.NotEqual(firstSourceKey, secondSourceKey);
+    }
+
+    [Fact]
     public void RefillClarityRecognizesCustomOneUseRefillEntities()
     {
         Assert.True(AkronHudRenderer.ShouldRenderRefillClarityOutline(MakeLive(new CustomOneUseRefillProbe())));

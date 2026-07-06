@@ -108,7 +108,7 @@ Disclosure fields must be factual. Do not claim human review, testing, verificat
   Provide the exact version shown by the tool when available.
 - `model_used`: What model was used?
   Provide the exact model identifier as exposed by the tool, CLI, or API.
-  This is the identifier the provider uses to route requests — not the
+  This is the identifier the provider uses to route requests - not the
   product name, marketing label, or abbreviation.
   Examples of valid identifiers: `openai/gpt-5.5`, `anthropic/claude-sonnet-5`,
   `zhipuai/glm-5.2`, `google/gemini-3-pro`, `deepseek/deepseek-v4`.
@@ -138,6 +138,22 @@ Before submitting, confirm that:
 - Incorrect, unsafe, unnecessary, or unverifiable AI output has been corrected or removed.
 
 Pull requests will not be rejected solely because AI was used. They may be rejected or returned for revision if the disclosure is incomplete, inaccurate, fabricated, unverifiable, or if the contribution appears to have been submitted without real human testing.
+
+## Contribution License
+
+CC BY-NC-ND 4.0 does not normally allow sharing adapted material. Akron's
+copyright holders grant a limited exception to modify and share Akron-owned
+material only as reasonably necessary to prepare and submit a
+contribution to the official Akron repository. This exception does not permit
+publishing unofficial builds, maintaining a general-purpose fork, or using the
+changes for another project. GitHub's own terms may separately govern copies
+made through GitHub's fork functionality.
+
+By submitting a contribution, you represent that you have the right to submit
+it and grant Microck a perpetual, worldwide, non-exclusive, irrevocable,
+royalty-free license to use, reproduce, modify, distribute, sublicense, and
+relicense the contribution as part of Akron. This grant does not change the
+licenses of third-party material identified in `licenses/third-party-notices.txt`.
 
 ## Auth, Data, And Test Safety
 

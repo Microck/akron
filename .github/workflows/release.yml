@@ -122,7 +122,10 @@ jobs:
             echo "::error::Player package must not contain PDB files."
             exit 1
           fi
+          unzip -Z1 Akron.zip | grep -Fx LICENSE >/dev/null
           unzip -Z1 Akron.zip | grep -Fx ThirdPartyNotices.txt >/dev/null
+          cmp LICENSE <(unzip -p Akron.zip LICENSE)
+          cmp licenses/third-party-notices.txt <(unzip -p Akron.zip ThirdPartyNotices.txt)
           cp Akron.zip "Akron-${RELEASE_TAG}.zip"
           sha256sum "Akron-${RELEASE_TAG}.zip" > "Akron-${RELEASE_TAG}.zip.sha256"
           dotnet list Source/Akron.csproj package --include-transitive --format json > "Akron-${RELEASE_TAG}.dependencies.json"
@@ -217,10 +220,10 @@ jobs:
           path: release-artifacts
 
       - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.23.1
-          cache: npm
+          package-manager-cache: false # Release publishing must not restore dependency caches.
 
       - name: Install locked browser dependencies
         run: |
@@ -310,9 +313,9 @@ jobs:
     runs-on: ubuntu-24.04
     environment: release
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
+      contents: write # Required to create or update the GitHub Release and upload its assets.
+      id-token: write # Required by the GitHub artifact attestation service.
+      attestations: write # Required to publish provenance and SBOM attestations.
 
     steps:
       - name: Checkout immutable release commit
@@ -347,10 +350,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_DISPLAY_NAME: ${{ needs.build.outputs.release_display_name }}
         run: |
           set -euo pipefail
           cd release-artifacts
-          title="${{ needs.build.outputs.release_display_name }}"
+          title="$RELEASE_DISPLAY_NAME"
           prerelease_flag=(--prerelease="$IS_PRERELEASE")
 
           assets=(
@@ -377,7 +381,7 @@ jobs:
     runs-on: ubuntu-24.04
     environment: release
     permissions:
-      contents: write
+      contents: write # Required to push the generated stable-link update to the default branch.
     env:
       AKRON_GAMEBANANA_FILE_ID: ${{ needs.publish_gamebanana.outputs.file_id }}
 

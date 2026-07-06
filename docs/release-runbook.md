@@ -91,6 +91,8 @@ Required contents:
 - `bin/runtimes/osx/native/libcimgui.dylib`
 - at least one Windows `cimgui.dll` runtime under `bin/runtimes/`
 - `Dialog/English.txt`
+- `LICENSE`
+- `ThirdPartyNotices.txt`
 
 Check the local package:
 
@@ -100,6 +102,10 @@ unzip -l Akron.zip
 ```
 
 Missing required contents means do not publish. Fix packaging first.
+
+The packaged `LICENSE` and `ThirdPartyNotices.txt` must be byte-identical to
+the repository copies. Akron-owned material uses CC BY-NC-ND 4.0, while the
+components identified in the notices retain their original licenses.
 
 ## Publish
 

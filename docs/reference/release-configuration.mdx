@@ -46,6 +46,11 @@ Every Akron release is expected to leave these public surfaces consistent:
 | GameBanana | The mod page has a release update and downloadable file for the same tag. |
 | `akron.micr.dev` | Documentation and fallback GameBanana file ids match the released version. |
 | README | The Olympus and raw-download buttons point at `akron.micr.dev/olympus` and `akron.micr.dev/raw`. |
-| CI artifact | The release package passes build, test, package, and zip verification. |
+| CI artifact | The release package passes build, test, package, and zip verification and contains the repository `LICENSE` and `ThirdPartyNotices.txt`. |
+
+Akron-owned material is released under CC BY-NC-ND 4.0. Third-party components
+retain the licenses recorded in `ThirdPartyNotices.txt`. GitHub, GameBanana,
+the documentation site, and the player archive must not describe the entire
+mixed-license distribution as exclusively CC BY-NC-ND 4.0.
 
 If one of these surfaces is stale after a release workflow completes, treat the release as partially published and follow the recovery path in the release runbook.

@@ -6,7 +6,7 @@ on:
     - cron: "17 9 * * *"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: sync-gamebanana-readme-links
@@ -16,6 +16,8 @@ jobs:
   sync:
     name: Sync README links
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # Required to push the generated stable-link update to the default branch.
 
     steps:
       - name: Checkout
