@@ -253,6 +253,24 @@ public sealed class ScreenshotScannerTests {
     }
 
     [Fact]
+    public void UploadHostStopsMapCaptureWhenRemoved() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-uploads.cs"));
+        int removedStart = source.IndexOf("public override void Removed(Scene scene)", StringComparison.Ordinal);
+        int removedEnd = source.IndexOf("private IEnumerator Run()", removedStart, StringComparison.Ordinal);
+
+        Assert.True(removedStart >= 0);
+        Assert.True(removedEnd > removedStart);
+        string removedSource = source[removedStart..removedEnd];
+
+        Assert.Contains("Tags.Persistent", source);
+        Assert.Contains("private bool ownsCaptureScan = true;", source);
+        Assert.Contains("ownsCaptureScan = false;", source);
+        Assert.Contains("uploadCancellation.Cancel();", removedSource);
+        Assert.Contains("ownsCaptureScan && AkronScreenshotScanner.IsScanning", removedSource);
+        Assert.Contains("CleanupPack();", removedSource);
+    }
+
+    [Fact]
     public void MapCaptureQueuesNoSpawnRoomsAndSkipsOnlyFillerByName() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-screenshot-scanner.cs"));
         int filterStart = source.IndexOf("private static bool CanScanChapterRoom", StringComparison.Ordinal);

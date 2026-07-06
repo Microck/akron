@@ -256,6 +256,7 @@ public sealed partial class AkronOverlay {
                     Action("Export Setup", () => true, () => AkronSetupPacks.FormatSection(AkronModule.Settings.SetupPackSection), () => AkronSetupPacks.ExportCurrent(AkronModule.Settings.SetupPackExportName, AkronModule.Settings.SetupPackSection), "setup", ".akr", "export"),
                     Action("Import Setup", () => true, () => AkronSetupPacks.FormatSection(AkronModule.Settings.SetupPackSection), () => AkronSetupPacks.ImportFromFileBrowser(AkronModule.Settings.SetupPackSection), "setup", ".akr", "import"),
                     Action("Community Packs", () => true, DescribeCommunityPackBrowser, OpenCommunityPackBrowser, "discord", "community", "map", ".akr", "gamebanana"),
+                    UploadPackRow(level),
                     Toggle("Search Autofocus", () => AkronModule.Settings.SearchAutofocus, value => AkronModule.Settings.SearchAutofocus = value),
                     SearchInput()
                 };
@@ -468,6 +469,23 @@ public sealed partial class AkronOverlay {
                 action();
             }
         }, BuildSearchTerms(label, tags), isToggle, OverlayEntryControl.Action, featureKind);
+    }
+
+    private static OverlayEntry UploadPackRow(Level level) {
+        return new OverlayEntry(
+            "Upload Pack",
+            () => level != null,
+            AkronCommunityPackUploads.DescribeOverlayAction,
+            () => {
+                if (level != null) {
+                    AkronCommunityPackUploads.OpenUploadPrompt(level);
+                }
+            },
+            BuildSearchTerms("Upload Pack", new[] { "community", "upload", ".akr", "discord", "anonymous" }),
+            false,
+            OverlayEntryControl.Action,
+            AkronFeatureKind.ScreenshotTool,
+            forceOptionsPopup: true);
     }
 
     private static OverlayEntry StartPosRow(Level level) {

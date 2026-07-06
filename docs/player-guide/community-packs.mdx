@@ -51,7 +51,9 @@ Akron caps catalog and pack downloads before importing:
 
 The official Discord bot uses the same 4 MiB `.akr` limit before publishing a public catalog pack.
 
-Catalog screenshots can start larger than the stored image. The official bot accepts capture sources up to 64 MiB, then stores an optimized WebP preview capped at 4 MiB so detailed captures can fit inside the public catalog without burning through storage.
+Catalog screenshots can start larger than the stored image. Official upload paths accept capture sources up to 100 MiB, then store an optimized WebP preview capped at 4 MiB so detailed captures can fit inside the public catalog without burning through storage. In-game uploads automatically capture the full map before submission.
+
+In-game uploads currently submit StartPos packs only. Auto Kill and Auto Deafen area lists are not uploaded until those area formats carry explicit map scope, because a leftover area from another map would otherwise be published under the current map.
 
 ## Catalog Contract
 

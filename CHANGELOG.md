@@ -19,6 +19,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ## 0.1.2-beta.37
 
+### Added
+
+- Add an in-game Upload Pack popup for submitting Community Pack drafts with section, attribution, generated title, description, and terms controls.
+
 ### Fixed
 
 - Let Skip Cutscene run Celeste's active cutscene skip callback instead of leaving the level stuck in a skipping cutscene state.
