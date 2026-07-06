@@ -14,7 +14,7 @@ public sealed partial class AkronOverlay {
         NumericsVector2 displaySize = ImGui.GetIO().DisplaySize;
         NumericsVector2 windowSize = new NumericsVector2(
             Math.Min(640f, Math.Max(360f, displaySize.X - 96f)),
-            Math.Min(316f, Math.Max(300f, displaySize.Y - 96f)));
+            Math.Min(260f, Math.Max(236f, displaySize.Y - 96f)));
         ImGui.SetNextWindowSize(windowSize, ImGuiCond.Always);
         ImGui.SetNextWindowPos(
             new NumericsVector2(

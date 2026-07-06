@@ -139,7 +139,7 @@ public sealed class OverlayTests {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-upload-window.cs"));
 
         Assert.Contains("Math.Min(640f", source);
-        Assert.Contains("Math.Min(316f", source);
+        Assert.Contains("Math.Min(260f", source);
         Assert.Contains("DrawPopupRowLabel(\"Map\"", source);
         Assert.Contains("DrawPopupRowLabel(\"Category\"", source);
         Assert.Contains("DrawPopupRowLabel(\"Attribution\"", source);
