@@ -4,6 +4,16 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## 0.1.2-beta.40
+
+### Added
+
+- Add the in-game Community Packs upload flow for StartPos packs, including automatic full-map capture, generated metadata, saved attribution, and Discord moderation handoff.
+
+### Changed
+
+- Document the Community Packs upload and publication architecture without tying the player-facing catalog contract to provider-specific free-tier details.
+
 ## 0.1.2-beta.39
 
 ### Fixed
