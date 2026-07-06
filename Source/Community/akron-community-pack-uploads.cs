@@ -94,7 +94,9 @@ public static class AkronCommunityPackUploads {
     private static bool uploadInProgress;
 
     public static bool IsSupportedUploadSection(AkronSetupSection section) {
-        return section == AkronSetupSection.StartPos;
+        return section == AkronSetupSection.StartPos ||
+               section == AkronSetupSection.AutoKill ||
+               section == AkronSetupSection.AutoDeafen;
     }
 
     public static AkronSetupSection NormalizeUploadSection(AkronSetupSection section) {
@@ -140,7 +142,7 @@ public static class AkronCommunityPackUploads {
 
     public static string WriteTempArchive(AkronSetupSection section, string title, string mapSid) {
         if (!IsSupportedUploadSection(section)) {
-            throw new InvalidOperationException("Only StartPos packs can be uploaded.");
+            throw new InvalidOperationException("Only StartPos, Auto Kill, and Auto Deafen packs can be uploaded.");
         }
 
         Directory.CreateDirectory(GetTempUploadDirectory());
@@ -333,7 +335,7 @@ public static class AkronCommunityPackUploads {
         }
 
         if (!IsSupportedUploadSection(draft.Section)) {
-            throw new InvalidOperationException("Only StartPos packs can be uploaded.");
+            throw new InvalidOperationException("Only StartPos, Auto Kill, and Auto Deafen packs can be uploaded.");
         }
 
         FileInfo packFile = RequireExistingFile(packPath, nameof(packPath));

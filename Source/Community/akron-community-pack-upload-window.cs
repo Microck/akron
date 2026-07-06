@@ -13,8 +13,8 @@ public sealed partial class AkronOverlay {
 
         NumericsVector2 displaySize = ImGui.GetIO().DisplaySize;
         NumericsVector2 windowSize = new NumericsVector2(
-            Math.Min(660f, Math.Max(360f, displaySize.X - 96f)),
-            Math.Min(430f, Math.Max(360f, displaySize.Y - 96f)));
+            Math.Min(640f, Math.Max(360f, displaySize.X - 96f)),
+            Math.Min(400f, Math.Max(360f, displaySize.Y - 96f)));
         ImGui.SetNextWindowSize(windowSize, ImGuiCond.Always);
         ImGui.SetNextWindowPos(
             new NumericsVector2(
@@ -45,38 +45,37 @@ public sealed partial class AkronOverlay {
         }
 
         AkronModule.Settings.CommunityPackUploadSection = AkronCommunityPackUploads.NormalizeUploadSection(AkronModule.Settings.CommunityPackUploadSection);
-        string mapSid = level.Session?.Area.GetSID() ?? string.Empty;
-        string mapName = string.IsNullOrWhiteSpace(mapSid) ? "No active map" : mapSid;
         AkronCommunityPackUploadDraft draft = AkronCommunityPackUploads.BuildDraft(
             level,
             AkronModule.Settings.CommunityPackUploadSection,
             AkronModule.Settings.CommunityPackUploadUseDiscordAttribution);
 
-        DrawCommunityPackUploadForm(mapName, popupId);
-        DrawCommunityPackUploadSummary(level, draft);
+        DrawCommunityPackUploadForm(level, draft, popupId);
     }
 
-    private void DrawCommunityPackUploadForm(string mapName, string popupId) {
-        ImGui.TextDisabled("Map:");
-        ImGui.SameLine();
-        TextWrappedLiteral(mapName);
+    private void DrawCommunityPackUploadForm(Level level, AkronCommunityPackUploadDraft draft, string popupId) {
+        const float preferredFieldWidth = 420f;
+        float labelWidth = CalculatePopupLabelWidth(preferredFieldWidth, 100f);
 
-        ImGui.Spacing();
-        ImGui.TextDisabled("Category:");
-        ImGui.SameLine();
+        DrawPopupRowLabel("Map", labelWidth);
+        TextWrappedLiteral(string.IsNullOrWhiteSpace(draft.MapSid) ? "No active map" : draft.MapSid);
+
+        DrawPopupRowLabel("Category", labelWidth);
         DrawCommunityPackUploadSectionChoice("StartPos", AkronSetupSection.StartPos, popupId);
-
-        ImGui.Spacing();
-        ImGui.TextDisabled("Attribution:");
         ImGui.SameLine();
+        DrawCommunityPackUploadSectionChoice("Auto Kill", AkronSetupSection.AutoKill, popupId);
+        ImGui.SameLine();
+        DrawCommunityPackUploadSectionChoice("Auto Deafen", AkronSetupSection.AutoDeafen, popupId);
+
+        DrawPopupRowLabel("Attribution", labelWidth);
         DrawCommunityPackUploadAttributionChoice("Anonymous", false, popupId);
         ImGui.SameLine();
         DrawCommunityPackUploadAttributionChoice("Discord", true, popupId);
 
         if (AkronModule.Settings.CommunityPackUploadUseDiscordAttribution) {
             string discordUserId = AkronModule.Settings.CommunityPackUploadDiscordUserId ?? string.Empty;
-            DrawPopupRowLabel("Discord ID", 92f);
-            ImGui.PushItemWidth(Math.Max(220f, ImGui.GetContentRegionAvail().X - 108f));
+            DrawPopupRowLabel("Discord ID", labelWidth);
+            ImGui.PushItemWidth(CalculatePopupControlWidth(labelWidth, preferredFieldWidth, 220f));
             if (ImGui.InputTextWithHint("##upload-discord-id-" + popupId, "Your Discord user ID", ref discordUserId, 32)) {
                 AkronModule.Settings.CommunityPackUploadDiscordUserId = discordUserId.Trim();
                 MarkValueEditFreeze();
@@ -88,58 +87,47 @@ public sealed partial class AkronOverlay {
             DrawPopupTooltip("Saved for future Upload Pack submissions and also editable from the row submenu.");
         }
 
-        ImGui.Spacing();
-        string title = AkronModule.Settings.CommunityPackUploadTitleOverride ?? string.Empty;
-        DrawPopupRowLabel("Title", 92f);
-        ImGui.PushItemWidth(Math.Max(220f, ImGui.GetContentRegionAvail().X - 108f));
-        if (ImGui.InputTextWithHint("##upload-title-" + popupId, "Generated from the current map", ref title, 120)) {
-            AkronModule.Settings.CommunityPackUploadTitleOverride = title.Trim();
-            MarkValueEditFreeze();
+        string generatedTitle = AkronCommunityPackUploads.GenerateTitle(draft.MapDisplayName, AkronModule.Settings.CommunityPackUploadSection);
+        string title = draft.Title;
+        if (DrawCommunityPackUploadTextInput(
+            "Title",
+            "##upload-title-" + popupId,
+            ref title,
+            120,
+            preferredFieldWidth,
+            labelWidth)) {
+            AkronModule.Settings.CommunityPackUploadTitleOverride = string.Equals(title.Trim(), generatedTitle, StringComparison.Ordinal)
+                ? string.Empty
+                : title.Trim();
         }
-        if (ImGui.IsItemActive()) {
-            MarkValueEditFreeze();
-        }
-        ImGui.PopItemWidth();
 
-        string description = AkronModule.Settings.CommunityPackUploadDescriptionOverride ?? string.Empty;
-        DrawPopupRowLabel("Desc", 92f);
-        ImGui.PushItemWidth(Math.Max(220f, ImGui.GetContentRegionAvail().X - 108f));
-        if (ImGui.InputTextWithHint("##upload-description-" + popupId, "Generated from the current map", ref description, 240)) {
-            AkronModule.Settings.CommunityPackUploadDescriptionOverride = description.Trim();
-            MarkValueEditFreeze();
+        string generatedDescription = AkronCommunityPackUploads.GenerateDescription(draft.MapDisplayName, AkronModule.Settings.CommunityPackUploadSection);
+        string description = draft.Description;
+        if (DrawCommunityPackUploadTextInput(
+            "Description",
+            "##upload-description-" + popupId,
+            ref description,
+            240,
+            preferredFieldWidth,
+            labelWidth)) {
+            AkronModule.Settings.CommunityPackUploadDescriptionOverride = string.Equals(description.Trim(), generatedDescription, StringComparison.Ordinal)
+                ? string.Empty
+                : description.Trim();
         }
-        if (ImGui.IsItemActive()) {
-            MarkValueEditFreeze();
-        }
-        ImGui.PopItemWidth();
-
-        if (ImGui.Button("Use Generated Text##upload-generated-" + popupId, new NumericsVector2(160f, 28f))) {
-            AkronModule.Settings.CommunityPackUploadTitleOverride = string.Empty;
-            AkronModule.Settings.CommunityPackUploadDescriptionOverride = string.Empty;
-        }
-        DrawPopupTooltip("Blank title and description fields use generated text for the current map and category.");
 
         ImGui.Separator();
+        DrawPopupRowLabel("Review", labelWidth);
+        TextWrappedLiteral("Akron captures the full map and sends this pack to Discord for moderation.");
+
         bool acceptedTerms = AkronModule.Settings.CommunityPackUploadAcceptedTermsVersion >= AkronCommunityPackUploads.CurrentTermsVersion;
-        if (ImGui.Checkbox("I have permission to share this pack##upload-terms-" + popupId, ref acceptedTerms)) {
+        DrawPopupRowLabel("Confirm", labelWidth);
+        if (ImGui.Checkbox("I created this pack and it can be shared publicly##upload-terms-" + popupId, ref acceptedTerms)) {
             AkronModule.Settings.CommunityPackUploadAcceptedTermsVersion = acceptedTerms ? AkronCommunityPackUploads.CurrentTermsVersion : 0;
         }
-        ImGui.TextWrapped("Uploads are reviewed in Discord before publication. Akron captures the full map automatically.");
-    }
 
-    private void DrawCommunityPackUploadSummary(Level level, AkronCommunityPackUploadDraft draft) {
-        ImGui.Separator();
-        TextDisabledLiteral("Preview: " + draft.Title);
-        TextDisabledLiteral("Map: " + (string.IsNullOrWhiteSpace(draft.MapSid) ? "No active map" : draft.MapSid) + " - Capture: full map - Install ID: private");
-        if (AkronModule.Settings.CommunityPackUploadUseDiscordAttribution) {
-            TextDisabledLiteral(string.IsNullOrWhiteSpace(AkronModule.Settings.CommunityPackUploadDiscordUserId)
-                ? "Discord user: required for Discord attribution"
-                : "Discord user: saved");
-        }
-
-        ImGui.Spacing();
         bool busy = AkronCommunityPackUploads.IsUploadInProgress || AkronScreenshotScanner.IsScanning;
         string buttonLabel = busy ? "Uploading..." : "Submit Upload";
+        DrawPopupRowLabel("", labelWidth);
         if (ImGui.Button(buttonLabel + "##upload-submit-window", new NumericsVector2(148f, 30f))) {
             AkronCommunityPackUploads.OpenUploadPrompt(level);
             if (AkronCommunityPackUploads.IsUploadInProgress || AkronScreenshotScanner.IsScanning) {
@@ -154,10 +142,31 @@ public sealed partial class AkronOverlay {
         ImGui.PushStyleColor(ImGuiCol.Button, selected ? ToImGuiColor(0xC92735, 1f) : ToImGuiColor(0x2F2F2F, 0.75f));
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ToImGuiColor(0xE03745, 1f));
         ImGui.PushStyleColor(ImGuiCol.ButtonActive, ToImGuiColor(0xF04C58, 1f));
-        if (ImGui.Button(label + "##upload-section-" + popupId, new NumericsVector2(96f, 28f))) {
+        float buttonWidth = Math.Max(96f, ImGui.CalcTextSize(label).X + 26f);
+        if (ImGui.Button(label + "##upload-section-" + popupId, new NumericsVector2(buttonWidth, 28f))) {
             AkronModule.Settings.CommunityPackUploadSection = section;
         }
         ImGui.PopStyleColor(3);
+    }
+
+    private bool DrawCommunityPackUploadTextInput(
+        string label,
+        string id,
+        ref string value,
+        int maxLength,
+        float preferredFieldWidth,
+        float labelWidth) {
+        DrawPopupRowLabel(label, labelWidth);
+        ImGui.PushItemWidth(CalculatePopupControlWidth(labelWidth, preferredFieldWidth, 220f));
+        bool changed = ImGui.InputText(id, ref value, (uint) maxLength);
+        if (changed) {
+            MarkValueEditFreeze();
+        }
+        if (ImGui.IsItemActive()) {
+            MarkValueEditFreeze();
+        }
+        ImGui.PopItemWidth();
+        return changed;
     }
 
     private static void DrawCommunityPackUploadAttributionChoice(string label, bool useDiscord, string popupId) {

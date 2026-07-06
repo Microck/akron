@@ -9,10 +9,12 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 ### Added
 
 - Add the in-game Community Packs upload flow for StartPos packs, including automatic full-map capture, generated metadata, saved attribution, and Discord moderation handoff.
+- Let the in-game Community Packs upload flow submit Auto Kill and Auto Deafen area packs, with generated metadata shown directly in the upload form.
 
 ### Changed
 
 - Document the Community Packs upload and publication architecture without tying the player-facing catalog contract to provider-specific free-tier details.
+- Simplify the Upload Pack popup with aligned fields, clearer public-sharing confirmation text, and no separate preview block.
 
 ## 0.1.2-beta.39
 

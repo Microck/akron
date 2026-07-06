@@ -1900,11 +1900,12 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void UploadPackRejectsUnscopedAreaSections()
+    public void UploadPackSupportsScopedPracticeSections()
     {
         Assert.True(AkronCommunityPackUploads.IsSupportedUploadSection(AkronSetupSection.StartPos));
-        Assert.False(AkronCommunityPackUploads.IsSupportedUploadSection(AkronSetupSection.AutoKill));
-        Assert.False(AkronCommunityPackUploads.IsSupportedUploadSection(AkronSetupSection.AutoDeafen));
+        Assert.True(AkronCommunityPackUploads.IsSupportedUploadSection(AkronSetupSection.AutoKill));
+        Assert.True(AkronCommunityPackUploads.IsSupportedUploadSection(AkronSetupSection.AutoDeafen));
+        Assert.False(AkronCommunityPackUploads.IsSupportedUploadSection(AkronSetupSection.Whole));
     }
 
     [Fact]
@@ -1973,6 +1974,57 @@ public sealed class ModuleSettingsTests
             Assert.Equal(5, submission.PackSizeBytes);
             Assert.Equal(AkronCommunityPackUploads.DiscordAttribution, submission.Attribution.Mode);
             Assert.Equal("123456789012345678", submission.Attribution.DiscordUserId);
+        } finally {
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void UploadPackPrepareRequestAcceptsAreaSections()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-upload-area-prepare-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string packPath = Path.Combine(directory, "pack.akr");
+        string capturePath = Path.Combine(directory, "capture.png");
+        try {
+            File.WriteAllBytes(packPath, new byte[] { 1, 2, 3 });
+            File.WriteAllBytes(capturePath, new byte[] { 4, 5 });
+
+            AkronCommunityPackUploadDraft autoKillDraft = AkronCommunityPackUploads.BuildDraft(
+                "Glyph/Glyph",
+                "Glyph",
+                AkronSetupSection.AutoKill,
+                string.Empty,
+                useDiscordAttribution: false);
+            AkronCommunityPackUploadPrepareRequest autoKillRequest = AkronCommunityPackUploads.BuildPrepareRequest(
+                autoKillDraft,
+                packPath,
+                capturePath,
+                "install-id",
+                1);
+
+            AkronCommunityPackUploadSubmissionInput autoKillSubmission = Assert.Single(autoKillRequest.Submissions);
+            Assert.Equal(AkronSetupSection.AutoKill, autoKillSubmission.Section);
+            Assert.Equal("Glyph Auto Kill Areas", autoKillSubmission.Title);
+
+            AkronCommunityPackUploadDraft autoDeafenDraft = AkronCommunityPackUploads.BuildDraft(
+                "Glyph/Glyph",
+                "Glyph",
+                AkronSetupSection.AutoDeafen,
+                string.Empty,
+                useDiscordAttribution: false);
+            AkronCommunityPackUploadPrepareRequest autoDeafenRequest = AkronCommunityPackUploads.BuildPrepareRequest(
+                autoDeafenDraft,
+                packPath,
+                capturePath,
+                "install-id",
+                1);
+
+            AkronCommunityPackUploadSubmissionInput autoDeafenSubmission = Assert.Single(autoDeafenRequest.Submissions);
+            Assert.Equal(AkronSetupSection.AutoDeafen, autoDeafenSubmission.Section);
+            Assert.Equal("Glyph Auto Deafen Areas", autoDeafenSubmission.Title);
         } finally {
             if (Directory.Exists(directory)) {
                 Directory.Delete(directory, recursive: true);

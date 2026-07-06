@@ -106,7 +106,7 @@ Before adding archives to the catalog, ensure that:
 - Optional catalog image sources are no larger than 100 MiB before optimization.
 - Optimized catalog images stored in R2 are no larger than 4 MiB.
 
-The official in-game upload flow currently accepts StartPos packs only. Catalog maintainers may still host other scoped `.akr` sections manually, but automated public uploads should not publish Auto Kill or Auto Deafen area lists until those formats include explicit map scope.
+The official in-game upload flow accepts StartPos, Auto Kill, and Auto Deafen packs. Auto Kill and Auto Deafen areas are coordinate-based setup state, so catalog maintainers should reject area packs when the submitted map SID does not match the map those areas were created for.
 
 ## Catalog validation
 
