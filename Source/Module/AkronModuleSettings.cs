@@ -85,6 +85,14 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public string CommunityPackIndexUrl { get; set; } = AkronCommunityPacks.DefaultIndexUrl;
     public AkronSetupSection CommunityPackSection { get; set; } = AkronSetupSection.Whole;
     public string CommunityPackSearchQuery { get; set; } = string.Empty;
+    public string CommunityPackUploadEndpoint { get; set; } = AkronCommunityPackUploads.DefaultUploadEndpoint;
+    public AkronSetupSection CommunityPackUploadSection { get; set; } = AkronSetupSection.StartPos;
+    public string CommunityPackUploadInstallId { get; set; } = string.Empty;
+    public bool CommunityPackUploadUseDiscordAttribution { get; set; }
+    public string CommunityPackUploadDiscordUserId { get; set; } = string.Empty;
+    public int CommunityPackUploadAcceptedTermsVersion { get; set; }
+    public string CommunityPackUploadTitleOverride { get; set; } = string.Empty;
+    public string CommunityPackUploadDescriptionOverride { get; set; } = string.Empty;
     public string CustomOverlayThemeName { get; set; } = "Custom";
     public int CustomOverlayWindowColor { get; set; } = 0x292929;
     public int CustomOverlayHeaderColor { get; set; } = 0xC42A30;

@@ -103,8 +103,10 @@ Before adding archives to the catalog, ensure that:
 - The `downloadUrl` is a stable HTTPS URL for the `.akr` file.
 - Catalog metadata is updated whenever the pack changes.
 - The `.akr` is no larger than 4 MiB.
-- Optional catalog image sources are no larger than 64 MiB before optimization.
+- Optional catalog image sources are no larger than 100 MiB before optimization.
 - Optimized catalog images stored in R2 are no larger than 4 MiB.
+
+The official in-game upload flow currently accepts StartPos packs only. Catalog maintainers may still host other scoped `.akr` sections manually, but automated public uploads should not publish Auto Kill or Auto Deafen area lists until those formats include explicit map scope.
 
 ## Catalog validation
 
@@ -135,9 +137,11 @@ The official catalog uses Cloudflare R2 Standard storage. Cloudflare's [R2 prici
 | Class B operations | 10 million requests |
 | Egress to the Internet | Free |
 
-Class A operations include writes and object listing, such as publishing `.akr` files, optimized images, catalog backups, and `catalog/index.json`. Class B operations include reads, such as fetching the catalog and downloading packs.
+Class A operations include writes and object listing, such as publishing `.akr` files, optimized images, catalog backups, and the new `catalog/index.json`. Class B operations include reads, such as fetching the catalog and downloading packs.
 
-For Akron's current limits, the 10 GB-month storage allowance is enough for on the order of 1,000 catalog entries if every entry has both a maximum-size 4 MiB `.akr` and a maximum-size 4 MiB optimized image, before backups and submission archives. Most setup packs and WebP previews should be smaller. Large source captures only live in Discord; R2 stores the optimized WebP. Read operations are the more likely limit if the catalog becomes heavily used: every catalog refresh and pack download is an R2 read unless it is served from an upstream cache.
+For Akron's current limits, the 10 GB-month storage allowance is enough for roughly 1,280 catalog entries if every entry has both a maximum-size 4 MiB `.akr` and a maximum-size 4 MiB optimized image, before backups and submission archives. Most setup packs and WebP previews should be smaller. Large source captures are quarantined for review, then published as one canonical WebP preview. Read operations are the more likely limit if the catalog becomes heavily used: every catalog refresh and pack download is an R2 read unless it is served from an upstream cache.
+
+Cloudflare Images Free includes 5,000 unique transformations each month for images stored outside Cloudflare Images, such as source captures in R2. Akron uses one transform per approved uploaded capture, so the free allowance maps roughly to 5,000 newly approved preview images per month. The source capture limit is 100 MiB because Cloudflare's remote image transformation limit is 100 MB.
 
 These limits are Cloudflare R2 limits for Standard storage. They do not apply to R2 Infrequent Access storage, and they do not include any separate hosting limits from Vercel, Mintlify, Discord, or other services.
 

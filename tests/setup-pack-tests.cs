@@ -152,10 +152,15 @@ public sealed class SetupPackTests {
         target.SoundVolumeOverrides["bird-squawk"] = true;
         AkronModuleSession session = new AkronModuleSession {
             StartPositions = new Dictionary<int, AkronStartPos> {
-                [1] = new AkronStartPos {
+                [2] = new AkronStartPos {
                     Position = new Vector2(1f, 2f),
                     Room = "old",
                     AreaSid = "Old/Map"
+                },
+                [3] = new AkronStartPos {
+                    Position = new Vector2(3f, 4f),
+                    Room = "stale",
+                    AreaSid = "New/Map"
                 }
             }
         };
@@ -196,8 +201,9 @@ public sealed class SetupPackTests {
         Assert.Equal(7, target.StartPosSlotCount);
         Assert.Equal(2, target.StartPosConfiguredDashes);
         Assert.Equal(80, target.StartPosConfiguredStaminaPercent);
-        Assert.False(session.StartPositions.ContainsKey(1));
-        AkronStartPos imported = Assert.Single(session.StartPositions).Value;
+        Assert.Equal(2, session.StartPositions.Count);
+        Assert.Equal("Old/Map", session.StartPositions[2].AreaSid);
+        AkronStartPos imported = session.StartPositions[3];
         Assert.Equal("new-room", imported.Room);
         Assert.Equal("New/Map", imported.AreaSid);
         Assert.True(imported.UsesSpawnConfig);

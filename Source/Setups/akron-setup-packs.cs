@@ -254,7 +254,7 @@ public static partial class AkronSetupPacks {
             ApplyButtonBindings(settings, pack.ButtonBindings);
             settings.MenuActionBindings = new Dictionary<string, string>(pack.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal);
         } else if (section == AkronSetupSection.StartPos && session != null) {
-            session.StartPositions = BuildStartPositions(pack.StartPositions);
+            session.StartPositions = MergeScopedStartPositions(session.StartPositions, pack.StartPositions);
         }
     }
 
@@ -700,6 +700,42 @@ public static partial class AkronSetupPacks {
         }
 
         return startPositions;
+    }
+
+    private static Dictionary<int, AkronStartPos> MergeScopedStartPositions(
+        Dictionary<int, AkronStartPos> existing,
+        Dictionary<int, AkronStartPosPackEntry> entries) {
+        Dictionary<int, AkronStartPos> imported = BuildStartPositions(entries);
+        HashSet<string> importedAreaSids = new HashSet<string>(
+            imported.Values.Select(startPos => startPos?.AreaSid ?? string.Empty),
+            StringComparer.Ordinal);
+        if (importedAreaSids.Count == 0) {
+            return new Dictionary<int, AkronStartPos>(existing ?? new Dictionary<int, AkronStartPos>());
+        }
+
+        Dictionary<int, AkronStartPos> merged = new Dictionary<int, AkronStartPos>();
+        foreach (KeyValuePair<int, AkronStartPos> pair in existing ?? new Dictionary<int, AkronStartPos>()) {
+            if (pair.Value != null && importedAreaSids.Contains(pair.Value.AreaSid ?? string.Empty)) {
+                continue;
+            }
+
+            merged[pair.Key] = pair.Value;
+        }
+
+        foreach (KeyValuePair<int, AkronStartPos> pair in imported) {
+            int slot = NextAvailableStartPosSlot(merged, pair.Key);
+            merged[slot] = pair.Value;
+        }
+
+        return merged;
+    }
+
+    private static int NextAvailableStartPosSlot(Dictionary<int, AkronStartPos> startPositions, int preferredSlot) {
+        int slot = Math.Max(1, preferredSlot);
+        while (startPositions.ContainsKey(slot)) {
+            slot++;
+        }
+        return slot;
     }
 
     private static string ResolveSetupPath(string pathOrName) {
