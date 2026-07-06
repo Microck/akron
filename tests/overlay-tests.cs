@@ -139,10 +139,14 @@ public sealed class OverlayTests {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-upload-window.cs"));
 
         Assert.Contains("Math.Min(640f", source);
-        Assert.Contains("Math.Min(400f", source);
+        Assert.Contains("Math.Min(316f", source);
         Assert.Contains("DrawPopupRowLabel(\"Map\"", source);
         Assert.Contains("DrawPopupRowLabel(\"Category\"", source);
         Assert.Contains("DrawPopupRowLabel(\"Attribution\"", source);
+        Assert.Contains("DrawPopupRowLabel(\"Status\"", source);
+        Assert.Contains("ImGui.ProgressBar(", source);
+        Assert.Contains("AkronCommunityPackUploads.DescribeUploadStatus()", source);
+        Assert.DoesNotContain("uploadPackWindowOpen = false;", source);
         Assert.DoesNotContain("DrawPopupRowLabel(\"Review\"", source);
         Assert.DoesNotContain("DrawPopupRowLabel(\"Confirm\"", source);
         Assert.DoesNotContain("I created this pack and it can be shared publicly", source);
@@ -151,6 +155,19 @@ public sealed class OverlayTests {
         Assert.DoesNotContain("private void DrawCommunityPackUploadSummary", source);
         Assert.DoesNotContain("ImGui.Columns(2, \"##upload-pack-columns-\"", source);
         Assert.DoesNotContain("DrawCommunityPackUploadPreview", source);
+    }
+
+    [Fact]
+    public void OverlayResetClosesUploadPackWindow() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/AkronOverlay.cs"));
+        int methodStart = source.IndexOf("internal void ResetTransientUiState(bool searchAutofocus)", StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("public void OpenTab", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(nextMethod > methodStart);
+        string method = source[methodStart..nextMethod];
+
+        Assert.Contains("uploadPackWindowOpen = false;", method);
     }
 
     [Fact]

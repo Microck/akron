@@ -267,6 +267,10 @@ public sealed partial class AkronOverlay : Entity {
     }
 
     public bool RenderImGui() {
+        if (!Visible) {
+            uploadPackWindowOpen = false;
+        }
+
         if (!ShouldRenderOverlaySurface(Visible, AkronPromptMenu.IsOpen, autoKillAreaSelectionActive, autoDeafenAreaSelectionActive)) {
             return false;
         }
@@ -467,6 +471,7 @@ public sealed partial class AkronOverlay : Entity {
         autoKillAreaHasFirstCorner = false;
         autoDeafenAreaSelectionActive = false;
         autoDeafenAreaHasFirstCorner = false;
+        uploadPackWindowOpen = false;
         valueEditFreezeFrames = 0;
         ClearSearchQuery();
         if (searchAutofocus) {

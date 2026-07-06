@@ -15,6 +15,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 - Document the Community Packs upload and publication architecture without tying the player-facing catalog contract to provider-specific free-tier details.
 - Simplify the Upload Pack popup with aligned fields, generated text shown in editable fields, and no separate preview block.
+- Keep Upload Pack feedback visible with a compact progress bar while Akron captures the full map and uploads the submission.
 
 ## 0.1.2-beta.39
 

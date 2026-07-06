@@ -113,6 +113,8 @@ public static class AkronScreenshotScanner {
     private static bool scanCancelled;
     private static bool allowScanRoomSetupTriggers;
     private static string lastExportPath = string.Empty;
+    private static int scanRoomsCompleted;
+    private static int scanRoomsTotal;
     private static bool hasInitialPlayerState;
     private static bool initialPlayerVisible;
     private static bool initialPlayerCollidable;
@@ -121,12 +123,19 @@ public static class AkronScreenshotScanner {
 
     public static bool IsScanning => isScanning;
     public static string LastExportPath => lastExportPath;
+    public static int ScanRoomsCompleted => scanRoomsCompleted;
+    public static int ScanRoomsTotal => scanRoomsTotal;
+    public static float ScanProgressFraction => scanRoomsTotal <= 0
+        ? isScanning ? 0f : 1f
+        : Math.Min(1f, Math.Max(0f, scanRoomsCompleted / (float) scanRoomsTotal));
 
     public static void ScanRoom(Level level) {
         if (!TryStart(level, out Player player)) {
             return;
         }
 
+        scanRoomsCompleted = 0;
+        scanRoomsTotal = 1;
         scannerHost.Add(new Coroutine(ScanRooms(player, new Queue<string>(new[] { level.Session.Level }), buildMapComposite: false)));
     }
 
@@ -153,9 +162,12 @@ public static class AkronScreenshotScanner {
                 rooms.Enqueue(room.Name);
             }
         }
+        scanRoomsCompleted = 0;
+        scanRoomsTotal = rooms.Count;
         if (rooms.Count == 0) {
             AkronLog.Warn(nameof(AkronScreenshotScanner), "Map capture has no scannable rooms queued.");
             isScanning = false;
+            scanRoomsTotal = 0;
             return false;
         }
 
@@ -205,6 +217,21 @@ public static class AkronScreenshotScanner {
 
     public static string Describe() {
         return isScanning ? "Scanning" : string.IsNullOrWhiteSpace(lastExportPath) ? "Ready" : Path.GetFileName(lastExportPath);
+    }
+
+    public static string DescribeProgress() {
+        if (!isScanning) {
+            return Describe();
+        }
+
+        if (scanRoomsTotal <= 0) {
+            return "Scanning";
+        }
+
+        return "Scanning room " +
+               Math.Min(scanRoomsCompleted + 1, scanRoomsTotal).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+               "/" +
+               scanRoomsTotal.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     internal static void MaintainActiveScanHost(Level level) {
@@ -276,6 +303,7 @@ public static class AkronScreenshotScanner {
                 yield return ScanCurrentRoom(level, player, mergedRooms);
                 if (!scanCancelled) {
                     scannedRoomCount++;
+                    scanRoomsCompleted = scannedRoomCount;
                     if (buildMapComposite && mergedRooms.Count == mergedRoomCountBeforeScan) {
                         AkronLog.Warn(nameof(AkronScreenshotScanner), "Skipping map collage because room '" + room + "' could not be merged.");
                     }

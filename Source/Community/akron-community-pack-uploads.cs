@@ -92,6 +92,9 @@ public static class AkronCommunityPackUploads {
         Timeout = TimeSpan.FromMinutes(10)
     };
     private static bool uploadInProgress;
+    private static bool uploadStatusVisible;
+    private static string uploadStatusText = string.Empty;
+    private static float uploadStatusProgress;
 
     public static bool IsSupportedUploadSection(AkronSetupSection section) {
         return section == AkronSetupSection.StartPos ||
@@ -107,6 +110,28 @@ public static class AkronCommunityPackUploads {
         get { return uploadInProgress; }
     }
 
+    internal static bool HasUploadStatus {
+        get { return uploadStatusVisible || uploadInProgress || AkronScreenshotScanner.IsScanning; }
+    }
+
+    internal static string DescribeUploadStatus() {
+        if (AkronScreenshotScanner.IsScanning) {
+            return "Capturing full map: " + AkronScreenshotScanner.DescribeProgress();
+        }
+
+        return string.IsNullOrWhiteSpace(uploadStatusText) ? "Ready" : uploadStatusText;
+    }
+
+    internal static float UploadProgressFraction {
+        get {
+            if (AkronScreenshotScanner.IsScanning) {
+                return Math.Min(0.72f, 0.08f + AkronScreenshotScanner.ScanProgressFraction * 0.64f);
+            }
+
+            return Math.Min(1f, Math.Max(0f, uploadStatusProgress));
+        }
+    }
+
     internal static bool TryReserveUploadSlot() {
         if (uploadInProgress) {
             return false;
@@ -118,6 +143,12 @@ public static class AkronCommunityPackUploads {
 
     internal static void ReleaseUploadSlot() {
         uploadInProgress = false;
+    }
+
+    private static void SetUploadStatus(string status, float progress, bool visible = true) {
+        uploadStatusText = status ?? string.Empty;
+        uploadStatusProgress = Math.Min(1f, Math.Max(0f, progress));
+        uploadStatusVisible = visible;
     }
 
     public static string EnsureInstallId(AkronModuleSettings settings) {
@@ -497,11 +528,13 @@ public static class AkronCommunityPackUploads {
 
     public static void OpenUploadPrompt(Level level) {
         if (level == null) {
+            SetUploadStatus("Upload needs an active map.", 0f);
             Engine.Scene?.Add(new AkronToast("Upload Pack needs an active map."));
             return;
         }
 
         if (IsUploadInProgress || AkronScreenshotScanner.IsScanning) {
+            SetUploadStatus("Another upload is already running.", UploadProgressFraction);
             Engine.Scene?.Add(new AkronToast("Wait for the current Upload Pack submission to finish."));
             return;
         }
@@ -510,7 +543,14 @@ public static class AkronCommunityPackUploads {
         AkronModule.Settings.CommunityPackUploadSection = NormalizeUploadSection(AkronModule.Settings.CommunityPackUploadSection);
         if (AkronModule.Settings.CommunityPackUploadUseDiscordAttribution &&
             string.IsNullOrWhiteSpace(AkronModule.Settings.CommunityPackUploadDiscordUserId)) {
+            SetUploadStatus("Set a Discord user ID or choose Anonymous.", 0f);
             Engine.Scene?.Add(new AkronToast("Set a Discord user ID or choose Anonymous."));
+            return;
+        }
+
+        if (!TryReserveUploadSlot()) {
+            SetUploadStatus("Another upload is already running.", UploadProgressFraction);
+            Engine.Scene?.Add(new AkronToast("Wait for the current Upload Pack submission to finish."));
             return;
         }
 
@@ -520,14 +560,18 @@ public static class AkronCommunityPackUploads {
             AkronModule.Settings.CommunityPackUploadUseDiscordAttribution);
         string packPath;
         try {
+            SetUploadStatus("Creating .akr pack...", 0.04f);
             packPath = WriteTempArchive(draft.Section, draft.Title, draft.MapSid);
         } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is InvalidOperationException) {
+            ReleaseUploadSlot();
+            SetUploadStatus("Could not create the .akr file.", 0f);
             AkronLog.Warn(nameof(AkronCommunityPackUploads), "Could not create temp upload archive: " + exception.Message);
             Engine.Scene?.Add(new AkronToast("Upload Pack could not create the .akr file."));
             return;
         }
 
         DateTime captureStartedUtc = DateTime.UtcNow;
+        SetUploadStatus("Starting full-map capture...", 0.06f);
         if (!AkronScreenshotScanner.ScanChapter(level)) {
             try {
                 if (File.Exists(packPath)) {
@@ -536,18 +580,9 @@ public static class AkronCommunityPackUploads {
             } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
                 AkronLog.Warn(nameof(AkronCommunityPackUploads), "Could not delete temp upload archive: " + exception.Message);
             }
+            ReleaseUploadSlot();
+            SetUploadStatus("Could not start full-map capture.", 0f);
             Engine.Scene?.Add(new AkronToast("Upload Pack could not start the map capture."));
-            return;
-        }
-        if (!TryReserveUploadSlot()) {
-            try {
-                if (File.Exists(packPath)) {
-                    File.Delete(packPath);
-                }
-            } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
-                AkronLog.Warn(nameof(AkronCommunityPackUploads), "Could not delete temp upload archive: " + exception.Message);
-            }
-            Engine.Scene?.Add(new AkronToast("Wait for the current Upload Pack submission to finish."));
             return;
         }
 
@@ -685,6 +720,7 @@ public static class AkronCommunityPackUploads {
             string capturePath = AkronScreenshotScanner.LastExportPath;
             if (!IsCompletedMapCaptureForUpload(capturePath, captureStartedUtc)) {
                 CleanupPack();
+                SetUploadStatus("Could not find the full-map capture.", 0f);
                 Engine.Scene?.Add(new AkronToast("Upload Pack could not find the map capture."));
                 RemoveSelf();
                 yield break;
@@ -692,12 +728,14 @@ public static class AkronCommunityPackUploads {
 
             Task<AkronCommunityPackUploadCompleteResponse> uploadTask = null;
             try {
+                SetUploadStatus("Preparing upload...", 0.76f);
                 AkronCommunityPackUploadPrepareRequest request = BuildPrepareRequest(
                     draft,
                     packPath,
                     capturePath,
                     EnsureInstallId(AkronModule.Settings),
                     CurrentTermsVersion);
+                SetUploadStatus("Uploading pack and full-map capture...", 0.84f);
                 uploadTask = UploadAsync(
                     UploadHttp,
                     AkronModule.Settings.CommunityPackUploadEndpoint,
@@ -707,6 +745,7 @@ public static class AkronCommunityPackUploads {
                     uploadCancellation.Token);
             } catch (Exception exception) when (exception is IOException || exception is InvalidDataException || exception is InvalidOperationException || exception is UnauthorizedAccessException) {
                 CleanupPack();
+                SetUploadStatus("Could not prepare the upload.", 0f);
                 AkronLog.Warn(nameof(AkronCommunityPackUploads), "Could not prepare upload: " + exception.Message);
                 Engine.Scene?.Add(new AkronToast("Upload Pack could not prepare the upload."));
                 RemoveSelf();
@@ -720,6 +759,7 @@ public static class AkronCommunityPackUploads {
             CleanupPack();
             if (uploadTask.IsFaulted) {
                 string message = uploadTask.Exception?.GetBaseException().Message ?? "Unknown upload failure.";
+                SetUploadStatus("Upload failed. Check Akron log.", 0f);
                 AkronLog.Warn(nameof(AkronCommunityPackUploads), "Upload Pack failed: " + message);
                 Engine.Scene?.Add(new AkronToast("Upload Pack failed."));
                 RemoveSelf();
@@ -727,6 +767,7 @@ public static class AkronCommunityPackUploads {
             }
 
             if (uploadTask.IsCanceled) {
+                SetUploadStatus("Upload canceled.", 0f);
                 AkronLog.Warn(nameof(AkronCommunityPackUploads), "Upload Pack was canceled.");
                 Engine.Scene?.Add(new AkronToast("Upload Pack canceled."));
                 RemoveSelf();
@@ -734,6 +775,7 @@ public static class AkronCommunityPackUploads {
             }
 
             AkronCommunityPackUploadCompleteResponse response = uploadTask.GetAwaiter().GetResult();
+            SetUploadStatus("Upload submitted: " + response.Status + ".", 1f);
             Engine.Scene?.Add(new AkronToast("Upload Pack submitted: " + response.Status + "."));
             RemoveSelf();
         }

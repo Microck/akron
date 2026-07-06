@@ -14,7 +14,7 @@ public sealed partial class AkronOverlay {
         NumericsVector2 displaySize = ImGui.GetIO().DisplaySize;
         NumericsVector2 windowSize = new NumericsVector2(
             Math.Min(640f, Math.Max(360f, displaySize.X - 96f)),
-            Math.Min(400f, Math.Max(360f, displaySize.Y - 96f)));
+            Math.Min(316f, Math.Max(300f, displaySize.Y - 96f)));
         ImGui.SetNextWindowSize(windowSize, ImGuiCond.Always);
         ImGui.SetNextWindowPos(
             new NumericsVector2(
@@ -119,13 +119,26 @@ public sealed partial class AkronOverlay {
         string buttonLabel = busy ? "Uploading..." : "Submit Upload";
         ImGui.Spacing();
         DrawPopupRowLabel("", labelWidth);
+        if (busy) {
+            ImGui.BeginDisabled();
+        }
         if (ImGui.Button(buttonLabel + "##upload-submit-window", new NumericsVector2(148f, 30f))) {
             AkronCommunityPackUploads.OpenUploadPrompt(level);
-            if (AkronCommunityPackUploads.IsUploadInProgress || AkronScreenshotScanner.IsScanning) {
-                uploadPackWindowOpen = false;
-            }
+        }
+        if (busy) {
+            ImGui.EndDisabled();
         }
         DrawPopupTooltip("Create the .akr pack, capture the full map, and submit both for Discord review.");
+
+        if (AkronCommunityPackUploads.HasUploadStatus) {
+            DrawPopupRowLabel("Status", labelWidth);
+            ImGui.PushItemWidth(CalculatePopupControlWidth(labelWidth, preferredFieldWidth, 220f));
+            ImGui.ProgressBar(
+                AkronCommunityPackUploads.UploadProgressFraction,
+                new NumericsVector2(-1f, ImGui.GetFrameHeight()),
+                AkronCommunityPackUploads.DescribeUploadStatus());
+            ImGui.PopItemWidth();
+        }
     }
 
     private static void DrawCommunityPackUploadSectionChoice(string label, AkronSetupSection section, string popupId) {

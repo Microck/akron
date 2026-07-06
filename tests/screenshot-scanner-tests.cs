@@ -271,6 +271,18 @@ public sealed class ScreenshotScannerTests {
     }
 
     [Fact]
+    public void MapCaptureExposesRoomProgressForUploadStatus() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-screenshot-scanner.cs"));
+
+        Assert.Contains("public static int ScanRoomsCompleted", source);
+        Assert.Contains("public static int ScanRoomsTotal", source);
+        Assert.Contains("public static float ScanProgressFraction", source);
+        Assert.Contains("public static string DescribeProgress()", source);
+        Assert.Contains("scanRoomsTotal = rooms.Count;", source);
+        Assert.Contains("scanRoomsCompleted = scannedRoomCount;", source);
+    }
+
+    [Fact]
     public void MapCaptureQueuesNoSpawnRoomsAndSkipsOnlyFillerByName() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-screenshot-scanner.cs"));
         int filterStart = source.IndexOf("private static bool CanScanChapterRoom", StringComparison.Ordinal);
