@@ -442,6 +442,23 @@ public static class AkronCommunityPackUploads {
             cancellationToken);
     }
 
+    internal static async Task CheckUploadEndpointAsync(
+        HttpClient http,
+        string endpoint,
+        CancellationToken cancellationToken = default) {
+        if (http == null) {
+            throw new ArgumentNullException(nameof(http));
+        }
+
+        endpoint = ResolveEndpoint(endpoint);
+        using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, endpoint + "/challenge");
+        using HttpResponseMessage response = await http.SendAsync(request, cancellationToken);
+        string responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode) {
+            throw new HttpRequestException("Upload server check failed with HTTP " + (int) response.StatusCode + ": " + responseText);
+        }
+    }
+
     public static AkronCommunityPackUploadDraft BuildDraft(
         string mapSid,
         string mapDisplayName,
@@ -558,36 +575,8 @@ public static class AkronCommunityPackUploads {
             level,
             AkronModule.Settings.CommunityPackUploadSection,
             AkronModule.Settings.CommunityPackUploadUseDiscordAttribution);
-        string packPath;
-        try {
-            SetUploadStatus("Creating .akr pack...", 0.04f);
-            packPath = WriteTempArchive(draft.Section, draft.Title, draft.MapSid);
-        } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is InvalidOperationException) {
-            ReleaseUploadSlot();
-            SetUploadStatus("Could not create the .akr file.", 0f);
-            AkronLog.Warn(nameof(AkronCommunityPackUploads), "Could not create temp upload archive: " + exception.Message);
-            Engine.Scene?.Add(new AkronToast("Upload Pack could not create the .akr file."));
-            return;
-        }
-
-        DateTime captureStartedUtc = DateTime.UtcNow;
-        SetUploadStatus("Starting full-map capture...", 0.06f);
-        if (!AkronScreenshotScanner.ScanChapter(level)) {
-            try {
-                if (File.Exists(packPath)) {
-                    File.Delete(packPath);
-                }
-            } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
-                AkronLog.Warn(nameof(AkronCommunityPackUploads), "Could not delete temp upload archive: " + exception.Message);
-            }
-            ReleaseUploadSlot();
-            SetUploadStatus("Could not start full-map capture.", 0f);
-            Engine.Scene?.Add(new AkronToast("Upload Pack could not start the map capture."));
-            return;
-        }
-
-        Engine.Scene?.Add(new AkronCommunityPackUploadHost(draft, packPath, captureStartedUtc));
-        Engine.Scene?.Add(new AkronToast("Upload Pack is capturing the full map."));
+        Engine.Scene?.Add(new AkronCommunityPackUploadHost(draft, level));
+        Engine.Scene?.Add(new AkronToast("Upload Pack is checking the upload server."));
     }
 
     private static string ResolveMapDisplayName(Level level, string mapSid) {
@@ -673,6 +662,39 @@ public static class AkronCommunityPackUploads {
         }
     }
 
+    internal static string FormatUploadFailureForStatus(Exception exception) {
+        string message = exception?.GetBaseException().Message ?? string.Empty;
+        int status = TryExtractHttpStatus(message);
+        if (status > 0) {
+            return "Upload server unavailable (HTTP " + status.ToString(CultureInfo.InvariantCulture) + ").";
+        }
+
+        if (exception is TaskCanceledException || exception?.GetBaseException() is TaskCanceledException) {
+            return "Upload timed out.";
+        }
+
+        return "Upload failed. Check Akron log.";
+    }
+
+    private static int TryExtractHttpStatus(string message) {
+        const string marker = "HTTP ";
+        int start = (message ?? string.Empty).IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (start < 0) {
+            return 0;
+        }
+
+        start += marker.Length;
+        int status = 0;
+        int digits = 0;
+        while (start < message.Length && char.IsDigit(message[start]) && digits < 3) {
+            status = status * 10 + (message[start] - '0');
+            start++;
+            digits++;
+        }
+
+        return digits == 3 ? status : 0;
+    }
+
     private static string SanitizeFileName(string name) {
         foreach (char invalid in Path.GetInvalidFileNameChars()) {
             name = name.Replace(invalid, '-');
@@ -685,17 +707,17 @@ public static class AkronCommunityPackUploads {
     private sealed class AkronCommunityPackUploadHost : Entity
     {
         private readonly AkronCommunityPackUploadDraft draft;
-        private readonly string packPath;
-        private readonly DateTime captureStartedUtc;
+        private readonly Level initialLevel;
         private readonly CancellationTokenSource uploadCancellation = new CancellationTokenSource();
-        private bool ownsCaptureScan = true;
+        private string packPath = string.Empty;
+        private DateTime captureStartedUtc;
+        private bool ownsCaptureScan;
         private bool cleanedUp;
 
-        public AkronCommunityPackUploadHost(AkronCommunityPackUploadDraft draft, string packPath, DateTime captureStartedUtc)
+        public AkronCommunityPackUploadHost(AkronCommunityPackUploadDraft draft, Level initialLevel)
         {
             this.draft = draft;
-            this.packPath = packPath;
-            this.captureStartedUtc = captureStartedUtc;
+            this.initialLevel = initialLevel;
             Tag = Tags.HUD | Tags.Global | Tags.Persistent | Tags.PauseUpdate;
             Add(new Coroutine(Run()));
         }
@@ -712,6 +734,57 @@ public static class AkronCommunityPackUploads {
 
         private IEnumerator Run()
         {
+            Task endpointCheckTask = null;
+            try {
+                SetUploadStatus("Checking upload server...", 0.02f);
+                endpointCheckTask = CheckUploadEndpointAsync(
+                    UploadHttp,
+                    AkronModule.Settings.CommunityPackUploadEndpoint,
+                    uploadCancellation.Token);
+            } catch (Exception exception) when (exception is InvalidOperationException || exception is HttpRequestException) {
+                FailUpload("Could not start upload server check: " + exception.Message, exception);
+                yield break;
+            }
+
+            while (!endpointCheckTask.IsCompleted) {
+                yield return null;
+            }
+
+            if (endpointCheckTask.IsFaulted) {
+                Exception exception = endpointCheckTask.Exception?.GetBaseException() ?? endpointCheckTask.Exception;
+                FailUpload("Upload server check failed: " + (exception?.Message ?? "Unknown upload server failure."), exception);
+                yield break;
+            }
+
+            if (endpointCheckTask.IsCanceled) {
+                FailUpload("Upload server check was canceled.", new TaskCanceledException(endpointCheckTask));
+                yield break;
+            }
+
+            Level level = Engine.Scene as Level ?? initialLevel;
+            if (level == null) {
+                FailUpload("Upload Pack lost the active map before capture.", null, "Upload needs an active map.");
+                yield break;
+            }
+
+            try {
+                SetUploadStatus("Creating .akr pack...", 0.04f);
+                packPath = WriteTempArchive(draft.Section, draft.Title, draft.MapSid);
+            } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is InvalidOperationException) {
+                FailUpload("Could not create temp upload archive: " + exception.Message, exception, "Could not create the .akr file.");
+                yield break;
+            }
+
+            captureStartedUtc = DateTime.UtcNow;
+            ownsCaptureScan = true;
+            SetUploadStatus("Starting full-map capture...", 0.06f);
+            if (!AkronScreenshotScanner.ScanChapter(level)) {
+                ownsCaptureScan = false;
+                FailUpload("Could not start full-map capture.", null, "Could not start full-map capture.");
+                yield break;
+            }
+            Engine.Scene?.Add(new AkronToast("Upload Pack is capturing the full map."));
+
             while (AkronScreenshotScanner.IsScanning) {
                 yield return null;
             }
@@ -759,7 +832,7 @@ public static class AkronCommunityPackUploads {
             CleanupPack();
             if (uploadTask.IsFaulted) {
                 string message = uploadTask.Exception?.GetBaseException().Message ?? "Unknown upload failure.";
-                SetUploadStatus("Upload failed. Check Akron log.", 0f);
+                SetUploadStatus(FormatUploadFailureForStatus(uploadTask.Exception), 0f);
                 AkronLog.Warn(nameof(AkronCommunityPackUploads), "Upload Pack failed: " + message);
                 Engine.Scene?.Add(new AkronToast("Upload Pack failed."));
                 RemoveSelf();
@@ -780,6 +853,18 @@ public static class AkronCommunityPackUploads {
             RemoveSelf();
         }
 
+        private void FailUpload(string logMessage, Exception exception, string status = null)
+        {
+            CleanupPack();
+            string visibleStatus = string.IsNullOrWhiteSpace(status)
+                ? FormatUploadFailureForStatus(exception)
+                : status;
+            SetUploadStatus(visibleStatus, 0f);
+            AkronLog.Warn(nameof(AkronCommunityPackUploads), logMessage);
+            Engine.Scene?.Add(new AkronToast(visibleStatus));
+            RemoveSelf();
+        }
+
         private void CleanupPack()
         {
             if (cleanedUp) {
@@ -788,7 +873,7 @@ public static class AkronCommunityPackUploads {
 
             cleanedUp = true;
             try {
-                if (File.Exists(packPath)) {
+                if (!string.IsNullOrWhiteSpace(packPath) && File.Exists(packPath)) {
                     File.Delete(packPath);
                 }
             } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {

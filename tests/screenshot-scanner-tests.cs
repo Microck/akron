@@ -263,7 +263,9 @@ public sealed class ScreenshotScannerTests {
         string removedSource = source[removedStart..removedEnd];
 
         Assert.Contains("Tags.Persistent", source);
-        Assert.Contains("private bool ownsCaptureScan = true;", source);
+        Assert.Contains("private bool ownsCaptureScan;", source);
+        Assert.Contains("CheckUploadEndpointAsync(", source);
+        Assert.Contains("ownsCaptureScan = true;", source);
         Assert.Contains("ownsCaptureScan = false;", source);
         Assert.Contains("uploadCancellation.Cancel();", removedSource);
         Assert.Contains("ownsCaptureScan && AkronScreenshotScanner.IsScanning", removedSource);

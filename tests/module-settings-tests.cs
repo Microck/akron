@@ -1866,6 +1866,17 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void UploadPackFormatsHttpFailuresForVisibleStatus()
+    {
+        Assert.Equal(
+            "Upload server unavailable (HTTP 404).",
+            AkronCommunityPackUploads.FormatUploadFailureForStatus(new HttpRequestException("Upload server check failed with HTTP 404: missing")));
+        Assert.Equal(
+            "Upload timed out.",
+            AkronCommunityPackUploads.FormatUploadFailureForStatus(new TaskCanceledException()));
+    }
+
+    [Fact]
     public void UploadPackReservationBlocksDuplicateSubmissions()
     {
         AkronCommunityPackUploads.ReleaseUploadSlot();

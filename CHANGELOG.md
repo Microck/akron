@@ -17,6 +17,10 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Simplify the Upload Pack popup with aligned fields, generated text shown in editable fields, and no separate preview block.
 - Keep Upload Pack feedback visible with a compact progress bar while Akron captures the full map and uploads the submission.
 
+### Fixed
+
+- Show Upload Pack server failures in the popup and stop before full-map capture when the upload endpoint is unavailable.
+
 ## 0.1.2-beta.39
 
 ### Fixed
