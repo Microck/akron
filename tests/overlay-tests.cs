@@ -107,7 +107,7 @@ public sealed class OverlayTests {
     public void UploadPackWindowOnlyOffersSupportedUploadSections() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-upload-window.cs"));
         int methodStart = source.IndexOf("private void DrawCommunityPackUploadForm", StringComparison.Ordinal);
-        int nextMethod = source.IndexOf("private static void DrawCommunityPackUploadPreview", methodStart, StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("private void DrawCommunityPackUploadSummary", methodStart, StringComparison.Ordinal);
 
         Assert.True(methodStart >= 0);
         Assert.True(nextMethod > methodStart);
@@ -116,6 +116,33 @@ public sealed class OverlayTests {
         Assert.Contains("DrawCommunityPackUploadSectionChoice(\"StartPos\", AkronSetupSection.StartPos", method);
         Assert.DoesNotContain("DrawCommunityPackUploadSectionChoice(\"Auto Kill\"", method);
         Assert.DoesNotContain("DrawCommunityPackUploadSectionChoice(\"Auto Deafen\"", method);
+    }
+
+    [Fact]
+    public void UploadPackWindowLetsDiscordUsersEnterIdInline() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-upload-window.cs"));
+        int methodStart = source.IndexOf("private void DrawCommunityPackUploadForm", StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("private void DrawCommunityPackUploadSummary", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(nextMethod > methodStart);
+        string method = source[methodStart..nextMethod];
+
+        Assert.Contains("DrawCommunityPackUploadAttributionChoice(\"Discord\", true", method);
+        Assert.Contains("\"Discord ID\"", method);
+        Assert.Contains("CommunityPackUploadDiscordUserId = discordUserId.Trim();", method);
+        Assert.DoesNotContain("Set a saved Discord user ID from the Upload Pack row submenu", method);
+    }
+
+    [Fact]
+    public void UploadPackWindowUsesCompactSingleColumnSummary() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-upload-window.cs"));
+
+        Assert.Contains("Math.Min(660f", source);
+        Assert.Contains("Math.Min(430f", source);
+        Assert.Contains("private void DrawCommunityPackUploadSummary", source);
+        Assert.DoesNotContain("ImGui.Columns(2, \"##upload-pack-columns-\"", source);
+        Assert.DoesNotContain("DrawCommunityPackUploadPreview", source);
     }
 
     [Fact]
