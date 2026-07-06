@@ -126,24 +126,17 @@ The official Discord bot also enforces implementation-level safety checks before
 
 See [Akron .akr archives](/reference/akr-archives) for the full archive contract and import safety rules.
 
-## Storage and free-tier limits
+## Storage and publication architecture
 
-The official catalog uses Cloudflare R2 Standard storage. Cloudflare's [R2 pricing page](https://developers.cloudflare.com/r2/pricing/) currently lists this free tier:
+The official catalog separates unreviewed upload storage from public catalog storage.
 
-| Resource | Included free each month |
-|---|---|
-| Storage | 10 GB-month |
-| Class A operations | 1 million requests |
-| Class B operations | 10 million requests |
-| Egress to the Internet | Free |
+In-game uploads go to the Upload Worker first. The Worker stores source `.akr` files and full-map captures in a private quarantine bucket, records batch, submission, and object state in its database, and exposes signed bot-only endpoints for moderation. Nothing from quarantine is public.
 
-Class A operations include writes and object listing, such as publishing `.akr` files, optimized images, catalog backups, and the new `catalog/index.json`. Class B operations include reads, such as fetching the catalog and downloading packs.
+The Discord bot polls the Worker for queued jobs, posts moderation messages, handles attribution confirmation, and sends approve, reject, or request-changes actions back to the Worker. Approval is the only path that copies a pack into public catalog storage.
 
-For Akron's current limits, the 10 GB-month storage allowance is enough for roughly 1,280 catalog entries if every entry has both a maximum-size 4 MiB `.akr` and a maximum-size 4 MiB optimized image, before backups and submission archives. Most setup packs and WebP previews should be smaller. Large source captures are quarantined for review, then published as one canonical WebP preview. Read operations are the more likely limit if the catalog becomes heavily used: every catalog refresh and pack download is an R2 read unless it is served from an upstream cache.
+When a submission is approved, the Worker writes the `.akr` archive to the public pack path, transforms the capture into one catalog preview image, stores that preview at the public capture path, and rebuilds `catalog/index.json`. The public website serves branded Akron URLs and routes the reserved catalog and map asset paths to the public storage objects.
 
-Cloudflare Images Free includes 5,000 unique transformations each month for images stored outside Cloudflare Images, such as source captures in R2. Akron uses one transform per approved uploaded capture, so the free allowance maps roughly to 5,000 newly approved preview images per month. The source capture limit is 100 MiB because Cloudflare's remote image transformation limit is 100 MB.
-
-These limits are Cloudflare R2 limits for Standard storage. They do not apply to R2 Infrequent Access storage, and they do not include any separate hosting limits from Vercel, Mintlify, Discord, or other services.
+Operational capacity depends on the number and size of approved public packs, optimized preview images, retained quarantine objects, catalog refreshes, pack downloads, and image transformations. Keep provider quotas in deployment configuration and monitoring, not in the player-facing catalog contract.
 
 ## Runtime logic
 
