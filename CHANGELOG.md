@@ -4,16 +4,14 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
-## 0.1.2-beta.40
+## 0.1.2-beta.41
 
 ### Added
 
-- Add the in-game Community Packs upload flow for StartPos packs, including automatic full-map capture, generated metadata, saved attribution, and Discord moderation handoff.
 - Let the in-game Community Packs upload flow submit Auto Kill and Auto Deafen area packs, with generated metadata shown directly in the upload form.
 
 ### Changed
 
-- Document the Community Packs upload and publication architecture without tying the player-facing catalog contract to provider-specific free-tier details.
 - Simplify the Upload Pack popup with aligned fields, generated text shown in editable fields, and no separate preview block.
 - Keep Upload Pack feedback visible with a compact progress bar while Akron captures the full map and uploads the submission.
 
@@ -22,6 +20,16 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Show the selected Upload Pack markers in automatic full-map captures, even when normal scanner marker export options are off.
 - Replace raw Upload Pack completion states with a Discord confirmation/review prompt and theme the upload progress bar with the active Akron accent color.
 - Show Upload Pack server failures in the popup and stop before full-map capture when the upload endpoint is unavailable.
+
+## 0.1.2-beta.40
+
+### Added
+
+- Add the in-game Community Packs upload flow for StartPos packs, including automatic full-map capture, generated metadata, saved attribution, and Discord moderation handoff.
+
+### Changed
+
+- Document the Community Packs upload and publication architecture without tying the player-facing catalog contract to provider-specific free-tier details.
 
 ## 0.1.2-beta.39
 
