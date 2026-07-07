@@ -13,6 +13,8 @@ public sealed class AkronStartPos {
     public AkronStartPosFacing Facing { get; set; } = AkronStartPosFacing.Current;
     public bool Idle { get; set; }
     public bool Grab { get; set; }
+    public string SnapshotPath { get; set; } = string.Empty;
+    internal string SnapshotLoadError { get; set; } = string.Empty;
     internal string StateSlotName { get; set; } = string.Empty;
 }
 
@@ -38,6 +40,7 @@ public class AkronModuleSession : EverestModuleSession {
     public bool DeathPbLossPromptShown { get; set; }
     public float LevelEnterSkipHoldSeconds { get; set; }
     public string LastRoomStatsExportPath { get; set; } = string.Empty;
+    public string LoadedStartPositionsAreaSid { get; set; } = string.Empty;
     public Dictionary<int, AkronStartPos> StartPositions { get; set; } = new Dictionary<int, AkronStartPos>();
     public int LastLoadedStartPosSlot { get; set; }
     public bool FreezeGameplay { get; set; }

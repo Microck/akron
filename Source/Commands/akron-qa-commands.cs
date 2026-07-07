@@ -151,7 +151,7 @@ public static partial class AkronCommands {
         Log("qa-startpos-candidate-slot: " + FindQaStartPosSlot(candidate).ToString(CultureInfo.InvariantCulture));
         Log("qa-startpos-candidate-position: " + (candidate == null ? "unset" : FormatVector(candidate.Position)));
         if (AkronModule.Session?.StartPositions != null) {
-            foreach (KeyValuePair<int, AkronStartPos> pair in AkronModule.Session.StartPositions.OrderBy(pair => pair.Key)) {
+            foreach (KeyValuePair<int, AkronStartPos> pair in AkronActions.GetStartPositionsForArea(level.Session.Area.GetSID()).OrderBy(pair => pair.Key)) {
                 AkronStartPos startPos = pair.Value;
                 bool sameRoom = string.Equals(startPos.Room, level.Session.Level, StringComparison.Ordinal);
                 bool hasState = string.IsNullOrWhiteSpace(startPos.StateSlotName) ||
@@ -274,6 +274,295 @@ public static partial class AkronCommands {
         Log("qa-click-teleport-camera-after: " + FormatVector(level.Camera.Position));
         Log("qa-click-teleport-free-camera: " + AkronRuntimeOptions.IsFreeCameraActive(level).ToString().ToLowerInvariant());
         Log("qa-click-teleport-level-zoom: " + AkronModule.IsLevelZoomActive(level).ToString().ToLowerInvariant());
+    }
+
+    [Command("akron_qa_player_state", "set controlled player/session state for StartPos QA: <x> <y> [deaths] [time] [speed-x] [speed-y] [dashes] [stamina] [facing]")]
+    public static void QaPlayerState(string xText = "", string yText = "", string deathsText = "", string timeText = "", string speedXText = "0", string speedYText = "0", string dashesText = "", string staminaText = "", string facingText = "") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        Player player = level.Tracker.GetEntity<Player>();
+        if (player == null) {
+            Log("qa-player-state: no-player");
+            return;
+        }
+
+        if (!TryParseControlledPlayerState(
+                xText,
+                yText,
+                speedXText,
+                speedYText,
+                dashesText,
+                staminaText,
+                facingText,
+                player,
+                out Vector2 position,
+                out Vector2 speed,
+                out int dashes,
+                out float stamina,
+                out Facings facing)) {
+            Log("usage: akron_qa_player_state <x> <y> [deaths] [time] [speed-x] [speed-y] [dashes] [stamina] [facing]");
+            return;
+        }
+
+        ApplyControlledPlayerState(level, player, position, speed, dashes, stamina, facing);
+
+        if (!string.IsNullOrWhiteSpace(deathsText)) {
+            if (!int.TryParse(deathsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int deaths)) {
+                Log("usage: akron_qa_player_state <x> <y> [deaths] [time] [speed-x] [speed-y] [dashes] [stamina] [facing]");
+                return;
+            }
+
+            ApplyControlledDeathStats(level, Math.Max(0, deaths));
+        }
+
+        if (!string.IsNullOrWhiteSpace(timeText)) {
+            if (!long.TryParse(timeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out long time)) {
+                Log("usage: akron_qa_player_state <x> <y> [deaths] [time] [speed-x] [speed-y] [dashes] [stamina] [facing]");
+                return;
+            }
+
+            ApplyControlledTimeStats(level, Math.Max(0L, time));
+        }
+
+        Log("qa-player-state: set");
+        Log("qa-player-position: " + FormatVector(player.Position));
+        Log("qa-player-speed: " + FormatVector(player.Speed));
+        Log("qa-player-facing: " + player.Facing);
+        Log("qa-player-state-id: " + player.StateMachine.State.ToString(CultureInfo.InvariantCulture));
+        Log("qa-player-stamina: " + player.Stamina.ToString("0.##", CultureInfo.InvariantCulture));
+        Log("qa-player-dashes: " + player.Dashes.ToString(CultureInfo.InvariantCulture));
+        Log("qa-player-deaths: " + level.Session.Deaths.ToString(CultureInfo.InvariantCulture));
+        Log("qa-player-room-deaths: " + level.Session.DeathsInCurrentLevel.ToString(CultureInfo.InvariantCulture));
+        Log("qa-player-time: " + level.Session.Time.ToString(CultureInfo.InvariantCulture));
+    }
+
+    [Command("akron_qa_session_state", "set controlled room/session state for StartPos QA: <flag> <counter> <value>")]
+    public static void QaSessionState(string flag = "akron_qa_flag", string counter = "akron_qa_counter", string valueText = "1") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        if (!int.TryParse(valueText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value)) {
+            Log("usage: akron_qa_session_state <flag> <counter> <value>");
+            return;
+        }
+
+        level.Session.SetFlag(flag, value != 0);
+        level.Session.SetCounter(counter, value);
+        Log("qa-session-state: set");
+        Log("qa-session-flag: " + flag + "=" + level.Session.GetFlag(flag).ToString().ToLowerInvariant());
+        Log("qa-session-counter: " + counter + "=" + level.Session.GetCounter(counter).ToString(CultureInfo.InvariantCulture));
+    }
+
+    [Command("akron_qa_startpos_edge_capture", "set player/session edge state and capture StartPos in one frame: <slot> <x> <y> <speed-x> <speed-y> <dashes> <stamina> <facing> [flag] [counter] [value]")]
+    public static void QaStartPosEdgeCapture(string slotText = "1", string xText = "", string yText = "", string speedXText = "0", string speedYText = "0", string dashesText = "1", string staminaText = "110", string facingText = "right", string flag = "akron_qa_flag", string counter = "akron_qa_counter", string valueText = "1") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        Player player = level.Tracker.GetEntity<Player>();
+        if (player == null) {
+            Log("qa-startpos-edge-capture: no-player");
+            return;
+        }
+
+        if (!int.TryParse(slotText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int slot) ||
+            !int.TryParse(valueText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ||
+            !TryParseControlledPlayerState(
+                xText,
+                yText,
+                speedXText,
+                speedYText,
+                dashesText,
+                staminaText,
+                facingText,
+                player,
+                out Vector2 position,
+                out Vector2 speed,
+                out int dashes,
+                out float stamina,
+                out Facings facing)) {
+            Log("usage: akron_qa_startpos_edge_capture <slot> <x> <y> <speed-x> <speed-y> <dashes> <stamina> <facing> [flag] [counter] [value]");
+            return;
+        }
+
+        AkronActions.SetStartPosSlot(slot);
+        ApplyControlledPlayerState(level, player, position, speed, dashes, stamina, facing);
+        level.Session.SetFlag(flag, value != 0);
+        level.Session.SetCounter(counter, value);
+        AkronActions.SetStartPos(level);
+        Log("qa-startpos-edge-capture: captured");
+        LogControlledPlayerProbe(level, "qa-startpos-edge-capture");
+        Log("qa-session-flag: " + flag + "=" + level.Session.GetFlag(flag).ToString().ToLowerInvariant());
+        Log("qa-session-counter: " + counter + "=" + level.Session.GetCounter(counter).ToString(CultureInfo.InvariantCulture));
+        LogStartPosStatus(level);
+    }
+
+    [Command("akron_qa_startpos_load_probe", "load StartPos and log exact end-of-frame restored player/session state: [slot] [flag] [counter]")]
+    public static void QaStartPosLoadProbe(string slotText = "1", string flag = "akron_qa_flag", string counter = "akron_qa_counter") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        if (!int.TryParse(slotText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int slot)) {
+            Log("usage: akron_qa_startpos_load_probe [slot] [flag] [counter]");
+            return;
+        }
+
+        AkronActions.SetStartPosSlot(slot);
+        AkronActions.LoadStartPos(level);
+        level.OnEndOfFrame += () => {
+            Level currentLevel = Engine.Scene as Level ?? level;
+            AkronAutomationService.RecordOutput("qa-startpos-load-probe: end-of-frame");
+            RecordControlledPlayerProbe(currentLevel, "qa-startpos-load-probe");
+            AkronAutomationService.RecordOutput("qa-session-flag: " + flag + "=" + currentLevel.Session.GetFlag(flag).ToString().ToLowerInvariant());
+            AkronAutomationService.RecordOutput("qa-session-counter: " + counter + "=" + currentLevel.Session.GetCounter(counter).ToString(CultureInfo.InvariantCulture));
+            AkronAutomationService.RecordOutput("qa-session-deaths: " + currentLevel.Session.Deaths.ToString(CultureInfo.InvariantCulture));
+            AkronAutomationService.RecordOutput("qa-session-room-deaths: " + currentLevel.Session.DeathsInCurrentLevel.ToString(CultureInfo.InvariantCulture));
+            AkronAutomationService.RecordOutput("qa-session-time: " + currentLevel.Session.Time.ToString(CultureInfo.InvariantCulture));
+        };
+        Log("qa-startpos-load-probe: scheduled");
+    }
+
+    private static bool TryParseControlledPlayerState(
+        string xText,
+        string yText,
+        string speedXText,
+        string speedYText,
+        string dashesText,
+        string staminaText,
+        string facingText,
+        Player player,
+        out Vector2 position,
+        out Vector2 speed,
+        out int dashes,
+        out float stamina,
+        out Facings facing) {
+        position = Vector2.Zero;
+        speed = Vector2.Zero;
+        dashes = player?.Dashes ?? 1;
+        stamina = player?.Stamina ?? 110f;
+        facing = player?.Facing ?? Facings.Right;
+
+        if (!float.TryParse(xText, NumberStyles.Float, CultureInfo.InvariantCulture, out float x) ||
+            !float.TryParse(yText, NumberStyles.Float, CultureInfo.InvariantCulture, out float y) ||
+            !float.TryParse(speedXText, NumberStyles.Float, CultureInfo.InvariantCulture, out float speedX) ||
+            !float.TryParse(speedYText, NumberStyles.Float, CultureInfo.InvariantCulture, out float speedY)) {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(dashesText) &&
+            !int.TryParse(dashesText, NumberStyles.Integer, CultureInfo.InvariantCulture, out dashes)) {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(staminaText) &&
+            !float.TryParse(staminaText, NumberStyles.Float, CultureInfo.InvariantCulture, out stamina)) {
+            return false;
+        }
+
+        switch (NormalizeToken(facingText)) {
+            case "":
+                break;
+            case "left":
+                facing = Facings.Left;
+                break;
+            case "right":
+                facing = Facings.Right;
+                break;
+            default:
+                return false;
+        }
+
+        position = new Vector2(x, y);
+        speed = new Vector2(speedX, speedY);
+        return true;
+    }
+
+    private static void ApplyControlledPlayerState(Level level, Player player, Vector2 position, Vector2 speed, int dashes, float stamina, Facings facing) {
+        player.Position = position;
+        player.Speed = speed;
+        player.Stamina = stamina;
+        player.Dashes = dashes;
+        player.Facing = facing;
+        player.Dead = false;
+        player.Collidable = true;
+        player.Active = true;
+        player.Visible = true;
+        player.StateMachine.ForceState(Player.StNormal);
+        level.Session.RespawnPoint = player.Position;
+        level.Camera.Position = new Vector2(
+            Calc.Clamp(player.CameraTarget.X, level.Bounds.Left, Math.Max(level.Bounds.Left, level.Bounds.Right - 320f)),
+            Calc.Clamp(player.CameraTarget.Y, level.Bounds.Top, Math.Max(level.Bounds.Top, level.Bounds.Bottom - 180f)));
+        AkronModule.Settings.AutoKill = false;
+    }
+
+    private static void ApplyControlledDeathStats(Level level, int deaths) {
+        level.Session.Deaths = deaths;
+        level.Session.DeathsInCurrentLevel = deaths;
+        if (SaveData.Instance != null) {
+            SaveData.Instance.TotalDeaths = deaths;
+            AreaStats areaStats = SaveData.Instance.Areas_Safe[level.Session.Area.ID];
+            areaStats.Modes[(int) level.Session.Area.Mode].Deaths = deaths;
+        }
+    }
+
+    private static void ApplyControlledTimeStats(Level level, long time) {
+        level.Session.Time = time;
+        if (SaveData.Instance != null) {
+            SaveData.Instance.Time = time;
+            AreaStats areaStats = SaveData.Instance.Areas_Safe[level.Session.Area.ID];
+            areaStats.Modes[(int) level.Session.Area.Mode].TimePlayed = time;
+        }
+    }
+
+    private static void LogControlledPlayerProbe(Level level, string prefix) {
+        Player player = level?.Tracker.GetEntity<Player>();
+        if (player == null) {
+            Log(prefix + "-player: none");
+            return;
+        }
+
+        Log(prefix + "-position: " + FormatVector(player.Position));
+        Log(prefix + "-speed: " + FormatVector(player.Speed));
+        Log(prefix + "-facing: " + player.Facing);
+        Log(prefix + "-state: " + player.StateMachine.State.ToString(CultureInfo.InvariantCulture));
+        Log(prefix + "-stamina: " + player.Stamina.ToString("0.##", CultureInfo.InvariantCulture));
+        Log(prefix + "-dashes: " + player.Dashes.ToString(CultureInfo.InvariantCulture));
+        Log(prefix + "-respawn: " + (level.Session.RespawnPoint.HasValue ? FormatVector(level.Session.RespawnPoint.Value) : "unset"));
+    }
+
+    private static void RecordControlledPlayerProbe(Level level, string prefix) {
+        Player player = level?.Tracker.GetEntity<Player>();
+        if (player == null) {
+            AkronAutomationService.RecordOutput(prefix + "-player: none");
+            return;
+        }
+
+        AkronAutomationService.RecordOutput(prefix + "-position: " + FormatVector(player.Position));
+        AkronAutomationService.RecordOutput(prefix + "-speed: " + FormatVector(player.Speed));
+        AkronAutomationService.RecordOutput(prefix + "-facing: " + player.Facing);
+        AkronAutomationService.RecordOutput(prefix + "-state: " + player.StateMachine.State.ToString(CultureInfo.InvariantCulture));
+        AkronAutomationService.RecordOutput(prefix + "-stamina: " + player.Stamina.ToString("0.##", CultureInfo.InvariantCulture));
+        AkronAutomationService.RecordOutput(prefix + "-dashes: " + player.Dashes.ToString(CultureInfo.InvariantCulture));
+        AkronAutomationService.RecordOutput(prefix + "-respawn: " + (level.Session.RespawnPoint.HasValue ? FormatVector(level.Session.RespawnPoint.Value) : "unset"));
+    }
+
+    [Command("akron_qa_session_probe", "show controlled room/session state for StartPos QA: <flag> <counter>")]
+    public static void QaSessionProbe(string flag = "akron_qa_flag", string counter = "akron_qa_counter") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        Log("qa-session-flag: " + flag + "=" + level.Session.GetFlag(flag).ToString().ToLowerInvariant());
+        Log("qa-session-counter: " + counter + "=" + level.Session.GetCounter(counter).ToString(CultureInfo.InvariantCulture));
     }
 
     [Command("akron_qa_backup", "backup QA: list|create [reason]|pin <index> <on|off>|restore <index>|retention <max-count> <keep-at-least>")]
@@ -1753,7 +2042,8 @@ public static partial class AkronCommands {
             return 0;
         }
 
-        foreach (KeyValuePair<int, AkronStartPos> pair in AkronModule.Session.StartPositions) {
+        string areaSid = Engine.Scene is Level level ? level.Session.Area.GetSID() : AkronModule.Session.LoadedStartPositionsAreaSid;
+        foreach (KeyValuePair<int, AkronStartPos> pair in AkronActions.GetStartPositionsForArea(areaSid)) {
             if (ReferenceEquals(pair.Value, candidate)) {
                 return pair.Key;
             }

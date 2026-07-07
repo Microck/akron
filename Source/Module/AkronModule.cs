@@ -364,6 +364,7 @@ public partial class AkronModule : EverestModule {
         ResetNoclipAccuracy();
         AkronActions.RestoreAutoDeafen();
         AkronInputHistory.ResetInputsPerSecond();
+        AkronActions.LoadStartPositionsForLevel(self);
         AkronSaveLoadService.OnLevelBegin(self);
         AkronPracticeStats.OnLevelBegin(self);
         AkronPracticeCounters.OnLevelBegin(self);

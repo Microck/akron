@@ -390,6 +390,7 @@ public static partial class AkronCommands {
         Log("tas-file: " + (string.IsNullOrWhiteSpace(AkronModule.Settings.TasFilePath) ? "unset" : AkronModule.Settings.FormatPathForDisplay(AkronModule.Settings.TasFilePath)));
         if (level != null) {
             Log("room: " + level.Session.Area.GetSID() + " / " + level.Session.Level);
+            Log("respawn: " + (level.Session.RespawnPoint.HasValue ? level.Session.RespawnPoint.Value.X.ToString("0.##", CultureInfo.InvariantCulture) + ", " + level.Session.RespawnPoint.Value.Y.ToString("0.##", CultureInfo.InvariantCulture) : "unset"));
             Log("level-in-cutscene: " + level.InCutscene.ToString().ToLowerInvariant());
             Log("level-skipping-cutscene: " + level.SkippingCutscene.ToString().ToLowerInvariant());
             Log("selected-room: " + AkronActions.DescribeSelectedRoom(level));
@@ -403,6 +404,10 @@ public static partial class AkronCommands {
 
         if (player != null) {
             Log("player: " + player.Position.X.ToString("0.##", CultureInfo.InvariantCulture) + ", " + player.Position.Y.ToString("0.##", CultureInfo.InvariantCulture));
+            Log("player-speed: " + player.Speed.X.ToString("0.##", CultureInfo.InvariantCulture) + ", " + player.Speed.Y.ToString("0.##", CultureInfo.InvariantCulture));
+            Log("player-facing: " + player.Facing);
+            Log("player-state: " + player.StateMachine.State.ToString(CultureInfo.InvariantCulture));
+            Log("player-dead: " + player.Dead.ToString().ToLowerInvariant());
             Log("stamina: " + player.Stamina.ToString("0.##", CultureInfo.InvariantCulture));
             Log("dashes: " + player.Dashes.ToString(CultureInfo.InvariantCulture));
         }

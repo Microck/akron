@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -391,6 +392,20 @@ public static partial class AkronSaveLoadService {
         return saveSlot;
     }
 
+    public static void HydrateRuntimeState(string slotName, AkronSaveLoadSlot saveSlot) {
+        if (saveSlot == null) {
+            throw new ArgumentNullException(nameof(saveSlot));
+        }
+
+        string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
+        if (!string.Equals(saveSlot.SlotName, normalizedSlotName, StringComparison.Ordinal)) {
+            throw new InvalidDataException("Persistent runtime slot name mismatch.");
+        }
+
+        PrepareSlotPreClone(saveSlot);
+        RuntimeSlots[normalizedSlotName] = saveSlot;
+    }
+
     public static void ClearRuntimeState(string slotName) {
         string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
         AkronSpeedrunToolBroker.Clear(normalizedSlotName);
@@ -490,6 +505,7 @@ public static partial class AkronSaveLoadService {
             AkronDeepClone.CopyInto(level, saveSlot.SavedLevel);
         }
         saveSlot.SessionState = (Session) DeepClone(level.Session);
+        CaptureCuratedSessionState(level.Session, saveSlot);
         if (SaveData.Instance != null) {
             saveSlot.SaveDataState = (SaveData) DeepClone(SaveData.Instance);
         }
@@ -497,6 +513,7 @@ public static partial class AkronSaveLoadService {
         if (player != null) {
             saveSlot.PlayerPosition = player.Position;
             saveSlot.PlayerSpeed = player.Speed;
+            saveSlot.PlayerState = player.StateMachine.State;
             saveSlot.Stamina = player.Stamina;
             saveSlot.Dashes = player.Dashes;
             saveSlot.Facing = player.Facing;
@@ -597,6 +614,7 @@ public static partial class AkronSaveLoadService {
             } else {
                 level.Session.Level = saveSlot.LevelName;
                 level.Session.RespawnPoint = saveSlot.RespawnPoint;
+                RestoreCuratedSessionState(level.Session, saveSlot);
             }
 
             if (roomChanged) {
@@ -614,6 +632,7 @@ public static partial class AkronSaveLoadService {
         if (player != null && savedLevel == null) {
             player.Position = saveSlot.PlayerPosition;
             player.Speed = saveSlot.PlayerSpeed;
+            player.StateMachine.ForceState(saveSlot.PlayerState);
             player.Stamina = saveSlot.Stamina;
             player.Dashes = saveSlot.Dashes;
             player.Facing = saveSlot.Facing;
@@ -621,6 +640,12 @@ public static partial class AkronSaveLoadService {
 
         if (savedSaveData != null) {
             SaveData.Instance = savedSaveData;
+        }
+
+        if (!saveSlot.SaveTimeAndDeaths) {
+            level.Session.Time = Math.Max(currentSessionTime, level.Session.Time);
+            level.Session.Deaths = Math.Max(currentDeaths, level.Session.Deaths);
+            level.Session.DeathsInCurrentLevel = Math.Max(currentDeathsInRoom, level.Session.DeathsInCurrentLevel);
         }
 
         if (saveSlot.SaveTimeAndDeaths) {
@@ -655,6 +680,83 @@ public static partial class AkronSaveLoadService {
         }
 
         return true;
+    }
+
+    private static void CaptureCuratedSessionState(Session session, AkronSaveLoadSlot saveSlot) {
+        if (session == null || saveSlot == null) {
+            return;
+        }
+
+        saveSlot.SessionFlags = new HashSet<string>(session.Flags ?? new HashSet<string>());
+        saveSlot.SessionLevelFlags = new HashSet<string>(session.LevelFlags ?? new HashSet<string>());
+        saveSlot.SessionCounters = (session.Counters ?? new List<Session.Counter>())
+            .Where(counter => counter != null && !string.IsNullOrWhiteSpace(counter.Key))
+            .GroupBy(counter => counter.Key)
+            .ToDictionary(group => group.Key, group => group.Last().Value);
+        saveSlot.SessionStrawberries = (session.Strawberries ?? new HashSet<EntityID>())
+            .Select(AkronSessionEntityId.FromEntityId)
+            .ToList();
+        saveSlot.SessionDoNotLoad = (session.DoNotLoad ?? new HashSet<EntityID>())
+            .Select(AkronSessionEntityId.FromEntityId)
+            .ToList();
+        saveSlot.SessionKeys = (session.Keys ?? new HashSet<EntityID>())
+            .Select(AkronSessionEntityId.FromEntityId)
+            .ToList();
+        saveSlot.SessionSummitGems = session.SummitGems == null ? null : (bool[]) session.SummitGems.Clone();
+        saveSlot.InventoryDashes = session.Inventory.Dashes;
+        saveSlot.InventoryDreamDash = session.Inventory.DreamDash;
+        saveSlot.InventoryBackpack = session.Inventory.Backpack;
+        saveSlot.InventoryNoRefills = session.Inventory.NoRefills;
+        saveSlot.SessionDashes = session.Dashes;
+        saveSlot.SessionDashesAtLevelStart = session.DashesAtLevelStart;
+        saveSlot.SessionDreaming = session.Dreaming;
+        saveSlot.SessionStartCheckpoint = session.StartCheckpoint ?? string.Empty;
+        saveSlot.SessionFurthestSeenLevel = session.FurthestSeenLevel ?? string.Empty;
+        saveSlot.SessionCoreMode = session.CoreMode;
+    }
+
+    private static void RestoreCuratedSessionState(Session session, AkronSaveLoadSlot saveSlot) {
+        if (session == null || saveSlot == null) {
+            return;
+        }
+
+        // Persistent StartPos snapshots restore map/session gameplay state, but
+        // they do not rewind stats unless the explicit SaveTimeAndDeaths setting
+        // was enabled when the slot was captured.
+        if (saveSlot.SaveTimeAndDeaths) {
+            session.Time = saveSlot.Time;
+            session.Deaths = saveSlot.Deaths;
+            session.DeathsInCurrentLevel = saveSlot.DeathsInCurrentLevel;
+        }
+
+        session.Flags = new HashSet<string>(saveSlot.SessionFlags ?? new HashSet<string>());
+        session.LevelFlags = new HashSet<string>(saveSlot.SessionLevelFlags ?? new HashSet<string>());
+        session.Counters = (saveSlot.SessionCounters ?? new Dictionary<string, int>())
+            .Select(pair => new Session.Counter {
+                Key = pair.Key,
+                Value = pair.Value
+            })
+            .ToList();
+        session.Strawberries = new HashSet<EntityID>((saveSlot.SessionStrawberries ?? new List<AkronSessionEntityId>())
+            .Select(id => id.ToEntityId()));
+        session.DoNotLoad = new HashSet<EntityID>((saveSlot.SessionDoNotLoad ?? new List<AkronSessionEntityId>())
+            .Select(id => id.ToEntityId()));
+        session.Keys = new HashSet<EntityID>((saveSlot.SessionKeys ?? new List<AkronSessionEntityId>())
+            .Select(id => id.ToEntityId()));
+        if (saveSlot.SessionSummitGems != null) {
+            session.SummitGems = (bool[]) saveSlot.SessionSummitGems.Clone();
+        }
+        session.Inventory = new PlayerInventory(
+            saveSlot.InventoryDashes,
+            saveSlot.InventoryDreamDash,
+            saveSlot.InventoryBackpack,
+            saveSlot.InventoryNoRefills);
+        session.Dashes = saveSlot.SessionDashes;
+        session.DashesAtLevelStart = saveSlot.SessionDashesAtLevelStart;
+        session.Dreaming = saveSlot.SessionDreaming;
+        session.StartCheckpoint = saveSlot.SessionStartCheckpoint ?? string.Empty;
+        session.FurthestSeenLevel = saveSlot.SessionFurthestSeenLevel ?? string.Empty;
+        session.CoreMode = saveSlot.SessionCoreMode;
     }
 
     private static void RepairClonedSoundSources(Level level) {

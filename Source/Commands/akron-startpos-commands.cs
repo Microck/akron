@@ -275,7 +275,12 @@ public static partial class AkronCommands {
         Log("startpos-set: " + (startPos != null).ToString().ToLowerInvariant());
         Log("startpos-position: " + (startPos == null ? "unset" : FormatVector(startPos.Position)));
         Log("startpos-room: " + (startPos?.Room ?? "unset"));
+        Log("startpos-area: " + (startPos?.AreaSid ?? "unset"));
+        Log("startpos-state-slot: " + (string.IsNullOrWhiteSpace(startPos?.StateSlotName) ? "none" : startPos.StateSlotName));
         Log("startpos-state-snapshot: " + (startPos != null && AkronSaveLoadService.HasRuntimeState(startPos.StateSlotName)).ToString().ToLowerInvariant());
+        Log("startpos-snapshot-path: " + (string.IsNullOrWhiteSpace(startPos?.SnapshotPath) ? "none" : startPos.SnapshotPath));
+        Log("startpos-snapshot-error: " + (string.IsNullOrWhiteSpace(startPos?.SnapshotLoadError) ? "none" : startPos.SnapshotLoadError));
+        Log("startpos-last-loaded-slot: " + (AkronModule.Session?.LastLoadedStartPosSlot ?? 0).ToString(CultureInfo.InvariantCulture));
         Log("startpos-dashes: " + (startPos?.Dashes ?? AkronModule.Settings.StartPosConfiguredDashes).ToString(CultureInfo.InvariantCulture));
         Log("startpos-stamina: " + (startPos?.StaminaPercent ?? AkronModule.Settings.StartPosConfiguredStaminaPercent).ToString(CultureInfo.InvariantCulture));
         Log("startpos-facing: " + (startPos?.Facing ?? AkronModule.Settings.StartPosConfiguredFacing));

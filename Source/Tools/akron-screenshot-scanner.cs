@@ -1055,7 +1055,7 @@ public static class AkronScreenshotScanner {
             return;
         }
 
-        foreach (KeyValuePair<int, AkronStartPos> pair in AkronModule.Session?.StartPositions ?? new Dictionary<int, AkronStartPos>()) {
+        foreach (KeyValuePair<int, AkronStartPos> pair in AkronActions.GetStartPositionsForArea(areaSid)) {
             AkronStartPos startPos = pair.Value;
             if (startPos == null ||
                 !string.Equals(startPos.AreaSid, areaSid, StringComparison.Ordinal) ||
