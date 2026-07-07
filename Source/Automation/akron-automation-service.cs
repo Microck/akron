@@ -113,7 +113,7 @@ public static class AkronAutomationService {
     }
 
     public static void RecordOutput(string line) {
-        if (!isProcessing || string.IsNullOrWhiteSpace(line)) {
+        if (!hasActiveRun || string.IsNullOrWhiteSpace(line)) {
             return;
         }
 

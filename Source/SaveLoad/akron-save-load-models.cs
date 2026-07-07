@@ -70,6 +70,7 @@ public sealed class AkronSaveLoadSlot {
     internal DeepCloneState PreCloneState { get; set; }
     public Vector2 PlayerPosition { get; set; }
     public Vector2 PlayerSpeed { get; set; }
+    public int PlayerState { get; set; }
     public float Stamina { get; set; }
     public int Dashes { get; set; }
     public Facings Facing { get; set; }
@@ -93,4 +94,37 @@ public sealed class AkronSaveLoadSlot {
     public Dictionary<string, Dictionary<Type, Dictionary<string, object>>> ActionState { get; }
     public Dictionary<string, EverestModuleSession> ModuleSessions { get; }
     public Dictionary<string, EverestModuleSaveData> ModuleSaveData { get; }
+    public HashSet<string> SessionFlags { get; set; } = new HashSet<string>();
+    public HashSet<string> SessionLevelFlags { get; set; } = new HashSet<string>();
+    public Dictionary<string, int> SessionCounters { get; set; } = new Dictionary<string, int>();
+    public List<AkronSessionEntityId> SessionStrawberries { get; set; } = new List<AkronSessionEntityId>();
+    public List<AkronSessionEntityId> SessionDoNotLoad { get; set; } = new List<AkronSessionEntityId>();
+    public List<AkronSessionEntityId> SessionKeys { get; set; } = new List<AkronSessionEntityId>();
+    public bool[] SessionSummitGems { get; set; }
+    public int InventoryDashes { get; set; }
+    public bool InventoryDreamDash { get; set; }
+    public bool InventoryBackpack { get; set; }
+    public bool InventoryNoRefills { get; set; }
+    public int SessionDashes { get; set; }
+    public int SessionDashesAtLevelStart { get; set; }
+    public bool SessionDreaming { get; set; }
+    public string SessionStartCheckpoint { get; set; } = string.Empty;
+    public string SessionFurthestSeenLevel { get; set; } = string.Empty;
+    public Session.CoreModes SessionCoreMode { get; set; }
+}
+
+public sealed class AkronSessionEntityId {
+    public string Level { get; set; } = string.Empty;
+    public int ID { get; set; }
+
+    public static AkronSessionEntityId FromEntityId(EntityID id) {
+        return new AkronSessionEntityId {
+            Level = id.Level ?? string.Empty,
+            ID = id.ID
+        };
+    }
+
+    public EntityID ToEntityId() {
+        return new EntityID(Level ?? string.Empty, ID);
+    }
 }

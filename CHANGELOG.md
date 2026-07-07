@@ -52,6 +52,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ### Fixed
 
+- Keep StartPos slots scoped per map and restore persisted StartPos player/session state across game restarts without rewinding time or deaths.
 - Let Skip Cutscene run Celeste's active cutscene skip callback instead of leaving the level stuck in a skipping cutscene state.
 - Let Akron's internal recorder find host FFmpeg and its Linux libraries from inside the Steam Runtime sandbox.
 - Prefer the most specific matching SFX volume group so broad sound fragments do not shadow narrower controls such as Ridge Wind.

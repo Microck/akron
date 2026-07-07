@@ -242,7 +242,7 @@ public static partial class AkronSetupPacks {
             ApplyButtonBindings(settings, pack.ButtonBindings);
             settings.MenuActionBindings = new Dictionary<string, string>(pack.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal);
             if (session != null) {
-                session.StartPositions = BuildStartPositions(pack.StartPositions);
+                AkronActions.ReplaceAllStartPositions(BuildStartPositions(pack.StartPositions), session);
             }
             return;
         }
@@ -254,7 +254,7 @@ public static partial class AkronSetupPacks {
             ApplyButtonBindings(settings, pack.ButtonBindings);
             settings.MenuActionBindings = new Dictionary<string, string>(pack.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal);
         } else if (section == AkronSetupSection.StartPos && session != null) {
-            session.StartPositions = MergeScopedStartPositions(session.StartPositions, pack.StartPositions);
+            AkronActions.ReplaceAllStartPositions(MergeScopedStartPositions(session.StartPositions, pack.StartPositions), session);
         }
     }
 
@@ -333,7 +333,10 @@ public static partial class AkronSetupPacks {
                 Kind = SetupArchiveKind,
                 KindVersion = 1,
                 CreatedAt = pack.CreatedUtc,
-                Target = new AkronArchiveTarget { Game = "Celeste" }
+                Target = new AkronArchiveTarget {
+                    Game = "Celeste",
+                    MapSid = ResolveArchiveMapSid(session)
+                }
             },
             SetupArchivePayload,
             JsonSerializer.Serialize(pack, JsonOptions));
@@ -347,6 +350,34 @@ public static partial class AkronSetupPacks {
         }
 
         return pack;
+    }
+
+    private static string ResolveArchiveMapSid(AkronModuleSession session) {
+        string currentLevelMapSid = TryGetCurrentLevelMapSid();
+        if (!string.IsNullOrWhiteSpace(currentLevelMapSid)) {
+            return currentLevelMapSid;
+        }
+
+        if (session?.StartPositions == null) {
+            return string.Empty;
+        }
+
+        HashSet<string> areaSids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (AkronStartPos startPos in session.StartPositions.Values) {
+            if (!string.IsNullOrWhiteSpace(startPos?.AreaSid)) {
+                areaSids.Add(startPos.AreaSid);
+            }
+        }
+
+        return areaSids.Count == 1 ? areaSids.First() : string.Empty;
+    }
+
+    private static string TryGetCurrentLevelMapSid() {
+        try {
+            return Engine.Scene is Level level ? level.Session?.Area.GetSID() ?? string.Empty : string.Empty;
+        } catch (Exception exception) when (exception is InvalidProgramException || exception is NullReferenceException) {
+            return string.Empty;
+        }
     }
 
     public static string FormatSection(AkronSetupSection section) {
