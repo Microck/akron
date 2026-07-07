@@ -357,6 +357,8 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         style.Colors[(int) ImGuiCol.FrameBgActive] = AkronImGuiTheme.ButtonActive;
         style.Colors[(int) ImGuiCol.PopupBg] = AkronImGuiTheme.Background;
         style.Colors[(int) ImGuiCol.Border] = AkronImGuiTheme.Transparent;
+        style.Colors[(int) ImGuiCol.PlotHistogram] = AkronImGuiTheme.Accent;
+        style.Colors[(int) ImGuiCol.PlotHistogramHovered] = AkronImGuiTheme.AccentHovered;
     }
 
     private Effect UpdateEffect(Texture2D texture) {

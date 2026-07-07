@@ -76,6 +76,7 @@ public sealed class AkronCommunityPackUploadCompleteResponse {
 
 public static class AkronCommunityPackUploads {
     public const string DefaultUploadEndpoint = "https://akron.micr.dev/uploads";
+    public const string DiscordInviteUrl = "https://akron.micr.dev/discord";
     public const int CurrentTermsVersion = 1;
     public const string AnonymousAttribution = "anonymous";
     public const string DiscordAttribution = "discord";
@@ -143,6 +144,10 @@ public static class AkronCommunityPackUploads {
 
     internal static void ReleaseUploadSlot() {
         uploadInProgress = false;
+    }
+
+    internal static AkronCommunityPackUploadCaptureSettings BeginUploadCaptureSettings(AkronModuleSettings settings, AkronSetupSection section) {
+        return AkronCommunityPackUploadCaptureSettings.Apply(settings, NormalizeUploadSection(section));
     }
 
     private static void SetUploadStatus(string status, float progress, bool visible = true) {
@@ -709,6 +714,7 @@ public static class AkronCommunityPackUploads {
         private readonly AkronCommunityPackUploadDraft draft;
         private readonly Level initialLevel;
         private readonly CancellationTokenSource uploadCancellation = new CancellationTokenSource();
+        private AkronCommunityPackUploadCaptureSettings captureSettings;
         private string packPath = string.Empty;
         private DateTime captureStartedUtc;
         private bool ownsCaptureScan;
@@ -728,6 +734,7 @@ public static class AkronCommunityPackUploads {
             if (ownsCaptureScan && AkronScreenshotScanner.IsScanning) {
                 AkronScreenshotScanner.Stop();
             }
+            captureSettings?.Restore();
             CleanupPack();
             base.Removed(scene);
         }
@@ -777,9 +784,20 @@ public static class AkronCommunityPackUploads {
 
             captureStartedUtc = DateTime.UtcNow;
             ownsCaptureScan = true;
+            captureSettings = BeginUploadCaptureSettings(AkronModule.Settings, draft.Section);
             SetUploadStatus("Starting full-map capture...", 0.06f);
-            if (!AkronScreenshotScanner.ScanChapter(level)) {
+            bool captureStarted;
+            try {
+                captureStarted = AkronScreenshotScanner.ScanChapter(level);
+            } catch (Exception exception) {
                 ownsCaptureScan = false;
+                captureSettings.Restore();
+                FailUpload("Could not start full-map capture: " + exception.Message, exception, "Could not start full-map capture.");
+                yield break;
+            }
+            if (!captureStarted) {
+                ownsCaptureScan = false;
+                captureSettings.Restore();
                 FailUpload("Could not start full-map capture.", null, "Could not start full-map capture.");
                 yield break;
             }
@@ -789,6 +807,7 @@ public static class AkronCommunityPackUploads {
                 yield return null;
             }
             ownsCaptureScan = false;
+            captureSettings.Restore();
 
             string capturePath = AkronScreenshotScanner.LastExportPath;
             if (!IsCompletedMapCaptureForUpload(capturePath, captureStartedUtc)) {
@@ -848,9 +867,20 @@ public static class AkronCommunityPackUploads {
             }
 
             AkronCommunityPackUploadCompleteResponse response = uploadTask.GetAwaiter().GetResult();
-            SetUploadStatus("Upload submitted: " + response.Status + ".", 1f);
-            Engine.Scene?.Add(new AkronToast("Upload Pack submitted: " + response.Status + "."));
+            SetUploadStatus(DescribeUploadCompleteStatus(response.Status), 1f);
+            ShowUploadCompletePrompt(response.Status);
             RemoveSelf();
+        }
+
+        private static void ShowUploadCompletePrompt(string status)
+        {
+            string message = DescribeUploadCompleteMessage(status);
+            if (Engine.Scene is Level level) {
+                AkronPromptMenu.Show(level, "Upload Pack submitted", message);
+                return;
+            }
+
+            Engine.Scene?.Add(new AkronToast(message.Replace('\n', ' '), forceVisible: true, durationSeconds: 8f));
         }
 
         private void FailUpload(string logMessage, Exception exception, string status = null)
@@ -882,5 +912,110 @@ public static class AkronCommunityPackUploads {
                 ReleaseUploadSlot();
             }
         }
+    }
+
+    internal static string DescribeUploadCompleteStatus(string status)
+    {
+        string normalized = (status ?? string.Empty).Trim();
+        if (string.Equals(normalized, "awaiting_attribution", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "awaiting_confirmation", StringComparison.OrdinalIgnoreCase)) {
+            return "Awaiting Discord confirmation.";
+        }
+
+        if (string.Equals(normalized, "queued", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "reviewing", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "moderating", StringComparison.OrdinalIgnoreCase)) {
+            return "Queued for staff review.";
+        }
+
+        if (string.Equals(normalized, "published", StringComparison.OrdinalIgnoreCase)) {
+            return "Published to Community Packs.";
+        }
+
+        return "Upload submitted.";
+    }
+
+    internal static string DescribeUploadCompleteMessage(string status)
+    {
+        string normalized = (status ?? string.Empty).Trim();
+        if (string.Equals(normalized, "awaiting_attribution", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "awaiting_confirmation", StringComparison.OrdinalIgnoreCase)) {
+            return "Your pack was uploaded.\nConfirm the Discord attribution request before it can be reviewed.\nDiscord: " + DiscordInviteUrl;
+        }
+
+        if (string.Equals(normalized, "queued", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "reviewing", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "moderating", StringComparison.OrdinalIgnoreCase)) {
+            return "Your pack was uploaded and queued for staff review.\nYou can follow up in the Akron Discord.\nDiscord: " + DiscordInviteUrl;
+        }
+
+        if (string.Equals(normalized, "published", StringComparison.OrdinalIgnoreCase)) {
+            return "Your pack was published.\nIt should appear in the matching Discord pack channel.";
+        }
+
+        return "Your pack was uploaded.\nYou can follow up in the Akron Discord.\nDiscord: " + DiscordInviteUrl;
+    }
+}
+
+internal sealed class AkronCommunityPackUploadCaptureSettings
+{
+    private readonly AkronModuleSettings settings;
+    private readonly bool exportMarkers;
+    private readonly bool exportStartPositions;
+    private readonly bool exportAutoKillAreas;
+    private readonly bool exportAutoDeafenAreas;
+    private bool restored;
+
+    private AkronCommunityPackUploadCaptureSettings(AkronModuleSettings settings)
+    {
+        this.settings = settings;
+        if (settings == null) {
+            restored = true;
+            return;
+        }
+
+        exportMarkers = settings.ScreenshotScannerExportMarkers;
+        exportStartPositions = settings.ScreenshotScannerExportStartPositions;
+        exportAutoKillAreas = settings.ScreenshotScannerExportAutoKillAreas;
+        exportAutoDeafenAreas = settings.ScreenshotScannerExportAutoDeafenAreas;
+    }
+
+    public static AkronCommunityPackUploadCaptureSettings Apply(AkronModuleSettings settings, AkronSetupSection section)
+    {
+        AkronCommunityPackUploadCaptureSettings captureSettings = new AkronCommunityPackUploadCaptureSettings(settings);
+        if (settings == null) {
+            return captureSettings;
+        }
+
+        // Upload previews need to show the pack content even when the player
+        // keeps optional capture marker overlays disabled for normal captures.
+        settings.ScreenshotScannerExportMarkers = true;
+        switch (AkronCommunityPackUploads.NormalizeUploadSection(section)) {
+            case AkronSetupSection.AutoKill:
+                settings.ScreenshotScannerExportAutoKillAreas = true;
+                break;
+            case AkronSetupSection.AutoDeafen:
+                settings.ScreenshotScannerExportAutoDeafenAreas = true;
+                break;
+            case AkronSetupSection.StartPos:
+            default:
+                settings.ScreenshotScannerExportStartPositions = true;
+                break;
+        }
+
+        return captureSettings;
+    }
+
+    public void Restore()
+    {
+        if (restored || settings == null) {
+            return;
+        }
+
+        restored = true;
+        settings.ScreenshotScannerExportMarkers = exportMarkers;
+        settings.ScreenshotScannerExportStartPositions = exportStartPositions;
+        settings.ScreenshotScannerExportAutoKillAreas = exportAutoKillAreas;
+        settings.ScreenshotScannerExportAutoDeafenAreas = exportAutoDeafenAreas;
     }
 }
