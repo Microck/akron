@@ -285,6 +285,24 @@ public sealed class ScreenshotScannerTests {
     }
 
     [Fact]
+    public void ChapterScanStartupExceptionsResetScannerReservation() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-screenshot-scanner.cs"));
+        int scanChapterStart = source.IndexOf("public static bool ScanChapter(Level level)", StringComparison.Ordinal);
+        int scanMapDataStart = source.IndexOf("private static MapData GetScanMapData", scanChapterStart, StringComparison.Ordinal);
+
+        Assert.True(scanChapterStart >= 0);
+        Assert.True(scanMapDataStart > scanChapterStart);
+        string scanChapterSource = source[scanChapterStart..scanMapDataStart];
+
+        Assert.Contains("catch {", scanChapterSource);
+        Assert.Contains("ResetFailedStart();", scanChapterSource);
+        Assert.Contains("throw;", scanChapterSource);
+        Assert.Contains("private static void ResetFailedStart()", source);
+        Assert.Contains("isScanning = false;", source);
+        Assert.Contains("scannerHost = null;", source);
+    }
+
+    [Fact]
     public void MapCaptureQueuesNoSpawnRoomsAndSkipsOnlyFillerByName() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-screenshot-scanner.cs"));
         int filterStart = source.IndexOf("private static bool CanScanChapterRoom", StringComparison.Ordinal);
@@ -348,6 +366,22 @@ public sealed class ScreenshotScannerTests {
         Assert.Contains("DigitGlyph", source);
         Assert.DoesNotContain("DrawStartPosPlayerPreview", exportSource);
         Assert.DoesNotContain("ActiveFont", source);
+    }
+
+    [Fact]
+    public void ScannerExportAreaMarkersDoNotRequireLiveAutomationFlags() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-screenshot-scanner.cs"));
+        int exportStart = source.IndexOf("private static void DrawScannerExportMarkers", StringComparison.Ordinal);
+        int exportEnd = source.IndexOf("private static void DrawScannerExportAreaMarker", exportStart, StringComparison.Ordinal);
+
+        Assert.True(exportStart >= 0);
+        Assert.True(exportEnd > exportStart);
+        string exportSource = source[exportStart..exportEnd];
+
+        Assert.Contains("settings.ScreenshotScannerExportAutoKillAreas", exportSource);
+        Assert.Contains("settings.ScreenshotScannerExportAutoDeafenAreas", exportSource);
+        Assert.DoesNotContain("settings.ScreenshotScannerExportAutoKillAreas && settings.AutoKillArea", exportSource);
+        Assert.DoesNotContain("settings.ScreenshotScannerExportAutoDeafenAreas && settings.AutoDeafenArea", exportSource);
     }
 
     [Fact]

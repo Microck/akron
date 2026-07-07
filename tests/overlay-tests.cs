@@ -752,6 +752,17 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void ImGuiProgressBarsUseAkronThemeAccent() {
+        string rendererSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-imgui-renderer.cs"));
+        string overlayRendererSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-imgui-renderer.cs"));
+
+        Assert.Contains("style.Colors[(int) ImGuiCol.PlotHistogram] = AkronImGuiTheme.Accent;", rendererSource);
+        Assert.Contains("style.Colors[(int) ImGuiCol.PlotHistogramHovered] = AkronImGuiTheme.AccentHovered;", rendererSource);
+        Assert.Contains("style.Colors[(int) ImGuiCol.PlotHistogram] = AkronImGuiTheme.Accent;", overlayRendererSource);
+        Assert.Contains("style.Colors[(int) ImGuiCol.PlotHistogramHovered] = AkronImGuiTheme.AccentHovered;", overlayRendererSource);
+    }
+
+    [Fact]
     public void InspectorPinPopupUsesAkronImGuiPanelTheme() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-entity-inspector-pin.cs"));
 

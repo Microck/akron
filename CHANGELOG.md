@@ -19,6 +19,8 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 ### Fixed
 
+- Show the selected Upload Pack markers in automatic full-map captures, even when normal scanner marker export options are off.
+- Replace raw Upload Pack completion states with a Discord confirmation/review prompt and theme the upload progress bar with the active Akron accent color.
 - Show Upload Pack server failures in the popup and stop before full-map capture when the upload endpoint is unavailable.
 
 ## 0.1.2-beta.39

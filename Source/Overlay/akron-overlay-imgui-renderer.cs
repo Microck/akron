@@ -270,6 +270,8 @@ public sealed partial class AkronOverlay {
         style.Colors[(int) ImGuiCol.HeaderHovered] = AkronImGuiTheme.ButtonHovered;
         style.Colors[(int) ImGuiCol.HeaderActive] = AkronImGuiTheme.ButtonActive;
         style.Colors[(int) ImGuiCol.PopupBg] = ToImGuiColor(theme.WindowColor);
+        style.Colors[(int) ImGuiCol.PlotHistogram] = AkronImGuiTheme.Accent;
+        style.Colors[(int) ImGuiCol.PlotHistogramHovered] = AkronImGuiTheme.AccentHovered;
     }
 
     private static NumericsVector4 ToImGuiColor(int rgb, float alpha = 1f) {

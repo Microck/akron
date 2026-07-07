@@ -144,35 +144,40 @@ public static class AkronScreenshotScanner {
             return false;
         }
 
-        MapData mapData = GetScanMapData(level);
-        int sessionRoomCount = level.Session?.MapData?.Levels?.Count ?? 0;
-        int scanRoomCount = mapData?.Levels?.Count ?? 0;
-        AkronLog.Normal(nameof(AkronScreenshotScanner), "Starting map capture with " + scanRoomCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + " queued room candidates; session-map rooms=" + sessionRoomCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".");
-        long estimatedPixels = EstimateMapOutputPixels(level, mapData);
-        if (!AkronModule.Settings.ScreenshotScannerDownscaleMapCapture && estimatedPixels >= LargeMapCaptureWarningPixels) {
-            string estimate = FormatPixelCount(estimatedPixels);
-            string message = "Huge map capture: about " + estimate + " output pixels. This may take several minutes, create a very large file, and temporarily freeze or crash the game.";
-            AkronLog.Warn(nameof(AkronScreenshotScanner), message);
-            Engine.Scene?.Add(new AkronToast(message));
-        }
-
-        Queue<string> rooms = new Queue<string>();
-        foreach (LevelData room in mapData?.Levels ?? new List<LevelData>()) {
-            if (CanScanChapterRoom(room)) {
-                rooms.Enqueue(room.Name);
+        try {
+            MapData mapData = GetScanMapData(level);
+            int sessionRoomCount = level.Session?.MapData?.Levels?.Count ?? 0;
+            int scanRoomCount = mapData?.Levels?.Count ?? 0;
+            AkronLog.Normal(nameof(AkronScreenshotScanner), "Starting map capture with " + scanRoomCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + " queued room candidates; session-map rooms=" + sessionRoomCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".");
+            long estimatedPixels = EstimateMapOutputPixels(level, mapData);
+            if (!AkronModule.Settings.ScreenshotScannerDownscaleMapCapture && estimatedPixels >= LargeMapCaptureWarningPixels) {
+                string estimate = FormatPixelCount(estimatedPixels);
+                string message = "Huge map capture: about " + estimate + " output pixels. This may take several minutes, create a very large file, and temporarily freeze or crash the game.";
+                AkronLog.Warn(nameof(AkronScreenshotScanner), message);
+                Engine.Scene?.Add(new AkronToast(message));
             }
-        }
-        scanRoomsCompleted = 0;
-        scanRoomsTotal = rooms.Count;
-        if (rooms.Count == 0) {
-            AkronLog.Warn(nameof(AkronScreenshotScanner), "Map capture has no scannable rooms queued.");
-            isScanning = false;
-            scanRoomsTotal = 0;
-            return false;
-        }
 
-        scannerHost.Add(new Coroutine(ScanRooms(player, rooms, buildMapComposite: true)));
-        return true;
+            Queue<string> rooms = new Queue<string>();
+            foreach (LevelData room in mapData?.Levels ?? new List<LevelData>()) {
+                if (CanScanChapterRoom(room)) {
+                    rooms.Enqueue(room.Name);
+                }
+            }
+            scanRoomsCompleted = 0;
+            scanRoomsTotal = rooms.Count;
+            if (rooms.Count == 0) {
+                AkronLog.Warn(nameof(AkronScreenshotScanner), "Map capture has no scannable rooms queued.");
+                isScanning = false;
+                scanRoomsTotal = 0;
+                return false;
+            }
+
+            scannerHost.Add(new Coroutine(ScanRooms(player, rooms, buildMapComposite: true)));
+            return true;
+        } catch {
+            ResetFailedStart();
+            throw;
+        }
     }
 
     private static MapData GetScanMapData(Level level) {
@@ -267,6 +272,18 @@ public static class AkronScreenshotScanner {
         }
 
         return true;
+    }
+
+    private static void ResetFailedStart() {
+        // TryStart reserves global scanner state before ScanChapter finishes
+        // building the room queue. If startup throws before a coroutine owns
+        // cleanup, unwind that reservation so later captures are not blocked.
+        isScanning = false;
+        scanCancelled = false;
+        scanRoomsCompleted = 0;
+        scanRoomsTotal = 0;
+        scannerHost?.RemoveSelf();
+        scannerHost = null;
     }
 
     private static IEnumerator ScanRooms(Player initialPlayer, Queue<string> rooms, bool buildMapComposite) {
@@ -1016,7 +1033,7 @@ public static class AkronScreenshotScanner {
             return;
         }
 
-        if (settings.ScreenshotScannerExportAutoKillAreas && settings.AutoKillArea) {
+        if (settings.ScreenshotScannerExportAutoKillAreas) {
             foreach (Rectangle area in AkronModule.GetAutoKillAreas()) {
                 Rectangle visibleArea = Rectangle.Intersect(area, roomBounds);
                 if (visibleArea.Width > 0 && visibleArea.Height > 0) {
@@ -1025,7 +1042,7 @@ public static class AkronScreenshotScanner {
             }
         }
 
-        if (settings.ScreenshotScannerExportAutoDeafenAreas && settings.AutoDeafenArea) {
+        if (settings.ScreenshotScannerExportAutoDeafenAreas) {
             foreach (Rectangle area in AkronModule.GetAutoDeafenAreas()) {
                 Rectangle visibleArea = Rectangle.Intersect(area, roomBounds);
                 if (visibleArea.Width > 0 && visibleArea.Height > 0) {

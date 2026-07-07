@@ -1893,6 +1893,89 @@ public sealed class ModuleSettingsTests
         Assert.False(AkronCommunityPackUploads.IsUploadInProgress);
     }
 
+    [Theory]
+    [InlineData(AkronSetupSection.StartPos)]
+    [InlineData(AkronSetupSection.AutoKill)]
+    [InlineData(AkronSetupSection.AutoDeafen)]
+    public void UploadPackCaptureSettingsForceSelectedMarkersAndRestore(AkronSetupSection section)
+    {
+        AkronModuleSettings settings = new AkronModuleSettings {
+            ScreenshotScannerExportMarkers = false,
+            ScreenshotScannerExportStartPositions = false,
+            ScreenshotScannerExportAutoKillAreas = false,
+            ScreenshotScannerExportAutoDeafenAreas = false,
+            AutoKillArea = false,
+            AutoDeafenArea = false
+        };
+
+        AkronCommunityPackUploadCaptureSettings captureSettings = AkronCommunityPackUploads.BeginUploadCaptureSettings(settings, section);
+
+        Assert.True(settings.ScreenshotScannerExportMarkers);
+        Assert.Equal(section == AkronSetupSection.StartPos, settings.ScreenshotScannerExportStartPositions);
+        Assert.Equal(section == AkronSetupSection.AutoKill, settings.ScreenshotScannerExportAutoKillAreas);
+        Assert.Equal(section == AkronSetupSection.AutoDeafen, settings.ScreenshotScannerExportAutoDeafenAreas);
+        Assert.False(settings.AutoKillArea);
+        Assert.False(settings.AutoDeafenArea);
+
+        captureSettings.Restore();
+        captureSettings.Restore();
+
+        Assert.False(settings.ScreenshotScannerExportMarkers);
+        Assert.False(settings.ScreenshotScannerExportStartPositions);
+        Assert.False(settings.ScreenshotScannerExportAutoKillAreas);
+        Assert.False(settings.ScreenshotScannerExportAutoDeafenAreas);
+        Assert.False(settings.AutoKillArea);
+        Assert.False(settings.AutoDeafenArea);
+    }
+
+    [Fact]
+    public void UploadPackCaptureSettingsPreserveExistingUnrelatedMarkerChoices()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings {
+            ScreenshotScannerExportMarkers = false,
+            ScreenshotScannerExportStartPositions = true,
+            ScreenshotScannerExportAutoKillAreas = false,
+            ScreenshotScannerExportAutoDeafenAreas = true,
+            AutoKillArea = false,
+            AutoDeafenArea = true
+        };
+
+        AkronCommunityPackUploadCaptureSettings captureSettings = AkronCommunityPackUploads.BeginUploadCaptureSettings(settings, AkronSetupSection.AutoKill);
+
+        Assert.True(settings.ScreenshotScannerExportMarkers);
+        Assert.True(settings.ScreenshotScannerExportStartPositions);
+        Assert.True(settings.ScreenshotScannerExportAutoKillAreas);
+        Assert.True(settings.ScreenshotScannerExportAutoDeafenAreas);
+        Assert.False(settings.AutoKillArea);
+        Assert.True(settings.AutoDeafenArea);
+
+        captureSettings.Restore();
+
+        Assert.False(settings.ScreenshotScannerExportMarkers);
+        Assert.True(settings.ScreenshotScannerExportStartPositions);
+        Assert.False(settings.ScreenshotScannerExportAutoKillAreas);
+        Assert.True(settings.ScreenshotScannerExportAutoDeafenAreas);
+        Assert.False(settings.AutoKillArea);
+        Assert.True(settings.AutoDeafenArea);
+    }
+
+    [Theory]
+    [InlineData("awaiting_attribution", "Awaiting Discord confirmation.", "Confirm the Discord attribution request")]
+    [InlineData("awaiting_confirmation", "Awaiting Discord confirmation.", "Confirm the Discord attribution request")]
+    [InlineData("queued", "Queued for staff review.", "queued for staff review")]
+    [InlineData("published", "Published to Community Packs.", "was published")]
+    public void UploadPackCompleteMessageExplainsUserNextStep(string status, string expectedStatus, string expectedMessage)
+    {
+        string message = AkronCommunityPackUploads.DescribeUploadCompleteMessage(status);
+
+        Assert.Equal(expectedStatus, AkronCommunityPackUploads.DescribeUploadCompleteStatus(status));
+        Assert.Contains(expectedMessage, message);
+        if (status != "published") {
+            Assert.Contains(AkronCommunityPackUploads.DiscordInviteUrl, message);
+        }
+        Assert.DoesNotContain("Upload Pack submitted: " + status, message);
+    }
+
     [Fact]
     public void UploadPackMetadataMatchesSectionContract()
     {

@@ -64,7 +64,8 @@ public static class AkronPromptMenu {
             }));
         }
 
-        menu.Add(new TextMenu.Button(Dialog.Clean("menu_return_cancel")).Pressed(menu.OnCancel));
+        string closeLabel = options.Length == 0 ? "OK" : Dialog.Clean("menu_return_cancel");
+        menu.Add(new TextMenu.Button(closeLabel).Pressed(menu.OnCancel));
         currentLevel = level;
         currentMenu = menu;
         currentTitle = title ?? string.Empty;
