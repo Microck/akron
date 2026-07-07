@@ -9,6 +9,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 ### Fixed
 
 - Keep StartPos slots scoped per map and restore persisted StartPos player/session state across game restarts without rewinding time or deaths.
+- Show at least 15 StartPos slots in the selector by default and arm StartPos death reloads after a successful StartPos load.
 
 ## Akron Beta 41
 

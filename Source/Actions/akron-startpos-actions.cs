@@ -153,7 +153,7 @@ public static partial class AkronActions {
             return;
         }
 
-        level.OnEndOfFrame += () => RestoreStartPos(level, startPos, "Loaded StartPos " + slot + ".", slot);
+        level.OnEndOfFrame += () => RestoreStartPos(level, startPos, "Loaded StartPos " + slot + ".", slot, enableRespawnAtStartPosAfterRestore: true);
     }
 
     public static void LoadStartPosSlot(Level level, int slot) {
@@ -272,15 +272,19 @@ public static partial class AkronActions {
         level.OnEndOfFrame += () => RestoreStartPos(level, startPos, string.Empty, FindStartPosSlot(startPos), endPlacementForLoad: false);
     }
 
-    private static void RestoreStartPos(Level level, AkronStartPos startPos, string toast, int loadedSlot = 0, bool endPlacementForLoad = true) {
+    private static void RestoreStartPos(Level level, AkronStartPos startPos, string toast, int loadedSlot = 0, bool endPlacementForLoad = true, bool enableRespawnAtStartPosAfterRestore = false) {
         bool restoreRespawnAtStartPos = AkronModule.Settings.RespawnAtStartPos;
+        bool restoredStartPos = false;
         AkronModule.Settings.RespawnAtStartPos = false;
         try {
             if (endPlacementForLoad && !AkronModule.EndStartPosPlacementForLoad()) {
                 AkronModule.Settings.StartPosMousePlacement = false;
             }
             if (string.IsNullOrWhiteSpace(startPos.StateSlotName)) {
-                RestoreImportedStartPosPosition(level, startPos, toast);
+                restoredStartPos = RestoreImportedStartPosPosition(level, startPos, toast);
+                if (restoredStartPos && loadedSlot > 0) {
+                    AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;
+                }
                 return;
             }
 
@@ -304,26 +308,28 @@ public static partial class AkronActions {
             if (loadedSlot > 0) {
                 AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;
             }
+            restoredStartPos = true;
 
             if (!string.IsNullOrWhiteSpace(toast)) {
                 Engine.Scene?.Add(new AkronToast(toast));
             }
         } finally {
-            AkronModule.Settings.RespawnAtStartPos = restoreRespawnAtStartPos;
+            AkronModule.Settings.RespawnAtStartPos = (enableRespawnAtStartPosAfterRestore && restoredStartPos)
+                || restoreRespawnAtStartPos;
         }
     }
 
-    private static void RestoreImportedStartPosPosition(Level level, AkronStartPos startPos, string toast) {
+    private static bool RestoreImportedStartPosPosition(Level level, AkronStartPos startPos, string toast) {
         Level currentLevel = Engine.Scene as Level ?? level;
         if (!string.Equals(currentLevel.Session?.Level, startPos.Room, StringComparison.Ordinal)) {
             Engine.Scene?.Add(new AkronToast("Imported StartPos is in room " + startPos.Room + "."));
-            return;
+            return false;
         }
 
         Player player = currentLevel.Tracker.GetEntity<Player>();
         if (player == null) {
             Engine.Scene?.Add(new AkronToast("Imported StartPos needs a live player."));
-            return;
+            return false;
         }
 
         RemoveStartPosDeathArtifacts(currentLevel);
@@ -336,6 +342,7 @@ public static partial class AkronActions {
         StartStartPosCameraFollow(currentLevel, player);
         RelinkRuntimeRenderState(currentLevel);
         Engine.Scene?.Add(new AkronToast(string.IsNullOrWhiteSpace(toast) ? "Loaded imported StartPos position." : toast));
+        return true;
     }
 
     private static void StartStartPosCameraFollow(Level level, Player player) {
@@ -883,7 +890,7 @@ public static partial class AkronActions {
     }
 
     private static int WrapStartPosSlot(int slot) {
-        int count = AkronModuleSettings.ClampStartPosSlotCount(AkronModule.Settings.StartPosSlotCount);
+        int count = AkronModuleSettings.ClampStartPosSelectableSlotCount(AkronModule.Settings.StartPosSlotCount);
         int zeroBased = (slot - MinPositionSlot) % count;
         if (zeroBased < 0) {
             zeroBased += count;

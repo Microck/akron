@@ -30,6 +30,8 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public const string DefaultDeathParticleCustomShape = "0000000000111100001111000011110000111100001111000000000000000000";
     public const int DeathParticleCanvasSize = 8;
     public const int DeathParticleCanvasCells = DeathParticleCanvasSize * DeathParticleCanvasSize;
+    public const int DefaultStartPosSlotCount = 15;
+    public const int MinimumStartPosSelectableSlots = 15;
     private bool fpsBypass;
     private int fpsBypassTarget = 120;
     private bool tpsBypass;
@@ -646,7 +648,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public AkronStartPosFacing StartPosConfiguredFacing { get; set; } = AkronStartPosFacing.Current;
     public bool StartPosConfiguredIdle { get; set; } = true;
     public bool StartPosConfiguredGrab { get; set; }
-    public int StartPosSlotCount { get; set; } = 9;
+    public int StartPosSlotCount { get; set; } = DefaultStartPosSlotCount;
     public bool BackupsEnabled { get; set; } = true;
     public bool BackupsOnStartup { get; set; } = true;
     public bool BackupsOnShutdown { get; set; }

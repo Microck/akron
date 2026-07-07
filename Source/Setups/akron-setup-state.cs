@@ -426,7 +426,7 @@ public sealed class AkronSetupState {
     public AkronStartPosFacing StartPosConfiguredFacing { get; set; } = AkronStartPosFacing.Current;
     public bool StartPosConfiguredIdle { get; set; } = true;
     public bool StartPosConfiguredGrab { get; set; }
-    public int StartPosSlotCount { get; set; } = 9;
+    public int StartPosSlotCount { get; set; } = AkronModuleSettings.DefaultStartPosSlotCount;
     public bool ClickTeleport { get; set; }
     public bool EverestSafeAutoBlock { get; set; }
     public bool SaveTimeAndDeaths { get; set; }
