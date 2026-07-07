@@ -2,15 +2,15 @@
 
 All notable user-facing changes to Akron should be recorded here.
 
-This project uses version tags that match the mod version in `everest.yaml`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
+This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
-## 0.1.2-beta.42
+## Akron Beta 42
 
 ### Fixed
 
 - Keep StartPos slots scoped per map and restore persisted StartPos player/session state across game restarts without rewinding time or deaths.
 
-## 0.1.2-beta.41
+## Akron Beta 41
 
 ### Added
 
@@ -27,7 +27,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Replace raw Upload Pack completion states with a Discord confirmation/review prompt and theme the upload progress bar with the active Akron accent color.
 - Show Upload Pack server failures in the popup and stop before full-map capture when the upload endpoint is unavailable.
 
-## 0.1.2-beta.40
+## Akron Beta 40
 
 ### Added
 
@@ -37,20 +37,20 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 - Document the Community Packs upload and publication architecture without tying the player-facing catalog contract to provider-specific free-tier details.
 
-## 0.1.2-beta.39
+## Akron Beta 39
 
 ### Fixed
 
 - Keep Lag Pauser from counting Celeste's native freeze frames and native StartPos restores as lag spikes.
 - Add an opt-in Lag Pauser Ignore SRT option that skips Speedrun Tool load-state hitches for a brief grace window.
 
-## 0.1.2-beta.38
+## Akron Beta 38
 
 ### Fixed
 
 - Write merged room collages after Room Capture and world-space `map.png` outputs after Map Capture, with scanner markers drawn after stitching at one game pixel and a Downscale option for safer large map exports.
 
-## 0.1.2-beta.37
+## Akron Beta 37
 
 ### Added
 
@@ -65,32 +65,32 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Keep Pause Countdown from subtracting level clock time twice while waiting after unpause.
 - Tighten several verified overlay, HUD, input, backup, StartPos, and runtime helper paths found during the player-visible checklist pass.
 
-## 0.1.2-beta.36
+## Akron Beta 36
 
 ### Changed
 
 - Keep Refill Clarity sprites and dialog source assets inside Akron's source resources while preserving the released mod zip layout.
 
-## 0.1.2-beta.35
+## Akron Beta 35
 
 ### Fixed
 
 - Keep Refill Clarity on the Better Refill Gems single-sprite replacement path while still applying Akron's color and opacity settings.
 
-## 0.1.2-beta.34
+## Akron Beta 34
 
 ### Fixed
 
 - Let Refill Clarity use Better Refill Gems-style sprite replacement for one-use dash crystals while keeping its color and opacity controls live.
 - Let Entity Inspector click cycling continue when the next click lands on a different pixel of the same target stack.
 
-## 0.1.2-beta.33
+## Akron Beta 33
 
 ### Fixed
 
 - Keep hitbox rendering aligned with Celeste's gameplay camera and live collider data.
 
-## 0.1.2-beta.32
+## Akron Beta 32
 
 ### Fixed
 
@@ -99,13 +99,13 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Keep regular StartPos captures on the active slot after Set, so Load immediately returns to the captured position.
 - Let imported and shared StartPos entries without runtime snapshots remain selectable and load as position-only starts.
 
-## 0.1.2-beta.31
+## Akron Beta 31
 
 ### Fixed
 
 - Keep the overlay responsive in mod-heavy setups by avoiding duplicated row filtering while external tool panels are placed.
 
-## 0.1.2-beta.30
+## Akron Beta 30
 
 ### Added
 
@@ -116,7 +116,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 - Prevent submenu clicks from selecting or activating overlay rows behind the popup.
 
-## 0.1.2-beta.29
+## Akron Beta 29
 
 ### Added
 
@@ -133,7 +133,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Let Celeste's Journal shortcut take priority over Akron's default Tab overlay bind in the overworld.
 - Keep Entity Inspector's submenu aligned with Akron's ImGui HUD style, require the cursor hold bind for gameplay pinning, add report placement/detail defaults, keep fixed report corners anchored across size changes, and keep titlebar-collapsed reports reopenable.
 
-## 0.1.2-beta.28
+## Akron Beta 28
 
 ### Added
 
@@ -145,7 +145,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Let Celeste's Journal shortcut take priority over Akron's default Tab overlay bind in the overworld.
 - Keep Entity Inspector's submenu aligned with Akron's ImGui HUD style, make the row enter a visible pick mode, add report placement/detail defaults, keep fixed report corners anchored across size changes, and keep titlebar-collapsed reports reopenable.
 
-## 0.1.2-beta.27
+## Akron Beta 27
 
 ### Added
 
@@ -158,7 +158,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Keep Cursor Tools Click Teleport aligned while Cursor Zoom is active, including near clamped edge focus, and move Madeline through the normal movement path so her hair follows during frozen teleports.
 - Keep Freeze Gameplay highlighted while active, keep Cursor Tools popup labels readable, prevent repeated click teleports from desyncing Madeline's hair animation, and keep Cursor Tools click teleports targeted at the clicked cursor position while Free Camera and Cursor Zoom are active.
 
-## 0.1.2-beta.26
+## Akron Beta 26
 
 ### Added
 
@@ -174,14 +174,14 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Fix Creator > Map Capture scans stalling or under-rendering rooms after moving through a chapter.
 - Skip non-playable filler rooms during Creator > Map Capture so custom maps can finish exporting.
 
-## 0.1.2-beta.25
+## Akron Beta 25
 
 ### Fixed
 
 - Show the full suboption name on hover when a popup label is shortened with ellipses.
 - Restore Madeline's collider after room and map capture, including stopped scans, so capture cannot leave her hitbox enlarged or suppressed.
 
-## 0.1.2-beta.24
+## Akron Beta 24
 
 ### Added
 
@@ -193,7 +193,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 - Add Extended Camera Dynamics external tool rows, route Cursor Zoom zoom-out through ECD when its hooks are active, and keep Akron from resetting ECD-owned zoom state when inactive.
 
-## 0.1.2-beta.23
+## Akron Beta 23
 
 ### Fixed
 
@@ -201,13 +201,13 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Hide backup folder paths in Backups > Last Result while Streamer Mode is enabled.
 - Include the implicit Start checkpoint in Creator checkpoint navigation when a map has no checkpoint entity there.
 
-## 0.1.2-beta.22
+## Akron Beta 22
 
 ### Fixed
 
 - Rebuild FrostHelper spinner renderers after StartPos restores so stale cloned border images do not crash rendering.
 
-## 0.1.2-beta.21
+## Akron Beta 21
 
 ### Fixed
 
@@ -217,7 +217,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Repair Air Jumps option handling near hazard and edge cases.
 - Persist player option changes correctly, including Frame Stepper and EVM-related policy behavior.
 
-## 0.1.2-beta.20
+## Akron Beta 20
 
 ### Changed
 
@@ -229,7 +229,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Persist Akron overlay option changes when toggles, numeric inputs, selector dropdowns, or overlay close events update settings.
 - Hide Celeste's bottom-right save/load icon when Hide Saving Icon is enabled.
 
-## 0.1.2-beta.19
+## Akron Beta 19
 
 ### Fixed
 
@@ -237,7 +237,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Keep Click Teleport from snapping the camera back when Free Camera is active
 - Fully hide the saving icon when Hide Saving Icon is enabled or game-frame capture is active
 
-## 0.1.2-beta.18
+## Akron Beta 18
 
 ### Removed
 
@@ -251,7 +251,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Skip non-restorable static members during native state restore
 - Persist modified Akron profile settings across game restarts
 
-## 0.1.2-beta.17
+## Akron Beta 17
 
 ### Fixed
 
@@ -259,7 +259,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Make Deload Spinners a one-shot action so stale settings and setup imports cannot replay the simulation after restart.
 - Keep Mintlify's generated Open Graph previews working by using an SVG docs logo asset instead of the PNG logo path that produced empty generated preview images.
 
-## 0.1.2-beta.16
+## Akron Beta 16
 
 ### Fixed
 
@@ -268,7 +268,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Fix zoom drift for auto kill, auto deafen, and hitbox overlays.
 - Reload the latest loaded StartPos on death and preserve active runtime audio/state.
 
-## 0.1.2-beta.15
+## Akron Beta 15
 
 ### Added
 
@@ -283,7 +283,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Prevent active Control Display key editor fields from copying into another key when selecting a different key before blurring the input.
 - Prevent Akron's overlay hotkey from opening over Everest's Enable or Disable Mods menu, where Tab favorites or unfavorites mods.
 
-## 0.1.2-beta.14
+## Akron Beta 14
 
 ### Added
 
@@ -297,14 +297,14 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 
 - Keep the overlay Search textbox focused while backspacing from narrow queries into broader result sets.
 
-## 0.1.2-beta.13
+## Akron Beta 13
 
 ### Fixed
 
 - Let the Open Menu key cancel hidden Auto Kill and Auto Deafen area selection and reopen Akron, so players are not stuck in a frozen selection mode.
 - Restore Akron-managed cursor visibility after StartPos placement, Auto Kill area selection, and Auto Deafen area selection ends.
 
-## 0.1.2-beta.12
+## Akron Beta 12
 
 ### Added
 
@@ -334,7 +334,7 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Prevent FrostHelper and other gameplay renderers from being interrupted by Akron overlay rendering.
 - Preserve graphics device state after Akron draws ImGui overlay content.
 
-## 0.1.2-beta.11
+## Akron Beta 11
 
 - Add Spawn Jelly, Spawn Theo, Set Inventory, Dream State, and Core Mode overlay actions.
 - Add Previous Map, Next Map, Previous Checkpoint, and Next Checkpoint creator navigation actions.
@@ -361,52 +361,52 @@ This project uses version tags that match the mod version in `everest.yaml`. Kee
 - Document release configuration/runbook details for GitHub, GameBanana, README, and website release sync.
 - Credit viddie's Spawn Jelly, Set Inventory, Dream State, and Core Mode suggestions in the docs.
 
-## 0.1.2-beta.10
+## Akron Beta 10
 
 - Render hover help popups on ImGui's tooltip layer so they stay visible above overlay rows.
 
-## 0.1.2-beta.9
+## Akron Beta 9
 
 - Keep legacy shortcut bindings from reappearing after startup normalization.
 - Preserve right-side modifier keys when capturing menu bindings, including modifier-only binds such as `RightAlt` and `RightShift`.
 - Keep Open Menu defaulted to `Tab` while allowing users to rebind it to another valid key.
 
-## 0.1.2-beta.8
+## Akron Beta 8
 
 - Keep only Open Menu, Click Teleport Cursor, and Cursor Zoom Hold bound by default.
 - Keep Open Menu user-customizable while restoring Tab only for missing or empty menu bindings.
 
-## 0.1.2-beta.7
+## Akron Beta 7
 
 - Keep Tab opening Akron's menu even when stale or custom menu bindings no longer include Tab.
 
-## 0.1.2-beta.6
+## Akron Beta 6
 
 - Group the Sound tab's per-sound volume rows under collapsed Player, Objects, Entities, Ambience, and UI headers.
 - Keep core Sound controls visible above the new groups.
 - Reveal relevant Sound groups and children while searching, including group-name and individual sound matches.
 
-## 0.1.2-beta.5
+## Akron Beta 5
 
 - Test the automated release path with GameBanana API authentication before the upload form.
 
-## 0.1.2-beta.4
+## Akron Beta 4
 
 - Test the automated release path after tightening GameBanana login field selection.
 
-## 0.1.2-beta.3
+## Akron Beta 3
 
 - Test the automated release path after cleaning release-conflict artifacts.
 
-## 0.1.2-beta.2
+## Akron Beta 2
 
 - Test the automated release path after switching GameBanana publishing to the direct edit form.
 
-## 0.1.2-beta.1
+## Akron Beta 1
 
 - Test the automated release path for GitHub, GameBanana, README links, and website links.
 
-## 0.1.2-beta
+## Akron Beta
 
 - Add GitHub community templates for issues and pull requests.
 - Document the repository formatting command for contributors.

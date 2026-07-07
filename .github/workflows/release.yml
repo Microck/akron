@@ -70,6 +70,21 @@ jobs:
             exit 1
           fi
 
+      - name: Derive release display name
+        run: |
+          set -euo pipefail
+
+          release_version="${RELEASE_TAG#v}"
+          if [[ "$release_version" == "0.1.2-beta" ]]; then
+            release_display_name="Akron Beta"
+          elif [[ "$release_version" =~ ^0\.1\.2-beta\.([0-9]+)$ ]]; then
+            release_display_name="Akron Beta ${BASH_REMATCH[1]}"
+          else
+            release_display_name="Akron v${release_version}"
+          fi
+
+          echo "RELEASE_DISPLAY_NAME=${release_display_name}" >> "$GITHUB_ENV"
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
@@ -146,16 +161,20 @@ jobs:
           set -euo pipefail
 
           version="${RELEASE_TAG#v}"
-          awk -v version="$version" '
+          display_name="${RELEASE_DISPLAY_NAME}"
+
+          awk -v version="$version" -v display_name="$display_name" '
             $0 == "## " version { in_section=1; print; next }
             $0 == "## [" version "]" { in_section=1; print; next }
+            $0 == "## " display_name { in_section=1; print; next }
+            $0 == "## [" display_name "]" { in_section=1; print; next }
             in_section && /^## / { exit }
             in_section { print }
           ' CHANGELOG.md > release-notes.md
 
           if [ ! -s release-notes.md ]; then
             echo "Failed to extract release notes for ${version} from CHANGELOG.md." >&2
-            echo "Add a CHANGELOG.md section named either '## ${version}' or '## [${version}]'." >&2
+            echo "Add a CHANGELOG.md section named '## ${display_name}', '## ${version}', or the bracketed equivalent." >&2
             exit 1
           fi
 
@@ -296,11 +315,13 @@ jobs:
           GAMEBANANA_STORAGE_STATE_B64_GZ: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64_GZ }}
           GAMEBANANA_USER_AGENT: ${{ vars.GAMEBANANA_USER_AGENT }}
           RELEASE_ASSET: Akron-${{ env.RELEASE_TAG }}.zip
-          RELEASE_NAME: Akron ${{ env.RELEASE_TAG }}
           RELEASE_NOTES_FILE: release-notes.md
           GAMEBANANA_DEBUG_DIR: ${{ runner.temp }}/gamebanana-debug
         run: |
           set -euo pipefail
+
+          export RELEASE_NAME
+          RELEASE_NAME="${RELEASE_DISPLAY_NAME}"
 
           if [ -n "${GAMEBANANA_STORAGE_STATE_B64_GZ:-}" ]; then
             storage_state="$RUNNER_TEMP/gamebanana-storage-state.json"
@@ -331,7 +352,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          title="Akron ${RELEASE_TAG}"
+          title="${RELEASE_DISPLAY_NAME}"
 
           prerelease_flag=()
           if [ "$IS_PRERELEASE" = "true" ]; then

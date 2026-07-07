@@ -13,12 +13,12 @@ The GitHub tag is the source of truth. A release is complete only after every re
 Required public surfaces:
 
 - GitHub tag: `vX.Y.Z`
-- GitHub Release: title, notes, `Akron-vX.Y.Z.zip`, and `Akron-vX.Y.Z.zip.sha256`
+- GitHub Release: readable title, notes, `Akron-vX.Y.Z.zip`, and `Akron-vX.Y.Z.zip.sha256`
 - GameBanana: release update and downloadable file for the same tag
 - README: Olympus one-click handoff and raw-download links point at Akron's stable install endpoints
 - `akron.micr.dev`: docs are current, install endpoints resolve to the published release, and fallback GameBanana file ids point at the published file
 
-Do not mint a replacement tag for a sync or publishing failure unless rollback or unpublish has been explicitly chosen. Normal recovery repairs the same tag.
+Tags and artifact names stay canonical because external links use them. Public titles and changelog headings can use readable names such as `Akron Beta 42`. Do not mint a replacement tag for a sync or publishing failure unless rollback or unpublish has been explicitly chosen. Normal recovery repairs the same tag.
 
 ## Required Configuration
 
@@ -67,7 +67,7 @@ for commits after `previous_tag` under the previous version's changelog section.
 If a commit message references issues or feedback, inspect that commit before
 summarizing it; do not rely on the latest commit alone.
 
-5. Update `CHANGELOG.md` before tagging. The workflow extracts release notes from either `## X.Y.Z` or `## [X.Y.Z]`; the matching section must exist and must cover the audited commit range.
+5. Update `CHANGELOG.md` before tagging. The workflow extracts release notes from a readable heading such as `## Akron Beta 42`, the canonical `## X.Y.Z`, or their bracketed equivalents; the matching section must exist and must cover the audited commit range.
 6. Update docs under `docs/` for user-facing changes.
 7. Check for hardcoded version, file id, or release text references that need to change.
 8. Run the local release preflight:
