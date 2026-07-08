@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using Celeste.Mod.Akron;
 using Microsoft.Xna.Framework;
 using Xunit;
@@ -212,5 +214,147 @@ public sealed class SetupPackTests {
         Assert.Equal(AkronStartPosFacing.Left, imported.Facing);
         Assert.True(imported.Idle);
         Assert.True(imported.Grab);
+        Assert.Empty(imported.ImportedRoomStateSnapshot);
+        Assert.Empty(imported.SnapshotPath);
+        Assert.Empty(imported.StateSlotName);
+    }
+
+    [Fact]
+    public void StartPosExportIncludesPortableRoomStateWhenRuntimeSnapshotExists() {
+        string areaSid = "Maps/Current";
+        int slot = 4;
+        string stateSlotName = AkronActions.GetStartPosStateSlotNameForSetupPack(areaSid, slot);
+        AkronSaveLoadSlot runtimeSlot = new AkronSaveLoadSlot(stateSlotName, "room-a", areaSid, saveTimeAndDeaths: true) {
+            FileSlot = -1,
+            PlayerPosition = new Vector2(12f, 34f),
+            Time = 12345L,
+            Deaths = 6,
+            DeathsInCurrentLevel = 2,
+            SaveDataTime = 45678L,
+            SaveDataTotalDeaths = 9,
+            AreaTimePlayed = 22222L,
+            AreaDeaths = 5,
+            LevelTimeActive = 12.5f,
+            LevelRawTimeActive = 13.5f,
+            SessionFlags = new HashSet<string> { "room-state-flag" },
+            SessionCounters = new Dictionary<string, int> { ["switches"] = 3 }
+        };
+
+        try {
+            AkronSaveLoadService.HydrateRuntimeState(stateSlotName, runtimeSlot);
+            AkronModuleSession session = new AkronModuleSession {
+                StartPositions = new Dictionary<int, AkronStartPos> {
+                    [slot] = new AkronStartPos {
+                        Position = new Vector2(12f, 34f),
+                        Room = "room-a",
+                        AreaSid = areaSid,
+                        StateSlotName = stateSlotName
+                    }
+                }
+            };
+
+            AkronSetupPack pack = AkronSetupPacks.Capture(new AkronModuleSettings(), session, "Runtime StartPos", AkronSetupSection.StartPos);
+            AkronStartPosPackEntry entry = pack.StartPositions[slot];
+
+            Assert.False(string.IsNullOrWhiteSpace(entry.RoomStateSnapshot));
+            Assert.True(AkronPersistentStartPosSnapshots.TryDeserializePortableRoomStateForTesting(
+                entry.RoomStateSnapshot,
+                stateSlotName,
+                areaSid,
+                out AkronSaveLoadSlot restored,
+                out string error), error);
+            Assert.False(restored.SaveTimeAndDeaths);
+            Assert.Equal(0L, restored.Time);
+            Assert.Equal(0, restored.Deaths);
+            Assert.Contains("room-state-flag", restored.SessionFlags);
+            Assert.Equal(3, restored.SessionCounters["switches"]);
+        } finally {
+            AkronSaveLoadService.ClearRuntimeState(stateSlotName);
+        }
+    }
+
+    [Fact]
+    public void ScopedNonStartPosExportDoesNotIncludePortableRoomState() {
+        string areaSid = "Maps/Current";
+        int slot = 4;
+        string stateSlotName = AkronActions.GetStartPosStateSlotNameForSetupPack(areaSid, slot);
+        AkronSaveLoadSlot runtimeSlot = new AkronSaveLoadSlot(stateSlotName, "room-a", areaSid, saveTimeAndDeaths: false) {
+            SessionFlags = new HashSet<string> { "room-state-flag" },
+            SessionCounters = new Dictionary<string, int> { ["switches"] = 3 }
+        };
+
+        try {
+            AkronSaveLoadService.HydrateRuntimeState(stateSlotName, runtimeSlot);
+            AkronModuleSession session = new AkronModuleSession {
+                StartPositions = new Dictionary<int, AkronStartPos> {
+                    [slot] = new AkronStartPos {
+                        Position = new Vector2(12f, 34f),
+                        Room = "room-a",
+                        AreaSid = areaSid,
+                        StateSlotName = stateSlotName
+                    }
+                }
+            };
+
+            AkronSetupPack pack = AkronSetupPacks.Capture(new AkronModuleSettings(), session, "Audio Only", AkronSetupSection.Audio);
+
+            Assert.True(pack.StartPositions.ContainsKey(slot));
+            Assert.Empty(pack.StartPositions[slot].RoomStateSnapshot);
+        } finally {
+            AkronSaveLoadService.ClearRuntimeState(stateSlotName);
+        }
+    }
+
+    [Fact]
+    public void SetupPackArchiveOmitsPortableRoomStateBeforeWritingUnreadablePayload() {
+        string path = Path.Combine(Path.GetTempPath(), "akron-large-startpos-" + Guid.NewGuid().ToString("N") + ".akr");
+        AkronSetupPack pack = new AkronSetupPack {
+            Name = "Large StartPos",
+            CreatedUtc = DateTime.UtcNow.ToString("O"),
+            Section = AkronSetupSection.StartPos,
+            State = new AkronSetupState(),
+            StartPositions = new Dictionary<int, AkronStartPosPackEntry> {
+                [1] = new AkronStartPosPackEntry {
+                    X = 1f,
+                    Y = 2f,
+                    Room = "room-a",
+                    AreaSid = "Maps/Current",
+                    RoomStateSnapshot = new string('A', 1400000)
+                },
+                [2] = new AkronStartPosPackEntry {
+                    X = 3f,
+                    Y = 4f,
+                    Room = "room-a",
+                    AreaSid = "Maps/Current",
+                    RoomStateSnapshot = new string('B', 1400000)
+                }
+            }
+        };
+
+        try {
+            AkronArchive.WriteSinglePayloadArchive(
+                path,
+                new AkronArchiveManifest {
+                    Kind = AkronSetupPacks.SetupArchiveKind,
+                    KindVersion = 1,
+                    CreatedAt = pack.CreatedUtc,
+                    Target = new AkronArchiveTarget {
+                        Game = "Celeste",
+                        MapSid = "Maps/Current"
+                    }
+                },
+                AkronSetupPacks.SetupArchivePayload,
+                AkronSetupPacks.SerializePackPayloadForArchive(pack));
+
+            AkronSetupPack restored = AkronSetupPacks.Read(path);
+
+            Assert.Equal(2, restored.StartPositions.Count);
+            Assert.Contains(restored.StartPositions.Values, entry => string.IsNullOrEmpty(entry.RoomStateSnapshot));
+            Assert.Contains(restored.StartPositions.Values, entry => !string.IsNullOrEmpty(entry.RoomStateSnapshot));
+        } finally {
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
     }
 }
