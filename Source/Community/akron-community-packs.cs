@@ -29,9 +29,16 @@ public sealed class AkronCommunityPackEntry {
     public string AuthorName { get; set; } = string.Empty;
     public string AuthorAvatarUrl { get; set; } = string.Empty;
     public string ImageUrl { get; set; } = string.Empty;
+    public List<string> ImageUrls { get; set; } = new List<string>();
+    public List<AkronCommunityPackImage> Images { get; set; } = new List<AkronCommunityPackImage>();
     public int DownloadCount { get; set; }
     public string UpdatedUtc { get; set; } = string.Empty;
     public List<string> Tags { get; set; } = new List<string>();
+}
+
+public sealed class AkronCommunityPackImage {
+    public string Url { get; set; } = string.Empty;
+    public string RoomName { get; set; } = string.Empty;
 }
 
 public sealed class AkronCommunityPackFilter {
@@ -280,6 +287,43 @@ public static class AkronCommunityPacks {
 
     public static string DescribeCategory(AkronSetupSection section) {
         return section == AkronSetupSection.Whole ? "All" : AkronSetupPacks.FormatSection(section);
+    }
+
+    public static IReadOnlyList<AkronCommunityPackImage> GetPreviewImages(AkronCommunityPackEntry entry) {
+        if (entry == null) {
+            return Array.Empty<AkronCommunityPackImage>();
+        }
+
+        List<AkronCommunityPackImage> images = new List<AkronCommunityPackImage>();
+        foreach (AkronCommunityPackImage image in entry.Images ?? new List<AkronCommunityPackImage>()) {
+            if (!string.IsNullOrWhiteSpace(image?.Url)) {
+                images.Add(new AkronCommunityPackImage {
+                    Url = image.Url.Trim(),
+                    RoomName = image.RoomName?.Trim() ?? string.Empty
+                });
+            }
+        }
+
+        foreach (string imageUrl in entry.ImageUrls ?? new List<string>()) {
+            if (!string.IsNullOrWhiteSpace(imageUrl)) {
+                images.Add(new AkronCommunityPackImage {
+                    Url = imageUrl.Trim(),
+                    RoomName = string.Empty
+                });
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.ImageUrl)) {
+            images.Add(new AkronCommunityPackImage {
+                Url = entry.ImageUrl.Trim(),
+                RoomName = string.Empty
+            });
+        }
+
+        return images
+            .GroupBy(image => image.Url, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
     }
 
     private static AkronCommunityPackIndex LoadIndex(string indexUrl) {

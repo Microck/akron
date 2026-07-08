@@ -359,6 +359,12 @@ public sealed partial class AkronOverlay {
         DrawScreenshotScannerFormatRow(popupId);
 
         if (chapter) {
+            bool onlyMarkedRooms = AkronModule.Settings.ScreenshotScannerOnlyMarkedRooms;
+            if (ImGui.Checkbox("Only marked rooms##" + popupId, ref onlyMarkedRooms)) {
+                AkronModule.Settings.ScreenshotScannerOnlyMarkedRooms = onlyMarkedRooms;
+            }
+            DrawPopupTooltip("Capture one image per room that contains a shown StartPos, Auto Kill area, or Auto Deafen area.");
+
             bool downscaleMap = AkronModule.Settings.ScreenshotScannerDownscaleMapCapture;
             if (ImGui.Checkbox("Downscale map##" + popupId, ref downscaleMap)) {
                 AkronModule.Settings.ScreenshotScannerDownscaleMapCapture = downscaleMap;

@@ -9,6 +9,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 ### Added
 
 - Let StartPos `.akr` and Community Pack uploads include portable room-state snapshots while stripping deaths, time, and other stats from imported room-state restores.
+- Add an Only Marked Rooms map-capture option and use marked-room previews for Community Pack uploads, with multiple catalog images shown as an in-game carousel.
 
 ## Akron Beta 43
 

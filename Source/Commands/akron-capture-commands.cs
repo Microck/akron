@@ -8,7 +8,7 @@ public static partial class AkronCommands {
     [Command("akron_room_capture", "control Room Capture: start|stop|status|format <png|jpg>|markers <on|off>|startpos <on|off>|autokill <on|off>|autodeafen <on|off>|downscale <on|off>|removebg <on|off>|removefg <on|off>|wait <frames>|horizontal <tiles>|vertical <tiles>")]
     public static void RoomCapture(string action = "status", string value = "") {
         Level level = Engine.Scene as Level;
-        if (!ApplyScreenshotCaptureSetting(action, value, out bool handled)) {
+        if (!ApplyScreenshotCaptureSetting(action, value, allowOnlyMarkedRooms: false, out bool handled)) {
             return;
         }
 
@@ -33,10 +33,10 @@ public static partial class AkronCommands {
         LogScreenshotCaptureSettings();
     }
 
-    [Command("akron_map_capture", "control Map Capture: start|stop|status|format <png|jpg>|markers <on|off>|startpos <on|off>|autokill <on|off>|autodeafen <on|off>|downscale <on|off>|removebg <on|off>|removefg <on|off>|wait <frames>|horizontal <tiles>|vertical <tiles>")]
+    [Command("akron_map_capture", "control Map Capture: start|stop|status|format <png|jpg>|markers <on|off>|startpos <on|off>|autokill <on|off>|autodeafen <on|off>|onlymarked <on|off>|downscale <on|off>|removebg <on|off>|removefg <on|off>|wait <frames>|horizontal <tiles>|vertical <tiles>")]
     public static void MapCapture(string action = "status", string value = "") {
         Level level = Engine.Scene as Level;
-        if (!ApplyScreenshotCaptureSetting(action, value, out bool handled)) {
+        if (!ApplyScreenshotCaptureSetting(action, value, allowOnlyMarkedRooms: true, out bool handled)) {
             return;
         }
 
@@ -61,7 +61,7 @@ public static partial class AkronCommands {
         LogScreenshotCaptureSettings();
     }
 
-    private static bool ApplyScreenshotCaptureSetting(string action, string value, out bool handled) {
+    private static bool ApplyScreenshotCaptureSetting(string action, string value, bool allowOnlyMarkedRooms, out bool handled) {
         handled = true;
         switch (NormalizeToken(action)) {
             case "format":
@@ -107,6 +107,19 @@ public static partial class AkronCommands {
                     return false;
                 }
                 AkronModule.Settings.ScreenshotScannerExportAutoDeafenAreas = autoDeafenAreas;
+                return true;
+            case "onlymarked":
+            case "marked":
+            case "markedrooms":
+                if (!allowOnlyMarkedRooms) {
+                    handled = false;
+                    return true;
+                }
+                if (!TryParseBoolean(value, out bool onlyMarkedRooms)) {
+                    Log("usage: capture onlymarked <on|off>");
+                    return false;
+                }
+                AkronModule.Settings.ScreenshotScannerOnlyMarkedRooms = onlyMarkedRooms;
                 return true;
             case "downscale":
             case "downscalemap":
@@ -173,6 +186,7 @@ public static partial class AkronCommands {
         Log("capture-markers-startpos: " + AkronModule.Settings.ScreenshotScannerExportStartPositions.ToString().ToLowerInvariant());
         Log("capture-markers-autokill: " + AkronModule.Settings.ScreenshotScannerExportAutoKillAreas.ToString().ToLowerInvariant());
         Log("capture-markers-autodeafen: " + AkronModule.Settings.ScreenshotScannerExportAutoDeafenAreas.ToString().ToLowerInvariant());
+        Log("capture-only-marked-rooms: " + AkronModule.Settings.ScreenshotScannerOnlyMarkedRooms.ToString().ToLowerInvariant());
         Log("capture-map-downscale: " + AkronModule.Settings.ScreenshotScannerDownscaleMapCapture.ToString().ToLowerInvariant());
         Log("capture-freeze-time: " + AkronModule.Settings.ScreenshotScannerFreezeTime.ToString().ToLowerInvariant());
         Log("capture-noclip-hide-madeline: " + AkronModule.Settings.ScreenshotScannerNoclipHideMadeline.ToString().ToLowerInvariant());

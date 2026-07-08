@@ -112,6 +112,7 @@ public sealed partial class AkronOverlay : Entity {
     private static bool communityPackBrowserOpen;
     private static bool uploadPackWindowOpen;
     private int selectedCommunityPackIndex;
+    private int selectedCommunityPackImageIndex;
     private Rectangle openOptionsPopupRect;
     private Rectangle openOptionsMinusRect;
     private Rectangle openOptionsPlusRect;

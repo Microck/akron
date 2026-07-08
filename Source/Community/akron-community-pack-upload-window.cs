@@ -43,7 +43,7 @@ public sealed partial class AkronOverlay {
     private void DrawCommunityPackUploadContents(string popupId) {
         Level level = Scene as Level;
         if (level == null) {
-            ImGui.TextWrapped("Open Upload Pack while inside a map so Akron can attach the current map SID and capture the full map.");
+            ImGui.TextWrapped("Open Upload Pack while inside a map so Akron can attach the current map SID and capture marked rooms.");
             return;
         }
 
@@ -131,7 +131,7 @@ public sealed partial class AkronOverlay {
         if (busy) {
             ImGui.EndDisabled();
         }
-        DrawPopupTooltip("Create the .akr pack, capture the full map, and submit both for Discord review.");
+        DrawPopupTooltip("Create the .akr pack, capture marked rooms, and submit them for Discord review.");
 
         if (AkronCommunityPackUploads.HasUploadStatus) {
             DrawPopupRowLabel("Status", labelWidth);

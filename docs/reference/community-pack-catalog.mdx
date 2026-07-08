@@ -27,7 +27,7 @@ The Akron website handles the public `akron.micr.dev` catalog routes and rewrite
 |---|---|
 | `/catalog/index.json` | `catalog/index.json` |
 | `/maps/<map>/<pack>.akr` | `packs/<map>/<pack>.akr` |
-| `/maps/<map>/<pack>/capture.webp` | `captures/<map>/<pack>.webp` |
+| `/maps/<map>/<pack>/captures/<room>.webp` | `captures/<map>/<pack>/<room>.webp` |
 | `/submissions/<path>` | `submissions/<path>` |
 | `/r2-assets/<path>` | `<path>` |
 
@@ -52,7 +52,12 @@ The catalog is a JSON document with the following structure. Replace angle-brack
       "downloadUrl": "<direct .akr HTTPS URL>",
       "authorName": "Display Name",
       "authorAvatarUrl": "",
-      "imageUrl": "<preview image HTTPS URL>",
+      "images": [
+        {
+          "url": "<room preview HTTPS URL>",
+          "roomName": "a-00"
+        }
+      ],
       "downloadCount": 42,
       "updatedUtc": "2026-05-20T00:00:00Z",
       "tags": ["startpos", "beginner", "lobby"]
@@ -74,7 +79,9 @@ The catalog is a JSON document with the following structure. Replace angle-brack
 | `downloadUrl` | Direct HTTPS URL for the `.akr` archive. |
 | `authorName` | Display name for the pack author. |
 | `authorAvatarUrl` | Optional avatar URL. Use an empty string when unavailable. |
-| `imageUrl` | Optional preview image URL. Use an empty string when unavailable. |
+| `images` | Optional preview images. Each item has a `url` and optional `roomName`. Akron shows these as a carousel. |
+| `imageUrls` | Optional URL-only preview image list. Use `images` when room names are known. |
+| `imageUrl` | Legacy single preview image URL. Prefer `images` for new catalog entries. |
 | `downloadCount` | Display count from the catalog maintainer. |
 | `updatedUtc` | UTC timestamp for the latest catalog update. |
 | `tags` | Search tags used for filtering. |
@@ -130,11 +137,11 @@ See [Akron .akr archives](/reference/akr-archives) for the full archive contract
 
 The official catalog separates unreviewed upload storage from public catalog storage.
 
-In-game uploads go to the Upload Worker first. The Worker stores source `.akr` files and full-map captures in a private quarantine bucket, records batch, submission, and object state in its database, and exposes signed bot-only endpoints for moderation. Nothing from quarantine is public.
+In-game uploads go to the Upload Worker first. The Worker stores source `.akr` files and marked-room captures in a private quarantine bucket, records batch, submission, and object state in its database, and exposes signed bot-only endpoints for moderation. Nothing from quarantine is public.
 
-The Discord bot polls the Worker for queued jobs, posts moderation messages, handles attribution confirmation, and sends approve, reject, or request-changes actions back to the Worker. Approval is the only path that copies a pack into public catalog storage.
+The Discord bot polls the Worker for queued jobs, posts moderation messages, handles attribution confirmation, and sends approve, reject, or request-changes actions back to the Worker. Moderation messages should attach every marked-room capture and expose next/previous controls when Discord-side pagination is needed. Approval is the only path that copies a pack into public catalog storage.
 
-When a submission is approved, the Worker writes the `.akr` archive to the public pack path, transforms the capture into one catalog preview image, stores that preview at the public capture path, and rebuilds `catalog/index.json`. The public website serves branded Akron URLs and routes the reserved catalog and map asset paths to the public storage objects.
+When a submission is approved, the Worker writes the `.akr` archive to the public pack path, transforms each marked-room capture into an optimized catalog preview image, stores those previews at the public capture path, and rebuilds `catalog/index.json` with an `images` array. The public website serves branded Akron URLs and routes the reserved catalog and map asset paths to the public storage objects.
 
 Operational capacity depends on the number and size of approved public packs, optimized preview images, retained quarantine objects, catalog refreshes, pack downloads, and image transformations. Keep provider quotas in deployment configuration and monitoring, not in the player-facing catalog contract.
 
