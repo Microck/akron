@@ -4,12 +4,17 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Akron Beta 43
+
+### Fixed
+
+- Show at least 15 StartPos slots in the selector by default and arm StartPos death reloads after a successful StartPos load.
+
 ## Akron Beta 42
 
 ### Fixed
 
 - Keep StartPos slots scoped per map and restore persisted StartPos player/session state across game restarts without rewinding time or deaths.
-- Show at least 15 StartPos slots in the selector by default and arm StartPos death reloads after a successful StartPos load.
 
 ## Akron Beta 41
 
