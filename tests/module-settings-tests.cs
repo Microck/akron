@@ -3375,11 +3375,25 @@ public sealed class ModuleSettingsTests
     [InlineData(-1, 1)]
     [InlineData(0, 1)]
     [InlineData(9, 9)]
+    [InlineData(15, 15)]
     [InlineData(24, 24)]
     [InlineData(120, 99)]
     public void StartPosSlotCountClampAllowsMoreThanNineSlots(int input, int expected)
     {
         Assert.Equal(expected, AkronModuleSettings.ClampStartPosSlotCount(input));
+    }
+
+    [Theory]
+    [InlineData(-1, 15)]
+    [InlineData(0, 15)]
+    [InlineData(3, 15)]
+    [InlineData(9, 15)]
+    [InlineData(15, 15)]
+    [InlineData(24, 24)]
+    [InlineData(120, 99)]
+    public void StartPosSelectableSlotCountAlwaysExposesAtLeastFifteenSlots(int input, int expected)
+    {
+        Assert.Equal(expected, AkronModuleSettings.ClampStartPosSelectableSlotCount(input));
     }
 
     [Fact]
@@ -3416,6 +3430,7 @@ public sealed class ModuleSettingsTests
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.False(settings.RespawnAtStartPos);
+        Assert.Equal(AkronModuleSettings.DefaultStartPosSlotCount, settings.StartPosSlotCount);
     }
 
     [Fact]

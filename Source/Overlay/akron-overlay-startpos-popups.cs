@@ -101,7 +101,7 @@ public sealed partial class AkronOverlay {
     }
 
     private void DrawStartPosConfigControls(string popupId) {
-        DrawIntStepperRow("Slot count", () => AkronModule.Settings.StartPosSlotCount, value => AkronModule.Settings.StartPosSlotCount = AkronModuleSettings.ClampStartPosSlotCount(value), -1, 1, 1, 99, popupId, "How many StartPos slots the selector and previous/next controls cycle through.");
+        DrawIntStepperRow("Slot count", () => AkronModule.Settings.StartPosSlotCount, value => AkronModule.Settings.StartPosSlotCount = AkronModuleSettings.ClampStartPosSlotCount(value), -1, 1, 1, 99, popupId, "Selectors and previous/next always expose at least 15 StartPos slots. Raise this when you want more.");
         DrawIntStepperRow("Dashes", () => ActiveStartPosDashes(), SetActiveStartPosDashes, -1, 1, -1, 5, popupId, "-1 keeps the native/current dash count. 0-5 force that many dashes after spawning.");
         DrawIntStepperRow("Stamina %", () => ActiveStartPosStaminaPercent(), SetActiveStartPosStaminaPercent, -5, 5, -1, 100, popupId, "-1 keeps native/current stamina. 0-100 forces stamina after spawning.");
         DrawPopupChoiceCombo(
@@ -189,7 +189,7 @@ public sealed partial class AkronOverlay {
 
     private static IReadOnlyList<SelectorDropdownChoice> BuildStartPosSlotChoices() {
         List<SelectorDropdownChoice> choices = new List<SelectorDropdownChoice>();
-        int slotCount = AkronModuleSettings.ClampStartPosSlotCount(AkronModule.Settings.StartPosSlotCount);
+        int slotCount = AkronModuleSettings.ClampStartPosSelectableSlotCount(AkronModule.Settings.StartPosSlotCount);
         for (int slot = 1; slot <= slotCount; slot++) {
             int capturedSlot = slot;
             choices.Add(new SelectorDropdownChoice(

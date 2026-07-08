@@ -446,6 +446,10 @@ public partial class AkronModuleSettings {
         return ClampValue(count, 1, 99);
     }
 
+    public static int ClampStartPosSelectableSlotCount(int count) {
+        return ClampStartPosSlotCount(Math.Max(count, MinimumStartPosSelectableSlots));
+    }
+
     public static float ClampCustomTrailRainbowSpeed(float speed) {
         return speed <= 0f ? 1f : ClampValue(speed, 0.1f, 10f);
     }

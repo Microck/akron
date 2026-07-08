@@ -25,8 +25,8 @@ Akron exposes developer-facing console commands through Everest's debug console 
 | `akron_overlay <toggle\|show\|hide\|status>` | Control the overlay without a hotkey. |
 | `akron_room_capture <start\|stop\|status\|format <png\|jpg>\|markers <on\|off>\|startpos <on\|off>\|autokill <on\|off>\|autodeafen <on\|off>\|downscale <on\|off>\|removebg <on\|off>\|removefg <on\|off>\|wait <frames>\|horizontal <tiles>\|vertical <tiles>>` | Drive Room Capture. The overlay Room Capture row is the normal player-facing path. |
 | `akron_map_capture <start\|stop\|status\|format <png\|jpg>\|markers <on\|off>\|startpos <on\|off>\|autokill <on\|off>\|autodeafen <on\|off>\|downscale <on\|off>\|removebg <on\|off>\|removefg <on\|off>\|wait <frames>\|horizontal <tiles>\|vertical <tiles>>` | Drive Map Capture. The overlay Map Capture row is the normal player-facing path. |
-| `akron_startpos <status\|slot <n>\|set\|load\|clear\|prev\|next\|place <on\|off>\|dashes <n>\|stamina <n>\|slots <n>\|facing <current\|left\|right>\|idle <on\|off>\|grab <on\|off>\|label <on\|off>\|respawn <on\|off>>` | Full StartPos control. `akron_save` and `akron_load` provide convenience shortcuts. |
-| `akron_slot <n>` | Set or show the active StartPos slot (1-9). |
+| `akron_startpos <status\|slot <n>\|set\|load\|clear\|prev\|next\|place <on\|off>\|dashes <n>\|stamina <n>\|slots <n>\|facing <current\|left\|right>\|idle <on\|off>\|grab <on\|off>\|label <on\|off>\|respawn <on\|off>>` | Full StartPos control. StartPos selectors expose at least 15 slots, and `slots <n>` raises the selectable count when more are needed. |
+| `akron_slot <n>` | Set or show the active Akron savestate slot (1-9). |
 | `akron_save [slot]` | Capture StartPos state into the current or specified slot. |
 | `akron_load [slot]` | Restore StartPos state from the current or specified slot. |
 | `akron_save_time_deaths <on\|off\|status>` | Control whether StartPos restores preserve time and death counters. |

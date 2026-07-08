@@ -27,7 +27,7 @@ public static partial class AkronCommands {
         Log("save-time-and-deaths: " + AkronModule.Settings.SaveTimeAndDeaths.ToString().ToLowerInvariant());
     }
 
-    [Command("akron_slot", "set or show Akron StartPos state slot 1-9")]
+    [Command("akron_slot", "set or show Akron savestate slot 1-9")]
     public static void Slot(string slot = "") {
         if (string.IsNullOrWhiteSpace(slot)) {
             Log("slot: " + AkronModule.Settings.ActiveSavestateSlot);

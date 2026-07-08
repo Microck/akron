@@ -76,6 +76,17 @@ public sealed class StartPosPersistenceTests {
         Assert.DoesNotContain("char.IsLetterOrDigit(character)", source);
     }
 
+    [Fact]
+    public void LoadingStartPosArmsDeathReloadAfterSuccessfulRestore() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+
+        Assert.Contains("enableRespawnAtStartPosAfterRestore: true", source);
+        Assert.Contains("enableRespawnAtStartPosAfterRestore && restoredStartPos", source);
+        Assert.Contains("restoredStartPos && loadedSlot > 0", source);
+        Assert.Contains("RestoreStartPosAfterDeath(Level level, AkronStartPos startPos)", source);
+        Assert.Contains("endPlacementForLoad: false", source);
+    }
+
     private static string GetPersistentSnapshotSourcePath() {
         DirectoryInfo? directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory != null) {
