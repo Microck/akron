@@ -1,5 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using Celeste;
+using Microsoft.Xna.Framework;
+using Monocle;
 using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
@@ -85,6 +89,112 @@ public sealed class StartPosPersistenceTests {
         Assert.Contains("restoredStartPos && loadedSlot > 0", source);
         Assert.Contains("RestoreStartPosAfterDeath(Level level, AkronStartPos startPos)", source);
         Assert.Contains("endPlacementForLoad: false", source);
+    }
+
+    [Fact]
+    public void PortableRoomStateSnapshotStripsStatsAndKeepsGameplayState() {
+        AkronSaveLoadSlot source = new AkronSaveLoadSlot("Akron StartPos test 7", "room-a", "Maps/Current", saveTimeAndDeaths: true) {
+            SessionNonce = "original-session",
+            PlayerPosition = new Vector2(12.5f, 34.25f),
+            PlayerSpeed = new Vector2(90f, -15f),
+            PlayerState = 7,
+            Stamina = 42f,
+            Dashes = 2,
+            Facing = Facings.Right,
+            RespawnPoint = new Vector2(10f, 20f),
+            Time = 123456L,
+            Deaths = 8,
+            DeathsInCurrentLevel = 3,
+            FileSlot = 2,
+            SaveDataTime = 987654L,
+            SaveDataTotalDeaths = 99,
+            AreaTimePlayed = 456789L,
+            AreaDeaths = 12,
+            LevelTimeActive = 98.5f,
+            LevelRawTimeActive = 111.5f,
+            EngineTimeRate = 0.5f,
+            GlitchValue = 0.25f,
+            DistortAnxiety = 0.75f,
+            DistortGameRate = 1.25f,
+            SessionFlags = new HashSet<string> { "berry-collected" },
+            SessionLevelFlags = new HashSet<string> { "room-switch" },
+            SessionCounters = new Dictionary<string, int> { ["cycles"] = 4 },
+            SessionStrawberries = new List<AkronSessionEntityId> { new AkronSessionEntityId { Level = "room-a", ID = 10 } },
+            SessionDoNotLoad = new List<AkronSessionEntityId> { new AkronSessionEntityId { Level = "room-a", ID = 11 } },
+            SessionKeys = new List<AkronSessionEntityId> { new AkronSessionEntityId { Level = "room-a", ID = 12 } },
+            SessionSummitGems = new[] { true, false, true },
+            InventoryDashes = 2,
+            InventoryDreamDash = true,
+            InventoryBackpack = true,
+            InventoryNoRefills = true,
+            SessionDashes = 2,
+            SessionDashesAtLevelStart = 1,
+            SessionDreaming = true,
+            SessionStartCheckpoint = "checkpoint-a",
+            SessionFurthestSeenLevel = "room-b",
+            SessionCoreMode = Session.CoreModes.Hot
+        };
+
+        Assert.True(AkronPersistentStartPosSnapshots.TrySerializePortableRoomState(source, out string payload, out string serializeError), serializeError);
+        Assert.True(AkronPersistentStartPosSnapshots.TryDeserializePortableRoomStateForTesting(payload, "Akron StartPos test 7", "Maps/Current", out AkronSaveLoadSlot restored, out string deserializeError), deserializeError);
+
+        Assert.False(restored.SaveTimeAndDeaths);
+        Assert.Equal(0L, restored.Time);
+        Assert.Equal(0, restored.Deaths);
+        Assert.Equal(0, restored.DeathsInCurrentLevel);
+        Assert.Equal(0L, restored.SaveDataTime);
+        Assert.Equal(0, restored.SaveDataTotalDeaths);
+        Assert.Equal(0L, restored.AreaTimePlayed);
+        Assert.Equal(0, restored.AreaDeaths);
+        Assert.Equal(0f, restored.LevelTimeActive);
+        Assert.Equal(0f, restored.LevelRawTimeActive);
+        Assert.Equal(source.PlayerPosition.X, restored.PlayerPosition.X);
+        Assert.Equal(source.PlayerPosition.Y, restored.PlayerPosition.Y);
+        Assert.Equal(source.PlayerSpeed.X, restored.PlayerSpeed.X);
+        Assert.Equal(source.PlayerSpeed.Y, restored.PlayerSpeed.Y);
+        Assert.Equal(source.PlayerState, restored.PlayerState);
+        Assert.Equal(source.Stamina, restored.Stamina);
+        Assert.Equal(source.Dashes, restored.Dashes);
+        Assert.Equal(source.Facing, restored.Facing);
+        Assert.True(restored.RespawnPoint.HasValue);
+        Assert.Equal(source.RespawnPoint!.Value.X, restored.RespawnPoint.Value.X);
+        Assert.Equal(source.RespawnPoint.Value.Y, restored.RespawnPoint.Value.Y);
+        Assert.Contains("berry-collected", restored.SessionFlags);
+        Assert.Contains("room-switch", restored.SessionLevelFlags);
+        Assert.Equal(4, restored.SessionCounters["cycles"]);
+        Assert.Contains(restored.SessionDoNotLoad, id => id.Level == "room-a" && id.ID == 11);
+        Assert.Equal(2, restored.InventoryDashes);
+        Assert.True(restored.InventoryDreamDash);
+        Assert.True(restored.SessionDreaming);
+        Assert.Equal(Session.CoreModes.Hot, restored.SessionCoreMode);
+    }
+
+    [Fact]
+    public void PortableRoomStateSnapshotRejectsWrongMap() {
+        AkronSaveLoadSlot source = new AkronSaveLoadSlot("Akron StartPos test 2", "room-a", "Maps/Current", saveTimeAndDeaths: false);
+
+        Assert.True(AkronPersistentStartPosSnapshots.TrySerializePortableRoomState(source, out string payload, out string serializeError), serializeError);
+        Assert.False(AkronPersistentStartPosSnapshots.TryDeserializePortableRoomStateForTesting(payload, "Akron StartPos test 2", "Maps/Other", out _, out string deserializeError));
+        Assert.Equal("snapshot map mismatch", deserializeError);
+    }
+
+    [Fact]
+    public void PortableRoomStateSnapshotRejectsOversizedExports() {
+        Random random = new Random(1234);
+        HashSet<string> flags = new HashSet<string>();
+        for (int index = 0; index < 35000; index++) {
+            byte[] bytes = new byte[32];
+            random.NextBytes(bytes);
+            flags.Add(Convert.ToBase64String(bytes));
+        }
+
+        AkronSaveLoadSlot source = new AkronSaveLoadSlot("Akron StartPos test 8", "room-a", "Maps/Current", saveTimeAndDeaths: false) {
+            SessionFlags = flags
+        };
+
+        Assert.False(AkronPersistentStartPosSnapshots.TrySerializePortableRoomState(source, out string payload, out string serializeError));
+        Assert.Empty(payload);
+        Assert.Contains("portable room-state snapshot is too large", serializeError);
     }
 
     private static string GetPersistentSnapshotSourcePath() {

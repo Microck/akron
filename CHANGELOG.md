@@ -4,6 +4,12 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Unreleased
+
+### Added
+
+- Let StartPos `.akr` and Community Pack uploads include portable room-state snapshots while stripping deaths, time, and other stats from imported room-state restores.
+
 ## Akron Beta 43
 
 ### Fixed

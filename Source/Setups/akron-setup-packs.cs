@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Celeste;
@@ -46,6 +47,7 @@ public sealed class AkronStartPosPackEntry {
     public float Y { get; set; }
     public string Room { get; set; } = string.Empty;
     public string AreaSid { get; set; } = string.Empty;
+    public string RoomStateSnapshot { get; set; } = string.Empty;
     public bool UsesSpawnConfig { get; set; }
     public int Dashes { get; set; } = -1;
     public int StaminaPercent { get; set; } = -1;
@@ -223,7 +225,9 @@ public static partial class AkronSetupPacks {
             State = settings.CaptureSetupPackState(),
             ButtonBindings = CaptureButtonBindings(settings),
             MenuActionBindings = new Dictionary<string, string>(settings.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal),
-            StartPositions = CaptureStartPositions(session)
+            StartPositions = CaptureStartPositions(
+                session,
+                includeRoomStateSnapshots: section == AkronSetupSection.Whole || section == AkronSetupSection.StartPos)
         };
     }
 
@@ -339,7 +343,30 @@ public static partial class AkronSetupPacks {
                 }
             },
             SetupArchivePayload,
-            JsonSerializer.Serialize(pack, JsonOptions));
+            SerializePackPayloadForArchive(pack));
+    }
+
+    internal static string SerializePackPayloadForArchive(AkronSetupPack pack) {
+        string payload = JsonSerializer.Serialize(pack, JsonOptions);
+        if (Encoding.UTF8.GetByteCount(payload) <= MaxSetupPayloadBytes) {
+            return payload;
+        }
+
+        List<AkronStartPosPackEntry> portableSnapshots = (pack?.StartPositions ?? new Dictionary<int, AkronStartPosPackEntry>())
+            .Values
+            .Where(entry => !string.IsNullOrWhiteSpace(entry?.RoomStateSnapshot))
+            .OrderByDescending(entry => entry.RoomStateSnapshot.Length)
+            .ToList();
+        foreach (AkronStartPosPackEntry entry in portableSnapshots) {
+            entry.RoomStateSnapshot = string.Empty;
+            payload = JsonSerializer.Serialize(pack, JsonOptions);
+            if (Encoding.UTF8.GetByteCount(payload) <= MaxSetupPayloadBytes) {
+                Logger.Log(LogLevel.Warn, nameof(AkronSetupPacks), "Omitted StartPos room-state snapshots because the setup pack was too large.");
+                return payload;
+            }
+        }
+
+        throw new InvalidDataException("Setup archive payload is too large.");
     }
 
     public static AkronSetupPack Read(string path) {
@@ -684,7 +711,7 @@ public static partial class AkronSetupPacks {
         return parsed;
     }
 
-    private static Dictionary<int, AkronStartPosPackEntry> CaptureStartPositions(AkronModuleSession session) {
+    private static Dictionary<int, AkronStartPosPackEntry> CaptureStartPositions(AkronModuleSession session, bool includeRoomStateSnapshots) {
         Dictionary<int, AkronStartPosPackEntry> entries = new Dictionary<int, AkronStartPosPackEntry>();
         foreach (KeyValuePair<int, AkronStartPos> pair in session?.StartPositions ?? new Dictionary<int, AkronStartPos>()) {
             if (pair.Value == null) {
@@ -696,6 +723,9 @@ public static partial class AkronSetupPacks {
                 Y = pair.Value.Position.Y,
                 Room = pair.Value.Room,
                 AreaSid = pair.Value.AreaSid,
+                RoomStateSnapshot = includeRoomStateSnapshots
+                    ? AkronPersistentStartPosSnapshots.CapturePortableRoomStateSnapshot(pair.Key, pair.Value, nameof(AkronSetupPacks), "StartPos")
+                    : string.Empty,
                 UsesSpawnConfig = pair.Value.UsesSpawnConfig,
                 Dashes = pair.Value.Dashes,
                 StaminaPercent = pair.Value.StaminaPercent,
@@ -726,6 +756,7 @@ public static partial class AkronSetupPacks {
                 Facing = entry.Facing,
                 Idle = entry.Idle,
                 Grab = entry.Grab,
+                ImportedRoomStateSnapshot = entry.RoomStateSnapshot ?? string.Empty,
                 StateSlotName = string.Empty
             };
         }

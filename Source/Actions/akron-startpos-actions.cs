@@ -670,7 +670,9 @@ public static partial class AkronActions {
 
             AkronPersistedStartPosMap map = new AkronPersistedStartPosMap();
             foreach (KeyValuePair<int, AkronStartPos> slotPair in areaPair.Value) {
-                map.Slots[NormalizePositionSlot(slotPair.Key)] = ToPersistedStartPos(slotPair.Value);
+                int normalizedSlot = NormalizePositionSlot(slotPair.Key);
+                PersistImportedRoomStateSnapshot(areaPair.Key, normalizedSlot, slotPair.Value);
+                map.Slots[normalizedSlot] = ToPersistedStartPos(slotPair.Value);
             }
             saveData.StartPositionsByMap[areaPair.Key] = map;
         }
@@ -684,6 +686,35 @@ public static partial class AkronActions {
             }
         }
         SaveAkronStartPosData();
+    }
+
+    private static void PersistImportedRoomStateSnapshot(string areaSid, int slot, AkronStartPos startPos) {
+        if (startPos == null || string.IsNullOrWhiteSpace(startPos.ImportedRoomStateSnapshot)) {
+            return;
+        }
+
+        string normalizedAreaSid = NormalizeAreaSid(areaSid);
+        string stateSlotName = GetStartPosStateSlotName(normalizedAreaSid, slot);
+        string snapshotPath = GetStartPosSnapshotPath(normalizedAreaSid, slot);
+        if (AkronPersistentStartPosSnapshots.TryImportPortableRoomState(
+                startPos.ImportedRoomStateSnapshot,
+                snapshotPath,
+                stateSlotName,
+                normalizedAreaSid,
+                startPos.Room,
+                out string importError)) {
+            startPos.SnapshotPath = snapshotPath;
+            startPos.StateSlotName = string.Empty;
+            startPos.SnapshotLoadError = string.Empty;
+            startPos.ImportedRoomStateSnapshot = string.Empty;
+            return;
+        }
+
+        startPos.SnapshotPath = string.Empty;
+        startPos.StateSlotName = string.Empty;
+        startPos.SnapshotLoadError = string.Empty;
+        startPos.ImportedRoomStateSnapshot = string.Empty;
+        Logger.Log(LogLevel.Warn, nameof(AkronActions), "Ignored imported StartPos room-state snapshot for " + normalizedAreaSid + " slot " + slot + ": " + importError);
     }
 
     private static void EnsureStartPositionsLoaded(Level level) {
@@ -906,6 +937,10 @@ public static partial class AkronActions {
         return "Akron StartPos " + SanitizeStartPosKey(areaSid) + " " + NormalizePositionSlot(slot).ToString(CultureInfo.InvariantCulture);
     }
 
+    internal static string GetStartPosStateSlotNameForSetupPack(string areaSid, int slot) {
+        return GetStartPosStateSlotName(areaSid, slot);
+    }
+
     private static string GetStartPosSnapshotPath(string areaSid, int slot) {
         return Path.Combine("StartPosSnapshots", SanitizeStartPosKey(areaSid), NormalizePositionSlot(slot).ToString(CultureInfo.InvariantCulture) + ".akron-startpos");
     }
@@ -941,6 +976,6 @@ public static partial class AkronActions {
     }
 
     private static int NormalizePositionSlot(int slot) {
-        return Calc.Clamp(slot, MinPositionSlot, MaxPositionSlot);
+        return Math.Min(Math.Max(slot, MinPositionSlot), MaxPositionSlot);
     }
 }

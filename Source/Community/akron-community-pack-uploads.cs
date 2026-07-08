@@ -85,10 +85,6 @@ public static class AkronCommunityPackUploads {
         PropertyNameCaseInsensitive = true,
         Converters = { new JsonStringEnumConverter() }
     };
-    private static readonly JsonSerializerOptions SetupPackJsonOptions = new JsonSerializerOptions {
-        WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() }
-    };
     private static readonly HttpClient UploadHttp = new HttpClient {
         Timeout = TimeSpan.FromMinutes(10)
     };
@@ -200,7 +196,7 @@ public static class AkronCommunityPackUploads {
                 }
             },
             AkronSetupPacks.SetupArchivePayload,
-            JsonSerializer.Serialize(pack, SetupPackJsonOptions));
+            AkronSetupPacks.SerializePackPayloadForArchive(pack));
         return path;
     }
 
@@ -256,6 +252,11 @@ public static class AkronCommunityPackUploads {
                 Y = startPos.Position.Y,
                 Room = startPos.Room,
                 AreaSid = startPos.AreaSid,
+                RoomStateSnapshot = AkronPersistentStartPosSnapshots.CapturePortableRoomStateSnapshot(
+                    pair.Key,
+                    startPos,
+                    nameof(AkronCommunityPackUploads),
+                    "Upload Pack StartPos"),
                 UsesSpawnConfig = startPos.UsesSpawnConfig,
                 Dashes = startPos.Dashes,
                 StaminaPercent = startPos.StaminaPercent,
