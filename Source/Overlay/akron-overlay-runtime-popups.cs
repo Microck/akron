@@ -129,6 +129,7 @@ public sealed partial class AkronOverlay {
 
         ImGui.Separator();
         DrawCursorHoldBindingRow(
+            "Creator/Entity Inspector",
             "Entity Inspector / Cursor hold",
             "entity-inspector",
             AkronModuleSettings.ResolveEntityInspectorCursorHoldBinding(AkronModule.Settings),
@@ -224,6 +225,7 @@ public sealed partial class AkronOverlay {
     }
 
     private void DrawCursorHoldBindingRow(
+        string actionKey,
         string displayName,
         string idPrefix,
         ButtonBinding binding,
@@ -241,7 +243,7 @@ public sealed partial class AkronOverlay {
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, AkronImGuiTheme.ButtonHovered);
         ImGui.PushStyleColor(ImGuiCol.ButtonActive, AkronImGuiTheme.ButtonActive);
         if (ImGui.Button(bindingText + "##" + idPrefix + "-cursor-bind-field-" + popupId, new NumericsVector2(bindingButtonWidth, 0f))) {
-            StartButtonBindingCapture(displayName, setter);
+            StartButtonBindingCapture(actionKey, displayName, setter, clearMenuBinding: false);
         }
         ImGui.PopStyleColor(3);
         DrawPopupTooltip(tooltip, "Cursor hold");
@@ -249,7 +251,7 @@ public sealed partial class AkronOverlay {
         DrawPopupRowLabel("", labelWidth);
         float spacing = ImGui.GetStyle().ItemSpacing.X;
         if (ImGui.Button("Bind##" + idPrefix + "-cursor-bind-" + popupId, new NumericsVector2(actionButtonWidth, 0f))) {
-            StartButtonBindingCapture(displayName, setter);
+            StartButtonBindingCapture(actionKey, displayName, setter, clearMenuBinding: false);
         }
         DrawPopupTooltip("Capture a keyboard chord or controller button.", "Cursor hold");
 

@@ -470,7 +470,7 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void CurrentKeybindDefaultsClearLegacyButtonBindingsExceptMenuAndLeftAltHolds()
+    public void CurrentKeybindDefaultsPreserveConfiguredButtonBindings()
     {
         ButtonBinding retry = BuildInitializedButtonBinding(Keys.R);
         ButtonBinding reloadRoom = BuildInitializedButtonBinding(Keys.F6);
@@ -502,18 +502,18 @@ public sealed class ModuleSettingsTests
 
         AkronModuleSettings.EnsureCurrentKeybindDefaults(settings);
 
-        Assert.NotSame(retry, settings.Retry);
-        Assert.NotSame(reloadRoom, settings.ReloadRoom);
-        Assert.NotSame(reloadChapter, settings.ReloadChapter);
-        Assert.NotSame(saveState, settings.SaveState);
-        Assert.NotSame(loadState, settings.LoadState);
-        Assert.NotSame(toggleHitboxes, settings.ToggleHitboxes);
-        Assert.NotSame(freezeGameplay, settings.FreezeGameplay);
-        Assert.NotSame(entityInspectorCursorHold, settings.EntityInspectorCursorHold);
-        Assert.NotSame(cursorZoomHold, settings.CursorZoomHold);
-        Assert.NotSame(cursorToolsHold, settings.CursorToolsHold);
-        Assert.NotSame(previousStartPos, settings.PreviousStartPos);
-        Assert.NotSame(nextStartPos, settings.NextStartPos);
+        Assert.Same(retry, settings.Retry);
+        Assert.Same(reloadRoom, settings.ReloadRoom);
+        Assert.Same(reloadChapter, settings.ReloadChapter);
+        Assert.Same(saveState, settings.SaveState);
+        Assert.Same(loadState, settings.LoadState);
+        Assert.Same(toggleHitboxes, settings.ToggleHitboxes);
+        Assert.Same(freezeGameplay, settings.FreezeGameplay);
+        Assert.Same(entityInspectorCursorHold, settings.EntityInspectorCursorHold);
+        Assert.Same(cursorZoomHold, settings.CursorZoomHold);
+        Assert.Same(cursorToolsHold, settings.CursorToolsHold);
+        Assert.Same(previousStartPos, settings.PreviousStartPos);
+        Assert.Same(nextStartPos, settings.NextStartPos);
 
         Assert.NotNull(settings.Retry);
         Assert.NotNull(settings.ReloadRoom);
@@ -578,7 +578,7 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void CurrentKeybindDefaultsDropPersistedActionBindings()
+    public void CurrentKeybindDefaultsPreservePersistedMenuActionBindings()
     {
         AkronModuleSettings settings = new AkronModuleSettings
         {
@@ -591,7 +591,8 @@ public sealed class ModuleSettingsTests
 
         AkronModuleSettings.EnsureCurrentKeybindDefaults(settings);
 
-        Assert.Empty(settings.MenuActionBindings);
+        Assert.Equal("R", settings.MenuActionBindings["Shortcuts/Retry"]);
+        Assert.Equal("RightShift", settings.MenuActionBindings["Level/Freeze Gameplay"]);
     }
 
     [Fact]
@@ -608,23 +609,23 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void EntityInspectorCursorHoldUsesDefaultForMalformedPersistedBinding()
+    public void EntityInspectorCursorHoldPreservesConfiguredPersistedBinding()
     {
-        ButtonBinding malformedBinding = new ButtonBinding(0, Keys.LeftAlt)
+        ButtonBinding configuredBinding = new ButtonBinding(0, Keys.LeftAlt)
         {
-            Keys = null,
-            Buttons = null,
+            Keys = new List<Keys> { Keys.Space },
+            Buttons = new List<Buttons>(),
             MouseButtons = new List<Monocle.MInput.MouseData.MouseButtons>()
         };
-        AkronModuleSettings malformedSettings = new AkronModuleSettings
+        AkronModuleSettings configuredSettings = new AkronModuleSettings
         {
-            EntityInspectorCursorHold = malformedBinding
+            EntityInspectorCursorHold = configuredBinding
         };
 
-        ButtonBinding resolved = AkronModuleSettings.ResolveEntityInspectorCursorHoldBinding(malformedSettings);
+        ButtonBinding resolved = AkronModuleSettings.ResolveEntityInspectorCursorHoldBinding(configuredSettings);
 
         Assert.NotNull(resolved);
-        Assert.NotSame(malformedBinding, resolved);
+        Assert.Same(configuredBinding, resolved);
     }
 
     [Theory]
@@ -1863,6 +1864,8 @@ public sealed class ModuleSettingsTests
         Assert.Equal(string.Empty, settings.CommunityPackUploadDiscordUserId);
         Assert.Equal(string.Empty, settings.CommunityPackUploadTitleOverride);
         Assert.Equal(string.Empty, settings.CommunityPackUploadDescriptionOverride);
+        Assert.Equal(string.Empty, settings.CommunityPackUploadOverrideMapSid);
+        Assert.Equal(AkronSetupSection.StartPos, settings.CommunityPackUploadOverrideSection);
     }
 
     [Fact]
@@ -2025,11 +2028,63 @@ public sealed class ModuleSettingsTests
             string.Empty,
             useDiscordAttribution: false,
             titleOverride: "Any% practice starts",
-            descriptionOverride: "Curated starts for the current route.");
+            descriptionOverride: "Curated starts for the current route.",
+            overrideMapSid: "Glyph/Glyph",
+            overrideSection: AkronSetupSection.StartPos);
 
         Assert.Equal("Any% practice starts", draft.Title);
         Assert.Equal("Curated starts for the current route.", draft.Description);
         Assert.Equal(AkronCommunityPackUploads.AnonymousAttribution, draft.AttributionMode);
+    }
+
+    [Fact]
+    public void UploadPackDraftIgnoresOverridesForDifferentMapOrSection()
+    {
+        AkronCommunityPackUploadDraft differentMapDraft = AkronCommunityPackUploads.BuildDraft(
+            "Glyph/Glyph",
+            "Glyph",
+            AkronSetupSection.StartPos,
+            string.Empty,
+            useDiscordAttribution: false,
+            titleOverride: "Old map title",
+            descriptionOverride: "Old map description",
+            overrideMapSid: "Other/Map",
+            overrideSection: AkronSetupSection.StartPos);
+        AkronCommunityPackUploadDraft differentSectionDraft = AkronCommunityPackUploads.BuildDraft(
+            "Glyph/Glyph",
+            "Glyph",
+            AkronSetupSection.AutoKill,
+            string.Empty,
+            useDiscordAttribution: false,
+            titleOverride: "StartPos title",
+            descriptionOverride: "StartPos description",
+            overrideMapSid: "Glyph/Glyph",
+            overrideSection: AkronSetupSection.StartPos);
+
+        Assert.Equal("Glyph StartPos Pack", differentMapDraft.Title);
+        Assert.Equal("Start positions for practicing Glyph.", differentMapDraft.Description);
+        Assert.Equal("Glyph Auto Kill Areas", differentSectionDraft.Title);
+        Assert.Equal("Auto Kill areas for routing and reset practice in Glyph.", differentSectionDraft.Description);
+    }
+
+    [Fact]
+    public void UploadPackTextOverrideStoresAndClearsScope()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings();
+
+        AkronCommunityPackUploads.SetUploadTextOverride(settings, "Glyph/Glyph", AkronSetupSection.AutoDeafen, "Title", "Description");
+
+        Assert.Equal("Title", settings.CommunityPackUploadTitleOverride);
+        Assert.Equal("Description", settings.CommunityPackUploadDescriptionOverride);
+        Assert.Equal("Glyph/Glyph", settings.CommunityPackUploadOverrideMapSid);
+        Assert.Equal(AkronSetupSection.AutoDeafen, settings.CommunityPackUploadOverrideSection);
+
+        AkronCommunityPackUploads.ClearUploadTextOverride(settings);
+
+        Assert.Equal(string.Empty, settings.CommunityPackUploadTitleOverride);
+        Assert.Equal(string.Empty, settings.CommunityPackUploadDescriptionOverride);
+        Assert.Equal(string.Empty, settings.CommunityPackUploadOverrideMapSid);
+        Assert.Equal(AkronSetupSection.StartPos, settings.CommunityPackUploadOverrideSection);
     }
 
     [Fact]
@@ -4250,6 +4305,26 @@ public sealed class ModuleSettingsTests
         Assert.Equal("LB", InvokeMenuBindingString(binding, "ToDisplayString"));
     }
 
+    [Fact]
+    public void DefaultBindingSetterUpdatesNativeButtonBindingField()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings();
+        ButtonBinding binding = AkronModuleSettings.CreateEmptyButtonBinding();
+        binding.Keys = new List<Keys> { Keys.K };
+
+        Assert.True(InvokeTrySetDefaultButtonBinding(settings, "Shortcuts/Retry", binding));
+
+        Assert.Same(binding, settings.Retry);
+    }
+
+    [Fact]
+    public void DefaultBindingSetterRejectsMenuOnlyActions()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings();
+
+        Assert.False(InvokeTrySetDefaultButtonBinding(settings, "Global/Logging", AkronModuleSettings.CreateEmptyButtonBinding()));
+    }
+
     private static List<string> BuildOverlayEntryLabels(string tab)
     {
         MethodInfo? method = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static);
@@ -4507,6 +4582,13 @@ public sealed class ModuleSettingsTests
         MethodInfo? method = binding.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
         Assert.NotNull(method);
         return (string)method.Invoke(binding, Array.Empty<object>())!;
+    }
+
+    private static bool InvokeTrySetDefaultButtonBinding(AkronModuleSettings settings, string actionKey, ButtonBinding binding)
+    {
+        MethodInfo? method = typeof(AkronOverlay).GetMethod("TrySetDefaultButtonBinding", BindingFlags.NonPublic | BindingFlags.Static, null, new[] { typeof(AkronModuleSettings), typeof(string), typeof(ButtonBinding) }, null);
+        Assert.NotNull(method);
+        return (bool)method.Invoke(null, new object[] { settings, actionKey, binding })!;
     }
 
     private static bool InvokePlayerNumberGate(string methodName, AkronModuleSettings settings, bool featureAllowed)

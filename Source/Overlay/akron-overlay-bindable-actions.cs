@@ -291,6 +291,8 @@ public sealed partial class AkronOverlay {
 
         return HasMenuBinding(actionKey)
             ? DescribeMenuBinding(actionKey)
+            : TryGetDefaultButtonBinding(actionKey, out ButtonBinding binding) && !IsEmptyBinding(binding)
+                ? AkronModuleSettings.DescribeBinding(binding)
             : DescribeBindingForAction(label);
     }
 
@@ -301,6 +303,10 @@ public sealed partial class AkronOverlay {
 
         if (HasMenuBinding(actionKey)) {
             return DescribeMenuBinding(actionKey);
+        }
+
+        if (TryGetDefaultButtonBinding(actionKey, out ButtonBinding binding) && !IsEmptyBinding(binding)) {
+            return AkronModuleSettings.DescribeBinding(binding);
         }
 
         string builtIn = DescribeBindingForAction(label);
@@ -537,8 +543,7 @@ public sealed partial class AkronOverlay {
                 AkronActions.RestoreAutoDeafen();
                 AkronModule.Settings.AutoDeafenHotkey = string.Empty;
             } else if (bindingCaptureButtonBindingSetter != null) {
-                bindingCaptureButtonBindingSetter(AkronModuleSettings.CreateEmptyButtonBinding());
-                menuBindingRevision++;
+                SetCapturedButtonBinding(AkronModuleSettings.CreateEmptyButtonBinding());
             } else {
                 ClearMenuBinding(bindingCaptureActionKey);
             }
@@ -551,8 +556,7 @@ public sealed partial class AkronOverlay {
             if (bindingCaptureOverlayToggle) {
                 SetOverlayToggleBinding(binding);
             } else if (bindingCaptureButtonBindingSetter != null) {
-                bindingCaptureButtonBindingSetter(ToButtonBinding(binding));
-                menuBindingRevision++;
+                SetCapturedButtonBinding(ToButtonBinding(binding));
             } else {
                 SetMenuBinding(bindingCaptureActionKey, binding);
             }
@@ -571,8 +575,7 @@ public sealed partial class AkronOverlay {
                 if (bindingCaptureOverlayToggle) {
                     SetOverlayToggleBinding(binding);
                 } else if (bindingCaptureButtonBindingSetter != null) {
-                    bindingCaptureButtonBindingSetter(ToButtonBinding(binding));
-                    menuBindingRevision++;
+                    SetCapturedButtonBinding(ToButtonBinding(binding));
                 } else {
                     SetMenuBinding(bindingCaptureActionKey, binding);
                 }
@@ -593,6 +596,7 @@ public sealed partial class AkronOverlay {
         bindingCaptureOverlayToggle = false;
         bindingCaptureAutoDeafenHotkey = false;
         bindingCaptureButtonBindingSetter = null;
+        bindingCaptureClearsMenuBinding = false;
         bindingCaptureWaitingForRelease = true;
     }
 
@@ -601,6 +605,7 @@ public sealed partial class AkronOverlay {
         bindingCaptureDisplayName = "Open Overlay";
         bindingCaptureOverlayToggle = true;
         bindingCaptureButtonBindingSetter = null;
+        bindingCaptureClearsMenuBinding = false;
         bindingCaptureWaitingForRelease = true;
     }
 
@@ -610,15 +615,17 @@ public sealed partial class AkronOverlay {
         bindingCaptureOverlayToggle = false;
         bindingCaptureAutoDeafenHotkey = true;
         bindingCaptureButtonBindingSetter = null;
+        bindingCaptureClearsMenuBinding = false;
         bindingCaptureWaitingForRelease = true;
     }
 
-    private void StartButtonBindingCapture(string displayName, Action<ButtonBinding> setter) {
-        bindingCaptureActionKey = "__akron_button_binding";
+    private void StartButtonBindingCapture(string actionKey, string displayName, Action<ButtonBinding> setter, bool clearMenuBinding = true) {
+        bindingCaptureActionKey = actionKey;
         bindingCaptureDisplayName = displayName;
         bindingCaptureOverlayToggle = false;
         bindingCaptureAutoDeafenHotkey = false;
         bindingCaptureButtonBindingSetter = setter;
+        bindingCaptureClearsMenuBinding = clearMenuBinding;
         bindingCaptureWaitingForRelease = true;
     }
 
@@ -628,6 +635,7 @@ public sealed partial class AkronOverlay {
         bindingCaptureOverlayToggle = false;
         bindingCaptureAutoDeafenHotkey = false;
         bindingCaptureButtonBindingSetter = null;
+        bindingCaptureClearsMenuBinding = false;
         bindingCaptureWaitingForRelease = false;
     }
 
@@ -637,7 +645,20 @@ public sealed partial class AkronOverlay {
             return;
         }
 
+        if (TryGetDefaultButtonBinding(entry.ActionKey, out _)) {
+            StartButtonBindingCapture(entry.ActionKey, entry.Tab + " / " + entry.Label, binding => TrySetDefaultButtonBinding(entry.ActionKey, binding));
+            return;
+        }
+
         StartBindingCapture(entry);
+    }
+
+    private void SetCapturedButtonBinding(ButtonBinding binding) {
+        if (bindingCaptureClearsMenuBinding) {
+            ClearMenuBinding(bindingCaptureActionKey);
+        }
+        bindingCaptureButtonBindingSetter?.Invoke(binding);
+        menuBindingRevision++;
     }
 
     private static bool HasClearableBinding(ActionEntry entry) {
@@ -684,6 +705,7 @@ public sealed partial class AkronOverlay {
             "popup/StartPos/Load Slot 9" => settings.LoadStartPosSlot9,
             "Player/Noclip" => null,
             "Player/Hazard Accuracy" => null,
+            "Player/Click Teleport" => settings.ClickTeleportCursor,
             "Creator/Cursor Zoom" => settings.CursorZoomHold,
             "Creator/Cursor Tools" => settings.CursorToolsHold,
             "Creator/Entity Inspector" => settings.ToggleEntityInspector,
@@ -698,32 +720,44 @@ public sealed partial class AkronOverlay {
     }
 
     private static bool ClearDefaultButtonBinding(string actionKey) {
-        AkronModuleSettings settings = AkronModule.Settings;
+        return TrySetDefaultButtonBinding(actionKey, EmptyButtonBinding());
+    }
+
+    private static bool TrySetDefaultButtonBinding(string actionKey, ButtonBinding binding) {
+        return TrySetDefaultButtonBinding(AkronModule.Settings, actionKey, binding);
+    }
+
+    private static bool TrySetDefaultButtonBinding(AkronModuleSettings settings, string actionKey, ButtonBinding binding) {
+        if (settings == null) {
+            return false;
+        }
+
         switch (actionKey) {
-            case "Shortcuts/Retry": settings.Retry = EmptyButtonBinding(); return true;
-            case "Shortcuts/Reload Room": settings.ReloadRoom = EmptyButtonBinding(); return true;
-            case "Shortcuts/Reload Chapter": settings.ReloadChapter = EmptyButtonBinding(); return true;
-            case "StartPos/Capture State": settings.SaveState = EmptyButtonBinding(); return true;
-            case "StartPos/Restore State": settings.LoadState = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Set": settings.SetStartPos = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Load": settings.LoadStartPos = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Clear": settings.ClearStartPos = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Previous": settings.PreviousStartPos = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Next": settings.NextStartPos = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Load Slot 1": settings.LoadStartPosSlot1 = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Load Slot 2": settings.LoadStartPosSlot2 = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Load Slot 3": settings.LoadStartPosSlot3 = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Load Slot 4": settings.LoadStartPosSlot4 = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Load Slot 5": settings.LoadStartPosSlot5 = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Load Slot 6": settings.LoadStartPosSlot6 = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Load Slot 7": settings.LoadStartPosSlot7 = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Load Slot 8": settings.LoadStartPosSlot8 = EmptyButtonBinding(); return true;
-            case "popup/StartPos/Load Slot 9": settings.LoadStartPosSlot9 = EmptyButtonBinding(); return true;
-            case "Creator/Cursor Zoom": settings.CursorZoomHold = EmptyButtonBinding(); return true;
-            case "Creator/Cursor Tools": settings.CursorToolsHold = EmptyButtonBinding(); return true;
-            case "Creator/Entity Inspector": settings.ToggleEntityInspector = EmptyButtonBinding(); return true;
-            case "Level/Show Hitboxes": settings.ToggleHitboxes = EmptyButtonBinding(); return true;
-            case "Level/Freeze Gameplay": settings.FreezeGameplay = EmptyButtonBinding(); return true;
+            case "Shortcuts/Retry": settings.Retry = binding; return true;
+            case "Shortcuts/Reload Room": settings.ReloadRoom = binding; return true;
+            case "Shortcuts/Reload Chapter": settings.ReloadChapter = binding; return true;
+            case "StartPos/Capture State": settings.SaveState = binding; return true;
+            case "StartPos/Restore State": settings.LoadState = binding; return true;
+            case "popup/StartPos/Set": settings.SetStartPos = binding; return true;
+            case "popup/StartPos/Load": settings.LoadStartPos = binding; return true;
+            case "popup/StartPos/Clear": settings.ClearStartPos = binding; return true;
+            case "popup/StartPos/Previous": settings.PreviousStartPos = binding; return true;
+            case "popup/StartPos/Next": settings.NextStartPos = binding; return true;
+            case "popup/StartPos/Load Slot 1": settings.LoadStartPosSlot1 = binding; return true;
+            case "popup/StartPos/Load Slot 2": settings.LoadStartPosSlot2 = binding; return true;
+            case "popup/StartPos/Load Slot 3": settings.LoadStartPosSlot3 = binding; return true;
+            case "popup/StartPos/Load Slot 4": settings.LoadStartPosSlot4 = binding; return true;
+            case "popup/StartPos/Load Slot 5": settings.LoadStartPosSlot5 = binding; return true;
+            case "popup/StartPos/Load Slot 6": settings.LoadStartPosSlot6 = binding; return true;
+            case "popup/StartPos/Load Slot 7": settings.LoadStartPosSlot7 = binding; return true;
+            case "popup/StartPos/Load Slot 8": settings.LoadStartPosSlot8 = binding; return true;
+            case "popup/StartPos/Load Slot 9": settings.LoadStartPosSlot9 = binding; return true;
+            case "Player/Click Teleport": settings.ClickTeleportCursor = binding; return true;
+            case "Creator/Cursor Zoom": settings.CursorZoomHold = binding; return true;
+            case "Creator/Cursor Tools": settings.CursorToolsHold = binding; return true;
+            case "Creator/Entity Inspector": settings.ToggleEntityInspector = binding; return true;
+            case "Level/Show Hitboxes": settings.ToggleHitboxes = binding; return true;
+            case "Level/Freeze Gameplay": settings.FreezeGameplay = binding; return true;
         }
 
         return false;

@@ -94,6 +94,8 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public string CommunityPackUploadDiscordUserId { get; set; } = string.Empty;
     public string CommunityPackUploadTitleOverride { get; set; } = string.Empty;
     public string CommunityPackUploadDescriptionOverride { get; set; } = string.Empty;
+    public string CommunityPackUploadOverrideMapSid { get; set; } = string.Empty;
+    public AkronSetupSection CommunityPackUploadOverrideSection { get; set; } = AkronSetupSection.StartPos;
     public string CustomOverlayThemeName { get; set; } = "Custom";
     public int CustomOverlayWindowColor { get; set; } = 0x292929;
     public int CustomOverlayHeaderColor { get; set; } = 0xC42A30;

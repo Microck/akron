@@ -765,19 +765,37 @@ public sealed partial class AkronOverlay {
         float buttonWidth = Math.Max(42f, (availableWidth - arrowWidth - spacing * 2f) / 3f);
         Level level = Engine.Scene as Level;
 
-        bool setPressed = DrawStartPosActionButton("Set", "##startpos_set" + id, buttonWidth, entryEnabled && level != null);
+        bool setPressed = DrawStartPosActionButton(
+            "Set",
+            "##startpos_set" + id,
+            buttonWidth,
+            entryEnabled && level != null,
+            PopupActionKey("StartPos", "Set"),
+            "StartPos / Set");
         if (setPressed && level != null) {
             AkronActions.SetStartPos(level);
         }
 
         ImGui.SameLine(0f, spacing);
-        bool loadPressed = DrawStartPosActionButton("Load", "##startpos_load" + id, buttonWidth, entryEnabled && level != null);
+        bool loadPressed = DrawStartPosActionButton(
+            "Load",
+            "##startpos_load" + id,
+            buttonWidth,
+            entryEnabled && level != null,
+            PopupActionKey("StartPos", "Load"),
+            "StartPos / Load");
         if (loadPressed && level != null) {
             AkronActions.LoadStartPos(level);
         }
 
         ImGui.SameLine(0f, spacing);
-        bool clearPressed = DrawStartPosActionButton("Clear", "##startpos_clear" + id, buttonWidth, entryEnabled);
+        bool clearPressed = DrawStartPosActionButton(
+            "Clear",
+            "##startpos_clear" + id,
+            buttonWidth,
+            entryEnabled,
+            PopupActionKey("StartPos", "Clear"),
+            "StartPos / Clear");
         if (clearPressed) {
             AkronActions.ClearActiveStartPos();
         }
@@ -814,7 +832,7 @@ public sealed partial class AkronOverlay {
         return OptionEntryPress.None;
     }
 
-    private bool DrawStartPosActionButton(string label, string id, float width, bool enabled) {
+    private bool DrawStartPosActionButton(string label, string id, float width, bool enabled, string actionKey, string displayName) {
         ImGui.PushStyleColor(ImGuiCol.Button, AkronImGuiTheme.FrameBackground);
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, enabled ? AkronImGuiTheme.ButtonHovered : AkronImGuiTheme.FrameBackground);
         ImGui.PushStyleColor(ImGuiCol.ButtonActive, enabled ? AkronImGuiTheme.ButtonActive : AkronImGuiTheme.FrameBackground);
@@ -823,14 +841,25 @@ public sealed partial class AkronOverlay {
         }
 
         bool pressed = ImGui.Button(label + id, new NumericsVector2(width, 0f)) && enabled;
+        bool bindRequested = ImGui.IsItemHovered() &&
+                             (ImGui.IsMouseClicked(ImGuiMouseButton.Right) || ImGui.IsMouseClicked(ImGuiMouseButton.Left) && IsShiftDown());
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.DelayNormal)) {
-            DrawImGuiItemTooltip(label + " StartPos");
+            DrawImGuiItemTooltip(label + " StartPos\nRight-click or Shift-click to bind.");
         }
 
         if (!enabled) {
             ImGui.PopStyleColor();
         }
         ImGui.PopStyleColor(3);
+
+        if (bindRequested) {
+            if (TryGetDefaultButtonBinding(actionKey, out _)) {
+                StartButtonBindingCapture(actionKey, displayName, binding => TrySetDefaultButtonBinding(actionKey, binding));
+            } else {
+                StartBindingCapture(actionKey, displayName);
+            }
+            return false;
+        }
 
         return pressed;
     }

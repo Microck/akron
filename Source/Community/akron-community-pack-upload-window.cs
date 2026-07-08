@@ -90,7 +90,10 @@ public sealed partial class AkronOverlay {
             DrawPopupTooltip("Saved for future Upload Pack submissions and also editable from the row submenu.");
         }
 
-        string generatedTitle = AkronCommunityPackUploads.GenerateTitle(draft.MapDisplayName, AkronModule.Settings.CommunityPackUploadSection);
+        AkronCommunityPackUploadDraft generatedDraft = AkronCommunityPackUploads.BuildGeneratedDraft(
+            level,
+            AkronModule.Settings.CommunityPackUploadSection,
+            AkronModule.Settings.CommunityPackUploadUseDiscordAttribution);
         string title = draft.Title;
         if (DrawCommunityPackUploadTextInput(
             "Title",
@@ -99,12 +102,14 @@ public sealed partial class AkronOverlay {
             120,
             preferredFieldWidth,
             labelWidth)) {
-            AkronModule.Settings.CommunityPackUploadTitleOverride = string.Equals(title.Trim(), generatedTitle, StringComparison.Ordinal)
-                ? string.Empty
-                : title.Trim();
+            if (string.Equals(title.Trim(), generatedDraft.Title, StringComparison.Ordinal) &&
+                string.Equals(draft.Description, generatedDraft.Description, StringComparison.Ordinal)) {
+                AkronCommunityPackUploads.ClearUploadTextOverride(AkronModule.Settings);
+            } else {
+                AkronCommunityPackUploads.SetUploadTextOverride(AkronModule.Settings, draft.MapSid, draft.Section, title, draft.Description);
+            }
         }
 
-        string generatedDescription = AkronCommunityPackUploads.GenerateDescription(draft.MapDisplayName, AkronModule.Settings.CommunityPackUploadSection);
         string description = draft.Description;
         if (DrawCommunityPackUploadTextInput(
             "Description",
@@ -113,9 +118,12 @@ public sealed partial class AkronOverlay {
             240,
             preferredFieldWidth,
             labelWidth)) {
-            AkronModule.Settings.CommunityPackUploadDescriptionOverride = string.Equals(description.Trim(), generatedDescription, StringComparison.Ordinal)
-                ? string.Empty
-                : description.Trim();
+            if (string.Equals(description.Trim(), generatedDraft.Description, StringComparison.Ordinal) &&
+                string.Equals(draft.Title, generatedDraft.Title, StringComparison.Ordinal)) {
+                AkronCommunityPackUploads.ClearUploadTextOverride(AkronModule.Settings);
+            } else {
+                AkronCommunityPackUploads.SetUploadTextOverride(AkronModule.Settings, draft.MapSid, draft.Section, draft.Title, description);
+            }
         }
 
         bool busy = AkronCommunityPackUploads.IsUploadInProgress || AkronScreenshotScanner.IsScanning;
