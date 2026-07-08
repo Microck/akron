@@ -4,12 +4,17 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Akron Beta 45
+
+### Added
+
+- Add an Only Marked Rooms map-capture option and use marked-room previews for Community Pack uploads, with multiple catalog images shown as an in-game carousel.
+
 ## Akron Beta 44
 
 ### Added
 
 - Let StartPos `.akr` and Community Pack uploads include portable room-state snapshots while stripping deaths, time, and other stats from imported room-state restores.
-- Add an Only Marked Rooms map-capture option and use marked-room previews for Community Pack uploads, with multiple catalog images shown as an in-game carousel.
 
 ## Akron Beta 43
 
