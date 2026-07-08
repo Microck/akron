@@ -39,7 +39,7 @@ The directory layout is:
 
 Each captured room also gets a `room.json` file with room position, room size, camera size, and viewport dimensions. Tile filenames use ScreenshotTool-style center-relative camera offsets, such as `0000,dx=160,dy=90.png`.
 
-Room Capture writes a merged room collage as `merged.png` or `merged.jpg` in the captured room directory when the scan tiles can be merged safely. Map Capture writes the same per-room output and also writes a world-space chapter collage as `map.png` or `map.jpg` at the side-level export directory when at least one scanned room can be merged. If **Downscale map** is enabled, the map collage may be scaled down to avoid unsafe image dimensions.
+Room Capture writes a merged room collage as `merged.png` or `merged.jpg` in the captured room directory when the scan tiles can be merged safely. Map Capture writes the same per-room output and also writes a world-space chapter collage as `map.png` or `map.jpg` at the side-level export directory when at least one scanned room can be merged. If **Only marked rooms** is enabled, Map Capture writes separate room images under `marked-rooms/<timestamp>/` instead of writing a side-level map collage. If **Downscale map** is enabled, the map collage may be scaled down to avoid unsafe image dimensions.
 
 ## Mod Data
 

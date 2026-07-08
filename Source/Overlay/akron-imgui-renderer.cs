@@ -165,6 +165,15 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         return instance.GetOrLoadEmbeddedTextureId(suffix);
     }
 
+    public static IntPtr GetTextureIdFromBytes(byte[] bytes) {
+        if (Engine.Instance?.GraphicsDevice == null || bytes == null || bytes.Length == 0) {
+            return IntPtr.Zero;
+        }
+
+        instance ??= new AkronImGuiRenderer(Engine.Instance.GraphicsDevice);
+        return instance.BindTextureFromBytes(bytes);
+    }
+
     public void Dispose() {
         if (disposed) {
             return;
@@ -222,6 +231,12 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         id = BindTexture(texture);
         embeddedTextureIds[suffix] = id;
         return id;
+    }
+
+    private IntPtr BindTextureFromBytes(byte[] bytes) {
+        using MemoryStream stream = new MemoryStream(bytes);
+        Texture2D texture = Texture2D.FromStream(graphicsDevice, stream);
+        return BindTexture(texture);
     }
 
     private void UnbindTexture(IntPtr textureId) {

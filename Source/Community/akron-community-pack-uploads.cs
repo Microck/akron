@@ -28,11 +28,12 @@ public sealed class AkronCommunityPackUploadDraft {
 public sealed class AkronCommunityPackUploadPrepareRequest {
     public string InstallId { get; set; } = string.Empty;
     public int TermsVersion { get; set; } = AkronCommunityPackUploads.CurrentTermsVersion;
-    public AkronCommunityPackUploadCaptureInput Capture { get; set; } = new AkronCommunityPackUploadCaptureInput();
+    public System.Collections.Generic.List<AkronCommunityPackUploadCaptureInput> Captures { get; set; } = new System.Collections.Generic.List<AkronCommunityPackUploadCaptureInput>();
     public System.Collections.Generic.List<AkronCommunityPackUploadSubmissionInput> Submissions { get; set; } = new System.Collections.Generic.List<AkronCommunityPackUploadSubmissionInput>();
 }
 
 public sealed class AkronCommunityPackUploadCaptureInput {
+    public string RoomName { get; set; } = string.Empty;
     public long SizeBytes { get; set; }
     public string ContentType { get; set; } = "image/png";
 }
@@ -54,7 +55,7 @@ public sealed class AkronCommunityPackUploadAttributionInput {
 public sealed class AkronCommunityPackUploadPreparedResponse {
     public string BatchId { get; set; } = string.Empty;
     public string ExpiresUtc { get; set; } = string.Empty;
-    public AkronCommunityPackPreparedObject Capture { get; set; } = new AkronCommunityPackPreparedObject();
+    public System.Collections.Generic.List<AkronCommunityPackPreparedObject> Captures { get; set; } = new System.Collections.Generic.List<AkronCommunityPackPreparedObject>();
     public System.Collections.Generic.List<AkronCommunityPackPreparedSubmission> Submissions { get; set; } = new System.Collections.Generic.List<AkronCommunityPackPreparedSubmission>();
 }
 
@@ -78,6 +79,7 @@ public static class AkronCommunityPackUploads {
     public const string DefaultUploadEndpoint = "https://akron.micr.dev/uploads";
     public const string DiscordInviteUrl = "https://akron.micr.dev/discord";
     public const int CurrentTermsVersion = 1;
+    public const int MaxUploadRoomCaptures = 10;
     public const string AnonymousAttribution = "anonymous";
     public const string DiscordAttribution = "discord";
     private static readonly JsonSerializerOptions UploadJsonOptions = new JsonSerializerOptions {
@@ -113,7 +115,7 @@ public static class AkronCommunityPackUploads {
 
     internal static string DescribeUploadStatus() {
         if (AkronScreenshotScanner.IsScanning) {
-            return "Capturing full map: " + AkronScreenshotScanner.DescribeProgress();
+            return "Capturing marked rooms: " + AkronScreenshotScanner.DescribeProgress();
         }
 
         return string.IsNullOrWhiteSpace(uploadStatusText) ? "Ready" : uploadStatusText;
@@ -364,7 +366,7 @@ public static class AkronCommunityPackUploads {
     public static AkronCommunityPackUploadPrepareRequest BuildPrepareRequest(
         AkronCommunityPackUploadDraft draft,
         string packPath,
-        string capturePath,
+        IReadOnlyList<AkronScreenshotRoomCapture> captures,
         string installId,
         int termsVersion) {
         if (draft == null) {
@@ -376,18 +378,27 @@ public static class AkronCommunityPackUploads {
         }
 
         FileInfo packFile = RequireExistingFile(packPath, nameof(packPath));
-        FileInfo captureFile = RequireExistingFile(capturePath, nameof(capturePath));
+        if (captures == null || captures.Count == 0) {
+            throw new InvalidDataException("Upload needs at least one room capture.");
+        }
+
         string attributionMode = draft.AttributionMode == DiscordAttribution && !string.IsNullOrWhiteSpace(draft.DiscordUserId)
             ? DiscordAttribution
             : AnonymousAttribution;
+        List<AkronCommunityPackUploadCaptureInput> captureInputs = new List<AkronCommunityPackUploadCaptureInput>(captures.Count);
+        foreach (AkronScreenshotRoomCapture capture in captures) {
+            FileInfo captureFile = RequireExistingFile(capture.ImagePath, nameof(captures));
+            captureInputs.Add(new AkronCommunityPackUploadCaptureInput {
+                RoomName = string.IsNullOrWhiteSpace(capture.RoomName) ? Path.GetFileNameWithoutExtension(captureFile.Name) : capture.RoomName,
+                SizeBytes = captureFile.Length,
+                ContentType = GuessCaptureContentType(captureFile.FullName)
+            });
+        }
 
         return new AkronCommunityPackUploadPrepareRequest {
             InstallId = string.IsNullOrWhiteSpace(installId) ? EnsureInstallId(AkronModule.Settings) : installId.Trim(),
             TermsVersion = termsVersion,
-            Capture = new AkronCommunityPackUploadCaptureInput {
-                SizeBytes = captureFile.Length,
-                ContentType = GuessCaptureContentType(captureFile.FullName)
-            },
+            Captures = captureInputs,
             Submissions = new System.Collections.Generic.List<AkronCommunityPackUploadSubmissionInput> {
                 new AkronCommunityPackUploadSubmissionInput {
                     Section = draft.Section,
@@ -409,7 +420,7 @@ public static class AkronCommunityPackUploads {
         string endpoint,
         AkronCommunityPackUploadPrepareRequest request,
         string packPath,
-        string capturePath,
+        IReadOnlyList<AkronScreenshotRoomCapture> captures,
         CancellationToken cancellationToken = default) {
         if (http == null) {
             throw new ArgumentNullException(nameof(http));
@@ -425,8 +436,12 @@ public static class AkronCommunityPackUploads {
             request,
             cancellationToken);
 
-        if (prepared.Capture == null ||
-            string.IsNullOrWhiteSpace(prepared.Capture.UploadUrl) ||
+        if (prepared.Captures == null ||
+            request.Captures == null ||
+            captures == null ||
+            prepared.Captures.Count != request.Captures.Count ||
+            prepared.Captures.Count != captures.Count ||
+            prepared.Captures.Any(capture => capture == null || string.IsNullOrWhiteSpace(capture.UploadUrl)) ||
             prepared.Submissions == null ||
             prepared.Submissions.Count != request.Submissions.Count ||
             prepared.Submissions.Count != 1 ||
@@ -435,7 +450,9 @@ public static class AkronCommunityPackUploads {
             throw new InvalidDataException("Upload prepare response did not match the requested submissions.");
         }
 
-        await PutFileAsync(http, prepared.Capture.UploadUrl, capturePath, request.Capture.ContentType, cancellationToken);
+        for (int i = 0; i < captures.Count; i++) {
+            await PutFileAsync(http, prepared.Captures[i].UploadUrl, captures[i].ImagePath, request.Captures[i].ContentType, cancellationToken);
+        }
         await PutFileAsync(http, prepared.Submissions[0].Pack.UploadUrl, packPath, "application/octet-stream", cancellationToken);
 
         return await PostJsonAsync<AkronCommunityPackUploadCompleteResponse>(
@@ -649,20 +666,21 @@ public static class AkronCommunityPackUploads {
         };
     }
 
-    internal static bool IsCompletedMapCaptureForUpload(string capturePath, DateTime captureStartedUtc) {
-        if (string.IsNullOrWhiteSpace(capturePath) || !File.Exists(capturePath)) {
+    internal static bool IsCompletedRoomCaptureForUpload(AkronScreenshotRoomCapture capture, DateTime captureStartedUtc) {
+        if (string.IsNullOrWhiteSpace(capture.ImagePath) || !File.Exists(capture.ImagePath)) {
             return false;
         }
 
-        string fileName = Path.GetFileName(capturePath);
-        if (!string.Equals(fileName, "map.png", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(fileName, "map.jpg", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(fileName, "map.jpeg", StringComparison.OrdinalIgnoreCase)) {
+        string extension = Path.GetExtension(capture.ImagePath);
+        if (!string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(extension, ".webp", StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
 
         try {
-            return File.GetLastWriteTimeUtc(capturePath) >= captureStartedUtc.AddSeconds(-2);
+            return File.GetLastWriteTimeUtc(capture.ImagePath) >= captureStartedUtc.AddSeconds(-2);
         } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
             return false;
         }
@@ -786,23 +804,23 @@ public static class AkronCommunityPackUploads {
             captureStartedUtc = DateTime.UtcNow;
             ownsCaptureScan = true;
             captureSettings = BeginUploadCaptureSettings(AkronModule.Settings, draft.Section);
-            SetUploadStatus("Starting full-map capture...", 0.06f);
+            SetUploadStatus("Starting marked-room capture...", 0.06f);
             bool captureStarted;
             try {
-                captureStarted = AkronScreenshotScanner.ScanChapter(level);
+                captureStarted = AkronScreenshotScanner.ScanChapterMarkedRooms(level, draft.Section, MaxUploadRoomCaptures);
             } catch (Exception exception) {
                 ownsCaptureScan = false;
                 captureSettings.Restore();
-                FailUpload("Could not start full-map capture: " + exception.Message, exception, "Could not start full-map capture.");
+                FailUpload("Could not start marked-room capture: " + exception.Message, exception, "Could not start marked-room capture.");
                 yield break;
             }
             if (!captureStarted) {
                 ownsCaptureScan = false;
                 captureSettings.Restore();
-                FailUpload("Could not start full-map capture.", null, "Could not start full-map capture.");
+                FailUpload("Could not start marked-room capture.", null, "Could not start marked-room capture.");
                 yield break;
             }
-            Engine.Scene?.Add(new AkronToast("Upload Pack is capturing the full map."));
+            Engine.Scene?.Add(new AkronToast("Upload Pack is capturing marked rooms."));
 
             while (AkronScreenshotScanner.IsScanning) {
                 yield return null;
@@ -810,13 +828,22 @@ public static class AkronCommunityPackUploads {
             ownsCaptureScan = false;
             captureSettings.Restore();
 
-            string capturePath = AkronScreenshotScanner.LastExportPath;
-            if (!IsCompletedMapCaptureForUpload(capturePath, captureStartedUtc)) {
+            IReadOnlyList<AkronScreenshotRoomCapture> captures = AkronScreenshotScanner.LastMarkedRoomCaptures;
+            int markedRoomCandidateCount = AkronScreenshotScanner.LastMarkedRoomCandidateCount;
+            int expectedCaptureCount = Math.Min(markedRoomCandidateCount, MaxUploadRoomCaptures);
+            if (!AkronScreenshotScanner.LastScanCompletedSuccessfully ||
+                captures.Count == 0 ||
+                captures.Count != expectedCaptureCount ||
+                captures.Any(capture => !IsCompletedRoomCaptureForUpload(capture, captureStartedUtc))) {
                 CleanupPack();
-                SetUploadStatus("Could not find the full-map capture.", 0f);
-                Engine.Scene?.Add(new AkronToast("Upload Pack could not find the map capture."));
+                SetUploadStatus("Could not find marked-room captures.", 0f);
+                Engine.Scene?.Add(new AkronToast("Upload Pack could not find marked-room captures."));
                 RemoveSelf();
                 yield break;
+            }
+
+            if (markedRoomCandidateCount > MaxUploadRoomCaptures && captures.Count == MaxUploadRoomCaptures) {
+                Engine.Scene?.Add(new AkronToast("Upload Pack attached the first " + captures.Count.ToString(CultureInfo.InvariantCulture) + " marked rooms."));
             }
 
             Task<AkronCommunityPackUploadCompleteResponse> uploadTask = null;
@@ -825,16 +852,16 @@ public static class AkronCommunityPackUploads {
                 AkronCommunityPackUploadPrepareRequest request = BuildPrepareRequest(
                     draft,
                     packPath,
-                    capturePath,
+                    captures,
                     EnsureInstallId(AkronModule.Settings),
                     CurrentTermsVersion);
-                SetUploadStatus("Uploading pack and full-map capture...", 0.84f);
+                SetUploadStatus("Uploading pack and room captures...", 0.84f);
                 uploadTask = UploadAsync(
                     UploadHttp,
                     AkronModule.Settings.CommunityPackUploadEndpoint,
                     request,
                     packPath,
-                    capturePath,
+                    captures,
                     uploadCancellation.Token);
             } catch (Exception exception) when (exception is IOException || exception is InvalidDataException || exception is InvalidOperationException || exception is UnauthorizedAccessException) {
                 CleanupPack();
@@ -990,7 +1017,12 @@ internal sealed class AkronCommunityPackUploadCaptureSettings
 
         // Upload previews need to show the pack content even when the player
         // keeps optional capture marker overlays disabled for normal captures.
+        // Keep the preview scoped to the uploaded section so moderation images
+        // do not pick up unrelated marker overlays from the user's capture setup.
         settings.ScreenshotScannerExportMarkers = true;
+        settings.ScreenshotScannerExportStartPositions = false;
+        settings.ScreenshotScannerExportAutoKillAreas = false;
+        settings.ScreenshotScannerExportAutoDeafenAreas = false;
         switch (AkronCommunityPackUploads.NormalizeUploadSection(section)) {
             case AkronSetupSection.AutoKill:
                 settings.ScreenshotScannerExportAutoKillAreas = true;

@@ -49,6 +49,31 @@ public sealed class CommunityPackTests {
     }
 
     [Fact]
+    public void PreviewImagesAcceptRoomCapturesAndLegacyImageFields() {
+        AkronCommunityPackEntry entry = new AkronCommunityPackEntry {
+            ImageUrl = "https://cdn.example.test/legacy.webp",
+            ImageUrls = {
+                "https://cdn.example.test/room-b.webp",
+                "https://cdn.example.test/legacy.webp"
+            },
+            Images = {
+                new AkronCommunityPackImage {
+                    Url = "https://cdn.example.test/room-a.webp",
+                    RoomName = "a-00"
+                }
+            }
+        };
+
+        AkronCommunityPackImage[] images = AkronCommunityPacks.GetPreviewImages(entry).ToArray();
+
+        Assert.Equal(3, images.Length);
+        Assert.Equal("https://cdn.example.test/room-a.webp", images[0].Url);
+        Assert.Equal("a-00", images[0].RoomName);
+        Assert.Equal("https://cdn.example.test/room-b.webp", images[1].Url);
+        Assert.Equal("https://cdn.example.test/legacy.webp", images[2].Url);
+    }
+
+    [Fact]
     public void FilterRequiresCurrentMapAndSelectedCategory() {
         AkronCommunityPackEntry matching = new AkronCommunityPackEntry {
             Id = "match",

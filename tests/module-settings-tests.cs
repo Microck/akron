@@ -1929,7 +1929,7 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void UploadPackCaptureSettingsPreserveExistingUnrelatedMarkerChoices()
+    public void UploadPackCaptureSettingsIsolateSelectedMarkersAndRestore()
     {
         AkronModuleSettings settings = new AkronModuleSettings {
             ScreenshotScannerExportMarkers = false,
@@ -1943,9 +1943,9 @@ public sealed class ModuleSettingsTests
         AkronCommunityPackUploadCaptureSettings captureSettings = AkronCommunityPackUploads.BeginUploadCaptureSettings(settings, AkronSetupSection.AutoKill);
 
         Assert.True(settings.ScreenshotScannerExportMarkers);
-        Assert.True(settings.ScreenshotScannerExportStartPositions);
+        Assert.False(settings.ScreenshotScannerExportStartPositions);
         Assert.True(settings.ScreenshotScannerExportAutoKillAreas);
-        Assert.True(settings.ScreenshotScannerExportAutoDeafenAreas);
+        Assert.False(settings.ScreenshotScannerExportAutoDeafenAreas);
         Assert.False(settings.AutoKillArea);
         Assert.True(settings.AutoDeafenArea);
 
@@ -2052,14 +2052,16 @@ public sealed class ModuleSettingsTests
             AkronCommunityPackUploadPrepareRequest request = AkronCommunityPackUploads.BuildPrepareRequest(
                 draft,
                 packPath,
-                capturePath,
+                new[] { new AkronScreenshotRoomCapture("a-00", capturePath) },
                 "install-id",
                 7);
 
             Assert.Equal("install-id", request.InstallId);
             Assert.Equal(7, request.TermsVersion);
-            Assert.Equal(3, request.Capture.SizeBytes);
-            Assert.Equal("image/webp", request.Capture.ContentType);
+            AkronCommunityPackUploadCaptureInput capture = Assert.Single(request.Captures);
+            Assert.Equal("a-00", capture.RoomName);
+            Assert.Equal(3, capture.SizeBytes);
+            Assert.Equal("image/webp", capture.ContentType);
             AkronCommunityPackUploadSubmissionInput submission = Assert.Single(request.Submissions);
             Assert.Equal(AkronSetupSection.StartPos, submission.Section);
             Assert.Equal("Glyph/Glyph", submission.MapSid);
@@ -2094,7 +2096,7 @@ public sealed class ModuleSettingsTests
             AkronCommunityPackUploadPrepareRequest autoKillRequest = AkronCommunityPackUploads.BuildPrepareRequest(
                 autoKillDraft,
                 packPath,
-                capturePath,
+                new[] { new AkronScreenshotRoomCapture("kill-00", capturePath) },
                 "install-id",
                 1);
 
@@ -2111,7 +2113,7 @@ public sealed class ModuleSettingsTests
             AkronCommunityPackUploadPrepareRequest autoDeafenRequest = AkronCommunityPackUploads.BuildPrepareRequest(
                 autoDeafenDraft,
                 packPath,
-                capturePath,
+                new[] { new AkronScreenshotRoomCapture("deafen-00", capturePath) },
                 "install-id",
                 1);
 
@@ -2126,32 +2128,30 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void UploadPackRequiresFreshMergedMapCaptureImage()
+    public void UploadPackRequiresFreshMarkedRoomCaptureImages()
     {
         string directory = Path.Combine(Path.GetTempPath(), "akron-upload-capture-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try {
             DateTime captureStartedUtc = DateTime.UtcNow;
-            string mapPng = Path.Combine(directory, "map.png");
-            string mapJpg = Path.Combine(directory, "map.jpg");
-            string staleMap = Path.Combine(directory, "stale", "map.png");
-            string mergedRoom = Path.Combine(directory, "merged.png");
+            string roomPng = Path.Combine(directory, "marked-rooms", "01-a-00.png");
+            string roomJpg = Path.Combine(directory, "marked-rooms", "02-b-00.jpg");
+            string staleRoom = Path.Combine(directory, "stale", "01-a-00.png");
             string roomMetadata = Path.Combine(directory, "room.json");
 
-            Directory.CreateDirectory(Path.GetDirectoryName(staleMap)!);
-            File.WriteAllBytes(mapPng, new byte[] { 1 });
-            File.WriteAllBytes(mapJpg, new byte[] { 1 });
-            File.WriteAllBytes(staleMap, new byte[] { 1 });
-            File.WriteAllBytes(mergedRoom, new byte[] { 1 });
+            Directory.CreateDirectory(Path.GetDirectoryName(roomPng)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(staleRoom)!);
+            File.WriteAllBytes(roomPng, new byte[] { 1 });
+            File.WriteAllBytes(roomJpg, new byte[] { 1 });
+            File.WriteAllBytes(staleRoom, new byte[] { 1 });
             File.WriteAllText(roomMetadata, "{}");
-            File.SetLastWriteTimeUtc(staleMap, captureStartedUtc.AddMinutes(-5));
+            File.SetLastWriteTimeUtc(staleRoom, captureStartedUtc.AddMinutes(-5));
 
-            Assert.True(AkronCommunityPackUploads.IsCompletedMapCaptureForUpload(mapPng, captureStartedUtc));
-            Assert.True(AkronCommunityPackUploads.IsCompletedMapCaptureForUpload(mapJpg, captureStartedUtc));
-            Assert.False(AkronCommunityPackUploads.IsCompletedMapCaptureForUpload(staleMap, captureStartedUtc));
-            Assert.False(AkronCommunityPackUploads.IsCompletedMapCaptureForUpload(mergedRoom, captureStartedUtc));
-            Assert.False(AkronCommunityPackUploads.IsCompletedMapCaptureForUpload(roomMetadata, captureStartedUtc));
-            Assert.False(AkronCommunityPackUploads.IsCompletedMapCaptureForUpload(Path.Combine(directory, "missing", "map.png"), captureStartedUtc));
+            Assert.True(AkronCommunityPackUploads.IsCompletedRoomCaptureForUpload(new AkronScreenshotRoomCapture("a-00", roomPng), captureStartedUtc));
+            Assert.True(AkronCommunityPackUploads.IsCompletedRoomCaptureForUpload(new AkronScreenshotRoomCapture("b-00", roomJpg), captureStartedUtc));
+            Assert.False(AkronCommunityPackUploads.IsCompletedRoomCaptureForUpload(new AkronScreenshotRoomCapture("a-00", staleRoom), captureStartedUtc));
+            Assert.False(AkronCommunityPackUploads.IsCompletedRoomCaptureForUpload(new AkronScreenshotRoomCapture("meta", roomMetadata), captureStartedUtc));
+            Assert.False(AkronCommunityPackUploads.IsCompletedRoomCaptureForUpload(new AkronScreenshotRoomCapture("missing", Path.Combine(directory, "missing", "01-a-00.png")), captureStartedUtc));
         } finally {
             if (Directory.Exists(directory)) {
                 Directory.Delete(directory, recursive: true);
@@ -2210,10 +2210,16 @@ public sealed class ModuleSettingsTests
         string directory = Path.Combine(Path.GetTempPath(), "akron-upload-client-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         string packPath = Path.Combine(directory, "pack.akr");
-        string capturePath = Path.Combine(directory, "capture.png");
+        string firstCapturePath = Path.Combine(directory, "capture-a.png");
+        string secondCapturePath = Path.Combine(directory, "capture-b.jpg");
         try {
             File.WriteAllBytes(packPath, new byte[] { 1, 2, 3 });
-            File.WriteAllBytes(capturePath, new byte[] { 4, 5 });
+            File.WriteAllBytes(firstCapturePath, new byte[] { 4, 5 });
+            File.WriteAllBytes(secondCapturePath, new byte[] { 6, 7, 8 });
+            AkronScreenshotRoomCapture[] captures = {
+                new AkronScreenshotRoomCapture("a-00", firstCapturePath),
+                new AkronScreenshotRoomCapture("b-00", secondCapturePath)
+            };
             AkronCommunityPackUploadDraft draft = AkronCommunityPackUploads.BuildDraft(
                 "Glyph/Glyph",
                 "Glyph",
@@ -2223,7 +2229,7 @@ public sealed class ModuleSettingsTests
             AkronCommunityPackUploadPrepareRequest request = AkronCommunityPackUploads.BuildPrepareRequest(
                 draft,
                 packPath,
-                capturePath,
+                captures,
                 "install-id",
                 1);
             UploadSequenceHandler handler = new UploadSequenceHandler();
@@ -2234,18 +2240,23 @@ public sealed class ModuleSettingsTests
                 "https://uploads.example.test/uploads/",
                 request,
                 packPath,
-                capturePath);
+                captures);
 
             Assert.Equal("batch-1", response.BatchId);
             Assert.Equal("queued", response.Status);
             Assert.Contains("\"installId\":\"install-id\"", handler.PrepareBody);
             Assert.Contains("\"section\":\"StartPos\"", handler.PrepareBody);
             Assert.Contains("\"packSizeBytes\":3", handler.PrepareBody);
-            Assert.Equal(new byte[] { 4, 5 }, handler.CaptureBytes);
+            Assert.Contains("\"roomName\":\"a-00\"", handler.PrepareBody);
+            Assert.Contains("\"roomName\":\"b-00\"", handler.PrepareBody);
+            Assert.Equal(new byte[] { 4, 5 }, handler.CaptureBytesByObject["capture-1"]);
+            Assert.Equal(new byte[] { 6, 7, 8 }, handler.CaptureBytesByObject["capture-2"]);
             Assert.Equal(new byte[] { 1, 2, 3 }, handler.PackBytes);
-            Assert.Equal("image/png", handler.CaptureContentType);
+            Assert.Equal("image/png", handler.CaptureContentTypesByObject["capture-1"]);
+            Assert.Equal("image/jpeg", handler.CaptureContentTypesByObject["capture-2"]);
             Assert.Equal("application/octet-stream", handler.PackContentType);
-            Assert.Equal(2, handler.CaptureContentLength);
+            Assert.Equal(2, handler.CaptureContentLengthsByObject["capture-1"]);
+            Assert.Equal(3, handler.CaptureContentLengthsByObject["capture-2"]);
             Assert.Equal(3, handler.PackContentLength);
             Assert.Equal("{\"installId\":\"install-id\",\"batchId\":\"batch-1\"}", handler.CompleteBody);
         } finally {
@@ -2274,11 +2285,11 @@ public sealed class ModuleSettingsTests
             AkronCommunityPackUploadPrepareRequest request = AkronCommunityPackUploads.BuildPrepareRequest(
                 draft,
                 packPath,
-                capturePath,
+                new[] { new AkronScreenshotRoomCapture("a-00", capturePath) },
                 "install-id",
                 1);
             UploadSequenceHandler handler = new UploadSequenceHandler {
-                PrepareResponseBody = """{"batchId":"batch-1","capture":null,"submissions":[{"submissionId":"submission-1","pack":null}]}"""
+                PrepareResponseBody = """{"batchId":"batch-1","captures":[],"submissions":[{"submissionId":"submission-1","pack":null}]}"""
             };
             using HttpClient http = new HttpClient(handler);
 
@@ -2287,9 +2298,9 @@ public sealed class ModuleSettingsTests
                 "https://uploads.example.test/uploads/",
                 request,
                 packPath,
-                capturePath));
+                new[] { new AkronScreenshotRoomCapture("a-00", capturePath) }));
 
-            Assert.Empty(handler.CaptureBytes);
+            Assert.Empty(handler.CaptureBytesByObject);
             Assert.Empty(handler.PackBytes);
         } finally {
             if (Directory.Exists(directory)) {
@@ -4558,21 +4569,28 @@ public sealed class ModuleSettingsTests
     {
         public string PrepareBody { get; private set; } = string.Empty;
         public string CompleteBody { get; private set; } = string.Empty;
-        public byte[] CaptureBytes { get; private set; } = Array.Empty<byte>();
+        public Dictionary<string, byte[]> CaptureBytesByObject { get; } = new Dictionary<string, byte[]>();
         public byte[] PackBytes { get; private set; } = Array.Empty<byte>();
-        public string CaptureContentType { get; private set; } = string.Empty;
+        public Dictionary<string, string> CaptureContentTypesByObject { get; } = new Dictionary<string, string>();
         public string PackContentType { get; private set; } = string.Empty;
-        public long? CaptureContentLength { get; private set; }
+        public Dictionary<string, long?> CaptureContentLengthsByObject { get; } = new Dictionary<string, long?>();
         public long? PackContentLength { get; private set; }
         public string PrepareResponseBody { get; set; } = """
         {
           "batchId": "batch-1",
           "expiresUtc": "2026-01-01T00:30:00.000Z",
-          "capture": {
-            "objectId": "capture-1",
-            "uploadUrl": "https://uploads.example.test/uploads/objects/capture-1?token=capture-token",
-            "maxBytes": 104857600
-          },
+          "captures": [
+            {
+              "objectId": "capture-1",
+              "uploadUrl": "https://uploads.example.test/uploads/objects/capture-1?token=capture-token",
+              "maxBytes": 104857600
+            },
+            {
+              "objectId": "capture-2",
+              "uploadUrl": "https://uploads.example.test/uploads/objects/capture-2?token=capture-token",
+              "maxBytes": 104857600
+            }
+          ],
           "submissions": [
             {
               "submissionId": "submission-1",
@@ -4595,9 +4613,16 @@ public sealed class ModuleSettingsTests
             }
 
             if (request.Method == HttpMethod.Put && path == "/uploads/objects/capture-1") {
-                CaptureBytes = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
-                CaptureContentType = request.Content.Headers.ContentType?.MediaType ?? string.Empty;
-                CaptureContentLength = request.Content.Headers.ContentLength;
+                CaptureBytesByObject["capture-1"] = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
+                CaptureContentTypesByObject["capture-1"] = request.Content.Headers.ContentType?.MediaType ?? string.Empty;
+                CaptureContentLengthsByObject["capture-1"] = request.Content.Headers.ContentLength;
+                return JsonResponse("""{"ok":true}""");
+            }
+
+            if (request.Method == HttpMethod.Put && path == "/uploads/objects/capture-2") {
+                CaptureBytesByObject["capture-2"] = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
+                CaptureContentTypesByObject["capture-2"] = request.Content.Headers.ContentType?.MediaType ?? string.Empty;
+                CaptureContentLengthsByObject["capture-2"] = request.Content.Headers.ContentLength;
                 return JsonResponse("""{"ok":true}""");
             }
 

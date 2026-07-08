@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
 using Celeste;
 using ImGuiNET;
 using Monocle;
@@ -9,6 +12,14 @@ using NumericsVector2 = System.Numerics.Vector2;
 namespace Celeste.Mod.Akron;
 
 public sealed partial class AkronOverlay {
+    private const int MaxCommunityPreviewImageBytes = 4 * 1024 * 1024;
+    private static readonly HttpClient CommunityPreviewHttp = new HttpClient {
+        Timeout = TimeSpan.FromSeconds(8)
+    };
+    private static readonly Dictionary<string, Task<byte[]>> CommunityPreviewImageLoads = new Dictionary<string, Task<byte[]>>(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, IntPtr> CommunityPreviewImageTextures = new Dictionary<string, IntPtr>(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> CommunityPreviewImageFailures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     private void DrawCommunityPackBrowserWindow() {
         if (!communityPackBrowserOpen) {
             return;
@@ -92,6 +103,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.InputTextWithHint("##community-search-" + popupId, "Search map packs", ref query, 80)) {
             AkronModule.Settings.CommunityPackSearchQuery = query;
             selectedCommunityPackIndex = 0;
+            selectedCommunityPackImageIndex = 0;
             MarkValueEditFreeze();
         }
         if (ImGui.IsItemActive()) {
@@ -121,6 +133,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Button((AkronCommunityPacks.RefreshInProgress ? "Refreshing..." : "Refresh") + "##community-packs-" + popupId)) {
             AkronCommunityPacks.BeginRefresh(AkronModule.Settings.CommunityPackIndexUrl);
             selectedCommunityPackIndex = 0;
+            selectedCommunityPackImageIndex = 0;
         }
         DrawPopupTooltip("Connect to the configured index and reload map-specific packs.");
 
@@ -158,6 +171,7 @@ public sealed partial class AkronOverlay {
             AkronCommunityPackEntry pack = entries[index];
             if (DrawCommunityPackCard(pack, selectedCommunityPackIndex == index, popupId, index)) {
                 selectedCommunityPackIndex = index;
+                selectedCommunityPackImageIndex = 0;
             }
         }
         ImGui.EndChild();
@@ -188,7 +202,7 @@ public sealed partial class AkronOverlay {
         ImGui.Separator();
         TextWrappedLiteral(string.IsNullOrWhiteSpace(pack.Description) ? "No description provided." : pack.Description.Trim());
         ImGui.Spacing();
-        TextDisabledLiteral("Image: " + (string.IsNullOrWhiteSpace(pack.ImageUrl) ? "placeholder until pack art is supplied." : pack.ImageUrl));
+        DrawCommunityPackPreviewCarousel(pack, popupId);
         TextDisabledLiteral("Avatar: " + (string.IsNullOrWhiteSpace(pack.AuthorAvatarUrl) ? "placeholder until author art is supplied." : pack.AuthorAvatarUrl));
         if (!string.IsNullOrWhiteSpace(pack.MapUrl)) {
             TextWrappedLiteral("Map link: " + pack.MapUrl);
@@ -223,16 +237,7 @@ public sealed partial class AkronOverlay {
         NumericsVector2 imageMin = new NumericsVector2(min.X + 10f, min.Y + 12f);
         NumericsVector2 imageMax = new NumericsVector2(imageMin.X + imageWidth, imageMin.Y + imageHeight);
         drawList.AddRectFilled(imageMin, imageMax, AkronImGuiTheme.ToU32(ToImGuiColor(0x232323, 1f)), 2f);
-        if (string.IsNullOrWhiteSpace(pack.ImageUrl)) {
-            IntPtr placeholderTexture = AkronImGuiRenderer.GetEmbeddedTextureId("community-pack-placeholder.jpg");
-            if (placeholderTexture != IntPtr.Zero) {
-                drawList.AddImage(placeholderTexture, imageMin, imageMax);
-            } else {
-                drawList.AddText(new NumericsVector2(imageMin.X + 16f, imageMin.Y + imageHeight * 0.5f - 8f), AkronImGuiTheme.ToU32(ToImGuiColor(0x778096, 1f)), "No image");
-            }
-        } else {
-            drawList.AddText(new NumericsVector2(imageMin.X + 16f, imageMin.Y + imageHeight * 0.5f - 8f), AkronImGuiTheme.ToU32(ToImGuiColor(0x778096, 1f)), "Pack image");
-        }
+        DrawCommunityPackPreviewImage(drawList, imageMin, imageMax, FirstCommunityPackPreviewUrl(pack));
 
         NumericsVector2 avatarCenter = new NumericsVector2(max.X - 28f, min.Y + 28f);
         drawList.AddCircleFilled(avatarCenter, 15f, AkronImGuiTheme.ToU32(ToImGuiColor(0x222222, 1f)));
@@ -252,6 +257,149 @@ public sealed partial class AkronOverlay {
 
     private static void TextWrappedLiteral(string text) {
         ImGui.TextWrapped(EscapeImGuiFormat(text));
+    }
+
+    private void DrawCommunityPackPreviewCarousel(AkronCommunityPackEntry pack, string popupId) {
+        IReadOnlyList<AkronCommunityPackImage> images = AkronCommunityPacks.GetPreviewImages(pack);
+        selectedCommunityPackImageIndex = images.Count == 0
+            ? 0
+            : Calc.Clamp(selectedCommunityPackImageIndex, 0, images.Count - 1);
+
+        float width = Math.Max(220f, ImGui.GetContentRegionAvail().X);
+        float height = Math.Min(180f, Math.Max(96f, width * 9f / 16f));
+        NumericsVector2 min = ImGui.GetCursorScreenPos();
+        NumericsVector2 max = new NumericsVector2(min.X + width, min.Y + height);
+        ImGui.InvisibleButton("##community-preview-" + popupId, new NumericsVector2(width, height));
+        DrawCommunityPackPreviewImage(ImGui.GetWindowDrawList(), min, max, images.Count == 0 ? string.Empty : images[selectedCommunityPackImageIndex].Url);
+
+        if (images.Count > 1) {
+            if (ImGui.Button("<##community-preview-prev-" + popupId, new NumericsVector2(32f, 24f))) {
+                selectedCommunityPackImageIndex = (selectedCommunityPackImageIndex + images.Count - 1) % images.Count;
+            }
+            ImGui.SameLine();
+            if (ImGui.Button(">##community-preview-next-" + popupId, new NumericsVector2(32f, 24f))) {
+                selectedCommunityPackImageIndex = (selectedCommunityPackImageIndex + 1) % images.Count;
+            }
+            ImGui.SameLine();
+        }
+
+        if (images.Count == 0) {
+            TextDisabledLiteral("Image: placeholder until pack art is supplied.");
+            return;
+        }
+
+        string roomName = images[selectedCommunityPackImageIndex].RoomName;
+        string label = string.IsNullOrWhiteSpace(roomName) ? "Image" : "Image: " + roomName;
+        TextDisabledLiteral(label + " (" + (selectedCommunityPackImageIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + images.Count.ToString(CultureInfo.InvariantCulture) + ")");
+    }
+
+    private static string FirstCommunityPackPreviewUrl(AkronCommunityPackEntry pack) {
+        IReadOnlyList<AkronCommunityPackImage> images = AkronCommunityPacks.GetPreviewImages(pack);
+        return images.Count == 0 ? string.Empty : images[0].Url;
+    }
+
+    private static void DrawCommunityPackPreviewImage(ImDrawListPtr drawList, NumericsVector2 min, NumericsVector2 max, string imageUrl) {
+        IntPtr texture = GetCommunityPreviewTextureId(imageUrl);
+        if (texture == IntPtr.Zero) {
+            texture = AkronImGuiRenderer.GetEmbeddedTextureId("community-pack-placeholder.jpg");
+        }
+
+        if (texture != IntPtr.Zero) {
+            drawList.AddImage(texture, min, max);
+            return;
+        }
+
+        drawList.AddText(new NumericsVector2(min.X + 16f, min.Y + (max.Y - min.Y) * 0.5f - 8f), AkronImGuiTheme.ToU32(ToImGuiColor(0x778096, 1f)), "No image");
+    }
+
+    private static IntPtr GetCommunityPreviewTextureId(string imageUrl) {
+        if (string.IsNullOrWhiteSpace(imageUrl)) {
+            return IntPtr.Zero;
+        }
+
+        imageUrl = imageUrl.Trim();
+        if (CommunityPreviewImageFailures.Contains(imageUrl)) {
+            return IntPtr.Zero;
+        }
+
+        if (CommunityPreviewImageTextures.TryGetValue(imageUrl, out IntPtr textureId)) {
+            return textureId;
+        }
+
+        if (!CommunityPreviewImageLoads.TryGetValue(imageUrl, out Task<byte[]> loadTask)) {
+            loadTask = Task.Run(() => ReadCommunityPreviewImageBytes(imageUrl));
+            CommunityPreviewImageLoads[imageUrl] = loadTask;
+            return IntPtr.Zero;
+        }
+
+        if (loadTask.IsFaulted || loadTask.IsCanceled) {
+            Exception exception = loadTask.Exception?.GetBaseException();
+            AkronLog.Warn(nameof(AkronCommunityPacks), "Could not load community preview image '" + imageUrl + "': " + (exception?.Message ?? "canceled"));
+            CommunityPreviewImageLoads.Remove(imageUrl);
+            CommunityPreviewImageFailures.Add(imageUrl);
+            return IntPtr.Zero;
+        }
+
+        if (!loadTask.IsCompletedSuccessfully) {
+            return IntPtr.Zero;
+        }
+
+        byte[] bytes = loadTask.GetAwaiter().GetResult();
+        try {
+            textureId = AkronImGuiRenderer.GetTextureIdFromBytes(bytes);
+        } catch (Exception exception) {
+            AkronLog.Warn(nameof(AkronCommunityPacks), "Could not decode community preview image '" + imageUrl + "': " + exception.Message);
+            CommunityPreviewImageLoads.Remove(imageUrl);
+            CommunityPreviewImageFailures.Add(imageUrl);
+            return IntPtr.Zero;
+        }
+        if (textureId != IntPtr.Zero) {
+            CommunityPreviewImageTextures[imageUrl] = textureId;
+        }
+
+        return textureId;
+    }
+
+    private static byte[] ReadCommunityPreviewImageBytes(string imageUrl) {
+        Uri uri = new Uri(imageUrl, UriKind.Absolute);
+        if (uri.Scheme == Uri.UriSchemeFile) {
+            FileInfo file = new FileInfo(uri.LocalPath);
+            if (file.Length > MaxCommunityPreviewImageBytes) {
+                throw new InvalidDataException("Community preview image is too large.");
+            }
+            return File.ReadAllBytes(file.FullName);
+        }
+
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) {
+            throw new InvalidDataException("Community preview image URL must use http, https, or file.");
+        }
+
+        using HttpResponseMessage response = CommunityPreviewHttp.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+        response.EnsureSuccessStatusCode();
+        if (response.Content.Headers.ContentLength > MaxCommunityPreviewImageBytes) {
+            throw new InvalidDataException("Community preview image is too large.");
+        }
+
+        using Stream stream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+        return ReadCommunityPreviewImageBytes(stream, MaxCommunityPreviewImageBytes);
+    }
+
+    private static byte[] ReadCommunityPreviewImageBytes(Stream stream, int maxBytes) {
+        if (stream == null) {
+            throw new InvalidDataException("Community preview image response was empty.");
+        }
+
+        using MemoryStream output = new MemoryStream(Math.Min(maxBytes, 81920));
+        byte[] buffer = new byte[81920];
+        int read;
+        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0) {
+            if (output.Length + read > maxBytes) {
+                throw new InvalidDataException("Community preview image is too large.");
+            }
+            output.Write(buffer, 0, read);
+        }
+
+        return output.ToArray();
     }
 
     private static void TextDisabledLiteral(string text) {

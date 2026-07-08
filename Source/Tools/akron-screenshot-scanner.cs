@@ -99,6 +99,24 @@ internal readonly struct AkronScreenshotMapPlacement {
     public float Scale { get; }
 }
 
+public readonly struct AkronScreenshotRoomCapture {
+    public AkronScreenshotRoomCapture(string roomName, string imagePath) {
+        RoomName = roomName ?? string.Empty;
+        ImagePath = imagePath ?? string.Empty;
+    }
+
+    public string RoomName { get; }
+    public string ImagePath { get; }
+}
+
+[Flags]
+internal enum AkronScreenshotMarkerKinds {
+    None = 0,
+    StartPositions = 1,
+    AutoKillAreas = 2,
+    AutoDeafenAreas = 4
+}
+
 public static class AkronScreenshotScanner {
     private const int TileSize = 8;
     private const int RoomLoadSettleFrames = 6;
@@ -120,6 +138,9 @@ public static class AkronScreenshotScanner {
     private static bool initialPlayerCollidable;
     private static Collider initialPlayerCollider;
     private static int initialPlayerState;
+    private static readonly List<AkronScreenshotRoomCapture> lastMarkedRoomCaptures = new List<AkronScreenshotRoomCapture>();
+    private static int lastMarkedRoomCandidateCount;
+    private static bool lastScanCompletedSuccessfully;
 
     public static bool IsScanning => isScanning;
     public static string LastExportPath => lastExportPath;
@@ -128,6 +149,9 @@ public static class AkronScreenshotScanner {
     public static float ScanProgressFraction => scanRoomsTotal <= 0
         ? isScanning ? 0f : 1f
         : Math.Min(1f, Math.Max(0f, scanRoomsCompleted / (float) scanRoomsTotal));
+    public static IReadOnlyList<AkronScreenshotRoomCapture> LastMarkedRoomCaptures => lastMarkedRoomCaptures;
+    public static int LastMarkedRoomCandidateCount => lastMarkedRoomCandidateCount;
+    public static bool LastScanCompletedSuccessfully => lastScanCompletedSuccessfully;
 
     public static void ScanRoom(Level level) {
         if (!TryStart(level, out Player player)) {
@@ -136,10 +160,25 @@ public static class AkronScreenshotScanner {
 
         scanRoomsCompleted = 0;
         scanRoomsTotal = 1;
-        scannerHost.Add(new Coroutine(ScanRooms(player, new Queue<string>(new[] { level.Session.Level }), buildMapComposite: false)));
+        ClearMarkedRoomCaptureState();
+        scannerHost.Add(new Coroutine(ScanRooms(player, new Queue<string>(new[] { level.Session.Level }), buildMapComposite: false, markedRoomOutputDirectory: string.Empty)));
     }
 
     public static bool ScanChapter(Level level) {
+        return ScanChapter(level, onlyMarkedRooms: AkronModule.Settings.ScreenshotScannerOnlyMarkedRooms, maxMarkedRooms: 0);
+    }
+
+    public static bool ScanChapterMarkedRooms(Level level, AkronSetupSection section, int maxMarkedRooms) {
+        AkronScreenshotMarkerKinds markerKinds = MarkerKindsForSection(section);
+        if (markerKinds == AkronScreenshotMarkerKinds.None) {
+            Engine.Scene?.Add(new AkronToast("Only marked rooms needs StartPos, Auto Kill, or Auto Deafen markers."));
+            return false;
+        }
+
+        return ScanChapter(level, onlyMarkedRooms: true, maxMarkedRooms: maxMarkedRooms, markerKindsOverride: markerKinds);
+    }
+
+    private static bool ScanChapter(Level level, bool onlyMarkedRooms, int maxMarkedRooms, AkronScreenshotMarkerKinds? markerKindsOverride = null) {
         if (!TryStart(level, out Player player)) {
             return false;
         }
@@ -148,36 +187,160 @@ public static class AkronScreenshotScanner {
             MapData mapData = GetScanMapData(level);
             int sessionRoomCount = level.Session?.MapData?.Levels?.Count ?? 0;
             int scanRoomCount = mapData?.Levels?.Count ?? 0;
-            AkronLog.Normal(nameof(AkronScreenshotScanner), "Starting map capture with " + scanRoomCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + " queued room candidates; session-map rooms=" + sessionRoomCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".");
-            long estimatedPixels = EstimateMapOutputPixels(level, mapData);
-            if (!AkronModule.Settings.ScreenshotScannerDownscaleMapCapture && estimatedPixels >= LargeMapCaptureWarningPixels) {
-                string estimate = FormatPixelCount(estimatedPixels);
-                string message = "Huge map capture: about " + estimate + " output pixels. This may take several minutes, create a very large file, and temporarily freeze or crash the game.";
-                AkronLog.Warn(nameof(AkronScreenshotScanner), message);
-                Engine.Scene?.Add(new AkronToast(message));
+            ClearMarkedRoomCaptureState();
+            AkronScreenshotMarkerKinds markerKinds = markerKindsOverride ?? BuildEnabledMarkerKinds(AkronModule.Settings);
+            bool buildMapComposite = !onlyMarkedRooms;
+            AkronLog.Normal(nameof(AkronScreenshotScanner), "Starting map capture with " + scanRoomCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + " queued room candidates; session-map rooms=" + sessionRoomCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + "; only-marked=" + onlyMarkedRooms.ToString().ToLowerInvariant() + ".");
+            if (!onlyMarkedRooms) {
+                long estimatedPixels = EstimateMapOutputPixels(level, mapData);
+                if (!AkronModule.Settings.ScreenshotScannerDownscaleMapCapture && estimatedPixels >= LargeMapCaptureWarningPixels) {
+                    string estimate = FormatPixelCount(estimatedPixels);
+                    string message = "Huge map capture: about " + estimate + " output pixels. This may take several minutes, create a very large file, and temporarily freeze or crash the game.";
+                    AkronLog.Warn(nameof(AkronScreenshotScanner), message);
+                    Engine.Scene?.Add(new AkronToast(message));
+                }
+            } else if (markerKinds == AkronScreenshotMarkerKinds.None) {
+                AkronLog.Warn(nameof(AkronScreenshotScanner), "Only marked rooms capture needs at least one enabled marker type.");
+                Engine.Scene?.Add(new AkronToast("Only marked rooms needs StartPos, Auto Kill, or Auto Deafen markers."));
+                isScanning = false;
+                return false;
             }
 
             Queue<string> rooms = new Queue<string>();
             foreach (LevelData room in mapData?.Levels ?? new List<LevelData>()) {
-                if (CanScanChapterRoom(room)) {
-                    rooms.Enqueue(room.Name);
+                if (!CanScanChapterRoom(room)) {
+                    continue;
                 }
+
+                if (onlyMarkedRooms && !RoomHasMarkedContent(level, room, markerKinds)) {
+                    continue;
+                }
+
+                if (onlyMarkedRooms) {
+                    lastMarkedRoomCandidateCount++;
+                }
+
+                if (onlyMarkedRooms && maxMarkedRooms > 0 && rooms.Count >= maxMarkedRooms) {
+                    continue;
+                }
+
+                rooms.Enqueue(room.Name);
             }
             scanRoomsCompleted = 0;
             scanRoomsTotal = rooms.Count;
             if (rooms.Count == 0) {
-                AkronLog.Warn(nameof(AkronScreenshotScanner), "Map capture has no scannable rooms queued.");
+                AkronLog.Warn(nameof(AkronScreenshotScanner), onlyMarkedRooms ? "Marked-room capture has no matching rooms queued." : "Map capture has no scannable rooms queued.");
                 isScanning = false;
                 scanRoomsTotal = 0;
                 return false;
             }
 
-            scannerHost.Add(new Coroutine(ScanRooms(player, rooms, buildMapComposite: true)));
+            string markedRoomOutputDirectory = onlyMarkedRooms ? BuildMarkedRoomCaptureDirectory(level) : string.Empty;
+            scannerHost.Add(new Coroutine(ScanRooms(player, rooms, buildMapComposite, markedRoomOutputDirectory)));
             return true;
         } catch {
             ResetFailedStart();
             throw;
         }
+    }
+
+    private static AkronScreenshotMarkerKinds BuildEnabledMarkerKinds(AkronModuleSettings settings) {
+        if (settings == null || !settings.ScreenshotScannerExportMarkers) {
+            return AkronScreenshotMarkerKinds.None;
+        }
+
+        AkronScreenshotMarkerKinds kinds = AkronScreenshotMarkerKinds.None;
+        if (settings.ScreenshotScannerExportStartPositions) {
+            kinds |= AkronScreenshotMarkerKinds.StartPositions;
+        }
+        if (settings.ScreenshotScannerExportAutoKillAreas) {
+            kinds |= AkronScreenshotMarkerKinds.AutoKillAreas;
+        }
+        if (settings.ScreenshotScannerExportAutoDeafenAreas) {
+            kinds |= AkronScreenshotMarkerKinds.AutoDeafenAreas;
+        }
+
+        return kinds;
+    }
+
+    private static AkronScreenshotMarkerKinds MarkerKindsForSection(AkronSetupSection section) {
+        switch (section) {
+            case AkronSetupSection.AutoKill:
+                return AkronScreenshotMarkerKinds.AutoKillAreas;
+            case AkronSetupSection.AutoDeafen:
+                return AkronScreenshotMarkerKinds.AutoDeafenAreas;
+            case AkronSetupSection.StartPos:
+                return AkronScreenshotMarkerKinds.StartPositions;
+            default:
+                return AkronScreenshotMarkerKinds.None;
+        }
+    }
+
+    internal static bool RoomHasMarkedContent(Level level, LevelData room, AkronScreenshotMarkerKinds markerKinds) {
+        if (level == null || room == null || markerKinds == AkronScreenshotMarkerKinds.None) {
+            return false;
+        }
+
+        string areaSid = level.Session?.Area.GetSID() ?? string.Empty;
+        if ((markerKinds & AkronScreenshotMarkerKinds.StartPositions) != 0) {
+            foreach (KeyValuePair<int, AkronStartPos> pair in AkronActions.GetStartPositionsForArea(areaSid)) {
+                AkronStartPos startPos = pair.Value;
+                if (startPos != null &&
+                    string.Equals(startPos.AreaSid, areaSid, StringComparison.Ordinal) &&
+                    string.Equals(startPos.Room, room.Name, StringComparison.Ordinal)) {
+                    return true;
+                }
+            }
+        }
+
+        if ((markerKinds & AkronScreenshotMarkerKinds.AutoKillAreas) != 0) {
+            foreach (Rectangle area in AkronModule.GetAutoKillAreas()) {
+                Rectangle visibleArea = Rectangle.Intersect(area, room.Bounds);
+                if (visibleArea.Width > 0 && visibleArea.Height > 0) {
+                    return true;
+                }
+            }
+        }
+
+        if ((markerKinds & AkronScreenshotMarkerKinds.AutoDeafenAreas) != 0) {
+            foreach (Rectangle area in AkronModule.GetAutoDeafenAreas()) {
+                Rectangle visibleArea = Rectangle.Intersect(area, room.Bounds);
+                if (visibleArea.Width > 0 && visibleArea.Height > 0) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static void ClearMarkedRoomCaptureState() {
+        lastMarkedRoomCaptures.Clear();
+        lastMarkedRoomCandidateCount = 0;
+        lastScanCompletedSuccessfully = false;
+    }
+
+    private static string BuildMarkedRoomCaptureDirectory(Level level) {
+        string path = BuildSidePath(level, Path.Combine(
+            "marked-rooms",
+            DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ", System.Globalization.CultureInfo.InvariantCulture)));
+        Directory.CreateDirectory(path);
+        lastExportPath = path;
+        return path;
+    }
+
+    private static string BuildMarkedRoomFileName(int index, string roomName) {
+        string name = (roomName ?? string.Empty).Trim();
+        foreach (char invalid in Path.GetInvalidFileNameChars()) {
+            name = name.Replace(invalid, '-');
+        }
+
+        name = name.Replace('/', '-').Replace('\\', '-').Trim();
+        if (string.IsNullOrWhiteSpace(name)) {
+            name = "room";
+        }
+
+        return index.ToString("00", System.Globalization.CultureInfo.InvariantCulture) + "-" + name + ImageExtension();
     }
 
     private static MapData GetScanMapData(Level level) {
@@ -265,6 +428,7 @@ public static class AkronScreenshotScanner {
 
         isScanning = true;
         scanCancelled = false;
+        lastScanCompletedSuccessfully = false;
         if (scannerHost?.Scene != level) {
             scannerHost?.RemoveSelf();
             scannerHost = new Entity { Tag = Tags.Persistent };
@@ -282,11 +446,12 @@ public static class AkronScreenshotScanner {
         scanCancelled = false;
         scanRoomsCompleted = 0;
         scanRoomsTotal = 0;
+        lastScanCompletedSuccessfully = false;
         scannerHost?.RemoveSelf();
         scannerHost = null;
     }
 
-    private static IEnumerator ScanRooms(Player initialPlayer, Queue<string> rooms, bool buildMapComposite) {
+    private static IEnumerator ScanRooms(Player initialPlayer, Queue<string> rooms, bool buildMapComposite, string markedRoomOutputDirectory) {
         string initialRoom = initialPlayer.level.Session.Level;
         Vector2 initialPosition = initialPlayer.Position;
         Vector2 initialSpeed = initialPlayer.Speed;
@@ -296,6 +461,7 @@ public static class AkronScreenshotScanner {
         int initialState = initialPlayer.StateMachine.State;
         List<AkronScreenshotMergedRoom> mergedRooms = buildMapComposite ? new List<AkronScreenshotMergedRoom>() : null;
         int scannedRoomCount = 0;
+        bool collectMarkedRooms = !string.IsNullOrWhiteSpace(markedRoomOutputDirectory);
         CaptureInitialPlayerState(initialVisible, initialCollidable, initialCollider, initialState);
         try {
             while (rooms.Count > 0 && isScanning && !scanCancelled) {
@@ -317,7 +483,7 @@ public static class AkronScreenshotScanner {
                 }
 
                 int mergedRoomCountBeforeScan = mergedRooms?.Count ?? 0;
-                yield return ScanCurrentRoom(level, player, mergedRooms);
+                yield return ScanCurrentRoom(level, player, mergedRooms, collectMarkedRooms ? lastMarkedRoomCaptures : null, markedRoomOutputDirectory);
                 if (!scanCancelled) {
                     scannedRoomCount++;
                     scanRoomsCompleted = scannedRoomCount;
@@ -361,6 +527,7 @@ public static class AkronScreenshotScanner {
                 Engine.Scene?.Add(new AkronToast("Screenshot scan finished."));
             }
         } finally {
+            lastScanCompletedSuccessfully = !scanCancelled && rooms.Count == 0;
             isScanning = false;
             scanCancelled = false;
             allowScanRoomSetupTriggers = false;
@@ -548,7 +715,7 @@ public static class AkronScreenshotScanner {
         return false;
     }
 
-    private static IEnumerator ScanCurrentRoom(Level level, Player player, List<AkronScreenshotMergedRoom> mergedRooms) {
+    private static IEnumerator ScanCurrentRoom(Level level, Player player, List<AkronScreenshotMergedRoom> mergedRooms, List<AkronScreenshotRoomCapture> markedRoomCaptures, string markedRoomOutputDirectory) {
         Rectangle bounds = level.Bounds;
         float cameraWidth = level.Camera.Right - level.Camera.Left;
         float cameraHeight = level.Camera.Bottom - level.Camera.Top;
@@ -637,6 +804,12 @@ public static class AkronScreenshotScanner {
 
             if (isScanning && !scanCancelled && TryWriteMergedRoomImage(level, bounds, cameraWidth, cameraHeight, viewportWidth, viewportHeight, out AkronScreenshotMergedRoom mergedRoom)) {
                 mergedRooms?.Add(mergedRoom);
+                if (markedRoomCaptures != null && !string.IsNullOrWhiteSpace(markedRoomOutputDirectory)) {
+                    string markedRoomPath = Path.Combine(markedRoomOutputDirectory, BuildMarkedRoomFileName(markedRoomCaptures.Count + 1, mergedRoom.RoomName));
+                    File.Copy(mergedRoom.ImagePath, markedRoomPath, overwrite: true);
+                    lastExportPath = markedRoomPath;
+                    markedRoomCaptures.Add(new AkronScreenshotRoomCapture(mergedRoom.RoomName, markedRoomPath));
+                }
             }
         } finally {
             player.Position = previousPlayerPosition;

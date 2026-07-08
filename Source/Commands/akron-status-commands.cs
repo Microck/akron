@@ -29,6 +29,7 @@ public static partial class AkronCommands {
         Log("capture-markers-startpos: " + AkronModule.Settings.ScreenshotScannerExportStartPositions.ToString().ToLowerInvariant());
         Log("capture-markers-autokill: " + AkronModule.Settings.ScreenshotScannerExportAutoKillAreas.ToString().ToLowerInvariant());
         Log("capture-markers-autodeafen: " + AkronModule.Settings.ScreenshotScannerExportAutoDeafenAreas.ToString().ToLowerInvariant());
+        Log("capture-only-marked-rooms: " + AkronModule.Settings.ScreenshotScannerOnlyMarkedRooms.ToString().ToLowerInvariant());
         Log("capture-map-downscale: " + AkronModule.Settings.ScreenshotScannerDownscaleMapCapture.ToString().ToLowerInvariant());
         Log("capture-freeze-time: " + AkronModule.Settings.ScreenshotScannerFreezeTime.ToString().ToLowerInvariant());
         Log("capture-noclip-hide-madeline: " + AkronModule.Settings.ScreenshotScannerNoclipHideMadeline.ToString().ToLowerInvariant());
