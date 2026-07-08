@@ -489,7 +489,9 @@ public static class AkronCommunityPackUploads {
         string savedDiscordUserId,
         bool useDiscordAttribution,
         string titleOverride = "",
-        string descriptionOverride = "") {
+        string descriptionOverride = "",
+        string overrideMapSid = "",
+        AkronSetupSection? overrideSection = null) {
         section = NormalizeUploadSection(section);
         mapSid = (mapSid ?? string.Empty).Trim();
         mapDisplayName = string.IsNullOrWhiteSpace(mapDisplayName) ? mapSid : mapDisplayName.Trim();
@@ -497,13 +499,14 @@ public static class AkronCommunityPackUploads {
         bool canUseDiscordAttribution = useDiscordAttribution && !string.IsNullOrWhiteSpace(discordUserId);
         string generatedTitle = GenerateTitle(mapDisplayName, section);
         string generatedDescription = GenerateDescription(mapDisplayName, section);
+        bool useTextOverride = UploadTextOverrideApplies(mapSid, section, overrideMapSid, overrideSection);
 
         return new AkronCommunityPackUploadDraft {
             MapSid = mapSid,
             MapDisplayName = mapDisplayName,
             Section = section,
-            Title = string.IsNullOrWhiteSpace(titleOverride) ? generatedTitle : titleOverride.Trim(),
-            Description = string.IsNullOrWhiteSpace(descriptionOverride) ? generatedDescription : descriptionOverride.Trim(),
+            Title = useTextOverride && !string.IsNullOrWhiteSpace(titleOverride) ? titleOverride.Trim() : generatedTitle,
+            Description = useTextOverride && !string.IsNullOrWhiteSpace(descriptionOverride) ? descriptionOverride.Trim() : generatedDescription,
             AttributionMode = canUseDiscordAttribution ? DiscordAttribution : AnonymousAttribution,
             DiscordUserId = canUseDiscordAttribution ? discordUserId : string.Empty
         };
@@ -519,7 +522,42 @@ public static class AkronCommunityPackUploads {
             AkronModule.Settings.CommunityPackUploadDiscordUserId,
             useDiscordAttribution,
             AkronModule.Settings.CommunityPackUploadTitleOverride,
-            AkronModule.Settings.CommunityPackUploadDescriptionOverride);
+            AkronModule.Settings.CommunityPackUploadDescriptionOverride,
+            AkronModule.Settings.CommunityPackUploadOverrideMapSid,
+            AkronModule.Settings.CommunityPackUploadOverrideSection);
+    }
+
+    public static AkronCommunityPackUploadDraft BuildGeneratedDraft(Level level, AkronSetupSection section, bool useDiscordAttribution) {
+        string mapSid = level?.Session?.Area.GetSID() ?? string.Empty;
+        string mapDisplayName = ResolveMapDisplayName(level, mapSid);
+        return BuildDraft(
+            mapSid,
+            mapDisplayName,
+            section,
+            AkronModule.Settings.CommunityPackUploadDiscordUserId,
+            useDiscordAttribution);
+    }
+
+    public static void SetUploadTextOverride(AkronModuleSettings settings, string mapSid, AkronSetupSection section, string title, string description) {
+        if (settings == null) {
+            return;
+        }
+
+        settings.CommunityPackUploadTitleOverride = (title ?? string.Empty).Trim();
+        settings.CommunityPackUploadDescriptionOverride = (description ?? string.Empty).Trim();
+        settings.CommunityPackUploadOverrideMapSid = (mapSid ?? string.Empty).Trim();
+        settings.CommunityPackUploadOverrideSection = NormalizeUploadSection(section);
+    }
+
+    public static void ClearUploadTextOverride(AkronModuleSettings settings) {
+        if (settings == null) {
+            return;
+        }
+
+        settings.CommunityPackUploadTitleOverride = string.Empty;
+        settings.CommunityPackUploadDescriptionOverride = string.Empty;
+        settings.CommunityPackUploadOverrideMapSid = string.Empty;
+        settings.CommunityPackUploadOverrideSection = AkronSetupSection.StartPos;
     }
 
     public static string GenerateTitle(string mapDisplayName, AkronSetupSection section) {
@@ -613,6 +651,15 @@ public static class AkronCommunityPackUploads {
 
     private static string CleanMapDisplayName(string mapDisplayName) {
         return string.IsNullOrWhiteSpace(mapDisplayName) ? "This Map" : mapDisplayName.Trim();
+    }
+
+    private static bool UploadTextOverrideApplies(string mapSid, AkronSetupSection section, string overrideMapSid, AkronSetupSection? overrideSection) {
+        if (string.IsNullOrWhiteSpace(overrideMapSid) || overrideSection == null) {
+            return false;
+        }
+
+        return string.Equals((mapSid ?? string.Empty).Trim(), overrideMapSid.Trim(), StringComparison.Ordinal) &&
+               NormalizeUploadSection(section) == NormalizeUploadSection(overrideSection.Value);
     }
 
     private static FileInfo RequireExistingFile(string path, string parameterName) {

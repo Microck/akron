@@ -68,7 +68,7 @@ public partial class AkronModuleSettings {
                    binding.Buttons == null &&
                    (binding.MouseButtons == null || !binding.MouseButtons.Any());
         } catch (InvalidProgramException) {
-            return true;
+            return false;
         }
     }
 
@@ -122,46 +122,50 @@ public partial class AkronModuleSettings {
 
         EnsureCurrentOverlayToggleDefault(settings);
         EnsureCurrentButtonBindingDefaults(settings);
-        settings.MenuActionBindings = new Dictionary<string, string>();
+        settings.MenuActionBindings ??= new Dictionary<string, string>();
     }
 
     private static void EnsureCurrentButtonBindingDefaults(AkronModuleSettings settings) {
-        settings.FastLookoutHold = CreateEmptyButtonBinding();
-        settings.Retry = CreateEmptyButtonBinding();
-        settings.ReloadRoom = CreateEmptyButtonBinding();
-        settings.OpenDebugMap = CreateEmptyButtonBinding();
-        settings.ReloadChapter = CreateEmptyButtonBinding();
-        settings.SaveState = CreateEmptyButtonBinding();
-        settings.LoadState = CreateEmptyButtonBinding();
-        settings.PreviousSlot = CreateEmptyButtonBinding();
-        settings.NextSlot = CreateEmptyButtonBinding();
-        settings.CycleGrabMode = CreateEmptyButtonBinding();
-        settings.FreezeGameplay = CreateEmptyButtonBinding();
-        settings.StepFrame = CreateEmptyButtonBinding();
-        settings.DecreaseTimescale = CreateEmptyButtonBinding();
-        settings.IncreaseTimescale = CreateEmptyButtonBinding();
-        settings.SetStartPos = CreateEmptyButtonBinding();
-        settings.LoadStartPos = CreateEmptyButtonBinding();
-        settings.ClearStartPos = CreateEmptyButtonBinding();
-        settings.PreviousStartPos = CreateEmptyButtonBinding();
-        settings.NextStartPos = CreateEmptyButtonBinding();
-        settings.LoadStartPosSlot1 = CreateEmptyButtonBinding();
-        settings.LoadStartPosSlot2 = CreateEmptyButtonBinding();
-        settings.LoadStartPosSlot3 = CreateEmptyButtonBinding();
-        settings.LoadStartPosSlot4 = CreateEmptyButtonBinding();
-        settings.LoadStartPosSlot5 = CreateEmptyButtonBinding();
-        settings.LoadStartPosSlot6 = CreateEmptyButtonBinding();
-        settings.LoadStartPosSlot7 = CreateEmptyButtonBinding();
-        settings.LoadStartPosSlot8 = CreateEmptyButtonBinding();
-        settings.LoadStartPosSlot9 = CreateEmptyButtonBinding();
-        settings.ToggleHitboxes = CreateEmptyButtonBinding();
-        settings.ToggleEntityInspector = CreateEmptyButtonBinding();
-        settings.EntityInspectorCursorHold = CreateLeftAltHoldBinding();
-        settings.ToggleFrameBypass = CreateEmptyButtonBinding();
-        settings.CycleFrameBypassCameraSmoothing = CreateEmptyButtonBinding();
-        settings.ClickTeleportCursor = CreateLeftAltHoldBinding();
-        settings.CursorZoomHold = CreateLeftAltHoldBinding();
-        settings.CursorToolsHold = CreateLeftAltHoldBinding();
+        settings.FastLookoutHold = EnsureButtonBinding(settings.FastLookoutHold, CreateEmptyButtonBinding);
+        settings.Retry = EnsureButtonBinding(settings.Retry, CreateEmptyButtonBinding);
+        settings.ReloadRoom = EnsureButtonBinding(settings.ReloadRoom, CreateEmptyButtonBinding);
+        settings.OpenDebugMap = EnsureButtonBinding(settings.OpenDebugMap, CreateEmptyButtonBinding);
+        settings.ReloadChapter = EnsureButtonBinding(settings.ReloadChapter, CreateEmptyButtonBinding);
+        settings.SaveState = EnsureButtonBinding(settings.SaveState, CreateEmptyButtonBinding);
+        settings.LoadState = EnsureButtonBinding(settings.LoadState, CreateEmptyButtonBinding);
+        settings.PreviousSlot = EnsureButtonBinding(settings.PreviousSlot, CreateEmptyButtonBinding);
+        settings.NextSlot = EnsureButtonBinding(settings.NextSlot, CreateEmptyButtonBinding);
+        settings.CycleGrabMode = EnsureButtonBinding(settings.CycleGrabMode, CreateEmptyButtonBinding);
+        settings.FreezeGameplay = EnsureButtonBinding(settings.FreezeGameplay, CreateEmptyButtonBinding);
+        settings.StepFrame = EnsureButtonBinding(settings.StepFrame, CreateEmptyButtonBinding);
+        settings.DecreaseTimescale = EnsureButtonBinding(settings.DecreaseTimescale, CreateEmptyButtonBinding);
+        settings.IncreaseTimescale = EnsureButtonBinding(settings.IncreaseTimescale, CreateEmptyButtonBinding);
+        settings.SetStartPos = EnsureButtonBinding(settings.SetStartPos, CreateEmptyButtonBinding);
+        settings.LoadStartPos = EnsureButtonBinding(settings.LoadStartPos, CreateEmptyButtonBinding);
+        settings.ClearStartPos = EnsureButtonBinding(settings.ClearStartPos, CreateEmptyButtonBinding);
+        settings.PreviousStartPos = EnsureButtonBinding(settings.PreviousStartPos, CreateEmptyButtonBinding);
+        settings.NextStartPos = EnsureButtonBinding(settings.NextStartPos, CreateEmptyButtonBinding);
+        settings.LoadStartPosSlot1 = EnsureButtonBinding(settings.LoadStartPosSlot1, CreateEmptyButtonBinding);
+        settings.LoadStartPosSlot2 = EnsureButtonBinding(settings.LoadStartPosSlot2, CreateEmptyButtonBinding);
+        settings.LoadStartPosSlot3 = EnsureButtonBinding(settings.LoadStartPosSlot3, CreateEmptyButtonBinding);
+        settings.LoadStartPosSlot4 = EnsureButtonBinding(settings.LoadStartPosSlot4, CreateEmptyButtonBinding);
+        settings.LoadStartPosSlot5 = EnsureButtonBinding(settings.LoadStartPosSlot5, CreateEmptyButtonBinding);
+        settings.LoadStartPosSlot6 = EnsureButtonBinding(settings.LoadStartPosSlot6, CreateEmptyButtonBinding);
+        settings.LoadStartPosSlot7 = EnsureButtonBinding(settings.LoadStartPosSlot7, CreateEmptyButtonBinding);
+        settings.LoadStartPosSlot8 = EnsureButtonBinding(settings.LoadStartPosSlot8, CreateEmptyButtonBinding);
+        settings.LoadStartPosSlot9 = EnsureButtonBinding(settings.LoadStartPosSlot9, CreateEmptyButtonBinding);
+        settings.ToggleHitboxes = EnsureButtonBinding(settings.ToggleHitboxes, CreateEmptyButtonBinding);
+        settings.ToggleEntityInspector = EnsureButtonBinding(settings.ToggleEntityInspector, CreateEmptyButtonBinding);
+        settings.EntityInspectorCursorHold = EnsureButtonBinding(settings.EntityInspectorCursorHold, CreateLeftAltHoldBinding);
+        settings.ToggleFrameBypass = EnsureButtonBinding(settings.ToggleFrameBypass, CreateEmptyButtonBinding);
+        settings.CycleFrameBypassCameraSmoothing = EnsureButtonBinding(settings.CycleFrameBypassCameraSmoothing, CreateEmptyButtonBinding);
+        settings.ClickTeleportCursor = EnsureButtonBinding(settings.ClickTeleportCursor, CreateLeftAltHoldBinding);
+        settings.CursorZoomHold = EnsureButtonBinding(settings.CursorZoomHold, CreateLeftAltHoldBinding);
+        settings.CursorToolsHold = EnsureButtonBinding(settings.CursorToolsHold, CreateLeftAltHoldBinding);
+    }
+
+    private static ButtonBinding EnsureButtonBinding(ButtonBinding binding, Func<ButtonBinding> defaultFactory) {
+        return IsUninitializedButtonBinding(binding) ? defaultFactory() : binding;
     }
 
     public static List<string> BuildDefaultLabelRowOrder() {

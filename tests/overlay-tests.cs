@@ -849,7 +849,7 @@ public sealed class OverlayTests {
         Assert.DoesNotContain("AkronModule.Settings.CursorZoomHold", entityInspectorPopup);
         Assert.DoesNotContain("AkronModule.Settings.ClickTeleportCursor", entityInspectorPopup);
         Assert.Contains("\"Entity Inspector / Cursor hold\"", entityInspectorPopup);
-        Assert.Contains("StartButtonBindingCapture(displayName, setter)", popupSource);
+        Assert.Contains("StartButtonBindingCapture(actionKey, displayName, setter, clearMenuBinding: false)", popupSource);
         Assert.DoesNotContain("entityInspectorPickModeArmed", moduleInputSource);
         Assert.DoesNotContain("ArmEntityInspectorPickMode", moduleInputSource);
         Assert.DoesNotContain("ClearEntityInspectorPickMode", moduleInputSource);
@@ -905,7 +905,7 @@ public sealed class OverlayTests {
 
         Assert.Contains("DrawClickTeleportPopupControls", visualPopupSource);
         Assert.Contains("AkronModule.Settings.ClickTeleportCursor", visualPopupSource);
-        Assert.Contains("StartButtonBindingCapture(displayName, setter)", runtimePopupSource);
+        Assert.Contains("StartButtonBindingCapture(actionKey, displayName, setter, clearMenuBinding: false)", runtimePopupSource);
         Assert.Contains("Bind##\" + idPrefix + \"-cursor-bind-\"", runtimePopupSource);
         Assert.Contains("Clear##\" + idPrefix + \"-cursor-clear-\"", runtimePopupSource);
         Assert.Contains("Default##\" + idPrefix + \"-cursor-default-\"", runtimePopupSource);
@@ -924,6 +924,27 @@ public sealed class OverlayTests {
         Assert.Contains("AkronModule.Settings.CursorZoomHold", visualPopupSource);
         Assert.Contains("\"Cursor Zoom / Cursor hold\"", visualPopupSource);
         Assert.Contains("AkronModuleSettings.CreateLeftAltHoldBinding()", visualPopupSource);
+    }
+
+    [Fact]
+    public void StartPosPopupBindingsUseNativeButtonBindingFields() {
+        string startPosPopupSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-startpos-popups.cs"));
+        string imguiRendererSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-imgui-renderer.cs"));
+        string bindableActionsSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-bindable-actions.cs"));
+
+        Assert.Contains("StartButtonBindingCapture(actionKey, displayName, binding => TrySetDefaultButtonBinding(actionKey, binding))", startPosPopupSource);
+        Assert.Contains("ClearDefaultButtonBinding(actionKey)", startPosPopupSource);
+        Assert.Contains("DescribePopupActionBinding(actionKey)", startPosPopupSource);
+        Assert.Contains("PopupActionKey(\"StartPos\", \"Set\")", startPosPopupSource);
+        Assert.Contains("PopupActionKey(\"StartPos\", \"Load\")", startPosPopupSource);
+        Assert.Contains("PopupActionKey(\"StartPos\", \"Clear\")", startPosPopupSource);
+        Assert.Contains("PopupActionKey(\"StartPos\", \"Set\")", imguiRendererSource);
+        Assert.Contains("PopupActionKey(\"StartPos\", \"Load\")", imguiRendererSource);
+        Assert.Contains("PopupActionKey(\"StartPos\", \"Clear\")", imguiRendererSource);
+        Assert.Contains("StartButtonBindingCapture(actionKey, displayName, binding => TrySetDefaultButtonBinding(actionKey, binding))", imguiRendererSource);
+        Assert.Contains("Right-click or Shift-click to bind.", imguiRendererSource);
+        Assert.Contains("TryGetDefaultButtonBinding(actionKey, out ButtonBinding binding) && !IsEmptyBinding(binding)", bindableActionsSource);
+        Assert.Contains("AkronModuleSettings.DescribeBinding(binding)", bindableActionsSource);
     }
 
     [Fact]

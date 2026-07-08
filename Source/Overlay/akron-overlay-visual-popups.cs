@@ -125,6 +125,7 @@ public sealed partial class AkronOverlay {
 
     private void DrawClickTeleportPopupControls(string popupId) {
         DrawCursorHoldBindingRow(
+            "Player/Click Teleport",
             "Click Teleport / Cursor hold",
             "click-teleport",
             AkronModule.Settings.ClickTeleportCursor,
@@ -136,6 +137,7 @@ public sealed partial class AkronOverlay {
 
     private void DrawCursorToolsPopupControls(string popupId) {
         DrawCursorHoldBindingRow(
+            "Creator/Cursor Tools",
             "Cursor Tools / Cursor hold",
             "cursor-tools",
             AkronModule.Settings.CursorToolsHold,
@@ -234,6 +236,7 @@ public sealed partial class AkronOverlay {
 
     private void DrawCursorZoomPopupControls(string popupId) {
         DrawCursorHoldBindingRow(
+            "Creator/Cursor Zoom",
             "Cursor Zoom / Cursor hold",
             "cursor-zoom",
             AkronModule.Settings.CursorZoomHold,

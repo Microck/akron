@@ -30,7 +30,7 @@ public sealed partial class AkronOverlay {
         DrawStartPosConfigControls(popupId);
 
         ImGui.Separator();
-        ImGui.TextUnformatted("Menu bindings");
+        ImGui.TextUnformatted("Bindings");
         DrawPopupActionBindingRow("Set", PopupActionKey("StartPos", "Set"), "StartPos / Set", popupId);
         DrawPopupActionBindingRow("Load", PopupActionKey("StartPos", "Load"), "StartPos / Load", popupId);
         DrawPopupActionBindingRow("Clear", PopupActionKey("StartPos", "Clear"), "StartPos / Clear", popupId);
@@ -59,27 +59,44 @@ public sealed partial class AkronOverlay {
         ImGui.TextUnformatted("Index: " + (Engine.Scene is Level indexLevel ? AkronActions.DescribeStartPosIndex(indexLevel) : "0/0"));
 
         ImGui.Separator();
-        ImGui.TextUnformatted("Menu bindings");
+        ImGui.TextUnformatted("Bindings");
         DrawPopupActionBindingRow("Previous", PopupActionKey("StartPos", "Previous"), "StartPos / Previous", popupId);
         DrawPopupActionBindingRow("Next", PopupActionKey("StartPos", "Next"), "StartPos / Next", popupId);
     }
 
     private void DrawPopupActionBindingRow(string label, string actionKey, string displayName, string popupId) {
-        ImGui.TextUnformatted(label + ": " + DescribeMenuBinding(actionKey));
+        ImGui.TextUnformatted(label + ": " + DescribePopupActionBinding(actionKey));
         ImGui.SameLine();
         if (ImGui.Button("Bind##" + label + popupId)) {
-            StartBindingCapture(actionKey, displayName);
+            if (TryGetDefaultButtonBinding(actionKey, out _)) {
+                StartButtonBindingCapture(actionKey, displayName, binding => TrySetDefaultButtonBinding(actionKey, binding));
+            } else {
+                StartBindingCapture(actionKey, displayName);
+            }
             ImGui.CloseCurrentPopup();
         }
         ImGui.SameLine();
         if (ImGui.Button("Clear##" + label + popupId)) {
             ClearMenuBinding(actionKey);
+            if (ClearDefaultButtonBinding(actionKey)) {
+                menuBindingRevision++;
+            }
         }
     }
 
     private static string DescribeStartPosSwitcherBindings() {
-        return DescribeMenuBinding(PopupActionKey("StartPos", "Previous")) + " / " +
-               DescribeMenuBinding(PopupActionKey("StartPos", "Next"));
+        return DescribePopupActionBinding(PopupActionKey("StartPos", "Previous")) + " / " +
+               DescribePopupActionBinding(PopupActionKey("StartPos", "Next"));
+    }
+
+    private static string DescribePopupActionBinding(string actionKey) {
+        if (HasMenuBinding(actionKey)) {
+            return DescribeMenuBinding(actionKey);
+        }
+
+        return TryGetDefaultButtonBinding(actionKey, out ButtonBinding binding) && !IsEmptyBinding(binding)
+            ? AkronModuleSettings.DescribeBinding(binding)
+            : "Unbound";
     }
 
     private void DrawPlaceStartPosPopupControls(string popupId, bool includePlacementToggle = true) {

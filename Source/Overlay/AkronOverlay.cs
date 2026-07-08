@@ -94,6 +94,7 @@ public sealed partial class AkronOverlay : Entity {
     private string bindingCaptureActionKey = string.Empty;
     private string bindingCaptureDisplayName = string.Empty;
     private Action<ButtonBinding> bindingCaptureButtonBindingSetter;
+    private bool bindingCaptureClearsMenuBinding;
     private ActionEntry pendingInternalRecorderExperimentalAction;
     private ActionEntry pendingImGuiOptionsPopupEntry;
     private ActionEntry pendingImGuiTooltipEntry;
