@@ -4,11 +4,12 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
-## Unreleased
+## Akron Beta 47
 
 ### Fixed
 
-- Use localized map names in generated Upload Pack titles and order StartPos captures by slot so galleries begin with Slot 1.
+- Use localized map names, such as Forsaken City, in generated Upload Pack titles.
+- Show every submitted image in Discord moderator reviews and published galleries, with StartPos uploads beginning at Slot 1 and gallery navigation and download controls.
 
 ## Akron Beta 46
 
