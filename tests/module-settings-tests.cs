@@ -1996,6 +1996,22 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void UploadPackLocalizesAreaNameBeforeGeneratingMetadata()
+    {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-uploads.cs"));
+
+        Assert.Contains("name => Dialog.Has(name)", source);
+        Assert.Contains("name => Dialog.Clean(name)", source);
+        Assert.Equal("Literal Mod Map", AkronCommunityPackUploads.ResolveMapDisplayName(
+            "Mod/Map", "Literal Mod Map", _ => false, _ => throw new InvalidOperationException()));
+        Assert.Equal("Forsaken City", AkronCommunityPackUploads.ResolveMapDisplayName(
+            "Celeste/1-ForsakenCity", "Celeste_1_ForsakenCity", _ => true, _ => "Forsaken City"));
+        Assert.Equal("Mod/Map", AkronCommunityPackUploads.ResolveMapDisplayName(
+            "Mod/Map", string.Empty, _ => false, _ => throw new InvalidOperationException()));
+        Assert.Equal("Forsaken City StartPos Pack", AkronCommunityPackUploads.GenerateTitle("Forsaken City", AkronSetupSection.StartPos));
+    }
+
+    [Fact]
     public void UploadPackSupportsScopedPracticeSections()
     {
         Assert.True(AkronCommunityPackUploads.IsSupportedUploadSection(AkronSetupSection.StartPos));

@@ -322,13 +322,36 @@ public sealed class ScreenshotScannerTests {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-screenshot-scanner.cs"));
 
         Assert.Contains("MapData mapData = GetScanMapData(level);", source);
-        Assert.Contains("foreach (LevelData room in mapData?.Levels ?? new List<LevelData>())", source);
+        Assert.Contains("(mapData?.Levels ?? new List<LevelData>())", source);
+        Assert.Contains(".Where(CanScanChapterRoom)", source);
         Assert.Contains("AreaData.Get(area.Value)", source);
         Assert.Contains("modeMap.Reload();", source);
         Assert.Contains("Starting map capture with ", source);
         Assert.Contains("Map capture has no scannable rooms queued.", source);
         Assert.Contains("modeMap.Levels.Count > sessionMap.Levels.Count", source);
         Assert.Contains("GetScanMapData(level)?.Get(roomName)", source);
+    }
+
+    [Fact]
+    public void StartPosMarkedRoomsSortByLowestSlotBeforeCaptureLimit() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-screenshot-scanner.cs"));
+        Dictionary<int, AkronStartPos> startPositions = new Dictionary<int, AkronStartPos> {
+            [7] = new AkronStartPos { AreaSid = "Celeste/1-ForsakenCity", Room = "a-00" },
+            [1] = new AkronStartPos { AreaSid = "Celeste/1-ForsakenCity", Room = "a-03" },
+            [4] = new AkronStartPos { AreaSid = "Other/Map", Room = "a-01" }
+        };
+
+        Assert.Equal(7, AkronScreenshotScanner.FirstStartPosSlotInRoom(
+            "Celeste/1-ForsakenCity", "a-00", startPositions));
+        Assert.Equal(1, AkronScreenshotScanner.FirstStartPosSlotInRoom(
+            "Celeste/1-ForsakenCity", "a-03", startPositions));
+        Assert.Equal(int.MaxValue, AkronScreenshotScanner.FirstStartPosSlotInRoom(
+            "Celeste/1-ForsakenCity", "a-01", startPositions));
+
+        int orderingIndex = source.IndexOf(".OrderBy(room => FirstStartPosSlotInRoom", StringComparison.Ordinal);
+        int captureLimitIndex = source.IndexOf(".Take(maxMarkedRooms)", StringComparison.Ordinal);
+        Assert.True(orderingIndex >= 0);
+        Assert.True(captureLimitIndex > orderingIndex);
     }
 
     [Fact]

@@ -642,8 +642,24 @@ public static class AkronCommunityPackUploads {
 
     private static string ResolveMapDisplayName(Level level, string mapSid) {
         AreaData areaData = level == null ? null : AreaData.Get(level.Session?.Area ?? default);
-        if (areaData != null && !string.IsNullOrWhiteSpace(areaData.Name)) {
-            return areaData.Name;
+        return ResolveMapDisplayName(
+            mapSid,
+            areaData?.Name,
+            name => Dialog.Has(name),
+            name => Dialog.Clean(name));
+    }
+
+    internal static string ResolveMapDisplayName(
+        string mapSid,
+        string areaName,
+        Func<string, bool> hasDialog,
+        Func<string, string> cleanDialog) {
+        areaName = (areaName ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(areaName)) {
+            string displayName = hasDialog(areaName) ? cleanDialog(areaName) : areaName;
+            if (!string.IsNullOrWhiteSpace(displayName)) {
+                return displayName;
+            }
         }
 
         return string.IsNullOrWhiteSpace(mapSid) ? "this map" : mapSid;

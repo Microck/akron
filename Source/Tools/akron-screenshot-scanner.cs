@@ -206,26 +206,28 @@ public static class AkronScreenshotScanner {
                 return false;
             }
 
-            Queue<string> rooms = new Queue<string>();
-            foreach (LevelData room in mapData?.Levels ?? new List<LevelData>()) {
-                if (!CanScanChapterRoom(room)) {
-                    continue;
+            List<LevelData> scannableRooms = (mapData?.Levels ?? new List<LevelData>())
+                .Where(CanScanChapterRoom)
+                .Where(room => !onlyMarkedRooms || RoomHasMarkedContent(level, room, markerKinds))
+                .ToList();
+            if (onlyMarkedRooms) {
+                if (markerKinds == AkronScreenshotMarkerKinds.StartPositions) {
+                    string areaSid = level.Session?.Area.GetSID() ?? string.Empty;
+                    IReadOnlyList<KeyValuePair<int, AkronStartPos>> startPositions = AkronActions
+                        .GetStartPositionsForArea(areaSid)
+                        .ToList();
+                    scannableRooms = scannableRooms
+                        .OrderBy(room => FirstStartPosSlotInRoom(areaSid, room.Name, startPositions))
+                        .ToList();
                 }
 
-                if (onlyMarkedRooms && !RoomHasMarkedContent(level, room, markerKinds)) {
-                    continue;
+                lastMarkedRoomCandidateCount = scannableRooms.Count;
+                if (maxMarkedRooms > 0) {
+                    scannableRooms = scannableRooms.Take(maxMarkedRooms).ToList();
                 }
-
-                if (onlyMarkedRooms) {
-                    lastMarkedRoomCandidateCount++;
-                }
-
-                if (onlyMarkedRooms && maxMarkedRooms > 0 && rooms.Count >= maxMarkedRooms) {
-                    continue;
-                }
-
-                rooms.Enqueue(room.Name);
             }
+
+            Queue<string> rooms = new Queue<string>(scannableRooms.Select(room => room.Name));
             scanRoomsCompleted = 0;
             scanRoomsTotal = rooms.Count;
             if (rooms.Count == 0) {
@@ -274,6 +276,23 @@ public static class AkronScreenshotScanner {
             default:
                 return AkronScreenshotMarkerKinds.None;
         }
+    }
+
+    internal static int FirstStartPosSlotInRoom(string areaSid, string roomName, IEnumerable<KeyValuePair<int, AkronStartPos>> startPositions) {
+        if (startPositions == null || string.IsNullOrWhiteSpace(areaSid) || string.IsNullOrWhiteSpace(roomName)) {
+            return int.MaxValue;
+        }
+
+        int firstSlot = int.MaxValue;
+        foreach (KeyValuePair<int, AkronStartPos> entry in startPositions) {
+            AkronStartPos startPos = entry.Value;
+            if (startPos != null &&
+                string.Equals(startPos.AreaSid, areaSid, StringComparison.Ordinal) &&
+                string.Equals(startPos.Room, roomName, StringComparison.Ordinal)) {
+                firstSlot = Math.Min(firstSlot, entry.Key);
+            }
+        }
+        return firstSlot;
     }
 
     internal static bool RoomHasMarkedContent(Level level, LevelData room, AkronScreenshotMarkerKinds markerKinds) {
