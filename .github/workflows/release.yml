@@ -17,60 +17,66 @@ on:
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
   cancel-in-progress: false
 
-jobs:
-  package:
-    name: Package Akron
-    runs-on: ubuntu-latest
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+  IS_PRERELEASE: ${{ (github.event_name == 'workflow_dispatch' && inputs.prerelease) || (github.event_name != 'workflow_dispatch' && contains(github.ref_name, '-')) }}
 
-    env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
-      IS_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || contains(github.ref_name, '-') }}
-      GAMEBANANA_API_SECTION: Mod
-      GAMEBANANA_PAGE_SECTION: mods
-      GAMEBANANA_SUBMISSION_ID: ${{ vars.GAMEBANANA_SUBMISSION_ID || '681169' }}
-      GAMEBANANA_BROWSER: ${{ vars.GAMEBANANA_BROWSER || 'cloakbrowser' }}
-      TAILSCALE_EXIT_NODE: ${{ vars.TAILSCALE_EXIT_NODE }}
-      TAILSCALE_TAGS: ${{ vars.TAILSCALE_TAGS || 'tag:ci' }}
+jobs:
+  build:
+    name: Build immutable release artifact
+    runs-on: ubuntu-24.04
+    environment: release-build
+    permissions:
+      contents: read
+    outputs:
+      release_commit: ${{ steps.release_identity.outputs.release_commit }}
+      release_display_name: ${{ steps.release_display_name.outputs.release_display_name }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: Checkout release tag
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          fetch-depth: 0
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          persist-credentials: false
 
-      - name: Validate manual release tag
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          if ! git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Tag '$RELEASE_TAG' does not exist. Create and push the tag before publishing."
-            exit 1
-          fi
-          git checkout "$RELEASE_TAG"
-
-      - name: Validate release version matches everest.yaml
+      - name: Resolve immutable release identity
+        id: release_identity
         run: |
           set -euo pipefail
 
+          if ! [[ "$RELEASE_TAG" =~ ^v[0-9A-Za-z][0-9A-Za-z._-]*$ ]]; then
+            echo "::error::Release tag has an unsupported format: $RELEASE_TAG"
+            exit 1
+          fi
+
+          release_commit="$(git rev-parse HEAD)"
+          tag_commit="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          if [ "$release_commit" != "$tag_commit" ]; then
+            echo "::error::Checked-out commit does not match the release tag."
+            exit 1
+          fi
+          echo "release_commit=$release_commit" >> "$GITHUB_OUTPUT"
+          echo "Release commit: $release_commit"
+
           release_version="${RELEASE_TAG#v}"
           everest_version="$(awk -F': ' '/^[[:space:]]*Version:/ { print $2; exit }' everest.yaml)"
-
           if [ -z "$everest_version" ]; then
             echo "::error::Could not read Version from everest.yaml."
             exit 1
           fi
-
           if [ "$everest_version" != "$release_version" ]; then
             echo "::error::everest.yaml Version is '$everest_version' but release tag is '$release_version'."
             exit 1
           fi
 
       - name: Derive release display name
+        id: release_display_name
         run: |
           set -euo pipefail
 
@@ -84,77 +90,48 @@ jobs:
           fi
 
           echo "RELEASE_DISPLAY_NAME=${release_display_name}" >> "$GITHUB_ENV"
+          echo "release_display_name=${release_display_name}" >> "$GITHUB_OUTPUT"
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 8.0.418
 
-      - name: Restore Celeste references
+      - name: Restore verified Celeste references
         env:
           AKRON_CELESTE_REFS_URL: ${{ secrets.AKRON_CELESTE_REFS_URL }}
           AKRON_CELESTE_REFS_TOKEN: ${{ secrets.AKRON_CELESTE_REFS_TOKEN }}
+          AKRON_CELESTE_REFS_SHA256: ${{ vars.AKRON_CELESTE_REFS_SHA256 }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          if [ -z "$AKRON_CELESTE_REFS_URL" ]; then
-            echo "::error::Missing AKRON_CELESTE_REFS_URL secret. It must point to a zip or tar.gz archive containing a complete lib-stripped reference directory."
-            exit 1
-          fi
+        run: bash .github/scripts/restore-celeste-references.sh
 
-          archive_path="$RUNNER_TEMP/akron-celeste-refs"
-          extract_dir="$RUNNER_TEMP/akron-celeste-refs-extract"
-          mkdir -p "$extract_dir" lib-stripped
-
-          curl_args=(-fL --retry 3 --retry-delay 2)
-          auth_token="${AKRON_CELESTE_REFS_TOKEN:-${GITHUB_TOKEN:-}}"
-          if [ -n "$auth_token" ]; then
-            curl_args+=(-H "Authorization: Bearer $auth_token")
-          fi
-          if [[ "$AKRON_CELESTE_REFS_URL" == https://api.github.com/* ]]; then
-            curl_args+=(-H "Accept: application/octet-stream")
-          fi
-
-          curl "${curl_args[@]}" "$AKRON_CELESTE_REFS_URL" -o "$archive_path"
-
-          if unzip -tq "$archive_path" >/dev/null 2>&1; then
-            unzip -q "$archive_path" -d "$extract_dir"
-          elif tar -tzf "$archive_path" >/dev/null 2>&1; then
-            tar -xzf "$archive_path" -C "$extract_dir"
-          else
-            echo "::error::AKRON_CELESTE_REFS_URL did not download a valid zip or tar.gz archive."
-            exit 1
-          fi
-
-          celeste_ref="$(find "$extract_dir" -type f -name Celeste.dll | head -n 1)"
-          if [ -z "$celeste_ref" ]; then
-            echo "::error::Celeste reference archive is missing Celeste.dll."
-            exit 1
-          fi
-
-          cp -R "$(dirname "$celeste_ref")/." lib-stripped/
-
-          for dll in Celeste.dll FNA.dll MMHOOK_Celeste.dll MonoMod.Utils.dll; do
-            if [ ! -f "lib-stripped/$dll" ]; then
-              echo "::error::Restored lib-stripped directory is missing $dll."
-              exit 1
-            fi
-          done
-
-      - name: Restore
-        run: dotnet restore Akron.sln --nologo
+      - name: Restore locked dependencies
+        run: dotnet restore Akron.sln --locked-mode --nologo -p:ContinuousIntegrationBuild=true
 
       - name: Build
-        run: dotnet build Akron.sln --configuration Release --no-restore --nologo
+        run: dotnet build Akron.sln --configuration Release --no-restore --nologo -p:ContinuousIntegrationBuild=true
 
       - name: Test
         run: dotnet test tests/akron-tests.csproj --configuration Release --no-build --nologo
 
       - name: Verify package contents
         run: |
+          set -euo pipefail
           test -f Akron.zip
-          unzip -l Akron.zip
+          if unzip -Z1 Akron.zip | grep -E '\.pdb$'; then
+            echo "::error::Player package must not contain PDB files."
+            exit 1
+          fi
+          unzip -Z1 Akron.zip | grep -Fx ThirdPartyNotices.txt >/dev/null
           cp Akron.zip "Akron-${RELEASE_TAG}.zip"
           sha256sum "Akron-${RELEASE_TAG}.zip" > "Akron-${RELEASE_TAG}.zip.sha256"
+          dotnet list Source/Akron.csproj package --include-transitive --format json > "Akron-${RELEASE_TAG}.dependencies.json"
+          python3 .github/scripts/generate-sbom.py \
+            --archive "Akron-${RELEASE_TAG}.zip" \
+            --version "${RELEASE_TAG#v}" \
+            --lock Source/packages.lock.json \
+            --output "Akron-${RELEASE_TAG}.cdx.json"
+          python3 -m json.tool "Akron-${RELEASE_TAG}.cdx.json" >/dev/null
 
       - name: Generate release notes
         run: |
@@ -189,124 +166,99 @@ jobs:
           )
           PY
 
-      - name: Check publishing configuration
-        env:
-          GAMEBANANA_USERNAME: ${{ secrets.GAMEBANANA_USERNAME }}
-          GAMEBANANA_PASSWORD: ${{ secrets.GAMEBANANA_PASSWORD }}
-          GAMEBANANA_COOKIES: ${{ secrets.GAMEBANANA_COOKIES }}
-          GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
-          GAMEBANANA_STORAGE_STATE_B64_GZ: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64_GZ }}
-          AKRON_WEBSITE_TOKEN: ${{ secrets.AKRON_WEBSITE_TOKEN }}
-          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${GAMEBANANA_COOKIES:-}" ] && [ -z "${GAMEBANANA_STORAGE_STATE_B64:-}" ] && [ -z "${GAMEBANANA_STORAGE_STATE_B64_GZ:-}" ]; then
-            echo "::error::GAMEBANANA_COOKIES, GAMEBANANA_STORAGE_STATE_B64, or GAMEBANANA_STORAGE_STATE_B64_GZ secret is required. GitHub-hosted runners trigger GameBanana UNKNOWN_DEVICE captcha when using username/password authentication directly."
-            exit 1
-          fi
-
-          if [ -z "${GAMEBANANA_SUBMISSION_ID:-}" ]; then
-            echo "::error::GAMEBANANA_SUBMISSION_ID repository variable is required."
-            exit 1
-          fi
-
-          if [ -z "${AKRON_WEBSITE_TOKEN:-}" ]; then
-            echo "::error::AKRON_WEBSITE_TOKEN secret is required. It must have contents:write access to Microck/akron-website so releases can sync the website fallback GameBanana file ID."
-            exit 1
-          fi
-
-          akron_website_token="$(printf '%s' "$AKRON_WEBSITE_TOKEN" | tr -d '\r\n')"
-          github_api_headers=(
-            -H "Accept: application/vnd.github+json"
-            -H "Authorization: Bearer ${akron_website_token}"
-            -H "X-GitHub-Api-Version: 2022-11-28"
-          )
-          website_token_login="$(curl -fsSL "${github_api_headers[@]}" https://api.github.com/user | jq -r '.login // "unknown"' 2>/dev/null || true)"
-          website_token_can_push="$(curl -fsSL "${github_api_headers[@]}" https://api.github.com/repos/Microck/akron-website | jq -r '.permissions.push // false' 2>/dev/null || true)"
-          if [ "$website_token_can_push" != "true" ]; then
-            echo "::error::AKRON_WEBSITE_TOKEN authenticates as '${website_token_login:-unknown}' and does not have push access to Microck/akron-website."
-            exit 1
-          fi
-
-          if [ -n "${TAILSCALE_EXIT_NODE:-}" ]; then
-            if [ -z "${TS_OAUTH_CLIENT_ID:-}" ] || [ -z "${TS_OAUTH_SECRET:-}" ]; then
-              echo "::error::TAILSCALE_EXIT_NODE is set, so TS_OAUTH_CLIENT_ID and TS_OAUTH_SECRET secrets are required."
-              exit 1
-            fi
-          fi
-
-      - name: Upload packaged mod artifact
-        uses: actions/upload-artifact@v6
+      - name: Upload release inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Akron-${{ env.RELEASE_TAG }}
           path: |
             Akron-${{ env.RELEASE_TAG }}.zip
             Akron-${{ env.RELEASE_TAG }}.zip.sha256
+            Akron-${{ env.RELEASE_TAG }}.dependencies.json
+            Akron-${{ env.RELEASE_TAG }}.cdx.json
+            release-notes.md
+            release-notes.json
           if-no-files-found: error
+          retention-days: 7
 
-      - name: Setup Node for GameBanana publisher
-        uses: actions/setup-node@v5
+  publish_gamebanana:
+    name: Publish immutable artifact to GameBanana
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+    outputs:
+      file_id: ${{ steps.publish.outputs.file_id }}
+    env:
+      GAMEBANANA_API_SECTION: Mod
+      GAMEBANANA_PAGE_SECTION: mods
+      GAMEBANANA_SUBMISSION_ID: ${{ vars.GAMEBANANA_SUBMISSION_ID || '681169' }}
+      GAMEBANANA_BROWSER: cloakbrowser
+      TAILSCALE_EXIT_NODE: ${{ vars.TAILSCALE_EXIT_NODE }}
+      TAILSCALE_TAGS: ${{ vars.TAILSCALE_TAGS || 'tag:ci' }}
+      CLOAKBROWSER_AUTO_UPDATE: "false"
+
+    steps:
+      - name: Checkout immutable release commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          node-version: 22
-
-      - name: Install browser automation dependencies
-        run: |
-          npm install --no-save playwright@1.56.1 playwright-core@1.56.1 cloakbrowser@0.3.31
-          npx playwright install --with-deps chromium
-          npx cloakbrowser install
-
-      - name: Checkout release tooling
-        uses: actions/checkout@v5
-        with:
-          ref: main
-          path: release-tools/akron
+          ref: ${{ needs.build.outputs.release_commit }}
           persist-credentials: false
+
+      - name: Verify release tag is unchanged
+        env:
+          EXPECTED_RELEASE_COMMIT: ${{ needs.build.outputs.release_commit }}
+        run: bash .github/scripts/verify-release-tag.sh
+
+      - name: Download release inputs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Akron-${{ env.RELEASE_TAG }}
+          path: release-artifacts
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.23.1
+          cache: npm
+
+      - name: Install locked browser dependencies
+        run: |
+          npm ci --ignore-scripts
+          ./node_modules/.bin/playwright install-deps chromium
+          bash .github/scripts/install-cloakbrowser.sh
 
       - name: Route GameBanana publishing through Tailscale
         if: env.TAILSCALE_EXIT_NODE != ''
-        uses: tailscale/github-action@v4
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: ${{ env.TAILSCALE_TAGS }}
           args: --exit-node=${{ env.TAILSCALE_EXIT_NODE }}
-          version: latest
+          version: 1.98.8
+          sha256sum: 3a55b5900dd7e11e09b6c74d1e46d223d549dfbefbdc1f044a8ab7bdbafb933c
 
       - name: Verify GameBanana publishing egress
         if: env.TAILSCALE_EXIT_NODE != ''
         run: |
           set -euo pipefail
           status="$(tailscale status)"
-          printf '%s\n' "$status"
-
-          if ! printf '%s\n' "$status" | grep -E "${TAILSCALE_EXIT_NODE}[[:space:]].*exit node" >/dev/null; then
-            echo "::error::Tailscale did not report ${TAILSCALE_EXIT_NODE} as the active exit node."
+          if ! printf '%s\n' "$status" | grep -F "$TAILSCALE_EXIT_NODE" | grep -F 'exit node' >/dev/null; then
+            echo "::error::Tailscale did not report the configured exit node as active."
             exit 1
           fi
-
           getent hosts gamebanana.com >/dev/null
-
-          egress_urls=(
-            https://ifconfig.me
-            https://api.ipify.org
-            https://checkip.amazonaws.com
-          )
-
-          for egress_url in "${egress_urls[@]}"; do
-            if curl -fsSL --connect-timeout 10 --max-time 20 "$egress_url"; then
-              printf '\n'
+          for egress_url in https://ifconfig.me https://api.ipify.org https://checkip.amazonaws.com; do
+            if curl -fsSL --connect-timeout 10 --max-time 20 -o /dev/null "$egress_url"; then
               exit 0
             fi
-            echo "::warning::Failed to verify egress with ${egress_url}; trying the next endpoint."
           done
-
           echo "::error::Could not verify HTTPS egress through the configured Tailscale exit node."
           exit 1
 
       - name: Publish to GameBanana
-        id: publish_gamebanana
+        id: publish
         env:
           GAMEBANANA_USERNAME: ${{ secrets.GAMEBANANA_USERNAME }}
           GAMEBANANA_PASSWORD: ${{ secrets.GAMEBANANA_PASSWORD }}
@@ -314,73 +266,157 @@ jobs:
           GAMEBANANA_STORAGE_STATE_B64: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64 }}
           GAMEBANANA_STORAGE_STATE_B64_GZ: ${{ secrets.GAMEBANANA_STORAGE_STATE_B64_GZ }}
           GAMEBANANA_USER_AGENT: ${{ vars.GAMEBANANA_USER_AGENT }}
-          RELEASE_ASSET: Akron-${{ env.RELEASE_TAG }}.zip
-          RELEASE_NOTES_FILE: release-notes.md
+          RELEASE_ASSET: release-artifacts/Akron-${{ env.RELEASE_TAG }}.zip
+          RELEASE_NAME: ${{ needs.build.outputs.release_display_name }}
+          RELEASE_NOTES_FILE: release-artifacts/release-notes.md
           GAMEBANANA_DEBUG_DIR: ${{ runner.temp }}/gamebanana-debug
         run: |
           set -euo pipefail
+          umask 077
 
-          export RELEASE_NAME
-          RELEASE_NAME="${RELEASE_DISPLAY_NAME}"
+          if [ -z "${GAMEBANANA_COOKIES:-}" ] && [ -z "${GAMEBANANA_STORAGE_STATE_B64:-}" ] && [ -z "${GAMEBANANA_STORAGE_STATE_B64_GZ:-}" ]; then
+            echo "::error::A GameBanana cookie or storage-state secret is required."
+            exit 1
+          fi
 
+          storage_state=""
+          trap 'if [ -n "$storage_state" ]; then rm -f "$storage_state"; fi' EXIT
           if [ -n "${GAMEBANANA_STORAGE_STATE_B64_GZ:-}" ]; then
             storage_state="$RUNNER_TEMP/gamebanana-storage-state.json"
             printf '%s' "$GAMEBANANA_STORAGE_STATE_B64_GZ" | base64 --decode | gzip -dc > "$storage_state"
-            echo "GAMEBANANA_STORAGE_STATE=$storage_state" >> "$GITHUB_ENV"
             export GAMEBANANA_STORAGE_STATE="$storage_state"
           elif [ -n "${GAMEBANANA_STORAGE_STATE_B64:-}" ]; then
             storage_state="$RUNNER_TEMP/gamebanana-storage-state.json"
             printf '%s' "$GAMEBANANA_STORAGE_STATE_B64" | base64 --decode > "$storage_state"
-            echo "GAMEBANANA_STORAGE_STATE=$storage_state" >> "$GITHUB_ENV"
             export GAMEBANANA_STORAGE_STATE="$storage_state"
           fi
 
-          cp release-tools/akron/scripts/publish-gamebanana-release.mjs scripts/publish-gamebanana-release.mjs
           node scripts/publish-gamebanana-release.mjs
 
-      - name: Upload GameBanana debug artifacts
+      - name: Upload sanitized GameBanana diagnostics
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gamebanana-debug-${{ env.RELEASE_TAG }}
           path: ${{ runner.temp }}/gamebanana-debug
           if-no-files-found: ignore
+          retention-days: 1
+
+  github_release:
+    name: Publish GitHub Release and provenance
+    needs:
+      - build
+      - publish_gamebanana
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout immutable release commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.build.outputs.release_commit }}
+          persist-credentials: false
+
+      - name: Verify release tag is unchanged
+        env:
+          EXPECTED_RELEASE_COMMIT: ${{ needs.build.outputs.release_commit }}
+        run: bash .github/scripts/verify-release-tag.sh
+
+      - name: Download release inputs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Akron-${{ env.RELEASE_TAG }}
+          path: release-artifacts
+
+      - name: Attest release artifact provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: release-artifacts/Akron-${{ env.RELEASE_TAG }}.zip
+
+      - name: Attest release SBOM
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3
+        with:
+          subject-path: release-artifacts/Akron-${{ env.RELEASE_TAG }}.zip
+          sbom-path: release-artifacts/Akron-${{ env.RELEASE_TAG }}.cdx.json
 
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          cd release-artifacts
+          title="${{ needs.build.outputs.release_display_name }}"
+          prerelease_flag=(--prerelease="$IS_PRERELEASE")
 
-          title="${RELEASE_DISPLAY_NAME}"
-
-          prerelease_flag=()
-          if [ "$IS_PRERELEASE" = "true" ]; then
-            prerelease_flag=(--prerelease)
-          fi
-
+          assets=(
+            "Akron-${RELEASE_TAG}.zip"
+            "Akron-${RELEASE_TAG}.zip.sha256"
+            "Akron-${RELEASE_TAG}.dependencies.json"
+            "Akron-${RELEASE_TAG}.cdx.json"
+          )
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.id')"
             gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}" --method PATCH --input release-notes.json
-            gh release upload "$RELEASE_TAG" "Akron-${RELEASE_TAG}.zip" "Akron-${RELEASE_TAG}.zip.sha256" --clobber
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
             gh release edit "$RELEASE_TAG" --title "$title" "${prerelease_flag[@]}"
           else
-            gh release create "$RELEASE_TAG" "Akron-${RELEASE_TAG}.zip" "Akron-${RELEASE_TAG}.zip.sha256" --title "$title" --notes-file release-notes.md --verify-tag "${prerelease_flag[@]}"
+            gh release create "$RELEASE_TAG" "${assets[@]}" --title "$title" --notes-file release-notes.md --verify-tag "${prerelease_flag[@]}"
           fi
 
-      - name: Checkout main for README link sync
-        uses: actions/checkout@v5
+  sync_links:
+    name: Sync stable download links
+    needs:
+      - publish_gamebanana
+      - github_release
+      - build
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    env:
+      AKRON_GAMEBANANA_FILE_ID: ${{ needs.publish_gamebanana.outputs.file_id }}
+
+    steps:
+      - name: Checkout immutable release tools
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.build.outputs.release_commit }}
+          path: release-tools/akron
+          persist-credentials: false
+
+      - name: Verify release tag is unchanged
+        env:
+          EXPECTED_RELEASE_COMMIT: ${{ needs.build.outputs.release_commit }}
+        run: bash release-tools/akron/.github/scripts/verify-release-tag.sh
+
+      - name: Checkout main for README update
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: main
           path: link-sync/akron
+          persist-credentials: false
 
-      - name: Sync README GameBanana links
+      - name: Checkout Akron website
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: Microck/akron-website
+          token: ${{ secrets.AKRON_WEBSITE_TOKEN }}
+          path: link-sync/akron-website
+          persist-credentials: false
+
+      - name: Sync and push README link
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          AKRON_README_PATH="link-sync/akron/README.md" AKRON_GAMEBANANA_FILE_ID="$AKRON_GAMEBANANA_FILE_ID" bash release-tools/akron/scripts/sync-gamebanana-readme-links.sh
 
           cd link-sync/akron
-          AKRON_GAMEBANANA_FILE_ID="${{ steps.publish_gamebanana.outputs.file_id }}" bash scripts/sync-gamebanana-readme-links.sh
-
           if git diff --quiet -- README.md; then
             echo "README already points at the published GameBanana file."
             exit 0
@@ -390,26 +426,26 @@ jobs:
           git config user.email "contact@micr.dev"
           git add README.md
           git commit -m "docs: sync gamebanana readme links"
-          git push
+          cleanup_git_auth() {
+            git config --local --unset-all http.https://github.com/.extraheader || true
+          }
+          authorization="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $authorization"
+          trap cleanup_git_auth EXIT
+          git push origin HEAD:main
 
-      - name: Checkout Akron website for link sync
-        uses: actions/checkout@v5
-        with:
-          repository: Microck/akron-website
-          token: ${{ secrets.AKRON_WEBSITE_TOKEN }}
-          path: link-sync/akron-website
-          persist-credentials: false
-
-      - name: Sync Akron website GameBanana links
+      - name: Sync and push website links
         env:
           AKRON_WEBSITE_TOKEN: ${{ secrets.AKRON_WEBSITE_TOKEN }}
         run: |
           set -euo pipefail
+          AKRON_README_PATH= \
+            AKRON_WEBSITE_SOURCE_PATH="link-sync/akron-website/src/main.tsx" \
+            AKRON_WEBSITE_VERCEL_PATH="link-sync/akron-website/vercel.json" \
+            AKRON_GAMEBANANA_FILE_ID="$AKRON_GAMEBANANA_FILE_ID" \
+            bash release-tools/akron/scripts/sync-gamebanana-readme-links.sh
 
-          cd link-sync/akron
-          AKRON_README_PATH= AKRON_WEBSITE_SOURCE_PATH="../akron-website/src/main.tsx" AKRON_WEBSITE_VERCEL_PATH="../akron-website/vercel.json" AKRON_GAMEBANANA_FILE_ID="${{ steps.publish_gamebanana.outputs.file_id }}" bash scripts/sync-gamebanana-readme-links.sh
-
-          cd ../akron-website
+          cd link-sync/akron-website
           if git diff --quiet -- src/main.tsx vercel.json; then
             echo "Akron website already points at the published GameBanana file."
             exit 0
@@ -419,7 +455,10 @@ jobs:
           git config user.email "contact@micr.dev"
           git add src/main.tsx vercel.json
           git commit -m "docs: sync gamebanana website links"
-          git config --local --unset-all http.https://github.com/.extraheader || true
-          akron_website_token="$(printf '%s' "$AKRON_WEBSITE_TOKEN" | tr -d '\r\n')"
-          git remote set-url origin "https://x-access-token:${akron_website_token}@github.com/Microck/akron-website.git"
+          cleanup_git_auth() {
+            git config --local --unset-all http.https://github.com/.extraheader || true
+          }
+          authorization="$(printf 'x-access-token:%s' "$AKRON_WEBSITE_TOKEN" | base64 -w0)"
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $authorization"
+          trap cleanup_git_auth EXIT
           git push origin HEAD:main
