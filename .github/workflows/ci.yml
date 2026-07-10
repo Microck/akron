@@ -29,7 +29,26 @@ jobs:
           persist-credentials: false
 
       - name: Check Celeste reference configuration
+        env:
+          AKRON_CELESTE_REFS_URL: ${{ secrets.AKRON_CELESTE_REFS_URL }}
+          AKRON_CELESTE_REFS_TOKEN: ${{ secrets.AKRON_CELESTE_REFS_TOKEN }}
+          AKRON_CELESTE_REFS_SHA256: ${{ vars.AKRON_CELESTE_REFS_SHA256 }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
+          if [ -n "$AKRON_CELESTE_REFS_URL" ] && [ -z "$AKRON_CELESTE_REFS_SHA256" ]; then
+            archive_path="$RUNNER_TEMP/akron-celeste-refs"
+            curl_args=(-fL --retry 3 --retry-delay 2)
+            auth_token="${AKRON_CELESTE_REFS_TOKEN:-${GITHUB_TOKEN:-}}"
+            if [ -n "$auth_token" ]; then
+              curl_args+=(-H "Authorization: Bearer $auth_token")
+            fi
+            if [[ "$AKRON_CELESTE_REFS_URL" == https://api.github.com/* ]]; then
+              curl_args+=(-H "Accept: application/octet-stream")
+            fi
+            curl "${curl_args[@]}" "$AKRON_CELESTE_REFS_URL" -o "$archive_path"
+            echo "::error::Set AKRON_CELESTE_REFS_SHA256 to $(sha256sum "$archive_path" | cut -d' ' -f1)"
+            exit 1
+          fi
           if [ "$HAS_CELESTE_REFS" != "true" ]; then
             echo "::error::AKRON_CELESTE_REFS_URL and AKRON_CELESTE_REFS_SHA256 are required to build Akron."
             exit 1
