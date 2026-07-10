@@ -269,10 +269,25 @@ public static partial class AkronActions {
             return;
         }
 
-        level.OnEndOfFrame += () => RestoreStartPos(level, startPos, string.Empty, FindStartPosSlot(startPos), endPlacementForLoad: false);
+        level.OnEndOfFrame += () => {
+            if (Engine.Scene != level) {
+                return;
+            }
+
+            if (!RestoreStartPos(level, startPos, string.Empty, FindStartPosSlot(startPos), endPlacementForLoad: false)) {
+                level.Reload();
+                return;
+            }
+
+            Level restoredLevel = Engine.Scene as Level ?? level;
+            if (restoredLevel.Session.RespawnPoint is Vector2 respawnPoint) {
+                SpotlightWipe.FocusPoint = respawnPoint - restoredLevel.Camera.Position;
+            }
+            restoredLevel.DoScreenWipe(wipeIn: true);
+        };
     }
 
-    private static void RestoreStartPos(Level level, AkronStartPos startPos, string toast, int loadedSlot = 0, bool endPlacementForLoad = true, bool enableRespawnAtStartPosAfterRestore = false) {
+    private static bool RestoreStartPos(Level level, AkronStartPos startPos, string toast, int loadedSlot = 0, bool endPlacementForLoad = true, bool enableRespawnAtStartPosAfterRestore = false) {
         bool restoreRespawnAtStartPos = AkronModule.Settings.RespawnAtStartPos;
         bool restoredStartPos = false;
         AkronModule.Settings.RespawnAtStartPos = false;
@@ -285,13 +300,13 @@ public static partial class AkronActions {
                 if (restoredStartPos && loadedSlot > 0) {
                     AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;
                 }
-                return;
+                return restoredStartPos;
             }
 
             AkronSaveLoadResult restored = AkronSaveLoadService.LoadRuntimeState(level, startPos.StateSlotName, allowDeadPlayer: true);
             if (restored != AkronSaveLoadResult.Success) {
                 Engine.Scene?.Add(new AkronToast("StartPos state restore failed: " + restored + "."));
-                return;
+                return false;
             }
 
             Level currentLevel = Engine.Scene as Level ?? level;
@@ -317,6 +332,8 @@ public static partial class AkronActions {
             AkronModule.Settings.RespawnAtStartPos = (enableRespawnAtStartPosAfterRestore && restoredStartPos)
                 || restoreRespawnAtStartPos;
         }
+
+        return restoredStartPos;
     }
 
     private static bool RestoreImportedStartPosPosition(Level level, AkronStartPos startPos, string toast) {
@@ -537,7 +554,7 @@ public static partial class AkronActions {
 
     public static AkronStartPos GetDeathRespawnStartPos(Level level, Vector2 referencePosition) {
         AkronStartPos lastLoaded = GetStartPos(AkronModule.Session?.LastLoadedStartPosSlot ?? 0);
-        if (IsStartPosUsableInCurrentRoom(level, lastLoaded)) {
+        if (IsStartPosUsableForDeath(level, lastLoaded)) {
             return lastLoaded;
         }
 
@@ -546,7 +563,7 @@ public static partial class AkronActions {
         }
 
         AkronStartPos active = GetActiveStartPos();
-        return IsStartPosUsableInCurrentRoom(level, active) ? active : null;
+        return IsStartPosUsableForDeath(level, active) ? active : null;
     }
 
     private static int FindStartPosSlot(AkronStartPos startPos) {
@@ -568,6 +585,15 @@ public static partial class AkronActions {
                startPos != null &&
                string.Equals(startPos.Room, level.Session.Level, StringComparison.Ordinal) &&
                HasRestorableStartPosState(startPos);
+    }
+
+    private static bool IsStartPosUsableForDeath(Level level, AkronStartPos startPos) {
+        if (level == null || !IsStartPosInArea(startPos, GetAreaSid(level))) {
+            return false;
+        }
+
+        return string.Equals(startPos.Room, level.Session.Level, StringComparison.Ordinal) ||
+               !string.IsNullOrWhiteSpace(startPos.StateSlotName);
     }
 
     private static bool IsStartPosInArea(AkronStartPos startPos, string areaSid) {

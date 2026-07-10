@@ -7,10 +7,16 @@ using FMOD.Studio;
 namespace Celeste.Mod.Akron;
 
 internal static class AkronEventInstanceUtils {
+    private sealed class DormantPlaybackState {
+        public bool ShouldPlay { get; init; }
+        public bool Paused { get; init; }
+    }
+
     private static bool initialized;
     private static readonly ConditionalWeakTable<EventInstance, ConcurrentDictionary<string, float>> CachedParameters = new ConditionalWeakTable<EventInstance, ConcurrentDictionary<string, float>>();
     private static readonly ConditionalWeakTable<EventInstance, object> ManualCloneEventInstances = new ConditionalWeakTable<EventInstance, object>();
     private static readonly ConditionalWeakTable<EventInstance, object> CachedTimelinePositions = new ConditionalWeakTable<EventInstance, object>();
+    private static readonly ConditionalWeakTable<EventInstance, DormantPlaybackState> DormantPlaybackStates = new ConditionalWeakTable<EventInstance, DormantPlaybackState>();
 
     public static void Initialize() {
         if (initialized) {
@@ -46,19 +52,32 @@ internal static class AkronEventInstanceUtils {
         return eventInstance != null && ManualCloneEventInstances.TryGetValue(eventInstance, out _);
     }
 
-    public static EventInstance Clone(EventInstance eventInstance) {
+    public static EventInstance Clone(EventInstance eventInstance, bool dormant) {
         string path = Audio.GetEventName(eventInstance);
         if (string.IsNullOrEmpty(path)) {
             return null;
         }
 
         EventInstance clone = Audio.CreateInstance(path);
-        if (clone == null) {
+        if (clone == null || !clone.isValid()) {
             return null;
         }
 
         if (IsManualCloneNeeded(eventInstance)) {
             clone.NeedManualClone();
+        }
+
+        if (eventInstance.getVolume(out float volume, out _) == RESULT.OK) {
+            clone.setVolume(volume);
+        }
+        if (eventInstance.getPitch(out float pitch, out _) == RESULT.OK) {
+            clone.setPitch(pitch);
+        }
+        if (eventInstance.get3DAttributes(out FMOD.Studio._3D_ATTRIBUTES attributes) == RESULT.OK) {
+            clone.set3DAttributes(attributes);
+        }
+        if (eventInstance.getListenerMask(out uint listenerMask) == RESULT.OK) {
+            clone.setListenerMask(listenerMask);
         }
 
         ConcurrentDictionary<string, float> parameters = eventInstance.GetSavedParameterValues();
@@ -69,20 +88,73 @@ internal static class AkronEventInstanceUtils {
         }
 
         int timelinePosition = LoadTimelinePosition(eventInstance);
-        if (timelinePosition > 0) {
-            clone.setTimelinePosition(timelinePosition);
+        if (timelinePosition > 0 && clone.setTimelinePosition(timelinePosition) == RESULT.OK) {
             SaveTimelinePosition(clone, timelinePosition);
         }
 
-        eventInstance.getPlaybackState(out PLAYBACK_STATE playbackState);
-        if (playbackState != PLAYBACK_STATE.STOPPED && playbackState != PLAYBACK_STATE.STOPPING) {
+        bool shouldPlay;
+        bool paused;
+        if (DormantPlaybackStates.TryGetValue(eventInstance, out DormantPlaybackState savedPlayback)) {
+            shouldPlay = savedPlayback.ShouldPlay;
+            paused = savedPlayback.Paused;
+        } else {
+            shouldPlay = eventInstance.getPlaybackState(out PLAYBACK_STATE playbackState) == RESULT.OK &&
+                         playbackState != PLAYBACK_STATE.STOPPED &&
+                         playbackState != PLAYBACK_STATE.STOPPING;
+            paused = shouldPlay && eventInstance.getPaused(out bool sourcePaused) == RESULT.OK && sourcePaused;
+        }
+
+        if (dormant) {
+            DormantPlaybackStates.Add(clone, new DormantPlaybackState {
+                ShouldPlay = shouldPlay,
+                Paused = paused
+            });
+        } else if (shouldPlay) {
             clone.start();
-            if (eventInstance.getPaused(out bool paused) == RESULT.OK) {
+            if (paused) {
                 clone.setPaused(paused);
             }
         }
 
         return clone;
+    }
+
+    public static void ActivateDormantEventInstances(IEnumerable<EventInstance> eventInstances) {
+        if (eventInstances == null) {
+            return;
+        }
+
+        foreach (EventInstance eventInstance in new HashSet<EventInstance>(eventInstances)) {
+            if (eventInstance == null ||
+                !DormantPlaybackStates.TryGetValue(eventInstance, out DormantPlaybackState playback)) {
+                continue;
+            }
+
+            DormantPlaybackStates.Remove(eventInstance);
+            if (!playback.ShouldPlay) {
+                continue;
+            }
+
+            eventInstance.start();
+            if (playback.Paused) {
+                eventInstance.setPaused(true);
+            }
+        }
+    }
+
+    public static void ReleaseDormantEventInstances(IEnumerable<EventInstance> eventInstances) {
+        if (eventInstances == null) {
+            return;
+        }
+
+        foreach (EventInstance eventInstance in new HashSet<EventInstance>(eventInstances)) {
+            if (eventInstance == null || !DormantPlaybackStates.Remove(eventInstance)) {
+                continue;
+            }
+
+            eventInstance.stop(STOP_MODE.IMMEDIATE);
+            eventInstance.release();
+        }
     }
 
     public static int LoadTimelinePosition(EventInstance eventInstance) {

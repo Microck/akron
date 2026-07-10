@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Celeste;
+using FMOD.Studio;
 using Force.DeepCloner.Helpers;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -68,6 +69,8 @@ public sealed class AkronSaveLoadSlot {
     public Session SessionState { get; set; }
     public SaveData SaveDataState { get; set; }
     internal DeepCloneState PreCloneState { get; set; }
+    internal List<EventInstance> SavedLevelEventInstances { get; set; }
+    internal List<EventInstance> PreClonedEventInstances { get; set; }
     public Vector2 PlayerPosition { get; set; }
     public Vector2 PlayerSpeed { get; set; }
     public int PlayerState { get; set; }

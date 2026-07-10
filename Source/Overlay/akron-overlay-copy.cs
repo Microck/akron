@@ -361,7 +361,7 @@ public sealed partial class AkronOverlay {
         ["Berry Obtain Options"] = "Choose whether obtain actions include regular strawberries, golden berries, and the moon berry.",
         ["Auto Kill"] = "Automatically kill the player after a configured map-time threshold or inside selected regions.",
         ["Auto Deafen"] = "Press the configured Discord Toggle Deafen hotkey after entering a selected region until death or reset.",
-        ["Transition Speed"] = "Adjust the next room-transition duration multiplier.",
+        ["Transition Speed"] = "Adjust the next room-transition speed multiplier.",
         ["Room Timer"] = "Show current room timing information in the Akron HUD.",
         ["Death Stats"] = "Show a configurable death counter in the Akron HUD with visibility controls.",
         ["Toasts"] = "Show option feedback messages as plain label-style text instead of a centered background panel.",

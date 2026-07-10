@@ -81,14 +81,52 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
-    public void LoadingStartPosArmsDeathReloadAfterSuccessfulRestore() {
+    public void LoadingStartPosArmsNativeDeathReloadAfterSuccessfulRestore() {
         string source = File.ReadAllText(GetActionsSourcePath());
+        string playerRuntimeSource = File.ReadAllText(GetPlayerRuntimeSourcePath());
 
         Assert.Contains("enableRespawnAtStartPosAfterRestore: true", source);
         Assert.Contains("enableRespawnAtStartPosAfterRestore && restoredStartPos", source);
         Assert.Contains("restoredStartPos && loadedSlot > 0", source);
         Assert.Contains("RestoreStartPosAfterDeath(Level level, AkronStartPos startPos)", source);
-        Assert.Contains("endPlacementForLoad: false", source);
+        Assert.Contains("deadBody.DeathAction = () =>", playerRuntimeSource);
+        Assert.Contains("deadBody.DeathAction == null", playerRuntimeSource);
+        Assert.Contains("!deadBody.HasGolden", playerRuntimeSource);
+        Assert.Contains("if (Engine.Scene != level)", source);
+        Assert.Contains("SpotlightWipe.FocusPoint = respawnPoint - restoredLevel.Camera.Position;", source);
+        Assert.Contains("restoredLevel.DoScreenWipe(wipeIn: true);", source);
+        Assert.Contains("level.Reload();", source);
+        Assert.Equal(1, playerRuntimeSource.Split("AkronActions.RestoreStartPosAfterDeath(level, startPosRespawn)").Length - 1);
+    }
+
+    [Fact]
+    public void StartPosSnapshotsDoNotKeepDormantSoundHandles() {
+        string source = File.ReadAllText(GetSaveLoadSourcePath());
+        string deepCloneSource = File.ReadAllText(GetDeepCloneSourcePath());
+        string eventInstanceSource = File.ReadAllText(GetEventInstanceSourcePath());
+
+        Assert.Contains("SavedLevelEventInstances = AkronDeepClone.CopyIntoDormant", source);
+        Assert.Contains("restoredEventInstances.AddRange(AkronDeepClone.CopyIntoDormant(savedLevel, level));", source);
+        Assert.Contains("ActivateDormantEventInstances(restoredEventInstances);", source);
+        Assert.Contains("ReleaseDormantEventInstances(saveSlot.SavedLevelEventInstances);", source);
+        Assert.Contains("saveSlot.PreCloneState = null;", source);
+        Assert.Contains("ReleaseDormantEventInstances(saveSlot);", source);
+        Assert.Contains("AkronEventInstanceUtils.Clone(eventInstance, cloneEventInstancesAsDormant)", deepCloneSource);
+        Assert.Contains("DormantPlaybackStates.Add(clone", eventInstanceSource);
+        Assert.Contains("eventInstance.start();", eventInstanceSource);
+        Assert.Contains("eventInstance.release();", eventInstanceSource);
+        Assert.DoesNotContain("DetachClonedSoundSourceInstances", source);
+    }
+
+    [Fact]
+    public void FullStateStartPosDeathRespawnCanCrossRooms() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+        string playerRuntimeSource = File.ReadAllText(GetPlayerRuntimeSourcePath());
+
+        Assert.Contains("IsStartPosUsableForDeath(level, lastLoaded)", source);
+        Assert.Contains("!string.IsNullOrWhiteSpace(startPos.StateSlotName)", source);
+        Assert.Contains("if (string.Equals(startPos.Room, level.Session.Level", playerRuntimeSource);
+        Assert.DoesNotContain("string.Equals(startPos.Room, level.Session.Level) &&\n                (string.IsNullOrWhiteSpace(startPos.AreaSid)", playerRuntimeSource);
     }
 
     [Fact]
@@ -213,6 +251,35 @@ public sealed class StartPosPersistenceTests {
         DirectoryInfo? directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory != null) {
             string candidate = Path.Combine(directory.FullName, "Source", "Actions", "akron-startpos-actions.cs");
+            if (File.Exists(candidate)) {
+                return candidate;
+            }
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate Akron repository root.");
+    }
+
+    private static string GetPlayerRuntimeSourcePath() {
+        return GetSourcePath("Module", "akron-module-player-runtime.cs");
+    }
+
+    private static string GetSaveLoadSourcePath() {
+        return GetSourcePath("SaveLoad", "AkronSaveLoad.cs");
+    }
+
+    private static string GetDeepCloneSourcePath() {
+        return GetSourcePath("Core", "AkronDeepClone.cs");
+    }
+
+    private static string GetEventInstanceSourcePath() {
+        return GetSourcePath("Core", "akron-event-instance-utils.cs");
+    }
+
+    private static string GetSourcePath(string directoryName, string fileName) {
+        DirectoryInfo? directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null) {
+            string candidate = Path.Combine(directory.FullName, "Source", directoryName, fileName);
             if (File.Exists(candidate)) {
                 return candidate;
             }
