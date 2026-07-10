@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Celeste;
+using FMOD.Studio;
 using Force.DeepCloner.Helpers;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -29,6 +30,9 @@ public static partial class AkronSaveLoadService {
 
     public static void ClearRuntimeState() {
         RunClearStateActions();
+        foreach (AkronSaveLoadSlot saveSlot in Slots.Values.Concat(RuntimeSlots.Values).Distinct()) {
+            ReleaseDormantEventInstances(saveSlot);
+        }
         RegisteredActions.Clear();
         RiskHandlers.Clear();
         ReturnSameObjectPredicates.Clear();
@@ -146,21 +150,28 @@ public static partial class AkronSaveLoadService {
         }
 
         AkronIgnoreSaveStateComponent.RemoveAll(level);
+        AkronSaveLoadSlot capturedSlot = null;
         try {
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 action.BeforeSaveState?.Invoke(level);
                 action.PreCloneEntities?.Invoke();
             }
 
-            AkronSaveLoadSlot saveSlot = BuildNativeSlot(level, GetSlotName(slot), AkronModule.Settings.SaveTimeAndDeaths);
-            Slots[slot] = saveSlot;
-
+            capturedSlot = BuildNativeSlot(level, GetSlotName(slot), AkronModule.Settings.SaveTimeAndDeaths);
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 Dictionary<Type, Dictionary<string, object>> savedValues = new Dictionary<Type, Dictionary<string, object>>();
                 action.SaveState?.Invoke(savedValues, level);
-                saveSlot.ActionState[action.Id] = (Dictionary<Type, Dictionary<string, object>>) DeepClone(savedValues);
+                capturedSlot.ActionState[action.Id] = (Dictionary<Type, Dictionary<string, object>>) DeepClone(savedValues);
             }
-            PrepareSlotPreClone(saveSlot);
+            PrepareSlotPreClone(capturedSlot);
+            if (Slots.TryGetValue(slot, out AkronSaveLoadSlot previousSlot)) {
+                ReleaseDormantEventInstances(previousSlot);
+            }
+            Slots[slot] = capturedSlot;
+            capturedSlot = null;
+        } catch {
+            ReleaseDormantEventInstances(capturedSlot);
+            throw;
         } finally {
             AkronDeepClone.ClearSharedState();
             AkronIgnoreSaveStateComponent.ReAddAll(level);
@@ -263,6 +274,7 @@ public static partial class AkronSaveLoadService {
         AkronLevelRenderState renderState = AkronLevelRenderState.Capture(level);
         IgnoreVisualRuntimeEntities(level);
         AkronIgnoreSaveStateComponent.RemoveAll(level);
+        AkronSaveLoadSlot saveSlot = null;
         try {
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 action.BeforeSaveState?.Invoke(level);
@@ -273,7 +285,7 @@ public static partial class AkronSaveLoadService {
             // then restored as a whole. A player-only snapshot cannot preserve
             // collected objects, entity cycles, triggers, or room-local runtime
             // state accurately enough for practice starts.
-            AkronSaveLoadSlot saveSlot = BuildNativeSlot(level, CurrentSlotName, saveTimeAndDeaths, includeLevelSnapshot: true);
+            saveSlot = BuildNativeSlot(level, CurrentSlotName, saveTimeAndDeaths, includeLevelSnapshot: true);
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 Dictionary<Type, Dictionary<string, object>> savedValues = new Dictionary<Type, Dictionary<string, object>>();
                 action.SaveState?.Invoke(savedValues, level);
@@ -282,6 +294,9 @@ public static partial class AkronSaveLoadService {
             PrepareSlotPreClone(saveSlot);
 
             return saveSlot;
+        } catch {
+            ReleaseDormantEventInstances(saveSlot);
+            throw;
         } finally {
             AkronDeepClone.ClearSharedState();
             AkronIgnoreSaveStateComponent.ReAddAll(level);
@@ -299,7 +314,9 @@ public static partial class AkronSaveLoadService {
         if (ShouldBrokerRuntimeState(normalizedSlotName)) {
             AkronSaveLoadResult brokerResult = AkronSpeedrunToolBroker.Save(normalizedSlotName);
             if (brokerResult == AkronSaveLoadResult.Success) {
-                RuntimeSlots.Remove(normalizedSlotName);
+                if (RuntimeSlots.Remove(normalizedSlotName, out AkronSaveLoadSlot previousSlot)) {
+                    ReleaseDormantEventInstances(previousSlot);
+                }
                 AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
                 return AkronSaveLoadResult.Success;
             }
@@ -313,6 +330,9 @@ public static partial class AkronSaveLoadService {
             return AkronSaveLoadResult.Blocked;
         }
 
+        if (RuntimeSlots.TryGetValue(normalizedSlotName, out AkronSaveLoadSlot previousRuntimeSlot)) {
+            ReleaseDormantEventInstances(previousRuntimeSlot);
+        }
         RuntimeSlots[normalizedSlotName] = saveSlot;
         AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
         return AkronSaveLoadResult.Success;
@@ -402,6 +422,10 @@ public static partial class AkronSaveLoadService {
             throw new InvalidDataException("Persistent runtime slot name mismatch.");
         }
 
+        if (RuntimeSlots.TryGetValue(normalizedSlotName, out AkronSaveLoadSlot previousSlot) &&
+            !ReferenceEquals(previousSlot, saveSlot)) {
+            ReleaseDormantEventInstances(previousSlot);
+        }
         PrepareSlotPreClone(saveSlot);
         RuntimeSlots[normalizedSlotName] = saveSlot;
     }
@@ -409,7 +433,8 @@ public static partial class AkronSaveLoadService {
     public static void ClearRuntimeState(string slotName) {
         string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
         AkronSpeedrunToolBroker.Clear(normalizedSlotName);
-        if (RuntimeSlots.Remove(normalizedSlotName)) {
+        if (RuntimeSlots.Remove(normalizedSlotName, out AkronSaveLoadSlot removedSlot)) {
+            ReleaseDormantEventInstances(removedSlot);
             RunClearStateActions();
         }
     }
@@ -423,7 +448,8 @@ public static partial class AkronSaveLoadService {
     }
 
     public static void ClearSlot(int slot) {
-        if (Slots.Remove(slot)) {
+        if (Slots.Remove(slot, out AkronSaveLoadSlot removedSlot)) {
+            ReleaseDormantEventInstances(removedSlot);
             RunClearStateActions();
         }
     }
@@ -499,63 +525,74 @@ public static partial class AkronSaveLoadService {
             saveTimeAndDeaths
         );
 
-        saveSlot.SessionNonce = AkronModule.Session.CurrentSessionNonce;
-        if (includeLevelSnapshot) {
-            saveSlot.SavedLevel = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
-            AkronDeepClone.CopyInto(level, saveSlot.SavedLevel);
-        }
-        saveSlot.SessionState = (Session) DeepClone(level.Session);
-        CaptureCuratedSessionState(level.Session, saveSlot);
-        if (SaveData.Instance != null) {
-            saveSlot.SaveDataState = (SaveData) DeepClone(SaveData.Instance);
-        }
+        try {
+            saveSlot.SessionNonce = AkronModule.Session.CurrentSessionNonce;
+            if (includeLevelSnapshot) {
+                saveSlot.SavedLevel = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+                saveSlot.SavedLevelEventInstances = AkronDeepClone.CopyIntoDormant(level, saveSlot.SavedLevel);
+            }
+            saveSlot.SessionState = (Session) DeepClone(level.Session);
+            CaptureCuratedSessionState(level.Session, saveSlot);
+            if (SaveData.Instance != null) {
+                saveSlot.SaveDataState = (SaveData) DeepClone(SaveData.Instance);
+            }
 
-        if (player != null) {
-            saveSlot.PlayerPosition = player.Position;
-            saveSlot.PlayerSpeed = player.Speed;
-            saveSlot.PlayerState = player.StateMachine.State;
-            saveSlot.Stamina = player.Stamina;
-            saveSlot.Dashes = player.Dashes;
-            saveSlot.Facing = player.Facing;
-        }
+            if (player != null) {
+                saveSlot.PlayerPosition = player.Position;
+                saveSlot.PlayerSpeed = player.Speed;
+                saveSlot.PlayerState = player.StateMachine.State;
+                saveSlot.Stamina = player.Stamina;
+                saveSlot.Dashes = player.Dashes;
+                saveSlot.Facing = player.Facing;
+            }
 
-        saveSlot.RespawnPoint = level.Session.RespawnPoint;
-        saveSlot.Time = level.Session.Time;
-        saveSlot.Deaths = level.Session.Deaths;
-        saveSlot.DeathsInCurrentLevel = level.Session.DeathsInCurrentLevel;
-        saveSlot.FileSlot = SaveData.Instance?.FileSlot ?? -1;
-        saveSlot.SaveDataTime = SaveData.Instance?.Time ?? 0L;
-        saveSlot.SaveDataTotalDeaths = SaveData.Instance?.TotalDeaths ?? 0;
-        if (SaveData.Instance != null) {
-            AreaKey areaKey = level.Session.Area;
-            saveSlot.AreaTimePlayed = SaveData.Instance.Areas_Safe[areaKey.ID].Modes[(int) areaKey.Mode].TimePlayed;
-            saveSlot.AreaDeaths = SaveData.Instance.Areas_Safe[areaKey.ID].Modes[(int) areaKey.Mode].Deaths;
-        }
-        saveSlot.LevelTimeActive = level.TimeActive;
-        saveSlot.LevelRawTimeActive = level.RawTimeActive;
-        saveSlot.GrabMode = Settings.Instance.GrabMode;
-        saveSlot.CrouchDashMode = Settings.Instance.CrouchDashMode;
+            saveSlot.RespawnPoint = level.Session.RespawnPoint;
+            saveSlot.Time = level.Session.Time;
+            saveSlot.Deaths = level.Session.Deaths;
+            saveSlot.DeathsInCurrentLevel = level.Session.DeathsInCurrentLevel;
+            saveSlot.FileSlot = SaveData.Instance?.FileSlot ?? -1;
+            saveSlot.SaveDataTime = SaveData.Instance?.Time ?? 0L;
+            saveSlot.SaveDataTotalDeaths = SaveData.Instance?.TotalDeaths ?? 0;
+            if (SaveData.Instance != null) {
+                AreaKey areaKey = level.Session.Area;
+                saveSlot.AreaTimePlayed = SaveData.Instance.Areas_Safe[areaKey.ID].Modes[(int) areaKey.Mode].TimePlayed;
+                saveSlot.AreaDeaths = SaveData.Instance.Areas_Safe[areaKey.ID].Modes[(int) areaKey.Mode].Deaths;
+            }
+            saveSlot.LevelTimeActive = level.TimeActive;
+            saveSlot.LevelRawTimeActive = level.RawTimeActive;
+            saveSlot.GrabMode = Settings.Instance.GrabMode;
+            saveSlot.CrouchDashMode = Settings.Instance.CrouchDashMode;
 #pragma warning disable CS0618
-        saveSlot.EngineTimeRate = Engine.TimeRate;
+            saveSlot.EngineTimeRate = Engine.TimeRate;
 #pragma warning restore CS0618
-        saveSlot.GlitchValue = Glitch.Value;
-        saveSlot.DistortAnxiety = Distort.Anxiety;
-        saveSlot.DistortGameRate = Distort.GameRate;
+            saveSlot.GlitchValue = Glitch.Value;
+            saveSlot.DistortAnxiety = Distort.Anxiety;
+            saveSlot.DistortGameRate = Distort.GameRate;
 
-        foreach (EverestModule module in Everest.Modules.Where(module => module.GetType().Name != "NullModule")) {
-            if (module._Session != null) {
-                saveSlot.ModuleSessions[module.GetType().FullName ?? module.GetType().Name] = (EverestModuleSession) DeepClone(module._Session);
+            foreach (EverestModule module in Everest.Modules.Where(module => module.GetType().Name != "NullModule")) {
+                if (module._Session != null) {
+                    saveSlot.ModuleSessions[module.GetType().FullName ?? module.GetType().Name] = (EverestModuleSession) DeepClone(module._Session);
+                }
+                if (module._SaveData != null) {
+                    saveSlot.ModuleSaveData[module.GetType().FullName ?? module.GetType().Name] = (EverestModuleSaveData) DeepClone(module._SaveData);
+                }
             }
-            if (module._SaveData != null) {
-                saveSlot.ModuleSaveData[module.GetType().FullName ?? module.GetType().Name] = (EverestModuleSaveData) DeepClone(module._SaveData);
-            }
+
+            return saveSlot;
+        } catch {
+            ReleaseDormantEventInstances(saveSlot);
+            throw;
         }
-
-        return saveSlot;
     }
 
     private static void PrepareSlotPreClone(AkronSaveLoadSlot saveSlot) {
         AkronDeepClone.ClearSharedState();
+        List<EventInstance> previousEventInstances = saveSlot?.PreClonedEventInstances;
+        if (saveSlot != null) {
+            saveSlot.PreClonedEventInstances = null;
+            saveSlot.PreCloneState = null;
+        }
+        AkronEventInstanceUtils.ReleaseDormantEventInstances(previousEventInstances);
         saveSlot.PreCloneState = AkronDeepClone.CreateSharedEntityState(saveSlot);
     }
 
@@ -566,120 +603,134 @@ public static partial class AkronSaveLoadService {
             return false;
         }
 
-        AkronDeepClone.SetSharedState(saveSlot.PreCloneState);
-        Level savedLevel = saveSlot.SavedLevel;
-        Session savedSession = savedLevel?.Session ?? (saveSlot.SessionState != null ? (Session) DeepClone(saveSlot.SessionState) : null);
-        SaveData savedSaveData = saveSlot.SaveDataState != null ? (SaveData) DeepClone(saveSlot.SaveDataState) : null;
-        long currentSessionTime = level.Session.Time;
-        int currentDeaths = level.Session.Deaths;
-        int currentDeathsInRoom = level.Session.DeathsInCurrentLevel;
-        long currentSaveDataTime = SaveData.Instance?.Time ?? 0L;
-        int currentTotalDeaths = SaveData.Instance?.TotalDeaths ?? 0;
-        float currentLevelTimeActive = level.TimeActive;
-        float currentLevelRawTimeActive = level.RawTimeActive;
-        AreaKey currentAreaKey = level.Session.Area;
-        long currentAreaTimePlayed = SaveData.Instance?.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].TimePlayed ?? 0L;
-        int currentAreaDeaths = SaveData.Instance?.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].Deaths ?? 0;
+        List<EventInstance> restoredEventInstances = new List<EventInstance>(saveSlot.PreClonedEventInstances ?? Enumerable.Empty<EventInstance>());
+        DeepCloneState preCloneState = saveSlot.PreCloneState;
+        saveSlot.PreClonedEventInstances = null;
+        saveSlot.PreCloneState = null;
+        try {
+            AkronDeepClone.SetSharedState(preCloneState);
+            Level savedLevel = saveSlot.SavedLevel;
+            Session savedSession = savedLevel?.Session ?? (saveSlot.SessionState != null ? (Session) DeepClone(saveSlot.SessionState) : null);
+            SaveData savedSaveData = saveSlot.SaveDataState != null ? (SaveData) DeepClone(saveSlot.SaveDataState) : null;
+            long currentSessionTime = level.Session.Time;
+            int currentDeaths = level.Session.Deaths;
+            int currentDeathsInRoom = level.Session.DeathsInCurrentLevel;
+            long currentSaveDataTime = SaveData.Instance?.Time ?? 0L;
+            int currentTotalDeaths = SaveData.Instance?.TotalDeaths ?? 0;
+            float currentLevelTimeActive = level.TimeActive;
+            float currentLevelRawTimeActive = level.RawTimeActive;
+            AreaKey currentAreaKey = level.Session.Area;
+            long currentAreaTimePlayed = SaveData.Instance?.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].TimePlayed ?? 0L;
+            int currentAreaDeaths = SaveData.Instance?.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].Deaths ?? 0;
 
-        if (savedSession != null && !saveSlot.SaveTimeAndDeaths) {
-            savedSession.Time = Math.Max(currentSessionTime, savedSession.Time);
-            savedSession.Deaths = Math.Max(currentDeaths, savedSession.Deaths);
-            savedSession.DeathsInCurrentLevel = Math.Max(currentDeathsInRoom, savedSession.DeathsInCurrentLevel);
-        }
+            if (savedSession != null && !saveSlot.SaveTimeAndDeaths) {
+                savedSession.Time = Math.Max(currentSessionTime, savedSession.Time);
+                savedSession.Deaths = Math.Max(currentDeaths, savedSession.Deaths);
+                savedSession.DeathsInCurrentLevel = Math.Max(currentDeathsInRoom, savedSession.DeathsInCurrentLevel);
+            }
 
-        if (savedSaveData != null && !saveSlot.SaveTimeAndDeaths) {
-            savedSaveData.Time = Math.Max(currentSaveDataTime, savedSaveData.Time);
-            savedSaveData.TotalDeaths = Math.Max(currentTotalDeaths, savedSaveData.TotalDeaths);
-            savedSaveData.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].TimePlayed =
-                Math.Max(currentAreaTimePlayed, savedSaveData.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].TimePlayed);
-            savedSaveData.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].Deaths =
-                Math.Max(currentAreaDeaths, savedSaveData.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].Deaths);
-        }
+            if (savedSaveData != null && !saveSlot.SaveTimeAndDeaths) {
+                savedSaveData.Time = Math.Max(currentSaveDataTime, savedSaveData.Time);
+                savedSaveData.TotalDeaths = Math.Max(currentTotalDeaths, savedSaveData.TotalDeaths);
+                savedSaveData.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].TimePlayed =
+                    Math.Max(currentAreaTimePlayed, savedSaveData.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].TimePlayed);
+                savedSaveData.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].Deaths =
+                    Math.Max(currentAreaDeaths, savedSaveData.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].Deaths);
+            }
 
-        if (savedLevel != null) {
-            UnloadLevel(level);
-            AkronDeepClone.CopyInto(savedLevel, level);
-            AkronLevelGraphRepair.RelinkEntitiesToLevel(level);
-            AkronLevelRenderState.RelinkRendererCameras(level);
-            RemoveClonedVisualRuntimeEntities(level);
-            AkronVirtualAssetReloadTracker.ReloadDisposedAssets(level);
-            RepairClonedSoundSources(level);
-        } else {
-            string restoredRoom = savedSession?.Level ?? saveSlot.LevelName;
-            Vector2? restoredRespawnPoint = savedSession?.RespawnPoint ?? saveSlot.RespawnPoint;
-            bool roomChanged = level.Session.Level != restoredRoom || level.Session.RespawnPoint != restoredRespawnPoint;
-
-            if (savedSession != null) {
-                AkronDeepClone.CopyInto(savedSession, level.Session);
+            if (savedLevel != null) {
+                UnloadLevel(level);
+                restoredEventInstances.AddRange(AkronDeepClone.CopyIntoDormant(savedLevel, level));
+                AkronLevelGraphRepair.RelinkEntitiesToLevel(level);
+                AkronLevelRenderState.RelinkRendererCameras(level);
+                RemoveClonedVisualRuntimeEntities(level);
+                AkronVirtualAssetReloadTracker.ReloadDisposedAssets(level);
             } else {
-                level.Session.Level = saveSlot.LevelName;
-                level.Session.RespawnPoint = saveSlot.RespawnPoint;
-                RestoreCuratedSessionState(level.Session, saveSlot);
+                string restoredRoom = savedSession?.Level ?? saveSlot.LevelName;
+                Vector2? restoredRespawnPoint = savedSession?.RespawnPoint ?? saveSlot.RespawnPoint;
+                bool roomChanged = level.Session.Level != restoredRoom || level.Session.RespawnPoint != restoredRespawnPoint;
+
+                if (savedSession != null) {
+                    AkronDeepClone.CopyInto(savedSession, level.Session);
+                } else {
+                    level.Session.Level = saveSlot.LevelName;
+                    level.Session.RespawnPoint = saveSlot.RespawnPoint;
+                    RestoreCuratedSessionState(level.Session, saveSlot);
+                }
+
+                if (roomChanged) {
+                    level.Tracker.GetEntitiesCopy<Player>().ForEach(entity => entity.RemoveSelf());
+                    level.UnloadLevel();
+                    level.Completed = false;
+                    level.InCutscene = false;
+                    level.SkippingCutscene = false;
+                    level.LoadLevel(Player.IntroTypes.Respawn);
+                    level.Entities.UpdateLists();
+                }
             }
 
-            if (roomChanged) {
-                level.Tracker.GetEntitiesCopy<Player>().ForEach(entity => entity.RemoveSelf());
-                level.UnloadLevel();
-                level.Completed = false;
-                level.InCutscene = false;
-                level.SkippingCutscene = false;
-                level.LoadLevel(Player.IntroTypes.Respawn);
-                level.Entities.UpdateLists();
+            Player player = level.Tracker.GetEntity<Player>();
+            if (player != null && savedLevel == null) {
+                player.Position = saveSlot.PlayerPosition;
+                player.Speed = saveSlot.PlayerSpeed;
+                player.StateMachine.ForceState(saveSlot.PlayerState);
+                player.Stamina = saveSlot.Stamina;
+                player.Dashes = saveSlot.Dashes;
+                player.Facing = saveSlot.Facing;
             }
-        }
 
-        Player player = level.Tracker.GetEntity<Player>();
-        if (player != null && savedLevel == null) {
-            player.Position = saveSlot.PlayerPosition;
-            player.Speed = saveSlot.PlayerSpeed;
-            player.StateMachine.ForceState(saveSlot.PlayerState);
-            player.Stamina = saveSlot.Stamina;
-            player.Dashes = saveSlot.Dashes;
-            player.Facing = saveSlot.Facing;
-        }
+            if (savedSaveData != null) {
+                SaveData.Instance = savedSaveData;
+            }
 
-        if (savedSaveData != null) {
-            SaveData.Instance = savedSaveData;
-        }
+            if (!saveSlot.SaveTimeAndDeaths) {
+                level.Session.Time = Math.Max(currentSessionTime, level.Session.Time);
+                level.Session.Deaths = Math.Max(currentDeaths, level.Session.Deaths);
+                level.Session.DeathsInCurrentLevel = Math.Max(currentDeathsInRoom, level.Session.DeathsInCurrentLevel);
+            }
 
-        if (!saveSlot.SaveTimeAndDeaths) {
-            level.Session.Time = Math.Max(currentSessionTime, level.Session.Time);
-            level.Session.Deaths = Math.Max(currentDeaths, level.Session.Deaths);
-            level.Session.DeathsInCurrentLevel = Math.Max(currentDeathsInRoom, level.Session.DeathsInCurrentLevel);
-        }
+            if (saveSlot.SaveTimeAndDeaths) {
+                level.TimeActive = saveSlot.LevelTimeActive;
+                level.RawTimeActive = saveSlot.LevelRawTimeActive;
+            } else {
+                level.TimeActive = Math.Max(currentLevelTimeActive, saveSlot.LevelTimeActive);
+                level.RawTimeActive = Math.Max(currentLevelRawTimeActive, saveSlot.LevelRawTimeActive);
+            }
 
-        if (saveSlot.SaveTimeAndDeaths) {
-            level.TimeActive = saveSlot.LevelTimeActive;
-            level.RawTimeActive = saveSlot.LevelRawTimeActive;
-        } else {
-            level.TimeActive = Math.Max(currentLevelTimeActive, saveSlot.LevelTimeActive);
-            level.RawTimeActive = Math.Max(currentLevelRawTimeActive, saveSlot.LevelRawTimeActive);
-        }
-
-        Settings.Instance.GrabMode = saveSlot.GrabMode;
-        Settings.Instance.CrouchDashMode = saveSlot.CrouchDashMode;
+            Settings.Instance.GrabMode = saveSlot.GrabMode;
+            Settings.Instance.CrouchDashMode = saveSlot.CrouchDashMode;
 #pragma warning disable CS0618
-        Engine.TimeRate = saveSlot.EngineTimeRate;
+            Engine.TimeRate = saveSlot.EngineTimeRate;
 #pragma warning restore CS0618
-        Glitch.Value = saveSlot.GlitchValue;
-        Distort.Anxiety = saveSlot.DistortAnxiety;
-        Distort.GameRate = saveSlot.DistortGameRate;
+            Glitch.Value = saveSlot.GlitchValue;
+            Distort.Anxiety = saveSlot.DistortAnxiety;
+            Distort.GameRate = saveSlot.DistortGameRate;
 
-        foreach (EverestModule module in Everest.Modules.Where(module => module.GetType().Name != "NullModule")) {
-            if (!restoreAkronModuleState && module is AkronModule) {
-                continue;
+            foreach (EverestModule module in Everest.Modules.Where(module => module.GetType().Name != "NullModule")) {
+                if (!restoreAkronModuleState && module is AkronModule) {
+                    continue;
+                }
+
+                string key = module.GetType().FullName ?? module.GetType().Name;
+                if (saveSlot.ModuleSessions.TryGetValue(key, out EverestModuleSession moduleSession)) {
+                    module._Session = (EverestModuleSession) DeepClone(moduleSession);
+                }
+                if (saveSlot.ModuleSaveData.TryGetValue(key, out EverestModuleSaveData moduleSaveData)) {
+                    module._SaveData = (EverestModuleSaveData) DeepClone(moduleSaveData);
+                }
             }
 
-            string key = module.GetType().FullName ?? module.GetType().Name;
-            if (saveSlot.ModuleSessions.TryGetValue(key, out EverestModuleSession moduleSession)) {
-                module._Session = (EverestModuleSession) DeepClone(moduleSession);
+            if (savedLevel != null) {
+                // No saved-graph handle may start until every restored owner is live.
+                AkronEventInstanceUtils.ActivateDormantEventInstances(restoredEventInstances);
+                RepairClonedSoundSources(level);
             }
-            if (saveSlot.ModuleSaveData.TryGetValue(key, out EverestModuleSaveData moduleSaveData)) {
-                module._SaveData = (EverestModuleSaveData) DeepClone(moduleSaveData);
-            }
+
+            return true;
+        } catch {
+            AkronEventInstanceUtils.ReleaseDormantEventInstances(restoredEventInstances);
+            throw;
         }
-
-        return true;
     }
 
     private static void CaptureCuratedSessionState(Session session, AkronSaveLoadSlot saveSlot) {
@@ -780,6 +831,17 @@ public static partial class AkronSaveLoadService {
             // object/player sounds alive without inventing new one-shot sounds.
             soundSource.Play(soundSource.EventName);
         }
+    }
+
+    private static void ReleaseDormantEventInstances(AkronSaveLoadSlot saveSlot) {
+        if (saveSlot == null) {
+            return;
+        }
+
+        AkronEventInstanceUtils.ReleaseDormantEventInstances(saveSlot.SavedLevelEventInstances);
+        AkronEventInstanceUtils.ReleaseDormantEventInstances(saveSlot.PreClonedEventInstances);
+        saveSlot.SavedLevelEventInstances = null;
+        saveSlot.PreClonedEventInstances = null;
     }
 
     internal static int RemoveClonedDustEdges(Level level) {

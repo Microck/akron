@@ -78,8 +78,16 @@ public partial class AkronModule {
 
         if (deadBody != null || self.Dead) {
             AkronInternalRecorder.NotifyDeath(level, goldenDeath);
-            if (startPosRespawn != null && level != null) {
-                AkronActions.RestoreStartPosAfterDeath(level, startPosRespawn);
+            if (deadBody != null &&
+                !deadBody.HasGolden &&
+                deadBody.DeathAction == null &&
+                startPosRespawn != null &&
+                !string.IsNullOrWhiteSpace(startPosRespawn.StateSlotName) &&
+                level != null) {
+                // Keep Celeste's death effect, delay, and wipe. The native
+                // DeathAction normally reloads the room; substitute the full
+                // StartPos snapshot only after that presentation completes.
+                deadBody.DeathAction = () => AkronActions.RestoreStartPosAfterDeath(level, startPosRespawn);
             }
         }
 
@@ -176,13 +184,14 @@ public partial class AkronModule {
         if (Settings.RespawnAtStartPos) {
             AkronStartPos startPos = AkronActions.GetDeathRespawnStartPos(level, player.Position);
             if (startPos != null &&
-                string.Equals(startPos.Room, level.Session.Level) &&
                 (string.IsNullOrWhiteSpace(startPos.AreaSid) || string.Equals(startPos.AreaSid, level.Session.Area.GetSID())) &&
                 TryUse(AkronFeatureKind.StartPosTools)) {
                 // Keep vanilla death accounting and visuals, then reload the
                 // StartPos state at frame end so entities, sounds, and player
                 // state match the latest loaded practice snapshot.
-                level.Session.RespawnPoint = startPos.Position;
+                if (string.Equals(startPos.Room, level.Session.Level, StringComparison.Ordinal)) {
+                    level.Session.RespawnPoint = startPos.Position;
+                }
                 return startPos;
             }
         }

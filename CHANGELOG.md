@@ -4,6 +4,12 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Unreleased
+
+### Fixed
+
+- Keep StartPos deaths on Celeste's normal death animation and wipe before restoring across room changes, stop saved positional sounds from lingering after room transitions, and make Transition Speed values below 1x actually slow transitions.
+
 ## Akron Beta 47
 
 ### Fixed

@@ -19,6 +19,8 @@ internal static class AkronDeepClone {
     [ThreadStatic] private static Stack<Component> hashSetComponents;
     [ThreadStatic] private static Stack<object> hashSetObjects;
     [ThreadStatic] private static Dictionary<object, object> dictionaryBackup;
+    [ThreadStatic] private static bool cloneEventInstancesAsDormant;
+    [ThreadStatic] private static List<EventInstance> dormantEventInstances;
 
     private static DeepCloneState sharedDeepCloneState = new DeepCloneState();
     private static bool configured;
@@ -39,6 +41,8 @@ internal static class AkronDeepClone {
         DeepCloner.ClearPreCloneProcessor();
         DeepCloner.ClearPostCloneProcessor();
         sharedDeepCloneState = new DeepCloneState();
+        cloneEventInstancesAsDormant = false;
+        dormantEventInstances = null;
         configured = false;
     }
 
@@ -56,9 +60,11 @@ internal static class AkronDeepClone {
         }
 
         DeepCloneState state = new DeepCloneState();
-        slot.SavedLevel.Entities.DeepClone(state);
-        AkronLevelRenderState.RendererListField?.GetValue(slot.SavedLevel)?.DeepClone(state);
-        slot.SaveDataState?.DeepClone(state);
+        slot.PreClonedEventInstances = RunWithDormantEventClones(() => {
+            slot.SavedLevel.Entities.DeepClone(state);
+            AkronLevelRenderState.RendererListField?.GetValue(slot.SavedLevel)?.DeepClone(state);
+            slot.SaveDataState?.DeepClone(state);
+        });
         return state;
     }
 
@@ -78,6 +84,10 @@ internal static class AkronDeepClone {
 
         EnsureSharedState();
         source.DeepCloneTo(target, sharedDeepCloneState);
+    }
+
+    public static List<EventInstance> CopyIntoDormant(object source, object target) {
+        return RunWithDormantEventClones(() => CopyInto(source, target));
     }
 
     private static void EnsureSharedState() {
@@ -129,7 +139,11 @@ internal static class AkronDeepClone {
             }
 
             if (source is EventInstance eventInstance) {
-                return AkronEventInstanceUtils.Clone(eventInstance);
+                EventInstance clone = AkronEventInstanceUtils.Clone(eventInstance, cloneEventInstancesAsDormant);
+                if (cloneEventInstancesAsDormant && clone != null) {
+                    dormantEventInstances?.Add(clone);
+                }
+                return clone;
             }
 
             if (source is WeakReference weakReference) {
@@ -138,6 +152,28 @@ internal static class AkronDeepClone {
 
             object custom = AkronSaveLoadService.TryCustomClone(source);
             return custom;
+        }
+    }
+
+    private static List<EventInstance> RunWithDormantEventClones(Action cloneAction) {
+        bool previousDormantMode = cloneEventInstancesAsDormant;
+        List<EventInstance> previousEventInstances = dormantEventInstances;
+        List<EventInstance> capturedEventInstances = new List<EventInstance>();
+        cloneEventInstancesAsDormant = true;
+        dormantEventInstances = capturedEventInstances;
+        try {
+            cloneAction();
+            return capturedEventInstances;
+        } catch {
+            AkronEventInstanceUtils.ReleaseDormantEventInstances(capturedEventInstances);
+            capturedEventInstances.Clear();
+            throw;
+        } finally {
+            if (previousDormantMode) {
+                previousEventInstances?.AddRange(capturedEventInstances);
+            }
+            cloneEventInstancesAsDormant = previousDormantMode;
+            dormantEventInstances = previousEventInstances;
         }
     }
 

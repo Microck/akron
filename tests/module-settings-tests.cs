@@ -3515,6 +3515,15 @@ public sealed class ModuleSettingsTests
         Assert.Equal(AkronModuleSettings.DefaultStartPosSlotCount, settings.StartPosSlotCount);
     }
 
+    [Theory]
+    [InlineData(0.5f, 1.3f)]
+    [InlineData(1f, 0.65f)]
+    [InlineData(2f, 0.325f)]
+    public void TransitionSpeedMultiplierControlsSpeed(float multiplier, float expectedDuration)
+    {
+        Assert.Equal(expectedDuration, AkronModule.TransitionDurationForSpeedMultiplier(multiplier), 3);
+    }
+
     [Fact]
     public void StartPosDefaultsDoNotApplySpawnConfig()
     {

@@ -432,7 +432,11 @@ public partial class AkronModule {
             return;
         }
 
-        level.NextTransitionDuration = 0.65f * multiplier;
+        level.NextTransitionDuration = TransitionDurationForSpeedMultiplier(multiplier);
+    }
+
+    internal static float TransitionDurationForSpeedMultiplier(float multiplier) {
+        return 0.65f / AkronModuleSettings.ClampTransitionSpeedMultiplier(multiplier);
     }
 
     private static void ApplyVisualPlayerOverrides(Player player) {

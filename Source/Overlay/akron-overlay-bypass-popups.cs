@@ -19,7 +19,7 @@ public sealed partial class AkronOverlay
             3f,
             "%.1f",
             popupId,
-            "Multiplier for Celeste's next room-transition duration.");
+            "Multiplier for Celeste's next room-transition speed.");
     }
 
     private void DrawFrameStepperPopupControls(string popupId)
