@@ -277,6 +277,28 @@ public sealed partial class AkronOverlay {
             popupId,
             "Frame-time spike threshold that triggers the pause while Lag Pauser is toggled on.");
 
+        DrawIntStepperRow(
+            "Recovery grace ms",
+            () => AkronModule.Settings.LagPauserRecoveryGraceMs,
+            value => AkronModule.Settings.LagPauserRecoveryGraceMs = AkronModuleSettings.ClampLagPauserWindowMs(value),
+            -50,
+            50,
+            0,
+            5000,
+            popupId,
+            "Ignore lag spikes briefly after respawning or entering a room.");
+
+        DrawIntStepperRow(
+            "Repeat cooldown ms",
+            () => AkronModule.Settings.LagPauserRepeatCooldownMs,
+            value => AkronModule.Settings.LagPauserRepeatCooldownMs = AkronModuleSettings.ClampLagPauserWindowMs(value),
+            -50,
+            50,
+            0,
+            5000,
+            popupId,
+            "Prevent another automatic lag pause until this cooldown expires.");
+
         if (AkronInterop.SpeedrunToolLoaded) {
             DrawPopupCheckbox(
                 "Ignore SRT",

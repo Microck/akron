@@ -112,6 +112,8 @@ public static class AkronProof {
         AppendJson(builder, "pausedSeconds", session.PauseTrackerPausedSeconds.ToString("0.000"), true, true);
         AppendJson(builder, "lagPauserEnabled", settings.LagPauser.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "lagPauserThresholdMs", settings.LagPauserThresholdMs.ToString(), true, true);
+        AppendJson(builder, "lagPauserRecoveryGraceMs", settings.LagPauserRecoveryGraceMs.ToString(), true, true);
+        AppendJson(builder, "lagPauserRepeatCooldownMs", settings.LagPauserRepeatCooldownMs.ToString(), true, true);
         AppendJson(builder, "lagPauserTriggerCount", session.LagPauserTriggerCount.ToString(), true, true);
         AppendJson(builder, "lastLagSpikeMs", session.LagPauserLastSpikeMs.ToString("0.000"), true, true);
         AppendJson(builder, "usedGoldenStartHelper", session.UsedGoldenStartHelper.ToString().ToLowerInvariant(), true, true);

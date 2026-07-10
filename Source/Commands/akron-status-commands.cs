@@ -58,6 +58,8 @@ public static partial class AkronCommands {
         Log("golden-transparency-opacity: " + AkronModule.Settings.GoldenTransparencyOpacity.ToString(CultureInfo.InvariantCulture));
         Log("lag-pauser: " + AkronModule.Settings.LagPauser.ToString().ToLowerInvariant());
         Log("lag-pauser-threshold-ms: " + AkronModule.Settings.LagPauserThresholdMs.ToString(CultureInfo.InvariantCulture));
+        Log("lag-pauser-recovery-grace-ms: " + AkronModule.Settings.LagPauserRecoveryGraceMs.ToString(CultureInfo.InvariantCulture));
+        Log("lag-pauser-repeat-cooldown-ms: " + AkronModule.Settings.LagPauserRepeatCooldownMs.ToString(CultureInfo.InvariantCulture));
         Log("lag-pauser-ignore-srt: " + AkronModule.Settings.LagPauserIgnoreSpeedrunToolLoadStates.ToString().ToLowerInvariant());
         Log("lag-pauser-trigger-count: " + (session?.LagPauserTriggerCount.ToString(CultureInfo.InvariantCulture) ?? "0"));
         Log("lag-pauser-last-spike-ms: " + (session?.LagPauserLastSpikeMs.ToString("0.000", CultureInfo.InvariantCulture) ?? "0.000"));

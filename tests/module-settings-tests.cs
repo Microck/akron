@@ -214,14 +214,14 @@ public sealed class ModuleSettingsTests
     [Fact]
     public void LagPauserIgnoresNativeFreezeSample()
     {
-        Assert.False(AkronModule.ShouldTriggerLagPauser(150f, 50, ignoreNativeFreezeSpike: true, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 1UL));
-        Assert.False(AkronModule.ShouldTriggerLagPauser(150f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 9UL));
+        Assert.False(AkronModule.ShouldTriggerLagPauser(150f, 50, ignoreNativeFreezeSpike: true, ignoreIntentionalLoadSpike: false, ignoreRecoveryWindow: false, skippedEngineFrames: 1UL));
+        Assert.False(AkronModule.ShouldTriggerLagPauser(150f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, ignoreRecoveryWindow: false, skippedEngineFrames: 9UL));
     }
 
     [Fact]
     public void LagPauserIgnoresSpeedrunToolLoadStateSample()
     {
-        Assert.False(AkronModule.ShouldTriggerLagPauser(150f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: true, skippedEngineFrames: 1UL));
+        Assert.False(AkronModule.ShouldTriggerLagPauser(150f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: true, ignoreRecoveryWindow: false, skippedEngineFrames: 1UL));
     }
 
     [Fact]
@@ -238,18 +238,47 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void LagPauserIgnoresRecoveryAndRepeatCooldownWindows()
+    {
+        Assert.False(AkronModule.ShouldTriggerLagPauser(150f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, ignoreRecoveryWindow: true, skippedEngineFrames: 1UL));
+    }
+
+    [Fact]
+    public void LagPauserWindowsRoundTripThroughSetupStateAndClampUnsafeValues()
+    {
+        AkronModuleSettings source = new AkronModuleSettings {
+            LagPauserRecoveryGraceMs = 1250,
+            LagPauserRepeatCooldownMs = 1750
+        };
+        AkronSetupState captured = source.CaptureSetupPackState();
+        AkronModuleSettings restored = new AkronModuleSettings();
+
+        restored.ApplySetupPackState(captured);
+
+        Assert.Equal(1250, restored.LagPauserRecoveryGraceMs);
+        Assert.Equal(1750, restored.LagPauserRepeatCooldownMs);
+
+        captured.LagPauserRecoveryGraceMs = -1;
+        captured.LagPauserRepeatCooldownMs = 9000;
+        restored.ApplySetupPackState(captured);
+
+        Assert.Equal(0, restored.LagPauserRecoveryGraceMs);
+        Assert.Equal(5000, restored.LagPauserRepeatCooldownMs);
+    }
+
+    [Fact]
     public void LagPauserThresholdStillRequiresRealSpikeWithoutIgnoreFlags()
     {
-        Assert.False(AkronModule.ShouldTriggerLagPauser(249f, 250, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 1UL));
-        Assert.True(AkronModule.ShouldTriggerLagPauser(250f, 250, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 1UL));
+        Assert.False(AkronModule.ShouldTriggerLagPauser(249f, 250, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, ignoreRecoveryWindow: false, skippedEngineFrames: 1UL));
+        Assert.True(AkronModule.ShouldTriggerLagPauser(250f, 250, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, ignoreRecoveryWindow: false, skippedEngineFrames: 1UL));
     }
 
     [Fact]
     public void LagPauserStillTriggersLowThresholdNonFreezeSamples()
     {
-        Assert.True(AkronModule.ShouldTriggerLagPauser(50f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 1UL));
-        Assert.True(AkronModule.ShouldTriggerLagPauser(149f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 1UL));
-        Assert.False(AkronModule.ShouldTriggerLagPauser(49f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, skippedEngineFrames: 1UL));
+        Assert.True(AkronModule.ShouldTriggerLagPauser(50f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, ignoreRecoveryWindow: false, skippedEngineFrames: 1UL));
+        Assert.True(AkronModule.ShouldTriggerLagPauser(149f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, ignoreRecoveryWindow: false, skippedEngineFrames: 1UL));
+        Assert.False(AkronModule.ShouldTriggerLagPauser(49f, 50, ignoreNativeFreezeSpike: false, ignoreIntentionalLoadSpike: false, ignoreRecoveryWindow: false, skippedEngineFrames: 1UL));
     }
 
     [Fact]
@@ -876,6 +905,8 @@ public sealed class ModuleSettingsTests
         Assert.Equal(55, settings.GoldenTransparencyOpacity);
         Assert.False(settings.LagPauser);
         Assert.Equal(250, settings.LagPauserThresholdMs);
+        Assert.Equal(750, settings.LagPauserRecoveryGraceMs);
+        Assert.Equal(1000, settings.LagPauserRepeatCooldownMs);
         Assert.False(settings.FreeCameraMouseControl);
     }
 

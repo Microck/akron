@@ -17,6 +17,8 @@ public partial class AkronModuleSettings {
         GoldenTransparencyOpacity = ClampGoldenTransparencyOpacity(resolved.GoldenTransparencyOpacity);
         LagPauser = resolved.LagPauser;
         LagPauserThresholdMs = ClampLagPauserThresholdMs(resolved.LagPauserThresholdMs);
+        LagPauserRecoveryGraceMs = ClampLagPauserWindowMs(resolved.LagPauserRecoveryGraceMs);
+        LagPauserRepeatCooldownMs = ClampLagPauserWindowMs(resolved.LagPauserRepeatCooldownMs);
         LagPauserIgnoreSpeedrunToolLoadStates = resolved.LagPauserIgnoreSpeedrunToolLoadStates;
         PauseGameplayInMenu = resolved.PauseGameplayInMenu;
         OverlayOpacity = ClampOverlayOpacity(resolved.OverlayOpacity);

@@ -164,6 +164,10 @@ public partial class AkronModuleSettings {
         return ClampValue(thresholdMs <= 0 ? 250 : thresholdMs, 50, 5000);
     }
 
+    public static int ClampLagPauserWindowMs(int windowMs) {
+        return ClampValue(windowMs, 0, 5000);
+    }
+
     public static int ClampScreenshotScannerWaitFrames(int frames) {
         return ClampValue(frames, 0, 240);
     }
