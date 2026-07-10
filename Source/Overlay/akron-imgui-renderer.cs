@@ -30,6 +30,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     private readonly GraphicsDevice graphicsDevice;
     private readonly Dictionary<IntPtr, Texture2D> loadedTextures = new Dictionary<IntPtr, Texture2D>();
     private readonly Dictionary<string, IntPtr> embeddedTextureIds = new Dictionary<string, IntPtr>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IntPtr> byteTextureIds = new Dictionary<string, IntPtr>(StringComparer.Ordinal);
     private readonly Keys[] allKeys = Enum.GetValues(typeof(Keys)).Cast<Keys>().ToArray();
     private readonly byte[] fontBytes;
     private readonly GCHandle fontHandle;
@@ -165,13 +166,27 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         return instance.GetOrLoadEmbeddedTextureId(suffix);
     }
 
-    public static IntPtr GetTextureIdFromBytes(byte[] bytes) {
-        if (Engine.Instance?.GraphicsDevice == null || bytes == null || bytes.Length == 0) {
+    public static IntPtr GetTextureIdFromBytes(string key, byte[] bytes) {
+        if (Engine.Instance?.GraphicsDevice == null || string.IsNullOrWhiteSpace(key) || bytes == null || bytes.Length == 0) {
             return IntPtr.Zero;
         }
 
-        instance ??= new AkronImGuiRenderer(Engine.Instance.GraphicsDevice);
-        return instance.BindTextureFromBytes(bytes);
+        try {
+            instance ??= new AkronImGuiRenderer(Engine.Instance.GraphicsDevice);
+            return instance.GetOrLoadByteTextureId(key, bytes);
+        } catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException || exception is NotSupportedException || exception is IOException) {
+            Logger.Log(LogLevel.Warn, nameof(AkronImGuiRenderer), "Could not load ImGui image texture: " + exception.Message);
+            return IntPtr.Zero;
+        }
+    }
+
+    public static void ReleaseTextureId(string key) {
+        if (instance == null || string.IsNullOrWhiteSpace(key) || !instance.byteTextureIds.TryGetValue(key, out IntPtr id)) {
+            return;
+        }
+
+        instance.byteTextureIds.Remove(key);
+        instance.UnbindTexture(id);
     }
 
     public void Dispose() {
@@ -233,10 +248,16 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         return id;
     }
 
-    private IntPtr BindTextureFromBytes(byte[] bytes) {
+    private IntPtr GetOrLoadByteTextureId(string key, byte[] bytes) {
+        if (byteTextureIds.TryGetValue(key, out IntPtr id)) {
+            return id;
+        }
+
         using MemoryStream stream = new MemoryStream(bytes);
         Texture2D texture = Texture2D.FromStream(graphicsDevice, stream);
-        return BindTexture(texture);
+        id = BindTexture(texture);
+        byteTextureIds[key] = id;
+        return id;
     }
 
     private void UnbindTexture(IntPtr textureId) {

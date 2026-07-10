@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -82,14 +83,16 @@ public static class AkronCommunityPackUploads {
     public const int MaxUploadRoomCaptures = 10;
     public const string AnonymousAttribution = "anonymous";
     public const string DiscordAttribution = "discord";
+    private const int MaxUploadJsonResponseBytes = 64 * 1024;
+    private const int MaxUploadErrorResponseBytes = 4 * 1024;
     private static readonly JsonSerializerOptions UploadJsonOptions = new JsonSerializerOptions {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
         Converters = { new JsonStringEnumConverter() }
     };
-    private static readonly HttpClient UploadHttp = new HttpClient {
-        Timeout = TimeSpan.FromMinutes(10)
-    };
+    // Pin validated public addresses at connect time so DNS rebinding cannot
+    // turn an approved HTTPS upload endpoint into a local service request.
+    private static readonly HttpClient UploadHttp = AkronCommunityPacks.CreateSafeHttpClient(TimeSpan.FromMinutes(10));
     private static bool uploadInProgress;
     private static bool uploadStatusVisible;
     private static string uploadStatusText = string.Empty;
@@ -430,6 +433,7 @@ public static class AkronCommunityPackUploads {
         }
 
         endpoint = ResolveEndpoint(endpoint);
+        Uri endpointUri = RequireSafeUploadUri(endpoint, "Upload endpoint");
         AkronCommunityPackUploadPreparedResponse prepared = await PostJsonAsync<AkronCommunityPackUploadPreparedResponse>(
             http,
             endpoint + "/prepare",
@@ -451,9 +455,11 @@ public static class AkronCommunityPackUploads {
         }
 
         for (int i = 0; i < captures.Count; i++) {
-            await PutFileAsync(http, prepared.Captures[i].UploadUrl, captures[i].ImagePath, request.Captures[i].ContentType, cancellationToken);
+            ValidatePreparedObject(prepared.Captures[i], captures[i].ImagePath, endpointUri);
+            await PutFileAsync(http, prepared.Captures[i].UploadUrl, captures[i].ImagePath, request.Captures[i].ContentType, endpointUri, cancellationToken);
         }
-        await PutFileAsync(http, prepared.Submissions[0].Pack.UploadUrl, packPath, "application/octet-stream", cancellationToken);
+        ValidatePreparedObject(prepared.Submissions[0].Pack, packPath, endpointUri);
+        await PutFileAsync(http, prepared.Submissions[0].Pack.UploadUrl, packPath, "application/octet-stream", endpointUri, cancellationToken);
 
         return await PostJsonAsync<AkronCommunityPackUploadCompleteResponse>(
             http,
@@ -474,11 +480,12 @@ public static class AkronCommunityPackUploads {
         }
 
         endpoint = ResolveEndpoint(endpoint);
+        RequireSafeUploadUri(endpoint, "Upload endpoint");
         using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, endpoint + "/challenge");
-        using HttpResponseMessage response = await http.SendAsync(request, cancellationToken);
-        string responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+        using HttpResponseMessage response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await ReadResponseTextCappedAsync(response, MaxUploadErrorResponseBytes, cancellationToken);
         if (!response.IsSuccessStatusCode) {
-            throw new HttpRequestException("Upload server check failed with HTTP " + (int) response.StatusCode + ": " + responseText);
+            throw new HttpRequestException(BuildUploadFailureMessage("Upload server check", response));
         }
     }
 
@@ -691,10 +698,13 @@ public static class AkronCommunityPackUploads {
         using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url) {
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         };
-        using HttpResponseMessage response = await http.SendAsync(request, cancellationToken);
-        string responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+        using HttpResponseMessage response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        string responseText = await ReadResponseTextCappedAsync(
+            response,
+            response.IsSuccessStatusCode ? MaxUploadJsonResponseBytes : MaxUploadErrorResponseBytes,
+            cancellationToken);
         if (!response.IsSuccessStatusCode) {
-            throw new HttpRequestException("Upload request failed with HTTP " + (int) response.StatusCode + ": " + responseText);
+            throw new HttpRequestException(BuildUploadFailureMessage("Upload request", response));
         }
 
         T parsed = JsonSerializer.Deserialize<T>(responseText, UploadJsonOptions);
@@ -704,7 +714,8 @@ public static class AkronCommunityPackUploads {
         return parsed;
     }
 
-    private static async Task PutFileAsync(HttpClient http, string uploadUrl, string path, string contentType, CancellationToken cancellationToken) {
+    private static async Task PutFileAsync(HttpClient http, string uploadUrl, string path, string contentType, Uri endpointUri, CancellationToken cancellationToken) {
+        RequireSafeUploadUri(uploadUrl, "Upload object", endpointUri);
         FileInfo file = RequireExistingFile(path, nameof(path));
         using FileStream stream = file.OpenRead();
         using StreamContent content = new StreamContent(stream);
@@ -713,11 +724,111 @@ public static class AkronCommunityPackUploads {
         using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Put, uploadUrl) {
             Content = content
         };
-        using HttpResponseMessage response = await http.SendAsync(request, cancellationToken);
-        string responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+        using HttpResponseMessage response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         if (!response.IsSuccessStatusCode) {
-            throw new HttpRequestException("Upload object failed with HTTP " + (int) response.StatusCode + ": " + responseText);
+            await ReadResponseTextCappedAsync(response, MaxUploadErrorResponseBytes, cancellationToken);
+            throw new HttpRequestException(BuildUploadFailureMessage("Upload object", response));
         }
+    }
+
+    private static void ValidatePreparedObject(AkronCommunityPackPreparedObject prepared, string path, Uri endpointUri) {
+        if (prepared == null || string.IsNullOrWhiteSpace(prepared.ObjectId) || prepared.MaxBytes <= 0) {
+            throw new InvalidDataException("Upload prepare response contained an invalid object.");
+        }
+
+        FileInfo file = RequireExistingFile(path, nameof(path));
+        if (file.Length > prepared.MaxBytes) {
+            throw new InvalidDataException("Upload object exceeds the server-provided size limit.");
+        }
+        RequireSafeUploadUri(prepared.UploadUrl, "Upload object", endpointUri);
+    }
+
+    private static Uri RequireSafeUploadUri(string value, string label, Uri allowedOrigin = null) {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri uri) || uri.Scheme != Uri.UriSchemeHttps ||
+            !string.IsNullOrEmpty(uri.UserInfo) || string.IsNullOrWhiteSpace(uri.IdnHost)) {
+            throw new InvalidDataException(label + " URL must use HTTPS.");
+        }
+
+        if (IPAddress.TryParse(uri.DnsSafeHost, out IPAddress address) && IsPrivateUploadAddress(address)) {
+            throw new InvalidDataException(label + " URL must not target a private or local address.");
+        }
+
+        if (allowedOrigin != null &&
+            (!string.Equals(uri.Scheme, allowedOrigin.Scheme, StringComparison.OrdinalIgnoreCase) ||
+             !string.Equals(uri.IdnHost, allowedOrigin.IdnHost, StringComparison.OrdinalIgnoreCase) ||
+             uri.Port != allowedOrigin.Port)) {
+            throw new InvalidDataException(label + " URL is outside the approved upload origin.");
+        }
+        return uri;
+    }
+
+    private static bool IsPrivateUploadAddress(IPAddress address) {
+        if (address.IsIPv4MappedToIPv6) {
+            address = address.MapToIPv4();
+        }
+        if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any) ||
+            address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6Multicast) {
+            return true;
+        }
+        byte[] bytes = address.GetAddressBytes();
+        return bytes.Length == 4
+            ? bytes[0] == 10 || bytes[0] == 127 || bytes[0] == 0 || bytes[0] >= 224 ||
+              (bytes[0] == 100 && bytes[1] is >= 64 and <= 127) ||
+              (bytes[0] == 169 && bytes[1] == 254) ||
+              (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) ||
+              (bytes[0] == 192 && bytes[1] == 0 && bytes[2] is 0 or 2) ||
+              (bytes[0] == 192 && bytes[1] == 168) ||
+              (bytes[0] == 198 && bytes[1] is 18 or 19) ||
+              (bytes[0] == 198 && bytes[1] == 51 && bytes[2] == 100) ||
+              (bytes[0] == 203 && bytes[1] == 0 && bytes[2] == 113)
+            : bytes.Length == 16 && (bytes[0] & 0xfe) == 0xfc;
+    }
+
+    private static async Task<string> ReadResponseTextCappedAsync(HttpResponseMessage response, int maxBytes, CancellationToken cancellationToken) {
+        if (response.Content == null) {
+            return string.Empty;
+        }
+        if (response.Content.Headers.ContentLength > maxBytes) {
+            throw new InvalidDataException("Upload response exceeded its size limit.");
+        }
+
+        using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using MemoryStream buffer = new MemoryStream(Math.Min(maxBytes, 4096));
+        byte[] chunk = new byte[4096];
+        int total = 0;
+        while (true) {
+            int read = await stream.ReadAsync(chunk.AsMemory(0, Math.Min(chunk.Length, maxBytes + 1 - total)), cancellationToken);
+            if (read == 0) {
+                return Encoding.UTF8.GetString(buffer.ToArray());
+            }
+            total += read;
+            if (total > maxBytes) {
+                throw new InvalidDataException("Upload response exceeded its size limit.");
+            }
+            buffer.Write(chunk, 0, read);
+        }
+    }
+
+    private static string BuildUploadFailureMessage(string label, HttpResponseMessage response) {
+        string message = label + " failed with HTTP " + (int) response.StatusCode;
+        foreach (string headerName in new[] { "cf-ray", "x-request-id" }) {
+            if (!response.Headers.TryGetValues(headerName, out IEnumerable<string> values)) {
+                continue;
+            }
+            string requestId = values.FirstOrDefault() ?? string.Empty;
+            if (requestId.Length is > 0 and <= 128 && requestId.All(character => char.IsLetterOrDigit(character) || character is '-' or '_' or '.' or ':')) {
+                return message + " (request " + requestId + ")";
+            }
+        }
+        return message;
+    }
+
+    internal static string BuildUploadFailureMessageForTesting(HttpResponseMessage response) {
+        return BuildUploadFailureMessage("Upload request", response);
+    }
+
+    internal static Task<string> ReadUploadResponseForTesting(HttpResponseMessage response, int maxBytes) {
+        return ReadResponseTextCappedAsync(response, maxBytes, CancellationToken.None);
     }
 
     private static string GuessCaptureContentType(string path) {

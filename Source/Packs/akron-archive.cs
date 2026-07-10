@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
+using System.Globalization;
 using System.Text.Json;
 
 namespace Celeste.Mod.Akron;
@@ -28,9 +30,12 @@ public static class AkronArchive {
     public const string ManifestEntryName = "manifest.json";
 
     private const int MaxManifestBytes = 16 * 1024;
+    private const int MaxKindLength = 64;
+    private const int MaxMapSidLength = 256;
 
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {
-        WriteIndented = true
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
     public static void WriteSinglePayloadArchive(string path, AkronArchiveManifest manifest, string payloadEntryName, string payloadJson) {
@@ -75,7 +80,9 @@ public static class AkronArchive {
             throw new InvalidDataException("Archive manifest is too large.");
         }
 
-        manifest = JsonSerializer.Deserialize<AkronArchiveManifest>(ReadEntryText(manifestEntry, MaxManifestBytes), JsonOptions)
+        string manifestJson = ReadEntryText(manifestEntry, MaxManifestBytes);
+        ValidateManifestJson(manifestJson);
+        manifest = JsonSerializer.Deserialize<AkronArchiveManifest>(manifestJson, JsonOptions)
             ?? throw new InvalidDataException("Archive manifest is invalid.");
         ValidateManifest(manifest, expectedKind);
 
@@ -101,7 +108,7 @@ public static class AkronArchive {
             throw new InvalidDataException("Archive format version is unsupported.");
         }
 
-        if (string.IsNullOrWhiteSpace(manifest.Kind)) {
+        if (string.IsNullOrWhiteSpace(manifest.Kind) || manifest.Kind.Length > MaxKindLength) {
             throw new InvalidDataException("Archive kind is missing.");
         }
 
@@ -109,8 +116,53 @@ public static class AkronArchive {
             throw new InvalidDataException("Archive kind is " + manifest.Kind + ", expected " + expectedKind + ".");
         }
 
-        if (manifest.KindVersion <= 0) {
-            throw new InvalidDataException("Archive kind version is invalid.");
+        if (manifest.KindVersion != 1) {
+            throw new InvalidDataException("Archive kind version is unsupported.");
+        }
+
+        if (!string.Equals(manifest.CreatedBy, "Akron", StringComparison.Ordinal)) {
+            throw new InvalidDataException("Archive creator is invalid.");
+        }
+
+        if (!IsValidUtcTimestamp(manifest.CreatedAt)) {
+            throw new InvalidDataException("Archive creation timestamp is invalid.");
+        }
+
+        if (manifest.Target == null || !string.Equals(manifest.Target.Game, "Celeste", StringComparison.Ordinal) ||
+            manifest.Target.MapSid == null || manifest.Target.MapSid.Length > MaxMapSidLength) {
+            throw new InvalidDataException("Archive target is invalid.");
+        }
+    }
+
+    internal static bool IsValidUtcTimestamp(string value) {
+        return !string.IsNullOrWhiteSpace(value) && value.Length <= 64 && value.EndsWith("Z", StringComparison.Ordinal) &&
+               DateTimeOffset.TryParseExact(
+                   value,
+                   new[] { "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'" },
+                   CultureInfo.InvariantCulture,
+                   DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                   out _);
+    }
+
+    private static void ValidateManifestJson(string json) {
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement root = document.RootElement;
+        HashSet<string> expectedRoot = new HashSet<string>(StringComparer.Ordinal) {
+            "format", "formatVersion", "kind", "kindVersion", "createdBy", "createdAt", "target"
+        };
+        JsonProperty[] rootProperties = root.ValueKind == JsonValueKind.Object ? root.EnumerateObject().ToArray() : Array.Empty<JsonProperty>();
+        if (rootProperties.Length != expectedRoot.Count ||
+            !rootProperties.Select(property => property.Name).ToHashSet(StringComparer.Ordinal).SetEquals(expectedRoot) ||
+            !root.TryGetProperty("target", out JsonElement target) ||
+            target.ValueKind != JsonValueKind.Object) {
+            throw new InvalidDataException("Archive manifest fields are invalid.");
+        }
+
+        HashSet<string> expectedTarget = new HashSet<string>(StringComparer.Ordinal) { "game", "mapSid" };
+        JsonProperty[] targetProperties = target.EnumerateObject().ToArray();
+        if (targetProperties.Length != expectedTarget.Count ||
+            !targetProperties.Select(property => property.Name).ToHashSet(StringComparer.Ordinal).SetEquals(expectedTarget)) {
+            throw new InvalidDataException("Archive manifest target fields are invalid.");
         }
     }
 

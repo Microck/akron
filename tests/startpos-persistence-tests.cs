@@ -51,13 +51,12 @@ public sealed class StartPosPersistenceTests {
         Assert.DoesNotContain("SessionNonce = SessionNonce", source);
     }
 
-
     [Fact]
     public void SetupPackStartPosImportDoesNotResetEveryPersistedMap() {
         string source = File.ReadAllText(GetActionsSourcePath());
 
         Assert.DoesNotContain("saveData.StartPositionsByMap = new Dictionary<string, AkronPersistedStartPosMap>();", source);
-        Assert.Contains("startPositionsByArea", source);
+        Assert.Contains("ReplacePersistedStartPositionsForMap", source);
         Assert.Contains("DeletePersistedSnapshotsForArea", source);
     }
 
@@ -68,7 +67,7 @@ public sealed class StartPosPersistenceTests {
         Assert.DoesNotContain("canonicalSnapshotPath", source);
         Assert.Contains("SnapshotPath = string.Empty", source);
         Assert.Contains("AkronPersistentStartPosSnapshots.Delete(GetStartPosSnapshotPath", source);
-        Assert.Contains("ClearStartPosRuntimeState(areaPair.Key, importedSlot)", source);
+        Assert.Contains("ClearStartPosRuntimeState(areaSid, slot)", source);
     }
 
     [Fact]
@@ -233,6 +232,37 @@ public sealed class StartPosPersistenceTests {
         Assert.False(AkronPersistentStartPosSnapshots.TrySerializePortableRoomState(source, out string payload, out string serializeError));
         Assert.Empty(payload);
         Assert.Contains("portable room-state snapshot is too large", serializeError);
+    }
+
+    [Fact]
+    public void ReplacingImportedStartPositionsPreservesOtherMaps() {
+        AkronModuleSaveData saveData = new AkronModuleSaveData {
+            StartPositionsByMap = new Dictionary<string, AkronPersistedStartPosMap> {
+                ["Map/A"] = new AkronPersistedStartPosMap {
+                    Slots = new Dictionary<int, AkronPersistedStartPos> {
+                        [1] = new AkronPersistedStartPos { AreaSid = "Map/A", Room = "old-a" }
+                    }
+                },
+                ["Map/B"] = new AkronPersistedStartPosMap {
+                    Slots = new Dictionary<int, AkronPersistedStartPos> {
+                        [2] = new AkronPersistedStartPos { AreaSid = "Map/B", Room = "keep-b" }
+                    }
+                }
+            }
+        };
+        Dictionary<int, AkronStartPos> replacement = new Dictionary<int, AkronStartPos> {
+            [3] = new AkronStartPos { AreaSid = "Map/A", Room = "new-a", Position = new Vector2(12f, 34f) }
+        };
+
+        AkronActions.ReplacePersistedStartPositionsForMap(saveData, "Map/A", replacement);
+
+        Assert.Equal("new-a", Assert.Single(saveData.StartPositionsByMap["Map/A"].Slots).Value.Room);
+        Assert.Equal("keep-b", Assert.Single(saveData.StartPositionsByMap["Map/B"].Slots).Value.Room);
+
+        AkronActions.ReplacePersistedStartPositionsForMap(saveData, "Map/A", new Dictionary<int, AkronStartPos>());
+
+        Assert.False(saveData.StartPositionsByMap.ContainsKey("Map/A"));
+        Assert.Equal("keep-b", Assert.Single(saveData.StartPositionsByMap["Map/B"].Slots).Value.Room);
     }
 
     private static string GetPersistentSnapshotSourcePath() {

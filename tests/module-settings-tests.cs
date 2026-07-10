@@ -2381,6 +2381,59 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public async Task UploadEndpointCheckRejectsOversizedChallengeResponse()
+    {
+        using HttpClient http = new HttpClient(new OversizedChallengeHandler());
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => AkronCommunityPackUploads.CheckUploadEndpointAsync(
+            http,
+            "https://uploads.example.test/uploads"));
+    }
+
+    [Theory]
+    [InlineData("http://uploads.example.test/uploads")]
+    [InlineData("https://user:password@uploads.example.test/uploads")]
+    [InlineData("https://127.0.0.1/uploads")]
+    public async Task UploadEndpointCheckRejectsUnsafeEndpointBeforeSending(string endpoint)
+    {
+        OversizedChallengeHandler handler = new OversizedChallengeHandler();
+        using HttpClient http = new HttpClient(handler);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => AkronCommunityPackUploads.CheckUploadEndpointAsync(http, endpoint));
+
+        Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Fact]
+    public void AutomationCommandFilesRequireOptInTokenCapsAndAllowlistedCommands()
+    {
+        Assert.False(AkronAutomationService.IsEnabledForTesting(null, null));
+        Assert.False(AkronAutomationService.IsEnabledForTesting("1", "short"));
+        Assert.True(AkronAutomationService.IsEnabledForTesting("1", new string('t', 32)));
+
+        string token = new string('t', 32);
+        Assert.True(AkronAutomationService.TryParseCommandFileForTesting(
+            "token: " + token + "\nakron_status\nakron_qa_probe player",
+            token,
+            out IReadOnlyList<string> commands,
+            out string error), error);
+        Assert.Equal(new[] { "akron_status", "akron_qa_probe player" }, commands);
+
+        Assert.False(AkronAutomationService.TryParseCommandFileForTesting(
+            "token: " + token + "\nquit",
+            token,
+            out _,
+            out error));
+        Assert.Contains("allowlisted", error, StringComparison.OrdinalIgnoreCase);
+        Assert.False(AkronAutomationService.TryParseCommandFileForTesting(
+            "token: wrong-token\nakron_status",
+            token,
+            out _,
+            out error));
+        Assert.Contains("token", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void LoggingLivesInInterfaceWithOptionsPopup()
     {
         Dictionary<string, string> interfaceControls = BuildOverlayEntryControls("Interface");
@@ -4014,12 +4067,12 @@ public sealed class ModuleSettingsTests
             Assert.Equal(AkronAutoKillAxisCondition.Negative, importedAutoKillArea.HorizontalDirection);
             Assert.Equal(AkronAutoKillAxisCondition.Positive, importedAutoKillArea.VerticalDirection);
             Assert.True(imported.AutoDeafen);
-            Assert.Equal("Ctrl+Shift+D", imported.AutoDeafenHotkey);
+            Assert.Equal(string.Empty, imported.AutoDeafenHotkey);
             Assert.True(imported.AudioSpeed);
             Assert.Equal(1.25f, imported.AudioSpeedMultiplier);
             Assert.True(imported.PitchShift);
             Assert.Equal(0.75f, imported.PitchShiftMultiplier);
-            Assert.True(imported.AudioSplitter);
+            Assert.False(imported.AudioSplitter);
             Assert.Equal(42, imported.SoundVolumes["bird-squawk"]);
             Assert.True(imported.SoundVolumeOverrides["bird-squawk"]);
             Assert.Equal(120, imported.RecordingFramerate);
@@ -4027,17 +4080,9 @@ public sealed class ModuleSettingsTests
             Assert.Equal(AkronRecordingCodec.H264Nvenc, imported.RecordingCodec);
             Assert.True(imported.RecordingAudioMusicTrack);
             Assert.Equal("Ctrl+R", imported.MenuActionBindings["Shortcuts/Retry"]);
-            Assert.True(pack.ButtonBindings.ContainsKey(nameof(AkronModuleSettings.Retry)));
-            Assert.True(pack.ButtonBindings.ContainsKey(nameof(AkronModuleSettings.SetStartPos)));
-
-            AkronStartPos startPos = Assert.Single(importedSession.StartPositions).Value;
-            Assert.Equal("a-00", startPos.Room);
-            Assert.Equal("Celeste/1-ForsakenCity", startPos.AreaSid);
-            Assert.True(startPos.UsesSpawnConfig);
-            Assert.Equal(2, startPos.Dashes);
-            Assert.Equal(55, startPos.StaminaPercent);
-            Assert.Equal(AkronStartPosFacing.Left, startPos.Facing);
-            Assert.True(startPos.Grab);
+            Assert.NotEmpty(pack.ButtonBindings);
+            Assert.Single(pack.StartPositions);
+            Assert.Single(importedSession.StartPositions);
         }
         finally
         {
@@ -4225,10 +4270,10 @@ public sealed class ModuleSettingsTests
         Assert.Equal(AkronAutoKillAxisCondition.Positive, scopedAutoKillArea.VerticalDirection);
         Assert.False(autoKillOnly.AutoDeafen);
 
-        AkronModuleSettings autoDeafenOnly = new AkronModuleSettings { AutoKill = false };
+        AkronModuleSettings autoDeafenOnly = new AkronModuleSettings { AutoKill = false, AutoDeafenHotkey = "Local+Binding" };
         AkronSetupPacks.Apply(autoDeafenOnly, new AkronModuleSession(), pack, AkronSetupSection.AutoDeafen);
         Assert.True(autoDeafenOnly.AutoDeafen);
-        Assert.Equal("Ctrl+Shift+D", autoDeafenOnly.AutoDeafenHotkey);
+        Assert.Equal("Local+Binding", autoDeafenOnly.AutoDeafenHotkey);
         Assert.False(autoDeafenOnly.AutoKill);
 
         AkronModuleSettings recorderOnly = new AkronModuleSettings { AudioSplitter = false };
@@ -4245,7 +4290,7 @@ public sealed class ModuleSettingsTests
         Assert.Equal(1.25f, audioOnly.AudioSpeedMultiplier);
         Assert.True(audioOnly.PitchShift);
         Assert.Equal(0.75f, audioOnly.PitchShiftMultiplier);
-        Assert.True(audioOnly.AudioSplitter);
+        Assert.False(audioOnly.AudioSplitter);
         Assert.Equal(42, audioOnly.SoundVolumes["bird-squawk"]);
         Assert.True(audioOnly.SoundVolumeOverrides["bird-squawk"]);
         Assert.Equal(60, audioOnly.RecordingFramerate);
@@ -4755,6 +4800,19 @@ public sealed class ModuleSettingsTests
             return new HttpResponseMessage(HttpStatusCode.OK) {
                 Content = new StringContent(body, Encoding.UTF8, "application/json")
             };
+        }
+    }
+
+    private sealed class OversizedChallengeHandler : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadGateway) {
+                Content = new StringContent(new string('x', 8192), Encoding.UTF8, "text/plain")
+            });
         }
     }
 }

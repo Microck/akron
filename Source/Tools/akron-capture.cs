@@ -8,6 +8,7 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static class AkronCapture {
+    internal const long MaxCapturePixels = 16_777_216L;
     private static string pendingPath = string.Empty;
 
     internal static bool IsCapturingGameFrame { get; private set; }
@@ -22,6 +23,12 @@ public static class AkronCapture {
 
         GraphicsDevice graphicsDevice = Engine.Instance.GraphicsDevice;
         Viewport captureViewport = Engine.Viewport;
+        int scale = AkronModuleSettings.ClampScreenshotScale(AkronModule.Settings.ScreenshotScale);
+        if (!TryValidateCaptureDimensions(captureViewport.Width, captureViewport.Height, scale, out int scaledWidth, out int scaledHeight, out string dimensionReason)) {
+            AkronLog.Warn(nameof(AkronCapture), "Screenshot capture rejected: " + dimensionReason + ".");
+            Engine.Scene?.Add(new AkronToast("Screenshot dimensions are too large."));
+            return string.Empty;
+        }
         Viewport originalViewport = graphicsDevice.Viewport;
         Color[] pixels;
         Texture2D texture = null;
@@ -35,15 +42,12 @@ public static class AkronCapture {
             texture = new Texture2D(graphicsDevice, captureViewport.Width, captureViewport.Height, false, SurfaceFormat.Color);
             texture.SetData(pixels);
 
-            int scale = AkronModuleSettings.ClampScreenshotScale(AkronModule.Settings.ScreenshotScale);
             SaveCapturedTexture(outputPath, stream => {
                 if (scale <= 1) {
                     SaveTexture(stream, texture, captureViewport.Width, captureViewport.Height);
                     return;
                 }
 
-                int scaledWidth = ScaledCaptureDimension(captureViewport.Width);
-                int scaledHeight = ScaledCaptureDimension(captureViewport.Height);
                 Color[] scaledPixels = ScalePoint(pixels, captureViewport.Width, captureViewport.Height, scale);
                 scaledTexture = new Texture2D(graphicsDevice, scaledWidth, scaledHeight, false, SurfaceFormat.Color);
                 scaledTexture.SetData(scaledPixels);
@@ -94,7 +98,7 @@ public static class AkronCapture {
         Color previousBackgroundColor = level.BackgroundColor;
         SpeedrunType previousSpeedrunClock = global::Celeste.Settings.Instance.SpeedrunClock;
         object speedrunToolRoomTimerState = null;
-        Color[] pixels = new Color[captureViewport.Width * captureViewport.Height];
+        Color[] pixels = new Color[checked(captureViewport.Width * captureViewport.Height)];
         try {
             level.BackgroundColor = backgroundColor;
             IsCapturingGameFrame = true;
@@ -175,7 +179,34 @@ public static class AkronCapture {
     }
 
     internal static int ScaledCaptureDimension(int dimension) {
-        return dimension * AkronModuleSettings.ClampScreenshotScale(AkronModule.Settings.ScreenshotScale);
+        return checked(dimension * AkronModuleSettings.ClampScreenshotScale(AkronModule.Settings.ScreenshotScale));
+    }
+
+    internal static bool TryValidateCaptureDimensions(int width, int height, int scale, out int scaledWidth, out int scaledHeight, out string reason) {
+        scaledWidth = 0;
+        scaledHeight = 0;
+        if (width <= 0 || height <= 0 || scale < 1 || scale > 16) {
+            reason = "capture dimensions and scale must be positive and bounded";
+            return false;
+        }
+
+        long candidateWidth = (long) width * scale;
+        long candidateHeight = (long) height * scale;
+        if (candidateWidth > int.MaxValue || candidateHeight > int.MaxValue) {
+            reason = "capture dimensions exceed supported integer limits";
+            return false;
+        }
+
+        long pixels = candidateWidth * candidateHeight;
+        if (pixels > MaxCapturePixels || pixels > int.MaxValue) {
+            reason = "capture pixel count " + pixels + " exceeds " + MaxCapturePixels;
+            return false;
+        }
+
+        scaledWidth = (int) candidateWidth;
+        scaledHeight = (int) candidateHeight;
+        reason = string.Empty;
+        return true;
     }
 
     internal static void SaveTexture(Stream stream, Texture2D texture, int width, int height) {
@@ -210,8 +241,12 @@ public static class AkronCapture {
     }
 
     private static Color[] ScalePoint(Color[] source, int width, int height, int scale) {
-        Color[] scaled = new Color[width * height * scale * scale];
-        int scaledWidth = width * scale;
+        if (!TryValidateCaptureDimensions(width, height, scale, out int scaledWidth, out int scaledHeight, out string reason) ||
+            source == null || source.Length != checked(width * height)) {
+            throw new InvalidDataException(string.IsNullOrWhiteSpace(reason) ? "Capture source dimensions are invalid." : reason);
+        }
+
+        Color[] scaled = new Color[checked(scaledWidth * scaledHeight)];
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 Color color = source[y * width + x];
