@@ -95,6 +95,10 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Harden Community Pack archives with strict versioned manifests, exact nested schemas, bounded resource values, canonical key bindings, and map-scoped StartPos data.
+- Preserve the player's machine-local Auto Deafen hotkey and other maps' StartPos slots when importing shared setup packs.
+- Bound screenshot capture, map stitching, and Community Pack preview memory use, and confine scanner output to the configured export directory.
+- Let Upload Pack submissions complete against the live upload backend, use the localized map name in generated titles, preserve StartPos slot order in capture galleries, and make in-overlay key binding capture update native action bindings.
 - Keep StartPos slots scoped per map and restore persisted StartPos player/session state across game restarts without rewinding time or deaths.
 - Let Skip Cutscene run Celeste's active cutscene skip callback instead of leaving the level stuck in a skipping cutscene state.
 - Let Akron's internal recorder find host FFmpeg and its Linux libraries from inside the Steam Runtime sandbox.

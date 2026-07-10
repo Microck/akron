@@ -10,6 +10,13 @@ namespace Celeste.Mod.Akron.Tests;
 
 public sealed class ScreenshotScannerTests {
     [Fact]
+    public void ExternalSceneChangesCancelOnlyActiveNonInternalScans() {
+        Assert.True(AkronScreenshotScanner.ShouldCancelForSceneChange(activeScan: true, internalRoomSetup: false));
+        Assert.False(AkronScreenshotScanner.ShouldCancelForSceneChange(activeScan: true, internalRoomSetup: true));
+        Assert.False(AkronScreenshotScanner.ShouldCancelForSceneChange(activeScan: false, internalRoomSetup: false));
+    }
+
+    [Fact]
     public void ScanTilesUseReferenceCenterRelativeDeltas() {
         AkronScreenshotScanTile[] tiles = AkronScreenshotScanner
             .BuildScanTiles(528, -88, 944, 180, 320f, 180f, 160, 120)
@@ -38,6 +45,57 @@ public sealed class ScreenshotScannerTests {
         Assert.Equal(new[] { 160, 320, 480, 490 }, tiles.Select(tile => tile.DeltaX).Distinct().ToArray());
         Assert.Equal(new[] { 90, 210, 330, 340 }, tiles.Select(tile => tile.DeltaY).Distinct().ToArray());
         Assert.Equal(16, tiles.Length);
+    }
+
+    [Fact]
+    public void ScanPlanRejectsUnboundedRoomsBeforeTileEnumeration() {
+        Assert.False(AkronScreenshotScanner.TryValidateScanPlan(
+            roomWidth: int.MaxValue,
+            roomHeight: int.MaxValue,
+            cameraWidth: 320f,
+            cameraHeight: 180f,
+            stepX: 8,
+            stepY: 8,
+            out _,
+            out string reason));
+        Assert.Contains("tile", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Throws<InvalidDataException>(() => AkronScreenshotScanner.BuildScanTiles(
+            0, 0, int.MaxValue, int.MaxValue, 320f, 180f, 8, 8));
+    }
+
+    [Fact]
+    public void ScanPlanAllowsNormalRoomsWithinTileBudget() {
+        Assert.True(AkronScreenshotScanner.TryValidateScanPlan(
+            roomWidth: 650,
+            roomHeight: 430,
+            cameraWidth: 320f,
+            cameraHeight: 180f,
+            stepX: 160,
+            stepY: 120,
+            out int tileCount,
+            out string reason), reason);
+        Assert.Equal(16, tileCount);
+    }
+
+    [Fact]
+    public void CaptureDimensionsRejectOverflowAndExcessiveDecodedPixels() {
+        Assert.True(AkronCapture.TryValidateCaptureDimensions(1920, 1080, 2, out int width, out int height, out string reason), reason);
+        Assert.Equal((3840, 2160), (width, height));
+
+        Assert.False(AkronCapture.TryValidateCaptureDimensions(1920, 1080, 3, out _, out _, out string pixelReason));
+        Assert.Contains("pixel", pixelReason, StringComparison.OrdinalIgnoreCase);
+        Assert.False(AkronCapture.TryValidateCaptureDimensions(int.MaxValue, int.MaxValue, 16, out _, out _, out _));
+    }
+
+    [Fact]
+    public void ScanWorkBudgetIncludesViewportScaleAndChapterTotal() {
+        Assert.True(AkronScreenshotScanner.TryValidateScanWorkload(16, 1920, 1080, 1, 0, out long roomPixels, out string reason), reason);
+        Assert.Equal(33_177_600L, roomPixels);
+
+        Assert.False(AkronScreenshotScanner.TryValidateScanWorkload(64, 1920, 1080, 2, 0, out _, out string roomReason));
+        Assert.Contains("room", roomReason, StringComparison.OrdinalIgnoreCase);
+        Assert.False(AkronScreenshotScanner.TryValidateScanWorkload(32, 1920, 1080, 2, 400_000_000L, out _, out string chapterReason));
+        Assert.Contains("chapter", chapterReason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -123,7 +181,7 @@ public sealed class ScreenshotScannerTests {
         Assert.False(AkronScreenshotScanner.CanCreateMergedImage(16385, 100, out string dimensionReason));
         Assert.Contains("exceed", dimensionReason);
 
-        Assert.False(AkronScreenshotScanner.CanCreateMergedImage(15000, 15000, out string pixelReason));
+        Assert.False(AkronScreenshotScanner.CanCreateMergedImage(5000, 5000, out string pixelReason));
         Assert.Contains("pixel count", pixelReason);
 
         Assert.True(AkronScreenshotScanner.CanCreateMergedImage(3250, 2150, out string okReason));
@@ -176,6 +234,56 @@ public sealed class ScreenshotScannerTests {
     }
 
     [Fact]
+    public void MapStreamingBudgetRejectsTooManyOverlappingDecodedRooms() {
+        AkronScreenshotRoomImage[] rooms = Enumerable.Range(0, 9)
+            .Select(index => new AkronScreenshotRoomImage("room-" + index, 0, 0, 320, 180, 2048, 2048))
+            .ToArray();
+        IReadOnlyList<AkronScreenshotMapPlacement> placements = AkronScreenshotScanner.BuildMapWorldLayout(rooms, out _, out _);
+
+        Assert.False(AkronScreenshotScanner.TryValidateActiveMapRoomBudget(rooms, placements, out string reason));
+        Assert.Contains("decoded", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("../outside")]
+    [InlineData("/rooted")]
+    public void ScreenshotOutputRejectsUnsafeMapOrRoomSegments(string segment) {
+        string root = Path.Combine(Path.GetTempPath(), "akron-safe-root");
+
+        Assert.False(AkronScreenshotScanner.TryBuildConfinedOutputPath(root, segment, "A", "room", "capture.png", out _, out _));
+        Assert.False(AkronScreenshotScanner.TryBuildConfinedOutputPath(root, "Map/Sid", "A", segment, "capture.png", out _, out _));
+    }
+
+    [Fact]
+    public void ScreenshotOutputAllowsNormalNestedMapSidButNotNestedRoomName() {
+        string root = Path.Combine(Path.GetTempPath(), "akron-safe-root");
+
+        Assert.True(AkronScreenshotScanner.TryBuildConfinedOutputPath(root, "Celeste/7-Summit", "A", "a-00", "capture.png", out string path, out string reason), reason);
+        Assert.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar, path, StringComparison.Ordinal);
+        Assert.False(AkronScreenshotScanner.TryBuildConfinedOutputPath(root, "Celeste/7-Summit", "A", "nested/room", "capture.png", out _, out _));
+    }
+
+    [Fact]
+    public void ScreenshotOutputAcceptsSafeWindowsStyleInternalRelativePath() {
+        string root = Path.Combine(Path.GetTempPath(), "akron-safe-root");
+
+        Assert.True(AkronScreenshotScanner.TryBuildConfinedOutputPath(root, "Celeste\\7-Summit", "A", string.Empty, "marked-rooms\\run\\.keep", out string path, out string reason), reason);
+        Assert.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar, path, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("room:name")]
+    [InlineData("CON")]
+    [InlineData("LPT1.txt")]
+    [InlineData("trailing.")]
+    [InlineData("trailing ")]
+    public void ScreenshotOutputRejectsWindowsInvalidSegmentsOnEveryPlatform(string roomName) {
+        string root = Path.Combine(Path.GetTempPath(), "akron-safe-root");
+
+        Assert.False(AkronScreenshotScanner.TryBuildConfinedOutputPath(root, "Celeste/7-Summit", "A", roomName, "capture.png", out _, out _));
+    }
+
+    [Fact]
     public void OversizedRoomCollagesDownscaleBeforeAllocation() {
         var fullSize = AkronScreenshotScanner.BuildMergedImageSize(
             roomWidth: 2344,
@@ -188,8 +296,9 @@ public sealed class ScreenshotScannerTests {
 
         Assert.Equal(11720, fullSize.X);
         Assert.Equal(13480, fullSize.Y);
-        Assert.Equal(7122, safeSize.Width);
-        Assert.Equal(8192, safeSize.Height);
+        Assert.InRange(safeSize.Width, 1, 8192);
+        Assert.InRange(safeSize.Height, 1, 8192);
+        Assert.True((long)safeSize.Width * safeSize.Height <= 16_777_216L);
         Assert.True(safeSize.Scale < 1f);
         Assert.True(AkronScreenshotScanner.CanCreateMergedImage(safeSize.Width, safeSize.Height, out _));
     }
@@ -352,14 +461,6 @@ public sealed class ScreenshotScannerTests {
         int captureLimitIndex = source.IndexOf(".Take(maxMarkedRooms)", StringComparison.Ordinal);
         Assert.True(orderingIndex >= 0);
         Assert.True(captureLimitIndex > orderingIndex);
-    }
-
-    [Fact]
-    public void ScannerOwnedRoomLoadsDoNotCancelMapCapture() {
-        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-screenshot-scanner.cs"));
-
-        Assert.Contains("if (!isScanning)", source);
-        Assert.Contains("mode != LevelExit.Mode.Restart && !isScanning", source);
     }
 
     [Fact]

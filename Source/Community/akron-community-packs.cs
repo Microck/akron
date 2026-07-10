@@ -3,9 +3,14 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Celeste;
 using Monocle;
@@ -14,7 +19,7 @@ namespace Celeste.Mod.Akron;
 
 public sealed class AkronCommunityPackIndex {
     public string Format { get; set; } = AkronCommunityPacks.IndexFormat;
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public List<AkronCommunityPackEntry> Packs { get; set; } = new List<AkronCommunityPackEntry>();
 }
 
@@ -26,6 +31,8 @@ public sealed class AkronCommunityPackEntry {
     public string MapSid { get; set; } = string.Empty;
     public string MapUrl { get; set; } = string.Empty;
     public string DownloadUrl { get; set; } = string.Empty;
+    public string Sha256 { get; set; } = string.Empty;
+    public int SizeBytes { get; set; }
     public string AuthorName { get; set; } = string.Empty;
     public string AuthorAvatarUrl { get; set; } = string.Empty;
     public string ImageUrl { get; set; } = string.Empty;
@@ -34,6 +41,9 @@ public sealed class AkronCommunityPackEntry {
     public int DownloadCount { get; set; }
     public string UpdatedUtc { get; set; } = string.Empty;
     public List<string> Tags { get; set; } = new List<string>();
+
+    [JsonIgnore]
+    internal Uri CatalogUri { get; set; }
 }
 
 public sealed class AkronCommunityPackImage {
@@ -63,19 +73,23 @@ public sealed class AkronCommunityPackSearchResult {
 }
 
 public static class AkronCommunityPacks {
-    public const string IndexFormat = "akron-community-pack-index-v1";
+    public const string IndexFormat = "akron-community-pack-index-v2";
+    public const int IndexVersion = 2;
     public const string DefaultIndexUrl = "https://akron.micr.dev/catalog/index.json";
 
     private const int MaxIndexBytes = 1024 * 1024;
     private const int MaxPackBytes = 4 * 1024 * 1024;
+    private const int MaxCatalogPacks = 512;
+    private const int MaxCatalogImagesPerPack = 16;
 
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
-    private static readonly HttpClient Http = new HttpClient {
-        Timeout = RequestTimeout
-    };
+    private static readonly HttpClient Http = CreateSafeHttpClient(RequestTimeout);
+    private static readonly Regex Sha256Pattern = new Regex("^[0-9a-f]{64}$", RegexOptions.CultureInvariant);
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() }
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = false,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        Converters = { new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false) }
     };
 
     private static List<AkronCommunityPackEntry> cachedEntries = new List<AkronCommunityPackEntry>();
@@ -221,7 +235,22 @@ public static class AkronCommunityPacks {
             Directory.CreateDirectory(setupDirectoryProvider());
             string fileName = SanitizeFileName(string.IsNullOrWhiteSpace(entry.Title) ? entry.Id : entry.Title) + AkronArchive.Extension;
             string path = Path.Combine(setupDirectoryProvider(), "community-" + fileName);
-            DownloadPack(entry.DownloadUrl, path);
+            try {
+                DownloadPack(entry, path);
+                AkronSetupPack pack = AkronSetupPacks.Read(path, out AkronArchiveManifest manifest);
+                if (pack.Section != entry.Section || !AkronSetupPacks.IsCommunitySection(pack.Section)) {
+                    throw new InvalidDataException("Pack section does not match the catalog.");
+                }
+                if (!string.IsNullOrWhiteSpace(entry.MapSid) &&
+                    !string.Equals(entry.MapSid, manifest.Target?.MapSid, StringComparison.Ordinal)) {
+                    throw new InvalidDataException("Pack map does not match the catalog.");
+                }
+            } catch {
+                if (File.Exists(path)) {
+                    File.Delete(path);
+                }
+                throw;
+            }
             return new DownloadOutcome(entry, path, "Downloaded " + entry.Title + ".", true);
         } catch (Exception exception) when (exception is IOException || exception is HttpRequestException || exception is TaskCanceledException || exception is UnauthorizedAccessException || exception is InvalidDataException || exception is ArgumentException || exception is FormatException) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to import Akron community pack: " + exception);
@@ -256,7 +285,21 @@ public static class AkronCommunityPacks {
             throw new InvalidDataException("Community index format is unsupported.");
         }
 
+        if (index.Version != IndexVersion) {
+            throw new InvalidDataException("Community index version is unsupported.");
+        }
+
         index.Packs ??= new List<AkronCommunityPackEntry>();
+        if (index.Packs.Count > MaxCatalogPacks) {
+            throw new InvalidDataException("Community index has too many packs.");
+        }
+        HashSet<string> ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (AkronCommunityPackEntry entry in index.Packs) {
+            ValidateCatalogEntry(entry);
+            if (!ids.Add(entry.Id)) {
+                throw new InvalidDataException("Community index contains a duplicate pack id.");
+            }
+        }
         return index;
     }
 
@@ -330,51 +373,81 @@ public static class AkronCommunityPacks {
         Uri uri = new Uri(ResolveIndexUrl(indexUrl), UriKind.Absolute);
         string json;
         if (uri.Scheme == Uri.UriSchemeFile) {
+            ValidateLocalFileUri(uri, "Community index");
             byte[] bytes = ReadFileBytesCapped(uri.LocalPath, MaxIndexBytes, "Community index is too large.");
             json = System.Text.Encoding.UTF8.GetString(bytes);
-        } else if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) {
+        } else if (uri.Scheme == Uri.UriSchemeHttps) {
+            ValidatePublicHttpsUri(uri, "Community index");
             byte[] bytes = ReadHttpBytesCapped(uri, MaxIndexBytes, "Community index is too large.");
             json = System.Text.Encoding.UTF8.GetString(bytes);
         } else {
-            throw new InvalidDataException("Community index URL must use http, https, or file.");
+            throw new InvalidDataException("Remote community indexes must use HTTPS; local indexes must use file URLs.");
         }
 
         if (json.Length > MaxIndexBytes) {
             throw new InvalidDataException("Community index is too large.");
         }
 
-        return ParseIndex(json);
+        AkronCommunityPackIndex index = ParseIndex(json);
+        foreach (AkronCommunityPackEntry entry in index.Packs) {
+            entry.CatalogUri = uri;
+            ResolveCatalogResourceUri(entry, entry.DownloadUrl, "Pack");
+            foreach (AkronCommunityPackImage image in GetPreviewImages(entry)) {
+                ResolveCatalogResourceUri(entry, image.Url, "Preview image");
+            }
+        }
+        return index;
     }
 
-    private static void DownloadPack(string url, string destinationPath) {
-        Uri uri = new Uri(url, UriKind.Absolute);
+    private static void DownloadPack(AkronCommunityPackEntry entry, string destinationPath) {
+        ValidateCatalogEntry(entry);
+        Uri uri = ResolveCatalogResourceUri(entry, entry.DownloadUrl, "Pack");
         byte[] bytes;
         if (uri.Scheme == Uri.UriSchemeFile) {
             bytes = ReadFileBytesCapped(uri.LocalPath, MaxPackBytes, "Pack is too large.");
-        } else if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) {
+        } else if (uri.Scheme == Uri.UriSchemeHttps) {
             bytes = ReadHttpBytesCapped(uri, MaxPackBytes, "Pack is too large.");
         } else {
-            throw new InvalidDataException("Pack URL must use http, https, or file.");
+            throw new InvalidDataException("Pack URL is not allowed by its catalog.");
         }
 
-        if (bytes.Length > MaxPackBytes) {
-            throw new InvalidDataException("Pack is too large.");
+        if (bytes.Length > MaxPackBytes || bytes.Length != entry.SizeBytes) {
+            throw new InvalidDataException("Pack size does not match the catalog.");
+        }
+
+        byte[] expectedHash = Convert.FromHexString(entry.Sha256);
+        byte[] actualHash = SHA256.HashData(bytes);
+        if (!CryptographicOperations.FixedTimeEquals(actualHash, expectedHash)) {
+            throw new InvalidDataException("Pack checksum does not match the catalog.");
         }
 
         File.WriteAllBytes(destinationPath, bytes);
     }
 
-    private static byte[] ReadFileBytesCapped(string path, int maxBytes, string tooLargeMessage) {
-        FileInfo file = new FileInfo(path);
-        if (file.Length > maxBytes) {
-            throw new InvalidDataException(tooLargeMessage);
+    internal static byte[] ReadFileBytesCapped(string path, int maxBytes, string tooLargeMessage) {
+        using FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using MemoryStream buffer = new MemoryStream(Math.Min(maxBytes, 81920));
+        byte[] chunk = new byte[81920];
+        int total = 0;
+        while (true) {
+            int read = stream.Read(chunk, 0, Math.Min(chunk.Length, maxBytes + 1 - total));
+            if (read == 0) {
+                return buffer.ToArray();
+            }
+            total += read;
+            if (total > maxBytes) {
+                throw new InvalidDataException(tooLargeMessage);
+            }
+            buffer.Write(chunk, 0, read);
         }
-
-        return File.ReadAllBytes(path);
     }
 
     private static byte[] ReadHttpBytesCapped(Uri uri, int maxBytes, string tooLargeMessage) {
+        ValidatePublicHttpsUri(uri, "Remote resource");
         using HttpResponseMessage response = Http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+        if ((int)response.StatusCode is >= 300 and < 400) {
+            throw new InvalidDataException("Remote redirects are not allowed.");
+        }
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength > maxBytes) {
             throw new InvalidDataException(tooLargeMessage);
@@ -404,6 +477,200 @@ public static class AkronCommunityPacks {
                !string.IsNullOrWhiteSpace(entry.Id) &&
                !string.IsNullOrWhiteSpace(entry.Title) &&
                !string.IsNullOrWhiteSpace(entry.DownloadUrl);
+    }
+
+    private static void ValidateCatalogEntry(AkronCommunityPackEntry entry) {
+        if (!IsUsableEntry(entry) || !AkronSetupPacks.IsCommunitySection(entry.Section)) {
+            throw new InvalidDataException("Community index contains an invalid pack entry.");
+        }
+
+        if (!Sha256Pattern.IsMatch(entry.Sha256 ?? string.Empty)) {
+            throw new InvalidDataException("Community pack SHA-256 is missing or invalid.");
+        }
+
+        if (entry.SizeBytes <= 0) {
+            throw new InvalidDataException("Community pack size is missing or invalid.");
+        }
+
+        if (entry.SizeBytes > MaxPackBytes) {
+            throw new InvalidDataException("Pack is too large.");
+        }
+
+        if ((entry.Tags?.Count ?? 0) > 32) {
+            throw new InvalidDataException("Community pack has too many tags.");
+        }
+        if ((entry.ImageUrls?.Count ?? 0) > MaxCatalogImagesPerPack || (entry.Images?.Count ?? 0) > MaxCatalogImagesPerPack) {
+            throw new InvalidDataException("Community pack has too many preview images.");
+        }
+
+        ValidateCatalogText(entry.Id, 256, "pack id");
+        ValidateCatalogText(entry.Title, 256, "pack title");
+        ValidateCatalogText(entry.MapSid, 256, "map SID");
+        ValidateOptionalCatalogText(entry.Description, 4096, "description");
+        ValidateOptionalCatalogText(entry.AuthorName, 256, "author name");
+        ValidateOptionalCatalogText(entry.MapUrl, 2048, "map URL");
+        ValidateCatalogText(entry.DownloadUrl, 2048, "download URL");
+        ValidateOptionalCatalogText(entry.ImageUrl, 2048, "preview URL");
+        ValidateOptionalCatalogText(entry.AuthorAvatarUrl, 2048, "author avatar URL");
+        foreach (string tag in entry.Tags ?? new List<string>()) {
+            ValidateCatalogText(tag, 64, "tag");
+        }
+        foreach (string imageUrl in entry.ImageUrls ?? new List<string>()) {
+            ValidateCatalogText(imageUrl, 2048, "preview URL");
+        }
+        foreach (AkronCommunityPackImage image in entry.Images ?? new List<AkronCommunityPackImage>()) {
+            if (image == null) {
+                throw new InvalidDataException("Community pack preview image is invalid.");
+            }
+            ValidateCatalogText(image.Url, 2048, "preview URL");
+            ValidateOptionalCatalogText(image.RoomName, 256, "preview room name");
+        }
+    }
+
+    private static void ValidateCatalogText(string value, int maximum, string label) {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > maximum) {
+            throw new InvalidDataException("Community pack " + label + " is invalid.");
+        }
+    }
+
+    private static void ValidateOptionalCatalogText(string value, int maximum, string label) {
+        if ((value?.Length ?? 0) > maximum) {
+            throw new InvalidDataException("Community pack " + label + " is too long.");
+        }
+    }
+
+    internal static Uri ResolveCatalogResourceUri(AkronCommunityPackEntry entry, string resourceUrl, string label) {
+        if (entry == null || string.IsNullOrWhiteSpace(resourceUrl)) {
+            throw new InvalidDataException(label + " URL is missing.");
+        }
+
+        Uri resource = new Uri(resourceUrl, UriKind.Absolute);
+        Uri catalog = entry.CatalogUri;
+        if (catalog == null) {
+            if (resource.Scheme == Uri.UriSchemeFile) {
+                ValidateLocalFileUri(resource, label);
+                return resource;
+            }
+
+            Uri officialCatalog = new Uri(DefaultIndexUrl, UriKind.Absolute);
+            ValidateHttpsUriShape(resource, label);
+            if (!HasSameOrigin(resource, officialCatalog)) {
+                throw new InvalidDataException(label + " URL is outside the approved catalog origin.");
+            }
+            return resource;
+        }
+
+        if (catalog.Scheme == Uri.UriSchemeFile) {
+            ValidateLocalFileUri(resource, label);
+            string catalogDirectory = Path.GetDirectoryName(Path.GetFullPath(catalog.LocalPath)) ?? Path.GetPathRoot(catalog.LocalPath);
+            string resourcePath = Path.GetFullPath(resource.LocalPath);
+            string prefix = catalogDirectory.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!resourcePath.StartsWith(prefix, StringComparison.Ordinal)) {
+                throw new InvalidDataException(label + " file is outside the local catalog directory.");
+            }
+            return resource;
+        }
+
+        ValidateHttpsUriShape(resource, label);
+        if (!HasSameOrigin(resource, catalog)) {
+            throw new InvalidDataException(label + " URL is outside the approved catalog origin.");
+        }
+        return resource;
+    }
+
+    private static bool HasSameOrigin(Uri left, Uri right) {
+        return string.Equals(left.Scheme, right.Scheme, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(left.IdnHost, right.IdnHost, StringComparison.OrdinalIgnoreCase) &&
+               left.Port == right.Port;
+    }
+
+    private static void ValidateLocalFileUri(Uri uri, string label) {
+        if (uri.Scheme != Uri.UriSchemeFile || uri.IsUnc || !string.IsNullOrEmpty(uri.Host)) {
+            throw new InvalidDataException(label + " must be an explicit local file URL.");
+        }
+    }
+
+    private static void ValidatePublicHttpsUri(Uri uri, string label) {
+        ValidateHttpsUriShape(uri, label);
+
+        IPAddress[] addresses;
+        try {
+            addresses = Dns.GetHostAddresses(uri.DnsSafeHost);
+        } catch (Exception exception) when (exception is System.Net.Sockets.SocketException || exception is ArgumentException) {
+            throw new InvalidDataException(label + " host could not be resolved.", exception);
+        }
+
+        if (addresses.Length == 0 || addresses.Any(IsUnsafeAddress)) {
+            throw new InvalidDataException(label + " host resolves to a private or local address.");
+        }
+    }
+
+    private static void ValidateHttpsUriShape(Uri uri, string label) {
+        if (uri.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo) || string.IsNullOrWhiteSpace(uri.IdnHost)) {
+            throw new InvalidDataException(label + " must use HTTPS.");
+        }
+    }
+
+    private static bool IsUnsafeAddress(IPAddress address) {
+        if (address.IsIPv4MappedToIPv6) {
+            address = address.MapToIPv4();
+        }
+
+        if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any) ||
+            address.Equals(IPAddress.None) || address.Equals(IPAddress.IPv6None) || address.IsIPv6LinkLocal ||
+            address.IsIPv6Multicast || address.IsIPv6SiteLocal) {
+            return true;
+        }
+
+        byte[] bytes = address.GetAddressBytes();
+        if (bytes.Length == 4) {
+            return bytes[0] == 10 ||
+                   bytes[0] == 127 ||
+                   (bytes[0] == 100 && bytes[1] is >= 64 and <= 127) ||
+                   (bytes[0] == 169 && bytes[1] == 254) ||
+                   (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) ||
+                   (bytes[0] == 192 && bytes[1] == 0 && bytes[2] is 0 or 2) ||
+                   (bytes[0] == 192 && bytes[1] == 168) ||
+                   (bytes[0] == 198 && bytes[1] is 18 or 19) ||
+                   (bytes[0] == 198 && bytes[1] == 51 && bytes[2] == 100) ||
+                   (bytes[0] == 203 && bytes[1] == 0 && bytes[2] == 113) ||
+                   bytes[0] >= 224 ||
+                   bytes[0] == 0;
+        }
+
+        return bytes.Length == 16 && (bytes[0] & 0xFE) == 0xFC;
+    }
+
+    internal static HttpClient CreateSafeHttpClient(TimeSpan timeout) {
+        SocketsHttpHandler handler = new SocketsHttpHandler {
+            AllowAutoRedirect = false,
+            ConnectCallback = ConnectToPublicEndpoint
+        };
+        return new HttpClient(handler) { Timeout = timeout };
+    }
+
+    private static async ValueTask<Stream> ConnectToPublicEndpoint(SocketsHttpConnectionContext context, CancellationToken cancellationToken) {
+        IPAddress[] addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, cancellationToken);
+        if (addresses.Length == 0 || addresses.Any(IsUnsafeAddress)) {
+            throw new HttpRequestException("Remote host resolves to a private or local address.");
+        }
+
+        Exception lastError = null;
+        foreach (IPAddress address in addresses) {
+            Socket socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            try {
+                await socket.ConnectAsync(address, context.DnsEndPoint.Port, cancellationToken);
+                return new NetworkStream(socket, ownsSocket: true);
+            } catch (Exception exception) when (exception is SocketException || exception is OperationCanceledException) {
+                socket.Dispose();
+                lastError = exception;
+                if (exception is OperationCanceledException) {
+                    throw;
+                }
+            }
+        }
+
+        throw new HttpRequestException("Could not connect to the remote host.", lastError);
     }
 
     private static bool EntryContains(AkronCommunityPackEntry entry, string token) {

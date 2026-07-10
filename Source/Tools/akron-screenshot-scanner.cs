@@ -120,10 +120,16 @@ internal enum AkronScreenshotMarkerKinds {
 public static class AkronScreenshotScanner {
     private const int TileSize = 8;
     private const int RoomLoadSettleFrames = 6;
-    private const int MaxMergedImageDimension = 16384;
+    private const int MaxMergedImageDimension = 8192;
     private const int MaxDownscaledImageDimension = 8192;
-    private const long MaxMergedImagePixels = 100_000_000L;
+    private const long MaxMergedImagePixels = 16_777_216L;
+    private const long MaxActiveMapRoomPixels = 32L * 1024L * 1024L;
+    private const long MaxScanPixelsPerRoom = 256L * 1024L * 1024L;
+    private const long MaxScanPixelsPerChapter = 512L * 1024L * 1024L;
     private const long LargeMapCaptureWarningPixels = 1_000_000_000L;
+    private const int MaxScanTilesPerRoom = 4096;
+    private const int MaxRoomsPerChapterScan = 512;
+    private const int MaxScanTilesPerChapter = 16384;
     private const int MapWorldPadding = 32;
     private const int ScannerExportMarkerBorder = 1;
     private static Entity scannerHost;
@@ -487,8 +493,9 @@ public static class AkronScreenshotScanner {
                 Level level = Engine.Scene as Level;
                 Player player = level?.Tracker.GetEntity<Player>();
                 if (level == null || player == null) {
-                    yield return null;
-                    continue;
+                    AkronLog.Warn(nameof(AkronScreenshotScanner), "Cancelling screenshot scan because the active level or player disappeared.");
+                    scanCancelled = true;
+                    break;
                 }
 
                 string room = rooms.Dequeue();
@@ -738,11 +745,21 @@ public static class AkronScreenshotScanner {
         Rectangle bounds = level.Bounds;
         float cameraWidth = level.Camera.Right - level.Camera.Left;
         float cameraHeight = level.Camera.Bottom - level.Camera.Top;
-        int viewportWidth = AkronCapture.ScaledCaptureDimension(Engine.Viewport.Width);
-        int viewportHeight = AkronCapture.ScaledCaptureDimension(Engine.Viewport.Height);
+        int captureScale = AkronModuleSettings.ClampScreenshotScale(AkronModule.Settings.ScreenshotScale);
+        if (!AkronCapture.TryValidateCaptureDimensions(Engine.Viewport.Width, Engine.Viewport.Height, captureScale, out int viewportWidth, out int viewportHeight, out string captureReason)) {
+            AkronLog.Warn(nameof(AkronScreenshotScanner), "Skipping room scan for '" + level.Session.Level + "': " + captureReason + ".");
+            Engine.Scene?.Add(new AkronToast("Room capture dimensions are too large."));
+            yield break;
+        }
         int stepX = AkronModuleSettings.ClampScreenshotScannerOffsetTiles(AkronModule.Settings.ScreenshotScannerHorizontalOffsetTiles) * TileSize;
         int stepY = AkronModuleSettings.ClampScreenshotScannerOffsetTiles(AkronModule.Settings.ScreenshotScannerVerticalOffsetTiles) * TileSize;
         int waitFrames = AkronModuleSettings.ClampScreenshotScannerWaitFrames(AkronModule.Settings.ScreenshotScannerWaitFrames);
+        if (!TryValidateScanPlan(bounds.Width, bounds.Height, cameraWidth, cameraHeight, stepX, stepY, out int roomTileCount, out string scanReason) ||
+            !TryValidateScanWorkload(roomTileCount, Engine.Viewport.Width, Engine.Viewport.Height, captureScale, 0, out _, out scanReason)) {
+            AkronLog.Warn(nameof(AkronScreenshotScanner), "Skipping room scan for '" + level.Session.Level + "': " + scanReason + ".");
+            Engine.Scene?.Add(new AkronToast("Room scan is too large."));
+            yield break;
+        }
         float previousTime = level.TimeActive;
         float previousRawTime = level.RawTimeActive;
         Vector2 previousPlayerPosition = player.Position;
@@ -860,7 +877,11 @@ public static class AkronScreenshotScanner {
     }
 
     internal static IReadOnlyList<AkronScreenshotScanTile> BuildScanTiles(int roomLeft, int roomTop, int roomWidth, int roomHeight, float cameraWidth, float cameraHeight, int stepX, int stepY) {
-        List<AkronScreenshotScanTile> tiles = new List<AkronScreenshotScanTile>();
+        if (!TryValidateScanPlan(roomWidth, roomHeight, cameraWidth, cameraHeight, stepX, stepY, out int tileCount, out string reason)) {
+            throw new InvalidDataException(reason);
+        }
+
+        List<AkronScreenshotScanTile> tiles = new List<AkronScreenshotScanTile>(tileCount);
         IReadOnlyList<float> centersX = BuildAxisCenters(roomWidth, cameraWidth, stepX);
         IReadOnlyList<float> centersY = BuildAxisCenters(roomHeight, cameraHeight, stepY);
         int index = 0;
@@ -876,6 +897,63 @@ public static class AkronScreenshotScanner {
         }
 
         return tiles;
+    }
+
+    internal static bool TryValidateScanPlan(int roomWidth, int roomHeight, float cameraWidth, float cameraHeight, int stepX, int stepY, out int tileCount, out string reason) {
+        tileCount = 0;
+        if (roomWidth <= 0 || roomHeight <= 0 || !float.IsFinite(cameraWidth) || !float.IsFinite(cameraHeight) ||
+            cameraWidth <= 0f || cameraHeight <= 0f || stepX <= 0 || stepY <= 0) {
+            reason = "Room scan dimensions and steps must be positive and finite";
+            return false;
+        }
+
+        long columns = BuildAxisCenterCount(roomWidth, cameraWidth, stepX);
+        long rows = BuildAxisCenterCount(roomHeight, cameraHeight, stepY);
+        long total = columns * rows;
+        if (columns <= 0 || rows <= 0 || total > MaxScanTilesPerRoom) {
+            reason = "Room scan tile count " + total.ToString(System.Globalization.CultureInfo.InvariantCulture) + " exceeds " + MaxScanTilesPerRoom.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return false;
+        }
+
+        tileCount = (int)total;
+        reason = string.Empty;
+        return true;
+    }
+
+    internal static bool TryValidateScanWorkload(int tileCount, int viewportWidth, int viewportHeight, int scale, long chapterPixelsBeforeRoom, out long roomPixels, out string reason) {
+        roomPixels = 0;
+        reason = string.Empty;
+        if (tileCount <= 0 || chapterPixelsBeforeRoom < 0) {
+            reason = "Room scan workload inputs are invalid";
+            return false;
+        }
+        if (!AkronCapture.TryValidateCaptureDimensions(viewportWidth, viewportHeight, scale, out int outputWidth, out int outputHeight, out reason)) {
+            return false;
+        }
+
+        long pixelsPerTile = (long) outputWidth * outputHeight;
+        if (tileCount > long.MaxValue / pixelsPerTile) {
+            reason = "Room scan pixel workload exceeds supported integer limits";
+            return false;
+        }
+        roomPixels = tileCount * pixelsPerTile;
+        if (roomPixels > MaxScanPixelsPerRoom) {
+            reason = "Room scan pixel workload " + roomPixels + " exceeds " + MaxScanPixelsPerRoom;
+            return false;
+        }
+        if (chapterPixelsBeforeRoom > MaxScanPixelsPerChapter - roomPixels) {
+            reason = "Chapter scan pixel workload exceeds " + MaxScanPixelsPerChapter;
+            return false;
+        }
+
+        reason = string.Empty;
+        return true;
+    }
+
+    private static long BuildAxisCenterCount(int roomSize, float cameraSize, int step) {
+        double firstCenter = cameraSize / 2d;
+        double lastCenter = roomSize - cameraSize / 2d;
+        return lastCenter <= firstCenter ? 1L : checked((long)Math.Ceiling((lastCenter - firstCenter) / step) + 1L);
     }
 
     private static IReadOnlyList<float> BuildAxisCenters(int roomSize, float cameraSize, int step) {
@@ -899,21 +977,122 @@ public static class AkronScreenshotScanner {
     }
 
     private static string BuildPath(Level level, string fileName) {
-        string root = AkronModuleSettings.NormalizeScreenshotScannerExportPath(AkronModule.Settings.ScreenshotScannerExportPath);
+        string root = GetScannerExportRoot();
         string sid = level.Session.Area.GetSID();
         char side = (char) ('A' + (int) level.Session.Area.Mode);
-        string path = Path.Combine(Everest.PathGame, root, sid, side.ToString(), level.Session.Level, fileName);
+        if (!TryBuildConfinedOutputPath(root, sid, side.ToString(), level.Session.Level, fileName, out string path, out string reason)) {
+            throw new InvalidDataException(reason);
+        }
         Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         return path;
     }
 
     private static string BuildSidePath(Level level, string fileName) {
-        string root = AkronModuleSettings.NormalizeScreenshotScannerExportPath(AkronModule.Settings.ScreenshotScannerExportPath);
+        string root = GetScannerExportRoot();
         string sid = level.Session.Area.GetSID();
         char side = (char) ('A' + (int) level.Session.Area.Mode);
-        string path = Path.Combine(Everest.PathGame, root, sid, side.ToString(), fileName);
+        if (!TryBuildConfinedOutputPath(root, sid, side.ToString(), string.Empty, fileName, out string path, out string reason)) {
+            throw new InvalidDataException(reason);
+        }
         Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         return path;
+    }
+
+    private static string GetScannerExportRoot() {
+        string configured = AkronModuleSettings.NormalizeScreenshotScannerExportPath(AkronModule.Settings.ScreenshotScannerExportPath);
+        return Path.GetFullPath(Path.Combine(Everest.PathGame, configured));
+    }
+
+    internal static bool TryBuildConfinedOutputPath(string exportRoot, string mapSid, string side, string roomName, string fileName, out string path, out string reason) {
+        path = string.Empty;
+        reason = string.Empty;
+        try {
+            if (string.IsNullOrWhiteSpace(exportRoot) || !IsSafeRelativePath(mapSid) || !IsSafePathSegment(side) ||
+                (!string.IsNullOrEmpty(roomName) && !IsSafePathSegment(roomName)) || !IsSafeRelativePath(fileName)) {
+                reason = "Screenshot output contains an unsafe path segment";
+                return false;
+            }
+
+            string canonicalRoot = Path.GetFullPath(exportRoot);
+            string safeMapSid = NormalizeSafeRelativePath(mapSid);
+            string safeFileName = NormalizeSafeRelativePath(fileName);
+            string candidate = string.IsNullOrEmpty(roomName)
+                ? Path.Combine(canonicalRoot, safeMapSid, side, safeFileName)
+                : Path.Combine(canonicalRoot, safeMapSid, side, roomName, safeFileName);
+            string canonicalPath = Path.GetFullPath(candidate);
+            string rootPrefix = canonicalRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            StringComparison comparison = Path.DirectorySeparatorChar == '\\' ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            if (!canonicalPath.StartsWith(rootPrefix, comparison)) {
+                reason = "Screenshot output escapes the configured export directory";
+                return false;
+            }
+
+            path = canonicalPath;
+            return true;
+        } catch (Exception exception) when (exception is ArgumentException || exception is NotSupportedException || exception is PathTooLongException) {
+            reason = "Screenshot output path is invalid";
+            return false;
+        }
+    }
+
+    private static bool IsSafePathSegment(string value) {
+        if (string.IsNullOrWhiteSpace(value) || Path.IsPathRooted(value) || value is "." or ".." ||
+            value.IndexOf('/') >= 0 || value.IndexOf('\\') >= 0 || value.EndsWith(".", StringComparison.Ordinal) ||
+            value.EndsWith(" ", StringComparison.Ordinal) || value.Any(character => character < 32 || "<>:\"|?*".IndexOf(character) >= 0)) {
+            return false;
+        }
+
+        string stem = Path.GetFileNameWithoutExtension(value).ToUpperInvariant();
+        return stem is not "CON" and not "PRN" and not "AUX" and not "NUL" &&
+               !(stem.Length == 4 && (stem.StartsWith("COM", StringComparison.Ordinal) || stem.StartsWith("LPT", StringComparison.Ordinal)) && stem[3] is >= '1' and <= '9');
+    }
+
+    private static bool IsSafeRelativePath(string value) {
+        if (string.IsNullOrWhiteSpace(value) || Path.IsPathRooted(value) || value[0] is '/' or '\\' || value.IndexOf('\0') >= 0) {
+            return false;
+        }
+        string[] segments = value.Replace('\\', '/').Split('/');
+        return segments.All(IsSafePathSegment);
+    }
+
+    private static string NormalizeSafeRelativePath(string value) {
+        return value.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+    }
+
+    private static string BuildMarkedRoomOutputDirectory(Level level) {
+        string runId = DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ", System.Globalization.CultureInfo.InvariantCulture);
+        string directory = BuildSidePath(level, Path.Combine("marked-rooms", runId, ".keep"));
+        directory = Path.GetDirectoryName(directory) ?? ".";
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
+
+    private static bool TryWriteMarkedRoomCapture(AkronScreenshotMergedRoom mergedRoom, string outputDirectory, out AkronScreenshotRoomCapture capture) {
+        capture = default;
+        if (string.IsNullOrWhiteSpace(outputDirectory) || string.IsNullOrWhiteSpace(mergedRoom.ImagePath) || !File.Exists(mergedRoom.ImagePath)) {
+            return false;
+        }
+
+        try {
+            string outputPath = Path.Combine(outputDirectory, SanitizeRoomCaptureFileName(mergedRoom.RoomName) + ImageExtension());
+            File.Copy(mergedRoom.ImagePath, outputPath, overwrite: true);
+            lastExportPath = outputPath;
+            capture = new AkronScreenshotRoomCapture(mergedRoom.RoomName, outputPath);
+            return true;
+        } catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is ArgumentException) {
+            AkronLog.Warn(nameof(AkronScreenshotScanner), "Could not export marked-room capture for '" + mergedRoom.RoomName + "': " + e.Message);
+            return false;
+        }
+    }
+
+    private static string SanitizeRoomCaptureFileName(string roomName) {
+        string fileName = string.IsNullOrWhiteSpace(roomName) ? "room" : roomName.Trim();
+        foreach (char invalid in Path.GetInvalidFileNameChars()) {
+            fileName = fileName.Replace(invalid, '-');
+        }
+
+        fileName = fileName.Replace('/', '-').Replace('\\', '-');
+        return string.IsNullOrWhiteSpace(fileName) ? "room" : fileName;
     }
 
     private static void WriteMetadata(Level level, Rectangle bounds, float cameraWidth, float cameraHeight, int viewportWidth, int viewportHeight) {
@@ -1050,10 +1229,8 @@ public static class AkronScreenshotScanner {
             }
 
             var fullCanvasSize = BuildMergedImageSize(bounds.Width, bounds.Height, cameraWidth, cameraHeight, viewportWidth, viewportHeight);
-            var canvasSize = IsPngExport()
-                ? (Width: fullCanvasSize.X, Height: fullCanvasSize.Y, Scale: 1f)
-                : BuildRuntimeSafeImageSize(fullCanvasSize.X, fullCanvasSize.Y);
-            if (!CanCreateMergedImage(canvasSize.Width, canvasSize.Height, out string reason) && !IsPngExport()) {
+            var canvasSize = BuildRuntimeSafeImageSize(fullCanvasSize.X, fullCanvasSize.Y);
+            if (!CanCreateMergedImage(canvasSize.Width, canvasSize.Height, out string reason)) {
                 AkronLog.Warn(nameof(AkronScreenshotScanner), "Skipping room collage for '" + level.Session.Level + "': " + reason + ".");
                 return false;
             }
@@ -1128,7 +1305,8 @@ public static class AkronScreenshotScanner {
                 .ToList();
 
             BuildMapWorldLayout(roomImagesForLayout, out int fullWidth, out int fullHeight, projectionX, projectionY);
-            if (AkronModule.Settings.ScreenshotScannerDownscaleMapCapture) {
+            bool requiresSafeScale = !CanCreateMergedImage(fullWidth, fullHeight, out _);
+            if (AkronModule.Settings.ScreenshotScannerDownscaleMapCapture || requiresSafeScale) {
                 var safeSize = BuildRuntimeSafeImageSize(fullWidth, fullHeight);
                 projectionX *= safeSize.Scale;
                 projectionY *= safeSize.Scale;
@@ -1138,34 +1316,31 @@ public static class AkronScreenshotScanner {
             }
 
             IReadOnlyList<AkronScreenshotMapPlacement> placements = BuildMapWorldLayout(roomImagesForLayout, out int width, out int height, projectionX, projectionY);
+            if (!CanCreateMergedImage(width, height, out string reason)) {
+                AkronLog.Warn(nameof(AkronScreenshotScanner), "Skipping map collage: " + reason + ".");
+                return false;
+            }
             string outputPath = BuildSidePath(level, "map" + ImageExtension());
             if (IsPngExport()) {
+                if (!TryValidateActiveMapRoomBudget(roomImagesForLayout, placements, out reason)) {
+                    AkronLog.Warn(nameof(AkronScreenshotScanner), "Skipping map collage: " + reason + ".");
+                    return false;
+                }
                 SaveMergedMapImageStreaming(outputPath, rooms, placements, width, height);
                 lastExportPath = outputPath;
                 return true;
             }
 
-            if (!CanCreateMergedImage(width, height, out string reason)) {
-                AkronLog.Warn(nameof(AkronScreenshotScanner), "Skipping map collage: " + reason + ".");
-                return false;
-            }
-
-            List<(AkronScreenshotMergedRoom Room, Color[] Pixels, int Width, int Height)> roomImages = new List<(AkronScreenshotMergedRoom Room, Color[] Pixels, int Width, int Height)>();
-            foreach (AkronScreenshotMergedRoom room in rooms) {
-                Color[] pixels = LoadMergedImagePixels(room.ImagePath, out int imageWidth, out int imageHeight);
-                roomImages.Add((room, pixels, imageWidth, imageHeight));
-            }
-
             Color[] canvas = new Color[width * height];
-            for (int i = 0; i < roomImages.Count; i++) {
-                var roomImage = roomImages[i];
+            for (int i = 0; i < rooms.Count; i++) {
+                AkronScreenshotMergedRoom room = rooms[i];
+                Color[] roomPixels = LoadMergedImagePixels(room.ImagePath, out int roomWidth, out int roomHeight);
                 AkronScreenshotMapPlacement placement = placements[i];
-                if (placement.Width == roomImage.Width && placement.Height == roomImage.Height) {
-                    BlendTile(canvas, width, height, roomImage.Pixels, roomImage.Width, roomImage.Height, placement.X, placement.Y);
+                if (placement.Width == roomWidth && placement.Height == roomHeight) {
+                    BlendTile(canvas, width, height, roomPixels, roomWidth, roomHeight, placement.X, placement.Y);
                 } else {
-                    BlendScaledTileNearestToRect(canvas, width, height, roomImage.Pixels, roomImage.Width, roomImage.Height, placement.X, placement.Y, placement.Width, placement.Height);
+                    BlendScaledTileNearestToRect(canvas, width, height, roomPixels, roomWidth, roomHeight, placement.X, placement.Y, placement.Width, placement.Height);
                 }
-
             }
 
             SaveMergedImage(outputPath, canvas, width, height);
@@ -1184,21 +1359,31 @@ public static class AkronScreenshotScanner {
             return Array.Empty<AkronScreenshotMapPlacement>();
         }
 
-        int left = rooms.Min(room => room.BoundsX);
-        int top = rooms.Min(room => room.BoundsY);
-        int right = rooms.Max(room => room.BoundsX + room.BoundsWidth);
-        int bottom = rooms.Max(room => room.BoundsY + room.BoundsHeight);
-        int worldWidth = Math.Max(1, right - left);
-        int worldHeight = Math.Max(1, bottom - top);
-        width = Math.Max(1, (int) Math.Round((worldWidth + MapWorldPadding * 2) * projectionX));
-        height = Math.Max(1, (int) Math.Round((worldHeight + MapWorldPadding * 2) * projectionY));
+        if (rooms.Count > MaxRoomsPerChapterScan || !float.IsFinite(projectionX) || !float.IsFinite(projectionY) || projectionX <= 0f || projectionY <= 0f ||
+            rooms.Any(room => room.BoundsWidth <= 0 || room.BoundsHeight <= 0 || room.Width <= 0 || room.Height <= 0)) {
+            throw new InvalidDataException("Map layout exceeds screenshot scanner safety limits.");
+        }
+
+        long left = rooms.Min(room => (long)room.BoundsX);
+        long top = rooms.Min(room => (long)room.BoundsY);
+        long right = rooms.Max(room => (long)room.BoundsX + room.BoundsWidth);
+        long bottom = rooms.Max(room => (long)room.BoundsY + room.BoundsHeight);
+        long worldWidth = Math.Max(1L, right - left);
+        long worldHeight = Math.Max(1L, bottom - top);
+        double projectedWidth = (worldWidth + MapWorldPadding * 2L) * projectionX;
+        double projectedHeight = (worldHeight + MapWorldPadding * 2L) * projectionY;
+        if (!double.IsFinite(projectedWidth) || !double.IsFinite(projectedHeight) || projectedWidth > int.MaxValue || projectedHeight > int.MaxValue) {
+            throw new InvalidDataException("Map layout dimensions exceed supported integer limits.");
+        }
+        width = Math.Max(1, (int)Math.Round(projectedWidth));
+        height = Math.Max(1, (int)Math.Round(projectedHeight));
 
         List<AkronScreenshotMapPlacement> placements = new List<AkronScreenshotMapPlacement>(rooms.Count);
         foreach (AkronScreenshotRoomImage room in rooms) {
-            int roomX = Math.Max(0, Math.Min(width, (int) Math.Round((MapWorldPadding + room.BoundsX - left) * projectionX)));
-            int roomY = Math.Max(0, Math.Min(height, (int) Math.Round((MapWorldPadding + room.BoundsY - top) * projectionY)));
-            int roomRight = Math.Max(0, Math.Min(width, (int) Math.Round((MapWorldPadding + room.BoundsX + room.BoundsWidth - left) * projectionX)));
-            int roomBottom = Math.Max(0, Math.Min(height, (int) Math.Round((MapWorldPadding + room.BoundsY + room.BoundsHeight - top) * projectionY)));
+            int roomX = Math.Max(0, Math.Min(width, (int)Math.Round((MapWorldPadding + (long)room.BoundsX - left) * projectionX)));
+            int roomY = Math.Max(0, Math.Min(height, (int)Math.Round((MapWorldPadding + (long)room.BoundsY - top) * projectionY)));
+            int roomRight = Math.Max(0, Math.Min(width, (int)Math.Round((MapWorldPadding + (long)room.BoundsX + room.BoundsWidth - left) * projectionX)));
+            int roomBottom = Math.Max(0, Math.Min(height, (int)Math.Round((MapWorldPadding + (long)room.BoundsY + room.BoundsHeight - top) * projectionY)));
             int roomWidth = Math.Max(1, roomRight - roomX);
             int roomHeight = Math.Max(1, roomBottom - roomY);
             float imageScaleX = roomWidth / (float) Math.Max(1, room.Width);
@@ -1213,6 +1398,38 @@ public static class AkronScreenshotScanner {
         }
 
         return placements;
+    }
+
+    internal static bool TryValidateActiveMapRoomBudget(IReadOnlyList<AkronScreenshotRoomImage> rooms, IReadOnlyList<AkronScreenshotMapPlacement> placements, out string reason) {
+        if (rooms == null || placements == null || rooms.Count != placements.Count || rooms.Count > MaxRoomsPerChapterScan) {
+            reason = "Map collage room metadata is invalid";
+            return false;
+        }
+
+        List<(int Y, long Delta)> events = new List<(int Y, long Delta)>(rooms.Count * 2);
+        for (int i = 0; i < rooms.Count; i++) {
+            AkronScreenshotRoomImage room = rooms[i];
+            AkronScreenshotMapPlacement placement = placements[i];
+            long decodedPixels = (long) room.Width * room.Height;
+            if (room.Width <= 0 || room.Height <= 0 || placement.Height <= 0 || decodedPixels > MaxMergedImagePixels) {
+                reason = "Map collage room image exceeds decoded-image limits";
+                return false;
+            }
+            events.Add((placement.Y, decodedPixels));
+            events.Add((checked(placement.Y + placement.Height), -decodedPixels));
+        }
+
+        long activePixels = 0;
+        foreach ((int _, long delta) in events.OrderBy(item => item.Y).ThenBy(item => item.Delta)) {
+            activePixels += delta;
+            if (activePixels > MaxActiveMapRoomPixels) {
+                reason = "Map collage decoded room cache exceeds " + MaxActiveMapRoomPixels + " pixels";
+                return false;
+            }
+        }
+
+        reason = string.Empty;
+        return true;
     }
 
     private static void DrawScannerExportMarkers(Color[] canvas, int canvasWidth, int canvasHeight, string areaSid, string roomName, Rectangle roomBounds, int roomTargetX, int roomTargetY, float projectionX, float projectionY) {
@@ -1400,7 +1617,10 @@ public static class AkronScreenshotScanner {
         try {
             width = texture.Width;
             height = texture.Height;
-            Color[] pixels = new Color[width * height];
+            if (!CanCreateMergedImage(width, height, out string reason)) {
+                throw new InvalidDataException("Room image " + reason + ".");
+            }
+            Color[] pixels = new Color[checked(width * height)];
             texture.GetData(pixels);
             return pixels;
         } finally {
@@ -1592,7 +1812,11 @@ public static class AkronScreenshotScanner {
             throw new InvalidDataException("missing PNG dimensions");
         }
 
-        Color[] pixels = new Color[width * height];
+        if (!CanCreateMergedImage(width, height, out string reason)) {
+            throw new InvalidDataException("Room PNG " + reason + ".");
+        }
+
+        Color[] pixels = new Color[checked(width * height)];
         idat.Position = 0;
         using ZLibStream zlib = new ZLibStream(idat, CompressionMode.Decompress);
         byte[] row = new byte[1 + width * 4];
@@ -1929,16 +2153,20 @@ public static class AkronScreenshotScanner {
     }
 
     private static void LevelOnReload(On.Celeste.Level.orig_Reload orig, Level self) {
-        if (!isScanning) {
+        if (ShouldCancelForSceneChange(isScanning, allowScanRoomSetupTriggers)) {
             CancelForSceneChange();
         }
         orig(self);
     }
 
     private static void LevelOnExit(Level level, LevelExit levelExit, LevelExit.Mode mode, Session session, HiresSnow hiresSnow) {
-        if (mode != LevelExit.Mode.Restart && !isScanning) {
+        if (ShouldCancelForSceneChange(isScanning, allowScanRoomSetupTriggers)) {
             CancelForSceneChange();
         }
+    }
+
+    internal static bool ShouldCancelForSceneChange(bool activeScan, bool internalRoomSetup) {
+        return activeScan && !internalRoomSetup;
     }
 
     private static void CancelForSceneChange() {

@@ -636,7 +636,7 @@ public static partial class AkronActions {
         return BuildRuntimeStartPositions(normalizedAreaSid, GetPersistedStartPositions(normalizedAreaSid));
     }
 
-    internal static void ReplaceAllStartPositions(Dictionary<int, AkronStartPos> startPositions, AkronModuleSession targetSession = null) {
+    internal static void ReplaceAllStartPositions(Dictionary<int, AkronStartPos> startPositions, AkronModuleSession targetSession = null, string targetAreaSid = "") {
         Dictionary<int, AkronStartPos> normalizedStartPositions = startPositions ?? new Dictionary<int, AkronStartPos>();
         AkronModuleSaveData saveData = AkronModule.Instance == null ? null : AkronModule.SaveData;
         if (saveData == null) {
@@ -646,72 +646,84 @@ public static partial class AkronActions {
             return;
         }
 
-        saveData.StartPositionsByMap ??= new Dictionary<string, AkronPersistedStartPosMap>();
-        Dictionary<string, Dictionary<int, AkronStartPos>> startPositionsByArea = new Dictionary<string, Dictionary<int, AkronStartPos>>(StringComparer.Ordinal);
-        foreach (KeyValuePair<int, AkronStartPos> pair in normalizedStartPositions) {
+        string areaSid = NormalizeAreaSid(targetAreaSid);
+        if (string.IsNullOrWhiteSpace(areaSid)) {
+            string[] areaSids = normalizedStartPositions
+                .Values
+                .Where(startPos => startPos != null && !string.IsNullOrWhiteSpace(startPos.AreaSid))
+                .Select(startPos => NormalizeAreaSid(startPos.AreaSid))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (areaSids.Length > 1) {
+                throw new InvalidDataException("StartPos import contains entries for multiple maps.");
+            }
+            areaSid = areaSids.SingleOrDefault();
+        }
+        if (string.IsNullOrWhiteSpace(areaSid)) {
+            areaSid = GetLoadedAreaSid();
+        }
+        if (string.IsNullOrWhiteSpace(areaSid)) {
+            throw new InvalidDataException("StartPos import does not identify a target map.");
+        }
+
+        ReplacePersistedStartPositionsForMap(saveData, areaSid, normalizedStartPositions);
+        if (Engine.Scene is Level level) {
+            LoadStartPositionsForLevel(level);
+        } else if (targetSession != null &&
+                   string.Equals(NormalizeAreaSid(targetSession.LoadedStartPositionsAreaSid), areaSid, StringComparison.Ordinal)) {
+            targetSession.StartPositions = BuildRuntimeStartPositions(areaSid, GetPersistedStartPositions(areaSid));
+        }
+        SaveAkronStartPosData();
+    }
+
+    internal static void ReplacePersistedStartPositionsForMap(AkronModuleSaveData saveData, string targetAreaSid, Dictionary<int, AkronStartPos> startPositions) {
+        if (saveData == null) {
+            throw new ArgumentNullException(nameof(saveData));
+        }
+
+        string areaSid = NormalizeAreaSid(targetAreaSid);
+        if (string.IsNullOrWhiteSpace(areaSid)) {
+            throw new InvalidDataException("StartPos import does not identify a target map.");
+        }
+
+        // Validate the complete import before deleting any existing state.
+        foreach (AkronStartPos startPos in (startPositions ?? new Dictionary<int, AkronStartPos>()).Values) {
+            string entryAreaSid = NormalizeAreaSid(startPos?.AreaSid);
+            if (!string.IsNullOrWhiteSpace(entryAreaSid) && !string.Equals(entryAreaSid, areaSid, StringComparison.Ordinal)) {
+                throw new InvalidDataException("StartPos import contains entries for a different map.");
+            }
+        }
+
+        if (AkronModule.Instance != null) {
+            DeletePersistedSnapshotsForArea(areaSid);
+        }
+        AkronPersistedStartPosMap replacement = new AkronPersistedStartPosMap();
+        foreach (KeyValuePair<int, AkronStartPos> pair in startPositions ?? new Dictionary<int, AkronStartPos>()) {
             AkronStartPos startPos = pair.Value;
             if (startPos == null) {
                 continue;
             }
 
-            string areaSid = NormalizeAreaSid(startPos.AreaSid);
-            if (string.IsNullOrWhiteSpace(areaSid)) {
-                areaSid = GetLoadedAreaSid();
-            }
-            if (string.IsNullOrWhiteSpace(areaSid)) {
-                continue;
-            }
-
-            if (!startPositionsByArea.TryGetValue(areaSid, out Dictionary<int, AkronStartPos> areaSlots)) {
-                areaSlots = new Dictionary<int, AkronStartPos>();
-                startPositionsByArea[areaSid] = areaSlots;
+            string entryAreaSid = NormalizeAreaSid(startPos.AreaSid);
+            if (!string.IsNullOrWhiteSpace(entryAreaSid) && !string.Equals(entryAreaSid, areaSid, StringComparison.Ordinal)) {
+                throw new InvalidDataException("StartPos import contains entries for a different map.");
             }
 
             int slot = NormalizePositionSlot(pair.Key);
+            ClearStartPosRuntimeState(areaSid, slot);
             startPos.AreaSid = areaSid;
             startPos.StateSlotName = string.Empty;
             startPos.SnapshotPath = string.Empty;
-            areaSlots[slot] = startPos;
+            PersistImportedRoomStateSnapshot(areaSid, slot, startPos);
+            replacement.Slots[slot] = ToPersistedStartPos(startPos);
         }
 
-        // Empty StartPos setup sections mean "clear this map's StartPos set",
-        // not "delete every persisted StartPos from every map". When there is
-        // no loaded map, there is no safe map scope to clear.
-        if (startPositionsByArea.Count == 0) {
-            string loadedAreaSid = GetLoadedAreaSid();
-            if (!string.IsNullOrWhiteSpace(loadedAreaSid)) {
-                startPositionsByArea[loadedAreaSid] = new Dictionary<int, AkronStartPos>();
-            }
+        saveData.StartPositionsByMap ??= new Dictionary<string, AkronPersistedStartPosMap>();
+        if (replacement.Slots.Count == 0) {
+            saveData.StartPositionsByMap.Remove(areaSid);
+        } else {
+            saveData.StartPositionsByMap[areaSid] = replacement;
         }
-
-        foreach (KeyValuePair<string, Dictionary<int, AkronStartPos>> areaPair in startPositionsByArea) {
-            DeletePersistedSnapshotsForArea(areaPair.Key);
-            foreach (int importedSlot in areaPair.Value.Keys) {
-                ClearStartPosRuntimeState(areaPair.Key, importedSlot);
-            }
-            if (areaPair.Value.Count == 0) {
-                saveData.StartPositionsByMap.Remove(areaPair.Key);
-                continue;
-            }
-
-            AkronPersistedStartPosMap map = new AkronPersistedStartPosMap();
-            foreach (KeyValuePair<int, AkronStartPos> slotPair in areaPair.Value) {
-                int normalizedSlot = NormalizePositionSlot(slotPair.Key);
-                PersistImportedRoomStateSnapshot(areaPair.Key, normalizedSlot, slotPair.Value);
-                map.Slots[normalizedSlot] = ToPersistedStartPos(slotPair.Value);
-            }
-            saveData.StartPositionsByMap[areaPair.Key] = map;
-        }
-
-        if (Engine.Scene is Level level) {
-            LoadStartPositionsForLevel(level);
-        } else if (targetSession != null) {
-            string loadedAreaSid = NormalizeAreaSid(targetSession.LoadedStartPositionsAreaSid);
-            if (!string.IsNullOrWhiteSpace(loadedAreaSid) && startPositionsByArea.ContainsKey(loadedAreaSid)) {
-                targetSession.StartPositions = BuildRuntimeStartPositions(loadedAreaSid, GetPersistedStartPositions(loadedAreaSid));
-            }
-        }
-        SaveAkronStartPosData();
     }
 
     private static void PersistImportedRoomStateSnapshot(string areaSid, int slot, AkronStartPos startPos) {
