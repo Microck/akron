@@ -7,6 +7,7 @@
         <LangVersion>latest</LangVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+        <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
         <CelestePrefix Condition="'$(CelestePrefix)' == '' And Exists('..\..\..\Celeste.dll')">..\..\..</CelestePrefix>
         <CelestePrefix Condition="'$(CelestePrefix)' == ''">..\lib-stripped</CelestePrefix>
         <ZippedFiles>..\everest.yaml;..\bin\**\*.*</ZippedFiles>
@@ -22,8 +23,8 @@
         <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" ExcludeAssets="" />
         <PackageReference Include="MonoMod.RuntimeDetour" Version="25.3.1" PrivateAssets="all" ExcludeAssets="runtime" />
         <PackageReference Include="MonoMod.Patcher" Version="25.0.0-prerelease.2" />
-        <PackageReference Include="CelesteAnalyzer" Version="*" />
-        <PackageReference Include="CelesteMod.Publicizer" Version="*" CelesteAssembly="$(CelestePrefix)\Celeste.dll" />
+        <PackageReference Include="CelesteAnalyzer" Version="1.0.3.1" />
+        <PackageReference Include="CelesteMod.Publicizer" Version="1.1.2" CelesteAssembly="$(CelestePrefix)\Celeste.dll" />
         <Reference Include="$(CelestePrefix)\MMHOOK_Celeste.dll" Private="false" />
         <Reference Include="$(CelestePrefix)\FNA.dll" Private="false" />
     </ItemGroup>
@@ -47,9 +48,12 @@
 
     <Target Name="Package" AfterTargets="Build" DependsOnTargets="CopyFiles">
         <ItemGroup>
-            <FilesToPackage Include="$(ZippedFiles)" />
+            <FilesToPackage Include="$(ZippedFiles)" Exclude="..\bin\**\*.pdb" />
             <FilesToPackage Include="Resources\dialog\English.txt">
                 <PackagePath>Dialog/English.txt</PackagePath>
+            </FilesToPackage>
+            <FilesToPackage Include="..\ThirdPartyNotices.txt">
+                <PackagePath>ThirdPartyNotices.txt</PackagePath>
             </FilesToPackage>
         </ItemGroup>
         <PackageMod Files="@(FilesToPackage)" OutputPath="..\Akron.zip" />

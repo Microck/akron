@@ -17,91 +17,59 @@ concurrency:
 jobs:
   build-and-test:
     name: Build and test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    environment: release-build
     env:
-      HAS_CELESTE_REFS: ${{ secrets.AKRON_CELESTE_REFS_URL != '' }}
+      HAS_CELESTE_REFS: ${{ secrets.AKRON_CELESTE_REFS_URL != '' && vars.AKRON_CELESTE_REFS_SHA256 != '' }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Check Celeste reference configuration
         run: |
           if [ "$HAS_CELESTE_REFS" != "true" ]; then
-            echo "::error::Missing AKRON_CELESTE_REFS_URL secret. CI cannot build or test Akron without the Celeste lib-stripped reference archive."
+            echo "::error::AKRON_CELESTE_REFS_URL and AKRON_CELESTE_REFS_SHA256 are required to build Akron."
             exit 1
           fi
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 8.0.418
 
-      - name: Restore Celeste references
+      - name: Restore verified Celeste references
         env:
           AKRON_CELESTE_REFS_URL: ${{ secrets.AKRON_CELESTE_REFS_URL }}
           AKRON_CELESTE_REFS_TOKEN: ${{ secrets.AKRON_CELESTE_REFS_TOKEN }}
+          AKRON_CELESTE_REFS_SHA256: ${{ vars.AKRON_CELESTE_REFS_SHA256 }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          if [ -z "$AKRON_CELESTE_REFS_URL" ]; then
-            echo "::error::Missing AKRON_CELESTE_REFS_URL secret. It must point to a zip or tar.gz archive containing a complete lib-stripped reference directory."
-            exit 1
-          fi
+        run: bash .github/scripts/restore-celeste-references.sh
 
-          archive_path="$RUNNER_TEMP/akron-celeste-refs"
-          extract_dir="$RUNNER_TEMP/akron-celeste-refs-extract"
-          mkdir -p "$extract_dir" lib-stripped
-
-          curl_args=(-fL --retry 3 --retry-delay 2)
-          auth_token="${AKRON_CELESTE_REFS_TOKEN:-${GITHUB_TOKEN:-}}"
-          if [ -n "$auth_token" ]; then
-            curl_args+=(-H "Authorization: Bearer $auth_token")
-          fi
-          if [[ "$AKRON_CELESTE_REFS_URL" == https://api.github.com/* ]]; then
-            curl_args+=(-H "Accept: application/octet-stream")
-          fi
-
-          curl "${curl_args[@]}" "$AKRON_CELESTE_REFS_URL" -o "$archive_path"
-
-          if unzip -tq "$archive_path" >/dev/null 2>&1; then
-            unzip -q "$archive_path" -d "$extract_dir"
-          elif tar -tzf "$archive_path" >/dev/null 2>&1; then
-            tar -xzf "$archive_path" -C "$extract_dir"
-          else
-            echo "::error::AKRON_CELESTE_REFS_URL did not download a valid zip or tar.gz archive."
-            exit 1
-          fi
-
-          celeste_ref="$(find "$extract_dir" -type f -name Celeste.dll | head -n 1)"
-          if [ -z "$celeste_ref" ]; then
-            echo "::error::Celeste reference archive is missing Celeste.dll."
-            exit 1
-          fi
-
-          cp -R "$(dirname "$celeste_ref")/." lib-stripped/
-
-          for dll in Celeste.dll FNA.dll MMHOOK_Celeste.dll MonoMod.Utils.dll; do
-            if [ ! -f "lib-stripped/$dll" ]; then
-              echo "::error::Restored lib-stripped directory is missing $dll."
-              exit 1
-            fi
-          done
-
-      - name: Restore
-        run: dotnet restore Akron.sln --nologo
+      - name: Restore locked dependencies
+        run: dotnet restore Akron.sln --locked-mode --nologo -p:ContinuousIntegrationBuild=true
 
       - name: Build
-        run: dotnet build Akron.sln --configuration Release --no-restore --nologo
+        run: dotnet build Akron.sln --configuration Release --no-restore --nologo -p:ContinuousIntegrationBuild=true
 
       - name: Test
         run: dotnet test tests/akron-tests.csproj --configuration Release --no-build --nologo
 
       - name: Verify packaged mod
-        run: test -f Akron.zip
+        run: |
+          test -f Akron.zip
+          if unzip -Z1 Akron.zip | grep -E '\.pdb$'; then
+            echo "::error::Player package must not contain PDB files."
+            exit 1
+          fi
+          unzip -Z1 Akron.zip | grep -Fx ThirdPartyNotices.txt >/dev/null
 
       - name: Upload packaged mod
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Akron
           path: Akron.zip
           if-no-files-found: error
+          retention-days: 3

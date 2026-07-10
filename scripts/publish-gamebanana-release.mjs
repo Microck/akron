@@ -889,7 +889,13 @@ async function promoteUploadedFileInList(page, target) {
 
 function redactKnownSecrets(value) {
   let redacted = value;
-  for (const name of ["GAMEBANANA_USERNAME", "GAMEBANANA_PASSWORD"]) {
+  for (const name of [
+    "GAMEBANANA_USERNAME",
+    "GAMEBANANA_PASSWORD",
+    "GAMEBANANA_COOKIES",
+    "GAMEBANANA_STORAGE_STATE_B64",
+    "GAMEBANANA_STORAGE_STATE_B64_GZ",
+  ]) {
     const secret = process.env[name];
     if (secret) {
       redacted = redacted.replaceAll(secret, `[${name}]`);
@@ -898,20 +904,26 @@ function redactKnownSecrets(value) {
   return redacted;
 }
 
+function sanitizedPageUrl(value) {
+  try {
+    const url = new URL(value);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return "[invalid URL]";
+  }
+}
+
 async function logPageState(page, label) {
-  const [title, hasEditForm, hasFileInput, hasPasswordInput, bodyText] = await Promise.all([
+  const [title, hasEditForm, hasFileInput, hasPasswordInput] = await Promise.all([
     page.title().catch(() => ""),
     page.locator("#EditFormModule").first().isVisible().catch(() => false),
     page.locator('input[type="file"]').first().isVisible().catch(() => false),
     page.locator('input[type="password"]').first().isVisible().catch(() => false),
-    page.locator("body").innerText({ timeout: 2_000 }).catch(() => ""),
   ]);
 
-  const excerpt = redactKnownSecrets(bodyText.replace(/\s+/g, " ").trim()).slice(0, 500);
   console.log(
-    `${label}: url=${page.url()} title=${JSON.stringify(title)} editForm=${hasEditForm} fileInput=${hasFileInput} passwordInput=${hasPasswordInput}`,
+    `${label}: url=${sanitizedPageUrl(page.url())} title=${JSON.stringify(redactKnownSecrets(title).slice(0, 200))} editForm=${hasEditForm} fileInput=${hasFileInput} passwordInput=${hasPasswordInput}`,
   );
-  console.log(`${label} body excerpt: ${excerpt}`);
 }
 
 async function captureDebugArtifact(page, label) {
@@ -922,18 +934,16 @@ async function captureDebugArtifact(page, label) {
 
   await mkdir(debugDir, { recursive: true });
   const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const [title, html, forms] = await Promise.all([
+  const [title, forms] = await Promise.all([
     page.title().catch(() => ""),
-    page.content().catch(() => ""),
     page.locator("form").evaluateAll((formElements) =>
       formElements.map((form, formIndex) => ({
         formIndex,
-        action: form.getAttribute("action"),
         method: form.getAttribute("method"),
         fileInputs: Array.from(form.querySelectorAll('input[type="file"]')).map((input) => ({
           name: input.getAttribute("name"),
           id: input.getAttribute("id"),
-          files: Array.from(input.files ?? []).map((file) => file.name),
+          fileCount: input.files?.length ?? 0,
           visible:
             input instanceof HTMLElement &&
             input.offsetParent !== null &&
@@ -946,24 +956,25 @@ async function captureDebugArtifact(page, label) {
           type: control.getAttribute("type"),
           name: control.getAttribute("name"),
           id: control.getAttribute("id"),
-          value: control.getAttribute("value"),
-          text: control.textContent?.trim() ?? "",
           visible:
             control instanceof HTMLElement &&
             control.offsetParent !== null &&
             getComputedStyle(control).visibility !== "hidden",
         })),
       })),
-    ).catch((error) => [{ error: error instanceof Error ? error.message : String(error) }]),
+    ).catch(() => [{ collectionFailed: true }]),
   ]);
 
   await writeFile(
     `${debugDir}/${slug}-summary.json`,
-    JSON.stringify({ label, url: page.url(), title, forms }, null, 2),
+    JSON.stringify({
+      label,
+      url: sanitizedPageUrl(page.url()),
+      title: redactKnownSecrets(title).slice(0, 200),
+      forms,
+    }, null, 2),
     "utf8",
   );
-  await writeFile(`${debugDir}/${slug}.html`, html, "utf8");
-  await page.screenshot({ path: `${debugDir}/${slug}.png`, fullPage: true }).catch(() => undefined);
 }
 
 async function setGithubOutput(name, value) {
