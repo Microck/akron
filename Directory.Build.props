@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Keep every project restore reproducible and fail CI when the lock graph drifts. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+</Project>
