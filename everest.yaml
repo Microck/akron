@@ -1,5 +1,5 @@
 - Name: Akron
-  Version: 0.1.2-beta.49
+  Version: 0.1.2-beta.50
   DLL: bin/Akron.dll
   Dependencies:
     - Name: Everest

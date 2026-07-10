@@ -4,6 +4,12 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Akron Beta 50
+
+### Fixed
+
+- Add Lag Pauser recovery grace after respawns and room transitions, plus a repeat cooldown after automatic pauses.
+
 ## Akron Beta 49
 
 ### Security
@@ -14,7 +20,6 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
-- Add Lag Pauser recovery grace after respawns and room transitions, plus a repeat cooldown after automatic pauses.
 - Preserve machine-local Auto Deafen bindings and StartPos slots belonging to other maps when importing shared setups.
 - Keep imported StartPos room-state snapshots immediately available after import.
 - Make Community Pack uploads and catalog publication recover safely from interrupted or concurrent operations.
