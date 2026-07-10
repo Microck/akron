@@ -22,6 +22,8 @@ public partial class AkronModule {
     private static bool ignoreNextLagPauserSpikeForNativeFreeze;
     private static long lagPauserSpeedrunToolIgnoreUntilTimestamp;
     private static long lagPauserStartPosIgnoreUntilTimestamp;
+    private static long lagPauserRecoveryIgnoreUntilTimestamp;
+    private static bool lagPauserRepeatCooldownPending;
 
     private static void LevelOnPause(Level level, int startIndex, bool minimal, bool quickReset) {
         if (level == null || !Settings.PauseTracker || !TryUse(AkronFeatureKind.PauseTracker)) {
@@ -40,6 +42,12 @@ public partial class AkronModule {
 
     private static void LevelOnUnpause(Level level) {
         AkronAutosave.NotifyPause();
+        if (lagPauserRepeatCooldownPending) {
+            // Start the repeat window when gameplay resumes so time spent reading
+            // the pause menu cannot consume the protection.
+            lagPauserRepeatCooldownPending = false;
+            SuppressLagPauserForWindow(Settings.LagPauserRepeatCooldownMs);
+        }
         if (level != null && Settings.PauseTracker && Session.PauseTrackerCurrentPauseStartedAt >= 0f) {
             Session.PauseTrackerPausedSeconds += Math.Max(0f, level.RawTimeActive - Session.PauseTrackerCurrentPauseStartedAt);
             Session.PauseTrackerCurrentPauseStartedAt = -1f;
@@ -107,6 +115,8 @@ public partial class AkronModule {
         ignoreNextLagPauserSpikeForNativeFreeze = false;
         lagPauserSpeedrunToolIgnoreUntilTimestamp = 0L;
         lagPauserStartPosIgnoreUntilTimestamp = 0L;
+        lagPauserRecoveryIgnoreUntilTimestamp = 0L;
+        lagPauserRepeatCooldownPending = false;
         Session.UsedGoldenStartHelper = false;
         Session.UsedJournalSnapshotCompare = false;
         Session.LastJournalSnapshotPath = string.Empty;
@@ -135,14 +145,16 @@ public partial class AkronModule {
 
         bool ignoreNativeFreezeSpike = ignoreNextLagPauserSpikeForNativeFreeze || Engine.FreezeTimer > 0f;
         bool ignoreIntentionalLoadSpike = IsLagPauserSpeedrunToolIgnoreActive(now) || IsLagPauserStartPosIgnoreActive(now);
+        bool ignoreRecoveryWindow = lagPauserRecoveryIgnoreUntilTimestamp > now;
         ignoreNextLagPauserSpikeForNativeFreeze = false;
 
-        if (!ShouldTriggerLagPauser(spikeMs, Settings.LagPauserThresholdMs, ignoreNativeFreezeSpike, ignoreIntentionalLoadSpike, skippedEngineFrames)) {
+        if (!ShouldTriggerLagPauser(spikeMs, Settings.LagPauserThresholdMs, ignoreNativeFreezeSpike, ignoreIntentionalLoadSpike, ignoreRecoveryWindow, skippedEngineFrames)) {
             return;
         }
 
         Session.LagPauserTriggerCount++;
         Session.LagPauserLastSpikeMs = spikeMs;
+        lagPauserRepeatCooldownPending = true;
         level.Pause();
         Engine.Scene?.Add(new AkronToast("Lag pause: " + Math.Round(spikeMs).ToString(CultureInfo.InvariantCulture) + " ms"));
     }
@@ -152,9 +164,11 @@ public partial class AkronModule {
         int thresholdMs,
         bool ignoreNativeFreezeSpike,
         bool ignoreIntentionalLoadSpike,
+        bool ignoreRecoveryWindow,
         ulong skippedEngineFrames) {
         return !ignoreNativeFreezeSpike &&
                !ignoreIntentionalLoadSpike &&
+               !ignoreRecoveryWindow &&
                skippedEngineFrames <= 1UL &&
                spikeMs >= AkronModuleSettings.ClampLagPauserThresholdMs(thresholdMs);
     }
@@ -188,6 +202,16 @@ public partial class AkronModule {
 
     internal static bool IsLagPauserStartPosIgnoreActive(long timestamp) {
         return lagPauserStartPosIgnoreUntilTimestamp > timestamp;
+    }
+
+    internal static void SuppressLagPauserForRecovery() {
+        SuppressLagPauserForWindow(Settings.LagPauserRecoveryGraceMs);
+    }
+
+    private static void SuppressLagPauserForWindow(int windowMs) {
+        int clampedWindowMs = AkronModuleSettings.ClampLagPauserWindowMs(windowMs);
+        long deadline = Stopwatch.GetTimestamp() + clampedWindowMs * Stopwatch.Frequency / 1000L;
+        lagPauserRecoveryIgnoreUntilTimestamp = Math.Max(lagPauserRecoveryIgnoreUntilTimestamp, deadline);
     }
 
     private static void UpdateProofRecorderGuard(Level level) {

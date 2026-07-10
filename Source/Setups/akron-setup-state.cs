@@ -16,6 +16,8 @@ public sealed class AkronSetupState {
     public int GoldenTransparencyOpacity { get; set; } = 55;
     public bool LagPauser { get; set; }
     public int LagPauserThresholdMs { get; set; } = 250;
+    public int LagPauserRecoveryGraceMs { get; set; } = 750;
+    public int LagPauserRepeatCooldownMs { get; set; } = 1000;
     public bool LagPauserIgnoreSpeedrunToolLoadStates { get; set; }
     public bool LowDistractionOverlay { get; set; }
     public bool PauseGameplayInMenu { get; set; }

@@ -25,6 +25,8 @@ public partial class AkronModuleSettings {
             GoldenTransparencyOpacity = ClampGoldenTransparencyOpacity(GoldenTransparencyOpacity),
             LagPauser = LagPauser,
             LagPauserThresholdMs = ClampLagPauserThresholdMs(LagPauserThresholdMs),
+            LagPauserRecoveryGraceMs = ClampLagPauserWindowMs(LagPauserRecoveryGraceMs),
+            LagPauserRepeatCooldownMs = ClampLagPauserWindowMs(LagPauserRepeatCooldownMs),
             LagPauserIgnoreSpeedrunToolLoadStates = LagPauserIgnoreSpeedrunToolLoadStates,
             LowDistractionOverlay = IsLowDistractionActive(),
             PauseGameplayInMenu = PauseGameplayInMenu,

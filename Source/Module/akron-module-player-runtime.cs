@@ -568,6 +568,7 @@ public partial class AkronModule {
 
     private static void PlayerOnAdded(On.Celeste.Player.orig_Added orig, Player self, Scene scene) {
         orig(self, scene);
+        SuppressLagPauserForRecovery();
         AkronInternalRecorder.NotifyPlayerRespawn(scene as Level);
         AkronPracticeCounters.OnRespawn(scene as Level);
         AkronAutosave.NotifyRespawn(scene as Level);
@@ -582,6 +583,7 @@ public partial class AkronModule {
     private static void PlayerOnTransition(On.Celeste.Player.orig_OnTransition orig, Player self) {
         AkronInternalRecorder.NotifyRoomLeaving(self.Scene as Level);
         orig(self);
+        SuppressLagPauserForRecovery();
         AkronInternalRecorder.NotifyRoomEntered(self.Scene as Level);
         AkronInputHistory.RecordTransition();
         Session.DeathsSinceRoomTransition = 0;

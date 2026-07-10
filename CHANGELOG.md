@@ -14,6 +14,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Add Lag Pauser recovery grace after respawns and room transitions, plus a repeat cooldown after automatic pauses.
 - Preserve machine-local Auto Deafen bindings and StartPos slots belonging to other maps when importing shared setups.
 - Keep imported StartPos room-state snapshots immediately available after import.
 - Make Community Pack uploads and catalog publication recover safely from interrupted or concurrent operations.
