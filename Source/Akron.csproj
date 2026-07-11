@@ -52,7 +52,7 @@
             <FilesToPackage Include="Resources\dialog\English.txt">
                 <PackagePath>Dialog/English.txt</PackagePath>
             </FilesToPackage>
-            <FilesToPackage Include="..\ThirdPartyNotices.txt">
+            <FilesToPackage Include="..\licenses\third-party-notices.txt">
                 <PackagePath>ThirdPartyNotices.txt</PackagePath>
             </FilesToPackage>
         </ItemGroup>
