@@ -3852,6 +3852,67 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void InputBoardSettingsNormalizeAndOwnAssignedElements()
+    {
+        List<AkronInputBoardElement> assigned = new List<AkronInputBoardElement> {
+            new AkronInputBoardElement {
+                Id = "  custom  ",
+                Label = "  Jump  ",
+                Width = 1,
+                Bindings = new List<AkronInputBoardBinding> {
+                    AkronInputBoardBinding.Jump,
+                    AkronInputBoardBinding.Jump
+                }
+            }
+        };
+
+        AkronModuleSettings settings = new AkronModuleSettings {
+            InputBoardElements = assigned
+        };
+
+        AkronInputBoardElement element = Assert.Single(settings.InputBoardElements);
+        Assert.NotSame(assigned, settings.InputBoardElements);
+        Assert.NotSame(assigned[0], element);
+        Assert.NotSame(assigned[0].Bindings, element.Bindings);
+        Assert.Equal("custom", element.Id);
+        Assert.Equal("Jump", element.Label);
+        Assert.Equal(AkronInputBoard.MinimumElementSize, element.Width);
+        Assert.Equal(new[] { AkronInputBoardBinding.Jump }, element.Bindings);
+
+        assigned[0].Label = "Changed";
+        assigned[0].Bindings.Add(AkronInputBoardBinding.Dash);
+        assigned.Add(AkronInputBoard.CreateCustomElement(1));
+
+        Assert.Single(settings.InputBoardElements);
+        Assert.Equal("Jump", element.Label);
+        Assert.Equal(new[] { AkronInputBoardBinding.Jump }, element.Bindings);
+    }
+
+    [Fact]
+    public void InputBoardNormalizationSkipsNullEntries()
+    {
+        List<AkronInputBoardElement> elements = AkronInputBoard.NormalizeElements(new AkronInputBoardElement[] {
+            new AkronInputBoardElement { Id = "first" },
+            null!,
+            new AkronInputBoardElement { Id = "second" }
+        });
+
+        Assert.Collection(
+            elements,
+            element => Assert.Equal("first", element.Id),
+            element => Assert.Equal("second", element.Id));
+    }
+
+    [Fact]
+    public void InputBoardCustomElementsStayWithinPositionBounds()
+    {
+        AkronInputBoardElement element = AkronInputBoard.CreateCustomElement(AkronInputBoard.MaximumElements - 1);
+
+        Assert.InRange(element.X, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition);
+        Assert.InRange(element.Y, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition);
+    }
+
+    [Fact]
     public void InputBoardDefaultIsCompactKeyboardWithKeyboardLabels()
     {
         AkronModuleSettings settings = new AkronModuleSettings();

@@ -78,7 +78,7 @@ public partial class AkronModuleSettings {
         TapDisplayOpacity = ClampOpacity(resolved.TapDisplayOpacity);
         InputBoardSource = resolved.InputBoardSource;
         InputBoardLabelPreset = resolved.InputBoardLabelPreset;
-        InputBoardElements = AkronInputBoard.CloneElements(resolved.InputBoardElements);
+        InputBoardElements = resolved.InputBoardElements;
         InputsPerSecondCounter = resolved.InputsPerSecondCounter;
         InputsPerSecondPlacement = resolved.InputsPerSecondPlacement;
         InputsPerSecondScale = ClampPercent(resolved.InputsPerSecondScale, 50, 250);

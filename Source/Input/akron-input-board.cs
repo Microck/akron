@@ -28,11 +28,6 @@ public enum AkronInputBoardBinding {
 }
 
 public sealed class AkronInputBoardElement {
-    private const int DefaultFillColor = 0x808080;
-    private const int DefaultPressedFillColor = 0xB8B8B8;
-    private const int DefaultStrokeColor = 0x202020;
-    private const int DefaultTextColor = 0x000000;
-
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Label { get; set; } = "Key";
     public int X { get; set; }
@@ -42,10 +37,10 @@ public sealed class AkronInputBoardElement {
     public List<AkronInputBoardBinding> Bindings { get; set; } = new List<AkronInputBoardBinding>();
     public List<Keys> KeyBindings { get; set; } = new List<Keys>();
     public bool Visible { get; set; } = true;
-    public int FillColor { get; set; } = DefaultFillColor;
-    public int PressedFillColor { get; set; } = DefaultPressedFillColor;
-    public int StrokeColor { get; set; } = DefaultStrokeColor;
-    public int TextColor { get; set; } = DefaultTextColor;
+    public int FillColor { get; set; } = AkronInputBoard.DefaultFillColor;
+    public int PressedFillColor { get; set; } = AkronInputBoard.DefaultPressedFillColor;
+    public int StrokeColor { get; set; } = AkronInputBoard.DefaultStrokeColor;
+    public int TextColor { get; set; } = AkronInputBoard.DefaultTextColor;
     public int OutlineWidth { get; set; } = 1;
     public int TextScale { get; set; } = 100;
 
@@ -149,14 +144,18 @@ public static class AkronInputBoard {
     }
 
     public static List<AkronInputBoardElement> CloneElements(IEnumerable<AkronInputBoardElement> elements) {
-        return NormalizeElements(elements?.Select(element => element.Clone()).ToList());
+        return NormalizeElements(elements);
     }
 
     public static List<AkronInputBoardElement> NormalizeElements(IEnumerable<AkronInputBoardElement> elements) {
         List<AkronInputBoardElement> normalized = new List<AkronInputBoardElement>();
         foreach (AkronInputBoardElement source in elements ?? Enumerable.Empty<AkronInputBoardElement>()) {
-            if (normalized.Count >= MaximumElements || source == null) {
+            if (normalized.Count >= MaximumElements) {
                 break;
+            }
+
+            if (source == null) {
+                continue;
             }
 
             AkronInputBoardElement element = source.Clone();
@@ -190,7 +189,7 @@ public static class AkronInputBoard {
             "custom-" + index.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "Key",
             0,
-            96 + index * 44,
+            ClampInt(96 + index * 44, MinimumPosition, MaximumPosition),
             38,
             38,
             Array.Empty<AkronInputBoardBinding>(),
@@ -452,7 +451,7 @@ public static class AkronControlDisplayPresets {
         settings.TapDisplayOpacity = AkronModuleSettings.ClampOpacity(preset.Opacity);
         settings.InputBoardSource = preset.Source;
         settings.InputBoardLabelPreset = preset.LabelPreset;
-        settings.InputBoardElements = AkronInputBoard.CloneElements(preset.Elements);
+        settings.InputBoardElements = preset.Elements;
     }
 
     public static string ExportCurrent(string name = "") {

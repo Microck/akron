@@ -62,8 +62,7 @@ public static partial class AkronHudRenderer {
 
     private static void RenderInputBoard(ref float leftColumnY) {
         AkronModuleSettings settings = AkronModule.Settings;
-        List<AkronInputBoardElement> elements = AkronInputBoard.NormalizeElements(settings.InputBoardElements);
-        settings.InputBoardElements = elements;
+        List<AkronInputBoardElement> elements = settings.InputBoardElements;
         List<AkronInputBoardElement> visible = elements.Where(element => element.Visible).ToList();
         if (visible.Count == 0) {
             return;

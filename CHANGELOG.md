@@ -9,6 +9,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 ### Fixed
 
 - Add Lag Pauser recovery grace after respawns and room transitions, plus a repeat cooldown after automatic pauses.
+- Keep custom Control Display boards valid when importing or editing them, and avoid rebuilding the board every frame.
 
 ## Akron Beta 49
 

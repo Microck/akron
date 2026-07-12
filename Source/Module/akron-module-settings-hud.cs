@@ -3,6 +3,8 @@ using System.Collections.Generic;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModuleSettings {
+    private List<AkronInputBoardElement> inputBoardElements = AkronInputBoard.BuildDefaultElements();
+
     public static AkronHudLabelStyleSettings CloneLabelStyle(AkronHudLabelStyleSettings style) {
         if (style == null) {
             return new AkronHudLabelStyleSettings();
@@ -45,7 +47,10 @@ public partial class AkronModuleSettings {
     public int TapDisplayOpacity { get; set; } = 80;
     public AkronInputBoardSource InputBoardSource { get; set; }
     public AkronInputBoardLabelPreset InputBoardLabelPreset { get; set; } = AkronInputBoardLabelPreset.Keyboard;
-    public List<AkronInputBoardElement> InputBoardElements { get; set; } = AkronInputBoard.BuildDefaultElements();
+    public List<AkronInputBoardElement> InputBoardElements {
+        get => inputBoardElements;
+        set => inputBoardElements = AkronInputBoard.NormalizeElements(value);
+    }
     public bool InputsPerSecondCounter { get; set; }
     public AkronHudPlacement InputsPerSecondPlacement { get; set; } = AkronHudPlacement.Left;
     public int InputsPerSecondScale { get; set; } = 100;
