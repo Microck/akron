@@ -2003,30 +2003,6 @@ public static class AkronScreenshotScanner {
         }
     }
 
-    private static void BlendScaledTileNearest(Color[] canvas, int canvasWidth, int canvasHeight, Color[] tile, int tileWidth, int tileHeight, int targetX, int targetY, float scale) {
-        int scaledWidth = Math.Max(1, (int) (tileWidth * scale));
-        int scaledHeight = Math.Max(1, (int) (tileHeight * scale));
-        int startX = Math.Max(0, -targetX);
-        int startY = Math.Max(0, -targetY);
-        int endX = Math.Min(scaledWidth, canvasWidth - targetX);
-        int endY = Math.Min(scaledHeight, canvasHeight - targetY);
-        for (int y = startY; y < endY; y++) {
-            int sourceY = Math.Min(tileHeight - 1, (int) (y / scale));
-            int sourceRow = sourceY * tileWidth;
-            int targetRow = (targetY + y) * canvasWidth + targetX;
-            for (int x = startX; x < endX; x++) {
-                int sourceX = Math.Min(tileWidth - 1, (int) (x / scale));
-                Color source = tile[sourceRow + sourceX];
-                int targetIndex = targetRow + x;
-                if (source.A == 255) {
-                    canvas[targetIndex] = source;
-                } else if (source.A > 0) {
-                    canvas[targetIndex] = BlendOver(source, canvas[targetIndex]);
-                }
-            }
-        }
-    }
-
     private static void BlendScaledTileNearestToRect(Color[] canvas, int canvasWidth, int canvasHeight, Color[] tile, int tileWidth, int tileHeight, int targetX, int targetY, int targetWidth, int targetHeight) {
         int scaledWidth = Math.Max(1, targetWidth);
         int scaledHeight = Math.Max(1, targetHeight);

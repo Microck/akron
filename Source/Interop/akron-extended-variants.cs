@@ -192,35 +192,6 @@ public static class AkronExtendedVariants {
         return true;
     }
 
-    public static bool TryAdjustNumber(string name, float delta, out string message) {
-        AkronExtendedVariantOption option = GetOption(name);
-        if (option == null) {
-            message = "Unknown variant: " + name;
-            return false;
-        }
-
-        if (option.CurrentValue is int currentInt) {
-            int next = Calc.Clamp(currentInt + (int) Math.Round(delta), -100000, 100000);
-            SetVariantValue(option.Name, next);
-            message = option.Label + ": " + next.ToString(CultureInfo.InvariantCulture);
-            return true;
-        }
-
-        if (option.CurrentValue is float currentFloat) {
-            float next = currentFloat + delta;
-            if (float.IsNaN(next) || float.IsInfinity(next)) {
-                next = Convert.ToSingle(option.DefaultValue, CultureInfo.InvariantCulture);
-            }
-
-            SetVariantValue(option.Name, next);
-            message = option.Label + ": " + FormatValue(next);
-            return true;
-        }
-
-        message = "Variant is not numeric: " + option.Label;
-        return false;
-    }
-
     public static bool TrySetFromText(string name, string rawValue, out string message) {
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
@@ -322,11 +293,6 @@ public static class AkronExtendedVariants {
         object displayed = GetConfiguredOrCurrentValue(option);
         string state = option.IsDefault ? "Off" : "On";
         return state + " | " + FormatValue(displayed);
-    }
-
-    public static void ResetAll() {
-        ResetVanilla();
-        ResetExtended();
     }
 
     public static bool IsUserControlledVariantActive(string name) {
@@ -702,10 +668,6 @@ public static class AkronExtendedVariants {
     private static object GetCurrentMapDefinedValue(object variant, object defaultValue) {
         object triggerManager = GetTriggerManager();
         return getCurrentMapDefinedVariantValueMethod?.Invoke(triggerManager, new[] { variant }) ?? defaultValue;
-    }
-
-    private static bool HasHandler(object variant) {
-        return GetHandler(variant) != null;
     }
 
     private static object GetHandler(object variant) {

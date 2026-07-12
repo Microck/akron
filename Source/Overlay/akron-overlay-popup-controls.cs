@@ -344,18 +344,6 @@ public sealed partial class AkronOverlay {
         return string.IsNullOrWhiteSpace(mapSid) ? "No map" : "Map catalog";
     }
 
-    private static IReadOnlyList<SelectorDropdownChoice> BuildGrabModeDropdownChoices() {
-        return new List<SelectorDropdownChoice> {
-            GrabModeDropdownChoice("Hold", GrabModes.Hold),
-            GrabModeDropdownChoice("Toggle", GrabModes.Toggle),
-            GrabModeDropdownChoice("Invert", GrabModes.Invert)
-        };
-    }
-
-    private static SelectorDropdownChoice GrabModeDropdownChoice(string label, GrabModes mode) {
-        return new SelectorDropdownChoice(label, () => Settings.Instance.GrabMode == mode, () => SetGrabMode(mode));
-    }
-
     private static IReadOnlyList<SelectorDropdownChoice> BuildRoomStatTimerFreezeChoices() {
         return new List<SelectorDropdownChoice> {
             new SelectorDropdownChoice("Never", () => AkronModule.Settings.RoomStatTimerFreezeMode == AkronRoomStatTimerFreezeMode.Never, () => AkronModule.Settings.RoomStatTimerFreezeMode = AkronRoomStatTimerFreezeMode.Never),

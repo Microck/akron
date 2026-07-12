@@ -201,20 +201,6 @@ public sealed partial class AkronOverlay {
         public Func<bool> Enabled { get; }
     }
 
-    private sealed class RowSpec {
-        public RowSpec(string label, Func<string> value, RowKind kind, Func<int?> valueColorRgb = null) {
-            Label = label;
-            Value = value;
-            Kind = kind;
-            ValueColorRgb = valueColorRgb;
-        }
-
-        public string Label { get; }
-        public Func<string> Value { get; }
-        public RowKind Kind { get; }
-        public Func<int?> ValueColorRgb { get; }
-    }
-
     private sealed class SectionLayout {
         public SectionLayout(string title, Rectangle bounds, Rectangle headerRect, Rectangle bodyRect, bool collapsed) {
             Title = title;
@@ -229,17 +215,6 @@ public sealed partial class AkronOverlay {
         public Rectangle HeaderRect { get; }
         public Rectangle BodyRect { get; }
         public bool Collapsed { get; }
-        public List<InfoRowLayout> Rows { get; } = new List<InfoRowLayout>();
-    }
-
-    private sealed class InfoRowLayout {
-        public InfoRowLayout(RowSpec row, Rectangle rect) {
-            Row = row;
-            Rect = rect;
-        }
-
-        public RowSpec Row { get; }
-        public Rectangle Rect { get; }
     }
 
     private sealed class ActionLayout {
@@ -254,12 +229,6 @@ public sealed partial class AkronOverlay {
         public int ActualIndex { get; }
         public int TabIndex { get; }
         public Rectangle Rect { get; }
-    }
-
-    private enum RowKind {
-        Info,
-        Search,
-        MenuBinding
     }
 
     private enum SelectionPanel {

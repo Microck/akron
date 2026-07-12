@@ -184,25 +184,17 @@ public sealed partial class AkronOverlay {
         return Math.Min(Math.Max(value, min), max);
     }
 
-    private void DrawImGuiBindingControls(ActionEntry entry, string popupId) {
-        ImGui.TextUnformatted("Binding: " + DescribeMenuBinding(entry.ActionKey));
-        if (ImGui.Button("Bind input##bind-key-" + popupId)) {
-            StartBindingCapture(entry);
-            ImGui.CloseCurrentPopup();
-        }
-        ImGui.SameLine();
-        if (ImGui.Button("Clear##clear-binding-" + popupId)) {
-            ClearMenuBinding(entry.ActionKey);
-        }
-    }
-
     private void DrawImGuiBindingContext(ActionEntry entry, bool openRequested) {
         string popupId = GetImGuiBindingContextId(entry.ActionKey);
         if (openRequested) {
             ImGui.OpenPopup(popupId);
         }
 
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);
+        ImGui.PushStyleColor(ImGuiCol.Border, AkronImGuiTheme.PopupOutline);
         if (!ImGui.BeginPopup(popupId)) {
+            ImGui.PopStyleColor();
+            ImGui.PopStyleVar();
             return;
         }
 
@@ -218,44 +210,8 @@ public sealed partial class AkronOverlay {
             ClearBindingForEntry(entry);
         }
         ImGui.EndPopup();
-    }
-
-    private void DrawImGuiPopupBindingContext(string actionKey, string displayName, string builtIn) {
-        bool openRequested = ImGui.IsItemHovered() &&
-                             (ImGui.IsMouseClicked(ImGuiMouseButton.Right) ||
-                              (ImGui.IsMouseClicked(ImGuiMouseButton.Left) && IsShiftDown()));
-        if (openRequested) {
-            ImGui.OpenPopup(GetImGuiBindingContextId(actionKey));
-        }
-
-        DrawImGuiPopupBindingTooltip(displayName);
-        DrawImGuiPopupBindingContextPopup(actionKey, displayName, builtIn);
-    }
-
-    private void DrawImGuiPopupBindingTooltip(string displayName) {
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.DelayNormal)) {
-            DrawImGuiItemTooltip(displayName + "\nRight-click or Shift-click to bind.");
-        }
-    }
-
-    private void DrawImGuiPopupBindingContextPopup(string actionKey, string displayName, string builtIn) {
-        string popupId = GetImGuiBindingContextId(actionKey);
-        if (!ImGui.BeginPopup(popupId)) {
-            return;
-        }
-
-        imguiPopupBlockedRowsLastFrame = true;
-        ImGui.TextUnformatted(displayName);
-        ImGui.Separator();
-        ImGui.TextUnformatted("Binding: " + DescribeMenuBinding(actionKey));
-        ImGui.TextUnformatted("Built-in: " + builtIn);
-        if (ImGui.MenuItem("Bind input")) {
-            StartBindingCapture(actionKey, displayName);
-        }
-        if (ImGui.MenuItem("Clear binding", string.Empty, false, HasMenuBinding(actionKey))) {
-            ClearMenuBinding(actionKey);
-        }
-        ImGui.EndPopup();
+        ImGui.PopStyleColor();
+        ImGui.PopStyleVar();
     }
 
     private void DrawImGuiBindingCapturePopup() {

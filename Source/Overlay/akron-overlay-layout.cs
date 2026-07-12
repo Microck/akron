@@ -85,7 +85,7 @@ public sealed partial class AkronOverlay {
             float y = columnBottoms[columnIndex];
             float sectionScreenHeight = GetSectionScreenHeight(tabName, columnIndex, externalPlacementPlan, ScreenHeight);
             float height = CalculateActionSectionHeight(tabEntries.Count, y, sectionScreenHeight);
-            SectionLayout actionSection = CreateSectionLayout(tabName, x, y, menuColumnWidth, height, new List<RowSpec>());
+            SectionLayout actionSection = CreateSectionLayout(tabName, x, y, menuColumnWidth, height);
             lastSections.Add(actionSection);
             BuildActionLayouts(actionSection, tabEntries, tabIndex, useScrolling: ShouldUseFallbackScrolling(actionSection, tabEntries.Count));
 
@@ -365,34 +365,13 @@ public sealed partial class AkronOverlay {
         return Math.Max(1, (int) Math.Floor((availableBodyHeight + rowGap) / (rowHeight + rowGap)));
     }
 
-    private float CalculateInfoSectionHeight(int rowCount) {
-        float rowHeight = CurrentRowHeight();
-        float rowGap = CurrentRowGap();
-        return HeaderHeight + BodyPadding * 2f + rowCount * rowHeight + Math.Max(0, rowCount - 1) * rowGap;
-    }
-
-    private SectionLayout CreateSectionLayout(string title, float x, float y, float width, float height, List<RowSpec> rows) {
+    private SectionLayout CreateSectionLayout(string title, float x, float y, float width, float height) {
         bool collapsed = collapsedWindowTitles.Contains(title);
         Rectangle headerRect = Rect(x, y, width, HeaderHeight);
         float bodyHeight = collapsed ? 0f : Math.Max(0f, height - HeaderHeight);
         Rectangle bodyRect = Rect(x, y + HeaderHeight, width, bodyHeight);
         Rectangle bounds = Rect(x, y, width, HeaderHeight + bodyHeight);
-        SectionLayout section = new SectionLayout(title, bounds, headerRect, bodyRect, collapsed);
-
-        if (collapsed) {
-            return section;
-        }
-
-        float rowHeight = CurrentRowHeight();
-        float rowGap = CurrentRowGap();
-        float rowY = bodyRect.Y + BodyPadding;
-        foreach (RowSpec row in rows) {
-            Rectangle rowRect = Rect(bodyRect.X + BodyPadding, rowY, bodyRect.Width - BodyPadding * 2f, rowHeight);
-            section.Rows.Add(new InfoRowLayout(row, rowRect));
-            rowY += rowHeight + rowGap;
-        }
-
-        return section;
+        return new SectionLayout(title, bounds, headerRect, bodyRect, collapsed);
     }
 
     private void BuildActionLayouts(SectionLayout section, List<ActionEntry> entries, int tabIndex, bool useScrolling) {

@@ -27,19 +27,6 @@ internal static class AkronReflection {
         return GetAssembly(metadataName)?.GetType(fullName);
     }
 
-    public static IEnumerable<Type> GetAssemblyTypes(string metadataName) {
-        Assembly assembly = GetAssembly(metadataName);
-        if (assembly == null) {
-            return Array.Empty<Type>();
-        }
-
-        try {
-            return assembly.GetTypes();
-        } catch (ReflectionTypeLoadException exception) {
-            return exception.Types.Where(type => type != null);
-        }
-    }
-
     public static FieldInfo GetFieldInfo(this Type type, string name) {
         return FieldCache.GetOrAdd((type, name), static key => {
             Type current = key.Type;

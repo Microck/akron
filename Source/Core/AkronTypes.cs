@@ -206,10 +206,6 @@ public sealed class AkronAutoKillAreaData {
         InvertConditions = source.InvertConditions;
     }
 
-    public Rectangle ToRectangle() {
-        return new Rectangle(X, Y, Width, Height);
-    }
-
     public AkronAutoKillAreaData CopyWithRectangle(Rectangle rectangle) {
         AkronAutoKillAreaData copy = new AkronAutoKillAreaData(this) {
             X = rectangle.X,
@@ -595,8 +591,8 @@ public enum AkronFeatureKind {
     RoomReload,
     ChapterReload,
     DebugMapLauncher,
-    MountainViewer,
-    Savestates,
+    // Feature IDs feed deterministic proof rendering, so retired entries leave a gap.
+    Savestates = 18,
     BrokeredSavestates,
     TasHandoff,
     SplitHelper,

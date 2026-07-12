@@ -82,25 +82,24 @@ public sealed partial class AkronOverlay {
     }
 
     private void DrawInputBoardEditor(string popupId) {
-        List<AkronInputBoardElement> elements = AkronInputBoard.NormalizeElements(AkronModule.Settings.InputBoardElements);
-        AkronModule.Settings.InputBoardElements = elements;
+        List<AkronInputBoardElement> elements = AkronModule.Settings.InputBoardElements;
         selectedInputBoardElementIndex = Calc.Clamp(selectedInputBoardElementIndex, 0, Math.Max(0, elements.Count - 1));
 
         DrawInputBoardPreview(elements, popupId);
 
-        if (ImGui.Button("Add key##" + popupId)) {
+        if (ImGui.Button("Add key##" + popupId) && elements.Count < AkronInputBoard.MaximumElements) {
             CaptureInputBoardUndoSnapshot();
             elements.Add(AkronInputBoard.CreateCustomElement(elements.Count));
             selectedInputBoardElementIndex = elements.Count - 1;
             inputBoardKeyBindingElementId = string.Empty;
         }
         ImGui.SameLine();
-        if (ImGui.Button("Duplicate##" + popupId)) {
+        if (ImGui.Button("Duplicate##" + popupId) && elements.Count < AkronInputBoard.MaximumElements) {
             CaptureInputBoardUndoSnapshot();
             AkronInputBoardElement duplicate = elements[selectedInputBoardElementIndex].Clone();
             duplicate.Id = "custom-" + elements.Count.ToString(CultureInfo.InvariantCulture);
-            duplicate.X += 12;
-            duplicate.Y += 12;
+            duplicate.X = Calc.Clamp(duplicate.X + 12, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition);
+            duplicate.Y = Calc.Clamp(duplicate.Y + 12, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition);
             elements.Add(duplicate);
             selectedInputBoardElementIndex = elements.Count - 1;
             inputBoardKeyBindingElementId = string.Empty;
@@ -369,7 +368,7 @@ public sealed partial class AkronOverlay {
         }
 
         int lastIndex = inputBoardUndoStack.Count - 1;
-        AkronModule.Settings.InputBoardElements = AkronInputBoard.CloneElements(inputBoardUndoStack[lastIndex]);
+        AkronModule.Settings.InputBoardElements = inputBoardUndoStack[lastIndex];
         inputBoardUndoStack.RemoveAt(lastIndex);
         selectedInputBoardElementIndex = Calc.Clamp(selectedInputBoardElementIndex, 0, Math.Max(0, AkronModule.Settings.InputBoardElements.Count - 1));
         inputBoardKeyBindingElementId = string.Empty;
@@ -466,5 +465,6 @@ public sealed partial class AkronOverlay {
         }
 
         element.Bindings[0] = (AkronInputBoardBinding) values.GetValue(next);
+        element.Bindings = element.Bindings.Distinct().ToList();
     }
 }

@@ -23,7 +23,6 @@ public static class AkronFeatureRegistry
         { AkronFeatureKind.RoomReload, new FeatureDefinition(AkronFeatureKind.RoomReload, AkronStatus.Cheat, "Room reload", "Restarts the current room.") },
         { AkronFeatureKind.ChapterReload, new FeatureDefinition(AkronFeatureKind.ChapterReload, AkronStatus.RegularClean, "Chapter reload", "Restarts the current chapter through Celeste's loader.") },
         { AkronFeatureKind.DebugMapLauncher, new FeatureDefinition(AkronFeatureKind.DebugMapLauncher, AkronStatus.Cheat, "Debug map launcher", "Opens Celeste's debug map scene.") },
-        { AkronFeatureKind.MountainViewer, new FeatureDefinition(AkronFeatureKind.MountainViewer, AkronStatus.RegularClean, "Mountain viewer", "Moves the player into an overworld inspection utility.") },
         { AkronFeatureKind.Savestates, new FeatureDefinition(AkronFeatureKind.Savestates, AkronStatus.Cheat, "StartPos runtime snapshot", "Captures or restores the active StartPos runtime snapshot.") },
         { AkronFeatureKind.BrokeredSavestates, new FeatureDefinition(AkronFeatureKind.BrokeredSavestates, AkronStatus.Cheat, "External SRT state", "Forwards capture, restore, and clear actions to Speedrun Tool state slots.") },
         { AkronFeatureKind.TasHandoff, new FeatureDefinition(AkronFeatureKind.TasHandoff, AkronStatus.Cheat, "TAS handoff", "Delegates active control to TAS tooling.") },

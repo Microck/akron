@@ -224,31 +224,6 @@ public sealed partial class AkronOverlay {
         }
     }
 
-    private static string DescribeOverlayBindingCaveat() {
-        string binding = AkronModuleSettings.DescribeBinding(AkronModule.Settings.ToggleOverlay);
-        bool usesTab = AkronModule.Settings.ToggleOverlay?.Keys?.Contains(Keys.Tab) == true;
-        if (usesTab && AkronInterop.SpeedrunToolTabConflictMitigated) {
-            return binding + " | Speedrun Tool Tab disabled";
-        }
-
-        if (usesTab && AkronInterop.SpeedrunToolLoaded) {
-            return binding + " | Tab conflicts with Speedrun Tool slots";
-        }
-
-        return binding;
-    }
-
-    private static string DescribeAliases(string label) {
-        if (!string.IsNullOrWhiteSpace(label) &&
-            label.StartsWith("StartPos Slot ", StringComparison.OrdinalIgnoreCase)) {
-            return "startpos, slot, keybind";
-        }
-
-        return SearchAliases.TryGetValue(label, out string[] aliases) && aliases.Length > 0
-            ? string.Join(", ", aliases)
-            : "No extra aliases";
-    }
-
     private static string DescribeBindingForAction(string label) {
         AkronModuleSettings settings = AkronModule.Settings;
         return label switch {
@@ -874,10 +849,6 @@ public sealed partial class AkronOverlay {
 
     private static bool IsControlDown() {
         return Keyboard.GetState().IsKeyDown(Keys.LeftControl) || Keyboard.GetState().IsKeyDown(Keys.RightControl);
-    }
-
-    private static bool IsAltDown() {
-        return Keyboard.GetState().IsKeyDown(Keys.LeftAlt) || Keyboard.GetState().IsKeyDown(Keys.RightAlt);
     }
 
 }

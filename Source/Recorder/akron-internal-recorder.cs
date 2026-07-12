@@ -65,15 +65,6 @@ public static partial class AkronInternalRecorder {
             : "OK";
     }
 
-    public static string DescribeClipBrowser() {
-        List<AkronRecordingClipInfo> clips = ListClips(AkronModule.Settings).Take(3).ToList();
-        if (clips.Count == 0) {
-            return "No clips";
-        }
-
-        return clips[0].DisplayName;
-    }
-
     public static void Start(Level level) {
         if (level == null) {
             Engine.Scene?.Add(new AkronToast("Open a level before recording."));

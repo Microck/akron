@@ -174,58 +174,58 @@ public static class AkronPolicy
             return contributors;
         }
 
-        AddIfCheat(contributors, settings.AutoKill, "Auto Kill", "akron_feature auto-kill off", AkronFeatureKind.AutoKill);
-        AddIfCheat(contributors, settings.CursorZoom, "Cursor Zoom", "akron_feature cursor-zoom off", AkronFeatureKind.CursorZoom);
-        AddIfCheat(contributors, settings.CursorTools, "Cursor Tools", "akron_feature cursor-tools off", AkronFeatureKind.CursorTools);
-        AddIfCheat(contributors, settings.ClickTeleport, "Click Teleport", "akron_feature click-teleport off", AkronFeatureKind.ClickTeleport);
-        AddIfCheat(contributors, settings.Noclip, "Noclip", "akron_feature noclip off", AkronFeatureKind.Noclip);
-        AddIfCheat(contributors, settings.NoclipAccuracy, "Hazard Accuracy", "akron_feature hazard-accuracy off", AkronFeatureKind.HazardAccuracy);
-        AddIfCheat(contributors, settings.FreeCamera, "Free Camera", "akron_feature free-camera off", AkronFeatureKind.FreeCamera);
-        AddIfCheat(contributors, AkronMotionSmoothingInterop.Loaded && settings.FpsBypass, "FPS Bypass", "akron_feature fps-bypass off", AkronFeatureKind.FpsBypass);
+        AddIfCheat(contributors, settings.AutoKill, "Auto Kill", AkronFeatureKind.AutoKill);
+        AddIfCheat(contributors, settings.CursorZoom, "Cursor Zoom", AkronFeatureKind.CursorZoom);
+        AddIfCheat(contributors, settings.CursorTools, "Cursor Tools", AkronFeatureKind.CursorTools);
+        AddIfCheat(contributors, settings.ClickTeleport, "Click Teleport", AkronFeatureKind.ClickTeleport);
+        AddIfCheat(contributors, settings.Noclip, "Noclip", AkronFeatureKind.Noclip);
+        AddIfCheat(contributors, settings.NoclipAccuracy, "Hazard Accuracy", AkronFeatureKind.HazardAccuracy);
+        AddIfCheat(contributors, settings.FreeCamera, "Free Camera", AkronFeatureKind.FreeCamera);
+        AddIfCheat(contributors, AkronMotionSmoothingInterop.Loaded && settings.FpsBypass, "FPS Bypass", AkronFeatureKind.FpsBypass);
         AddMotionSmoothingCheatContributor(contributors, AkronMotionSmoothingInterop.Loaded && settings.FrameBypassObjectSmoothing == AkronObjectSmoothingMode.Interpolate, "FPS Bypass object interpolation", "akron_frame_bypass objects extrapolate");
         AddMotionSmoothingCheatContributor(contributors, AkronMotionSmoothingInterop.Loaded && settings.FrameBypassTasMode, "FPS Bypass TAS mode", "akron_frame_bypass tas off");
         AddMotionSmoothingCheatContributor(contributors, AkronMotionSmoothingInterop.Loaded && settings.FrameBypassSillyMode, "FPS Bypass Nasty mode", "akron_frame_bypass nasty off");
-        AddIfCheat(contributors, AkronMotionSmoothingInterop.Loaded && settings.TpsBypass, "TPS Bypass", "akron_feature tps-bypass off", AkronFeatureKind.TpsBypass);
-        AddIfCheat(contributors, settings.Invincibility, "Invincibility", "akron_feature invincibility off", AkronFeatureKind.Invincibility);
-        AddIfCheat(contributors, settings.JumpHack, "Air Jumps", "akron_feature air-jumps off", AkronFeatureKind.MovementStatMutation);
-        AddIfCheat(contributors, settings.ResourceBars, "Resource Bars", "akron_feature resource-bars off", AkronFeatureKind.ResourceBars);
-        AddIfCheat(contributors, settings.StaminaBar, "Stamina Bar", "akron_feature stamina-bar off", AkronFeatureKind.ResourceBars);
-        AddIfCheat(contributors, settings.DashBar, "Dash Bar", "akron_feature dash-bar off", AkronFeatureKind.ResourceBars);
-        AddIfCheat(contributors, settings.DashNumber, "Dash Number", "akron_dash_count number off", AkronFeatureKind.ResourceBars);
-        AddIfCheat(contributors, settings.SpeedNumber, "Speed Number", "akron_feature speed-number off", AkronFeatureKind.SpeedNumber);
-        AddIfCheat(contributors, settings.SafeModeFreezeAttempts, "Freeze deaths", "akron_feature freeze-deaths off", AkronFeatureKind.SafeModeStats);
-        AddIfCheat(contributors, settings.SafeModeFreezeJumps, "Freeze jumps", "akron_feature freeze-jumps off", AkronFeatureKind.SafeModeStats);
-        AddIfCheat(contributors, settings.SafeModeFreezeBestRun, "Freeze best run", "akron_feature freeze-best-run off", AkronFeatureKind.SafeModeStats);
-        AddIfCheat(contributors, settings.TransitionSpeedMultiplier != 1f, "Transition Speed", "akron_megahack_public transition-speed 1", AkronFeatureKind.TransitionSpeed);
-        AddIfCheat(contributors, settings.RespawnTimeModifier, "Respawn Time", "akron_megahack_public respawn-time off", AkronFeatureKind.RespawnTime);
-        AddIfCheat(contributors, settings.FreezeTimerWhilePaused, "Freeze Timer While Paused", "akron_feature freeze-timer-paused off", AkronFeatureKind.PauseTimerFreeze);
-        AddIfCheat(contributors, settings.FastLookout, "Fast Lookout", "akron_feature fast-lookout off", AkronFeatureKind.FastLookout);
-        AddIfCheat(contributors, settings.DeathPbLossPrompt, "Death PB Loss Prompt", "akron_feature death-pb-loss-prompt off", AkronFeatureKind.DeathPbLossRestart);
-        AddIfCheat(contributors, settings.NoDeathEffect, "No Death Effect", "akron_feature no-death-effect off", AkronFeatureKind.DeathVisuals);
-        AddIfCheat(contributors, settings.NoDeathWipe, "No Death Wipe", "akron_feature no-death-wipe off", AkronFeatureKind.DeathVisuals);
-        AddIfCheat(contributors, settings.NoRespawnAnimation, "No Respawn Animation", "akron_feature no-respawn-animation off", AkronFeatureKind.RespawnAnimation);
-        AddIfCheat(contributors, settings.NoFreezeFrames, "No Freeze Frames", "akron_feature no-freeze-frames off", AkronFeatureKind.FreezeFrames);
-        AddIfCheat(contributors, settings.GroundRefillRules, "Ground Refills", "akron_feature ground-refills off", AkronFeatureKind.GroundRefillRules);
-        AddIfCheat(contributors, settings.DashRedirectEnabled, "Dash Redirect", "akron_feature dash-redirect off", AkronFeatureKind.InputAssistShortcut);
-        AddIfCheat(contributors, settings.InfiniteDash, "Infinite Dash", "akron_feature infinite-dash off", AkronFeatureKind.InfiniteDash);
-        AddIfCheat(contributors, settings.InfiniteStamina, "Infinite Stamina", "akron_feature infinite-stamina off", AkronFeatureKind.InfiniteStamina);
-        AddIfCheat(contributors, settings.DashCountOverride, "Dash Count", "akron_feature dash-count off", AkronFeatureKind.DashCountOverride);
-        AddIfCheat(contributors, settings.GrabModeOverrideEnabled, "Grab Mode", "akron_grab_mode off", AkronFeatureKind.GrabModeHotkey);
-        AddIfCheat(contributors, settings.DeloadSpinners, "Deload Spinners", "akron_deload_spinners off", AkronFeatureKind.DeloadSimulation);
-        AddIfCheat(contributors, settings.HidePauseMenu, "Hide Pause Menu", "akron_feature hide-pause-menu off", AkronFeatureKind.PauseMenuVisibility);
-        AddIfCheat(contributors, settings.PauseCountdown, "Pause Timer", "akron_feature pause-countdown off", AkronFeatureKind.PauseCountdown);
-        AddIfCheat(contributors, settings.HitboxViewer, "Show Hitboxes", "akron_feature show-hitboxes off", AkronFeatureKind.HitboxViewer);
-        AddIfCheat(contributors, settings.ShowTriggers, "Show Triggers", "akron_feature show-triggers off", AkronFeatureKind.TriggerViewer);
-        AddIfCheat(contributors, settings.EntityInspector, "Entity Inspector", "akron_feature entity-inspector off", AkronFeatureKind.EntityInspector);
-        AddIfCheat(contributors, settings.ShowTrajectory, "Show Trajectory", "akron_feature show-trajectory off", AkronFeatureKind.ShowTrajectory);
-        AddIfCheat(contributors, settings.FrameStepper, "Frame Stepper", "akron_feature frame-stepper off", AkronFeatureKind.FrameAdvance);
-        AddIfCheat(contributors, settings.AudioSpeed, "Audio Speed", "akron_feature audio-speed off", AkronFeatureKind.AudioSpeed);
+        AddIfCheat(contributors, AkronMotionSmoothingInterop.Loaded && settings.TpsBypass, "TPS Bypass", AkronFeatureKind.TpsBypass);
+        AddIfCheat(contributors, settings.Invincibility, "Invincibility", AkronFeatureKind.Invincibility);
+        AddIfCheat(contributors, settings.JumpHack, "Air Jumps", AkronFeatureKind.MovementStatMutation);
+        AddIfCheat(contributors, settings.ResourceBars, "Resource Bars", AkronFeatureKind.ResourceBars);
+        AddIfCheat(contributors, settings.StaminaBar, "Stamina Bar", AkronFeatureKind.ResourceBars);
+        AddIfCheat(contributors, settings.DashBar, "Dash Bar", AkronFeatureKind.ResourceBars);
+        AddIfCheat(contributors, settings.DashNumber, "Dash Number", AkronFeatureKind.ResourceBars);
+        AddIfCheat(contributors, settings.SpeedNumber, "Speed Number", AkronFeatureKind.SpeedNumber);
+        AddIfCheat(contributors, settings.SafeModeFreezeAttempts, "Freeze deaths", AkronFeatureKind.SafeModeStats);
+        AddIfCheat(contributors, settings.SafeModeFreezeJumps, "Freeze jumps", AkronFeatureKind.SafeModeStats);
+        AddIfCheat(contributors, settings.SafeModeFreezeBestRun, "Freeze best run", AkronFeatureKind.SafeModeStats);
+        AddIfCheat(contributors, settings.TransitionSpeedMultiplier != 1f, "Transition Speed", AkronFeatureKind.TransitionSpeed);
+        AddIfCheat(contributors, settings.RespawnTimeModifier, "Respawn Time", AkronFeatureKind.RespawnTime);
+        AddIfCheat(contributors, settings.FreezeTimerWhilePaused, "Freeze Timer While Paused", AkronFeatureKind.PauseTimerFreeze);
+        AddIfCheat(contributors, settings.FastLookout, "Fast Lookout", AkronFeatureKind.FastLookout);
+        AddIfCheat(contributors, settings.DeathPbLossPrompt, "Death PB Loss Prompt", AkronFeatureKind.DeathPbLossRestart);
+        AddIfCheat(contributors, settings.NoDeathEffect, "No Death Effect", AkronFeatureKind.DeathVisuals);
+        AddIfCheat(contributors, settings.NoDeathWipe, "No Death Wipe", AkronFeatureKind.DeathVisuals);
+        AddIfCheat(contributors, settings.NoRespawnAnimation, "No Respawn Animation", AkronFeatureKind.RespawnAnimation);
+        AddIfCheat(contributors, settings.NoFreezeFrames, "No Freeze Frames", AkronFeatureKind.FreezeFrames);
+        AddIfCheat(contributors, settings.GroundRefillRules, "Ground Refills", AkronFeatureKind.GroundRefillRules);
+        AddIfCheat(contributors, settings.DashRedirectEnabled, "Dash Redirect", AkronFeatureKind.InputAssistShortcut);
+        AddIfCheat(contributors, settings.InfiniteDash, "Infinite Dash", AkronFeatureKind.InfiniteDash);
+        AddIfCheat(contributors, settings.InfiniteStamina, "Infinite Stamina", AkronFeatureKind.InfiniteStamina);
+        AddIfCheat(contributors, settings.DashCountOverride, "Dash Count", AkronFeatureKind.DashCountOverride);
+        AddIfCheat(contributors, settings.GrabModeOverrideEnabled, "Grab Mode", AkronFeatureKind.GrabModeHotkey);
+        AddIfCheat(contributors, settings.DeloadSpinners, "Deload Spinners", AkronFeatureKind.DeloadSimulation);
+        AddIfCheat(contributors, settings.HidePauseMenu, "Hide Pause Menu", AkronFeatureKind.PauseMenuVisibility);
+        AddIfCheat(contributors, settings.PauseCountdown, "Pause Timer", AkronFeatureKind.PauseCountdown);
+        AddIfCheat(contributors, settings.HitboxViewer, "Show Hitboxes", AkronFeatureKind.HitboxViewer);
+        AddIfCheat(contributors, settings.ShowTriggers, "Show Triggers", AkronFeatureKind.TriggerViewer);
+        AddIfCheat(contributors, settings.EntityInspector, "Entity Inspector", AkronFeatureKind.EntityInspector);
+        AddIfCheat(contributors, settings.ShowTrajectory, "Show Trajectory", AkronFeatureKind.ShowTrajectory);
+        AddIfCheat(contributors, settings.FrameStepper, "Frame Stepper", AkronFeatureKind.FrameAdvance);
+        AddIfCheat(contributors, settings.AudioSpeed, "Audio Speed", AkronFeatureKind.AudioSpeed);
         AddExtendedVariantContributors(contributors);
 
         if (session != null)
         {
-            AddIfCheat(contributors, session.FreezeGameplay, "Freeze Gameplay", "akron_freeze off", AkronFeatureKind.Freeze);
-            AddIfCheat(contributors, session.TimescaleEnabled && session.TimescaleMultiplier != 1f, "Timescale", "akron_timescale off", AkronFeatureKind.Timescale);
+            AddIfCheat(contributors, session.FreezeGameplay, "Freeze Gameplay", AkronFeatureKind.Freeze);
+            AddIfCheat(contributors, session.TimescaleEnabled && session.TimescaleMultiplier != 1f, "Timescale", AkronFeatureKind.Timescale);
         }
 
         return contributors;
@@ -236,7 +236,7 @@ public static class AkronPolicy
         return status == AkronStatus.Cheat;
     }
 
-    private static void AddIfCheat(List<AkronActiveCheatContributor> contributors, bool enabled, string label, string disableCommand, AkronFeatureKind feature)
+    private static void AddIfCheat(List<AkronActiveCheatContributor> contributors, bool enabled, string label, AkronFeatureKind feature)
     {
         if (enabled && AkronFeatureRegistry.Classify(feature) == AkronStatus.Cheat)
         {

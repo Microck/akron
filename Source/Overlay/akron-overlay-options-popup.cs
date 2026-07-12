@@ -107,12 +107,6 @@ public sealed partial class AkronOverlay {
         return Contains(openOptionsPopupRect, mouse);
     }
 
-    private bool IsOptionsClick(ActionLayout action, Vector2 mouse) {
-        return action != null &&
-               action.Entry.HasOptionsPopup &&
-               Contains(GetOptionsButtonRect(action.Rect), mouse);
-    }
-
     private void ToggleOptionsPopup(string label) {
         if (!HasOptionsPopup(label)) {
             return;
