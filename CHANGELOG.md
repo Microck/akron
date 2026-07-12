@@ -4,12 +4,17 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Akron Beta 51
+
+### Fixed
+
+- Keep custom Control Display boards valid when importing or editing them, and avoid rebuilding the board every frame.
+
 ## Akron Beta 50
 
 ### Fixed
 
 - Add Lag Pauser recovery grace after respawns and room transitions, plus a repeat cooldown after automatic pauses.
-- Keep custom Control Display boards valid when importing or editing them, and avoid rebuilding the board every frame.
 
 ## Akron Beta 49
 
