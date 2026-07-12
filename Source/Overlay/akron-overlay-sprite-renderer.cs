@@ -12,7 +12,7 @@ public sealed partial class AkronOverlay {
         bool headerHovered = string.Equals(hoveredHeaderTitle, section.Title, StringComparison.OrdinalIgnoreCase);
         Draw.Rect(section.HeaderRect, headerHovered ? AkronAccentHovered * 0.98f : AkronAccent * 0.98f);
 
-        string displayTitle = GetSectionDisplayTitle(section);
+        string displayTitle = section.Title;
         float titleWidth = MeasureMenuText(displayTitle, AkronTitleFontSize).X;
         DrawMenuText(
             displayTitle,
@@ -20,29 +20,6 @@ public sealed partial class AkronOverlay {
             AkronTitleFontSize,
             Color.White);
         DrawCollapseTriangle(section.HeaderRect, section.Collapsed ? 1 : 0, Color.White * 0.82f);
-
-        if (section.Collapsed) {
-            return;
-        }
-
-        foreach (InfoRowLayout row in section.Rows) {
-            RenderInfoSectionRow(row);
-        }
-    }
-
-    private string GetSectionDisplayTitle(SectionLayout section) {
-        return section.Title;
-    }
-
-    private void RenderInfoSectionRow(InfoRowLayout row) {
-        switch (row.Row.Kind) {
-            case RowKind.Search:
-                RenderSearchRow(row.Rect);
-                return;
-            default:
-                RenderInfoRow(row);
-                return;
-        }
     }
 
     private void RenderActionEntry(ActionLayout action) {
@@ -461,22 +438,6 @@ public sealed partial class AkronOverlay {
         float thumbHeight = Math.Max(18f, trackHeight * visibleCount / currentEntries.Count);
         float thumbY = trackY + (trackHeight - thumbHeight) * actionScrollIndex / Math.Max(1, currentEntries.Count - visibleCount);
         Draw.Rect(trackX - 1f, thumbY, 4f, thumbHeight, AkronAccent * 0.96f);
-    }
-
-    private void RenderSearchRow(Rectangle rect) {
-        Draw.Rect(rect, AkronFrameBackground * 0.20f);
-        string value = string.IsNullOrWhiteSpace(searchQuery) ? "Type to search actions" : searchQuery;
-        Color color = string.IsNullOrWhiteSpace(searchQuery) ? AkronInactiveIndicator : Color.White;
-        DrawMenuText(TruncateToWidth(value, rect.Width - 12f, AkronSmallFontSize), new Vector2(rect.X + 6f, rect.Y + 3f), AkronSmallFontSize, color);
-    }
-
-    private void RenderInfoRow(InfoRowLayout row) {
-        string value = row.Row.Value();
-        Color valueColor = row.Row.ValueColorRgb?.Invoke() is int rgb ? ColorFromRgb(rgb) : Color.White;
-        const float labelWidth = 94f;
-        const float valueLeft = 102f;
-        DrawMenuText(TruncateToWidth(row.Row.Label, labelWidth, AkronSmallFontSize), new Vector2(row.Rect.X + 2f, row.Rect.Y + 3f), AkronSmallFontSize, new Color(188, 188, 188));
-        DrawMenuText(TruncateToWidth(value, row.Rect.Width - valueLeft, AkronSmallFontSize), new Vector2(row.Rect.X + valueLeft, row.Rect.Y + 3f), AkronSmallFontSize, valueColor);
     }
 
 }

@@ -235,25 +235,6 @@ public static partial class AkronActions {
         DisableCoreModeOverride(level, session);
     }
 
-    public static void SetCoreModeOverrideEnabled(Level level, bool enabled) {
-        AkronModuleSession session = AkronModule.Session;
-        if (level == null || session == null) {
-            Engine.Scene?.Add(new AkronToast("Core Mode is unavailable outside a level."));
-            return;
-        }
-
-        if (enabled) {
-            ApplyCoreModeOverride(level, session, AkronModule.Settings.CoreModeOverride);
-            return;
-        }
-
-        DisableCoreModeOverride(level, session);
-    }
-
-    public static void ApplyCoreMode(Level level, AkronCoreModeOverride mode) {
-        ApplyCoreModeOverride(level, AkronModule.Session, mode);
-    }
-
     private static void ApplyCoreModeOverride(Level level, AkronModuleSession session, AkronCoreModeOverride mode) {
         if (level == null) {
             return;
@@ -646,14 +627,6 @@ public static partial class AkronActions {
         AkronInternalRecorder.BuildCompletionVideo(scene);
     }
 
-    public static string DescribeRecordingOutputFolder() {
-        if (string.IsNullOrWhiteSpace(AkronModule.Settings.RecordingOutputFolder)) {
-            return "Saves/AkronRecordings";
-        }
-
-        return AkronModule.Settings.FormatPathForDisplay(AkronModule.Settings.RecordingOutputFolder);
-    }
-
     public static void LaunchTas() {
         if (!AkronModule.TryUse(AkronFeatureKind.TasHandoff)) {
             return;
@@ -934,19 +907,6 @@ public static partial class AkronActions {
             onCutsceneSkipField.SetValue(level, null);
         }
         Engine.Scene?.Add(new AkronToast("Cutscene skip requested."));
-    }
-
-    public static void OpenMountainViewer() {
-        if (!AkronModule.TryUse(AkronFeatureKind.MountainViewer)) {
-            return;
-        }
-
-        if (Engine.Scene == null) {
-            AkronMountainViewer.Open();
-            return;
-        }
-
-        Engine.Scene.OnEndOfFrame += AkronMountainViewer.Open;
     }
 
     public static void ToggleForceBroker(Level level) {

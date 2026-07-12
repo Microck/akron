@@ -928,32 +928,6 @@ public sealed partial class AkronOverlay {
         return enabled + "/5 on | " + AkronModule.Settings.BackupsIntervalMinutes + " min";
     }
 
-    private static string DescribeFrameStepperValue() {
-        if (AkronModule.Session == null) {
-            return "Unavailable";
-        }
-
-        string repeat = AkronModule.Settings.StepHoldRepeat
-            ? "Repeat " + AkronModule.Settings.StepHoldDelayFrames + "/" + AkronModule.Settings.StepHoldIntervalFrames + "f"
-            : "Manual";
-        return repeat;
-    }
-
-    private static string DescribeAttemptStatus() {
-        AkronModuleSession session = AkronModule.Session;
-        return session == null ? "No save" : AkronPolicy.GetLegitimacySensitiveStatusLabel(session.AttemptStatus);
-    }
-
-    private static int? DescribeAttemptStatusColorRgb() {
-        AkronModuleSession session = AkronModule.Session;
-        if (session == null) {
-            return null;
-        }
-
-        bool safeModeRedactsCleanStatus = AkronModule.Settings.SafeMode && session.AttemptStatus == AkronStatus.GoldberryHardlistClean;
-        return AkronPolicy.GetStatusColorRgb(session.AttemptStatus, safeModeRedactsCleanStatus);
-    }
-
     private static string DescribeConfirmActionsValue() {
         int enabled =
             (AkronModule.Settings.ConfirmRestart || AkronModule.Settings.ConfirmRetry ? 1 : 0) +
@@ -1068,31 +1042,6 @@ public sealed partial class AkronOverlay {
         Engine.Scene?.Add(new AkronToast("Noclip grab speed: " + FormatNoclipFloatMultiplier(AkronModule.Settings.NoclipFloatSpeed)));
     }
 
-    private static string DescribeMap(Level level) {
-        if (level == null) {
-            return "No level";
-        }
-
-        return level.Session.Area.GetSID();
-    }
-
-    private static string DescribeRoom(Level level) {
-        if (level == null) {
-            return "No room";
-        }
-
-        return level.Session.Level;
-    }
-
-    private static string DescribeCapture() {
-        AkronModuleSession session = AkronModule.Session;
-        if (session == null || string.IsNullOrWhiteSpace(session.LastScreenshotPath)) {
-            return "None";
-        }
-
-        return Path.GetFileName(session.LastScreenshotPath);
-    }
-
     private static string DescribeRecordingReplaySettings() {
         if (AkronInternalRecorder.IsReplayBuffering) {
             return AkronInternalRecorder.DescribeReplayBufferStatus();
@@ -1153,14 +1102,6 @@ public sealed partial class AkronOverlay {
         if (AkronModule.Settings.RecordingTriggerBerryCollect) count++;
         if (AkronModule.Settings.RecordingTriggerGoldenDeath) count++;
         return count == 0 ? "Manual" : count + " triggers";
-    }
-
-    private static string DescribeTasPath() {
-        if (string.IsNullOrWhiteSpace(AkronModule.Settings.TasFilePath)) {
-            return "Not configured";
-        }
-
-        return AkronModule.Settings.FormatPathForDisplay(AkronModule.Settings.TasFilePath);
     }
 
 }

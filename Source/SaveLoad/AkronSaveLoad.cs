@@ -246,25 +246,6 @@ public static partial class AkronSaveLoadService {
         return AkronSaveLoadResult.Success;
     }
 
-    public static AkronSaveLoadResult ForceUnsafeLoad(Level level, int slot) {
-        if (level == null || !Slots.ContainsKey(slot)) {
-            return AkronSaveLoadResult.NoState;
-        }
-
-        AkronPolicyDecision policy = AkronPolicy.CanUse(AkronFeatureKind.UnsafeNativeSavestateOverride);
-        if (!policy.Allowed) {
-            return AkronSaveLoadResult.Blocked;
-        }
-
-        AkronSaveLoadSlot saveSlot = Slots[slot];
-        if (!RestoreNativeSlot(level, saveSlot)) {
-            return AkronSaveLoadResult.SessionMismatch;
-        }
-        PrepareSlotPreClone(saveSlot);
-        AkronPolicy.RecordFeatureUse(AkronFeatureKind.UnsafeNativeSavestateOverride);
-        return AkronSaveLoadResult.Success;
-    }
-
     public static AkronSaveLoadSlot CaptureRuntimeState(Level level, string slotName, bool saveTimeAndDeaths) {
         if (level == null || !CanAccessNativeState(level, out _)) {
             return null;

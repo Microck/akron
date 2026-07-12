@@ -58,8 +58,6 @@ public static class AkronInterop {
     public static bool CommunalHelperLoaded => IsModLoaded(CommunalHelperMetadata, "CommunalHelper");
     public static bool ExtendedCameraDynamicsLoaded => IsModLoaded(ExtendedCameraDynamicsMetadata, "ExCameraDynamics", "ExtendedCameraDynamics");
     public static bool MotionSmoothingLoaded => AkronMotionSmoothingInterop.Loaded;
-    public static bool SpeedrunToolTabConflictMitigated => speedrunToolTabConflictMitigated;
-
     public static bool RoomTimerAvailable =>
         SpeedrunToolLoaded &&
         RoomTimerImports.RoomTimerIsCompleted != null &&

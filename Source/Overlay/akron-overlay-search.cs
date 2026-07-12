@@ -9,11 +9,6 @@ using NumericsVector4 = System.Numerics.Vector4;
 namespace Celeste.Mod.Akron;
 
 public sealed partial class AkronOverlay {
-    private void DrawImGuiSearchRow(RowSpec row) {
-        ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X);
-        DrawImGuiSearchTextInput("##akron_search_display", "Search actions", AkronImGuiTheme.Foreground);
-    }
-
     private bool DrawImGuiSearchEntry(ActionEntry entry, string id, bool entryEnabled) {
         NumericsVector4 textColor = !entryEnabled ? AkronImGuiTheme.DisabledText : searchInputActive ? AkronImGuiTheme.Accent : AkronImGuiTheme.Foreground;
         float availableWidth = ImGui.GetContentRegionAvail().X;

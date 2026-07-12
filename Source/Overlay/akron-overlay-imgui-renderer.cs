@@ -123,25 +123,6 @@ public sealed partial class AkronOverlay {
         DrawPendingImGuiItemTooltip();
     }
 
-    private void DrawInfoWindow(string title, float x, float y, float width, List<RowSpec> rows) {
-        if (!BeginFixedWindow(title, x, y, width, CalculateInfoSectionHeight(rows.Count))) {
-            ImGui.End();
-            return;
-        }
-
-        foreach (RowSpec row in rows) {
-            if (row.Kind == RowKind.Search) {
-                DrawImGuiSearchRow(row);
-            } else if (row.Kind == RowKind.MenuBinding) {
-                DrawImGuiMenuBindingRow(row);
-            } else {
-                DrawImGuiInfoRow(row);
-            }
-        }
-
-        ImGui.End();
-    }
-
     private void DrawActionWindow(string title, float x, float y, float width, List<ActionEntry> entries, int tabIndex) {
         long start = Stopwatch.GetTimestamp();
         float displayHeight = ImGui.GetIO().DisplaySize.Y / CurrentOverlayScale();
@@ -286,73 +267,6 @@ public sealed partial class AkronOverlay {
     private static Color ColorFromRgb(int rgb) {
         int clamped = AkronModuleSettings.ClampRgb(rgb);
         return new Color((clamped >> 16) & 0xFF, (clamped >> 8) & 0xFF, clamped & 0xFF);
-    }
-
-    private void DrawImGuiInfoRow(RowSpec row) {
-        string label = row.Label;
-        string value = row.Value();
-        float labelWidth = 94f;
-        NumericsVector4 valueColor = row.ValueColorRgb?.Invoke() is int rgb
-            ? ToImGuiColor(rgb)
-            : AkronImGuiTheme.Foreground;
-
-        ImGui.PushStyleColor(ImGuiCol.Text, AkronImGuiTheme.Muted);
-        ImGui.TextUnformatted(label.Length > 14 ? label[..14] : label);
-        ImGui.PopStyleColor();
-        ImGui.SameLine(labelWidth);
-        ImGui.PushStyleColor(ImGuiCol.Text, valueColor);
-        ImGui.TextUnformatted(value);
-        ImGui.PopStyleColor();
-    }
-
-    private void DrawImGuiMenuBindingRow(RowSpec row) {
-        string value = row.Value();
-        string popupId = "akron_overlay_toggle_binding_context";
-
-        ImGui.PushStyleColor(ImGuiCol.Text, AkronImGuiTheme.Foreground);
-        ImGui.PushStyleColor(ImGuiCol.Button, AkronImGuiTheme.Transparent);
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, AkronImGuiTheme.ButtonHovered);
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, AkronImGuiTheme.ButtonActive);
-        ImGui.PushStyleVar(ImGuiStyleVar.ButtonTextAlign, new NumericsVector2(0f, 0.5f));
-
-        bool pressed = ImGui.Button(row.Label + ": " + value + "##akron_menu_bind", new NumericsVector2(ImGui.GetContentRegionAvail().X, 0f));
-        bool hovered = ImGui.IsItemHovered();
-        bool shiftLeftClick = hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && IsShiftDown();
-        if (pressed || (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Right)) || shiftLeftClick) {
-            if (pressed && !shiftLeftClick) {
-                StartOverlayToggleBindingCapture();
-            } else {
-                ImGui.OpenPopup(popupId);
-            }
-        }
-
-        ImGui.PopStyleVar();
-        ImGui.PopStyleColor(4);
-
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);
-        ImGui.PushStyleColor(ImGuiCol.Border, AkronImGuiTheme.PopupOutline);
-        if (!ImGui.BeginPopup(popupId)) {
-            ImGui.PopStyleColor();
-            ImGui.PopStyleVar();
-            if (hovered && ImGui.IsItemHovered(ImGuiHoveredFlags.DelayNormal)) {
-                DrawImGuiItemTooltip("Click to rebind the Akron menu input.\nRight-click or Shift-click for binding options.");
-            }
-            return;
-        }
-
-        imguiPopupBlockedRowsLastFrame = true;
-        ImGui.TextUnformatted("Open Overlay");
-        ImGui.Separator();
-        ImGui.TextUnformatted("Current: " + AkronModuleSettings.DescribeBinding(AkronModule.Settings.ToggleOverlay));
-        if (ImGui.MenuItem("Bind input")) {
-            StartOverlayToggleBindingCapture();
-        }
-        if (ImGui.MenuItem("Reset to Tab")) {
-            ResetOverlayToggleBinding();
-        }
-        ImGui.EndPopup();
-        ImGui.PopStyleColor();
-        ImGui.PopStyleVar();
     }
 
     private void DrawImGuiActionEntry(ActionEntry entry, int index, int tabIndex) {

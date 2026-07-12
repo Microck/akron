@@ -512,12 +512,4 @@ public sealed class AkronSetupState {
     public string AudioSplitterMusicDevice { get; set; } = "Default";
     public string AudioSplitterSfxDevice { get; set; } = "Default";
 
-    public void SetLowDistractionChannels(bool enabled) {
-        LowDistractionOverlay = enabled;
-        NoParticles = enabled;
-        NoTrails = enabled;
-        NoGlitch = enabled;
-        NoAnxiety = enabled;
-        NoDistortion = enabled;
-    }
 }

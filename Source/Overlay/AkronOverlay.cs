@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using Celeste;
 using Celeste.Mod;
@@ -29,7 +28,6 @@ public sealed partial class AkronOverlay : Entity {
     private const float RowGap = 2f;
     private const float ColumnStackGap = 4f;
     private const int ActionColumnCount = 8;
-    private const int CompactActionThreshold = 12;
     private const float TooltipDelaySeconds = 0.55f;
     private const float TooltipMaxWidth = 640f;
     private const float ImGuiTooltipWrapWidth = 620f;
@@ -83,8 +81,6 @@ public sealed partial class AkronOverlay : Entity {
     private int hoveredActionIndex = -1;
     private int hoveredActionTabIndex = -1;
     private int displayActionEntryCacheMenuBindingRevision;
-    private int lastMouseX = int.MinValue;
-    private int lastMouseY = int.MinValue;
     private int lastScrollWheelValue = int.MinValue;
     private string hoveredHeaderTitle;
     private ActionLayout hoveredActionLayout;
@@ -525,65 +521,6 @@ public sealed partial class AkronOverlay : Entity {
     }
 
 
-    private List<RowSpec> BuildDetailsRows(Level level) {
-        if (selectedPanel == SelectionPanel.Categories || currentEntries.Count == 0) {
-            string activeTab = GetSelectedTabName();
-            return new List<RowSpec> {
-                new RowSpec("Focus", () => activeTab, RowKind.Info),
-                new RowSpec("Matches", () => GetCategoryCount(activeTab, level).ToString(), RowKind.Info),
-                new RowSpec("Binding", () => "Arrow keys choose section", RowKind.Info),
-                new RowSpec("Confirm", () => "Moves focus to actions", RowKind.Info),
-                new RowSpec("Search", () => string.IsNullOrWhiteSpace(searchQuery) ? "All actions in current tab" : "Filtering all tabs", RowKind.Info),
-                new RowSpec("Hint", DescribeOverlayBindingCaveat, RowKind.Info)
-            };
-        }
-
-        ActionEntry selectedEntry = currentEntries[Calc.Clamp(selectedActionIndex, 0, currentEntries.Count - 1)];
-        return new List<RowSpec> {
-            new RowSpec("Focus", () => selectedEntry.Label, RowKind.Info),
-            new RowSpec("Tab", () => selectedEntry.Tab, RowKind.Info),
-            new RowSpec("State", selectedEntry.Value, RowKind.Info),
-            new RowSpec("Binding", () => DescribeBindingForAction(selectedEntry.Label), RowKind.Info),
-            new RowSpec("Aliases", () => DescribeAliases(selectedEntry.Label), RowKind.Info),
-            new RowSpec("Action", () => "Confirm or click executes", RowKind.Info)
-        };
-    }
-
-    private List<RowSpec> BuildSelectionRows(Level level) {
-        if (selectedPanel == SelectionPanel.Categories || currentEntries.Count == 0) {
-            string activeTab = GetSelectedTabName();
-            return new List<RowSpec> {
-                new RowSpec("Tab", () => activeTab, RowKind.Info),
-                new RowSpec("Actions", () => GetCategoryCount(activeTab, level) + " available", RowKind.Info),
-                new RowSpec("Search", () => string.IsNullOrWhiteSpace(searchQuery) ? "Tab-local list" : "Filtering all tabs", RowKind.Info),
-                new RowSpec("Move", () => "Left/right switches rail and list", RowKind.Info),
-                new RowSpec("Confirm", () => currentEntries.Count > 0 ? "Enter moves into actions" : "No actions available", RowKind.Info),
-                new RowSpec("Room", () => DescribeRoom(level), RowKind.Info)
-            };
-        }
-
-        ActionEntry selectedEntry = currentEntries[Calc.Clamp(selectedActionIndex, 0, currentEntries.Count - 1)];
-        return new List<RowSpec> {
-            new RowSpec("Selected", () => selectedEntry.Label, RowKind.Info),
-            new RowSpec("Current", selectedEntry.Value, RowKind.Info),
-            new RowSpec("Scope", () => selectedEntry.Tab + " tab", RowKind.Info),
-            new RowSpec("Invoke", () => "Enter, A, or left click", RowKind.Info),
-            new RowSpec("Binding", () => DescribeBindingForAction(selectedEntry.Label), RowKind.Info),
-            new RowSpec("Search", () => string.IsNullOrWhiteSpace(searchQuery) ? DescribeAliases(selectedEntry.Label) : "\"" + searchQuery + "\"", RowKind.Info)
-        };
-    }
-
-    private List<RowSpec> BuildStatusRows(Level level) {
-        return new List<RowSpec> {
-            new RowSpec("Attempt", DescribeAttemptStatus, RowKind.Info, DescribeAttemptStatusColorRgb),
-            new RowSpec("Overlays", () => AkronModule.Settings.DescribePresentationOverlays(), RowKind.Info),
-            new RowSpec("Map", () => DescribeMap(level), RowKind.Info),
-            new RowSpec("Room", () => DescribeRoom(level), RowKind.Info),
-            new RowSpec("Slot", () => AkronModule.Settings.ActiveSavestateSlot.ToString(), RowKind.Info),
-            new RowSpec("Capture", DescribeCapture, RowKind.Info)
-        };
-    }
-
     private List<ActionEntry> BuildCurrentEntries(Level level) {
         if (string.IsNullOrWhiteSpace(searchQuery)) {
             return GetDisplayActionEntries(GetSelectedTabName(), level);
@@ -596,14 +533,6 @@ public sealed partial class AkronOverlay : Entity {
         }
 
         return entries;
-    }
-
-    private int GetCategoryCount(string tabName, Level level) {
-        if (string.IsNullOrWhiteSpace(searchQuery)) {
-            return GetDisplayActionEntries(tabName, level).Count;
-        }
-
-        return GetFilteredDisplayActionEntries(tabName, level).Count(entry => entry.Control != OverlayEntryControl.SearchInput);
     }
 
     private string GetSelectedTabName() {
@@ -831,15 +760,6 @@ public sealed partial class AkronOverlay : Entity {
         return lastSections.FirstOrDefault(section => string.Equals(section.Title, GetSelectedTabName(), StringComparison.OrdinalIgnoreCase));
     }
 
-    private bool HasMouseMoved() {
-        int mouseX = (int) MInput.Mouse.Position.X;
-        int mouseY = (int) MInput.Mouse.Position.Y;
-        bool moved = mouseX != lastMouseX || mouseY != lastMouseY;
-        lastMouseX = mouseX;
-        lastMouseY = mouseY;
-        return moved;
-    }
-
     private static bool IsCancelPressed(bool keyboardInputOwned) {
         if (MInput.Keyboard.Pressed(Keys.Escape)) {
             return true;
@@ -877,38 +797,6 @@ public sealed partial class AkronOverlay : Entity {
                !promptMenuOpen &&
                !autoKillAreaSelectionActive &&
                !autoDeafenAreaSelectionActive;
-    }
-
-    private static bool IsConfirmPressed() {
-        return Input.MenuConfirm.Pressed ||
-               MInput.Keyboard.Pressed(Keys.Enter) ||
-               IsGamePadPressed(Buttons.A);
-    }
-
-    private static bool IsNavigateLeftPressed() {
-        return Input.MenuLeft.Pressed ||
-               MInput.Keyboard.Pressed(Keys.Left) ||
-               IsGamePadPressed(Buttons.DPadLeft) ||
-               IsGamePadPressed(Buttons.LeftShoulder);
-    }
-
-    private static bool IsNavigateRightPressed() {
-        return Input.MenuRight.Pressed ||
-               MInput.Keyboard.Pressed(Keys.Right) ||
-               IsGamePadPressed(Buttons.DPadRight) ||
-               IsGamePadPressed(Buttons.RightShoulder);
-    }
-
-    private static bool IsNavigateUpPressed() {
-        return Input.MenuUp.Pressed ||
-               MInput.Keyboard.Pressed(Keys.Up) ||
-               IsGamePadPressed(Buttons.DPadUp);
-    }
-
-    private static bool IsNavigateDownPressed() {
-        return Input.MenuDown.Pressed ||
-               MInput.Keyboard.Pressed(Keys.Down) ||
-               IsGamePadPressed(Buttons.DPadDown);
     }
 
     private static bool IsGamePadPressed(Buttons button) {
@@ -976,14 +864,6 @@ public sealed partial class AkronOverlay : Entity {
             (int) Math.Floor(y),
             (int) Math.Ceiling(width),
             (int) Math.Ceiling(height));
-    }
-
-    private static float CalculateCompactSectionHeight(int rowCount, float minHeight, float maxHeight) {
-        float rowsHeight = BodyPadding * 2f +
-                           rowCount * RowHeight +
-                           Math.Max(0, rowCount - 1) * RowGap;
-        float desiredHeight = HeaderHeight + rowsHeight + 16f;
-        return Calc.Clamp(desiredHeight, minHeight, maxHeight);
     }
 
     private static bool Contains(Rectangle rect, Vector2 point) {

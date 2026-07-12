@@ -67,7 +67,6 @@ public sealed class FeatureRegistryTests
     [InlineData(AkronFeatureKind.RoomReload, AkronStatus.Cheat)]
     [InlineData(AkronFeatureKind.ChapterReload, AkronStatus.RegularClean)]
     [InlineData(AkronFeatureKind.DebugMapLauncher, AkronStatus.Cheat)]
-    [InlineData(AkronFeatureKind.MountainViewer, AkronStatus.RegularClean)]
     [InlineData(AkronFeatureKind.BrokeredSavestates, AkronStatus.Cheat)]
     [InlineData(AkronFeatureKind.TasHandoff, AkronStatus.Cheat)]
     [InlineData(AkronFeatureKind.SplitHelper, AkronStatus.RegularClean)]
