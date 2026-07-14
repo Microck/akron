@@ -264,6 +264,21 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void TransientResetClosesCommunityPackBrowser() {
+        AkronOverlay overlay = CreateOverlayForStateTest();
+        FieldInfo browserOpen = typeof(AkronOverlay).GetField("communityPackBrowserOpen", BindingFlags.Static | BindingFlags.NonPublic)!;
+        browserOpen.SetValue(null, true);
+
+        try {
+            overlay.ResetTransientUiState(searchAutofocus: false);
+
+            Assert.False((bool) browserOpen.GetValue(null)!);
+        } finally {
+            browserOpen.SetValue(null, false);
+        }
+    }
+
+    [Fact]
     public void OverlayCollapseStateUsesSettingsPersistence() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/AkronOverlay.cs"));
 

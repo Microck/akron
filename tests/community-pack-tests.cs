@@ -42,6 +42,15 @@ public sealed class CommunityPackTests {
     }
 
     [Fact]
+    public void BrowserRendersCatalogAuthorAvatarInsteadOfPrintingItsUrl() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-browser.cs"));
+
+        Assert.Contains("pack.AuthorAvatarUrl", source);
+        Assert.Contains("\"Author avatar\"", source);
+        Assert.DoesNotContain("TextDisabledLiteral(\"Avatar: \"", source);
+    }
+
+    [Fact]
     public void ParseIndexAcceptsBotContractShape() {
         AkronCommunityPackIndex index = AkronCommunityPacks.ParseIndex("""
         {
@@ -150,6 +159,42 @@ public sealed class CommunityPackTests {
         Assert.True(AkronOverlay.TryValidateCommunityPackPreviewImage(pngHeader, out int width, out int height, out string error), error);
         Assert.Equal(1920, width);
         Assert.Equal(1080, height);
+    }
+
+    [Fact]
+    public void PreviewValidationRejectsWebpThatFnaCannotDecode() {
+        byte[] webpHeader = {
+            0x52, 0x49, 0x46, 0x46, 0x44, 0x1c, 0x02, 0x00,
+            0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20,
+            0x38, 0x1c, 0x02, 0x00, 0xf0, 0x3c, 0x09, 0x9d,
+            0x01, 0x2a, 0x40, 0x06, 0xa0, 0x05
+        };
+
+        Assert.False(AkronOverlay.TryValidateCommunityPackPreviewImage(webpHeader, out _, out _, out string error));
+        Assert.Equal("Preview image format is unsupported or invalid.", error);
+    }
+
+    [Fact]
+    public void CatalogResourcesOnlyAllowDiscordCdnForAuthorAvatars() {
+        AkronCommunityPackEntry pack = new AkronCommunityPackEntry();
+        string avatarUrl = "https://cdn.discordapp.com/avatars/1267825421781831815/avatar-hash.jpg?size=128";
+
+        Assert.Equal(
+            avatarUrl,
+            AkronCommunityPacks.ResolveCatalogResourceUri(pack, avatarUrl, "Author avatar").AbsoluteUri);
+        Assert.Throws<InvalidDataException>(() =>
+            AkronCommunityPacks.ResolveCatalogResourceUri(pack, avatarUrl, "Preview image"));
+        Assert.Throws<InvalidDataException>(() =>
+            AkronCommunityPacks.ResolveCatalogResourceUri(pack, "https://example.com/avatar.jpg", "Author avatar"));
+    }
+
+    [Fact]
+    public void PreviewCacheSeparatesResourcePolicies() {
+        const string url = "https://cdn.discordapp.com/avatars/1267825421781831815/avatar-hash.jpg?size=128";
+
+        Assert.NotEqual(
+            AkronOverlay.CommunityPackPreviewImageCacheKey(url, "Author avatar"),
+            AkronOverlay.CommunityPackPreviewImageCacheKey(url, "Preview image"));
     }
 
     [Fact]
@@ -280,21 +325,12 @@ public sealed class CommunityPackTests {
     }
 
     [Fact]
-    public void BeginDownloadCopiesArchiveFromCatalogEntry() {
+    public void BeginDownloadReportsCompletionWithVisibleStatus() {
         string tempDirectory = Path.Combine(Path.GetTempPath(), "akron-community-download-test");
         Directory.CreateDirectory(tempDirectory);
         AkronCommunityPacks.SetSetupDirectoryProviderForTest(() => tempDirectory);
         string sourcePath = Path.Combine(tempDirectory, "akron-community-source.akr");
-        AkronSetupPacks.Write(
-            new AkronModuleSettings(),
-            new AkronModuleSession {
-                StartPositions = new System.Collections.Generic.Dictionary<int, AkronStartPos> {
-                    [1] = new AkronStartPos { AreaSid = "Maps/Current", Room = "a-00" }
-                }
-            },
-            sourcePath,
-            "Downloaded StartPos",
-            AkronSetupSection.StartPos);
+        File.WriteAllText(sourcePath, "invalid digest fixture");
         byte[] sourceBytes = File.ReadAllBytes(sourcePath);
         try {
             AkronCommunityPackEntry entry = new AkronCommunityPackEntry {
@@ -303,25 +339,25 @@ public sealed class CommunityPackTests {
                 Section = AkronSetupSection.StartPos,
                 MapSid = "Maps/Current",
                 DownloadUrl = new System.Uri(sourcePath).AbsoluteUri,
-                Sha256 = Convert.ToHexString(SHA256.HashData(sourceBytes)).ToLowerInvariant(),
+                Sha256 = new string('0', 64),
                 SizeBytes = sourceBytes.Length
             };
 
             Assert.True(AkronCommunityPacks.BeginDownload(entry, out string beginMessage), beginMessage);
-            AkronCommunityPackEntry downloaded = null!;
-            string downloadedPath = string.Empty;
+            Assert.Equal("Downloading Download Test Pack...", beginMessage);
+            Assert.True(AkronCommunityPacks.DownloadInProgress);
+            Assert.Equal(beginMessage, AkronCommunityPacks.Search(new AkronCommunityPackFilter()).Status);
+            bool imported = false;
             string completeMessage = string.Empty;
             bool completed = SpinWait.SpinUntil(
-                () => AkronCommunityPacks.CompleteDownloadIfReady(out downloaded, out downloadedPath, out completeMessage),
+                () => AkronCommunityPacks.CompleteImportIfReady(out imported, out completeMessage),
                 10000);
             Assert.True(completed, completeMessage);
 
-            Assert.Same(entry, downloaded);
-            Assert.True(File.Exists(downloadedPath));
-            AkronSetupPack pack = AkronSetupPacks.Read(downloadedPath);
-            Assert.Equal("Downloaded StartPos", pack.Name);
-            Assert.Equal(AkronSetupSection.StartPos, pack.Section);
-            Assert.EndsWith(".akr", downloadedPath);
+            Assert.False(imported);
+            Assert.Equal("Pack checksum does not match the catalog.", completeMessage);
+            Assert.False(AkronCommunityPacks.DownloadInProgress);
+            Assert.Equal(completeMessage, AkronCommunityPacks.Search(new AkronCommunityPackFilter()).Status);
         } finally {
             AkronCommunityPacks.SetSetupDirectoryProviderForTest(null);
         }

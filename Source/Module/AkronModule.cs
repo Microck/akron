@@ -571,6 +571,9 @@ public partial class AkronModule : EverestModule {
         RunDeferredScreenWipeAction();
         UpdateDeathWipeRenderSuppression();
         AkronBackupActions.UpdateInterval((float) gameTime.ElapsedGameTime.TotalSeconds);
+        // Downloads finish on a worker, but setup state and toasts belong to the
+        // game thread even when the overlay was closed while the request ran.
+        AkronCommunityPacks.CompleteImportIfReady(out _, out _);
         if (Engine.Scene is Level) {
             orig(self, gameTime);
             return;

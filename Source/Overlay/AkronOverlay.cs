@@ -461,6 +461,7 @@ public sealed partial class AkronOverlay : Entity {
 
     internal void ResetTransientUiState(bool searchAutofocus) {
         CloseOptionsPopup();
+        communityPackBrowserOpen = false;
         CancelBindingCapture();
         imguiPopupBlockedRowsLastFrame = false;
         suppressImGuiRowPressesThisFrame = false;

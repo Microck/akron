@@ -98,13 +98,6 @@ public sealed partial class AkronOverlay {
     }
 
     private void DrawCommunityPackBrowserContents(string popupId) {
-        if (AkronCommunityPacks.CompleteDownloadIfReady(out AkronCommunityPackEntry downloaded, out string downloadedPath, out string downloadMessage)) {
-            bool imported = downloaded != null && AkronSetupPacks.Import(downloadedPath, downloaded.Section);
-            Engine.Scene?.Add(new AkronToast(imported ? "Imported " + downloaded.Title + "." : "Community import failed."));
-        } else if (!string.IsNullOrWhiteSpace(downloadMessage)) {
-            Engine.Scene?.Add(new AkronToast("Community import failed."));
-        }
-
         float fullWidth = ImGui.GetContentRegionAvail().X;
         string indexUrl = AkronCommunityPacks.ResolveIndexUrl(AkronModule.Settings.CommunityPackIndexUrl);
         DrawPopupRowLabel("Index URL", 92f);
@@ -226,18 +219,25 @@ public sealed partial class AkronOverlay {
         TextWrappedLiteral(string.IsNullOrWhiteSpace(pack.Description) ? "No description provided." : pack.Description.Trim());
         ImGui.Spacing();
         DrawCommunityPackPreviewCarousel(pack, popupId);
-        TextDisabledLiteral("Avatar: " + (string.IsNullOrWhiteSpace(pack.AuthorAvatarUrl) ? "placeholder until author art is supplied." : pack.AuthorAvatarUrl));
         if (!string.IsNullOrWhiteSpace(pack.MapUrl)) {
             TextWrappedLiteral("Map link: " + pack.MapUrl);
         }
 
         ImGui.Spacing();
-        if (ImGui.Button("Import Selected##community-import-" + popupId, new NumericsVector2(148f, 28f)) &&
-            !AkronCommunityPacks.BeginDownload(pack, out string message) &&
-            !string.IsNullOrWhiteSpace(message)) {
-            Engine.Scene?.Add(new AkronToast(message));
+        bool importInProgress = AkronCommunityPacks.DownloadInProgress;
+        if (importInProgress) {
+            ImGui.BeginDisabled();
         }
-        DrawPopupTooltip("Download and import this .akr pack.");
+        if (ImGui.Button((importInProgress ? "Importing..." : "Import Selected") + "##community-import-" + popupId, new NumericsVector2(148f, 28f))) {
+            AkronCommunityPacks.BeginDownload(pack, out string message);
+            if (!string.IsNullOrWhiteSpace(message)) {
+                Engine.Scene?.Add(new AkronToast(message));
+            }
+        }
+        if (importInProgress) {
+            ImGui.EndDisabled();
+        }
+        DrawPopupTooltip(importInProgress ? "The selected pack is being downloaded and imported." : "Download and import this .akr pack.");
     }
 
     private void DrawCommunityPackPreviewCarousel(AkronCommunityPackEntry pack, string popupId) {
@@ -306,10 +306,27 @@ public sealed partial class AkronOverlay {
             drawList.AddText(new NumericsVector2(imageMin.X + 16f, imageMin.Y + imageHeight * 0.5f - 8f), AkronImGuiTheme.ToU32(ToImGuiColor(0x778096, 1f)), "Pack image");
         }
 
-        NumericsVector2 avatarCenter = new NumericsVector2(max.X - 28f, min.Y + 28f);
-        drawList.AddCircleFilled(avatarCenter, 15f, AkronImGuiTheme.ToU32(ToImGuiColor(0x222222, 1f)));
-        string initials = BuildCommunityPackInitials(pack.AuthorName);
-        drawList.AddText(new NumericsVector2(avatarCenter.X - 8f, avatarCenter.Y - 8f), AkronImGuiTheme.ToU32(ToImGuiColor(0xFFFFFF, 1f)), initials);
+        NumericsVector2 avatarMin = new NumericsVector2(max.X - 43f, min.Y + 13f);
+        NumericsVector2 avatarMax = new NumericsVector2(avatarMin.X + 30f, avatarMin.Y + 30f);
+        drawList.AddRectFilled(avatarMin, avatarMax, AkronImGuiTheme.ToU32(ToImGuiColor(0x222222, 1f)), 3f);
+        bool avatarLoaded = TryDrawCommunityPackImage(
+            drawList,
+            pack,
+            pack.AuthorAvatarUrl,
+            "Author avatar",
+            avatarMin,
+            avatarMax,
+            selected && ImGui.IsRectVisible(avatarMin, avatarMax),
+            out _);
+        if (!avatarLoaded) {
+            string initials = BuildCommunityPackInitials(pack.AuthorName);
+            NumericsVector2 initialsSize = ImGui.CalcTextSize(initials);
+            drawList.AddText(
+                new NumericsVector2(avatarMin.X + (30f - initialsSize.X) * 0.5f, avatarMin.Y + (30f - initialsSize.Y) * 0.5f),
+                AkronImGuiTheme.ToU32(ToImGuiColor(0xFFFFFF, 1f)),
+                initials);
+        }
+        drawList.AddRect(avatarMin, avatarMax, AkronImGuiTheme.ToU32(ToImGuiColor(0x4A4A4A, 1f)), 3f);
 
         float textX = imageMax.X + 12f;
         float textMaxWidth = Math.Max(80f, max.X - textX - 64f);
@@ -349,14 +366,11 @@ public sealed partial class AkronOverlay {
         if (!scheduleDownload) {
             return false;
         }
-        AkronCommunityPackPreviewImageState state = GetCommunityPackPreviewImageState(pack, url);
-        CompleteCommunityPackPreviewImage(state);
-        if (state.TextureId != IntPtr.Zero) {
-            drawList.AddImage(state.TextureId, min, max);
+        if (TryDrawCommunityPackImage(drawList, pack, url, "Preview image", min, max, scheduleDownload, out string error)) {
             return true;
         }
 
-        string label = string.IsNullOrWhiteSpace(state.Error) ? "Loading image" : "Image unavailable";
+        string label = string.IsNullOrWhiteSpace(error) ? "Loading image" : "Image unavailable";
         NumericsVector2 labelSize = ImGui.CalcTextSize(label);
         drawList.AddText(
             new NumericsVector2(min.X + Math.Max(8f, ((max.X - min.X) - labelSize.X) * 0.5f), min.Y + Math.Max(8f, ((max.Y - min.Y) - labelSize.Y) * 0.5f)),
@@ -365,13 +379,43 @@ public sealed partial class AkronOverlay {
         return true;
     }
 
+    private static bool TryDrawCommunityPackImage(
+        ImDrawListPtr drawList,
+        AkronCommunityPackEntry pack,
+        string url,
+        string resourceLabel,
+        NumericsVector2 min,
+        NumericsVector2 max,
+        bool scheduleDownload,
+        out string error) {
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(url) || !scheduleDownload) {
+            return false;
+        }
+
+        AkronCommunityPackPreviewImageState state = GetCommunityPackPreviewImageState(pack, url, resourceLabel);
+        CompleteCommunityPackPreviewImage(state);
+        error = state.Error;
+        if (state.TextureId == IntPtr.Zero) {
+            return false;
+        }
+
+        drawList.AddImage(state.TextureId, min, max);
+        return true;
+    }
+
     internal static bool ShouldScheduleCommunityPackPreview(bool selectedCard, bool detailView, bool visible) {
         return visible && (selectedCard || detailView);
     }
 
-    private static AkronCommunityPackPreviewImageState GetCommunityPackPreviewImageState(AkronCommunityPackEntry pack, string url) {
+    internal static string CommunityPackPreviewImageCacheKey(string url, string resourceLabel) {
+        return resourceLabel + "\n" + url.Trim();
+    }
+
+    private static AkronCommunityPackPreviewImageState GetCommunityPackPreviewImageState(AkronCommunityPackEntry pack, string url, string resourceLabel) {
         url = url.Trim();
-        if (CommunityPackPreviewImages.TryGetValue(url, out AkronCommunityPackPreviewImageState state)) {
+        string cacheKey = CommunityPackPreviewImageCacheKey(url, resourceLabel);
+        if (CommunityPackPreviewImages.TryGetValue(cacheKey, out AkronCommunityPackPreviewImageState state)) {
             state.LastAccess = ++communityPackPreviewAccessCounter;
             return state;
         }
@@ -389,9 +433,9 @@ public sealed partial class AkronOverlay {
         state = new AkronCommunityPackPreviewImageState {
             Url = url,
             LastAccess = ++communityPackPreviewAccessCounter,
-            DownloadTask = Task.Run(() => ReadCommunityPackPreviewImageBytes(pack, url))
+            DownloadTask = Task.Run(() => ReadCommunityPackPreviewImageBytes(pack, url, resourceLabel))
         };
-        CommunityPackPreviewImages[url] = state;
+        CommunityPackPreviewImages[cacheKey] = state;
         return state;
     }
 
@@ -438,10 +482,10 @@ public sealed partial class AkronOverlay {
         }
     }
 
-    private static byte[] ReadCommunityPackPreviewImageBytes(AkronCommunityPackEntry pack, string url) {
+    private static byte[] ReadCommunityPackPreviewImageBytes(AkronCommunityPackEntry pack, string url, string resourceLabel) {
         CommunityPackPreviewImageDownloadSlots.Wait();
         try {
-            Uri uri = AkronCommunityPacks.ResolveCatalogResourceUri(pack, url, "Preview image");
+            Uri uri = AkronCommunityPacks.ResolveCatalogResourceUri(pack, url, resourceLabel);
             byte[] bytes;
             if (uri.Scheme == Uri.UriSchemeFile) {
                 bytes = AkronCommunityPacks.ReadFileBytesCapped(
@@ -564,11 +608,6 @@ public sealed partial class AkronOverlay {
             return true;
         }
 
-        if (bytes.Length >= 30 && bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 &&
-            bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50) {
-            return TryReadWebpDimensions(bytes, out width, out height);
-        }
-
         if (bytes.Length >= 4 && bytes[0] == 0xff && bytes[1] == 0xd8) {
             return TryReadJpegDimensions(bytes, out width, out height);
         }
@@ -609,28 +648,6 @@ public sealed partial class AkronOverlay {
                 return true;
             }
             offset += segmentLength;
-        }
-        return false;
-    }
-
-    private static bool TryReadWebpDimensions(byte[] bytes, out int width, out int height) {
-        width = 0;
-        height = 0;
-        if (bytes[12] == 0x56 && bytes[13] == 0x50 && bytes[14] == 0x38 && bytes[15] == 0x58) {
-            width = 1 + bytes[24] + (bytes[25] << 8) + (bytes[26] << 16);
-            height = 1 + bytes[27] + (bytes[28] << 8) + (bytes[29] << 16);
-            return true;
-        }
-        if (bytes.Length >= 30 && bytes[12] == 0x56 && bytes[13] == 0x50 && bytes[14] == 0x38 && bytes[15] == 0x20 &&
-            bytes[23] == 0x9d && bytes[24] == 0x01 && bytes[25] == 0x2a) {
-            width = (bytes[26] | (bytes[27] << 8)) & 0x3fff;
-            height = (bytes[28] | (bytes[29] << 8)) & 0x3fff;
-            return true;
-        }
-        if (bytes.Length >= 25 && bytes[12] == 0x56 && bytes[13] == 0x50 && bytes[14] == 0x38 && bytes[15] == 0x4c && bytes[20] == 0x2f) {
-            width = 1 + bytes[21] + ((bytes[22] & 0x3f) << 8);
-            height = 1 + (bytes[22] >> 6) + (bytes[23] << 2) + ((bytes[24] & 0x0f) << 10);
-            return true;
         }
         return false;
     }
