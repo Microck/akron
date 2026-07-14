@@ -113,6 +113,8 @@ public static class AkronCommunityPacks {
         }
     }
 
+    public static bool DownloadInProgress => downloadInProgress;
+
     public static string ResolveIndexUrl(string indexUrl) {
         return string.IsNullOrWhiteSpace(indexUrl) ? DefaultIndexUrl : indexUrl.Trim();
     }
@@ -128,26 +130,29 @@ public static class AkronCommunityPacks {
     }
 
     public static bool BeginDownload(AkronCommunityPackEntry entry, out string message) {
-        CompleteDownloadIfReady(out _, out _, out _);
+        CompleteImportIfReady(out _, out _);
         message = string.Empty;
         if (downloadInProgress) {
             message = "Download already in progress.";
+            lastStatus = message;
             return false;
         }
 
         if (entry == null || string.IsNullOrWhiteSpace(entry.DownloadUrl)) {
             message = "No download URL.";
+            lastStatus = message;
             return false;
         }
 
         downloadInProgress = true;
         downloadTask = Task.Run(() => DownloadCore(entry));
+        message = "Downloading " + entry.Title + "...";
+        lastStatus = message;
         return true;
     }
 
-    public static bool CompleteDownloadIfReady(out AkronCommunityPackEntry entry, out string path, out string message) {
-        entry = null;
-        path = string.Empty;
+    public static bool CompleteImportIfReady(out bool imported, out string message) {
+        imported = false;
         message = string.Empty;
         if (downloadTask == null || !downloadTask.IsCompleted) {
             return false;
@@ -156,10 +161,24 @@ public static class AkronCommunityPacks {
         DownloadOutcome outcome = downloadTask.GetAwaiter().GetResult();
         downloadTask = null;
         downloadInProgress = false;
-        entry = outcome.Entry;
-        path = outcome.Path;
-        message = outcome.Message;
-        return outcome.Success;
+        if (!outcome.Success) {
+            message = string.IsNullOrWhiteSpace(outcome.Message) ? "Community import failed." : outcome.Message;
+            lastStatus = message;
+            ShowStatusToast(message);
+            return true;
+        }
+
+        imported = outcome.Entry != null && AkronSetupPacks.Import(outcome.Path, outcome.Entry.Section);
+        message = imported ? "Imported " + outcome.Entry.Title + "." : "Community import failed.";
+        lastStatus = message;
+        ShowStatusToast(message);
+        return true;
+    }
+
+    private static void ShowStatusToast(string message) {
+        if (AkronModule.Instance != null) {
+            Engine.Scene?.Add(new AkronToast(message));
+        }
     }
 
     public static AkronCommunityPackSearchResult Refresh(string indexUrl, AkronCommunityPackFilter filter) {
@@ -554,7 +573,7 @@ public static class AkronCommunityPacks {
 
             Uri officialCatalog = new Uri(DefaultIndexUrl, UriKind.Absolute);
             ValidateHttpsUriShape(resource, label);
-            if (!HasSameOrigin(resource, officialCatalog)) {
+            if (!HasSameOrigin(resource, officialCatalog) && !IsApprovedDiscordAvatar(resource, label)) {
                 throw new InvalidDataException(label + " URL is outside the approved catalog origin.");
             }
             return resource;
@@ -572,10 +591,22 @@ public static class AkronCommunityPacks {
         }
 
         ValidateHttpsUriShape(resource, label);
-        if (!HasSameOrigin(resource, catalog)) {
+        if (!HasSameOrigin(resource, catalog) && !IsApprovedDiscordAvatar(resource, label)) {
             throw new InvalidDataException(label + " URL is outside the approved catalog origin.");
         }
         return resource;
+    }
+
+    private static bool IsApprovedDiscordAvatar(Uri resource, string label) {
+        if (!string.Equals(label, "Author avatar", StringComparison.Ordinal) || resource.Port != 443) {
+            return false;
+        }
+
+        bool approvedHost = string.Equals(resource.IdnHost, "cdn.discordapp.com", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(resource.IdnHost, "media.discordapp.net", StringComparison.OrdinalIgnoreCase);
+        return approvedHost &&
+               (resource.AbsolutePath.StartsWith("/avatars/", StringComparison.Ordinal) ||
+                resource.AbsolutePath.StartsWith("/embed/avatars/", StringComparison.Ordinal));
     }
 
     private static bool HasSameOrigin(Uri left, Uri right) {
