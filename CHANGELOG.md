@@ -4,6 +4,12 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Akron Beta 53
+
+### Added
+
+- Enlarge Community Pack previews in an in-game lightbox and open a pack's source Discord thread from its detail pane.
+
 ## Akron Beta 52
 
 ### Fixed

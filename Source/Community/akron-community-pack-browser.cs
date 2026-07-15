@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -19,6 +20,8 @@ public sealed partial class AkronOverlay {
     private const long MaxCommunityPackPreviewImagePixels = 4L * 1024 * 1024;
     private const int MaxCommunityPackPreviewImageCacheEntries = 8;
     private const long MaxCommunityPackPreviewDecodedBytes = 64L * 1024L * 1024L;
+    private const float CommunityPackDiscordButtonWidth = 132f;
+    private const float CommunityPackImportButtonWidth = 148f;
     private static readonly SemaphoreSlim CommunityPackPreviewImageDownloadSlots = new SemaphoreSlim(2, 2);
     private static readonly HttpClient CommunityPackPreviewImageHttp = AkronCommunityPacks.CreateSafeHttpClient(TimeSpan.FromSeconds(8));
     private static readonly Dictionary<string, AkronCommunityPackPreviewImageState> CommunityPackPreviewImages = new Dictionary<string, AkronCommunityPackPreviewImageState>(StringComparer.Ordinal);
@@ -95,6 +98,11 @@ public sealed partial class AkronOverlay {
         ImGui.PopStyleColor(12);
         ImGui.PopStyleVar(5);
         communityPackBrowserOpen = open;
+        if (!communityPackBrowserOpen) {
+            expandedCommunityPackPreview = null;
+            return;
+        }
+        DrawCommunityPackPreviewLightbox();
     }
 
     private void DrawCommunityPackBrowserContents(string popupId) {
@@ -187,6 +195,7 @@ public sealed partial class AkronOverlay {
                 if (selectedCommunityPackIndex != index) {
                     selectedCommunityPackIndex = index;
                     selectedCommunityPackImageIndex = 0;
+                    expandedCommunityPackPreview = null;
                 }
             }
         }
@@ -224,11 +233,23 @@ public sealed partial class AkronOverlay {
         }
 
         ImGui.Spacing();
+        if (!string.IsNullOrWhiteSpace(pack.DiscordUrl)) {
+            bool actionsFitSameLine = CommunityPackActionsFitSameLine(
+                ImGui.GetContentRegionAvail().X,
+                ImGui.GetStyle().ItemSpacing.X);
+            if (ImGui.Button("See in Discord##community-discord-" + popupId, new NumericsVector2(CommunityPackDiscordButtonWidth, 28f))) {
+                OpenCommunityPackDiscord(pack);
+            }
+            DrawPopupTooltip("Open the original Community Pack thread in Discord.");
+            if (actionsFitSameLine) {
+                ImGui.SameLine();
+            }
+        }
         bool importInProgress = AkronCommunityPacks.DownloadInProgress;
         if (importInProgress) {
             ImGui.BeginDisabled();
         }
-        if (ImGui.Button((importInProgress ? "Importing..." : "Import Selected") + "##community-import-" + popupId, new NumericsVector2(148f, 28f))) {
+        if (ImGui.Button((importInProgress ? "Importing..." : "Import Selected") + "##community-import-" + popupId, new NumericsVector2(CommunityPackImportButtonWidth, 28f))) {
             AkronCommunityPacks.BeginDownload(pack, out string message);
             if (!string.IsNullOrWhiteSpace(message)) {
                 Engine.Scene?.Add(new AkronToast(message));
@@ -238,6 +259,10 @@ public sealed partial class AkronOverlay {
             ImGui.EndDisabled();
         }
         DrawPopupTooltip(importInProgress ? "The selected pack is being downloaded and imported." : "Download and import this .akr pack.");
+    }
+
+    internal static bool CommunityPackActionsFitSameLine(float availableWidth, float itemSpacing) {
+        return availableWidth >= CommunityPackDiscordButtonWidth + itemSpacing + CommunityPackImportButtonWidth;
     }
 
     private void DrawCommunityPackPreviewCarousel(AkronCommunityPackEntry pack, string popupId) {
@@ -254,6 +279,11 @@ public sealed partial class AkronOverlay {
         NumericsVector2 imageSize = new NumericsVector2(Math.Min(260f, Math.Max(180f, ImGui.GetContentRegionAvail().X)), 146f);
         if (!DrawCommunityPackPreviewImage(pack, image.Url, imageSize)) {
             TextDisabledLiteral(image.Url);
+        } else {
+            if (ImGui.IsItemClicked()) {
+                expandedCommunityPackPreview = pack;
+            }
+            DrawPopupTooltip("Click to enlarge.");
         }
         if (images.Count <= 1) {
             return;
@@ -265,6 +295,96 @@ public sealed partial class AkronOverlay {
         ImGui.SameLine();
         if (ImGui.Button(">##community-image-next-" + popupId, new NumericsVector2(32f, 24f))) {
             selectedCommunityPackImageIndex = (selectedCommunityPackImageIndex + 1) % images.Count;
+        }
+    }
+
+    private void DrawCommunityPackPreviewLightbox() {
+        AkronCommunityPackEntry pack = expandedCommunityPackPreview;
+        if (pack == null) {
+            return;
+        }
+
+        IReadOnlyList<AkronCommunityPackImage> images = AkronCommunityPacks.GetPreviewImages(pack);
+        if (images.Count == 0) {
+            expandedCommunityPackPreview = null;
+            return;
+        }
+
+        selectedCommunityPackImageIndex = Calc.Clamp(selectedCommunityPackImageIndex, 0, images.Count - 1);
+        AkronCommunityPackImage image = images[selectedCommunityPackImageIndex];
+        NumericsVector2 displaySize = ImGui.GetIO().DisplaySize;
+        NumericsVector2 windowSize = new NumericsVector2(
+            Math.Min(1200f, Math.Max(420f, displaySize.X - 80f)),
+            Math.Min(820f, Math.Max(360f, displaySize.Y - 80f)));
+        ImGui.SetNextWindowSize(windowSize, ImGuiCond.Always);
+        ImGui.SetNextWindowPos(
+            new NumericsVector2((displaySize.X - windowSize.X) * 0.5f, (displaySize.Y - windowSize.Y) * 0.5f),
+            ImGuiCond.Always);
+        ImGui.SetNextWindowFocus();
+
+        bool open = true;
+        if (ImGui.Begin(
+            "Preview - " + pack.Title + "##akron_community_pack_preview",
+            ref open,
+            ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoSavedSettings)) {
+            string roomLabel = string.IsNullOrWhiteSpace(image.RoomName) ? "Preview" : image.RoomName;
+            TextDisabledLiteral(roomLabel + " (" + (selectedCommunityPackImageIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + images.Count.ToString(CultureInfo.InvariantCulture) + ")");
+
+            AkronCommunityPackPreviewImageState state = GetCommunityPackPreviewImageState(pack, image.Url, "Preview image");
+            CompleteCommunityPackPreviewImage(state);
+            NumericsVector2 available = ImGui.GetContentRegionAvail();
+            NumericsVector2 imageSize = FitCommunityPackPreviewSize(
+                state.Width,
+                state.Height,
+                Math.Max(180f, available.X),
+                Math.Max(140f, available.Y - 42f));
+            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0f, (available.X - imageSize.X) * 0.5f));
+            if (!DrawCommunityPackPreviewImage(pack, image.Url, imageSize)) {
+                TextDisabledLiteral(image.Url);
+            }
+
+            if (images.Count > 1) {
+                if (ImGui.Button("< Previous##community-lightbox-prev", new NumericsVector2(104f, 28f))) {
+                    selectedCommunityPackImageIndex = (selectedCommunityPackImageIndex + images.Count - 1) % images.Count;
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("Next >##community-lightbox-next", new NumericsVector2(104f, 28f))) {
+                    selectedCommunityPackImageIndex = (selectedCommunityPackImageIndex + 1) % images.Count;
+                }
+                ImGui.SameLine();
+            }
+            if (ImGui.Button("Close##community-lightbox-close", new NumericsVector2(88f, 28f))) {
+                open = false;
+            }
+        }
+        ImGui.End();
+        if (!open) {
+            expandedCommunityPackPreview = null;
+        }
+    }
+
+    internal static NumericsVector2 FitCommunityPackPreviewSize(int imageWidth, int imageHeight, float maximumWidth, float maximumHeight) {
+        maximumWidth = Math.Max(1f, maximumWidth);
+        maximumHeight = Math.Max(1f, maximumHeight);
+        if (imageWidth <= 0 || imageHeight <= 0) {
+            imageWidth = 16;
+            imageHeight = 9;
+        }
+
+        float scale = Math.Min(maximumWidth / imageWidth, maximumHeight / imageHeight);
+        return new NumericsVector2(imageWidth * scale, imageHeight * scale);
+    }
+
+    private static void OpenCommunityPackDiscord(AkronCommunityPackEntry pack) {
+        try {
+            Uri discordUri = AkronCommunityPacks.ResolveDiscordUri(pack.DiscordUrl);
+            using Process process = Process.Start(new ProcessStartInfo {
+                FileName = discordUri.AbsoluteUri,
+                UseShellExecute = true
+            }) ?? throw new InvalidOperationException("No application accepted the Discord URL.");
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Warn, nameof(AkronOverlay), "Failed to open Community Pack Discord link: " + exception);
+            Engine.Scene?.Add(new AkronToast("Could not open Discord."));
         }
     }
 
@@ -478,6 +598,8 @@ public sealed partial class AkronOverlay {
             state.Error = "Could not load preview image.";
             state.TextureFailed = true;
         } else {
+            state.Width = width;
+            state.Height = height;
             state.DecodedBytes = decodedBytes;
         }
     }
@@ -706,6 +828,8 @@ public sealed partial class AkronOverlay {
         public string Error { get; set; } = string.Empty;
         public IntPtr TextureId { get; set; }
         public bool TextureFailed { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
         public long LastAccess { get; set; }
         public long DecodedBytes { get; set; }
     }
