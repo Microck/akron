@@ -165,6 +165,9 @@ public partial class AkronModule {
             // so labels cannot leak on top of full-screen transition frames.
             deathWipeRenderSuppressionHasDrawnPrimitives = true;
             RenderAkronLevelHud(level, ignoreDeathWipeSuppression: true);
+            if (!AkronCapture.IsCapturingGameFrame && ShouldRenderAkronHitboxes()) {
+                RenderAkronHitboxesUnderDeathWipe(level);
+            }
         }
 
         orig(vertices);

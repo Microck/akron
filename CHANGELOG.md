@@ -10,6 +10,10 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 - Enlarge Community Pack previews in an in-game lightbox and open a pack's source Discord thread from its detail pane.
 
+### Fixed
+
+- Make captured overlay key bindings activate immediately, and keep death hitboxes aligned while the screen wipe covers them.
+
 ## Akron Beta 52
 
 ### Fixed
