@@ -4,15 +4,18 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Akron Beta 54
+
+### Fixed
+
+- Make captured overlay bindings activate immediately for every actionable option.
+- Keep death hitboxes correctly aligned while the screen wipe covers them.
+
 ## Akron Beta 53
 
 ### Added
 
 - Enlarge Community Pack previews in an in-game lightbox and open a pack's source Discord thread from its detail pane.
-
-### Fixed
-
-- Make captured overlay key bindings activate immediately, and keep death hitboxes aligned while the screen wipe covers them.
 
 ## Akron Beta 52
 
