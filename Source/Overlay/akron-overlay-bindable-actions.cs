@@ -62,7 +62,10 @@ public sealed partial class AkronOverlay {
     }
 
     private static bool IsBindableOverlayEntry(OverlayEntry entry) {
-        return entry != null && entry.Control != OverlayEntryControl.GroupHeader;
+        return entry != null &&
+               entry.Control != OverlayEntryControl.GroupHeader &&
+               entry.Control != OverlayEntryControl.KeybindReadOnly &&
+               entry.Control != OverlayEntryControl.SearchInput;
     }
 
     private static IEnumerable<BindableAction> BuildPopupBindableActions(Level level) {
@@ -656,9 +659,12 @@ public sealed partial class AkronOverlay {
         }
     }
 
-    private static bool TryGetDefaultButtonBinding(string actionKey, out ButtonBinding binding) {
-        AkronModuleSettings settings = CurrentSettingsOrDefault();
-        binding = actionKey switch {
+    private static ButtonBinding ResolveDefaultButtonBinding(AkronModuleSettings settings, string actionKey) {
+        if (settings == null) {
+            return null;
+        }
+
+        return actionKey switch {
             "Shortcuts/Retry" => settings.Retry,
             "Shortcuts/Reload Room" => settings.ReloadRoom,
             "Shortcuts/Reload Chapter" => settings.ReloadChapter,
@@ -690,6 +696,10 @@ public sealed partial class AkronOverlay {
             "Shortcuts/Backboost" => null,
             _ => null
         };
+    }
+
+    private static bool TryGetDefaultButtonBinding(string actionKey, out ButtonBinding binding) {
+        binding = ResolveDefaultButtonBinding(CurrentSettingsOrDefault(), actionKey);
 
         return binding != null;
     }
@@ -703,39 +713,22 @@ public sealed partial class AkronOverlay {
     }
 
     private static bool TrySetDefaultButtonBinding(AkronModuleSettings settings, string actionKey, ButtonBinding binding) {
-        if (settings == null) {
+        if (settings == null || binding == null) {
             return false;
         }
 
-        switch (actionKey) {
-            case "Shortcuts/Retry": settings.Retry = binding; return true;
-            case "Shortcuts/Reload Room": settings.ReloadRoom = binding; return true;
-            case "Shortcuts/Reload Chapter": settings.ReloadChapter = binding; return true;
-            case "StartPos/Capture State": settings.SaveState = binding; return true;
-            case "StartPos/Restore State": settings.LoadState = binding; return true;
-            case "popup/StartPos/Set": settings.SetStartPos = binding; return true;
-            case "popup/StartPos/Load": settings.LoadStartPos = binding; return true;
-            case "popup/StartPos/Clear": settings.ClearStartPos = binding; return true;
-            case "popup/StartPos/Previous": settings.PreviousStartPos = binding; return true;
-            case "popup/StartPos/Next": settings.NextStartPos = binding; return true;
-            case "popup/StartPos/Load Slot 1": settings.LoadStartPosSlot1 = binding; return true;
-            case "popup/StartPos/Load Slot 2": settings.LoadStartPosSlot2 = binding; return true;
-            case "popup/StartPos/Load Slot 3": settings.LoadStartPosSlot3 = binding; return true;
-            case "popup/StartPos/Load Slot 4": settings.LoadStartPosSlot4 = binding; return true;
-            case "popup/StartPos/Load Slot 5": settings.LoadStartPosSlot5 = binding; return true;
-            case "popup/StartPos/Load Slot 6": settings.LoadStartPosSlot6 = binding; return true;
-            case "popup/StartPos/Load Slot 7": settings.LoadStartPosSlot7 = binding; return true;
-            case "popup/StartPos/Load Slot 8": settings.LoadStartPosSlot8 = binding; return true;
-            case "popup/StartPos/Load Slot 9": settings.LoadStartPosSlot9 = binding; return true;
-            case "Player/Click Teleport": settings.ClickTeleportCursor = binding; return true;
-            case "Creator/Cursor Zoom": settings.CursorZoomHold = binding; return true;
-            case "Creator/Cursor Tools": settings.CursorToolsHold = binding; return true;
-            case "Creator/Entity Inspector": settings.ToggleEntityInspector = binding; return true;
-            case "Level/Show Hitboxes": settings.ToggleHitboxes = binding; return true;
-            case "Level/Freeze Gameplay": settings.FreezeGameplay = binding; return true;
+        ButtonBinding target = ResolveDefaultButtonBinding(settings, actionKey);
+        if (target == null) {
+            return false;
         }
 
-        return false;
+        // Everest registers each ButtonBinding's VirtualButton during input
+        // initialization. Replacing the wrapper later leaves the new binding
+        // unregistered, so update the registered Binding object in place.
+        target.Keys = binding.Keys?.ToList() ?? new List<Keys>();
+        target.Buttons = binding.Buttons?.ToList() ?? new List<Buttons>();
+        target.MouseButtons = binding.MouseButtons?.ToList() ?? new List<MInput.MouseData.MouseButtons>();
+        return true;
     }
 
     private static ButtonBinding EmptyButtonBinding() {

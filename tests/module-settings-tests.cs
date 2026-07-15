@@ -1854,6 +1854,47 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void EveryActionableOverlayRowHasABindableAction()
+    {
+        FieldInfo? baseTabsField = typeof(AkronOverlay).GetField("BaseTabs", BindingFlags.NonPublic | BindingFlags.Static);
+        MethodInfo? buildEntries = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static);
+        MethodInfo? isBindable = typeof(AkronOverlay).GetMethod("IsBindableOverlayEntry", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(baseTabsField);
+        Assert.NotNull(buildEntries);
+        Assert.NotNull(isBindable);
+
+        string[] baseTabs = (string[])baseTabsField.GetValue(null)!;
+        foreach (string tab in baseTabs) {
+            object entries = buildEntries.Invoke(null, new object?[] { tab, null })!;
+            Type entryType = entries.GetType().GetGenericArguments()[0];
+            PropertyInfo controlProperty = entryType.GetProperty("Control", BindingFlags.Public | BindingFlags.Instance)!;
+            PropertyInfo executeProperty = entryType.GetProperty("Execute", BindingFlags.Public | BindingFlags.Instance)!;
+
+            foreach (object entry in (System.Collections.IEnumerable)entries) {
+                string control = controlProperty.GetValue(entry)!.ToString()!;
+                bool bindable = (bool)isBindable.Invoke(null, new[] { entry })!;
+                if (control is "GroupHeader" or "KeybindReadOnly" or "SearchInput") {
+                    Assert.False(bindable);
+                    continue;
+                }
+
+                Assert.True(bindable);
+                Assert.NotNull(executeProperty.GetValue(entry));
+            }
+        }
+
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-bindable-actions.cs"));
+        int registryStart = source.IndexOf("private static IEnumerable<BindableAction> BuildBindableActions", StringComparison.Ordinal);
+        int registryEnd = source.IndexOf("private static bool IsBindableOverlayEntry", registryStart, StringComparison.Ordinal);
+        Assert.True(registryStart >= 0);
+        Assert.True(registryEnd > registryStart);
+        string registry = source[registryStart..registryEnd];
+        Assert.Contains("foreach (string tabName in GetVisibleTabs())", registry);
+        Assert.Contains("if (!IsBindableOverlayEntry(entry))", registry);
+        Assert.Contains("yield return new BindableAction", registry);
+    }
+
+    [Fact]
     public void RemovedRowsAreNotShownInOverlay()
     {
         Assert.DoesNotContain("Hide HUD", BuildOverlayEntryLabels("Level"));
@@ -4468,15 +4509,32 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void DefaultBindingSetterUpdatesNativeButtonBindingField()
+    public void DefaultBindingSetterPreservesInitializedNativeButtonBinding()
     {
-        AkronModuleSettings settings = new AkronModuleSettings();
-        ButtonBinding binding = AkronModuleSettings.CreateEmptyButtonBinding();
-        binding.Keys = new List<Keys> { Keys.K };
+        // The stripped Everest fixture emits invalid IL for ButtonBinding's
+        // collection getters, so this integration invariant cannot be invoked
+        // behaviorally in the test process.
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-bindable-actions.cs"));
+        int resolverStart = source.IndexOf("private static ButtonBinding ResolveDefaultButtonBinding", StringComparison.Ordinal);
+        int getterStart = source.IndexOf("private static bool TryGetDefaultButtonBinding", StringComparison.Ordinal);
+        int setterStart = source.IndexOf("private static bool TrySetDefaultButtonBinding(AkronModuleSettings settings", StringComparison.Ordinal);
+        int setterEnd = source.IndexOf("private static ButtonBinding EmptyButtonBinding", setterStart, StringComparison.Ordinal);
 
-        Assert.True(InvokeTrySetDefaultButtonBinding(settings, "Shortcuts/Retry", binding));
+        Assert.True(resolverStart >= 0);
+        Assert.True(getterStart > resolverStart);
+        Assert.True(setterStart >= 0);
+        Assert.True(setterEnd > setterStart);
+        string resolver = source[resolverStart..getterStart];
+        string getter = source[getterStart..setterStart];
+        string setter = source[setterStart..setterEnd];
 
-        Assert.Same(binding, settings.Retry);
+        Assert.Contains("\"Shortcuts/Retry\" => settings.Retry", resolver);
+        Assert.Contains("ResolveDefaultButtonBinding(CurrentSettingsOrDefault(), actionKey)", getter);
+        Assert.Contains("ResolveDefaultButtonBinding(settings, actionKey)", setter);
+        Assert.Contains("target.Keys = binding.Keys?.ToList()", setter);
+        Assert.Contains("target.Buttons = binding.Buttons?.ToList()", setter);
+        Assert.Contains("target.MouseButtons = binding.MouseButtons?.ToList()", setter);
+        Assert.DoesNotContain("settings.Retry = binding", setter);
     }
 
     [Fact]

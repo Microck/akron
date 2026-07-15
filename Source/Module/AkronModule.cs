@@ -669,6 +669,23 @@ public partial class AkronModule : EverestModule {
         }
     }
 
+    private static void RenderAkronHitboxesUnderDeathWipe(Level level) {
+        Viewport viewport = Engine.Viewport;
+        // ScreenWipe draws while the graphics viewport already contributes its
+        // X/Y origin. WorldToHud includes that origin too, so cancel one copy or
+        // letterboxed displays shift this pass down and right.
+        Matrix transform = Matrix.CreateTranslation(-viewport.X, -viewport.Y, 0f);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, transform);
+        try {
+            // GameplayRenderer's regular hitbox pass is suppressed after the
+            // wipe starts. Draw in final-screen coordinates here so the wipe
+            // itself, rendered next, hides only the pixels it has reached.
+            AkronEntityInspector.RenderHitboxes(level, level.Tracker.GetEntity<Player>());
+        } finally {
+            Draw.SpriteBatch.End();
+        }
+    }
+
     private static void GameplayRendererOnRender(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene) {
         orig(self, scene);
 
@@ -693,11 +710,16 @@ public partial class AkronModule : EverestModule {
         }
     }
 
-    private static bool ShouldRenderGameplayDebugPass(Level level) {
+    private static bool ShouldRenderAkronHitboxes() {
         AkronModuleSettings settings = Settings;
-        bool showHitboxes = settings.HitboxViewer ||
-                            settings.HitboxShowLastDeath &&
-                            AkronEntityInspector.HasVisibleLastDeathHitbox();
+        return settings.HitboxViewer ||
+               settings.HitboxShowLastDeath &&
+               AkronEntityInspector.HasVisibleLastDeathHitbox();
+    }
+
+    private static bool ShouldRenderGameplayDebugPass(Level level) {
+        bool showHitboxes = ShouldRenderAkronHitboxes();
+        AkronModuleSettings settings = Settings;
         bool showAutoKillArea = settings.AutoKill &&
                                 settings.AutoKillArea &&
                                 settings.AutoKillShowArea;

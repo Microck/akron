@@ -760,6 +760,33 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void DeathWipeDrawsHitboxesImmediatelyBeforeWipePrimitives() {
+        string moduleSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/AkronModule.cs"));
+        string wipeSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Runtime/akron-death-wipe-rendering.cs"));
+        int helperStart = moduleSource.IndexOf("private static void RenderAkronHitboxesUnderDeathWipe", StringComparison.Ordinal);
+        int helperEnd = moduleSource.IndexOf("private static void GameplayRendererOnRender", helperStart, StringComparison.Ordinal);
+        int predicateStart = moduleSource.IndexOf("private static bool ShouldRenderAkronHitboxes", StringComparison.Ordinal);
+        int drawStart = wipeSource.IndexOf("private static void ScreenWipeOnDrawPrimitives", StringComparison.Ordinal);
+        int captureGuard = wipeSource.IndexOf("!AkronCapture.IsCapturingGameFrame", drawStart, StringComparison.Ordinal);
+        int visibilityGuard = wipeSource.IndexOf("ShouldRenderAkronHitboxes()", captureGuard, StringComparison.Ordinal);
+        int hitboxDraw = wipeSource.IndexOf("RenderAkronHitboxesUnderDeathWipe(level);", drawStart, StringComparison.Ordinal);
+        int wipeDraw = wipeSource.IndexOf("orig(vertices);", drawStart, StringComparison.Ordinal);
+
+        Assert.True(helperStart >= 0);
+        Assert.True(helperEnd > helperStart);
+        Assert.True(predicateStart >= 0);
+        Assert.True(drawStart >= 0);
+        Assert.True(captureGuard > drawStart);
+        Assert.True(visibilityGuard > captureGuard);
+        Assert.True(hitboxDraw > visibilityGuard);
+        Assert.True(wipeDraw > hitboxDraw);
+        string helper = moduleSource[helperStart..helperEnd];
+        Assert.Contains("Viewport viewport = Engine.Viewport;", helper);
+        Assert.Contains("Matrix.CreateTranslation(-viewport.X, -viewport.Y, 0f)", helper);
+        Assert.Contains("AkronEntityInspector.RenderHitboxes(level, level.Tracker.GetEntity<Player>());", helper);
+    }
+
+    [Fact]
     public void Issue72OverlayRenderDoesNotRefilterRowsDuringExternalToolPlacement() {
         string layoutSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-layout.cs"));
         string rendererSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-imgui-renderer.cs"));
