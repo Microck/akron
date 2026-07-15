@@ -27,7 +27,7 @@ The Akron website handles the public `akron.micr.dev` catalog routes and rewrite
 |---|---|
 | `/catalog/index.json` | `catalog/index.json` |
 | `/maps/<map>/<pack>.akr` | `packs/<map>/<pack>.akr` |
-| `/maps/<map>/<pack>/captures/<room>.webp` | `captures/<map>/<pack>/<room>.webp` |
+| `/maps/<map>/<pack>/captures/<room>.jpg` | `captures/<map>/<pack>/<room>.jpg` |
 | `/submissions/<path>` | `submissions/<path>` |
 | `/r2-assets/<path>` | `<path>` |
 
@@ -39,8 +39,8 @@ The catalog is a JSON document with the following structure. Replace angle-brack
 
 ```json
 {
-  "format": "akron-community-pack-index-v1",
-  "version": 1,
+  "format": "akron-community-pack-index-v3",
+  "version": 3,
   "packs": [
     {
       "id": "spring-collab-beginner-startpos-v1",
@@ -49,6 +49,7 @@ The catalog is a JSON document with the following structure. Replace angle-brack
       "section": "StartPos",
       "mapSid": "SpringCollab2020/1-Beginner",
       "mapUrl": "https://gamebanana.com/mods/150453",
+      "discordUrl": "https://discord.com/channels/123456789012345678/234567890123456789",
       "downloadUrl": "<direct .akr HTTPS URL>",
       "authorName": "Display Name",
       "authorAvatarUrl": "",
@@ -60,7 +61,9 @@ The catalog is a JSON document with the following structure. Replace angle-brack
       ],
       "downloadCount": 42,
       "updatedUtc": "2026-05-20T00:00:00Z",
-      "tags": ["startpos", "beginner", "lobby"]
+      "tags": ["startpos", "beginner", "lobby"],
+      "sha256": "<64 lowercase hexadecimal characters>",
+      "sizeBytes": 1234
     }
   ]
 }
@@ -76,6 +79,7 @@ The catalog is a JSON document with the following structure. Replace angle-brack
 | `section` | `.akr` import scope. Must match one of the supported section values. |
 | `mapSid` | Celeste map SID used for map filtering. |
 | `mapUrl` | Public page for the target map when available. |
+| `discordUrl` | Optional source Discord thread shown as **See in Discord**. Official entries use `https://discord.com/channels/<server>/<thread>`. |
 | `downloadUrl` | Direct HTTPS URL for the `.akr` archive. |
 | `authorName` | Display name for the pack author. |
 | `authorAvatarUrl` | Optional avatar URL. Use an empty string when unavailable. |
@@ -85,6 +89,8 @@ The catalog is a JSON document with the following structure. Replace angle-brack
 | `downloadCount` | Display count from the catalog maintainer. |
 | `updatedUtc` | UTC timestamp for the latest catalog update. |
 | `tags` | Search tags used for filtering. |
+| `sha256` | Lowercase SHA-256 digest of the exact `.akr` bytes. |
+| `sizeBytes` | Exact `.akr` byte length. |
 
 The `section` field must be one of the following values:
 
@@ -121,7 +127,7 @@ Before publishing, verify the catalog-facing pack contract:
 
 - Verify that the archive contains exactly `manifest.json` and `setup.json`.
 - Verify that the manifest `Kind` is `setup`.
-- Ensure that `setup.json` uses the `akron-setup-v1` format.
+- Ensure that `setup.json` uses the `akron-setup-v2` format.
 - Verify that the entry `section` matches the setup section, unless a different scope is intended.
 - Confirm that the download URL returns the expected `.akr` archive.
 - Reject `Whole` setup packs from the public Discord catalog.

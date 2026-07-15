@@ -54,8 +54,8 @@ public sealed class CommunityPackTests {
     public void ParseIndexAcceptsBotContractShape() {
         AkronCommunityPackIndex index = AkronCommunityPacks.ParseIndex("""
         {
-          "format": "akron-community-pack-index-v2",
-          "version": 2,
+          "format": "akron-community-pack-index-v3",
+          "version": 3,
           "packs": [
             {
               "id": "spring-collab-startpos",
@@ -63,6 +63,7 @@ public sealed class CommunityPackTests {
               "section": "StartPos",
               "mapSid": "SpringCollab2020/1-Beginner",
               "mapUrl": "https://gamebanana.com/mods/150453",
+              "discordUrl": "https://discord.com/channels/123456789012345678/234567890123456789",
               "downloadUrl": "file:///tmp/spring.akr",
               "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
               "sizeBytes": 1234,
@@ -76,6 +77,7 @@ public sealed class CommunityPackTests {
         AkronCommunityPackEntry pack = Assert.Single(index.Packs);
         Assert.Equal(AkronSetupSection.StartPos, pack.Section);
         Assert.Equal("https://gamebanana.com/mods/150453", pack.MapUrl);
+        Assert.Equal("https://discord.com/channels/123456789012345678/234567890123456789", pack.DiscordUrl);
     }
 
     [Fact]
@@ -84,12 +86,72 @@ public sealed class CommunityPackTests {
         { "format": "akron-community-pack-index-v1", "version": 1, "packs": [] }
         """));
         Assert.Throws<InvalidDataException>(() => AkronCommunityPacks.ParseIndex("""
+        { "format": "akron-community-pack-index-v2", "version": 2, "packs": [] }
+        """));
+        Assert.Throws<InvalidDataException>(() => AkronCommunityPacks.ParseIndex("""
         {
-          "format": "akron-community-pack-index-v2",
-          "version": 2,
+          "format": "akron-community-pack-index-v3",
+          "version": 3,
           "packs": [{ "id": "x", "title": "X", "section": "StartPos", "downloadUrl": "https://akron.micr.dev/x.akr" }]
         }
         """));
+    }
+
+    [Theory]
+    [InlineData("http://discord.com/channels/123/456")]
+    [InlineData("https://discord.example.com/channels/123/456")]
+    [InlineData("https://discord.com/channels/@me/456")]
+    [InlineData("https://discord.com/channels/123/456/789")]
+    [InlineData("https://discord.com/channels/123/456?source=akron")]
+    public void DiscordLinksRejectNonThreadDestinations(string url) {
+        Assert.Throws<InvalidDataException>(() => AkronCommunityPacks.ResolveDiscordUri(url));
+    }
+
+    [Fact]
+    public void DiscordLinksAcceptServerThreadUrls() {
+        const string url = "https://discord.com/channels/123456789012345678/234567890123456789";
+
+        Assert.Equal(url, AkronCommunityPacks.ResolveDiscordUri(url).AbsoluteUri);
+    }
+
+    [Fact]
+    public void BrowserProvidesLargePreviewAndDiscordActions() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-browser.cs"));
+
+        Assert.Contains("Click to enlarge", source);
+        Assert.Contains("DrawCommunityPackPreviewLightbox", source);
+        Assert.Contains("See in Discord", source);
+    }
+
+    [Theory]
+    [InlineData(1920, 1080, 900, 600, 900, 506.25)]
+    [InlineData(800, 1200, 900, 600, 400, 600)]
+    public void LargePreviewPreservesImageAspectRatio(
+        int imageWidth,
+        int imageHeight,
+        float maximumWidth,
+        float maximumHeight,
+        float expectedWidth,
+        float expectedHeight) {
+        System.Numerics.Vector2 size = AkronOverlay.FitCommunityPackPreviewSize(
+            imageWidth,
+            imageHeight,
+            maximumWidth,
+            maximumHeight);
+
+        Assert.Equal(expectedWidth, size.X, 2);
+        Assert.Equal(expectedHeight, size.Y, 2);
+    }
+
+    [Theory]
+    [InlineData(288, 8, true)]
+    [InlineData(287.99, 8, false)]
+    [InlineData(260, 8, false)]
+    public void CommunityPackActionsWrapBeforeImportWouldBeClipped(
+        float availableWidth,
+        float itemSpacing,
+        bool expected) {
+        Assert.Equal(expected, AkronOverlay.CommunityPackActionsFitSameLine(availableWidth, itemSpacing));
     }
 
     [Theory]
@@ -281,8 +343,8 @@ public sealed class CommunityPackTests {
         string path = Path.Combine(Path.GetTempPath(), "akron-community-index-" + Guid.NewGuid().ToString("N") + ".json");
         File.WriteAllText(path, """
         {
-          "format": "akron-community-pack-index-v2",
-          "version": 2,
+          "format": "akron-community-pack-index-v3",
+          "version": 3,
           "packs": [
             {
               "id": "file-refresh",

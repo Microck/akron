@@ -267,14 +267,18 @@ public sealed class OverlayTests {
     public void TransientResetClosesCommunityPackBrowser() {
         AkronOverlay overlay = CreateOverlayForStateTest();
         FieldInfo browserOpen = typeof(AkronOverlay).GetField("communityPackBrowserOpen", BindingFlags.Static | BindingFlags.NonPublic)!;
+        FieldInfo expandedPreview = typeof(AkronOverlay).GetField("expandedCommunityPackPreview", BindingFlags.Instance | BindingFlags.NonPublic)!;
         browserOpen.SetValue(null, true);
+        expandedPreview.SetValue(overlay, new AkronCommunityPackEntry());
 
         try {
             overlay.ResetTransientUiState(searchAutofocus: false);
 
             Assert.False((bool) browserOpen.GetValue(null)!);
+            Assert.Null(expandedPreview.GetValue(overlay));
         } finally {
             browserOpen.SetValue(null, false);
+            expandedPreview.SetValue(overlay, null);
         }
     }
 
@@ -290,13 +294,14 @@ public sealed class OverlayTests {
     }
 
     [Theory]
-    [InlineData(true, false, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
-    [InlineData(false, true, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
-    [InlineData(false, false, true, false, AkronOverlay.OverlayCancelAction.CloseOptionsPopup)]
-    [InlineData(false, false, false, true, AkronOverlay.OverlayCancelAction.CloseCommunityPackBrowser)]
-    [InlineData(false, false, false, false, AkronOverlay.OverlayCancelAction.KeepOverlayOpen)]
-    public void CancelInputDoesNotCloseBaseOverlay(bool searchInputActive, bool hasSearchQuery, bool optionsPopupOpen, bool communityPackBrowserOpen, AkronOverlay.OverlayCancelAction expected) {
-        Assert.Equal(expected, AkronOverlay.ResolveCancelAction(searchInputActive, hasSearchQuery, optionsPopupOpen, communityPackBrowserOpen));
+    [InlineData(true, false, false, false, false, AkronOverlay.OverlayCancelAction.CloseCommunityPackPreview)]
+    [InlineData(false, true, false, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
+    [InlineData(false, false, true, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
+    [InlineData(false, false, false, true, false, AkronOverlay.OverlayCancelAction.CloseOptionsPopup)]
+    [InlineData(false, false, false, false, true, AkronOverlay.OverlayCancelAction.CloseCommunityPackBrowser)]
+    [InlineData(false, false, false, false, false, AkronOverlay.OverlayCancelAction.KeepOverlayOpen)]
+    public void CancelInputDoesNotCloseBaseOverlay(bool previewOpen, bool searchInputActive, bool hasSearchQuery, bool optionsPopupOpen, bool communityPackBrowserOpen, AkronOverlay.OverlayCancelAction expected) {
+        Assert.Equal(expected, AkronOverlay.ResolveCancelAction(previewOpen, searchInputActive, hasSearchQuery, optionsPopupOpen, communityPackBrowserOpen));
     }
 
     [Fact]

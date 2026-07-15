@@ -19,7 +19,7 @@ namespace Celeste.Mod.Akron;
 
 public sealed class AkronCommunityPackIndex {
     public string Format { get; set; } = AkronCommunityPacks.IndexFormat;
-    public int Version { get; set; } = 2;
+    public int Version { get; set; } = 3;
     public List<AkronCommunityPackEntry> Packs { get; set; } = new List<AkronCommunityPackEntry>();
 }
 
@@ -30,6 +30,7 @@ public sealed class AkronCommunityPackEntry {
     public AkronSetupSection Section { get; set; } = AkronSetupSection.Whole;
     public string MapSid { get; set; } = string.Empty;
     public string MapUrl { get; set; } = string.Empty;
+    public string DiscordUrl { get; set; } = string.Empty;
     public string DownloadUrl { get; set; } = string.Empty;
     public string Sha256 { get; set; } = string.Empty;
     public int SizeBytes { get; set; }
@@ -73,8 +74,8 @@ public sealed class AkronCommunityPackSearchResult {
 }
 
 public static class AkronCommunityPacks {
-    public const string IndexFormat = "akron-community-pack-index-v2";
-    public const int IndexVersion = 2;
+    public const string IndexFormat = "akron-community-pack-index-v3";
+    public const int IndexVersion = 3;
     public const string DefaultIndexUrl = "https://akron.micr.dev/catalog/index.json";
 
     private const int MaxIndexBytes = 1024 * 1024;
@@ -85,6 +86,7 @@ public static class AkronCommunityPacks {
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
     private static readonly HttpClient Http = CreateSafeHttpClient(RequestTimeout);
     private static readonly Regex Sha256Pattern = new Regex("^[0-9a-f]{64}$", RegexOptions.CultureInvariant);
+    private static readonly Regex DiscordThreadPathPattern = new Regex("^/channels/[0-9]{1,20}/[0-9]{1,20}/?$", RegexOptions.CultureInvariant);
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = false,
@@ -528,6 +530,7 @@ public static class AkronCommunityPacks {
         ValidateOptionalCatalogText(entry.Description, 4096, "description");
         ValidateOptionalCatalogText(entry.AuthorName, 256, "author name");
         ValidateOptionalCatalogText(entry.MapUrl, 2048, "map URL");
+        ValidateOptionalCatalogText(entry.DiscordUrl, 2048, "Discord URL");
         ValidateCatalogText(entry.DownloadUrl, 2048, "download URL");
         ValidateOptionalCatalogText(entry.ImageUrl, 2048, "preview URL");
         ValidateOptionalCatalogText(entry.AuthorAvatarUrl, 2048, "author avatar URL");
@@ -544,6 +547,9 @@ public static class AkronCommunityPacks {
             ValidateCatalogText(image.Url, 2048, "preview URL");
             ValidateOptionalCatalogText(image.RoomName, 256, "preview room name");
         }
+        if (!string.IsNullOrWhiteSpace(entry.DiscordUrl)) {
+            ResolveDiscordUri(entry.DiscordUrl);
+        }
     }
 
     private static void ValidateCatalogText(string value, int maximum, string label) {
@@ -556,6 +562,20 @@ public static class AkronCommunityPacks {
         if ((value?.Length ?? 0) > maximum) {
             throw new InvalidDataException("Community pack " + label + " is too long.");
         }
+    }
+
+    internal static Uri ResolveDiscordUri(string discordUrl) {
+        if (!Uri.TryCreate(discordUrl, UriKind.Absolute, out Uri uri) ||
+            uri.Scheme != Uri.UriSchemeHttps ||
+            !string.Equals(uri.IdnHost, "discord.com", StringComparison.OrdinalIgnoreCase) ||
+            !uri.IsDefaultPort ||
+            !string.IsNullOrEmpty(uri.UserInfo) ||
+            !string.IsNullOrEmpty(uri.Query) ||
+            !string.IsNullOrEmpty(uri.Fragment) ||
+            !DiscordThreadPathPattern.IsMatch(uri.AbsolutePath)) {
+            throw new InvalidDataException("Community pack Discord URL is invalid.");
+        }
+        return uri;
     }
 
     internal static Uri ResolveCatalogResourceUri(AkronCommunityPackEntry entry, string resourceUrl, string label) {
