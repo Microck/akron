@@ -818,7 +818,7 @@ public partial class AkronModule : EverestModule {
         string textureKey = RefillClarityFrameCache.Count.ToString(CultureInfo.InvariantCulture);
         MTexture[] frames = new MTexture[sourceFrames.Length];
         for (int index = 0; index < sourceFrames.Length; index++) {
-            frames[index] = CreateRefillClarityFrame(sourceFrames[index], textureKey + "|" + index.ToString(CultureInfo.InvariantCulture), twoDashes, color, opacity);
+            frames[index] = CreateRefillClarityFrame(sourceFrames[index], textureKey + "|" + index.ToString(CultureInfo.InvariantCulture), color, opacity);
         }
 
         RefillClarityFrameCache[key] = frames;
@@ -893,22 +893,24 @@ public partial class AkronModule : EverestModule {
         return new RefillClaritySourceCacheKey(idleFrames, twoDashes);
     }
 
-    private static MTexture CreateRefillClarityFrame(RefillClaritySourceFrame source, string key, bool twoDashes, int rgb, int opacity) {
-        Color[] pixels = BuildRefillClarityPixels(source.Pixels, source.PixelWidth, source.PixelHeight, twoDashes, rgb, opacity);
+    private static MTexture CreateRefillClarityFrame(RefillClaritySourceFrame source, string key, int rgb, int opacity) {
+        Color[] pixels = BuildRefillClarityPixels(source.Pixels, source.PixelWidth, source.PixelHeight, rgb, opacity);
         VirtualTexture texture = VirtualContent.CreateTexture("akron-refill-clarity-" + key, source.PixelWidth, source.PixelHeight, Color.Transparent);
         texture.Texture_Safe.SetData(pixels);
         RefillClarityFrameTextures.Add(texture);
         return new MTexture(texture, source.DrawOffset, source.FrameWidth, source.FrameHeight);
     }
 
-    internal static Color[] BuildRefillClarityPixels(Color[] source, int width, int height, bool twoDashes, int rgb, int opacity) {
+    internal static Color[] BuildRefillClarityPixels(Color[] source, int width, int height, int rgb, int opacity) {
         Color[] pixels = new Color[source.Length];
         bool[] opaquePixels = new bool[source.Length];
         for (int index = 0; index < source.Length; index++) {
             opaquePixels[index] = source[index].A > 0;
         }
 
-        bool[] outlineMask = BuildRefillClarityOutlineMask(opaquePixels, width, height, twoDashes);
+        // Refill.Render draws its own black outline outside these texture pixels.
+        // Color the texture's interior edge so enabling clarity does not enlarge it.
+        bool[] outlineMask = BuildRefillClarityOutlineMask(opaquePixels, width, height);
         byte red = (byte) ((rgb >> 16) & 0xFF);
         byte green = (byte) ((rgb >> 8) & 0xFF);
         byte blue = (byte) (rgb & 0xFF);
@@ -921,36 +923,35 @@ public partial class AkronModule : EverestModule {
 
         for (int index = 0; index < pixels.Length; index++) {
             Color pixel = source[index];
+            if (outlineMask[index]) {
+                pixels[index] = outline;
+                continue;
+            }
+
             if (pixel.A > 0) {
                 pixels[index] = PremultiplyTexturePixel(pixel);
                 continue;
             }
 
-            pixels[index] = outlineMask[index] ? outline : Color.Transparent;
+            pixels[index] = Color.Transparent;
         }
 
         return pixels;
     }
 
-    internal static bool[] BuildRefillClarityOutlineMask(bool[] opaquePixels, int width, int height, bool twoDashes) {
+    internal static bool[] BuildRefillClarityOutlineMask(bool[] opaquePixels, int width, int height) {
         bool[] outlineMask = new bool[opaquePixels.Length];
         for (int index = 0; index < opaquePixels.Length; index++) {
-            if (opaquePixels[index]) {
+            if (!opaquePixels[index]) {
                 continue;
             }
 
             int x = index % width;
             int y = index / width;
-            bool horizontalNeighbor = IsOpaqueRefillPixel(opaquePixels, width, height, x - 1, y) ||
-                                      IsOpaqueRefillPixel(opaquePixels, width, height, x + 1, y);
-            bool verticalNeighbor = IsOpaqueRefillPixel(opaquePixels, width, height, x, y - 1) ||
-                                    IsOpaqueRefillPixel(opaquePixels, width, height, x, y + 1);
-
-            // The two-dash sprite is two vertically joined gems. Leaving the
-            // horizontal sides of the join open matches its existing outline
-            // while the normal refill uses an uninterrupted four-neighbor ring.
-            bool centerJoinGap = twoDashes && y == height / 2 && horizontalNeighbor && !verticalNeighbor;
-            outlineMask[index] = (horizontalNeighbor || verticalNeighbor) && !centerJoinGap;
+            outlineMask[index] = !IsOpaqueRefillPixel(opaquePixels, width, height, x - 1, y) ||
+                                 !IsOpaqueRefillPixel(opaquePixels, width, height, x + 1, y) ||
+                                 !IsOpaqueRefillPixel(opaquePixels, width, height, x, y - 1) ||
+                                 !IsOpaqueRefillPixel(opaquePixels, width, height, x, y + 1);
         }
 
         return outlineMask;
