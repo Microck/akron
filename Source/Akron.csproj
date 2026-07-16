@@ -34,8 +34,6 @@
         <EmbeddedResource Include="Resources\poppins-imgui-18.csv" />
         <EmbeddedResource Include="Resources\poppins.ttf" />
         <EmbeddedResource Include="Resources\community-pack-placeholder.jpg" />
-        <EmbeddedResource Include="Resources\refill-clarity\refill\*.png" LogicalName="Celeste.Mod.Akron.Resources.RefillClarity.Refill.%(Filename)%(Extension)" />
-        <EmbeddedResource Include="Resources\refill-clarity\refill-two\*.png" LogicalName="Celeste.Mod.Akron.Resources.RefillClarity.RefillTwo.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Native\**\*.*" />
     </ItemGroup>
 
@@ -49,6 +47,9 @@
     <Target Name="Package" AfterTargets="Build" DependsOnTargets="CopyFiles">
         <ItemGroup>
             <FilesToPackage Include="$(ZippedFiles)" Exclude="..\bin\**\*.pdb" />
+            <FilesToPackage Include="..\LICENSE">
+                <PackagePath>LICENSE</PackagePath>
+            </FilesToPackage>
             <FilesToPackage Include="Resources\dialog\English.txt">
                 <PackagePath>Dialog/English.txt</PackagePath>
             </FilesToPackage>

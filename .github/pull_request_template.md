@@ -11,6 +11,7 @@
 - [ ] Live Celeste/Everest verification evidence is included when unit tests cannot prove the behavior.
 - [ ] Screenshots or video are included for visible, input-driven, timing-sensitive, rendering-sensitive, capture-related, or gameplay-facing changes.
 - [ ] The pull request does not commit secrets, local tokens, personal config files, local captures, or machine-specific paths.
+- [ ] I have the right to submit this contribution and agree to the contribution license in `CONTRIBUTING.md`.
 
 ## Checks Run
 

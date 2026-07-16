@@ -64,7 +64,10 @@ jobs:
             echo "::error::Player package must not contain PDB files."
             exit 1
           fi
+          unzip -Z1 Akron.zip | grep -Fx LICENSE >/dev/null
           unzip -Z1 Akron.zip | grep -Fx ThirdPartyNotices.txt >/dev/null
+          cmp LICENSE <(unzip -p Akron.zip LICENSE)
+          cmp licenses/third-party-notices.txt <(unzip -p Akron.zip ThirdPartyNotices.txt)
 
       - name: Upload packaged mod
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

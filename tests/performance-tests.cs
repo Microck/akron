@@ -6,6 +6,11 @@ using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
 
+[CollectionDefinition("Performance", DisableParallelization = true)]
+public sealed class PerformanceTestCollection {
+}
+
+[Collection("Performance")]
 public sealed class PerformanceTests {
     private const int FeatureClassificationIterations = 20_000;
     private const int UiLabelClassificationIterations = 10_000;
