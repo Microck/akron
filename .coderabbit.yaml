@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+# Keep the organization-level QUIET profile and review guidance that already
+# produced useful findings on Akron pull requests.
+inheritance: true
+
+knowledge_base:
+  code_guidelines:
+    filePatterns:
+      - files: "docs/contributing/implementation-boundaries.mdx"
+        applyTo: "Source/**/*.cs,tests/**/*.cs"
+      - files: "docs/release-runbook.md,docs/reference/release-configuration.mdx"
+        applyTo: ".github/workflows/release.yml,.github/workflows/sync-gamebanana-readme-links.yml,.github/scripts/**,scripts/publish-gamebanana-release.mjs,Makefile,Source/Akron.csproj"
