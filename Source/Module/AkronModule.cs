@@ -914,17 +914,15 @@ public partial class AkronModule : EverestModule {
         byte red = (byte) ((rgb >> 16) & 0xFF);
         byte green = (byte) ((rgb >> 8) & 0xFF);
         byte blue = (byte) (rgb & 0xFF);
-        byte outlineAlpha = (byte) Math.Round(255 * (opacity / 100f));
-        Color outline = new Color(
-            (byte) (red * outlineAlpha / 255),
-            (byte) (green * outlineAlpha / 255),
-            (byte) (blue * outlineAlpha / 255),
-            outlineAlpha);
 
         for (int index = 0; index < pixels.Length; index++) {
             Color pixel = source[index];
             if (outlineMask[index]) {
-                pixels[index] = outline;
+                pixels[index] = new Color(
+                    BlendRefillClarityChannel(pixel.R, red, pixel.A, opacity),
+                    BlendRefillClarityChannel(pixel.G, green, pixel.A, opacity),
+                    BlendRefillClarityChannel(pixel.B, blue, pixel.A, opacity),
+                    pixel.A);
                 continue;
             }
 
@@ -955,6 +953,11 @@ public partial class AkronModule : EverestModule {
         }
 
         return outlineMask;
+    }
+
+    internal static byte BlendRefillClarityChannel(byte source, byte target, byte alpha, int opacity) {
+        byte blended = (byte) Math.Round(source + (target - source) * (opacity / 100f));
+        return (byte) (blended * alpha / 255);
     }
 
     private static bool IsOpaqueRefillPixel(bool[] pixels, int width, int height, int x, int y) {

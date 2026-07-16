@@ -818,6 +818,21 @@ public sealed class ModuleSettingsTests
         Assert.False(outlineMask[1 + 2 * 5]);
     }
 
+    [Theory]
+    [InlineData(0, 10)]
+    [InlineData(50, 69)]
+    [InlineData(100, 128)]
+    public void RefillClarityOpacityPreservesSourceAlpha(int opacity, byte expected)
+    {
+        byte channel = AkronModule.BlendRefillClarityChannel(
+            source: 20,
+            target: 255,
+            alpha: 128,
+            opacity: opacity);
+
+        Assert.Equal(expected, channel);
+    }
+
     [Fact]
     public void RefillClarityExpandsTrimmedFramesBeforeBuildingOutline()
     {
