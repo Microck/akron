@@ -88,4 +88,4 @@ if Akron helps with your Celeste practice, routing, captures, or setup sharing, 
 
 ## license
 
-Akron-owned material is copyright (c) 2026 Microck and licensed under [Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International](LICENSE). Unchanged, attributed, noncommercial redistribution is permitted; distributing modified material is not. Third-party components remain under the separate terms listed in [third-party notices](licenses/third-party-notices.txt).
+Akron-owned material is licensed under [Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International](LICENSE). Third-party components remain under the separate terms listed in [third-party notices](licenses/third-party-notices.txt).
