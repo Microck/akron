@@ -775,44 +775,62 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void RefillClarityBuildsFourNeighborOutlineWithoutDiagonalPixels()
+    public void RefillClarityColorsTheInteriorEdgeWithoutExpandingTheSprite()
     {
         bool[] opaquePixels = new bool[25];
-        opaquePixels[2 + 2 * 5] = true;
+        for (int y = 1; y <= 3; y++)
+        {
+            for (int x = 1; x <= 3; x++)
+            {
+                opaquePixels[x + y * 5] = true;
+            }
+        }
 
         bool[] outlineMask = AkronModule.BuildRefillClarityOutlineMask(
             opaquePixels,
             width: 5,
-            height: 5,
-            twoDashes: false);
+            height: 5);
 
+        Assert.False(outlineMask[2 + 0 * 5]);
         Assert.True(outlineMask[2 + 1 * 5]);
         Assert.True(outlineMask[1 + 2 * 5]);
         Assert.False(outlineMask[2 + 2 * 5]);
         Assert.True(outlineMask[3 + 2 * 5]);
         Assert.True(outlineMask[2 + 3 * 5]);
-        Assert.False(outlineMask[1 + 1 * 5]);
-        Assert.False(outlineMask[3 + 3 * 5]);
+        Assert.False(outlineMask[2 + 4 * 5]);
     }
 
     [Fact]
-    public void RefillClarityPreservesTwoDashCenterGap()
+    public void RefillClarityInteriorEdgeUsesFourNeighborsWithoutDiagonalBleed()
     {
         bool[] opaquePixels = new bool[25];
-        opaquePixels[1 + 2 * 5] = true;
+        opaquePixels[1 + 1 * 5] = true;
         opaquePixels[2 + 2 * 5] = true;
-        opaquePixels[3 + 2 * 5] = true;
 
         bool[] outlineMask = AkronModule.BuildRefillClarityOutlineMask(
             opaquePixels,
             width: 5,
-            height: 5,
-            twoDashes: true);
+            height: 5);
 
-        Assert.False(outlineMask[0 + 2 * 5]);
-        Assert.False(outlineMask[4 + 2 * 5]);
         Assert.True(outlineMask[1 + 1 * 5]);
-        Assert.True(outlineMask[2 + 3 * 5]);
+        Assert.True(outlineMask[2 + 2 * 5]);
+        Assert.False(outlineMask[2 + 1 * 5]);
+        Assert.False(outlineMask[1 + 2 * 5]);
+    }
+
+    [Theory]
+    [InlineData(0, 10)]
+    [InlineData(50, 69)]
+    [InlineData(100, 128)]
+    public void RefillClarityOpacityPreservesSourceAlpha(int opacity, byte expected)
+    {
+        byte channel = AkronModule.BlendRefillClarityChannel(
+            source: 20,
+            target: 255,
+            alpha: 128,
+            opacity: opacity);
+
+        Assert.Equal(expected, channel);
     }
 
     [Fact]

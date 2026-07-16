@@ -4,6 +4,12 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Akron Beta 56
+
+### Fixed
+
+- Keep Refill Clarity within the refill's original sprite bounds while preserving Celeste's black outline.
+
 ## Akron Beta 55
 
 ### Changed
