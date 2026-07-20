@@ -43,6 +43,7 @@ public static class AkronPracticeStats {
     }
 
     public static void OnLevelBegin(Level level) {
+        AkronDeloadSimulator.BeginLevel(level);
         AkronModule.Session.TrackedRoom = level.Session.Level;
         AkronModule.Session.RoomEnteredAt = level.Session.Time;
         AkronModule.Session.AttemptStartedAt = level.Session.Time;

@@ -184,7 +184,11 @@ public static partial class AkronActions {
 
     public static string DescribeDreamState(Level level) {
         Player player = level?.Tracker.GetEntity<Player>();
-        return player == null ? "No player" : player.Inventory.DreamDash ? "On" : "Off";
+        return player == null ? "No player" : level.Session.Inventory.DreamDash ? "On" : "Off";
+    }
+
+    public static bool IsDreamStateActive(Level level) {
+        return level?.Session.Inventory.DreamDash == true;
     }
 
     public static void ToggleDreamState(Level level) {
@@ -541,10 +545,17 @@ public static partial class AkronActions {
             return;
         }
 
-        int steps = AkronDeloadSimulator.Simulate(level, delay);
+        // Claim this level before mutating timers and backdrops. A second
+        // click must not enter the simulator even when the first run yields
+        // zero skipped frames or is still being handled by the same frame.
+        if (!AkronDeloadSimulator.TrySimulate(level, delay, out int steps)) {
+            Engine.Scene?.Add(new AkronToast("Deload can only be simulated once per level."));
+            return;
+        }
+
         Engine.Scene?.Add(new AkronToast(steps > 0
             ? "Deload simulated: " + steps + " frames."
-            : "Deload already simulated."));
+            : "No deload frames needed simulation."));
     }
 
     public static void ToggleEditableFlag(Level level) {

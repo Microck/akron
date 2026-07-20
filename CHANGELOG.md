@@ -6,9 +6,16 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Akron Beta 56
 
+### Changed
+
+- Use the configured overlay accent color for every enabled toggle, including multi-mode options.
+
 ### Fixed
 
 - Keep Refill Clarity within the refill's original sprite bounds while preserving Celeste's black outline.
+- Prevent duplicate Auto Kill condition controls from triggering Dear ImGui ID conflicts.
+- Limit Deload Spinners to one simulation per level to prevent repeated-use crashes.
+- Simplify Show Hitboxes options and use a 5-pixel default trajectory thickness.
 
 ## Akron Beta 55
 

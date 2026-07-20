@@ -362,7 +362,7 @@ public partial class AkronModuleSettings {
     }
 
     public static int ClampShowTrajectoryLineThickness(int thickness) {
-        return thickness <= 0 ? 2 : ClampValue(thickness, 1, 12);
+        return thickness <= 0 ? 5 : ClampValue(thickness, 1, 12);
     }
 
     public static int ClampShowTrajectoryFrameHitboxInterval(int interval) {

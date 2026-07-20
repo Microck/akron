@@ -275,8 +275,8 @@ public sealed partial class AkronOverlay {
                         selectedTabIndex == tabIndex;
         bool entryEnabled = entry.Enabled();
         bool hasOptionsPopup = entry.HasOptionsPopup;
-        bool activeState = entry.Active?.Invoke() == true ||
-                           ShouldReadEntryValueForActiveState(entry) && IsOnState(entry.Value());
+        bool activeState = entry.Active?.Invoke() ??
+                           (ShouldReadEntryValueForActiveState(entry) && IsOnState(entry.Value()));
         bool searchMatch = !string.IsNullOrWhiteSpace(searchQuery) && entry.Control != OverlayEntryControl.SearchInput && MatchesSearch(entry.Tab, entry);
         activeState = activeState || searchMatch;
         string id = "##akron_" + entry.Tab + "_" + entry.ActionKey + "_" + index;

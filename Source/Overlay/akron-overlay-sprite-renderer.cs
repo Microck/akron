@@ -32,7 +32,7 @@ public sealed partial class AkronOverlay {
         bool onState = IsOnState(value);
         bool offState = IsOffState(value);
         bool stateOnly = action.Entry.IsToggle || onState || offState;
-        bool enabledState = action.Entry.Active?.Invoke() == true || stateOnly && onState;
+        bool enabledState = action.Entry.Active?.Invoke() ?? (stateOnly && onState);
         bool hasOptionsPopup = action.Entry.HasOptionsPopup;
         bool popupOpen = IsOptionsPopupOpen(action.Entry.Label);
         bool accentState = enabledState || popupOpen;
@@ -145,6 +145,10 @@ public sealed partial class AkronOverlay {
             textColor);
     }
     private static Color ResolveActionActiveColor(ActionEntry entry, bool selectedOrHovered) {
+        if (entry.IsToggle) {
+            return selectedOrHovered ? AkronAccentHovered : AkronAccent;
+        }
+
         if (TryClassifyActionEntry(entry, out AkronStatus status)) {
             return ColorFromRgb(AkronPolicy.GetStatusColorRgb(status));
         }

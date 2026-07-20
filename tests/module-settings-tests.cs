@@ -3063,14 +3063,36 @@ public sealed class ModuleSettingsTests
     }
 
     [Theory]
-    [InlineData(-1, 2)]
-    [InlineData(0, 2)]
+    [InlineData(-1, 5)]
+    [InlineData(0, 5)]
     [InlineData(1, 1)]
     [InlineData(6, 6)]
     [InlineData(20, 12)]
     public void ShowTrajectoryLineThicknessClampUsesDefaultAndBounds(int input, int expected)
     {
         Assert.Equal(expected, AkronModuleSettings.ClampShowTrajectoryLineThickness(input));
+    }
+
+    [Fact]
+    public void ShowTrajectoryLineThicknessDefaultsToFive()
+    {
+        Assert.Equal(5, new AkronModuleSettings().ShowTrajectoryLineThickness);
+        Assert.Equal(5, new AkronSetupState().ShowTrajectoryLineThickness);
+    }
+
+    [Fact]
+    public void DeloadSimulationCanBeClaimedOnlyOncePerLevelInstance()
+    {
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        AkronDeloadSimulator.ClaimTracker claims = new AkronDeloadSimulator.ClaimTracker();
+
+        claims.BeginLevel(level);
+        Assert.True(claims.TryClaim(level));
+        Assert.True(claims.IsUsed(level));
+        Assert.False(claims.TryClaim(level));
+
+        claims.BeginLevel(level);
+        Assert.True(claims.TryClaim(level));
     }
 
     [Theory]

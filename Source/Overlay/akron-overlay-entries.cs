@@ -58,8 +58,8 @@ public sealed partial class AkronOverlay {
                     }),
                     Toggle("Confirm Restart", () => AkronModule.Settings.ConfirmRestart, value => AkronModule.Settings.ConfirmRestart = value),
                     Toggle("Confirm Full Reset", () => AkronModule.Settings.ConfirmFullReset, value => AkronModule.Settings.ConfirmFullReset = value),
-                    Action("Freeze Gameplay", AkronFeatureKind.Freeze, () => AkronModule.Session != null, () => AkronModule.Session == null ? "Unavailable" : AkronModule.Session.FreezeGameplay ? "On" : "Off", AkronActions.ToggleFreeze, true),
-                    Action("Core Mode", () => level != null, () => AkronActions.DescribeCoreMode(level), () => AkronActions.ToggleCoreMode(level), true, "core", "hot", "cold", "cycle"),
+                    Action("Freeze Gameplay", AkronFeatureKind.Freeze, () => AkronModule.Session != null, () => AkronModule.Session == null ? "Unavailable" : AkronModule.Session.FreezeGameplay ? "On" : "Off", AkronActions.ToggleFreeze, () => AkronModule.Session?.FreezeGameplay == true),
+                    Action("Core Mode", () => level != null, () => AkronActions.DescribeCoreMode(level), () => AkronActions.ToggleCoreMode(level), () => AkronModule.Settings.CoreModeOverrideEnabled, "core", "hot", "cold", "cycle"),
                     NumericToggle("Respawn Time", AkronFeatureKind.RespawnTime, () => AkronModule.Settings.RespawnTimeModifier, value => AkronModule.Settings.RespawnTimeModifier = value, () => AkronModule.Settings.RespawnTimeSeconds, value => AkronModule.Settings.RespawnTimeSeconds = AkronModuleSettings.ClampRespawnTimeSeconds(value), 0.1f, 10f, "%.2f", "s", false),
                     NumericToggle("Pause Timer", AkronFeatureKind.PauseCountdown, () => AkronModule.Settings.PauseCountdown, value => AkronModule.Settings.PauseCountdown = value, () => AkronModule.Settings.PauseCountdownSeconds, value => AkronModule.Settings.PauseCountdownSeconds = AkronModuleSettings.ClampPauseCountdownSeconds(value), 0.1f, 15f, "%.2f", "s", false),
                     PolicyToggle("Pause Tracker", AkronFeatureKind.PauseTracker, () => AkronModule.Settings.PauseTracker, value => AkronModule.Settings.PauseTracker = value, "pause count", "proof", "pause abuse"),
@@ -73,8 +73,8 @@ public sealed partial class AkronOverlay {
                     PolicyToggle("Refill Clarity", AkronFeatureKind.RefillClarity, () => AkronModule.Settings.RefillClarity, value => AkronModule.Settings.RefillClarity = value),
                     new OverlayEntry(
                         "Deload Spinners",
-                        () => level != null,
-                        AkronDeloadSimulator.Describe,
+                        () => level != null && !AkronDeloadSimulator.IsUsed(level),
+                        () => AkronDeloadSimulator.Describe(level),
                         () => AkronActions.DeloadSpinners(level, AkronModule.Settings.DeloadSpinnerDelaySeconds),
                         BuildSearchTerms("Deload Spinners", new[] { "deload", "spinner", "precision", "simulation" }),
                         false,
@@ -170,8 +170,8 @@ public sealed partial class AkronOverlay {
                     PolicyToggle("Madeline Hair Length", AkronFeatureKind.MadelineHairLength, () => AkronModule.Settings.MadelineHairLength, value => AkronModule.Settings.MadelineHairLength = value),
                     PolicyToggle("Madeline Effect Sync", AkronFeatureKind.MadelineEffectSync, () => AkronModule.Settings.MadelineEffectSync, value => AkronModule.Settings.MadelineEffectSync = value),
                     PolicyToggle("Death Particles", AkronFeatureKind.DeathVisuals, () => AkronModule.Settings.CustomDeathParticles, value => AkronModule.Settings.CustomDeathParticles = value),
-                    Action("Set Inventory", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeSetInventory(level), () => AkronActions.ToggleSetInventory(level), true, "inventory", "dash count", "dashes", "space ruins"),
-                    Action("Dream State", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeDreamState(level), () => AkronActions.ToggleDreamState(level), "dream dash", "dream blocks", "inventory"),
+                    Action("Set Inventory", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeSetInventory(level), () => AkronActions.ToggleSetInventory(level), AkronActions.IsSetInventoryActive, "inventory", "dash count", "dashes", "space ruins"),
+                    Action("Dream State", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeDreamState(level), () => AkronActions.ToggleDreamState(level), () => AkronActions.IsDreamStateActive(level), "dream dash", "dream blocks", "inventory"),
                     PolicyToggle("No Death Effect", AkronFeatureKind.DeathVisuals, () => AkronModule.Settings.NoDeathEffect, value => AkronModule.Settings.NoDeathEffect = value),
                     Toggle("No Ghost Trail", () => AkronModule.Settings.TrailVisibility == AkronTrailVisibility.Hidden, value => {
                         AkronModule.Settings.TrailVisibility = value ? AkronTrailVisibility.Hidden : AkronTrailVisibility.Vanilla;
@@ -396,7 +396,8 @@ public sealed partial class AkronOverlay {
                 }),
                 true,
                 OverlayEntryControl.Toggle,
-                soundGroupLabel: groupLabel ?? string.Empty);
+                soundGroupLabel: groupLabel ?? string.Empty,
+                active: () => AkronEarAid.OverrideEnabled(key));
         }
     }
 
@@ -448,27 +449,27 @@ public sealed partial class AkronOverlay {
     };
 
     private static OverlayEntry Action(string label, Func<bool> enabled, Func<string> value, Action action, params string[] tags) {
-        return Action(label, enabled, value, action, false, tags);
+        return Action(label, null, enabled, value, action, false, null, tags);
     }
 
-    private static OverlayEntry Action(string label, Func<bool> enabled, Func<string> value, Action action, bool isToggle, params string[] tags) {
-        return Action(label, null, enabled, value, action, isToggle, tags);
+    private static OverlayEntry Action(string label, Func<bool> enabled, Func<string> value, Action action, Func<bool> active, params string[] tags) {
+        return Action(label, null, enabled, value, action, true, active, tags);
     }
 
     private static OverlayEntry Action(string label, AkronFeatureKind featureKind, Func<bool> enabled, Func<string> value, Action action, params string[] tags) {
-        return Action(label, featureKind, enabled, value, action, false, tags);
+        return Action(label, featureKind, enabled, value, action, false, null, tags);
     }
 
-    private static OverlayEntry Action(string label, AkronFeatureKind featureKind, Func<bool> enabled, Func<string> value, Action action, bool isToggle, params string[] tags) {
-        return Action(label, (AkronFeatureKind?) featureKind, enabled, value, action, isToggle, tags);
+    private static OverlayEntry Action(string label, AkronFeatureKind featureKind, Func<bool> enabled, Func<string> value, Action action, Func<bool> active, params string[] tags) {
+        return Action(label, (AkronFeatureKind?) featureKind, enabled, value, action, true, active, tags);
     }
 
-    private static OverlayEntry Action(string label, AkronFeatureKind? featureKind, Func<bool> enabled, Func<string> value, Action action, bool isToggle, params string[] tags) {
+    private static OverlayEntry Action(string label, AkronFeatureKind? featureKind, Func<bool> enabled, Func<string> value, Action action, bool isToggle, Func<bool> active, params string[] tags) {
         return new OverlayEntry(label, enabled, value, () => {
             if (enabled()) {
                 action();
             }
-        }, BuildSearchTerms(label, tags), isToggle, OverlayEntryControl.Action, featureKind);
+        }, BuildSearchTerms(label, tags), isToggle, OverlayEntryControl.Action, featureKind, active: active);
     }
 
     private static OverlayEntry UploadPackRow(Level level) {
@@ -570,7 +571,7 @@ public sealed partial class AkronOverlay {
     }
 
     private static OverlayEntry Toggle(string label, AkronFeatureKind? featureKind, Func<bool> getter, Action<bool> setter, params string[] tags) {
-        return new OverlayEntry(label, () => true, () => getter() ? "On" : "Off", () => setter(!getter()), BuildSearchTerms(label, tags), true, OverlayEntryControl.Toggle, featureKind);
+        return new OverlayEntry(label, () => true, () => getter() ? "On" : "Off", () => setter(!getter()), BuildSearchTerms(label, tags), true, OverlayEntryControl.Toggle, featureKind, active: getter);
     }
 
     private static OverlayEntry LoggingToggle() {
@@ -588,7 +589,8 @@ public sealed partial class AkronOverlay {
             true,
             OverlayEntryControl.Toggle,
             AkronFeatureKind.Logging,
-            forceOptionsPopup: true);
+            forceOptionsPopup: true,
+            active: () => AkronModule.Settings.Logging);
     }
 
     private static OverlayEntry Keybind(string label, string actionTab, string actionLabel, params string[] tags) {
@@ -663,7 +665,7 @@ public sealed partial class AkronOverlay {
             }
 
             setter(next);
-        }, BuildSearchTerms(label, tags), true, OverlayEntryControl.Toggle, featureKind);
+        }, BuildSearchTerms(label, tags), true, OverlayEntryControl.Toggle, featureKind, active: getter);
     }
 
     private static OverlayEntry EntityInspectorRow() {
@@ -707,7 +709,8 @@ public sealed partial class AkronOverlay {
             BuildSearchTerms("Invincibility", new[] { "assist", "invincible", "death", "cheat", "native", "akron" }),
             true,
             OverlayEntryControl.Toggle,
-            AkronFeatureKind.Invincibility);
+            AkronFeatureKind.Invincibility,
+            active: () => AkronModule.Settings.Invincibility);
     }
 
     private static OverlayEntry NumericToggle(
@@ -745,7 +748,8 @@ public sealed partial class AkronOverlay {
             maximum,
             format,
             suffix,
-            integer);
+            integer,
+            active: getter);
     }
 
     private static OverlayEntry InlineNumericToggle(
@@ -783,7 +787,8 @@ public sealed partial class AkronOverlay {
             maximum,
             format,
             suffix,
-            integer);
+            integer,
+            active: getter);
     }
 
     private static int CycleInt(int value, int minimum, int maximum) {

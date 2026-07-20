@@ -61,7 +61,10 @@ public static partial class AkronCommands {
                     Log("deload-spinners: blocked");
                     return;
                 }
-                steps = AkronDeloadSimulator.Simulate(level, delay);
+                if (!AkronDeloadSimulator.TrySimulate(level, delay, out steps)) {
+                    Log("deload-spinners: already used in this level");
+                    return;
+                }
                 AkronModule.Settings.DeloadSpinners = false;
                 break;
             case "off":
@@ -72,7 +75,10 @@ public static partial class AkronCommands {
                     Log("deload-spinners: blocked");
                     return;
                 }
-                steps = AkronDeloadSimulator.Simulate(level, delay);
+                if (!AkronDeloadSimulator.TrySimulate(level, delay, out steps)) {
+                    Log("deload-spinners: already used in this level");
+                    return;
+                }
                 AkronModule.Settings.DeloadSpinners = false;
                 break;
             case "now":
@@ -80,7 +86,10 @@ public static partial class AkronCommands {
                     Log("deload-spinners: blocked");
                     return;
                 }
-                steps = AkronDeloadSimulator.Simulate(level, delay);
+                if (!AkronDeloadSimulator.TrySimulate(level, delay, out steps)) {
+                    Log("deload-spinners: already used in this level");
+                    return;
+                }
                 AkronModule.Settings.DeloadSpinners = false;
                 break;
             case "delay":

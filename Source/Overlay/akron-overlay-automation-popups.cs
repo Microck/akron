@@ -218,23 +218,26 @@ public sealed partial class AkronOverlay {
 
         DrawPopupRowLabel("Ground", CalculatePopupLabelWidth(120f));
         float groundColumnX = ImGui.GetCursorPosX();
-        DrawPopupChoiceRadioButton("Any", area.GroundCondition == AkronAutoKillGroundCondition.Any, () => area.GroundCondition = AkronAutoKillGroundCondition.Any, popupId, "Do not require grounded or airborne state.", groundColumnX, false);
-        DrawPopupChoiceRadioButton("Grounded", area.GroundCondition == AkronAutoKillGroundCondition.Grounded, () => area.GroundCondition = AkronAutoKillGroundCondition.Grounded, popupId, "Only trigger area kills while Madeline is on the ground.", groundColumnX, true);
-        DrawPopupChoiceRadioButton("Airborne", area.GroundCondition == AkronAutoKillGroundCondition.Airborne, () => area.GroundCondition = AkronAutoKillGroundCondition.Airborne, popupId, "Only trigger area kills while Madeline is airborne.", groundColumnX, true);
+        string groundPopupId = popupId + "_ground";
+        DrawPopupChoiceRadioButton("Any", area.GroundCondition == AkronAutoKillGroundCondition.Any, () => area.GroundCondition = AkronAutoKillGroundCondition.Any, groundPopupId, "Do not require grounded or airborne state.", groundColumnX, false);
+        DrawPopupChoiceRadioButton("Grounded", area.GroundCondition == AkronAutoKillGroundCondition.Grounded, () => area.GroundCondition = AkronAutoKillGroundCondition.Grounded, groundPopupId, "Only trigger area kills while Madeline is on the ground.", groundColumnX, true);
+        DrawPopupChoiceRadioButton("Airborne", area.GroundCondition == AkronAutoKillGroundCondition.Airborne, () => area.GroundCondition = AkronAutoKillGroundCondition.Airborne, groundPopupId, "Only trigger area kills while Madeline is airborne.", groundColumnX, true);
 
         DrawPopupRowLabel("Horizontal", CalculatePopupLabelWidth(120f));
         float horizontalColumnX = ImGui.GetCursorPosX();
-        DrawPopupChoiceRadioButton("Any", area.HorizontalDirection == AkronAutoKillAxisCondition.Any, () => area.HorizontalDirection = AkronAutoKillAxisCondition.Any, popupId, "Do not require horizontal movement direction.", horizontalColumnX, false);
-        DrawPopupChoiceRadioButton("Left", area.HorizontalDirection == AkronAutoKillAxisCondition.Negative, () => area.HorizontalDirection = AkronAutoKillAxisCondition.Negative, popupId, "Only trigger area kills while Madeline is moving left.", horizontalColumnX, true);
-        DrawPopupChoiceRadioButton("Right", area.HorizontalDirection == AkronAutoKillAxisCondition.Positive, () => area.HorizontalDirection = AkronAutoKillAxisCondition.Positive, popupId, "Only trigger area kills while Madeline is moving right.", horizontalColumnX, true);
-        DrawPopupChoiceRadioButton("Still", area.HorizontalDirection == AkronAutoKillAxisCondition.Zero, () => area.HorizontalDirection = AkronAutoKillAxisCondition.Zero, popupId, "Only trigger area kills while Madeline has no horizontal speed.", horizontalColumnX, true);
+        string horizontalPopupId = popupId + "_horizontal";
+        DrawPopupChoiceRadioButton("Any", area.HorizontalDirection == AkronAutoKillAxisCondition.Any, () => area.HorizontalDirection = AkronAutoKillAxisCondition.Any, horizontalPopupId, "Do not require horizontal movement direction.", horizontalColumnX, false);
+        DrawPopupChoiceRadioButton("Left", area.HorizontalDirection == AkronAutoKillAxisCondition.Negative, () => area.HorizontalDirection = AkronAutoKillAxisCondition.Negative, horizontalPopupId, "Only trigger area kills while Madeline is moving left.", horizontalColumnX, true);
+        DrawPopupChoiceRadioButton("Right", area.HorizontalDirection == AkronAutoKillAxisCondition.Positive, () => area.HorizontalDirection = AkronAutoKillAxisCondition.Positive, horizontalPopupId, "Only trigger area kills while Madeline is moving right.", horizontalColumnX, true);
+        DrawPopupChoiceRadioButton("Still", area.HorizontalDirection == AkronAutoKillAxisCondition.Zero, () => area.HorizontalDirection = AkronAutoKillAxisCondition.Zero, horizontalPopupId, "Only trigger area kills while Madeline has no horizontal speed.", horizontalColumnX, true);
 
         DrawPopupRowLabel("Vertical", CalculatePopupLabelWidth(120f));
         float verticalColumnX = ImGui.GetCursorPosX();
-        DrawPopupChoiceRadioButton("Any", area.VerticalDirection == AkronAutoKillAxisCondition.Any, () => area.VerticalDirection = AkronAutoKillAxisCondition.Any, popupId, "Do not require vertical movement direction.", verticalColumnX, false);
-        DrawPopupChoiceRadioButton("Up", area.VerticalDirection == AkronAutoKillAxisCondition.Negative, () => area.VerticalDirection = AkronAutoKillAxisCondition.Negative, popupId, "Only trigger area kills while Madeline is moving up.", verticalColumnX, true);
-        DrawPopupChoiceRadioButton("Down", area.VerticalDirection == AkronAutoKillAxisCondition.Positive, () => area.VerticalDirection = AkronAutoKillAxisCondition.Positive, popupId, "Only trigger area kills while Madeline is moving down.", verticalColumnX, true);
-        DrawPopupChoiceRadioButton("Still", area.VerticalDirection == AkronAutoKillAxisCondition.Zero, () => area.VerticalDirection = AkronAutoKillAxisCondition.Zero, popupId, "Only trigger area kills while Madeline has no vertical speed.", verticalColumnX, true);
+        string verticalPopupId = popupId + "_vertical";
+        DrawPopupChoiceRadioButton("Any", area.VerticalDirection == AkronAutoKillAxisCondition.Any, () => area.VerticalDirection = AkronAutoKillAxisCondition.Any, verticalPopupId, "Do not require vertical movement direction.", verticalColumnX, false);
+        DrawPopupChoiceRadioButton("Up", area.VerticalDirection == AkronAutoKillAxisCondition.Negative, () => area.VerticalDirection = AkronAutoKillAxisCondition.Negative, verticalPopupId, "Only trigger area kills while Madeline is moving up.", verticalColumnX, true);
+        DrawPopupChoiceRadioButton("Down", area.VerticalDirection == AkronAutoKillAxisCondition.Positive, () => area.VerticalDirection = AkronAutoKillAxisCondition.Positive, verticalPopupId, "Only trigger area kills while Madeline is moving down.", verticalColumnX, true);
+        DrawPopupChoiceRadioButton("Still", area.VerticalDirection == AkronAutoKillAxisCondition.Zero, () => area.VerticalDirection = AkronAutoKillAxisCondition.Zero, verticalPopupId, "Only trigger area kills while Madeline has no vertical speed.", verticalColumnX, true);
 
         bool stateCondition = area.PlayerStateCondition;
         if (ImGui.Checkbox("Require player state##" + popupId, ref stateCondition)) {
