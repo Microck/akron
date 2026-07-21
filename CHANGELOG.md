@@ -19,6 +19,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Keep the stable website download fallback synced to the latest GameBanana file after releases.
 - Restore tooltip and search copy for Previous Room In Order and Next Room In Order.
 - Keep Audio Splitter enabled while Celeste's audio system and music bus finish loading.
 - Keep dropdowns and color pickers open when clicked more than once inside an options submenu.
