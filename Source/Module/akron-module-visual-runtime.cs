@@ -423,11 +423,11 @@ public partial class AkronModule {
     }
 
     private static void ApplyTransitionSpeed(Level level) {
-        float multiplier = AkronModuleSettings.ClampTransitionSpeedMultiplier(Settings.TransitionSpeedMultiplier);
-        if (multiplier == 1f) {
+        if (!IsTransitionSpeedEffective(Settings)) {
             return;
         }
 
+        float multiplier = AkronModuleSettings.ClampTransitionSpeedMultiplier(Settings.TransitionSpeedMultiplier);
         if (!TryUse(AkronFeatureKind.TransitionSpeed)) {
             return;
         }
@@ -437,6 +437,11 @@ public partial class AkronModule {
 
     internal static float TransitionDurationForSpeedMultiplier(float multiplier) {
         return 0.65f / AkronModuleSettings.ClampTransitionSpeedMultiplier(multiplier);
+    }
+
+    internal static bool IsTransitionSpeedEffective(AkronModuleSettings settings) {
+        return settings?.TransitionSpeedEnabled == true
+            && AkronModuleSettings.ClampTransitionSpeedMultiplier(settings.TransitionSpeedMultiplier) != 1f;
     }
 
     private static void ApplyVisualPlayerOverrides(Player player) {

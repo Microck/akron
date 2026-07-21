@@ -388,10 +388,15 @@ public sealed partial class AkronOverlay {
     private static float CalculatePopupLabelWidth(float controlWidth, float? preferredLabelWidth) {
         float available = ImGui.GetContentRegionAvail().X;
         float spacing = ImGui.GetStyle().ItemSpacing.X;
-        float preferred = preferredLabelWidth ?? PopupLabelColumnPreferredWidth;
-        return Math.Min(
-            preferred,
-            Math.Max(PopupLabelColumnMinWidth, available - controlWidth - spacing));
+        return CalculatePopupLabelWidth(
+            available,
+            controlWidth,
+            spacing,
+            preferredLabelWidth ?? PopupLabelColumnPreferredWidth);
+    }
+
+    internal static float CalculatePopupLabelWidth(float available, float controlWidth, float spacing, float preferred) {
+        return Math.Min(preferred, Math.Max(PopupLabelColumnMinWidth, available - controlWidth - spacing));
     }
 
     private static float CalculatePopupControlWidth(float labelWidth, float preferredControlWidth, float minimumControlWidth) {

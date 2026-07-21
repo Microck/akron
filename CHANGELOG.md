@@ -4,6 +4,26 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Akron Beta 58
+
+### Added
+
+- Route music and sound effects to separate output devices with Audio Splitter.
+
+### Changed
+
+- Keep the configured Timescale value separate from whether Timescale is enabled.
+- Keep the configured Transition Speed value separate from whether Transition Speed is enabled.
+- Clarify the Dream State and Golden Start tooltips.
+
+### Fixed
+
+- Keep Audio Splitter enabled while Celeste's audio system and music bus finish loading.
+- Keep dropdowns and color pickers open when clicked more than once inside an options submenu.
+- Show only the recorded death-object hitbox when All hitboxes is off.
+- Gray out Timescale and Frame Stepper when no save session is active.
+- Give submenu labels more room before shortening them with an ellipsis.
+
 ## Akron Beta 57
 
 ### Changed

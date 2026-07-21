@@ -305,6 +305,7 @@ public sealed class FeatureRegistryTests
             SafeModeFreezeAttempts = true,
             SafeModeFreezeJumps = true,
             SafeModeFreezeBestRun = true,
+            TransitionSpeedEnabled = true,
             TransitionSpeedMultiplier = 0.5f
         };
 

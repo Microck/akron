@@ -344,7 +344,7 @@ public static partial class AkronCommands {
         Log("overlay-opacity: " + AkronModule.Settings.OverlayOpacity.ToString(CultureInfo.InvariantCulture));
         Log("allow-pause-buffering: " + AkronModule.Settings.AllowPauseBuffering.ToString().ToLowerInvariant());
         Log("auto-kill-seconds: " + AkronModule.Settings.AutoKillSeconds.ToString(CultureInfo.InvariantCulture));
-        Log("transition-speed: " + AkronModule.Settings.TransitionSpeedMultiplier.ToString("0.0x", CultureInfo.InvariantCulture));
+        Log("transition-speed: " + (AkronModule.Settings.TransitionSpeedEnabled ? "on " : "off ") + AkronModule.Settings.TransitionSpeedMultiplier.ToString("0.0x", CultureInfo.InvariantCulture));
         Log("trail-visibility: " + AkronModule.Settings.TrailVisibility);
         Log("trail-cutting-rate: " + AkronModule.Settings.TrailCuttingRate.ToString(CultureInfo.InvariantCulture));
         Log("jump-hack: " + AkronModule.Settings.JumpHack.ToString().ToLowerInvariant());

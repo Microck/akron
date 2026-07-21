@@ -296,6 +296,7 @@ public partial class AkronModuleSettings {
             CoreModeOverrideEnabled = CoreModeOverrideEnabled,
             CoreModeOverride = CoreModeOverride,
             CoreModeClickBehavior = CoreModeClickBehavior,
+            TransitionSpeedEnabled = TransitionSpeedEnabled,
             TransitionSpeedMultiplier = TransitionSpeedMultiplier,
             TrailVisibility = TrailVisibility,
             TrailCuttingRate = TrailCuttingRate,

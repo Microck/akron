@@ -196,7 +196,7 @@ public static class AkronPolicy
         AddIfCheat(contributors, settings.SafeModeFreezeAttempts, "Freeze deaths", AkronFeatureKind.SafeModeStats);
         AddIfCheat(contributors, settings.SafeModeFreezeJumps, "Freeze jumps", AkronFeatureKind.SafeModeStats);
         AddIfCheat(contributors, settings.SafeModeFreezeBestRun, "Freeze best run", AkronFeatureKind.SafeModeStats);
-        AddIfCheat(contributors, settings.TransitionSpeedMultiplier != 1f, "Transition Speed", AkronFeatureKind.TransitionSpeed);
+        AddIfCheat(contributors, AkronModule.IsTransitionSpeedEffective(settings), "Transition Speed", AkronFeatureKind.TransitionSpeed);
         AddIfCheat(contributors, settings.RespawnTimeModifier, "Respawn Time", AkronFeatureKind.RespawnTime);
         AddIfCheat(contributors, settings.FreezeTimerWhilePaused, "Freeze Timer While Paused", AkronFeatureKind.PauseTimerFreeze);
         AddIfCheat(contributors, settings.FastLookout, "Fast Lookout", AkronFeatureKind.FastLookout);

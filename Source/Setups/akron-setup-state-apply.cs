@@ -288,6 +288,7 @@ public partial class AkronModuleSettings {
         CoreModeOverrideEnabled = resolved.CoreModeOverrideEnabled;
         CoreModeOverride = NormalizeCoreModeOverride(resolved.CoreModeOverride);
         CoreModeClickBehavior = NormalizeCoreModeClickBehavior(resolved.CoreModeClickBehavior);
+        TransitionSpeedEnabled = resolved.TransitionSpeedEnabled;
         TransitionSpeedMultiplier = ClampTransitionSpeedMultiplier(resolved.TransitionSpeedMultiplier);
         TrailVisibility = resolved.TrailVisibility;
         TrailCuttingRate = ClampTrailCuttingRate(resolved.TrailCuttingRate);
