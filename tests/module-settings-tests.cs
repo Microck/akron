@@ -2663,17 +2663,24 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void ClarifiedGameplayTooltipsDescribeWhatTheActionsDo()
+    public void GameplayActionTooltipsDescribeTheCurrentRows()
     {
         Assert.True(AkronOverlay.TryGetActionDescription("Dream State", out string dreamState));
         Assert.True(AkronOverlay.TryGetActionDescription("Golden Start", out string goldenStart));
+        Assert.True(AkronOverlay.TryGetActionDescription("Previous Room In Order", out string previousRoom));
+        Assert.True(AkronOverlay.TryGetActionDescription("Next Room In Order", out string nextRoom));
         Assert.Equal("Toggle whether Madeline can dash through dream blocks.", dreamState);
         Assert.Equal("Give Madeline the chapter's golden berry from the first room.", goldenStart);
+        Assert.Equal("Warp to the previous room in map order.", previousRoom);
+        Assert.Equal("Warp to the next room in map order.", nextRoom);
+        Assert.False(AkronOverlay.TryGetActionDescription("Warp To Previous In Order", out _));
+        Assert.False(AkronOverlay.TryGetActionDescription("Warp To Next In Order", out _));
     }
 
     [Fact]
     public void GameplayPresentationRowsLiveInTheirChosenCategories()
     {
+        List<string> globalLabels = BuildOverlayEntryLabels("Global");
         List<string> levelLabels = BuildOverlayEntryLabels("Level");
         List<string> playerLabels = BuildOverlayEntryLabels("Player");
         List<string> shortcutsLabels = BuildOverlayEntryLabels("Shortcuts");
@@ -2682,12 +2689,62 @@ public sealed class ModuleSettingsTests
         Assert.Contains("Skip Postcards", levelLabels);
         Assert.DoesNotContain("Skip Intro", playerLabels);
         Assert.DoesNotContain("Skip Postcards", playerLabels);
-        Assert.Contains("Frame Stepper", playerLabels);
+        Assert.Contains("Frame Stepper", globalLabels);
+        Assert.DoesNotContain("Frame Stepper", playerLabels);
+        Assert.Contains("Control Display", playerLabels);
+        Assert.DoesNotContain("Control Display", globalLabels);
         Assert.Contains("No Stamina Flash", playerLabels);
         Assert.Contains("No Trails", playerLabels);
         Assert.DoesNotContain("No Stamina Flash", levelLabels);
         Assert.DoesNotContain("No Trails", levelLabels);
         Assert.DoesNotContain("Uncomplete Level", shortcutsLabels);
+    }
+
+    [Fact]
+    public void OverlayRowsFollowApprovedTaskGrouping()
+    {
+        List<string> globalLabels = BuildOverlayEntryLabels("Global")
+            .Where(label => label != "FPS Bypass" && label != "TPS Bypass")
+            .ToList();
+
+        Assert.Equal(
+            new[] {
+                "Timescale", "Transition Speed", "Frame Stepper", "Safe Mode", "Freeze Attempts",
+                "Submission Mode", "Pause Buffering", "Autosave"
+            },
+            globalLabels);
+
+        Assert.Equal(
+            new[] {
+                "Core Mode", "Freeze Gameplay", "Confirm Restart", "Confirm Full Reset", "Skip Intro",
+                "Skip Postcards", "Auto Kill", "Respawn Time", "Pause Timer", "Pause Tracker", "Lag Pauser",
+                "Freeze Timer While Paused", "Hide Pause Menu", "Auto Deafen", "Deload Spinners",
+                "Show Hitboxes", "Fix Hitbox Pixels", "Show Hitbox Trail", "Show Hitboxes On Death",
+                "Show Triggers", "Refill Clarity", "Screenshake", "Light Level", "Bloom Level", "Screen Tint",
+                "Reduced Visual Noise", "No Particles", "No Glitch", "No Anxiety", "No Distortion", "Hide Snow",
+                "Hide Wind Snow", "Hide Waterfalls", "Hide Tentacles", "Hide Heat Distortion", "No Death Wipe",
+                "No Freeze Frames"
+            },
+            BuildOverlayEntryLabels("Level"));
+
+        Assert.Equal(
+            new[] {
+                "Invincibility", "Air Jumps", "Infinite Dash", "Infinite Stamina", "Ground Refills",
+                "Dash Count", "Grab Mode", "Set Inventory", "Dream State", "Noclip", "Click Teleport",
+                "Dash Redirect", "Hazard Accuracy", "Fast Lookout", "Golden Start", "Show Trajectory",
+                "Control Display", "Dash Bar", "Dash Number", "Stamina Bar", "Speed Number", "Hide Player",
+                "Golden Transparency", "Madeline Colors", "Madeline Hair Length", "Madeline Effect Sync",
+                "Custom Trail", "Always Show Trail", "No Ghost Trail", "No Trails", "No Stamina Flash",
+                "Death Particles", "No Death Effect", "No Respawn Animation"
+            },
+            BuildOverlayEntryLabels("Player"));
+
+        Assert.Equal(
+            new[] {
+                "Theme", "UI Scale", "Opacity", "Export Setup", "Import Setup", "Community Packs",
+                "Upload Pack", "Pause While Open", "Streamer Mode", "Logging", "Search Autofocus", "Search"
+            },
+            BuildOverlayEntryLabels("Interface"));
     }
 
     [Fact]
@@ -2744,13 +2801,11 @@ public sealed class ModuleSettingsTests
 
         Assert.Equal(
             new[] {
-                "Camera Offset",
+                "Free Camera",
                 "Cursor Tools",
                 "Cursor Zoom",
+                "Camera Offset",
                 "Entity Inspector",
-                "Free Camera",
-                "Map Capture",
-                "Room Capture",
                 "Warp Selected Room",
                 "Previous Room",
                 "Next Room",
@@ -2761,6 +2816,8 @@ public sealed class ModuleSettingsTests
                 "Previous Map",
                 "Next Map",
                 "Open Debug Map",
+                "Room Capture",
+                "Map Capture",
                 "Export Room Stats",
                 "Export Room Times"
             },

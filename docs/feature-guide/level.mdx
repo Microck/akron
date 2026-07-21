@@ -7,25 +7,31 @@ The Level tab focuses on the current level scene. Several rows are useful for ro
 
 | Option | Control | What it does | Attempt status |
 |---|---|---|---|
-| Auto Kill | Toggle | Automatically kill the player after a configured map-time threshold or inside selected regions. | Cheat |
-| Auto Deafen | Toggle | Press the configured Discord Toggle Deafen hotkey after entering a selected region until death or reset. | Regular clean |
+| Core Mode | Selector | Set the current Core temperature mode. | Cheat |
+| Freeze Gameplay | Action | Freeze gameplay updates until toggled off or advanced by the frame stepper. | Cheat |
 | Confirm Restart | Toggle | Require a confirmation prompt before restarting the current room attempt. | Goldberry/Hardlist clean |
 | Confirm Full Reset | Toggle | Require a confirmation prompt before fully reloading the current chapter. | Goldberry/Hardlist clean |
-| Freeze Gameplay | Action | Freeze gameplay updates until toggled off or advanced by the frame stepper. | Cheat |
+| Skip Intro | Toggle | Hold confirm on repeated B-side intro title screens to enter the map. | Regular clean |
+| Skip Postcards | Toggle | Hold confirm on level-entry postcards to jump straight into the map. | Regular clean |
+| Auto Kill | Toggle | Automatically kill the player after a configured map-time threshold or inside selected regions. | Cheat |
 | Respawn Time | Numeric toggle | Open respawn timing controls, including whether speedhack affects the delay. | Regular clean |
 | Pause Timer | Numeric toggle | Delay resumed gameplay after unpausing and show a center countdown. | Cheat |
 | Pause Tracker | Toggle | Record pause count, rapid pauses, and paused time. | Goldberry/Hardlist clean |
 | Lag Pauser | Toggle | Pause after a detected frame-time spike. | Goldberry/Hardlist clean |
 | Freeze Timer While Paused | Toggle | Halt level and journal timer accumulation while paused. | Cheat |
 | Hide Pause Menu | Toggle | Hide Celeste's pause menu while the game remains paused. | Regular clean |
+| Auto Deafen | Toggle | Press the configured Discord Toggle Deafen hotkey after entering a selected region until death or reset. | Regular clean |
+| Deload Spinners | Toggle | Simulate spinner deload timing while the option is enabled. | Cheat |
+| Show Hitboxes | Toggle | Open live hitbox controls for collision boxes, filters, colors, opacity, thickness, and style. | Cheat |
+| Fix Hitbox Pixels | Toggle | Render circular hitboxes as sampled collision pixels instead of a smooth approximate outline. | Regular clean |
+| Show Hitbox Trail | Toggle | Draw recent player collision boxes behind Madeline. | Cheat |
+| Show Hitboxes On Death | Toggle | Show the death-object hitbox after dying without enabling live hitboxes. | Regular clean |
+| Show Triggers | Toggle | Draw invisible Celeste trigger regions without turning on all hitboxes. | Cheat |
+| Refill Clarity | Toggle | Highlight already-visible one-use refills with a configurable outline. | Regular clean |
+| Screenshake | Toggle | Override native Celeste screenshake. Intensity 0 disables shake. | Goldberry/Hardlist clean |
 | Light Level | Toggle | Adjust light presentation for the current level. | Regular clean |
 | Bloom Level | Toggle | Adjust bloom presentation for the current level. | Regular clean |
 | Screen Tint | Toggle | Apply a configurable screen tint. | Regular clean |
-| Screenshake | Toggle | Override native Celeste screenshake. Intensity 0 disables shake. | Goldberry/Hardlist clean |
-| Refill Clarity | Toggle | Highlight already-visible one-use refills with a configurable outline. | Regular clean |
-| Deload Spinners | Toggle | Simulate spinner deload timing while the option is enabled. | Cheat |
-| Skip Intro | Toggle | Hold confirm on repeated B-side intro title screens to enter the map. | Regular clean |
-| Skip Postcards | Toggle | Hold confirm on level-entry postcards to jump straight into the map. | Regular clean |
 | Reduced Visual Noise | Toggle | Apply Akron's reduced visual-noise presentation settings. | Regular clean |
 | No Particles | Toggle | Suppress particle presentation. | Regular clean |
 | No Glitch | Toggle | Suppress glitch-style visual effects. | Regular clean |
@@ -38,11 +44,6 @@ The Level tab focuses on the current level scene. Several rows are useful for ro
 | Hide Heat Distortion | Toggle | Hide heat-distortion presentation. | Regular clean |
 | No Death Wipe | Toggle | Suppress black screen wipes while preserving completion callbacks when configured. | Regular clean |
 | No Freeze Frames | Toggle | Suppress native hitstop/freeze-frame pauses. This changes gameplay timing. | Cheat |
-| Show Hitboxes | Toggle | Open live hitbox controls for collision boxes, filters, colors, opacity, thickness, and style. | Cheat |
-| Fix Hitbox Pixels | Toggle | Render circular hitboxes as sampled collision pixels instead of a smooth approximate outline. | Regular clean |
-| Show Hitbox Trail | Toggle | Draw recent player collision boxes behind Madeline. | Cheat |
-| Show Hitboxes On Death | Toggle | Show the death-object hitbox after dying without enabling live hitboxes. | Regular clean |
-| Show Triggers | Toggle | Draw invisible Celeste trigger regions without turning on all hitboxes. | Cheat |
 
 ## Option menus
 
@@ -84,20 +85,18 @@ Rows with a triangle expose the controls listed below.
 | Deload Spinners | Seconds before deload | Configure spinner deload simulation timing. | Cheat |
 | Show Hitboxes | Active only | Hide inactive entities from live hitbox rendering. | Cheat |
 | Show Hitboxes | Hide player | Hide the player collider from live hitbox rendering. | Cheat |
+| Show Hitboxes | Player hazard box | Draw Madeline's hazard/death hitbox separately from her solid collision box. | Cheat |
 | Show Hitboxes | Hazards | Draw spike, blade, and death-object hitboxes. | Cheat |
 | Show Hitboxes | Solids | Draw solid collision boxes. | Cheat |
 | Show Hitboxes | Triggers | Draw trigger areas. | Cheat |
 | Show Hitboxes | Sync Hitboxes | Clear cached hitbox draw state and rebuild live hitboxes on the next frame. | Cheat |
-| Show Hitboxes | Show Hitbox Trail | Draw recent player collision boxes behind Madeline. | Cheat |
-| Show Hitboxes | Length | Set how many previous player hitbox positions are kept. | Cheat |
-| Show Hitboxes | Trail % | Set maximum opacity for older hitbox trail samples. | Cheat |
 | Show Hitboxes | Line | Set live hitbox outline thickness. | Cheat |
-| Show Hitboxes | Black outline | Add a black contrast border behind colored hitbox lines. | Cheat |
 | Show Hitboxes | Fill % | Set interior opacity for drawn hitboxes. | Cheat |
 | Show Hitboxes | Player | Set Madeline/player hitbox color. | Cheat |
-| Show Hitboxes | Solids color | Set solid collision grid color. | Cheat |
-| Show Hitboxes | Hazards color | Set spike, blade, and death-object color. | Cheat |
-| Show Hitboxes | Triggers color | Set trigger area color. | Cheat |
+| Show Hitboxes | Player hazard | Set Madeline/player hazard hitbox color. | Cheat |
+| Show Hitboxes | Solids | Set solid collision grid color. | Cheat |
+| Show Hitboxes | Hazards | Set spike, blade, and death-object color. | Cheat |
+| Show Hitboxes | Triggers | Set trigger area color. | Cheat |
 | Show Hitboxes | Other | Set fallback color for other collidable entities. | Cheat |
 | Show Hitboxes | Reset style | Restore Akron's default hitbox style. | Cheat |
 | Show Hitbox Trail | Length | Set how many recent player collision boxes are kept. | Cheat |

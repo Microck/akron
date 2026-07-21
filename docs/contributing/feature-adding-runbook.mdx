@@ -37,19 +37,19 @@ Avoid feature bundles:
 
 ## Placement And Ordering
 
-Pick the tab users would check first. Then follow that tab's existing ordering convention. Some tabs are alphabetical, some are workflow ordered, and some have explicit sort logic.
+Pick the tab users would check first. Then follow that tab's existing task groups and workflow order.
 
 Do not append a new row to the end by default.
 
 | Tab | Add features here when | Ordering rule |
 |---|---|---|
-| `Player` | The feature directly changes Madeline, player resources, movement, or player-attached information. | Mostly alphabetical. Insert near related player/resource features. |
+| `Player` | The feature directly changes Madeline, player resources, movement, or player-attached information. | Grouped as resources, practice assists, HUD controls, then player presentation. |
 | `Level` | The feature affects the current room, chapter, map state, timer, pause behavior, visual tuning, hitboxes, or level-wide rules. | Curated by impact and related systems. Place near the closest system. |
 | `Shortcuts` | The feature is an immediate one-shot action. | Workflow ordered. Keep restart/reload actions, spawn actions, throw actions, and cutscene actions grouped. |
-| `Creator` | The feature helps route building, map navigation, room capture, debug-map work, or entity inspection. | Uses explicit sorting in `SortCreatorEntries`. Add custom rank only when needed. |
+| `Creator` | The feature helps route building, map navigation, room capture, debug-map work, or entity inspection. | Keep inspection tools, room navigation, checkpoint/map navigation, then capture and export actions together. |
 | `Labels` | The feature draws persistent label-style HUD information. | Uses label row order and user row-order behavior. |
-| `Global` | The feature changes Akron-level behavior across scenes. | Curated workflow order. Place near related global controls. |
-| `Interface` | The feature changes menu appearance, search, setup import/export, keybinds, or menu behavior. | Curated workflow order. Place near related interface controls. |
+| `Global` | The feature changes Akron-level behavior across scenes. | Keep time and simulation controls first, then attempt policy and persistence controls. |
+| `Interface` | The feature changes menu appearance, search, setup import/export, keybinds, or menu behavior. | Keep appearance first, setup/community tools second, and overlay behavior third. |
 | `Internal Recorder` | The feature changes recording, replay buffers, clip triggers, output, codec, or proof recording. | Curated recorder workflow order. Place near the matching recorder step. |
 | `Sound` | The feature changes audio routing, volume, pitch, speed, or playback presentation. | Grouped by sound concern. Place in the matching sound group. |
 
