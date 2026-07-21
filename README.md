@@ -9,8 +9,6 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-CC%20BY--NC--ND%204.0-000000?style=flat-square" alt="license badge"></a>
 </p>
 
-![Akron overlay](docs/images/akron-overlay-overview.png)
-
 ## what is Akron?
 
 Akron is a player-facing utility suite for Celeste that runs inside Everest. it centers on an in-game overlay for practice, routing, hud visibility, capture, setup sharing, and visible attempt status.

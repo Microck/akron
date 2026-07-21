@@ -13,11 +13,6 @@ namespace Celeste.Mod.Akron;
 public sealed partial class AkronOverlay {
     private static List<OverlayEntry> BuildGlobalEntries(bool motionSmoothingLoaded) {
         List<OverlayEntry> entries = new List<OverlayEntry>();
-        if (motionSmoothingLoaded) {
-            entries.Add(InlineNumericToggle("FPS Bypass", AkronFeatureKind.FpsBypass, () => true, () => AkronModule.Settings.FpsBypass, value => AkronModule.Settings.FpsBypass = value, () => AkronModule.Settings.FpsBypassTarget, value => AkronModule.Settings.FpsBypassTarget = AkronModuleSettings.ClampFpsTarget((int) Math.Round(value)), 60, 480, "%.0f", "FPS", true));
-            entries.Add(InlineNumericToggle("TPS Bypass", AkronFeatureKind.TpsBypass, () => true, () => AkronModule.Settings.TpsBypass, value => AkronModule.Settings.TpsBypass = value, () => AkronModule.Settings.TpsBypassTarget, value => AkronModule.Settings.TpsBypassTarget = AkronModuleSettings.ClampTpsTarget((int) Math.Round(value)), 30, 480, "%.0f", "TPS", true, "physics bypass"));
-        }
-
         entries.Add(InlineNumericToggle(
             "Timescale",
             AkronFeatureKind.Timescale,
@@ -33,7 +28,15 @@ public sealed partial class AkronOverlay {
             false,
             "speed",
             "slowmo"));
+        entries.Add(NumericToggle("Transition Speed", AkronFeatureKind.TransitionSpeed, () => AkronModule.Settings.TransitionSpeedEnabled, value => AkronModule.Settings.TransitionSpeedEnabled = value, () => AkronModule.Settings.TransitionSpeedMultiplier, value => AkronModule.Settings.TransitionSpeedMultiplier = AkronModuleSettings.ClampTransitionSpeedMultiplier(value), 0.1f, 3f, "%.2f", "x", false));
+        entries.Add(PolicyToggle("Frame Stepper", AkronFeatureKind.FrameAdvance, () => AkronModule.TryGetSession() != null, () => AkronModule.Settings.FrameStepper, value => AkronModule.Settings.FrameStepper = value));
+        if (motionSmoothingLoaded) {
+            entries.Add(InlineNumericToggle("FPS Bypass", AkronFeatureKind.FpsBypass, () => true, () => AkronModule.Settings.FpsBypass, value => AkronModule.Settings.FpsBypass = value, () => AkronModule.Settings.FpsBypassTarget, value => AkronModule.Settings.FpsBypassTarget = AkronModuleSettings.ClampFpsTarget((int) Math.Round(value)), 60, 480, "%.0f", "FPS", true));
+            entries.Add(InlineNumericToggle("TPS Bypass", AkronFeatureKind.TpsBypass, () => true, () => AkronModule.Settings.TpsBypass, value => AkronModule.Settings.TpsBypass = value, () => AkronModule.Settings.TpsBypassTarget, value => AkronModule.Settings.TpsBypassTarget = AkronModuleSettings.ClampTpsTarget((int) Math.Round(value)), 30, 480, "%.0f", "TPS", true, "physics bypass"));
+        }
+
         entries.Add(Toggle("Safe Mode", () => AkronModule.Settings.SafeMode, value => AkronModule.Settings.SafeMode = value, "safe", "freeze attempts", "indicator"));
+        entries.Add(PolicyToggle("Freeze Attempts", AkronFeatureKind.SafeModeStats, () => AkronModule.Settings.SafeModeFreezeAttempts, value => AkronModule.Settings.SafeModeFreezeAttempts = value));
         entries.Add(PolicyToggle("Submission Mode", AkronFeatureKind.SubmissionMode, () => AkronModule.Settings.SubmissionMode, value => {
             AkronModule.Settings.SubmissionMode = value;
             if (value) {
@@ -44,11 +47,8 @@ public sealed partial class AkronOverlay {
                 AkronModule.Settings.MapVersionStamp = true;
             }
         }, "proof", "submission", "goldberry", "hardlist"));
-        entries.Add(PolicyToggle("Freeze Attempts", AkronFeatureKind.SafeModeStats, () => AkronModule.Settings.SafeModeFreezeAttempts, value => AkronModule.Settings.SafeModeFreezeAttempts = value));
         entries.Add(Toggle("Pause Buffering", () => AkronModule.Settings.AllowPauseBuffering, value => AkronModule.Settings.AllowPauseBuffering = value));
-        entries.Add(PolicyToggle("Control Display", AkronFeatureKind.ShowTaps, () => AkronModule.Settings.ShowTaps, value => AkronModule.Settings.ShowTaps = value));
         entries.Add(Toggle("Autosave", () => AkronModule.Settings.Autosave, value => AkronModule.Settings.Autosave = value, "save", "room load", "respawn"));
-        entries.Add(NumericToggle("Transition Speed", AkronFeatureKind.TransitionSpeed, () => AkronModule.Settings.TransitionSpeedEnabled, value => AkronModule.Settings.TransitionSpeedEnabled = value, () => AkronModule.Settings.TransitionSpeedMultiplier, value => AkronModule.Settings.TransitionSpeedMultiplier = AkronModuleSettings.ClampTransitionSpeedMultiplier(value), 0.1f, 3f, "%.2f", "x", false));
         return entries;
     }
 
@@ -58,33 +58,30 @@ public sealed partial class AkronOverlay {
                 return BuildGlobalEntries(AkronInterop.MotionSmoothingLoaded);
             case "Level":
                 return new List<OverlayEntry> {
+                    Action("Core Mode", () => level != null, () => AkronActions.DescribeCoreMode(level), () => AkronActions.ToggleCoreMode(level), () => AkronModule.Settings.CoreModeOverrideEnabled, "core", "hot", "cold", "cycle"),
+                    Action("Freeze Gameplay", AkronFeatureKind.Freeze, () => AkronModule.Session != null, () => AkronModule.Session == null ? "Unavailable" : AkronModule.Session.FreezeGameplay ? "On" : "Off", AkronActions.ToggleFreeze, () => AkronModule.Session?.FreezeGameplay == true),
+                    Toggle("Confirm Restart", () => AkronModule.Settings.ConfirmRestart, value => AkronModule.Settings.ConfirmRestart = value),
+                    Toggle("Confirm Full Reset", () => AkronModule.Settings.ConfirmFullReset, value => AkronModule.Settings.ConfirmFullReset = value),
+                    PolicyToggle("Skip Intro", AkronFeatureKind.LevelEnterSkip, () => AkronModule.Settings.SkipIntro, value => AkronModule.Settings.SkipIntro = value),
+                    PolicyToggle("Skip Postcards", AkronFeatureKind.LevelEnterSkip, () => AkronModule.Settings.SkipPostcards, value => AkronModule.Settings.SkipPostcards = value),
                     PolicyToggle("Auto Kill", AkronFeatureKind.AutoKill, () => AkronModule.Settings.AutoKill, value => {
                         AkronModule.Settings.AutoKill = value;
                         if (value && !AkronModule.Settings.AutoKillTimer && !AkronModule.Settings.AutoKillArea) {
                             AkronModule.Settings.AutoKillTimer = true;
                         }
                     }),
-                    PolicyToggle("Auto Deafen", AkronFeatureKind.AutoDeafen, () => AkronModule.Settings.AutoDeafen, value => {
-                        AkronModule.Settings.AutoDeafen = value;
-                        if (!value) {
-                            AkronActions.RestoreAutoDeafen();
-                        }
-                    }),
-                    Toggle("Confirm Restart", () => AkronModule.Settings.ConfirmRestart, value => AkronModule.Settings.ConfirmRestart = value),
-                    Toggle("Confirm Full Reset", () => AkronModule.Settings.ConfirmFullReset, value => AkronModule.Settings.ConfirmFullReset = value),
-                    Action("Freeze Gameplay", AkronFeatureKind.Freeze, () => AkronModule.Session != null, () => AkronModule.Session == null ? "Unavailable" : AkronModule.Session.FreezeGameplay ? "On" : "Off", AkronActions.ToggleFreeze, () => AkronModule.Session?.FreezeGameplay == true),
-                    Action("Core Mode", () => level != null, () => AkronActions.DescribeCoreMode(level), () => AkronActions.ToggleCoreMode(level), () => AkronModule.Settings.CoreModeOverrideEnabled, "core", "hot", "cold", "cycle"),
                     NumericToggle("Respawn Time", AkronFeatureKind.RespawnTime, () => AkronModule.Settings.RespawnTimeModifier, value => AkronModule.Settings.RespawnTimeModifier = value, () => AkronModule.Settings.RespawnTimeSeconds, value => AkronModule.Settings.RespawnTimeSeconds = AkronModuleSettings.ClampRespawnTimeSeconds(value), 0.1f, 10f, "%.2f", "s", false),
                     NumericToggle("Pause Timer", AkronFeatureKind.PauseCountdown, () => AkronModule.Settings.PauseCountdown, value => AkronModule.Settings.PauseCountdown = value, () => AkronModule.Settings.PauseCountdownSeconds, value => AkronModule.Settings.PauseCountdownSeconds = AkronModuleSettings.ClampPauseCountdownSeconds(value), 0.1f, 15f, "%.2f", "s", false),
                     PolicyToggle("Pause Tracker", AkronFeatureKind.PauseTracker, () => AkronModule.Settings.PauseTracker, value => AkronModule.Settings.PauseTracker = value, "pause count", "proof", "pause abuse"),
                     PolicyToggle("Lag Pauser", AkronFeatureKind.LagPauser, () => AkronModule.Settings.LagPauser, value => AkronModule.Settings.LagPauser = value, "lag", "threshold", "proof", "pause"),
                     PolicyToggle("Freeze Timer While Paused", AkronFeatureKind.PauseTimerFreeze, () => AkronModule.Settings.FreezeTimerWhilePaused, value => AkronModule.Settings.FreezeTimerWhilePaused = value),
                     PolicyToggle("Hide Pause Menu", AkronFeatureKind.PauseMenuVisibility, () => AkronModule.Settings.HidePauseMenu, value => AkronModule.Settings.HidePauseMenu = value),
-                    PolicyToggle("Light Level", AkronFeatureKind.VisualTuning, () => AkronModule.Settings.LightLevel, value => AkronModule.Settings.LightLevel = value),
-                    PolicyToggle("Bloom Level", AkronFeatureKind.VisualTuning, () => AkronModule.Settings.BloomLevel, value => AkronModule.Settings.BloomLevel = value),
-                    PolicyToggle("Screen Tint", AkronFeatureKind.VisualTuning, () => AkronModule.Settings.ScreenTint, value => AkronModule.Settings.ScreenTint = value),
-                    PolicyToggle("Screenshake", AkronFeatureKind.Screenshake, () => AkronModule.Settings.Screenshake, value => AkronModule.Settings.Screenshake = value),
-                    PolicyToggle("Refill Clarity", AkronFeatureKind.RefillClarity, () => AkronModule.Settings.RefillClarity, value => AkronModule.Settings.RefillClarity = value),
+                    PolicyToggle("Auto Deafen", AkronFeatureKind.AutoDeafen, () => AkronModule.Settings.AutoDeafen, value => {
+                        AkronModule.Settings.AutoDeafen = value;
+                        if (!value) {
+                            AkronActions.RestoreAutoDeafen();
+                        }
+                    }),
                     new OverlayEntry(
                         "Deload Spinners",
                         () => level != null && !AkronDeloadSimulator.IsUsed(level),
@@ -95,8 +92,21 @@ public sealed partial class AkronOverlay {
                         OverlayEntryControl.Action,
                         AkronFeatureKind.DeloadSimulation,
                         forceOptionsPopup: true),
-                    PolicyToggle("Skip Intro", AkronFeatureKind.LevelEnterSkip, () => AkronModule.Settings.SkipIntro, value => AkronModule.Settings.SkipIntro = value),
-                    PolicyToggle("Skip Postcards", AkronFeatureKind.LevelEnterSkip, () => AkronModule.Settings.SkipPostcards, value => AkronModule.Settings.SkipPostcards = value),
+                    PolicyToggle("Show Hitboxes", AkronFeatureKind.HitboxViewer, () => AkronModule.Settings.HitboxViewer, value => AkronModule.Settings.HitboxViewer = value),
+                    Toggle("Fix Hitbox Pixels", () => AkronModule.Settings.FixHitboxPixels, value => AkronModule.Settings.FixHitboxPixels = value),
+                    PolicyToggle("Show Hitbox Trail", AkronFeatureKind.HitboxViewer, () => AkronModule.Settings.HitboxViewer && AkronModule.Settings.ShowHitboxTrail, value => {
+                        AkronModule.Settings.ShowHitboxTrail = value;
+                        if (value) {
+                            AkronModule.Settings.HitboxViewer = true;
+                        }
+                    }),
+                    Toggle("Show Hitboxes On Death", () => AkronModule.Settings.HitboxShowLastDeath, value => AkronModule.Settings.HitboxShowLastDeath = value),
+                    PolicyToggle("Show Triggers", AkronFeatureKind.TriggerViewer, () => AkronModule.Settings.ShowTriggers, value => AkronModule.Settings.ShowTriggers = value),
+                    PolicyToggle("Refill Clarity", AkronFeatureKind.RefillClarity, () => AkronModule.Settings.RefillClarity, value => AkronModule.Settings.RefillClarity = value),
+                    PolicyToggle("Screenshake", AkronFeatureKind.Screenshake, () => AkronModule.Settings.Screenshake, value => AkronModule.Settings.Screenshake = value),
+                    PolicyToggle("Light Level", AkronFeatureKind.VisualTuning, () => AkronModule.Settings.LightLevel, value => AkronModule.Settings.LightLevel = value),
+                    PolicyToggle("Bloom Level", AkronFeatureKind.VisualTuning, () => AkronModule.Settings.BloomLevel, value => AkronModule.Settings.BloomLevel = value),
+                    PolicyToggle("Screen Tint", AkronFeatureKind.VisualTuning, () => AkronModule.Settings.ScreenTint, value => AkronModule.Settings.ScreenTint = value),
                     Toggle("Reduced Visual Noise", () => AkronModule.Settings.ReducedVisualNoise, value => AkronModule.Settings.ReducedVisualNoise = value),
                     Toggle("No Particles", () => AkronModule.Settings.NoParticles, value => AkronModule.Settings.SetNoParticles(value)),
                     Toggle("No Glitch", () => AkronModule.Settings.NoGlitch, value => AkronModule.Settings.SetNoGlitch(value)),
@@ -108,17 +118,7 @@ public sealed partial class AkronOverlay {
                     Toggle("Hide Tentacles", () => AkronModule.Settings.HideTentacles, value => AkronModule.Settings.HideTentacles = value),
                     Toggle("Hide Heat Distortion", () => AkronModule.Settings.HideHeatDistortion, value => AkronModule.Settings.HideHeatDistortion = value),
                     PolicyToggle("No Death Wipe", AkronFeatureKind.DeathVisuals, () => AkronModule.Settings.NoDeathWipe, value => AkronModule.Settings.NoDeathWipe = value),
-                    PolicyToggle("No Freeze Frames", AkronFeatureKind.FreezeFrames, () => AkronModule.Settings.NoFreezeFrames, value => AkronModule.Settings.NoFreezeFrames = value),
-                    PolicyToggle("Show Hitboxes", AkronFeatureKind.HitboxViewer, () => AkronModule.Settings.HitboxViewer, value => AkronModule.Settings.HitboxViewer = value),
-                    Toggle("Fix Hitbox Pixels", () => AkronModule.Settings.FixHitboxPixels, value => AkronModule.Settings.FixHitboxPixels = value),
-                    PolicyToggle("Show Hitbox Trail", AkronFeatureKind.HitboxViewer, () => AkronModule.Settings.HitboxViewer && AkronModule.Settings.ShowHitboxTrail, value => {
-                        AkronModule.Settings.ShowHitboxTrail = value;
-                        if (value) {
-                            AkronModule.Settings.HitboxViewer = true;
-                        }
-                    }),
-                    Toggle("Show Hitboxes On Death", () => AkronModule.Settings.HitboxShowLastDeath, value => AkronModule.Settings.HitboxShowLastDeath = value),
-                    PolicyToggle("Show Triggers", AkronFeatureKind.TriggerViewer, () => AkronModule.Settings.ShowTriggers, value => AkronModule.Settings.ShowTriggers = value)
+                    PolicyToggle("No Freeze Frames", AkronFeatureKind.FreezeFrames, () => AkronModule.Settings.NoFreezeFrames, value => AkronModule.Settings.NoFreezeFrames = value)
                 };
             case "StartPos":
                 return new List<OverlayEntry> {
@@ -154,57 +154,57 @@ public sealed partial class AkronOverlay {
                 };
             case "Player":
                 List<OverlayEntry> player = new List<OverlayEntry> {
+                    InvincibilityToggle(),
                     PolicyToggle("Air Jumps", AkronFeatureKind.MovementStatMutation, () => AkronModule.Settings.JumpHack, value => AkronModule.Settings.JumpHack = value),
-                    Toggle("Always Show Trail", () => AkronModule.Settings.TrailVisibility == AkronTrailVisibility.Always, value => {
-                        AkronModule.Settings.TrailVisibility = value ? AkronTrailVisibility.Always : AkronTrailVisibility.Vanilla;
-                        AkronModule.Settings.SetNoTrails(false);
-                    }),
-                    PolicyToggle("Click Teleport", AkronFeatureKind.ClickTeleport, () => AkronModule.Settings.ClickTeleport, value => AkronModule.Settings.ClickTeleport = value),
-                    PolicyToggle("Custom Trail", AkronFeatureKind.CustomTrail, () => AkronModule.Settings.CustomTrail, value => AkronModule.Settings.CustomTrail = value),
-                    Toggle("Dash Bar", () => AkronModule.Settings.DashBar, value => AkronModule.Settings.DashBar = value),
-                    PolicyToggle("Dash Count", AkronFeatureKind.DashCountOverride, () => AkronModule.Settings.DashCountOverride, value => AkronModule.Settings.DashCountOverride = value),
-                    Toggle("Dash Number", () => AkronModule.Settings.DashNumber, value => AkronModule.Settings.DashNumber = value),
-                    NumericToggle("Fast Lookout", AkronFeatureKind.FastLookout, () => AkronModule.Settings.FastLookout, value => AkronModule.Settings.FastLookout = value, () => AkronModule.Settings.FastLookoutMultiplier, value => AkronModule.Settings.FastLookoutMultiplier = AkronModuleSettings.ClampFastLookoutMultiplier((int) Math.Round(value)), 1, 10, "%.0f", "x", true, "lookout", "watchtower"),
-                    PolicyToggle("Frame Stepper", AkronFeatureKind.FrameAdvance, () => AkronModule.TryGetSession() != null, () => AkronModule.Settings.FrameStepper, value => AkronModule.Settings.FrameStepper = value),
-                    Action("Golden Start", () => level != null, () => AkronActions.DescribeGoldenStartHelper(level), () => { if (level != null) AkronActions.GiveGoldenFromStart(level); }, "golden", "give_golden", "proof", "start"),
-                    PolicyToggle("Golden Transparency", AkronFeatureKind.GoldenTransparency, () => AkronModule.Settings.GoldenTransparency, value => AkronModule.Settings.GoldenTransparency = value, "golden", "opacity", "berry"),
-                    PolicyToggle("Grab Mode", AkronFeatureKind.GrabModeHotkey, () => AkronModule.Settings.GrabModeOverrideEnabled, SetGrabModeOverrideEnabled),
+                    PolicyToggle("Infinite Dash", AkronFeatureKind.InfiniteDash, () => AkronModule.Settings.InfiniteDash, value => AkronModule.Settings.InfiniteDash = value),
+                    PolicyToggle("Infinite Stamina", AkronFeatureKind.InfiniteStamina, () => AkronModule.Settings.InfiniteStamina, value => AkronModule.Settings.InfiniteStamina = value),
                     PolicyToggle("Ground Refills", AkronFeatureKind.GroundRefillRules, () => AkronModule.Settings.GroundRefillRules, value => AkronModule.Settings.GroundRefillRules = value),
+                    PolicyToggle("Dash Count", AkronFeatureKind.DashCountOverride, () => AkronModule.Settings.DashCountOverride, value => AkronModule.Settings.DashCountOverride = value),
+                    PolicyToggle("Grab Mode", AkronFeatureKind.GrabModeHotkey, () => AkronModule.Settings.GrabModeOverrideEnabled, SetGrabModeOverrideEnabled),
+                    Action("Set Inventory", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeSetInventory(level), () => AkronActions.ToggleSetInventory(level), AkronActions.IsSetInventoryActive, "inventory", "dash count", "dashes", "space ruins"),
+                    Action("Dream State", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeDreamState(level), () => AkronActions.ToggleDreamState(level), () => AkronActions.IsDreamStateActive(level), "dream dash", "dream blocks", "inventory"),
+                    PolicyToggle("Noclip", AkronFeatureKind.Noclip, () => AkronModule.Settings.Noclip, value => AkronModule.Settings.Noclip = value),
+                    PolicyToggle("Click Teleport", AkronFeatureKind.ClickTeleport, () => AkronModule.Settings.ClickTeleport, value => AkronModule.Settings.ClickTeleport = value),
+                    PolicyToggle("Dash Redirect", AkronFeatureKind.InputAssistShortcut, () => AkronModule.Settings.DashRedirectEnabled, value => AkronModule.Settings.DashRedirectEnabled = value, "dash", "redirect", "input assist"),
                     PolicyToggle("Hazard Accuracy", AkronFeatureKind.HazardAccuracy, () => AkronModule.Settings.NoclipAccuracy, value => {
                         AkronModule.Settings.NoclipAccuracy = value;
                         if (!value) {
                             AkronModule.ResetNoclipAccuracy();
                         }
                     }),
+                    NumericToggle("Fast Lookout", AkronFeatureKind.FastLookout, () => AkronModule.Settings.FastLookout, value => AkronModule.Settings.FastLookout = value, () => AkronModule.Settings.FastLookoutMultiplier, value => AkronModule.Settings.FastLookoutMultiplier = AkronModuleSettings.ClampFastLookoutMultiplier((int) Math.Round(value)), 1, 10, "%.0f", "x", true, "lookout", "watchtower"),
+                    Action("Golden Start", () => level != null, () => AkronActions.DescribeGoldenStartHelper(level), () => { if (level != null) AkronActions.GiveGoldenFromStart(level); }, "golden", "give_golden", "proof", "start"),
+                    PolicyToggle("Show Trajectory", AkronFeatureKind.ShowTrajectory, () => AkronModule.Settings.ShowTrajectory, value => AkronModule.Settings.ShowTrajectory = value),
+                    PolicyToggle("Control Display", AkronFeatureKind.ShowTaps, () => AkronModule.Settings.ShowTaps, value => AkronModule.Settings.ShowTaps = value),
+                    Toggle("Dash Bar", () => AkronModule.Settings.DashBar, value => AkronModule.Settings.DashBar = value),
+                    Toggle("Dash Number", () => AkronModule.Settings.DashNumber, value => AkronModule.Settings.DashNumber = value),
+                    Toggle("Stamina Bar", () => AkronModule.Settings.StaminaBar, value => AkronModule.Settings.StaminaBar = value),
+                    PolicyToggle("Speed Number", AkronFeatureKind.SpeedNumber, () => AkronModule.Settings.SpeedNumber, value => AkronModule.Settings.SpeedNumber = value),
                     PolicyToggle("Hide Player", AkronFeatureKind.HidePlayer, () => AkronModule.Settings.HidePlayer, value => AkronModule.Settings.HidePlayer = value),
-                    PolicyToggle("Infinite Dash", AkronFeatureKind.InfiniteDash, () => AkronModule.Settings.InfiniteDash, value => AkronModule.Settings.InfiniteDash = value),
-                    PolicyToggle("Infinite Stamina", AkronFeatureKind.InfiniteStamina, () => AkronModule.Settings.InfiniteStamina, value => AkronModule.Settings.InfiniteStamina = value),
-                    InvincibilityToggle(),
+                    PolicyToggle("Golden Transparency", AkronFeatureKind.GoldenTransparency, () => AkronModule.Settings.GoldenTransparency, value => AkronModule.Settings.GoldenTransparency = value, "golden", "opacity", "berry"),
                     PolicyToggle("Madeline Colors", AkronFeatureKind.CustomTrail, () => AkronModule.Settings.MadelineColors, value => AkronModule.Settings.MadelineColors = value),
                     PolicyToggle("Madeline Hair Length", AkronFeatureKind.MadelineHairLength, () => AkronModule.Settings.MadelineHairLength, value => AkronModule.Settings.MadelineHairLength = value),
                     PolicyToggle("Madeline Effect Sync", AkronFeatureKind.MadelineEffectSync, () => AkronModule.Settings.MadelineEffectSync, value => AkronModule.Settings.MadelineEffectSync = value),
-                    PolicyToggle("Death Particles", AkronFeatureKind.DeathVisuals, () => AkronModule.Settings.CustomDeathParticles, value => AkronModule.Settings.CustomDeathParticles = value),
-                    Action("Set Inventory", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeSetInventory(level), () => AkronActions.ToggleSetInventory(level), AkronActions.IsSetInventoryActive, "inventory", "dash count", "dashes", "space ruins"),
-                    Action("Dream State", () => level != null && level.Tracker.GetEntity<Player>() != null, () => AkronActions.DescribeDreamState(level), () => AkronActions.ToggleDreamState(level), () => AkronActions.IsDreamStateActive(level), "dream dash", "dream blocks", "inventory"),
-                    PolicyToggle("No Death Effect", AkronFeatureKind.DeathVisuals, () => AkronModule.Settings.NoDeathEffect, value => AkronModule.Settings.NoDeathEffect = value),
+                    PolicyToggle("Custom Trail", AkronFeatureKind.CustomTrail, () => AkronModule.Settings.CustomTrail, value => AkronModule.Settings.CustomTrail = value),
+                    Toggle("Always Show Trail", () => AkronModule.Settings.TrailVisibility == AkronTrailVisibility.Always, value => {
+                        AkronModule.Settings.TrailVisibility = value ? AkronTrailVisibility.Always : AkronTrailVisibility.Vanilla;
+                        AkronModule.Settings.SetNoTrails(false);
+                    }),
                     Toggle("No Ghost Trail", () => AkronModule.Settings.TrailVisibility == AkronTrailVisibility.Hidden, value => {
                         AkronModule.Settings.TrailVisibility = value ? AkronTrailVisibility.Hidden : AkronTrailVisibility.Vanilla;
                         AkronModule.Settings.SetNoTrails(value);
                     }),
-                    Toggle("No Stamina Flash", () => AkronModule.Settings.NoStaminaFlash, value => AkronModule.Settings.NoStaminaFlash = value),
                     Toggle("No Trails", () => AkronModule.Settings.NoTrails, value => AkronModule.Settings.SetNoTrails(value)),
-                    PolicyToggle("No Respawn Animation", AkronFeatureKind.RespawnAnimation, () => AkronModule.Settings.NoRespawnAnimation, value => AkronModule.Settings.NoRespawnAnimation = value),
-                    PolicyToggle("Noclip", AkronFeatureKind.Noclip, () => AkronModule.Settings.Noclip, value => AkronModule.Settings.Noclip = value),
-                    PolicyToggle("Dash Redirect", AkronFeatureKind.InputAssistShortcut, () => AkronModule.Settings.DashRedirectEnabled, value => AkronModule.Settings.DashRedirectEnabled = value, "dash", "redirect", "input assist"),
-                    PolicyToggle("Show Trajectory", AkronFeatureKind.ShowTrajectory, () => AkronModule.Settings.ShowTrajectory, value => AkronModule.Settings.ShowTrajectory = value),
-                    PolicyToggle("Speed Number", AkronFeatureKind.SpeedNumber, () => AkronModule.Settings.SpeedNumber, value => AkronModule.Settings.SpeedNumber = value),
-                    Toggle("Stamina Bar", () => AkronModule.Settings.StaminaBar, value => AkronModule.Settings.StaminaBar = value)
+                    Toggle("No Stamina Flash", () => AkronModule.Settings.NoStaminaFlash, value => AkronModule.Settings.NoStaminaFlash = value),
+                    PolicyToggle("Death Particles", AkronFeatureKind.DeathVisuals, () => AkronModule.Settings.CustomDeathParticles, value => AkronModule.Settings.CustomDeathParticles = value),
+                    PolicyToggle("No Death Effect", AkronFeatureKind.DeathVisuals, () => AkronModule.Settings.NoDeathEffect, value => AkronModule.Settings.NoDeathEffect = value),
+                    PolicyToggle("No Respawn Animation", AkronFeatureKind.RespawnAnimation, () => AkronModule.Settings.NoRespawnAnimation, value => AkronModule.Settings.NoRespawnAnimation = value)
                 };
                 return player;
             case "Sound":
                 return BuildCollapsedSoundEntries();
             case "Creator":
-                return SortCreatorEntries(new List<OverlayEntry> {
+                return new List<OverlayEntry> {
                     PolicyToggle("Free Camera", AkronFeatureKind.FreeCamera, () => AkronModule.Settings.FreeCamera, value => AkronModule.Settings.FreeCamera = value),
                     PolicyToggle("Cursor Tools", AkronFeatureKind.CursorTools, () => AkronModule.Settings.CursorTools, value => AkronModule.Settings.CursorTools = value, "hold", "cursor", "tools", "click teleport", "free camera"),
                     PolicyToggle("Cursor Zoom", AkronFeatureKind.CursorZoom, () => AkronModule.Settings.CursorZoom, value => {
@@ -213,28 +213,28 @@ public sealed partial class AkronOverlay {
                             AkronModule.ResetCursorZoom(level);
                         }
                     }, "mouse", "cursor", "scroll", "zoom", "magnifier"),
-                    EntityInspectorRow(),
-                    Action("Export Room Times", () => AkronInterop.SpeedrunToolLoaded, () => AkronInterop.RoomTimerAvailable ? "Speedrun Tool" : "Unavailable", AkronActions.ExportRoomTimes),
-                    Action("Room Capture", () => level != null, AkronScreenshotScanner.Describe, () => { if (level != null) AkronScreenshotScanner.ScanRoom(level); }, "screenshot tool", "scan room", "export"),
-                    Action("Map Capture", () => level != null, AkronScreenshotScanner.Describe, () => { if (level != null) AkronScreenshotScanner.ScanChapter(level); }, "screenshot tool", "scan map", "scan chapter", "export"),
-                    Action("Previous Room", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeSelectedRoom(level), () => { if (level != null) AkronActions.CycleSelectedRoom(level, -1); }),
-                    Action("Next Room", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeSelectedRoom(level), () => { if (level != null) AkronActions.CycleSelectedRoom(level, 1); }),
-                    Action("Warp Selected Room", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeSelectedRoom(level), () => { if (level != null) AkronActions.WarpSelectedRoom(level); }),
-                    Action("Previous Room In Order", () => level != null, () => "Cheat", () => { if (level != null) AkronActions.WarpRelativeRoom(level, -1); }, "warp previous room", "warp to previous in order"),
-                    Action("Next Room In Order", () => level != null, () => "Cheat", () => { if (level != null) AkronActions.WarpRelativeRoom(level, 1); }, "warp next room", "warp to next in order"),
-                    Action("Previous Map", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCampaignMap(level, -1), () => { if (level != null) AkronActions.WarpRelativeCampaignMap(level, -1); }, "campaign", "chapter", "area", "previous map"),
-                    Action("Next Map", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCampaignMap(level, 1), () => { if (level != null) AkronActions.WarpRelativeCampaignMap(level, 1); }, "campaign", "chapter", "area", "next map"),
-                    Action("Previous Checkpoint", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCheckpoint(level, -1), () => { if (level != null) AkronActions.WarpRelativeCheckpoint(level, -1); }, "checkpoint", "previous checkpoint"),
-                    Action("Next Checkpoint", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCheckpoint(level, 1), () => { if (level != null) AkronActions.WarpRelativeCheckpoint(level, 1); }, "checkpoint", "next checkpoint"),
-                    Action("Open Debug Map", () => level != null, () => AkronModuleSettings.DescribeBinding(AkronModule.Settings.OpenDebugMap), () => { if (level != null) AkronModule.PerformOpenDebugMap(level); }),
                     PolicyToggle("Camera Offset", AkronFeatureKind.CameraOffset, () => AkronModule.Settings.CameraOffset, value => {
                         AkronModule.Settings.CameraOffset = value;
                         if (level != null) {
                             AkronActions.ApplyCameraOffset(level);
                         }
                     }, "camera", "offset"),
-                    Action("Export Room Stats", () => level != null, () => string.IsNullOrWhiteSpace(AkronModule.Session?.LastRoomStatsExportPath) ? "TSV" : Path.GetFileName(AkronModule.Session.LastRoomStatsExportPath), () => { if (level != null) AkronPracticeStats.ExportRoomStats(level); }, "room", "stats", "export")
-                });
+                    EntityInspectorRow(),
+                    Action("Warp Selected Room", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeSelectedRoom(level), () => { if (level != null) AkronActions.WarpSelectedRoom(level); }),
+                    Action("Previous Room", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeSelectedRoom(level), () => { if (level != null) AkronActions.CycleSelectedRoom(level, -1); }),
+                    Action("Next Room", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeSelectedRoom(level), () => { if (level != null) AkronActions.CycleSelectedRoom(level, 1); }),
+                    Action("Previous Room In Order", () => level != null, () => "Cheat", () => { if (level != null) AkronActions.WarpRelativeRoom(level, -1); }, "warp previous room", "warp to previous in order"),
+                    Action("Next Room In Order", () => level != null, () => "Cheat", () => { if (level != null) AkronActions.WarpRelativeRoom(level, 1); }, "warp next room", "warp to next in order"),
+                    Action("Previous Checkpoint", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCheckpoint(level, -1), () => { if (level != null) AkronActions.WarpRelativeCheckpoint(level, -1); }, "checkpoint", "previous checkpoint"),
+                    Action("Next Checkpoint", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCheckpoint(level, 1), () => { if (level != null) AkronActions.WarpRelativeCheckpoint(level, 1); }, "checkpoint", "next checkpoint"),
+                    Action("Previous Map", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCampaignMap(level, -1), () => { if (level != null) AkronActions.WarpRelativeCampaignMap(level, -1); }, "campaign", "chapter", "area", "previous map"),
+                    Action("Next Map", () => level != null, () => level == null ? "Unavailable" : AkronActions.DescribeRelativeCampaignMap(level, 1), () => { if (level != null) AkronActions.WarpRelativeCampaignMap(level, 1); }, "campaign", "chapter", "area", "next map"),
+                    Action("Open Debug Map", () => level != null, () => AkronModuleSettings.DescribeBinding(AkronModule.Settings.OpenDebugMap), () => { if (level != null) AkronModule.PerformOpenDebugMap(level); }),
+                    Action("Room Capture", () => level != null, AkronScreenshotScanner.Describe, () => { if (level != null) AkronScreenshotScanner.ScanRoom(level); }, "screenshot tool", "scan room", "export"),
+                    Action("Map Capture", () => level != null, AkronScreenshotScanner.Describe, () => { if (level != null) AkronScreenshotScanner.ScanChapter(level); }, "screenshot tool", "scan map", "scan chapter", "export"),
+                    Action("Export Room Stats", () => level != null, () => string.IsNullOrWhiteSpace(AkronModule.Session?.LastRoomStatsExportPath) ? "TSV" : Path.GetFileName(AkronModule.Session.LastRoomStatsExportPath), () => { if (level != null) AkronPracticeStats.ExportRoomStats(level); }, "room", "stats", "export"),
+                    Action("Export Room Times", () => AkronInterop.SpeedrunToolLoaded, () => AkronInterop.RoomTimerAvailable ? "Speedrun Tool" : "Unavailable", AkronActions.ExportRoomTimes)
+                };
             case "Speedrun Tool":
                 return BuildSpeedrunToolEntries(level);
             case "CelesteTAS":
@@ -264,13 +264,13 @@ public sealed partial class AkronOverlay {
                     SelectorDropdown("Theme", () => true, AkronOverlayThemes.CurrentDisplayName, () => ApplyOptionsPopupDelta("Overlay Appearance", 1), BuildThemeDropdownChoices, "overlay appearance", "style", "custom theme", ".akr"),
                     NumericRow("UI Scale", () => AkronModule.Settings.OverlayScale / 100f, value => AkronModule.Settings.OverlayScale = AkronModuleSettings.ClampOverlayScale((int) Math.Round(value * 100f)), 0.75f, 1.5f, "%.3f", string.Empty, false, "overlay appearance", "dpi"),
                     NumericRow("Opacity", () => AkronModule.Settings.OverlayOpacity, value => AkronModule.Settings.OverlayOpacity = AkronModuleSettings.ClampOverlayOpacity((int) Math.Round(value)), 55, 100, "%.0f", "%", true, "transparent lists"),
-                    Toggle("Streamer Mode", () => AkronModule.Settings.StreamerMode, value => AkronModule.Settings.StreamerMode = value),
-                    LoggingToggle(),
-                    Toggle("Pause While Open", () => AkronModule.Settings.PauseGameplayInMenu, value => AkronModule.Settings.PauseGameplayInMenu = value),
                     Action("Export Setup", () => true, () => AkronSetupPacks.FormatSection(AkronModule.Settings.SetupPackSection), () => AkronSetupPacks.ExportCurrent(AkronModule.Settings.SetupPackExportName, AkronModule.Settings.SetupPackSection), "setup", ".akr", "export"),
                     Action("Import Setup", () => true, () => AkronSetupPacks.FormatSection(AkronModule.Settings.SetupPackSection), () => AkronSetupPacks.ImportFromFileBrowser(AkronModule.Settings.SetupPackSection), "setup", ".akr", "import"),
                     Action("Community Packs", () => true, DescribeCommunityPackBrowser, OpenCommunityPackBrowser, "discord", "community", "map", ".akr", "gamebanana"),
                     UploadPackRow(level),
+                    Toggle("Pause While Open", () => AkronModule.Settings.PauseGameplayInMenu, value => AkronModule.Settings.PauseGameplayInMenu = value),
+                    Toggle("Streamer Mode", () => AkronModule.Settings.StreamerMode, value => AkronModule.Settings.StreamerMode = value),
+                    LoggingToggle(),
                     Toggle("Search Autofocus", () => AkronModule.Settings.SearchAutofocus, value => AkronModule.Settings.SearchAutofocus = value),
                     SearchInput()
                 };
@@ -310,43 +310,6 @@ public sealed partial class AkronOverlay {
 
     private static List<OverlayEntry> BuildDisplayEntriesForTab(string tab, Level level) {
         return BuildEntriesForTab(tab, level);
-    }
-
-    private static List<OverlayEntry> SortCreatorEntries(IEnumerable<OverlayEntry> entries) {
-        return (entries ?? Enumerable.Empty<OverlayEntry>())
-            .OrderBy(GetCreatorEntrySortGroup)
-            .ThenBy(GetCreatorEntrySortRank)
-            .ThenBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
-    private static int GetCreatorEntrySortGroup(OverlayEntry entry) {
-        if (entry.Control != OverlayEntryControl.Action) {
-            return 0;
-        }
-
-        if (string.Equals(entry.Label, "Map Capture", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(entry.Label, "Room Capture", StringComparison.OrdinalIgnoreCase)) {
-            return 1;
-        }
-
-        return GetCreatorEntrySortRank(entry) < int.MaxValue ? 2 : 3;
-    }
-
-    private static int GetCreatorEntrySortRank(OverlayEntry entry) {
-        return entry.Label switch {
-            "Warp Selected Room" => 0,
-            "Previous Room" => 1,
-            "Next Room" => 2,
-            "Previous Room In Order" => 3,
-            "Next Room In Order" => 4,
-            "Previous Checkpoint" => 5,
-            "Next Checkpoint" => 6,
-            "Previous Map" => 7,
-            "Next Map" => 8,
-            "Open Debug Map" => 9,
-            _ => int.MaxValue
-        };
     }
 
     private List<OverlayEntry> BuildSoundDisplayEntries() {

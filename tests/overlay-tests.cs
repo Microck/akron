@@ -207,15 +207,15 @@ public sealed class OverlayTests {
 
     [Fact]
     public void FreezeGameplayAndFrameStepperUseSeparateFeatureKinds() {
+        Dictionary<string, AkronFeatureKind?> globalKinds = BuildOverlayEntryFeatureKinds("Global");
         Dictionary<string, AkronFeatureKind?> levelKinds = BuildOverlayEntryFeatureKinds("Level");
-        Dictionary<string, AkronFeatureKind?> playerKinds = BuildOverlayEntryFeatureKinds("Player");
+        Dictionary<string, bool> globalToggleStates = BuildOverlayEntryIsToggles("Global");
         Dictionary<string, bool> levelToggleStates = BuildOverlayEntryIsToggles("Level");
-        Dictionary<string, bool> playerToggleStates = BuildOverlayEntryIsToggles("Player");
 
         Assert.Equal(AkronFeatureKind.Freeze, levelKinds["Freeze Gameplay"]);
-        Assert.Equal(AkronFeatureKind.FrameAdvance, playerKinds["Frame Stepper"]);
+        Assert.Equal(AkronFeatureKind.FrameAdvance, globalKinds["Frame Stepper"]);
         Assert.True(levelToggleStates["Freeze Gameplay"]);
-        Assert.True(playerToggleStates["Frame Stepper"]);
+        Assert.True(globalToggleStates["Frame Stepper"]);
     }
 
     [Fact]
@@ -237,8 +237,9 @@ public sealed class OverlayTests {
 
         Assert.DoesNotContain("FPS Bypass", missingLabels);
         Assert.DoesNotContain("TPS Bypass", missingLabels);
-        Assert.Equal("FPS Bypass", loadedLabels[0]);
-        Assert.Equal("TPS Bypass", loadedLabels[1]);
+        int frameStepperIndex = loadedLabels.IndexOf("Frame Stepper");
+        Assert.Equal("FPS Bypass", loadedLabels[frameStepperIndex + 1]);
+        Assert.Equal("TPS Bypass", loadedLabels[frameStepperIndex + 2]);
         Assert.DoesNotContain("Motion Smoothing", InvokeBuildVisibleTabs(speedrunToolLoaded: true, celesteTasLoaded: true, extendedVariantModeAvailable: true, extendedCameraDynamicsLoaded: true));
     }
 
@@ -374,7 +375,7 @@ public sealed class OverlayTests {
     [Fact]
     public void SessionOnlyRowsAreDisabledWithoutASession() {
         Assert.False(BuildOverlayEntryEnabled("Global", "Timescale", null)());
-        Assert.False(BuildOverlayEntryEnabled("Player", "Frame Stepper", null)());
+        Assert.False(BuildOverlayEntryEnabled("Global", "Frame Stepper", null)());
     }
 
     [Fact]

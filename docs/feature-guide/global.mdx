@@ -7,16 +7,16 @@ The Global tab collects options that affect the entire Akron session rather than
 
 | Option | Control | What it does | Attempt status |
 |---|---|---|---|
+| Timescale | Numeric toggle | Enable a configured gameplay timescale and edit its multiplier independently. | Cheat |
+| Transition Speed | Numeric toggle | Adjust the next room-transition speed multiplier. Values below 1x are slower and values above 1x are faster. | Cheat |
+| Frame Stepper | Toggle | Step one frozen frame and configure hold-to-repeat stepping. | Cheat |
 | FPS Bypass | Numeric toggle | Raise the draw cadence or enable Motion Smoothing's smoothing pipeline while keeping Celeste physics at 60 FPS. | Regular clean |
 | TPS Bypass | Numeric toggle | Change the simulation tick cadence. | Cheat |
-| Timescale | Number | Open speed controls for decreasing or increasing gameplay timescale. | Cheat |
 | Safe Mode | Toggle | Safe Mode indicator plus optional local stat guards for deaths, jumps, and best-run fields. | Regular clean |
-| Submission Mode | Toggle | Enable recording metadata defaults and related warning surfaces without changing gameplay itself. | Goldberry/Hardlist clean |
 | Freeze Attempts | Toggle | Restore the current save slot's death counter while Safe Mode is active. | Cheat |
+| Submission Mode | Toggle | Enable recording metadata defaults and related warning surfaces without changing gameplay itself. | Goldberry/Hardlist clean |
 | Pause Buffering | Toggle | Choose whether configured hotkeys can fire while Celeste is paused. | Cheat |
-| Control Display | Toggle | Display live inputs on a customizable board with editable keys, bindings, colors, and placement. | Goldberry/Hardlist clean |
 | Autosave | Toggle | Save Akron-owned backup state automatically at configured safe points. | Regular clean |
-| Transition Speed | Numeric toggle | Adjust the next room-transition speed multiplier. Values below 1x are slower and values above 1x are faster. | Cheat |
 
 ## Option menus
 
@@ -39,39 +39,13 @@ Rows with a triangle expose the controls listed below.
 | Timescale | Decrease | Lower the gameplay timescale multiplier. | Cheat |
 | Timescale | Increase | Raise the gameplay timescale multiplier. | Cheat |
 | Timescale | Reset | Return gameplay speed to normal. | Cheat |
+| Frame Stepper | Step once | Advance one frozen frame. Only works while Frame Stepper and Freeze Gameplay are on. | Cheat |
+| Frame Stepper | Hold key repeats | When enabled, holding the step key advances frames repeatedly. | Cheat |
+| Frame Stepper | Delay | Frames to wait before hold-repeat starts. | Cheat |
+| Frame Stepper | Every | Frames between repeated steps after the delay. | Cheat |
 | Safe Mode | Freeze deaths | Restore the current save slot's death counter while Safe Mode is active. | Cheat |
 | Safe Mode | Freeze jumps | Restore the current save slot's jump counter while Safe Mode is active. | Cheat |
 | Safe Mode | Freeze best run | Restore the current save slot's best-run fields while Safe Mode is active. | Cheat |
-| Control Display | Corner | Choose the screen corner used by the input board. | Goldberry/Hardlist clean |
-| Control Display | Source | Choose whether keys light from Celeste actions or physical keyboard keys. | Goldberry/Hardlist clean |
-| Control Display | Scale | Set the input-board scale percentage. | Goldberry/Hardlist clean |
-| Control Display | Opacity | Set the input-board opacity percentage. | Goldberry/Hardlist clean |
-| Control Display | Compact keyboard | Replace the layout with a tight WASD-style block with actions attached. | Goldberry/Hardlist clean |
-| Control Display | Split clusters | Replace the layout with separated menu/action and direction clusters. | Goldberry/Hardlist clean |
-| Control Display | Save Full .akr | Export the complete Control Display setup, including layout, labels, keys, colors, and text scale. | Goldberry/Hardlist clean |
-| Control Display | Import Latest .akr | Import the newest full Control Display preset from Saves/AkronControlDisplay. | Goldberry/Hardlist clean |
-| Control Display | Label preset: Names | Apply action-name labels to the existing board keys without moving them. | Goldberry/Hardlist clean |
-| Control Display | Label preset: Keyboard | Apply keyboard-style labels to the existing board keys without moving them. | Goldberry/Hardlist clean |
-| Control Display | Label preset: Arrows | Apply arrow-style labels to the existing board keys without moving them. | Goldberry/Hardlist clean |
-| Control Display | Label preset: Short | Apply compact labels to the existing board keys without moving them. | Goldberry/Hardlist clean |
-| Control Display | Add key | Add a new visible key to the editable input board layout. | Goldberry/Hardlist clean |
-| Control Display | Duplicate | Duplicate the selected input-board key. | Goldberry/Hardlist clean |
-| Control Display | Remove | Remove the selected input-board key when more than one key remains. | Goldberry/Hardlist clean |
-| Control Display | Selected | Choose which input-board key is being edited. | Goldberry/Hardlist clean |
-| Control Display | Label | Set the text shown inside the selected input-board key. | Goldberry/Hardlist clean |
-| Control Display | Visible | Show or hide the selected input-board key. | Goldberry/Hardlist clean |
-| Control Display | X | Set the selected key's horizontal board position. | Goldberry/Hardlist clean |
-| Control Display | Y | Set the selected key's vertical board position. | Goldberry/Hardlist clean |
-| Control Display | Width | Set the selected key's width. | Goldberry/Hardlist clean |
-| Control Display | Height | Set the selected key's height. | Goldberry/Hardlist clean |
-| Control Display | Text scale | Set the selected key's label text scale. | Goldberry/Hardlist clean |
-| Control Display | Game action | Choose the Celeste action used by the selected key when Source is Game Actions. | Goldberry/Hardlist clean |
-| Control Display | Keyboard keys | Set the physical keys used by the selected key when Source is Keyboard Keys. | Goldberry/Hardlist clean |
-| Control Display | Fill | Set the selected key's background color. | Goldberry/Hardlist clean |
-| Control Display | Pressed | Set the selected key's held-input color. | Goldberry/Hardlist clean |
-| Control Display | Stroke | Set the selected key's outline color. | Goldberry/Hardlist clean |
-| Control Display | Text | Set the selected key's label color. | Goldberry/Hardlist clean |
-| Control Display | Outline | Set the selected key's outline width. | Goldberry/Hardlist clean |
 | Autosave | Interval | Seconds between automatic save attempts. | Regular clean |
 | Autosave | Minimum delay | Cooldown before another automatic save can run. | Regular clean |
 | Autosave | Room load | Autosave on room load. | Regular clean |

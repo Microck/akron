@@ -12,12 +12,14 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Changed
 
+- Group overlay features by task, with Frame Stepper under Global controls and Control Display under Player HUD controls.
 - Keep the configured Timescale value separate from whether Timescale is enabled.
 - Keep the configured Transition Speed value separate from whether Transition Speed is enabled.
 - Clarify the Dream State and Golden Start tooltips.
 
 ### Fixed
 
+- Restore tooltip and search copy for Previous Room In Order and Next Room In Order.
 - Keep Audio Splitter enabled while Celeste's audio system and music bus finish loading.
 - Keep dropdowns and color pickers open when clicked more than once inside an options submenu.
 - Show only the recorded death-object hitbox when All hitboxes is off.
