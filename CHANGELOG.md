@@ -4,7 +4,7 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
-## Akron Beta 56
+## Akron Beta 57
 
 ### Changed
 
@@ -12,10 +12,15 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
-- Keep Refill Clarity within the refill's original sprite bounds while preserving Celeste's black outline.
 - Prevent duplicate Auto Kill condition controls from triggering Dear ImGui ID conflicts.
 - Limit Deload Spinners to one simulation per level to prevent repeated-use crashes.
 - Simplify Show Hitboxes options and use a 5-pixel default trajectory thickness.
+
+## Akron Beta 56
+
+### Fixed
+
+- Keep Refill Clarity within the refill's original sprite bounds while preserving Celeste's black outline.
 
 ## Akron Beta 55
 
