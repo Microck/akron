@@ -459,7 +459,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool ShowTrajectoryHitboxOutlines { get; set; } = true;
     public bool ShowTrajectoryHitboxFill { get; set; } = true;
     public int ShowTrajectoryOpacity { get; set; } = 100;
-    public int ShowTrajectoryLineThickness { get; set; } = 2;
+    public int ShowTrajectoryLineThickness { get; set; } = 5;
     public bool ShowTrajectoryMapAware { get; set; }
     public bool ShowTrajectoryStopOnSolids { get; set; } = true;
     public bool ShowTrajectoryStopOnHazards { get; set; } = true;

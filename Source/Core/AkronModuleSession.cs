@@ -67,7 +67,6 @@ public class AkronModuleSession : EverestModuleSession {
     public int AkronJumpCountAtLevelStart { get; set; }
     public float AkronAutosaveTimer { get; set; }
     public float AkronAutosaveCooldown { get; set; }
-    public bool DeloadSpinnersApplied { get; set; }
     public int PauseTrackerPauseCount { get; set; }
     public int PauseTrackerRapidPauseCount { get; set; }
     public float PauseTrackerPausedSeconds { get; set; }

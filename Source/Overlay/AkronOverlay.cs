@@ -717,14 +717,14 @@ public sealed partial class AkronOverlay : Entity {
             return;
         }
 
-        bool shouldTrackToggle = entry.IsToggle && ShouldReadEntryValueForActiveState(entry);
-        bool wasOn = shouldTrackToggle && IsOnState(entry.Value());
+        bool shouldTrackToggle = entry.IsToggle && (entry.Active != null || ShouldReadEntryValueForActiveState(entry));
+        bool wasOn = shouldTrackToggle && (entry.Active?.Invoke() ?? IsOnState(entry.Value()));
         entry.Execute?.Invoke();
         if (!shouldTrackToggle) {
             return;
         }
 
-        bool isOn = IsOnState(entry.Value());
+        bool isOn = entry.Active?.Invoke() ?? IsOnState(entry.Value());
         if (wasOn == isOn) {
             return;
         }

@@ -567,7 +567,7 @@ public sealed partial class AkronOverlay {
         }
 
         if (string.Equals(label, "Deload Spinners", StringComparison.OrdinalIgnoreCase)) {
-            return AkronDeloadSimulator.Describe();
+            return AkronDeloadSimulator.Describe(Engine.Scene as Level);
         }
 
         if (string.Equals(label, "Audio Splitter", StringComparison.OrdinalIgnoreCase)) {

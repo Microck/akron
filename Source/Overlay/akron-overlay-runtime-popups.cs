@@ -53,9 +53,6 @@ public sealed partial class AkronOverlay {
         DrawPopupTooltip("Clear cached hitbox draw state and force live hitboxes to rebuild on the next frame.");
 
         ImGui.Separator();
-        DrawHitboxTrailPopupControls(popupId + "_live_hitboxes");
-
-        ImGui.Separator();
         DrawFloatValueRow(
             "Line",
             () => AkronModule.Settings.HitboxLineThickness,
@@ -67,12 +64,6 @@ public sealed partial class AkronOverlay {
             "%.1f",
             popupId,
             "Outline thickness in fifths of a native Celeste pixel. 5.0 is one game pixel.");
-
-        bool blackOutline = AkronModule.Settings.HitboxBlackOutline;
-        if (ImGui.Checkbox("Black outline##" + popupId, ref blackOutline)) {
-            AkronModule.Settings.HitboxBlackOutline = blackOutline;
-        }
-        DrawPopupTooltip("Add a black contrast border behind colored hitbox lines.");
 
         DrawIntStepperRow(
             "Fill %",
@@ -473,8 +464,15 @@ public sealed partial class AkronOverlay {
 
     private void DrawDeloadSpinnersPopupControls(string popupId) {
         Level level = Scene as Level;
-        if (ImGui.Button("Deload now##" + popupId) && level != null) {
+        bool canSimulate = level != null && !AkronDeloadSimulator.IsUsed(level);
+        if (!canSimulate) {
+            ImGui.BeginDisabled();
+        }
+        if (ImGui.Button("Deload now##" + popupId) && canSimulate) {
             AkronActions.DeloadSpinners(level, AkronModule.Settings.DeloadSpinnerDelaySeconds);
+        }
+        if (!canSimulate) {
+            ImGui.EndDisabled();
         }
         DrawPopupTooltip("Simulate spinner deloading using the configured seconds-before-deload value.");
 

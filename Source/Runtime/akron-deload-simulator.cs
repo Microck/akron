@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Celeste;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -9,6 +10,55 @@ namespace Celeste.Mod.Akron;
 internal static class AkronDeloadSimulator {
     private const float MaxDelaySeconds = 3600f;
 
+    // Keep the one-shot claim outside AkronModuleSession because save-state
+    // restores rewind module sessions. The weak key follows the live Level
+    // without retaining completed scenes.
+    private static readonly ClaimTracker Claims = new ClaimTracker();
+
+    private sealed class DeloadClaim {
+    }
+
+    internal sealed class ClaimTracker {
+        private readonly ConditionalWeakTable<Level, DeloadClaim> claimedLevels = new ConditionalWeakTable<Level, DeloadClaim>();
+
+        public void BeginLevel(Level level) {
+            if (level != null) {
+                claimedLevels.Remove(level);
+            }
+        }
+
+        public bool IsUsed(Level level) {
+            return level != null && claimedLevels.TryGetValue(level, out _);
+        }
+
+        public bool TryClaim(Level level) {
+            if (level == null || IsUsed(level)) {
+                return false;
+            }
+
+            claimedLevels.Add(level, new DeloadClaim());
+            return true;
+        }
+    }
+
+    public static void BeginLevel(Level level) {
+        Claims.BeginLevel(level);
+    }
+
+    public static bool IsUsed(Level level) {
+        return Claims.IsUsed(level);
+    }
+
+    public static bool TrySimulate(Level level, float beforeDeloadSeconds, out int steps) {
+        steps = 0;
+        if (!Claims.TryClaim(level)) {
+            return false;
+        }
+
+        steps = SimulateClaimed(level, beforeDeloadSeconds);
+        return true;
+    }
+
     public static float ClampDelaySeconds(float seconds) {
         if (float.IsNaN(seconds) || float.IsInfinity(seconds)) {
             return 0f;
@@ -17,16 +67,20 @@ internal static class AkronDeloadSimulator {
         return Math.Min(MaxDelaySeconds, Math.Max(0f, seconds));
     }
 
-    public static string Describe() {
+    public static string Describe(Level level) {
         if (AkronModule.Settings == null) {
             return "Unavailable";
+        }
+
+        if (IsUsed(level)) {
+            return "Used";
         }
 
         float delay = AkronModule.Settings.DeloadSpinnerDelaySeconds;
         return delay <= 0f ? "Now" : delay.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "s";
     }
 
-    public static int Simulate(Level level, float beforeDeloadSeconds) {
+    private static int SimulateClaimed(Level level, float beforeDeloadSeconds) {
         if (level == null) {
             return 0;
         }

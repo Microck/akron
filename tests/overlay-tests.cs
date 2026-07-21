@@ -430,6 +430,99 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void AutoKillConditionRadioGroupsUseDistinctImGuiIdScopes() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-automation-popups.cs"));
+        int start = source.IndexOf("private void DrawAutoKillConditionControls", StringComparison.Ordinal);
+        int end = source.IndexOf("private void DrawAutoDeafenPopupControls", start, StringComparison.Ordinal);
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        string conditionControls = source[start..end];
+
+        Assert.Contains("popupId + \"_ground\"", conditionControls);
+        Assert.Contains("popupId + \"_horizontal\"", conditionControls);
+        Assert.Contains("popupId + \"_vertical\"", conditionControls);
+    }
+
+    [Fact]
+    public void ShowHitboxesPopupOmitsRedundantTrailAndBlackOutlineControls() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-runtime-popups.cs"));
+        int start = source.IndexOf("private void DrawHitboxPopupControls", StringComparison.Ordinal);
+        int end = source.IndexOf("private void DrawEntityInspectorPopupControls", start, StringComparison.Ordinal);
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        string hitboxPopup = source[start..end];
+
+        Assert.DoesNotContain("DrawHitboxTrailPopupControls", hitboxPopup);
+        Assert.DoesNotContain("HitboxBlackOutline", hitboxPopup);
+    }
+
+    [Fact]
+    public void DeloadCommandUsesOneShotSimulatorEntrypoint() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Commands/akron-utility-commands.cs"));
+
+        Assert.Contains("AkronDeloadSimulator.TrySimulate", source);
+        Assert.DoesNotContain("AkronDeloadSimulator.Simulate", source);
+    }
+
+    [Fact]
+    public void DeloadOverlayRowDisablesAfterLevelIsClaimed() {
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        AkronDeloadSimulator.BeginLevel(level);
+        Func<bool> enabled = BuildOverlayEntryEnabled("Level", "Deload Spinners", level);
+
+        Assert.True(enabled());
+
+        FieldInfo claimsField = typeof(AkronDeloadSimulator).GetField("Claims", BindingFlags.NonPublic | BindingFlags.Static)!;
+        object claims = claimsField.GetValue(null)!;
+        MethodInfo tryClaim = claims.GetType().GetMethod("TryClaim", BindingFlags.Public | BindingFlags.Instance)!;
+        Assert.True((bool) tryClaim.Invoke(claims, new object[] { level })!);
+        Assert.False(enabled());
+
+        AkronDeloadSimulator.BeginLevel(level);
+    }
+
+    [Fact]
+    public void ToggleEntriesUseExplicitActiveStateInsteadOfDisplayText() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-entries.cs"));
+
+        Assert.Contains("active: getter", source);
+        Assert.Contains("active: () => AkronModule.Settings.Invincibility", source);
+        Assert.Contains("active: () => AkronModule.Settings.Logging", source);
+        Assert.Contains("active: () => AkronEarAid.OverrideEnabled(key)", source);
+        Assert.Contains("AkronActions.IsDreamStateActive", source);
+
+        string imguiRenderer = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-imgui-renderer.cs"));
+        string renderer = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-sprite-renderer.cs"));
+        Assert.Contains("if (entry.IsToggle)", renderer);
+        Assert.Contains("return selectedOrHovered ? AkronAccentHovered : AkronAccent;", renderer);
+        Assert.Contains("entry.Active?.Invoke() ??", imguiRenderer);
+        Assert.Contains("action.Entry.Active?.Invoke() ??", renderer);
+        Assert.DoesNotContain("entry.Active?.Invoke() == true ||", imguiRenderer);
+        Assert.DoesNotContain("action.Entry.Active?.Invoke() == true ||", renderer);
+    }
+
+    [Fact]
+    public void DreamStateActiveStateReadsSessionInventory() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Actions/akron-actions.cs"));
+        int describeStart = source.IndexOf("public static string DescribeDreamState", StringComparison.Ordinal);
+        int activeStart = source.IndexOf("public static bool IsDreamStateActive", describeStart, StringComparison.Ordinal);
+        int end = source.IndexOf("public static void ToggleDreamState", activeStart, StringComparison.Ordinal);
+
+        Assert.True(describeStart >= 0);
+        Assert.True(activeStart > describeStart);
+        Assert.True(end > activeStart);
+        string description = source[describeStart..activeStart];
+        string activeState = source[activeStart..end];
+
+        Assert.Contains("level.Session.Inventory.DreamDash", description);
+        Assert.DoesNotContain("player.Inventory.DreamDash", description);
+        Assert.Contains("level?.Session.Inventory.DreamDash == true", activeState);
+        Assert.DoesNotContain("Tracker.GetEntity", activeState);
+    }
+
+    [Fact]
     public void OverlayToggleCancelsHiddenTransientMouseToolsBeforeNormalToggle() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/akron-module-overlay-input.cs"));
         int handleHotkeys = source.IndexOf("private static void HandleHotkeys", StringComparison.Ordinal);
@@ -868,8 +961,8 @@ public sealed class OverlayTests {
         Assert.Contains("active: () => AkronModule.Settings.EntityInspector", entriesSource);
         Assert.DoesNotContain("AkronModule.ArmEntityInspectorPickMode();", entriesSource);
         Assert.DoesNotContain("AkronModule.SetOverlayVisible(Engine.Scene, false);", entriesSource);
-        Assert.Contains("entry.Active?.Invoke() == true", imguiRendererSource);
-        Assert.Contains("action.Entry.Active?.Invoke() == true", spriteRendererSource);
+        Assert.Contains("entry.Active?.Invoke() ??", imguiRendererSource);
+        Assert.Contains("action.Entry.Active?.Invoke() ??", spriteRendererSource);
         Assert.Contains("DrawPopupRowLabel(\"Target\"", entityInspectorPopup);
         Assert.Contains("DrawPopupChoiceRadioButton(", entityInspectorPopup);
         Assert.Contains("\"Entities\"", entityInspectorPopup);
@@ -1262,6 +1355,18 @@ public sealed class OverlayTests {
                 entry => (string) labelProperty.GetValue(entry)!,
                 entry => (bool) isToggleProperty.GetValue(entry)!,
                 StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static Func<bool> BuildOverlayEntryEnabled(string tab, string label, Level level) {
+        MethodInfo method = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static)!;
+        object entries = method.Invoke(null, new object?[] { tab, level })!;
+        Type entryType = entries.GetType().GetGenericArguments()[0];
+        PropertyInfo labelProperty = entryType.GetProperty("Label", BindingFlags.Public | BindingFlags.Instance)!;
+        PropertyInfo enabledProperty = entryType.GetProperty("Enabled", BindingFlags.Public | BindingFlags.Instance)!;
+        object entry = ((System.Collections.IEnumerable) entries)
+            .Cast<object>()
+            .Single(candidate => string.Equals((string) labelProperty.GetValue(candidate)!, label, StringComparison.OrdinalIgnoreCase));
+        return (Func<bool>) enabledProperty.GetValue(entry)!;
     }
 
     private static List<string> ExtractOverlayEntryLabels(object entries) {
