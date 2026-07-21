@@ -445,19 +445,20 @@ jobs:
           set -euo pipefail
           AKRON_README_PATH= \
             AKRON_WEBSITE_SOURCE_PATH="link-sync/akron-website/src/main.tsx" \
+            AKRON_WEBSITE_API_PATH="link-sync/akron-website/api/_gamebanana.js" \
             AKRON_WEBSITE_VERCEL_PATH="link-sync/akron-website/vercel.json" \
             AKRON_GAMEBANANA_FILE_ID="$AKRON_GAMEBANANA_FILE_ID" \
             bash release-tools/akron/scripts/sync-gamebanana-readme-links.sh
 
           cd link-sync/akron-website
-          if git diff --quiet -- src/main.tsx vercel.json; then
+          if git diff --quiet -- src/main.tsx api/_gamebanana.js vercel.json; then
             echo "Akron website already points at the published GameBanana file."
             exit 0
           fi
 
           git config user.name "Microck"
           git config user.email "contact@micr.dev"
-          git add src/main.tsx vercel.json
+          git add src/main.tsx api/_gamebanana.js vercel.json
           git commit -m "docs: sync gamebanana website links"
           cleanup_git_auth() {
             git config --local --unset-all http.https://github.com/.extraheader || true

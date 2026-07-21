@@ -4,6 +4,7 @@ set -euo pipefail
 mod_id="${AKRON_GAMEBANANA_MOD_ID:-681169}"
 readme_path="${AKRON_README_PATH-README.md}"
 website_source_path="${AKRON_WEBSITE_SOURCE_PATH-}"
+website_api_path="${AKRON_WEBSITE_API_PATH-}"
 website_vercel_path="${AKRON_WEBSITE_VERCEL_PATH-}"
 api_url="https://api.gamebanana.com/Core/Item/Data?itemtype=Mod&itemid=${mod_id}&fields=Files().aFiles()&return_keys=1&format=json_min&flags=JSON_UNESCAPED_SLASHES"
 
@@ -22,13 +23,18 @@ if [ -n "$website_source_path" ] && [ ! -f "$website_source_path" ]; then
   exit 1
 fi
 
+if [ -n "$website_api_path" ] && [ ! -f "$website_api_path" ]; then
+  echo "Akron website API path does not exist: $website_api_path" >&2
+  exit 1
+fi
+
 if [ -n "$website_vercel_path" ] && [ ! -f "$website_vercel_path" ]; then
   echo "Akron website Vercel path does not exist: $website_vercel_path" >&2
   exit 1
 fi
 
-if [ -z "$readme_path" ] && [ -z "$website_source_path" ] && [ -z "$website_vercel_path" ]; then
-  echo "Set AKRON_README_PATH, AKRON_WEBSITE_SOURCE_PATH, or AKRON_WEBSITE_VERCEL_PATH before syncing links." >&2
+if [ -z "$readme_path" ] && [ -z "$website_source_path" ] && [ -z "$website_api_path" ] && [ -z "$website_vercel_path" ]; then
+  echo "Set AKRON_README_PATH, AKRON_WEBSITE_SOURCE_PATH, AKRON_WEBSITE_API_PATH, or AKRON_WEBSITE_VERCEL_PATH before syncing links." >&2
   exit 1
 fi
 
@@ -86,17 +92,21 @@ if [ -n "$readme_path" ]; then
   echo "README install links point to Akron stable install endpoints for mod $mod_id."
 fi
 
-if [ -n "$website_source_path" ]; then
+for website_fallback_path in "$website_source_path" "$website_api_path"; do
+  if [ -z "$website_fallback_path" ]; then
+    continue
+  fi
+
   FILE_ID="$latest_file_id" MOD_ID="$mod_id" perl -0pi -e '
     my $file_id = $ENV{"FILE_ID"};
     my $mod_id = $ENV{"MOD_ID"};
 
     s#const gamebananaModId = "\d+";#const gamebananaModId = "$mod_id";#g;
     s#const gamebananaFallbackFileId = "\d+";#const gamebananaFallbackFileId = "$file_id";#g;
-  ' "$website_source_path"
+  ' "$website_fallback_path"
 
-  echo "Akron website fallback links point to file $latest_file_id for mod $mod_id."
-fi
+  echo "$website_fallback_path points to file $latest_file_id for mod $mod_id."
+done
 
 if [ -n "$website_vercel_path" ]; then
   FILE_ID="$latest_file_id" MOD_ID="$mod_id" node - "$website_vercel_path" <<'EOF'
