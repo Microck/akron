@@ -297,7 +297,7 @@ public static partial class AkronCommands {
         Log("auto-deafen-area-count: " + AkronModule.GetAutoDeafenAreas().Count.ToString(CultureInfo.InvariantCulture));
         Log("auto-deafen-area-rect: " + autoDeafenArea.X.ToString(CultureInfo.InvariantCulture) + ", " + autoDeafenArea.Y.ToString(CultureInfo.InvariantCulture) + ", " + autoDeafenArea.Width.ToString(CultureInfo.InvariantCulture) + ", " + autoDeafenArea.Height.ToString(CultureInfo.InvariantCulture));
         Log("auto-deafen-show-area: " + AkronModule.Settings.AutoDeafenShowArea.ToString().ToLowerInvariant());
-        Log("transition-speed: " + AkronModule.Settings.TransitionSpeedMultiplier.ToString("0.0x", CultureInfo.InvariantCulture));
+        Log("transition-speed: " + (AkronModule.Settings.TransitionSpeedEnabled ? "on " : "off ") + AkronModule.Settings.TransitionSpeedMultiplier.ToString("0.0x", CultureInfo.InvariantCulture));
         Log("trail-visibility: " + AkronModule.Settings.TrailVisibility);
         Log("trail-cutting-rate: " + AkronModule.Settings.TrailCuttingRate.ToString(CultureInfo.InvariantCulture));
         Log("madeline-colors: " + AkronModule.Settings.MadelineColors.ToString().ToLowerInvariant());

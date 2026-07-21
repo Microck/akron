@@ -319,6 +319,70 @@ public sealed class OverlayTests {
     }
 
     [Theory]
+    [InlineData(false, true, false, false, true)]
+    [InlineData(false, true, false, true, false)]
+    [InlineData(false, true, true, false, false)]
+    [InlineData(true, true, false, false, false)]
+    [InlineData(false, false, false, false, false)]
+    public void OptionsPopupClosesOnlyForClicksOutsideItsPopupTree(
+        bool openedThisFrame,
+        bool mouseClicked,
+        bool parentHovered,
+        bool nestedPopupOpen,
+        bool expected) {
+        Assert.Equal(
+            expected,
+            AkronOverlay.ShouldCloseOptionsPopupOnMouseClick(openedThisFrame, mouseClicked, parentHovered, nestedPopupOpen));
+    }
+
+    [Theory]
+    [InlineData(false, false, false, false)]
+    [InlineData(true, false, false, true)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, true, true, true)]
+    [InlineData(false, true, true, true)]
+    public void DeathOnlyHitboxModeSuppressesLiveHitboxes(
+        bool liveViewer,
+        bool deathHitboxVisible,
+        bool showAllOnDeath,
+        bool expected) {
+        Assert.Equal(
+            expected,
+            AkronEntityInspector.ShouldRenderLiveHitboxes(liveViewer, deathHitboxVisible, showAllOnDeath));
+    }
+
+    [Fact]
+    public void DeathOnlyHitboxModeRequiresARecordedObjectHitbox()
+    {
+        AkronModuleSession session = new AkronModuleSession {
+            LastDeathHitboxVisible = true,
+            LastDeathPosition = new Vector2(10, 20)
+        };
+
+        Assert.False(AkronEntityInspector.HasVisibleLastDeathObjectHitbox(session));
+
+        session.LastDeathHitbox = new Rectangle(8, 18, 4, 4);
+        Assert.True(AkronEntityInspector.HasVisibleLastDeathObjectHitbox(session));
+    }
+
+    [Fact]
+    public void PopupLabelsUseAvailableWidthBeforeTruncating() {
+        Assert.Equal(150f, AkronOverlay.CalculatePopupLabelWidth(540f, 240f, 8f, 150f));
+        Assert.Equal(72f, AkronOverlay.CalculatePopupLabelWidth(320f, 240f, 8f, 150f));
+    }
+
+    [Fact]
+    public void SessionOnlyRowsAreDisabledWithoutASession() {
+        Assert.False(BuildOverlayEntryEnabled("Global", "Timescale", null)());
+        Assert.False(BuildOverlayEntryEnabled("Player", "Frame Stepper", null)());
+    }
+
+    [Fact]
+    public void TimescaleNumericRowRetainsToggleState() {
+        Assert.True(BuildOverlayEntryIsToggles("Global")["Timescale"]);
+    }
+
+    [Theory]
     [InlineData(true, false, false, false, true)]
     [InlineData(false, false, false, false, false)]
     [InlineData(true, true, false, false, false)]
@@ -1357,7 +1421,7 @@ public sealed class OverlayTests {
                 StringComparer.OrdinalIgnoreCase);
     }
 
-    private static Func<bool> BuildOverlayEntryEnabled(string tab, string label, Level level) {
+    private static Func<bool> BuildOverlayEntryEnabled(string tab, string label, Level? level) {
         MethodInfo method = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static)!;
         object entries = method.Invoke(null, new object?[] { tab, level })!;
         Type entryType = entries.GetType().GetGenericArguments()[0];

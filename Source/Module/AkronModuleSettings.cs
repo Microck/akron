@@ -364,6 +364,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool CoreModeOverrideEnabled { get; set; }
     public AkronCoreModeOverride CoreModeOverride { get; set; } = AkronCoreModeOverride.Hot;
     public AkronCoreModeClickBehavior CoreModeClickBehavior { get; set; } = AkronCoreModeClickBehavior.Toggle;
+    public bool TransitionSpeedEnabled { get; set; }
     public float TransitionSpeedMultiplier { get; set; } = 1f;
     public AkronTrailVisibility TrailVisibility { get; set; } = AkronTrailVisibility.Vanilla;
     public int TrailCuttingRate { get; set; } = 1;

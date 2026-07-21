@@ -289,7 +289,7 @@ public sealed partial class AkronOverlay {
         ["Dash Count"] = "Override the active dash count used for room entry, transitions, and dash refills.",
         ["Air Jumps"] = "Open controls for infinite or limited airborne extra jumps.",
         ["Set Inventory"] = "Apply the configured dash and extra-jump inventory to Madeline. Optional death restore returns to the pre-click values.",
-        ["Dream State"] = "Toggle whether Madeline's current inventory can use dream blocks.",
+        ["Dream State"] = "Toggle whether Madeline can dash through dream blocks.",
         ["Ground Refills"] = "Change whether standing on the ground restores dash and stamina resources.",
         ["Refill Clarity"] = "Highlight already-visible one-use refills with a configurable outline.",
         ["Noclip"] = "Open fly-noclip controls for movement speed, grab-held slow speed, and draw-on-top visibility.",
@@ -312,7 +312,7 @@ public sealed partial class AkronOverlay {
         ["Camera Offset"] = "Toggle a configured current-level camera offset for map inspection.",
         ["Cursor Zoom"] = "Hold the cursor bind and use the mouse wheel to magnify the area under the cursor.",
         ["Cursor Tools"] = "Temporarily enable cursor-driven map inspection tools while holding the configured bind.",
-        ["Golden Start"] = "Run Celeste's first-room golden-start helper.",
+        ["Golden Start"] = "Give Madeline the chapter's golden berry from the first room.",
         ["Golden Transparency"] = "Make the golden berry and follower more transparent while the option is enabled.",
         ["Deload Spinners"] = "Simulate spinner deload timing while the option is enabled.",
         ["Export Room Stats"] = "Write Akron's current stored room stats for this map to a TSV file.",
@@ -470,7 +470,7 @@ public sealed partial class AkronOverlay {
         ["ECD Restore Zooming"] = "Return Extended Camera Dynamics to automatic zooming after a forced camera focus."
     };
 
-    private static bool TryGetActionDescription(string label, out string description) {
+    internal static bool TryGetActionDescription(string label, out string description) {
         if (!string.IsNullOrWhiteSpace(label) &&
             label.StartsWith("StartPos Slot ", StringComparison.OrdinalIgnoreCase)) {
             description = "Show the binding used to load the matching StartPos slot.";

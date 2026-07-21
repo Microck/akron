@@ -14,11 +14,25 @@ public sealed partial class AkronOverlay {
     private static List<OverlayEntry> BuildGlobalEntries(bool motionSmoothingLoaded) {
         List<OverlayEntry> entries = new List<OverlayEntry>();
         if (motionSmoothingLoaded) {
-            entries.Add(InlineNumericToggle("FPS Bypass", AkronFeatureKind.FpsBypass, () => AkronModule.Settings.FpsBypass, value => AkronModule.Settings.FpsBypass = value, () => AkronModule.Settings.FpsBypassTarget, value => AkronModule.Settings.FpsBypassTarget = AkronModuleSettings.ClampFpsTarget((int) Math.Round(value)), 60, 480, "%.0f", "FPS", true));
-            entries.Add(InlineNumericToggle("TPS Bypass", AkronFeatureKind.TpsBypass, () => AkronModule.Settings.TpsBypass, value => AkronModule.Settings.TpsBypass = value, () => AkronModule.Settings.TpsBypassTarget, value => AkronModule.Settings.TpsBypassTarget = AkronModuleSettings.ClampTpsTarget((int) Math.Round(value)), 30, 480, "%.0f", "TPS", true, "physics bypass"));
+            entries.Add(InlineNumericToggle("FPS Bypass", AkronFeatureKind.FpsBypass, () => true, () => AkronModule.Settings.FpsBypass, value => AkronModule.Settings.FpsBypass = value, () => AkronModule.Settings.FpsBypassTarget, value => AkronModule.Settings.FpsBypassTarget = AkronModuleSettings.ClampFpsTarget((int) Math.Round(value)), 60, 480, "%.0f", "FPS", true));
+            entries.Add(InlineNumericToggle("TPS Bypass", AkronFeatureKind.TpsBypass, () => true, () => AkronModule.Settings.TpsBypass, value => AkronModule.Settings.TpsBypass = value, () => AkronModule.Settings.TpsBypassTarget, value => AkronModule.Settings.TpsBypassTarget = AkronModuleSettings.ClampTpsTarget((int) Math.Round(value)), 30, 480, "%.0f", "TPS", true, "physics bypass"));
         }
 
-        entries.Add(NumericRow("Timescale", () => AkronModule.Session?.TimescaleMultiplier ?? 1f, SetTimescaleMultiplier, 0.1f, 2f, "%.1f", "x", false, "speed", "slowmo"));
+        entries.Add(InlineNumericToggle(
+            "Timescale",
+            AkronFeatureKind.Timescale,
+            () => AkronModule.TryGetSession() != null,
+            () => AkronModule.TryGetSession()?.TimescaleEnabled == true,
+            SetTimescaleEnabled,
+            () => AkronModule.TryGetSession()?.TimescaleMultiplier ?? 1f,
+            SetTimescaleMultiplier,
+            0.1f,
+            2f,
+            "%.1f",
+            "x",
+            false,
+            "speed",
+            "slowmo"));
         entries.Add(Toggle("Safe Mode", () => AkronModule.Settings.SafeMode, value => AkronModule.Settings.SafeMode = value, "safe", "freeze attempts", "indicator"));
         entries.Add(PolicyToggle("Submission Mode", AkronFeatureKind.SubmissionMode, () => AkronModule.Settings.SubmissionMode, value => {
             AkronModule.Settings.SubmissionMode = value;
@@ -34,7 +48,7 @@ public sealed partial class AkronOverlay {
         entries.Add(Toggle("Pause Buffering", () => AkronModule.Settings.AllowPauseBuffering, value => AkronModule.Settings.AllowPauseBuffering = value));
         entries.Add(PolicyToggle("Control Display", AkronFeatureKind.ShowTaps, () => AkronModule.Settings.ShowTaps, value => AkronModule.Settings.ShowTaps = value));
         entries.Add(Toggle("Autosave", () => AkronModule.Settings.Autosave, value => AkronModule.Settings.Autosave = value, "save", "room load", "respawn"));
-        entries.Add(NumericToggle("Transition Speed", AkronFeatureKind.TransitionSpeed, () => AkronModule.Settings.TransitionSpeedMultiplier != 1f, value => AkronModule.Settings.TransitionSpeedMultiplier = value ? 0.5f : 1f, () => AkronModule.Settings.TransitionSpeedMultiplier, value => AkronModule.Settings.TransitionSpeedMultiplier = AkronModuleSettings.ClampTransitionSpeedMultiplier(value), 0.1f, 3f, "%.2f", "x", false));
+        entries.Add(NumericToggle("Transition Speed", AkronFeatureKind.TransitionSpeed, () => AkronModule.Settings.TransitionSpeedEnabled, value => AkronModule.Settings.TransitionSpeedEnabled = value, () => AkronModule.Settings.TransitionSpeedMultiplier, value => AkronModule.Settings.TransitionSpeedMultiplier = AkronModuleSettings.ClampTransitionSpeedMultiplier(value), 0.1f, 3f, "%.2f", "x", false));
         return entries;
     }
 
@@ -151,7 +165,7 @@ public sealed partial class AkronOverlay {
                     PolicyToggle("Dash Count", AkronFeatureKind.DashCountOverride, () => AkronModule.Settings.DashCountOverride, value => AkronModule.Settings.DashCountOverride = value),
                     Toggle("Dash Number", () => AkronModule.Settings.DashNumber, value => AkronModule.Settings.DashNumber = value),
                     NumericToggle("Fast Lookout", AkronFeatureKind.FastLookout, () => AkronModule.Settings.FastLookout, value => AkronModule.Settings.FastLookout = value, () => AkronModule.Settings.FastLookoutMultiplier, value => AkronModule.Settings.FastLookoutMultiplier = AkronModuleSettings.ClampFastLookoutMultiplier((int) Math.Round(value)), 1, 10, "%.0f", "x", true, "lookout", "watchtower"),
-                    PolicyToggle("Frame Stepper", AkronFeatureKind.FrameAdvance, () => AkronModule.Settings.FrameStepper, value => AkronModule.Settings.FrameStepper = value),
+                    PolicyToggle("Frame Stepper", AkronFeatureKind.FrameAdvance, () => AkronModule.TryGetSession() != null, () => AkronModule.Settings.FrameStepper, value => AkronModule.Settings.FrameStepper = value),
                     Action("Golden Start", () => level != null, () => AkronActions.DescribeGoldenStartHelper(level), () => { if (level != null) AkronActions.GiveGoldenFromStart(level); }, "golden", "give_golden", "proof", "start"),
                     PolicyToggle("Golden Transparency", AkronFeatureKind.GoldenTransparency, () => AkronModule.Settings.GoldenTransparency, value => AkronModule.Settings.GoldenTransparency = value, "golden", "opacity", "berry"),
                     PolicyToggle("Grab Mode", AkronFeatureKind.GrabModeHotkey, () => AkronModule.Settings.GrabModeOverrideEnabled, SetGrabModeOverrideEnabled),
@@ -359,7 +373,7 @@ public sealed partial class AkronOverlay {
 
     private static List<OverlayEntry> BuildSoundTopLevelEntries() {
         return new List<OverlayEntry> {
-            Toggle("Audio Splitter", () => AkronModule.Settings.AudioSplitter, value => AkronModule.Settings.AudioSplitter = value, "music device", "sfx device", "audio devices"),
+            Toggle("Audio Splitter", () => AkronModule.Settings.AudioSplitter, AkronAudioSplitter.SetEnabled, "music device", "sfx device", "audio devices"),
             Toggle("Allow Low Volume", () => AkronModule.Settings.AllowLowVolume, AkronActions.SetAllowLowVolume, "audio", "volume", "mute"),
             NumericToggle("Audio Speed", AkronFeatureKind.AudioSpeed, () => AkronModule.Settings.AudioSpeed, value => AkronModule.Settings.AudioSpeed = value, () => AkronModule.Settings.AudioSpeedMultiplier, value => AkronModule.Settings.AudioSpeedMultiplier = AkronModuleSettings.ClampAudioMultiplier(value), 0.1f, 4f, "%.2f", "x", false),
             NumericToggle("Pitch Shift", AkronFeatureKind.PitchShift, () => AkronModule.Settings.PitchShift, value => AkronModule.Settings.PitchShift = value, () => AkronModule.Settings.PitchShiftMultiplier, value => AkronModule.Settings.PitchShiftMultiplier = AkronModuleSettings.ClampAudioMultiplier(value), 0.1f, 4f, "%.2f", "x", false)
@@ -658,7 +672,15 @@ public sealed partial class AkronOverlay {
     }
 
     private static OverlayEntry PolicyToggle(string label, AkronFeatureKind featureKind, Func<bool> getter, Action<bool> setter, params string[] tags) {
-        return new OverlayEntry(label, () => true, () => getter() ? "On" : "Off", () => {
+        return PolicyToggle(label, featureKind, () => true, getter, setter, tags);
+    }
+
+    private static OverlayEntry PolicyToggle(string label, AkronFeatureKind featureKind, Func<bool> enabled, Func<bool> getter, Action<bool> setter, params string[] tags) {
+        return new OverlayEntry(label, enabled, () => getter() ? "On" : "Off", () => {
+            if (!enabled()) {
+                return;
+            }
+
             bool next = !getter();
             if (next && !AkronModule.TryUse(featureKind)) {
                 return;
@@ -755,6 +777,7 @@ public sealed partial class AkronOverlay {
     private static OverlayEntry InlineNumericToggle(
         string label,
         AkronFeatureKind featureKind,
+        Func<bool> enabled,
         Func<bool> getter,
         Action<bool> setter,
         Func<float> numericValue,
@@ -767,9 +790,13 @@ public sealed partial class AkronOverlay {
         params string[] tags) {
         return new OverlayEntry(
             label,
-            () => true,
+            enabled,
             () => getter() ? "On" : "Off",
             () => {
+                if (!enabled()) {
+                    return;
+                }
+
                 bool next = !getter();
                 if (next && !AkronModule.TryUse(featureKind)) {
                     return;
@@ -993,18 +1020,17 @@ public sealed partial class AkronOverlay {
         }
 
         float next = Calc.Clamp((float) Math.Round(multiplier, 1), 0.1f, 2f);
-        if (next != 1f && !AkronModule.TryUse(AkronFeatureKind.Timescale)) {
+        if (session.TimescaleEnabled && next != 1f && !AkronModule.TryUse(AkronFeatureKind.Timescale)) {
             return;
         }
 
-        session.TimescaleMultiplier = next;
-        session.TimescaleEnabled = next != 1f;
-        if (!session.TimescaleEnabled) {
+        AkronActions.ConfigureTimescaleMultiplier(session, next);
+        if (next == 1f && session.TimescaleEnabled) {
 #pragma warning disable CS0618
             Engine.TimeRate = 1f;
 #pragma warning restore CS0618
         }
-        Engine.Scene?.Add(new AkronToast("Timescale: " + next.ToString("0.0x")));
+        Engine.Scene?.Add(new AkronToast("Timescale value: " + next.ToString("0.0x")));
     }
 
     private static void SetTimescaleEnabled(bool enabled) {

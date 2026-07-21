@@ -91,9 +91,12 @@ public sealed partial class AkronOverlay {
         if (openedImGuiOptionsPopupThisFrame) {
             ImGui.SetScrollY(0f);
         }
-        if (!openedImGuiOptionsPopupThisFrame &&
-            IsAnyImGuiMouseClicked() &&
-            !ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows | ImGuiHoveredFlags.AllowWhenBlockedByActiveItem)) {
+        bool mouseClicked = IsAnyImGuiMouseClicked();
+        bool parentHovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows | ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+        // Combo lists and color pickers are separate ImGui popup roots, not
+        // children of this window. Treat them as part of the options popup tree.
+        bool nestedPopupOpen = ImGui.IsPopupOpen(string.Empty, ImGuiPopupFlags.AnyPopupId);
+        if (ShouldCloseOptionsPopupOnMouseClick(openedImGuiOptionsPopupThisFrame, mouseClicked, parentHovered, nestedPopupOpen)) {
             SuppressBackgroundActionRowsUntilMouseMoves();
             CloseOptionsPopup();
             ImGui.End();
@@ -116,6 +119,14 @@ public sealed partial class AkronOverlay {
         ImGui.End();
         ImGui.PopStyleColor();
         ImGui.PopStyleVar();
+    }
+
+    internal static bool ShouldCloseOptionsPopupOnMouseClick(
+        bool openedThisFrame,
+        bool mouseClicked,
+        bool parentHovered,
+        bool nestedPopupOpen) {
+        return !openedThisFrame && mouseClicked && !parentHovered && !nestedPopupOpen;
     }
 
     private bool TryGetPopupAnchorRect(string popupKey, out Rectangle rect) {

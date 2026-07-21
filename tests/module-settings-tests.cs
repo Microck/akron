@@ -2618,6 +2618,59 @@ public sealed class ModuleSettingsTests
         Assert.False(HasOverlayOptionsPopup("Timescale"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TimescaleValueCanBeConfiguredWithoutChangingItsEnabledState(bool enabled)
+    {
+        AkronModuleSession session = new AkronModuleSession {
+            TimescaleEnabled = enabled,
+            TimescaleMultiplier = 1f
+        };
+
+        AkronActions.ConfigureTimescaleMultiplier(session, 0.5f);
+
+        Assert.Equal(0.5f, session.TimescaleMultiplier);
+        Assert.Equal(enabled, session.TimescaleEnabled);
+    }
+
+    [Fact]
+    public void NonFiniteTimescaleValuesResetToNormalSpeed()
+    {
+        AkronModuleSession session = new AkronModuleSession {
+            TimescaleEnabled = true,
+            TimescaleMultiplier = 0.5f
+        };
+
+        AkronActions.ConfigureTimescaleMultiplier(session, float.NaN);
+        Assert.Equal(1f, session.TimescaleMultiplier);
+
+        AkronActions.ConfigureTimescaleMultiplier(session, float.PositiveInfinity);
+        Assert.Equal(1f, session.TimescaleMultiplier);
+
+        AkronActions.ConfigureTimescaleMultiplier(session, float.NegativeInfinity);
+        Assert.Equal(1f, session.TimescaleMultiplier);
+        Assert.True(session.TimescaleEnabled);
+    }
+
+    [Theory]
+    [InlineData(1.04f, 1f)]
+    [InlineData(1.06f, 1.1f)]
+    [InlineData(float.NaN, 1f)]
+    public void TimescaleNormalizationMatchesTheStoredValue(float multiplier, float expected)
+    {
+        Assert.Equal(expected, AkronActions.NormalizeTimescaleMultiplier(multiplier));
+    }
+
+    [Fact]
+    public void ClarifiedGameplayTooltipsDescribeWhatTheActionsDo()
+    {
+        Assert.True(AkronOverlay.TryGetActionDescription("Dream State", out string dreamState));
+        Assert.True(AkronOverlay.TryGetActionDescription("Golden Start", out string goldenStart));
+        Assert.Equal("Toggle whether Madeline can dash through dream blocks.", dreamState);
+        Assert.Equal("Give Madeline the chapter's golden berry from the first room.", goldenStart);
+    }
+
     [Fact]
     public void GameplayPresentationRowsLiveInTheirChosenCategories()
     {
@@ -2780,6 +2833,179 @@ public sealed class ModuleSettingsTests
 
         Assert.All(AkronEarAid.Sounds, sound => Assert.False(settings.SoundVolumeOverrides[sound.Key]));
         Assert.All(AkronEarAid.Sounds, sound => Assert.Equal(100, settings.SoundVolumes[sound.Key]));
+    }
+
+    [Fact]
+    public void AudioSplitterRoutesMainWhileOffAndSplitsMusicFromSfxWhileOn()
+    {
+        AkronAudioRoutePlan disabled = AkronAudioRoutePlan.Resolve(false, "Main Device", "Music Device", "SFX Device");
+        AkronAudioRoutePlan enabled = AkronAudioRoutePlan.Resolve(true, "Main Device", "Music Device", "SFX Device");
+
+        Assert.False(disabled.Split);
+        Assert.Equal("Main Device", disabled.OriginalDeviceName);
+        Assert.Equal(string.Empty, disabled.MusicDeviceName);
+        Assert.True(enabled.Split);
+        Assert.Equal("SFX Device", enabled.OriginalDeviceName);
+        Assert.Equal("Music Device", enabled.MusicDeviceName);
+    }
+
+    [Theory]
+    [InlineData(false, false, false, 0)]
+    [InlineData(false, true, true, 1)]
+    [InlineData(true, true, true, 0)]
+    [InlineData(true, false, false, 2)]
+    [InlineData(true, false, true, 3)]
+    public void AudioSplitterDefersConfiguredStartupUntilCelesteAudioExists(
+        bool configured,
+        bool active,
+        bool audioAvailable,
+        int expected)
+    {
+        Assert.Equal((AkronAudioSplitterStartDecision) expected, AkronAudioRoutePlan.ResolveStartDecision(configured, active, audioAvailable));
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, false)]
+    public void AudioSplitterAppliesTheSavedMainRouteOnInactiveStartup(
+        bool configured,
+        bool audioAvailable,
+        bool expected)
+    {
+        Assert.Equal(expected, AkronAudioRoutePlan.ShouldApplyMainRouteOnInitialize(configured, audioAvailable));
+    }
+
+    [Fact]
+    public void AudioSplitterRetriesWhileTheStudioMusicBusIsStillLoading()
+    {
+        Assert.True(AkronAudioSplitter.ShouldRetryStartAfter(FMOD.RESULT.ERR_STUDIO_NOT_LOADED));
+        Assert.False(AkronAudioSplitter.ShouldRetryStartAfter(FMOD.RESULT.ERR_INVALID_PARAM));
+    }
+
+    [Theory]
+    [InlineData(FMOD.RESULT.ERR_EVENT_NOTFOUND, true)]
+    [InlineData(FMOD.RESULT.ERR_STUDIO_NOT_LOADED, true)]
+    [InlineData(FMOD.RESULT.ERR_INVALID_PARAM, false)]
+    public void AudioSplitterRetriesWhileTheStudioMusicBusIsUnavailable(FMOD.RESULT result, bool expected)
+    {
+        Assert.Equal(expected, AkronAudioSplitter.ShouldRetryMusicBusLookupAfter(result));
+    }
+
+    [Theory]
+    [InlineData("Music", FMOD.RESULT.ERR_INVALID_HANDLE, 2, FMOD.RESULT.OK,
+        "Music device switch failed: ERR_INVALID_HANDLE; using Default.")]
+    [InlineData("Music", FMOD.RESULT.ERR_INVALID_HANDLE, 2, FMOD.RESULT.ERR_OUTPUT_INIT,
+        "Music device switch failed: ERR_INVALID_HANDLE; Default fallback failed: ERR_OUTPUT_INIT.")]
+    [InlineData("Music", FMOD.RESULT.ERR_OUTPUT_INIT, 0, FMOD.RESULT.ERR_OUTPUT_INIT,
+        "Music default device switch failed: ERR_OUTPUT_INIT.")]
+    public void AudioSplitterReportsTheActualDeviceFallbackResult(
+        string routeName,
+        FMOD.RESULT selectedResult,
+        int selectedIndex,
+        FMOD.RESULT fallbackResult,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            AkronAudioSplitter.DescribeDeviceSwitchFailure(routeName, selectedResult, selectedIndex, fallbackResult));
+    }
+
+    [Fact]
+    public void AudioSplitterFlushesTheStudioLockBeforeReadingTheMusicGroup()
+    {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Runtime/akron-audio-splitter.cs"));
+        int attachStart = source.IndexOf("private static void AttachMusicCapture", StringComparison.Ordinal);
+        int lockIndex = source.IndexOf("lockChannelGroup()", attachStart, StringComparison.Ordinal);
+        int flushIndex = source.IndexOf("flushCommands()", attachStart, StringComparison.Ordinal);
+        int groupIndex = source.IndexOf("getChannelGroup", attachStart, StringComparison.Ordinal);
+
+        Assert.True(attachStart >= 0);
+        Assert.True(lockIndex > attachStart);
+        Assert.True(flushIndex > lockIndex);
+        Assert.True(groupIndex > flushIndex);
+    }
+
+    [Fact]
+    public void AudioSplitterSelectsTheMusicDeviceBeforeInitializingFmod()
+    {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Runtime/akron-audio-splitter.cs"));
+        int startIndex = source.IndexOf("private static AkronAudioSplitterStartAttempt TryStartSplitOutput", StringComparison.Ordinal);
+        int deviceIndex = source.IndexOf("ApplyDevice(musicOutputSystem", startIndex, StringComparison.Ordinal);
+        int initIndex = source.IndexOf("musicOutputSystem.init", startIndex, StringComparison.Ordinal);
+
+        Assert.True(startIndex >= 0);
+        Assert.True(deviceIndex > startIndex);
+        Assert.True(initIndex > deviceIndex);
+    }
+
+    [Fact]
+    public void AudioSplitterPcmBufferReturnsSilenceOnUnderflowAndKeepsNewestAudioOnOverflow()
+    {
+        AkronAudioPcmBuffer buffer = new AkronAudioPcmBuffer(4);
+        float[] output = new float[4];
+
+        Assert.Equal(0, buffer.Read(output));
+        Assert.Equal(new float[4], output);
+
+        buffer.Write(new[] { 1f, 2f, 3f, 4f, 5f, 6f });
+        Assert.Equal(4, buffer.Read(output));
+        Assert.Equal(new[] { 3f, 4f, 5f, 6f }, output);
+    }
+
+    [Fact]
+    public void AudioSplitterPcmBufferPrimesBeforePlaybackAndReprimesAfterUnderflow()
+    {
+        AkronAudioPcmBuffer buffer = new AkronAudioPcmBuffer(16, minimumBufferedSamples: 8, channelCount: 2);
+        float[] output = new float[4];
+
+        buffer.Write(new[] { 1f, 2f, 3f, 4f });
+        Assert.Equal(0, buffer.Read(output));
+        Assert.Equal(new float[4], output);
+
+        buffer.Write(new[] { 5f, 6f, 7f, 8f });
+        Assert.Equal(4, buffer.Read(output));
+        Assert.Equal(new[] { 1f, 2f, 3f, 4f }, output);
+        Assert.Equal(4, buffer.Read(output));
+        Assert.Equal(new[] { 5f, 6f, 7f, 8f }, output);
+
+        Assert.Equal(0, buffer.Read(output));
+        buffer.Write(new[] { 9f, 10f, 11f, 12f });
+        Assert.Equal(0, buffer.Read(output));
+    }
+
+    [Fact]
+    public async Task AudioSplitterPcmBufferDoesNotMixConcurrentOverflowWrites()
+    {
+        const int capacity = 256;
+        const int generations = 5000;
+        AkronAudioPcmBuffer buffer = new AkronAudioPcmBuffer(capacity);
+        ManualResetEventSlim start = new ManualResetEventSlim(false);
+        int writerFinished = 0;
+
+        Task writer = Task.Run(() => {
+            float[] block = new float[capacity];
+            start.Wait();
+            for (int generation = 1; generation <= generations; generation++) {
+                Array.Fill(block, generation);
+                buffer.Write(block);
+            }
+            Volatile.Write(ref writerFinished, 1);
+        });
+
+        Task reader = Task.Run(() => {
+            float[] output = new float[capacity];
+            start.Wait();
+            do {
+                int count = buffer.Read(output);
+                for (int index = 1; index < count; index++) {
+                    Assert.Equal(output[0], output[index]);
+                }
+            } while (Volatile.Read(ref writerFinished) == 0);
+        });
+
+        start.Set();
+        await Task.WhenAll(writer, reader);
     }
 
     [Fact]
@@ -3765,6 +3991,33 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void TransitionSpeedKeepsConfigurationSeparateFromActivation()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
+            TransitionSpeedEnabled = false,
+            TransitionSpeedMultiplier = 1.75f
+        };
+
+        Assert.False(AkronModule.IsTransitionSpeedEffective(settings));
+        settings.TransitionSpeedEnabled = true;
+        Assert.True(AkronModule.IsTransitionSpeedEffective(settings));
+        Assert.Equal(1.75f, settings.TransitionSpeedMultiplier);
+    }
+
+    [Fact]
+    public void TransitionSpeedAtNormalSpeedIsNotEffective()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
+            TransitionSpeedEnabled = true,
+            TransitionSpeedMultiplier = 1f
+        };
+
+        Assert.False(AkronModule.IsTransitionSpeedEffective(settings));
+    }
+
+    [Fact]
     public void StartPosDefaultsDoNotApplySpawnConfig()
     {
         AkronStartPos startPos = new AkronStartPos();
@@ -4259,6 +4512,8 @@ public sealed class ModuleSettingsTests
                 AudioSpeedMultiplier = 1.25f,
                 PitchShift = true,
                 PitchShiftMultiplier = 0.75f,
+                TransitionSpeedEnabled = true,
+                TransitionSpeedMultiplier = 1.75f,
                 AudioSplitter = true,
                 RecordingFramerate = 120,
                 RecordingBitrateMbps = 80,
@@ -4320,6 +4575,8 @@ public sealed class ModuleSettingsTests
             Assert.Equal(1.25f, imported.AudioSpeedMultiplier);
             Assert.True(imported.PitchShift);
             Assert.Equal(0.75f, imported.PitchShiftMultiplier);
+            Assert.True(imported.TransitionSpeedEnabled);
+            Assert.Equal(1.75f, imported.TransitionSpeedMultiplier);
             Assert.False(imported.AudioSplitter);
             Assert.Equal(42, imported.SoundVolumes["bird-squawk"]);
             Assert.True(imported.SoundVolumeOverrides["bird-squawk"]);

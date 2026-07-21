@@ -86,10 +86,8 @@ public static partial class AkronEntityInspector {
         player ??= FindPlayer(level);
 
         try {
-            bool showAllOnDeath = settings.HitboxShowLastDeath &&
-                                  settings.HitboxShowAllOnDeath &&
-                                  HasVisibleLastDeathHitbox();
-            if (settings.HitboxViewer || showAllOnDeath) {
+            bool deathHitboxVisible = settings.HitboxShowLastDeath && HasVisibleLastDeathObjectHitbox(AkronModule.Session);
+            if (ShouldRenderLiveHitboxes(settings.HitboxViewer, deathHitboxVisible, settings.HitboxShowAllOnDeath)) {
                 if (settings.HitboxShowSolids) {
                     DrawVisibleSolidTiles(level);
                 }
@@ -220,6 +218,14 @@ public static partial class AkronEntityInspector {
                (session.LastDeathHitbox.HasValue ||
                 session.LastDeathPlayerBounds.HasValue ||
                 session.LastDeathPosition.HasValue);
+    }
+
+    internal static bool HasVisibleLastDeathObjectHitbox(AkronModuleSession session) {
+        return session?.LastDeathHitboxVisible == true && session.LastDeathHitbox.HasValue;
+    }
+
+    internal static bool ShouldRenderLiveHitboxes(bool liveViewer, bool deathHitboxVisible, bool showAllOnDeath) {
+        return deathHitboxVisible ? showAllOnDeath : liveViewer;
     }
 
     public static void ClearLastDeathHitbox() {

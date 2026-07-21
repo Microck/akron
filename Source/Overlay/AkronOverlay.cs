@@ -33,7 +33,7 @@ public sealed partial class AkronOverlay : Entity {
     private const float ImGuiTooltipWrapWidth = 620f;
     private const float PopupViewportMargin = 16f;
     private const float PopupLabelColumnMinWidth = 48f;
-    private const float PopupLabelColumnPreferredWidth = 86f;
+    private const float PopupLabelColumnPreferredWidth = 150f;
     private const float PopupStepperButtonWidth = 34f;
     private const int InputBoardUndoLimit = 32;
     private const float AkronTitleFontSize = 18f;

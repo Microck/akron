@@ -521,12 +521,13 @@ public sealed partial class AkronOverlay {
         ImGui.TextUnformatted(AkronAudioSplitter.Status());
         IReadOnlyList<string> devices = AkronAudioSplitter.ListDevices();
         if (ImGui.Button("Reload Devices##" + popupId)) {
-            Engine.Scene?.Add(new AkronToast("Audio devices: " + devices.Count + "."));
+            int deviceCount = AkronAudioSplitter.ReloadDevices();
+            Engine.Scene?.Add(new AkronToast("Audio devices: " + deviceCount + "."));
         }
         DrawPopupTooltip("Refresh and report FMOD output devices visible to Celeste.");
-        DrawAudioDeviceCombo("Main", () => AkronModule.Settings.AudioSplitterMainDevice, value => AkronModule.Settings.AudioSplitterMainDevice = value, devices, popupId);
-        DrawAudioDeviceCombo("Music", () => AkronModule.Settings.AudioSplitterMusicDevice, value => AkronModule.Settings.AudioSplitterMusicDevice = value, devices, popupId);
-        DrawAudioDeviceCombo("SFX", () => AkronModule.Settings.AudioSplitterSfxDevice, value => AkronModule.Settings.AudioSplitterSfxDevice = value, devices, popupId);
+        DrawAudioDeviceCombo("Main", () => AkronModule.Settings.AudioSplitterMainDevice, AkronAudioSplitter.SetMainDevice, devices, popupId);
+        DrawAudioDeviceCombo("Music", () => AkronModule.Settings.AudioSplitterMusicDevice, AkronAudioSplitter.SetMusicDevice, devices, popupId);
+        DrawAudioDeviceCombo("SFX", () => AkronModule.Settings.AudioSplitterSfxDevice, AkronAudioSplitter.SetSfxDevice, devices, popupId);
     }
 
     private void DrawSoundVolumePopupControls(AkronEarAid.SoundDefinition sound, string popupId) {

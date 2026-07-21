@@ -34,6 +34,9 @@ public partial class AkronModule : EverestModule {
 
     public override Type SessionType => typeof(AkronModuleSession);
     public static AkronModuleSession Session => (AkronModuleSession) Instance._Session;
+    internal static AkronModuleSession TryGetSession() {
+        return Instance?._Session as AkronModuleSession;
+    }
 
     public override Type SaveDataType => typeof(AkronModuleSaveData);
     public static AkronModuleSaveData SaveData => (AkronModuleSaveData) Instance._SaveData;
@@ -121,6 +124,7 @@ public partial class AkronModule : EverestModule {
         AkronModuleSettings.EnsureCurrentKeybindDefaults(Settings);
         AkronModuleSettings.ClearOneShotRuntimeActions(Settings);
         AkronLog.Normal(nameof(AkronModule), "load start; " + AkronLog.DescribeSettings());
+        AkronAudioSplitter.Load();
         try {
             AkronImGuiRenderer.EnsureNativeResolverRegistered();
             typeof(AkronSaveLoadExports).ModInterop();
@@ -231,6 +235,7 @@ public partial class AkronModule : EverestModule {
         try {
             AkronMotionSmoothingInterop.RefreshLoadedState();
             AkronMotionSmoothingInterop.ApplyAkronSettings();
+            AkronAudioSplitter.Initialize();
         } catch (Exception exception) {
             Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed during Initialize; continuing so the module menu and overlay can still load: " + exception);
         }
@@ -245,6 +250,7 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Unload() {
+        AkronAudioSplitter.Unload();
         SaveAkronSettingsNow("unload");
         AkronLog.FlushDiagnosticSummaries();
         AkronLog.Normal(nameof(AkronModule), "unload start");
@@ -572,6 +578,7 @@ public partial class AkronModule : EverestModule {
     private static void EngineOnUpdate(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime) {
         RunDeferredScreenWipeAction();
         UpdateDeathWipeRenderSuppression();
+        AkronAudioSplitter.Update();
         AkronBackupActions.UpdateInterval((float) gameTime.ElapsedGameTime.TotalSeconds);
         // Downloads finish on a worker, but setup state and toasts belong to the
         // game thread even when the overlay was closed while the request ran.

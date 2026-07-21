@@ -316,25 +316,36 @@ public static partial class AkronActions {
             return;
         }
 
-        float next = Calc.Clamp(session.TimescaleMultiplier + delta, 0.1f, 2f);
+        float next = NormalizeTimescaleMultiplier(session.TimescaleMultiplier + delta);
 
         // Resetting to canonical speed must stay available even when Cheat
         // speed changes are blocked, but blocked policy decisions must not allow moving away
         // from 1.0x.
-        if (next != 1f && !AkronModule.TryUse(AkronFeatureKind.Timescale)) {
+        if (session.TimescaleEnabled && next != 1f && !AkronModule.TryUse(AkronFeatureKind.Timescale)) {
             return;
         }
 
-        session.TimescaleMultiplier = next;
-        if (next != 1f) {
-            session.TimescaleEnabled = true;
-        } else {
-            session.TimescaleEnabled = false;
+        ConfigureTimescaleMultiplier(session, next);
+        if (next == 1f && session.TimescaleEnabled) {
 #pragma warning disable CS0618
             Engine.TimeRate = 1f;
 #pragma warning restore CS0618
         }
-        Engine.Scene?.Add(new AkronToast("Timescale: " + next.ToString("0.0x")));
+        Engine.Scene?.Add(new AkronToast("Timescale value: " + next.ToString("0.0x")));
+    }
+
+    internal static void ConfigureTimescaleMultiplier(AkronModuleSession session, float multiplier) {
+        // The multiplier is configuration, not activation. Keeping these states
+        // separate lets players prepare a speed before explicitly turning it on.
+        if (session != null) {
+            session.TimescaleMultiplier = NormalizeTimescaleMultiplier(multiplier);
+        }
+    }
+
+    internal static float NormalizeTimescaleMultiplier(float multiplier) {
+        return float.IsFinite(multiplier)
+            ? Math.Clamp((float) Math.Round(multiplier, 1), 0.1f, 2f)
+            : 1f;
     }
 
     public static void SetAllowLowVolume(bool enabled) {
