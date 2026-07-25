@@ -160,7 +160,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Button("Style: " + AkronModule.Settings.HudCheatIndicatorStyle + "##" + popupId)) {
             AkronModule.Settings.HudCheatIndicatorStyle = NextHudCheatIndicatorStyle(AkronModule.Settings.HudCheatIndicatorStyle);
         }
-        DrawPopupTooltip("Text badge or single status dot.");
+        DrawPopupTooltip("Choose between a text badge and a single status dot.");
 
         DrawIntStepperRow("Scale", () => AkronModule.Settings.HudCheatIndicatorScale, value => AkronModule.Settings.HudCheatIndicatorScale = AkronModuleSettings.ClampPercent(value, 50, 250), -5, 5, 50, 250, popupId, "Indicator scale percentage.");
         DrawIntStepperRow("Opacity", () => AkronModule.Settings.HudCheatIndicatorOpacity, value => AkronModule.Settings.HudCheatIndicatorOpacity = AkronModuleSettings.ClampOpacity(value), -5, 5, 0, 100, popupId, "Indicator opacity percentage.");

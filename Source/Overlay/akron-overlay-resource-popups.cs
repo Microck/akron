@@ -132,7 +132,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Button("HUD: " + FormatStaminaHudPosition(AkronModule.Settings.StaminaBarHudPosition) + "##" + popupId)) {
             AkronModule.Settings.StaminaBarHudPosition = NextStaminaHudPosition(AkronModule.Settings.StaminaBarHudPosition);
         }
-        DrawPopupTooltip("Large meter screen position.");
+        DrawPopupTooltip("Screen position for the large stamina meter.");
 
         if (ImGui.Button("Style: " + AkronModule.Settings.StaminaBarStyle + "##" + popupId)) {
             AkronModule.Settings.StaminaBarStyle = AkronModule.Settings.StaminaBarStyle == AkronStaminaBarStyle.Bar
@@ -268,7 +268,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Button("HUD: " + FormatStaminaHudPosition(AkronModule.Settings.DashBarHudPosition) + "##" + popupId)) {
             AkronModule.Settings.DashBarHudPosition = NextStaminaHudPosition(AkronModule.Settings.DashBarHudPosition);
         }
-        DrawPopupTooltip("Fixed dash display screen position.");
+        DrawPopupTooltip("Screen position for the fixed dash display.");
 
         if (ImGui.Button("Style: " + AkronModule.Settings.DashBarStyle + "##" + popupId)) {
             AkronModule.Settings.DashBarStyle = AkronModule.Settings.DashBarStyle == AkronDashBarStyle.Pips

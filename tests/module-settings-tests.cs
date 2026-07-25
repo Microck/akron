@@ -571,6 +571,15 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void AkronDetectsPeriodOwnershipForPopupBindings()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings();
+        settings.MenuActionBindings["popup/Frame Stepper/Step Once"] = nameof(Keys.OemPeriod);
+
+        Assert.True(AkronOverlay.AkronOwnsKeyboardKey(settings, Keys.OemPeriod));
+    }
+
+    [Fact]
     public void OverlayToggleDefaultRestoresOnlyMissingBindings()
     {
         Assert.False(AkronModuleSettings.HasUsableOverlayToggleBinding(new List<Keys>(), new List<XnaButtons>()));

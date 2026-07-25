@@ -160,6 +160,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.SaveLoadIcon.Show += SaveLoadIconOnShow;
         On.Celeste.SaveLoadIcon.Render += SaveLoadIconOnRender;
         On.Celeste.Refill.ctor_Vector2_bool_bool += RefillOnCtor;
+        On.Monocle.Commands.UpdateClosed += AkronOverlay.CommandsOnUpdateClosed;
         On.Monocle.Engine.Update += EngineOnUpdate;
         On.Monocle.Engine.RenderCore += EngineOnRenderCore;
         On.Celeste.Level.CompleteArea_bool_bool += LevelOnCompleteArea;
@@ -289,6 +290,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.SaveLoadIcon.Show -= SaveLoadIconOnShow;
         On.Celeste.SaveLoadIcon.Render -= SaveLoadIconOnRender;
         On.Celeste.Refill.ctor_Vector2_bool_bool -= RefillOnCtor;
+        On.Monocle.Commands.UpdateClosed -= AkronOverlay.CommandsOnUpdateClosed;
         On.Monocle.Engine.Update -= EngineOnUpdate;
         On.Monocle.Engine.RenderCore -= EngineOnRenderCore;
         On.Celeste.Level.CompleteArea_bool_bool -= LevelOnCompleteArea;

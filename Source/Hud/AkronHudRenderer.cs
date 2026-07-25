@@ -238,7 +238,7 @@ public static partial class AkronHudRenderer {
 
         foreach (Trigger trigger in level.Tracker.GetEntities<Trigger>()) {
             if (trigger.Collider != null) {
-                DrawWorldRect(level, ColliderWorldBounds(trigger.Collider), ColorFromRgb(AkronModule.Settings.HitboxTriggerColor), 0.08f, 2);
+                DrawWorldRect(level, ColliderWorldBounds(trigger.Collider), ColorFromRgb(AkronModule.Settings.HitboxTriggerColor), 0.08f, 5);
             }
         }
     }

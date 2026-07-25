@@ -624,6 +624,10 @@ public static partial class AkronSaveLoadService {
                 restoredEventInstances.AddRange(AkronDeepClone.CopyIntoDormant(savedLevel, level));
                 AkronLevelGraphRepair.RelinkEntitiesToLevel(level);
                 AkronLevelRenderState.RelinkRendererCameras(level);
+                // Audio keeps a static camera reference. Copying the saved Level
+                // replaces Level.Camera, so positional sounds must use the
+                // restored camera before any saved FMOD handles start.
+                Audio.SetCamera(level.Camera);
                 RemoveClonedVisualRuntimeEntities(level);
                 AkronVirtualAssetReloadTracker.ReloadDisposedAssets(level);
             } else {

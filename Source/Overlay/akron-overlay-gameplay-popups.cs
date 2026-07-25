@@ -38,10 +38,6 @@ public sealed partial class AkronOverlay {
                               " / " +
                               AkronModuleSettings.DescribeBinding(AkronModule.Settings.NextSlot));
 
-        ImGui.Separator();
-        ImGui.TextUnformatted("Menu bindings");
-        DrawPopupActionBindingRow("Capture", PopupActionKey("StartPos Snapshot Slot", "Capture"), "StartPos Snapshot Slot / Capture", popupId);
-        DrawPopupActionBindingRow("Restore", PopupActionKey("StartPos Snapshot Slot", "Restore"), "StartPos Snapshot Slot / Restore", popupId);
     }
 
     private void DrawGrabModePopupControls(string popupId) {
@@ -383,7 +379,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Checkbox("Golden berries##" + popupId, ref golden)) {
             AkronModule.Settings.BerryObtainIncludeGolden = golden;
         }
-        DrawPopupTooltip("Include goldenBerry entities and 1A's winged golden memorial berry in obtain actions.");
+        DrawPopupTooltip("Include golden berry entities and 1A's winged golden memorial berry in obtain actions.");
 
         bool moon = AkronModule.Settings.BerryObtainIncludeMoon;
         if (ImGui.Checkbox("Moon berry##" + popupId, ref moon)) {

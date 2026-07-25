@@ -28,7 +28,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Button("Anchor: " + AkronModule.Settings.ToastLabelAnchor + "##" + popupId)) {
             AkronModule.Settings.ToastLabelAnchor = NextHudAnchor(AkronModule.Settings.ToastLabelAnchor);
         }
-        DrawPopupTooltip("Screen position for option feedback messages. Default is BottomLeft.");
+        DrawPopupTooltip("Screen position for option feedback messages.");
 
         DrawLabelStyleRows(AkronModule.Settings.ToastLabelStyle, popupId, "label-style-toasts", null, "Style for option feedback messages.");
     }
@@ -39,7 +39,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Button("Anchor: " + AkronModule.Settings.StartPosLabelAnchor + "##" + popupId)) {
             AkronModule.Settings.StartPosLabelAnchor = NextHudAnchor(AkronModule.Settings.StartPosLabelAnchor);
         }
-        DrawPopupTooltip("Screen position for the StartPos label. Use BottomCenter for bottom middle.");
+        DrawPopupTooltip("Screen position for the StartPos label.");
 
         if (ImGui.Button("Format: " + FormatStartPosLabelFormat(AkronModule.Settings.StartPosLabelFormat) + "##" + popupId)) {
             AkronModule.Settings.StartPosLabelFormat = NextStartPosLabelFormat(AkronModule.Settings.StartPosLabelFormat);

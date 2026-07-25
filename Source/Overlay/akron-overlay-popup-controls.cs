@@ -222,6 +222,8 @@ public sealed partial class AkronOverlay {
             } else if (HasExtendedVariantOptionsPopup(entry.Label)) {
                 DrawExtendedVariantPopupControls(entry.Label, popupId);
             }
+
+            DrawRegisteredPopupActionBindings(entry.Label, popupId);
         }
         finally {
             activeOptionsPopupLabel = previousOptionsPopupLabel;

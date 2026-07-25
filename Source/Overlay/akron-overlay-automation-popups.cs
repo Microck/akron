@@ -45,7 +45,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Checkbox("Show area##" + popupId, ref showArea)) {
             AkronModule.Settings.AutoKillShowArea = showArea;
         }
-        DrawPopupTooltip("Draw the selected auto-kill rectangle below the Akron menu.");
+        DrawPopupTooltip("Draw the selected Auto Kill rectangle in the game viewport.");
 
         bool showAreaOnDeath = AkronModule.Settings.AutoKillShowAreaOnDeath;
         if (ImGui.Checkbox("Show on death hitboxes##" + popupId, ref showAreaOnDeath)) {
@@ -303,7 +303,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Checkbox("Show area##" + popupId, ref showArea)) {
             AkronModule.Settings.AutoDeafenShowArea = showArea;
         }
-        DrawPopupTooltip("Draw selected Auto Deafen rectangles in blue below the Akron menu.");
+        DrawPopupTooltip("Draw selected Auto Deafen rectangles in blue in the game viewport.");
 
         if (ImGui.Button("Select Area##" + popupId)) {
             BeginAutoDeafenAreaSelection();
