@@ -435,7 +435,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Checkbox("Use hitbox color##" + popupId, ref useHitboxColor)) {
             AkronModule.Settings.ShowTrajectoryUseHitboxColor = useHitboxColor;
         }
-        DrawPopupTooltip("Use Show Hitboxes' player color for trajectory end hitboxes, matching Akron's source behavior.");
+        DrawPopupTooltip("Use Show Hitboxes' player color for trajectory end hitboxes instead of the branch color.");
 
         DrawHitboxColorRow("Jump held", () => AkronModule.Settings.ShowTrajectoryPressColor, value => AkronModule.Settings.ShowTrajectoryPressColor = value, popupId, "Path color for jump-pressed/held prediction.");
         DrawHitboxColorRow("Jump released", () => AkronModule.Settings.ShowTrajectoryReleaseColor, value => AkronModule.Settings.ShowTrajectoryReleaseColor = value, popupId, "Path color for jump-released prediction.");

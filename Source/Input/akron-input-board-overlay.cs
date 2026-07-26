@@ -21,7 +21,7 @@ public sealed partial class AkronOverlay {
                 ? AkronInputBoardSource.KeyboardKeys
                 : AkronInputBoardSource.GameActions;
         }
-        DrawPopupTooltip("Game Actions lights keys from Celeste actions. Keyboard Keys lights them from physical keyboard keys.");
+        DrawPopupTooltip("Game Actions activates keys from Celeste actions. Keyboard Keys activates them from physical key presses.");
 
         DrawIntStepperRow("Scale", () => AkronModule.Settings.TapDisplayScale, value => AkronModule.Settings.TapDisplayScale = AkronModuleSettings.ClampPercent(value, 50, 250), -5, 5, 50, 250, popupId, "Input-board scale percentage.");
         DrawIntStepperRow("Opacity", () => AkronModule.Settings.TapDisplayOpacity, value => AkronModule.Settings.TapDisplayOpacity = AkronModuleSettings.ClampOpacity(value), -5, 5, 0, 100, popupId, "Input-board opacity percentage.");

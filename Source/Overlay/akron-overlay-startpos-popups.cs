@@ -29,18 +29,6 @@ public sealed partial class AkronOverlay {
         ImGui.TextUnformatted("Index: " + (Engine.Scene is Level indexLevel ? AkronActions.DescribeStartPosIndex(indexLevel) : "0/0"));
         DrawStartPosConfigControls(popupId);
 
-        ImGui.Separator();
-        ImGui.TextUnformatted("Bindings");
-        DrawPopupActionBindingRow("Set", PopupActionKey("StartPos", "Set"), "StartPos / Set", popupId);
-        DrawPopupActionBindingRow("Load", PopupActionKey("StartPos", "Load"), "StartPos / Load", popupId);
-        DrawPopupActionBindingRow("Clear", PopupActionKey("StartPos", "Clear"), "StartPos / Clear", popupId);
-        for (int slot = 1; slot <= 9; slot++) {
-            DrawPopupActionBindingRow(
-                "Slot " + slot,
-                PopupActionKey("StartPos", "Load Slot " + slot),
-                "StartPos / Load Slot " + slot,
-                popupId);
-        }
     }
 
     private void DrawStartPosSwitcherPopupControls(string popupId) {
@@ -58,16 +46,12 @@ public sealed partial class AkronOverlay {
         ImGui.SameLine();
         ImGui.TextUnformatted("Index: " + (Engine.Scene is Level indexLevel ? AkronActions.DescribeStartPosIndex(indexLevel) : "0/0"));
 
-        ImGui.Separator();
-        ImGui.TextUnformatted("Bindings");
-        DrawPopupActionBindingRow("Previous", PopupActionKey("StartPos", "Previous"), "StartPos / Previous", popupId);
-        DrawPopupActionBindingRow("Next", PopupActionKey("StartPos", "Next"), "StartPos / Next", popupId);
     }
 
     private void DrawPopupActionBindingRow(string label, string actionKey, string displayName, string popupId) {
         ImGui.TextUnformatted(label + ": " + DescribePopupActionBinding(actionKey));
         ImGui.SameLine();
-        if (ImGui.Button("Bind##" + label + popupId)) {
+        if (ImGui.Button("Bind##" + actionKey + popupId)) {
             if (TryGetDefaultButtonBinding(actionKey, out _)) {
                 StartButtonBindingCapture(actionKey, displayName, binding => TrySetDefaultButtonBinding(actionKey, binding));
             } else {
@@ -76,7 +60,7 @@ public sealed partial class AkronOverlay {
             ImGui.CloseCurrentPopup();
         }
         ImGui.SameLine();
-        if (ImGui.Button("Clear##" + label + popupId)) {
+        if (ImGui.Button("Clear##" + actionKey + popupId)) {
             ClearMenuBinding(actionKey);
             if (ClearDefaultButtonBinding(actionKey)) {
                 menuBindingRevision++;

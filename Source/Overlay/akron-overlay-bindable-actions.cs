@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Celeste;
+using Celeste.Mod.Core;
+using ImGuiNET;
 using Microsoft.Xna.Framework.Input;
 using Monocle;
 
@@ -184,6 +186,41 @@ public sealed partial class AkronOverlay {
         yield return new BindableAction(PopupActionKey("StartPos", "Clear"), "StartPos / Clear", AkronActions.ClearActiveStartPos);
         yield return new BindableAction(PopupActionKey("StartPos", "Place"), "StartPos / Place", () => AkronModule.Settings.StartPosMousePlacement = !AkronModule.Settings.StartPosMousePlacement);
         yield return new BindableAction(PopupActionKey("StartPos", "Respawn"), "StartPos / Respawn Here", () => AkronModule.Settings.RespawnAtStartPos = !AkronModule.Settings.RespawnAtStartPos);
+    }
+
+    private void DrawRegisteredPopupActionBindings(string popupLabel, string popupId) {
+        List<BindableAction> actions = BuildPopupBindableActions(Engine.Scene as Level)
+            .Where(action => IsActionOwnedByPopup(action.ActionKey, popupLabel))
+            .ToList();
+        if (actions.Count == 0) {
+            return;
+        }
+
+        ImGui.Separator();
+        ImGui.TextUnformatted("Bindings");
+        foreach (BindableAction action in actions) {
+            int separator = action.DisplayName.LastIndexOf(" / ", StringComparison.Ordinal);
+            string label = separator >= 0
+                ? action.DisplayName.Substring(separator + 3)
+                : action.DisplayName;
+            DrawPopupActionBindingRow(label, action.ActionKey, action.DisplayName, popupId);
+        }
+    }
+
+    private static bool IsActionOwnedByPopup(string actionKey, string popupLabel) {
+        if (string.Equals(popupLabel, "StartPos Switcher", StringComparison.OrdinalIgnoreCase)) {
+            return string.Equals(actionKey, PopupActionKey("StartPos", "Previous"), StringComparison.Ordinal) ||
+                   string.Equals(actionKey, PopupActionKey("StartPos", "Next"), StringComparison.Ordinal);
+        }
+
+        string prefix = "popup/" + popupLabel + "/";
+        if (!actionKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return !string.Equals(popupLabel, "StartPos", StringComparison.OrdinalIgnoreCase) ||
+               !string.Equals(actionKey, PopupActionKey("StartPos", "Previous"), StringComparison.Ordinal) &&
+               !string.Equals(actionKey, PopupActionKey("StartPos", "Next"), StringComparison.Ordinal);
     }
 
     private static void ExecuteFrameStepOnce() {
@@ -830,6 +867,200 @@ public sealed partial class AkronOverlay {
     private static void ResetOverlayToggleBinding() {
         AkronModule.Settings.ToggleOverlay = AkronModuleSettings.CreateDefaultOverlayToggleBinding();
         menuBindingRevision++;
+    }
+
+    internal static void CommandsOnUpdateClosed(
+        On.Monocle.Commands.orig_UpdateClosed orig,
+        global::Monocle.Commands self) {
+        if (MInput.Keyboard.Pressed(Keys.OemPeriod) &&
+            AkronUsesPressedKeyboardKey(AkronModule.Settings, Keys.OemPeriod)) {
+            CoreModule.Settings?.DebugConsole?.ConsumePress();
+        }
+        orig(self);
+    }
+
+    internal static bool AkronUsesPressedKeyboardKey(AkronModuleSettings settings, Keys key) {
+        if (settings == null) {
+            return false;
+        }
+
+        bool canExecuteMenuBindings = Engine.Scene is Level level
+            ? AkronModule.CanExecuteLevelActionBindings(level)
+            : !settings.MenuBindingsInGameOnly;
+        HashSet<string> activeActionKeys = canExecuteMenuBindings
+            ? GetBindableActions(Engine.Scene as Level)
+                .Select(action => action.ActionKey)
+                .ToHashSet(StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+        if (ActiveMenuBindingMatchesPressedKey(
+                settings.MenuActionBindings,
+                activeActionKeys,
+                key,
+                Keyboard.GetState().GetPressedKeys())) {
+            return true;
+        }
+
+        bool isLevel = Engine.Scene is Level;
+        IEnumerable<ButtonBinding> activeNativeBindings = isLevel
+            ? GetActiveLevelButtonBindings(
+                settings,
+                canExecuteMenuBindings,
+                AkronModule.TryGetSession(),
+                AkronMotionSmoothingInterop.Loaded,
+                AkronRuntimeOptions.ResolveCurrentFrameBypassRates().Active)
+            : AkronModule.GetActiveGlobalButtonBindings(Engine.Scene);
+        return activeNativeBindings
+            .Any(binding => NativeBindingMatchesPressedKey(
+                UsesKeyboardChordDispatch(settings, binding),
+                binding?.Keys,
+                key,
+                Keyboard.GetState().GetPressedKeys(),
+                binding?.Pressed == true));
+    }
+
+    internal static bool NativeBindingMatchesPressedKey(
+        bool usesKeyboardChord,
+        IReadOnlyList<Keys> bindingKeys,
+        Keys pressedKey,
+        IReadOnlyCollection<Keys> downKeys,
+        bool bindingPressed) {
+        if (bindingKeys?.Contains(pressedKey) != true) {
+            return false;
+        }
+
+        if (usesKeyboardChord) {
+            return KeyboardChordMatches(bindingKeys, pressedKey, downKeys);
+        }
+
+        return bindingPressed;
+    }
+
+    internal static bool UsesKeyboardChordDispatch(
+        AkronModuleSettings settings,
+        ButtonBinding binding) {
+        return ReferenceEquals(binding, settings.ToggleOverlay) ||
+               ReferenceEquals(binding, settings.SetStartPos) ||
+               ReferenceEquals(binding, settings.LoadStartPos) ||
+               ReferenceEquals(binding, settings.ClearStartPos) ||
+               ReferenceEquals(binding, settings.PreviousStartPos) ||
+               ReferenceEquals(binding, settings.NextStartPos) ||
+               ReferenceEquals(binding, settings.LoadStartPosSlot1) ||
+               ReferenceEquals(binding, settings.LoadStartPosSlot2) ||
+               ReferenceEquals(binding, settings.LoadStartPosSlot3) ||
+               ReferenceEquals(binding, settings.LoadStartPosSlot4) ||
+               ReferenceEquals(binding, settings.LoadStartPosSlot5) ||
+               ReferenceEquals(binding, settings.LoadStartPosSlot6) ||
+               ReferenceEquals(binding, settings.LoadStartPosSlot7) ||
+               ReferenceEquals(binding, settings.LoadStartPosSlot8) ||
+               ReferenceEquals(binding, settings.LoadStartPosSlot9);
+    }
+
+    internal static IEnumerable<ButtonBinding> GetActiveLevelButtonBindings(
+        AkronModuleSettings settings,
+        bool canExecuteLevelActionBindings = true,
+        AkronModuleSession session = null,
+        bool frameBypassAvailable = true,
+        bool frameBypassActive = false) {
+        List<ButtonBinding> bindings = new List<ButtonBinding> {
+            settings.ToggleOverlay
+        };
+        if (!canExecuteLevelActionBindings) {
+            return bindings;
+        }
+
+        bindings.AddRange(new[] {
+            settings.Retry,
+            settings.ReloadRoom,
+            settings.OpenDebugMap,
+            settings.ReloadChapter,
+            settings.SaveState,
+            settings.LoadState,
+            settings.PreviousSlot,
+            settings.NextSlot,
+            settings.CycleGrabMode,
+            settings.FreezeGameplay,
+            settings.DecreaseTimescale,
+            settings.IncreaseTimescale,
+            settings.SetStartPos,
+            settings.LoadStartPos,
+            settings.ClearStartPos,
+            settings.PreviousStartPos,
+            settings.NextStartPos,
+            settings.LoadStartPosSlot1,
+            settings.LoadStartPosSlot2,
+            settings.LoadStartPosSlot3,
+            settings.LoadStartPosSlot4,
+            settings.LoadStartPosSlot5,
+            settings.LoadStartPosSlot6,
+            settings.LoadStartPosSlot7,
+            settings.LoadStartPosSlot8,
+            settings.LoadStartPosSlot9,
+            settings.ToggleHitboxes,
+            settings.ToggleEntityInspector
+        });
+        if (frameBypassAvailable) {
+            bindings.Add(settings.ToggleFrameBypass);
+        }
+        if (settings.FastLookout) {
+            bindings.Add(settings.FastLookoutHold);
+        }
+        if (settings.FrameStepper && session?.FreezeGameplay == true) {
+            bindings.Add(settings.StepFrame);
+        }
+        if (frameBypassAvailable && frameBypassActive) {
+            bindings.Add(settings.CycleFrameBypassCameraSmoothing);
+        }
+        if (settings.EntityInspector || settings.CursorTools) {
+            bindings.Add(settings.EntityInspectorCursorHold);
+        }
+        if (settings.ClickTeleport) {
+            bindings.Add(settings.ClickTeleportCursor);
+        }
+        if (settings.CursorZoom) {
+            bindings.Add(settings.CursorZoomHold);
+        }
+        if (settings.CursorTools) {
+            bindings.Add(settings.CursorToolsHold);
+        }
+        return bindings;
+    }
+
+    internal static bool ActiveMenuBindingMatchesPressedKey(
+        IReadOnlyDictionary<string, string> bindings,
+        IReadOnlyCollection<string> activeActionKeys,
+        Keys pressedKey,
+        IReadOnlyCollection<Keys> downKeys) {
+        return bindings?.Any(pair =>
+                   activeActionKeys.Contains(pair.Key) &&
+                   MenuBinding.TryParse(pair.Value, out MenuBinding binding) &&
+                   binding.Button == 0 &&
+                   KeyboardChordMatches(binding.KeyList, pressedKey, downKeys)) == true;
+    }
+
+    internal static bool KeyboardChordMatches(
+        IReadOnlyList<Keys> bindingKeys,
+        Keys pressedKey,
+        IReadOnlyCollection<Keys> downKeys) {
+        return bindingKeys?.Contains(pressedKey) == true &&
+               bindingKeys.All(downKeys.Contains);
+    }
+
+    internal static bool AkronOwnsKeyboardKey(AkronModuleSettings settings, Keys key) {
+        if (settings == null) {
+            return false;
+        }
+
+        if (settings.MenuActionBindings?.Values.Any(value =>
+                MenuBinding.TryParse(value, out MenuBinding binding) &&
+                binding.KeyList.Contains(key)) == true) {
+            return true;
+        }
+
+        return typeof(AkronModuleSettings)
+            .GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public)
+            .Where(property => property.CanRead && property.PropertyType == typeof(ButtonBinding))
+            .Select(property => property.GetValue(settings) as ButtonBinding)
+            .Any(binding => binding?.Keys?.Contains(key) == true);
     }
 
     private static string BuildActionKey(string tab, string label) {

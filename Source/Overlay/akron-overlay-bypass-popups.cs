@@ -283,28 +283,28 @@ public sealed partial class AkronOverlay
         {
             AkronModule.Settings.FrameBypassSubpixelMadeline = subpixelMadeline;
         }
-        DrawPopupTooltip("Reference option for drawing Madeline and held items at subpixel render positions.");
+        DrawPopupTooltip("Draw Madeline and held items at subpixel render positions. Requires Fancy or Fast camera smoothing.");
 
         bool smoothBackground = AkronModule.Settings.FrameBypassSmoothBackground;
         if (ImGui.Checkbox("Smooth background##" + popupId, ref smoothBackground))
         {
             AkronModule.Settings.FrameBypassSmoothBackground = smoothBackground;
         }
-        DrawPopupTooltip("Reference option for high-resolution background compositing in Fancy camera smoothing.");
+        DrawPopupTooltip("Composite backgrounds at high resolution when camera smoothing is Fancy.");
 
         bool smoothForeground = AkronModule.Settings.FrameBypassSmoothForeground;
         if (ImGui.Checkbox("Smooth foreground##" + popupId, ref smoothForeground))
         {
             AkronModule.Settings.FrameBypassSmoothForeground = smoothForeground;
         }
-        DrawPopupTooltip("Reference option for high-resolution foreground compositing in Fancy camera smoothing.");
+        DrawPopupTooltip("Composite foregrounds at high resolution when camera smoothing is Fancy.");
 
         bool hideEdges = AkronModule.Settings.FrameBypassHideStretchedEdges;
         if (ImGui.Checkbox("Hide edge gaps##" + popupId, ref hideEdges))
         {
             AkronModule.Settings.FrameBypassHideStretchedEdges = hideEdges;
         }
-        DrawPopupTooltip("Reference option: slightly zooms the level to hide gaps introduced by fractional camera offsets.");
+        DrawPopupTooltip("Slightly zoom the level to hide edge gaps from fractional camera offsets.");
 
         bool nastyMode = AkronModule.Settings.FrameBypassSillyMode;
         if (ImGui.Checkbox("Nasty mode##" + popupId, ref nastyMode))

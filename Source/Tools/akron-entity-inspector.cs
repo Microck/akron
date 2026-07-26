@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -16,7 +17,29 @@ public enum GridEdge {
 }
 
 public static partial class AkronEntityInspector {
+    internal sealed class DeathColliderSnapshot {
+        private readonly BitArray occupiedPixels;
+
+        internal DeathColliderSnapshot(Rectangle bounds, BitArray occupiedPixels) {
+            Bounds = bounds;
+            this.occupiedPixels = occupiedPixels;
+        }
+
+        internal Rectangle Bounds { get; }
+
+        internal bool ContainsPixel(int x, int y) {
+            int localX = x - Bounds.X;
+            int localY = y - Bounds.Y;
+            return localX >= 0 &&
+                   localX < Bounds.Width &&
+                   localY >= 0 &&
+                   localY < Bounds.Height &&
+                   occupiedPixels[localY * Bounds.Width + localX];
+        }
+    }
+
     private const float CameraCullMargin = 32f;
+    private const int MaxDeathColliderSnapshotPixels = 65_536;
     private const float HitboxThicknessUnitsPerGamePixel = 5f;
     private const float DefaultPlayerHurtboxWidth = 8f;
     private const float DefaultPlayerHurtboxHeight = 9f;
@@ -35,6 +58,8 @@ public static partial class AkronEntityInspector {
     private static int frameGridCellChecks;
     private static int frameGridRuns;
     private static bool renderingToGameplayBuffer;
+    private static DeathColliderSnapshot lastDeathCollider;
+    private static AkronModuleSession lastDeathColliderSession;
 
     public static Entity GetFocusedEntity(Level level) {
         Player player = level.Tracker.GetEntity<Player>();
@@ -125,8 +150,17 @@ public static partial class AkronEntityInspector {
             }
 
             if (settings.HitboxShowLastDeath && HasVisibleLastDeathHitbox()) {
-                if (!settings.HitboxShowAllOnDeath && AkronModule.Session.LastDeathHitbox is Rectangle deathHitbox) {
-                    DrawWorldRect(level, deathHitbox, ColorFromRgb(settings.HitboxDeathColor));
+                if (!settings.HitboxShowAllOnDeath) {
+                    Color deathColor = ColorFromRgb(settings.HitboxDeathColor);
+                    if (CanRenderDeathColliderSnapshot(
+                            lastDeathCollider,
+                            lastDeathColliderSession,
+                            AkronModule.Session)) {
+                        DeathColliderSnapshot deathCollider = lastDeathCollider;
+                        DrawDeathColliderSnapshot(level, deathCollider, deathColor, CameraWorldBounds(level));
+                    } else if (AkronModule.Session.LastDeathHitbox is Rectangle deathHitbox) {
+                        DrawWorldRect(level, deathHitbox, deathColor);
+                    }
                 }
 
                 if (settings.HitboxShowDeathPlayerMarker) {
@@ -183,12 +217,16 @@ public static partial class AkronEntityInspector {
         if (explicitHitbox.HasValue) {
             AkronModule.Session.LastDeathEntityType = explicitEntityType ?? string.Empty;
             AkronModule.Session.LastDeathHitbox = explicitHitbox.Value;
+            lastDeathCollider = null;
+            lastDeathColliderSession = null;
         } else {
             Entity nearbyHazard = level.Entities
                 .Where(entity => entity.Collider != null && IsHazard(entity))
                 .OrderBy(entity => Vector2.DistanceSquared(entity.Center, deathPosition))
                 .FirstOrDefault();
             AkronModule.Session.LastDeathEntityType = nearbyHazard?.GetType().Name ?? string.Empty;
+            lastDeathCollider = CaptureDeathColliderSnapshot(nearbyHazard?.Collider);
+            lastDeathColliderSession = lastDeathCollider == null ? null : AkronModule.Session;
             AkronModule.Session.LastDeathHitbox = nearbyHazard?.Collider?.Bounds ??
                                                    new Rectangle((int) deathPosition.X - 4, (int) deathPosition.Y - 4, 8, 8);
         }
@@ -220,6 +258,41 @@ public static partial class AkronEntityInspector {
                 session.LastDeathPosition.HasValue);
     }
 
+    internal static DeathColliderSnapshot CaptureDeathColliderSnapshot(Collider collider) {
+        if (collider == null) {
+            return null;
+        }
+
+        Rectangle bounds = ExactSampleBounds(collider);
+        return CaptureDeathColliderSnapshot(bounds, (x, y) => CollidesPixel(collider, x, y));
+    }
+
+    internal static DeathColliderSnapshot CaptureDeathColliderSnapshot(
+        Rectangle bounds,
+        System.Func<int, int, bool> containsPixel) {
+        long pixelCount = (long) bounds.Width * bounds.Height;
+        if (pixelCount <= 0 || pixelCount > MaxDeathColliderSnapshotPixels) {
+            return null;
+        }
+
+        BitArray occupiedPixels = new BitArray((int) pixelCount);
+        for (int y = 0; y < bounds.Height; y++) {
+            for (int x = 0; x < bounds.Width; x++) {
+                occupiedPixels[y * bounds.Width + x] =
+                    containsPixel(bounds.X + x, bounds.Y + y);
+            }
+        }
+
+        return new DeathColliderSnapshot(bounds, occupiedPixels);
+    }
+
+    internal static bool CanRenderDeathColliderSnapshot(
+        DeathColliderSnapshot snapshot,
+        AkronModuleSession snapshotSession,
+        AkronModuleSession currentSession) {
+        return snapshot != null && ReferenceEquals(snapshotSession, currentSession);
+    }
+
     internal static bool HasVisibleLastDeathObjectHitbox(AkronModuleSession session) {
         return session?.LastDeathHitboxVisible == true && session.LastDeathHitbox.HasValue;
     }
@@ -237,6 +310,8 @@ public static partial class AkronEntityInspector {
         session.LastDeathPosition = null;
         session.LastDeathPlayerBounds = null;
         session.LastDeathHitbox = null;
+        lastDeathCollider = null;
+        lastDeathColliderSession = null;
         session.LastDeathHitboxVisible = false;
         session.LastDeathHitboxSawDeathState = false;
         session.LastDeathHitboxRecordedFrame = 0;
@@ -480,6 +555,31 @@ public static partial class AkronEntityInspector {
                 DrawWorldRect(level, ColliderWorldBounds(collider), color);
                 break;
         }
+    }
+
+    private static void DrawDeathColliderSnapshot(
+        Level level,
+        DeathColliderSnapshot snapshot,
+        Color color,
+        Rectangle cameraBounds) {
+        Rectangle bounds = Rectangle.Intersect(snapshot.Bounds, cameraBounds);
+        if (bounds.Width <= 0 || bounds.Height <= 0) {
+            return;
+        }
+
+        float fillAlpha = AkronModuleSettings.ClampHitboxFillOpacity(AkronModule.Settings.HitboxFillOpacity) / 100f;
+        float thickness = AkronModuleSettings.ClampHitboxLineThickness(AkronModule.Settings.HitboxLineThickness);
+        if (fillAlpha > 0f) {
+            foreach (Rectangle run in ExactPixelRuns(bounds, snapshot.ContainsPixel, includeFill: true)) {
+                DrawWorldPixelFillRun(level, run.X, run.Y, run.Width, color * fillAlpha);
+            }
+        }
+
+        if (AkronModule.Settings.HitboxBlackOutline) {
+            DrawConnectedPixelOutline(level, bounds, snapshot.ContainsPixel, Color.Black * 0.75f, thickness + 2);
+        }
+
+        DrawConnectedPixelOutline(level, bounds, snapshot.ContainsPixel, color * 0.95f, thickness);
     }
 
     private static void DrawExactColliderPixels(Level level, Collider collider, Color color, Rectangle cameraBounds) {

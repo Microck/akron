@@ -82,7 +82,7 @@ public sealed partial class AkronOverlay {
             if (ImGui.Checkbox("Value##" + popupId, ref value)) {
                 SetExtendedVariantValue(option, value);
             }
-            DrawPopupTooltip("Boolean external variant option.");
+            DrawPopupTooltip("Toggle this external variant on or off.");
             return;
         }
 
@@ -144,7 +144,7 @@ public sealed partial class AkronOverlay {
                 ImGui.EndCombo();
             }
             ImGui.PopItemWidth();
-            DrawPopupTooltip("Enum external variant value.");
+            DrawPopupTooltip("Choose from the external variant's allowed values.");
             DrawExtendedVariantResetButton(option, popupId);
             return;
         }
@@ -158,7 +158,7 @@ public sealed partial class AkronOverlay {
             if (ImGui.IsItemActive()) {
                 MarkValueEditFreeze();
             }
-            DrawPopupTooltip("String external variant value. For color grading, use a known color-grade ID.");
+            DrawPopupTooltip("Free-text value for this external variant. For color grading, use a known color-grade ID.");
             DrawExtendedVariantResetButton(option, popupId);
             return;
         }

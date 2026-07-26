@@ -31,22 +31,32 @@ public static partial class AkronHudRenderer {
                               settings.AutoKillArea &&
                               settings.AutoKillShowArea &&
                               !HasVisibleRecordedAutoKillDeath(settings);
+        bool shouldShowDeath = settings.AutoKillShowAreaOnDeath &&
+                               settings.HitboxShowAllOnDeath &&
+                               HasVisibleRecordedAutoKillDeath(settings) &&
+                               AkronModule.Session?.LastDeathHitbox is Rectangle;
         bool shouldShowPreview = AkronModule.TryGetPracticeAreaSelectionPreview(level, isAutoDeafen: false, out Rectangle preview, out bool hasAnchor);
-        if (!shouldShowLive && !shouldShowPreview) {
+        if (!shouldShowLive && !shouldShowDeath && !shouldShowPreview) {
             return;
         }
 
         int lineThickness = AutomationAreaGamePixelThickness();
-        int selectedAreaIndex = AkronModule.GetSelectedAutoKillAreaIndex();
-        List<Rectangle> autoKillAreas = AkronModule.GetAutoKillAreas();
-        for (int index = 0; index < autoKillAreas.Count; index++) {
-            Rectangle area = autoKillAreas[index];
-            if (area.Width > 0 && area.Height > 0) {
-                bool selected = index == selectedAreaIndex;
-                Color color = selected ? Color.Lerp(Color.OrangeRed, Color.White, 0.35f) : Color.OrangeRed;
-                float fillAlpha = selected ? 0.28f : 0.14f;
-                DrawWorldRect(level, area, color, fillAlpha, lineThickness);
+        if (shouldShowLive) {
+            int selectedAreaIndex = AkronModule.GetSelectedAutoKillAreaIndex();
+            List<Rectangle> autoKillAreas = AkronModule.GetAutoKillAreas();
+            for (int index = 0; index < autoKillAreas.Count; index++) {
+                Rectangle area = autoKillAreas[index];
+                if (area.Width > 0 && area.Height > 0) {
+                    bool selected = index == selectedAreaIndex;
+                    Color color = selected ? Color.Lerp(Color.OrangeRed, Color.White, 0.35f) : Color.OrangeRed;
+                    float fillAlpha = selected ? 0.28f : 0.14f;
+                    DrawWorldRect(level, area, color, fillAlpha, lineThickness);
+                }
             }
+        }
+
+        if (shouldShowDeath && AkronModule.Session?.LastDeathHitbox is Rectangle deathArea) {
+            DrawWorldRect(level, deathArea, Color.OrangeRed, 0.14f, lineThickness);
         }
 
         if (shouldShowPreview) {

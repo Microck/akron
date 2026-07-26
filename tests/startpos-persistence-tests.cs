@@ -118,6 +118,16 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
+    public void RestoredStartPosResetsAudioCameraBeforeStartingSavedSounds() {
+        string source = File.ReadAllText(GetSaveLoadSourcePath());
+        int setCamera = source.IndexOf("Audio.SetCamera(level.Camera);", StringComparison.Ordinal);
+        int activateSounds = source.IndexOf("AkronEventInstanceUtils.ActivateDormantEventInstances(restoredEventInstances);", StringComparison.Ordinal);
+
+        Assert.True(setCamera >= 0);
+        Assert.True(activateSounds > setCamera);
+    }
+
+    [Fact]
     public void FullStateStartPosDeathRespawnCanCrossRooms() {
         string source = File.ReadAllText(GetActionsSourcePath());
         string playerRuntimeSource = File.ReadAllText(GetPlayerRuntimeSourcePath());

@@ -57,7 +57,7 @@ public partial class AkronModule {
             return;
         }
 
-        if (level.Paused && !Settings.AllowPauseBuffering) {
+        if (!CanExecuteLevelActionBindings(level)) {
             return;
         }
 
@@ -169,6 +169,21 @@ public partial class AkronModule {
         AkronOverlay.ExecuteCustomBoundActions(level);
     }
 
+    internal static bool CanExecuteLevelActionBindings(Level level) {
+        return level != null &&
+               CanExecuteLevelActionBindings(
+                   Overlay?.Visible == true,
+                   level.Paused,
+                   Settings.AllowPauseBuffering);
+    }
+
+    internal static bool CanExecuteLevelActionBindings(
+        bool overlayVisible,
+        bool levelPaused,
+        bool allowPauseBuffering) {
+        return !overlayVisible && (!levelPaused || allowPauseBuffering);
+    }
+
     private static void HandleFrameBypassBindings() {
         if (!AkronMotionSmoothingInterop.Loaded) {
             return;
@@ -242,6 +257,41 @@ public partial class AkronModule {
         if (scene is not Level) {
             HandleFrameBypassBindings();
         }
+    }
+
+    internal static IEnumerable<ButtonBinding> GetActiveGlobalButtonBindings(Scene scene) {
+        return GetActiveGlobalButtonBindings(
+            Settings,
+            Overlay?.Visible == true,
+            scene == null || ShouldSuppressGlobalOverlayToggle(scene),
+            AkronMotionSmoothingInterop.Loaded,
+            AkronRuntimeOptions.ResolveCurrentFrameBypassRates().Active);
+    }
+
+    internal static IEnumerable<ButtonBinding> GetActiveGlobalButtonBindings(
+        AkronModuleSettings settings,
+        bool overlayVisible,
+        bool suppressOverlayToggle,
+        bool frameBypassAvailable,
+        bool frameBypassActive) {
+        if (settings == null || suppressOverlayToggle) {
+            return Enumerable.Empty<ButtonBinding>();
+        }
+
+        List<ButtonBinding> bindings = new List<ButtonBinding> {
+            settings.ToggleOverlay
+        };
+        if (overlayVisible) {
+            return bindings;
+        }
+
+        if (frameBypassAvailable) {
+            bindings.Add(settings.ToggleFrameBypass);
+        }
+        if (frameBypassAvailable && frameBypassActive) {
+            bindings.Add(settings.CycleFrameBypassCameraSmoothing);
+        }
+        return bindings;
     }
 
     internal static bool ShouldSuppressGlobalOverlayToggleForOuiType(string ouiTypeName) {

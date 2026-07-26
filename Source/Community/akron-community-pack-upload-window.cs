@@ -87,7 +87,7 @@ public sealed partial class AkronOverlay {
                 MarkValueEditFreeze();
             }
             ImGui.PopItemWidth();
-            DrawPopupTooltip("Saved for future Upload Pack submissions and also editable from the row submenu.");
+            DrawPopupTooltip("This value persists across Upload Pack submissions. Also editable from the row submenu.");
         }
 
         AkronCommunityPackUploadDraft generatedDraft = AkronCommunityPackUploads.BuildGeneratedDraft(

@@ -4,6 +4,20 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Unreleased
+
+### Added
+
+- Bind actions inside option popups, including Frame Stepper's Step Once action.
+
+### Fixed
+
+- Give Akron temporary ownership of the period key when an Akron action uses it, so Everest does not also toggle debug hitboxes.
+- Recenter positional sound effects on the restored StartPos room.
+- Show Auto Kill areas with death hitboxes even when live area display is off.
+- Preserve spinner collider shapes when only the death-object hitbox is shown.
+- Draw Show Triggers outlines at 5 pixels.
+
 ## Akron Beta 58
 
 ### Added
