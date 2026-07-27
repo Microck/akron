@@ -101,6 +101,7 @@ public sealed partial class AkronOverlay : Entity {
     private bool bindingCaptureOverlayToggle;
     private bool bindingCaptureAutoDeafenHotkey;
     private bool bindingCaptureWaitingForRelease;
+    internal bool HasActiveBindingCapture => !string.IsNullOrWhiteSpace(bindingCaptureActionKey);
     private bool internalRecorderExperimentalWarningDontShowAgain;
     private bool imguiPopupBlockedRowsLastFrame;
     private bool suppressImGuiRowPressesThisFrame;

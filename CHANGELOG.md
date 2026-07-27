@@ -4,6 +4,14 @@ All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
 
+## Unreleased
+
+### Fixed
+
+- Open the normal binding menu by right-clicking an actionable popup option instead of showing a separate binding list.
+- Keep Everest's debug console closed when `.` is being captured or already belongs to an Akron binding.
+- Keep every overlapping part of a spinner hitbox visible after death when All hitboxes is off.
+
 ## Akron Beta 59
 
 ### Added

@@ -18,8 +18,13 @@ public sealed partial class AkronOverlay {
             if (entry.IsCustomHudLabelRow) {
                 SelectCustomHudLabel(entry.CustomHudLabelId);
                 DrawCustomHudLabelsPopupControls(popupId);
-            } else if (string.Equals(entry.Label, "StartPos Snapshot Slot", StringComparison.OrdinalIgnoreCase)) {
+            } else if (string.Equals(entry.Label, "Timescale", StringComparison.OrdinalIgnoreCase)) {
+                DrawTimescalePopupControls(popupId);
+            } else if (string.Equals(entry.OptionsPopupKey, "StartPos Snapshot Slot", StringComparison.OrdinalIgnoreCase)) {
                 DrawSavestateSlotPopupControls(popupId);
+                ImGui.Separator();
+                ImGui.TextUnformatted("StartPos actions");
+                DrawStartPosPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Grab Mode", StringComparison.OrdinalIgnoreCase)) {
                 DrawGrabModePopupControls(popupId);
             } else if (string.Equals(entry.Label, "Overlay Appearance", StringComparison.OrdinalIgnoreCase) ||
@@ -165,8 +170,6 @@ public sealed partial class AkronOverlay {
                 DrawAutoDeafenPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Transition Speed", StringComparison.OrdinalIgnoreCase)) {
                 DrawTransitionSpeedPopupControls(popupId);
-            } else if (string.Equals(entry.Label, "StartPos", StringComparison.OrdinalIgnoreCase)) {
-                DrawStartPosPopupControls(popupId);
             } else if (string.Equals(entry.Label, "StartPos Switcher", StringComparison.OrdinalIgnoreCase)) {
                 DrawStartPosSwitcherPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Place StartPos", StringComparison.OrdinalIgnoreCase)) {
@@ -223,7 +226,6 @@ public sealed partial class AkronOverlay {
                 DrawExtendedVariantPopupControls(entry.Label, popupId);
             }
 
-            DrawRegisteredPopupActionBindings(entry.Label, popupId);
         }
         finally {
             activeOptionsPopupLabel = previousOptionsPopupLabel;
@@ -754,7 +756,10 @@ public sealed partial class AkronOverlay {
         float maximum,
         string format,
         string popupId,
-        string tooltip) {
+        string tooltip,
+        string bindingPopupLabel = null,
+        string decrementActionName = null,
+        string incrementActionName = null) {
         const float valueWidth = 50f;
         float controlsWidth = PopupStepperButtonWidth * 2f + valueWidth + ImGui.CalcTextSize("x").X + ImGui.GetStyle().ItemSpacing.X * 3f + 2f;
         DrawPopupRowLabel(label, CalculatePopupLabelWidth(controlsWidth));
@@ -764,6 +769,7 @@ public sealed partial class AkronOverlay {
             AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
+        DrawPopupActionBindingContext(bindingPopupLabel, decrementActionName);
         ImGui.SameLine();
         ImGui.TextUnformatted("x");
         ImGui.SameLine(0f, 2f);
@@ -787,6 +793,7 @@ public sealed partial class AkronOverlay {
             AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
+        DrawPopupActionBindingContext(bindingPopupLabel, incrementActionName);
         DrawPopupTooltip(tooltip, label);
     }
 
@@ -843,7 +850,10 @@ public sealed partial class AkronOverlay {
         int minimum,
         int maximum,
         string popupId,
-        string tooltip) {
+        string tooltip,
+        string bindingPopupLabel = null,
+        string decrementActionName = null,
+        string incrementActionName = null) {
         const float valueWidth = 58f;
         float controlsWidth = PopupStepperButtonWidth * 2f + valueWidth + ImGui.GetStyle().ItemSpacing.X * 2f;
         DrawPopupRowLabel(label, CalculatePopupLabelWidth(controlsWidth));
@@ -853,6 +863,7 @@ public sealed partial class AkronOverlay {
             AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
+        DrawPopupActionBindingContext(bindingPopupLabel, decrementActionName);
         ImGui.SameLine();
         int value = getter();
         ImGui.PushItemWidth(valueWidth);
@@ -874,6 +885,7 @@ public sealed partial class AkronOverlay {
             AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
+        DrawPopupActionBindingContext(bindingPopupLabel, incrementActionName);
         DrawPopupTooltip(tooltip, label);
     }
 

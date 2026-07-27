@@ -18,23 +18,86 @@ public enum GridEdge {
 
 public static partial class AkronEntityInspector {
     internal sealed class DeathColliderSnapshot {
-        private readonly BitArray occupiedPixels;
+        private sealed class Part {
+            internal Part(Rectangle bounds, BitArray occupiedPixels) {
+                Bounds = bounds;
+                OccupiedPixels = occupiedPixels;
+            }
 
-        internal DeathColliderSnapshot(Rectangle bounds, BitArray occupiedPixels) {
+            internal Rectangle Bounds { get; }
+            internal BitArray OccupiedPixels { get; }
+        }
+
+        private readonly List<Part> parts;
+
+        private DeathColliderSnapshot(List<Part> parts) {
+            this.parts = parts;
+            Rectangle bounds = parts[0].Bounds;
+            for (int index = 1; index < parts.Count; index++) {
+                Rectangle partBounds = parts[index].Bounds;
+                int left = System.Math.Min(bounds.X, partBounds.X);
+                int top = System.Math.Min(bounds.Y, partBounds.Y);
+                int right = System.Math.Max(bounds.X + bounds.Width, partBounds.X + partBounds.Width);
+                int bottom = System.Math.Max(bounds.Y + bounds.Height, partBounds.Y + partBounds.Height);
+                bounds = new Rectangle {
+                    X = left,
+                    Y = top,
+                    Width = right - left,
+                    Height = bottom - top
+                };
+            }
             Bounds = bounds;
-            this.occupiedPixels = occupiedPixels;
+        }
+
+        internal DeathColliderSnapshot(Rectangle bounds, BitArray occupiedPixels)
+            : this(new List<Part> { new Part(bounds, occupiedPixels) }) {
         }
 
         internal Rectangle Bounds { get; }
+        internal int PartCount => parts.Count;
+
+        internal Rectangle PartBounds(int partIndex) {
+            return parts[partIndex].Bounds;
+        }
 
         internal bool ContainsPixel(int x, int y) {
-            int localX = x - Bounds.X;
-            int localY = y - Bounds.Y;
+            for (int partIndex = 0; partIndex < parts.Count; partIndex++) {
+                if (PartContainsPixel(partIndex, x, y)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        internal bool PartContainsPixel(int partIndex, int x, int y) {
+            Part part = parts[partIndex];
+            int localX = x - part.Bounds.X;
+            int localY = y - part.Bounds.Y;
             return localX >= 0 &&
-                   localX < Bounds.Width &&
+                   localX < part.Bounds.Width &&
                    localY >= 0 &&
-                   localY < Bounds.Height &&
-                   occupiedPixels[localY * Bounds.Width + localX];
+                   localY < part.Bounds.Height &&
+                   part.OccupiedPixels[localY * part.Bounds.Width + localX];
+        }
+
+        internal static DeathColliderSnapshot Combine(IEnumerable<DeathColliderSnapshot> snapshots) {
+            List<Part> combinedParts = new List<Part>();
+            int combinedPixelCount = 0;
+            foreach (DeathColliderSnapshot snapshot in snapshots) {
+                if (snapshot == null) {
+                    return null;
+                }
+
+                foreach (Part part in snapshot.parts) {
+                    if (part.OccupiedPixels.Length > MaxDeathColliderSnapshotPixels - combinedPixelCount) {
+                        return null;
+                    }
+
+                    combinedPixelCount += part.OccupiedPixels.Length;
+                    combinedParts.Add(part);
+                }
+            }
+            return combinedParts.Count == 0 ? null : new DeathColliderSnapshot(combinedParts);
         }
     }
 
@@ -263,6 +326,16 @@ public static partial class AkronEntityInspector {
             return null;
         }
 
+        if (collider is ColliderList colliderList) {
+            // Keep each child as a separate layer. Flattening a spinner's circle
+            // and horizontal bar into one bitmap erases their overlapping edges,
+            // so the frozen death view no longer matches the live hitbox view.
+            return CombineDeathColliderSnapshots(
+                colliderList.colliders
+                    .Where(child => child != null)
+                    .Select(CaptureDeathColliderSnapshot));
+        }
+
         Rectangle bounds = ExactSampleBounds(collider);
         return CaptureDeathColliderSnapshot(bounds, (x, y) => CollidesPixel(collider, x, y));
     }
@@ -284,6 +357,10 @@ public static partial class AkronEntityInspector {
         }
 
         return new DeathColliderSnapshot(bounds, occupiedPixels);
+    }
+
+    internal static DeathColliderSnapshot CombineDeathColliderSnapshots(IEnumerable<DeathColliderSnapshot> snapshots) {
+        return DeathColliderSnapshot.Combine(snapshots);
     }
 
     internal static bool CanRenderDeathColliderSnapshot(
@@ -562,24 +639,29 @@ public static partial class AkronEntityInspector {
         DeathColliderSnapshot snapshot,
         Color color,
         Rectangle cameraBounds) {
-        Rectangle bounds = Rectangle.Intersect(snapshot.Bounds, cameraBounds);
-        if (bounds.Width <= 0 || bounds.Height <= 0) {
-            return;
-        }
-
         float fillAlpha = AkronModuleSettings.ClampHitboxFillOpacity(AkronModule.Settings.HitboxFillOpacity) / 100f;
         float thickness = AkronModuleSettings.ClampHitboxLineThickness(AkronModule.Settings.HitboxLineThickness);
-        if (fillAlpha > 0f) {
-            foreach (Rectangle run in ExactPixelRuns(bounds, snapshot.ContainsPixel, includeFill: true)) {
-                DrawWorldPixelFillRun(level, run.X, run.Y, run.Width, color * fillAlpha);
+        for (int partIndex = 0; partIndex < snapshot.PartCount; partIndex++) {
+            int capturedPartIndex = partIndex;
+            Rectangle bounds = Rectangle.Intersect(snapshot.PartBounds(partIndex), cameraBounds);
+            if (bounds.Width <= 0 || bounds.Height <= 0) {
+                continue;
             }
-        }
 
-        if (AkronModule.Settings.HitboxBlackOutline) {
-            DrawConnectedPixelOutline(level, bounds, snapshot.ContainsPixel, Color.Black * 0.75f, thickness + 2);
-        }
+            System.Func<int, int, bool> containsPixel =
+                (x, y) => snapshot.PartContainsPixel(capturedPartIndex, x, y);
+            if (fillAlpha > 0f) {
+                foreach (Rectangle run in ExactPixelRuns(bounds, containsPixel, includeFill: true)) {
+                    DrawWorldPixelFillRun(level, run.X, run.Y, run.Width, color * fillAlpha);
+                }
+            }
 
-        DrawConnectedPixelOutline(level, bounds, snapshot.ContainsPixel, color * 0.95f, thickness);
+            if (AkronModule.Settings.HitboxBlackOutline) {
+                DrawConnectedPixelOutline(level, bounds, containsPixel, Color.Black * 0.75f, thickness + 2);
+            }
+
+            DrawConnectedPixelOutline(level, bounds, containsPixel, color * 0.95f, thickness);
+        }
     }
 
     private static void DrawExactColliderPixels(Level level, Collider collider, Color color, Rectangle cameraBounds) {

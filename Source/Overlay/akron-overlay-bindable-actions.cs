@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Celeste;
-using Celeste.Mod.Core;
 using ImGuiNET;
 using Microsoft.Xna.Framework.Input;
 using Monocle;
@@ -145,10 +144,10 @@ public sealed partial class AkronOverlay {
 
         yield return new BindableAction(PopupActionKey("Frame Stepper", "Step Once"), "Frame Stepper / Step Once", ExecuteFrameStepOnce);
         yield return new BindableAction(PopupActionKey("Frame Stepper", "Repeat"), "Frame Stepper / Hold Repeat", () => AkronModule.Settings.StepHoldRepeat = !AkronModule.Settings.StepHoldRepeat);
-        yield return new BindableAction(PopupActionKey("Frame Stepper", "Delay Down"), "Frame Stepper / Delay Down", () => AkronModule.Settings.StepHoldDelayFrames = CycleInt(AkronModule.Settings.StepHoldDelayFrames - 6, 6, 60));
-        yield return new BindableAction(PopupActionKey("Frame Stepper", "Delay Up"), "Frame Stepper / Delay Up", () => AkronModule.Settings.StepHoldDelayFrames = CycleInt(AkronModule.Settings.StepHoldDelayFrames + 6, 6, 60));
-        yield return new BindableAction(PopupActionKey("Frame Stepper", "Interval Down"), "Frame Stepper / Interval Down", () => AkronModule.Settings.StepHoldIntervalFrames = CycleInt(AkronModule.Settings.StepHoldIntervalFrames - 1, 1, 12));
-        yield return new BindableAction(PopupActionKey("Frame Stepper", "Interval Up"), "Frame Stepper / Interval Up", () => AkronModule.Settings.StepHoldIntervalFrames = CycleInt(AkronModule.Settings.StepHoldIntervalFrames + 1, 1, 12));
+        yield return new BindableAction(PopupActionKey("Frame Stepper", "Delay Down"), "Frame Stepper / Delay Down", () => AkronModule.Settings.StepHoldDelayFrames = Calc.Clamp(AkronModule.Settings.StepHoldDelayFrames - 1, 1, 120));
+        yield return new BindableAction(PopupActionKey("Frame Stepper", "Delay Up"), "Frame Stepper / Delay Up", () => AkronModule.Settings.StepHoldDelayFrames = Calc.Clamp(AkronModule.Settings.StepHoldDelayFrames + 1, 1, 120));
+        yield return new BindableAction(PopupActionKey("Frame Stepper", "Interval Down"), "Frame Stepper / Interval Down", () => AkronModule.Settings.StepHoldIntervalFrames = Calc.Clamp(AkronModule.Settings.StepHoldIntervalFrames - 1, 1, 60));
+        yield return new BindableAction(PopupActionKey("Frame Stepper", "Interval Up"), "Frame Stepper / Interval Up", () => AkronModule.Settings.StepHoldIntervalFrames = Calc.Clamp(AkronModule.Settings.StepHoldIntervalFrames + 1, 1, 60));
 
         yield return new BindableAction(PopupActionKey("Pause Timer", "Seconds Down"), "Pause Timer / Seconds Down", () => ApplyOptionsPopupDelta("Pause Timer", -1));
         yield return new BindableAction(PopupActionKey("Pause Timer", "Seconds Up"), "Pause Timer / Seconds Up", () => ApplyOptionsPopupDelta("Pause Timer", 1));
@@ -188,39 +187,52 @@ public sealed partial class AkronOverlay {
         yield return new BindableAction(PopupActionKey("StartPos", "Respawn"), "StartPos / Respawn Here", () => AkronModule.Settings.RespawnAtStartPos = !AkronModule.Settings.RespawnAtStartPos);
     }
 
-    private void DrawRegisteredPopupActionBindings(string popupLabel, string popupId) {
-        List<BindableAction> actions = BuildPopupBindableActions(Engine.Scene as Level)
-            .Where(action => IsActionOwnedByPopup(action.ActionKey, popupLabel))
-            .ToList();
-        if (actions.Count == 0) {
+    private void DrawPopupActionBindingContext(string popupLabel, string actionName, string displayName = null) {
+        if (string.IsNullOrWhiteSpace(popupLabel) || string.IsNullOrWhiteSpace(actionName)) {
             return;
         }
 
+        string actionKey = PopupActionKey(popupLabel, actionName);
+        string resolvedDisplayName = displayName ?? popupLabel + " / " + actionName;
+        string contextId = GetImGuiBindingContextId(actionKey);
+        if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right)) {
+            ImGui.OpenPopup(contextId);
+        }
+
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);
+        ImGui.PushStyleColor(ImGuiCol.Border, AkronImGuiTheme.PopupOutline);
+        if (!ImGui.BeginPopup(contextId)) {
+            ImGui.PopStyleColor();
+            ImGui.PopStyleVar();
+            return;
+        }
+
+        imguiPopupBlockedRowsLastFrame = true;
+        ImGui.TextUnformatted(resolvedDisplayName);
         ImGui.Separator();
-        ImGui.TextUnformatted("Bindings");
-        foreach (BindableAction action in actions) {
-            int separator = action.DisplayName.LastIndexOf(" / ", StringComparison.Ordinal);
-            string label = separator >= 0
-                ? action.DisplayName.Substring(separator + 3)
-                : action.DisplayName;
-            DrawPopupActionBindingRow(label, action.ActionKey, action.DisplayName, popupId);
+        ImGui.TextUnformatted("Binding: " + DescribePopupActionBinding(actionKey));
+        if (TryGetDefaultButtonBinding(actionKey, out ButtonBinding builtInBinding) && !IsEmptyBinding(builtInBinding)) {
+            ImGui.TextUnformatted("Built-in: " + AkronModuleSettings.DescribeBinding(builtInBinding));
         }
-    }
-
-    private static bool IsActionOwnedByPopup(string actionKey, string popupLabel) {
-        if (string.Equals(popupLabel, "StartPos Switcher", StringComparison.OrdinalIgnoreCase)) {
-            return string.Equals(actionKey, PopupActionKey("StartPos", "Previous"), StringComparison.Ordinal) ||
-                   string.Equals(actionKey, PopupActionKey("StartPos", "Next"), StringComparison.Ordinal);
+        if (ImGui.MenuItem("Bind input")) {
+            if (TryGetDefaultButtonBinding(actionKey, out _)) {
+                StartButtonBindingCapture(actionKey, resolvedDisplayName, binding => TrySetDefaultButtonBinding(actionKey, binding));
+            } else {
+                StartBindingCapture(actionKey, resolvedDisplayName);
+            }
         }
 
-        string prefix = "popup/" + popupLabel + "/";
-        if (!actionKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) {
-            return false;
+        bool hasBinding = HasMenuBinding(actionKey) ||
+                          TryGetDefaultButtonBinding(actionKey, out ButtonBinding binding) && !IsEmptyBinding(binding);
+        if (ImGui.MenuItem("Clear binding", string.Empty, false, hasBinding)) {
+            ClearMenuBinding(actionKey);
+            if (ClearDefaultButtonBinding(actionKey)) {
+                menuBindingRevision++;
+            }
         }
-
-        return !string.Equals(popupLabel, "StartPos", StringComparison.OrdinalIgnoreCase) ||
-               !string.Equals(actionKey, PopupActionKey("StartPos", "Previous"), StringComparison.Ordinal) &&
-               !string.Equals(actionKey, PopupActionKey("StartPos", "Next"), StringComparison.Ordinal);
+        ImGui.EndPopup();
+        ImGui.PopStyleColor();
+        ImGui.PopStyleVar();
     }
 
     private static void ExecuteFrameStepOnce() {
@@ -872,9 +884,12 @@ public sealed partial class AkronOverlay {
     internal static void CommandsOnUpdateClosed(
         On.Monocle.Commands.orig_UpdateClosed orig,
         global::Monocle.Commands self) {
-        if (MInput.Keyboard.Pressed(Keys.OemPeriod) &&
-            AkronUsesPressedKeyboardKey(AkronModule.Settings, Keys.OemPeriod)) {
-            CoreModule.Settings?.DebugConsole?.ConsumePress();
+        if (Keyboard.GetState().IsKeyDown(Keys.OemPeriod) &&
+            (AkronModule.IsOverlayBindingCaptureActive ||
+             AkronUsesPressedKeyboardKey(AkronModule.Settings, Keys.OemPeriod))) {
+            // Akron owns the press even when its overlay prevents the bound
+            // action from executing. Do not let Everest handle the same frame.
+            return;
         }
         orig(self);
     }
@@ -884,27 +899,27 @@ public sealed partial class AkronOverlay {
             return false;
         }
 
-        bool canExecuteMenuBindings = Engine.Scene is Level level
-            ? AkronModule.CanExecuteLevelActionBindings(level)
-            : !settings.MenuBindingsInGameOnly;
-        HashSet<string> activeActionKeys = canExecuteMenuBindings
-            ? GetBindableActions(Engine.Scene as Level)
+        Keys[] downKeys = Keyboard.GetState().GetPressedKeys();
+        Level level = Engine.Scene as Level;
+        bool canOwnMenuBinding = level != null || !settings.MenuBindingsInGameOnly;
+        HashSet<string> validActionKeys = canOwnMenuBinding
+            ? GetBindableActions(level)
                 .Select(action => action.ActionKey)
                 .ToHashSet(StringComparer.Ordinal)
             : new HashSet<string>(StringComparer.Ordinal);
         if (ActiveMenuBindingMatchesPressedKey(
                 settings.MenuActionBindings,
-                activeActionKeys,
+                validActionKeys,
                 key,
-                Keyboard.GetState().GetPressedKeys())) {
+                downKeys)) {
             return true;
         }
 
-        bool isLevel = Engine.Scene is Level;
-        IEnumerable<ButtonBinding> activeNativeBindings = isLevel
+        bool canExecuteLevelBindings = level != null && AkronModule.CanExecuteLevelActionBindings(level);
+        IEnumerable<ButtonBinding> activeNativeBindings = level != null
             ? GetActiveLevelButtonBindings(
                 settings,
-                canExecuteMenuBindings,
+                canExecuteLevelBindings,
                 AkronModule.TryGetSession(),
                 AkronMotionSmoothingInterop.Loaded,
                 AkronRuntimeOptions.ResolveCurrentFrameBypassRates().Active)
@@ -914,8 +929,8 @@ public sealed partial class AkronOverlay {
                 UsesKeyboardChordDispatch(settings, binding),
                 binding?.Keys,
                 key,
-                Keyboard.GetState().GetPressedKeys(),
-                binding?.Pressed == true));
+                downKeys,
+                bindingPressed: true));
     }
 
     internal static bool NativeBindingMatchesPressedKey(

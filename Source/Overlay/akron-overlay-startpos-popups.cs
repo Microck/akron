@@ -12,60 +12,71 @@ public sealed partial class AkronOverlay {
         if (ImGui.Button("Set##startpos_set" + popupId) && Engine.Scene is Level setLevel) {
             AkronActions.SetStartPos(setLevel);
         }
+        DrawPopupActionBindingContext("StartPos", "Set");
         DrawPopupTooltip("Capture the current player state into the active StartPos slot.");
 
         ImGui.SameLine();
         if (ImGui.Button("Load##startpos_load" + popupId) && Engine.Scene is Level loadLevel) {
             AkronActions.LoadStartPos(loadLevel);
         }
+        DrawPopupActionBindingContext("StartPos", "Load");
         DrawPopupTooltip("Load the active StartPos.");
 
         ImGui.SameLine();
         if (ImGui.Button("Clear##startpos_clear" + popupId)) {
             AkronActions.ClearActiveStartPos();
         }
+        DrawPopupActionBindingContext("StartPos", "Clear");
         DrawPopupTooltip("Clear the active StartPos slot.");
 
         ImGui.TextUnformatted("Index: " + (Engine.Scene is Level indexLevel ? AkronActions.DescribeStartPosIndex(indexLevel) : "0/0"));
+        DrawStartPosDirectSlotControls(popupId);
+
+        bool respawn = AkronModule.Settings.RespawnAtStartPos;
+        if (ImGui.Checkbox("Respawn here##" + popupId, ref respawn)) {
+            AkronModule.Settings.RespawnAtStartPos = respawn;
+        }
+        DrawPopupActionBindingContext("StartPos", "Respawn", "StartPos / Respawn Here");
+        DrawPopupTooltip("Respawn at the active StartPos after death.");
+
         DrawStartPosConfigControls(popupId);
 
+    }
+
+    private void DrawStartPosDirectSlotControls(string popupId) {
+        ImGui.TextUnformatted("Load slot:");
+        for (int slot = 1; slot <= 9; slot++) {
+            if (slot > 1) {
+                ImGui.SameLine();
+            }
+
+            string actionName = "Load Slot " + slot;
+            if (ImGui.Button(slot + "##startpos_load_slot_" + slot + popupId) &&
+                Engine.Scene is Level level) {
+                AkronActions.LoadStartPosSlot(level, slot);
+            }
+            DrawPopupActionBindingContext("StartPos", actionName);
+            DrawPopupTooltip("Load StartPos slot " + slot + ". Right-click to bind.");
+        }
     }
 
     private void DrawStartPosSwitcherPopupControls(string popupId) {
         if (ImGui.Button("Previous##startpos_switcher" + popupId) && Engine.Scene is Level previousLevel) {
             AkronActions.ShiftStartPos(previousLevel, -1);
         }
+        DrawPopupActionBindingContext("StartPos", "Previous");
         DrawPopupTooltip("Cycle to the previous StartPos in chapter order.");
 
         ImGui.SameLine();
         if (ImGui.Button("Next##startpos_switcher" + popupId) && Engine.Scene is Level nextLevel) {
             AkronActions.ShiftStartPos(nextLevel, 1);
         }
+        DrawPopupActionBindingContext("StartPos", "Next");
         DrawPopupTooltip("Cycle to the next StartPos in chapter order.");
 
         ImGui.SameLine();
         ImGui.TextUnformatted("Index: " + (Engine.Scene is Level indexLevel ? AkronActions.DescribeStartPosIndex(indexLevel) : "0/0"));
 
-    }
-
-    private void DrawPopupActionBindingRow(string label, string actionKey, string displayName, string popupId) {
-        ImGui.TextUnformatted(label + ": " + DescribePopupActionBinding(actionKey));
-        ImGui.SameLine();
-        if (ImGui.Button("Bind##" + actionKey + popupId)) {
-            if (TryGetDefaultButtonBinding(actionKey, out _)) {
-                StartButtonBindingCapture(actionKey, displayName, binding => TrySetDefaultButtonBinding(actionKey, binding));
-            } else {
-                StartBindingCapture(actionKey, displayName);
-            }
-            ImGui.CloseCurrentPopup();
-        }
-        ImGui.SameLine();
-        if (ImGui.Button("Clear##" + actionKey + popupId)) {
-            ClearMenuBinding(actionKey);
-            if (ClearDefaultButtonBinding(actionKey)) {
-                menuBindingRevision++;
-            }
-        }
     }
 
     private static string DescribeStartPosSwitcherBindings() {
@@ -89,6 +100,7 @@ public sealed partial class AkronOverlay {
             if (ImGui.Checkbox("Placement mode##" + popupId, ref mousePlacement)) {
                 AkronModule.Settings.StartPosMousePlacement = mousePlacement;
             }
+            DrawPopupActionBindingContext("StartPos", "Place");
             DrawPopupTooltip("Enter the frozen free-camera placement editor.");
 
             if (ImGui.Button("Open editor##" + popupId, new NumericsVector2(112f, 0f))) {

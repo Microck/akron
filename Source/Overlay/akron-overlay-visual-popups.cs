@@ -348,7 +348,8 @@ public sealed partial class AkronOverlay {
             1,
             1000,
             popupId,
-            "Preview length. Green estimates jump-held, red estimates jump-released. Hidden while Free Camera is active.");
+            "Preview length. Green estimates jump-held, red estimates jump-released. Hidden while Free Camera is active.",
+            "Show Trajectory", "Frames Down", "Frames Up");
 
         DrawIntStepperRow(
             "Opacity",

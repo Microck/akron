@@ -104,28 +104,64 @@ public sealed class OverlayTests {
     }
 
     [Fact]
-    public void OptionsPopupsExposeTheirRegisteredSuboptionBindings() {
+    public void OptionsPopupsBindRegisteredSuboptionsFromTheirControls() {
         string popupSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-popup-controls.cs"));
         string bindingSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-bindable-actions.cs"));
+        string frameStepperSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-bypass-popups.cs"));
+        string gameplaySource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-gameplay-popups.cs"));
+        string noclipSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-noclip-popups.cs"));
+        string startPosSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-startpos-popups.cs"));
 
-        Assert.Contains("DrawRegisteredPopupActionBindings(entry.Label, popupId);", popupSource);
-        Assert.Contains("private void DrawRegisteredPopupActionBindings", bindingSource);
+        Assert.DoesNotContain("DrawRegisteredPopupActionBindings(entry.Label, popupId);", popupSource);
+        Assert.DoesNotContain("private void DrawRegisteredPopupActionBindings", bindingSource);
+        Assert.Contains("private void DrawPopupActionBindingContext", bindingSource);
         Assert.Contains("PopupActionKey(\"Frame Stepper\", \"Step Once\")", bindingSource);
         Assert.Contains("\"Frame Stepper / Step Once\"", bindingSource);
+        Assert.Contains("DrawPopupActionBindingContext(\"Frame Stepper\", \"Step Once\"", frameStepperSource);
+        Assert.Contains("DrawPopupActionBindingContext(\"Frame Stepper\", \"Repeat\"", frameStepperSource);
+        Assert.Contains("\"Frame Stepper\", \"Delay Down\", \"Delay Up\"", frameStepperSource);
+        Assert.Contains("DrawTimescalePopupControls(popupId)", popupSource);
+        Assert.Contains("DrawPopupActionBindingContext(\"Timescale\", \"Toggle\"", frameStepperSource);
+        Assert.Contains("\"Timescale\", \"Decrease\", \"Increase\"", frameStepperSource);
+        Assert.Contains("DrawPopupActionBindingContext(\"Timescale\", \"Reset\"", frameStepperSource);
+        Assert.Contains("StepHoldDelayFrames - 1, 1, 120", bindingSource);
+        Assert.Contains("StepHoldDelayFrames + 1, 1, 120", bindingSource);
+        Assert.Contains("StepHoldIntervalFrames - 1, 1, 60", bindingSource);
+        Assert.Contains("StepHoldIntervalFrames + 1, 1, 60", bindingSource);
+        Assert.Contains("DrawPopupActionBindingContext(\"Grab Mode\", label", gameplaySource);
+        Assert.Contains("\"Noclip\", \"Speed Down\", \"Speed Up\"", noclipSource);
+        Assert.Contains("DrawPopupActionBindingContext(\"Noclip\", \"Toggle\"", noclipSource);
+        Assert.Contains("DrawPopupActionBindingContext(\"Hazard Accuracy\", \"Toggle\"", noclipSource);
+        Assert.Contains("for (int slot = 1; slot <= 9; slot++)", startPosSource);
+        Assert.Contains("AkronActions.LoadStartPosSlot(level, slot)", startPosSource);
+        Assert.Contains("DrawPopupActionBindingContext(\"StartPos\", actionName)", startPosSource);
+        Assert.Contains("DrawPopupActionBindingContext(\"StartPos\", \"Respawn\"", startPosSource);
+        Assert.Contains("entry.OptionsPopupKey, \"StartPos Snapshot Slot\"", popupSource);
+        Assert.Contains("DrawSavestateSlotPopupControls(popupId);", popupSource);
+        Assert.Contains("DrawStartPosPopupControls(popupId);", popupSource);
+        Assert.DoesNotContain("entry.Label, \"StartPos Snapshot Slot\"", popupSource);
     }
 
     [Fact]
     public void AkronDotBindingsSuspendEverestDebugConsoleBinding() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-bindable-actions.cs"));
+        string moduleSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/AkronModule.cs"));
+        string overlaySource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/AkronOverlay.cs"));
 
         Assert.Contains("CommandsOnUpdateClosed", source);
-        Assert.Contains("CoreModule.Settings?.DebugConsole", source);
-        Assert.Contains("ConsumePress()", source);
-        Assert.Contains("MInput.Keyboard.Pressed(Keys.OemPeriod)", source);
+        Assert.Contains("Keyboard.GetState().IsKeyDown(Keys.OemPeriod)", source);
+        Assert.Contains("AkronModule.IsOverlayBindingCaptureActive ||", source);
         Assert.Contains("AkronUsesPressedKeyboardKey(AkronModule.Settings, Keys.OemPeriod)", source);
         Assert.Contains("ActiveMenuBindingMatchesPressedKey(", source);
+        Assert.Contains("GetBindableActions(level)", source);
         Assert.Contains("Keys.OemPeriod", source);
+        Assert.Contains("return;", source);
+        Assert.Contains("internal static bool IsOverlayBindingCaptureActive", moduleSource);
+        Assert.Contains("internal bool HasActiveBindingCapture", overlaySource);
+        Assert.DoesNotContain("MInput.Keyboard.Pressed(Keys.OemPeriod)", source);
+        Assert.DoesNotContain("ConsumePress()", source);
         Assert.DoesNotContain("debugConsole.Keys.RemoveAll", source);
+        Assert.DoesNotContain("settings.MenuActionBindings.Keys.ToHashSet", source);
     }
 
     [Fact]
@@ -650,6 +686,104 @@ public sealed class OverlayTests {
         Assert.Equal(recordedBounds.Height, snapshot.Bounds.Height);
         Assert.True(snapshot.ContainsPixel(recordedCenterX, recordedCenterY));
         Assert.False(snapshot.ContainsPixel(recordedCenterX + 20, recordedCenterY));
+    }
+
+    [Fact]
+    public void DeathObjectRenderingKeepsOverlappingSpinnerColliderPartsSeparate() {
+        AkronEntityInspector.DeathColliderSnapshot circle =
+            AkronEntityInspector.CaptureDeathColliderSnapshot(
+                new Rectangle {
+                    X = 94,
+                    Y = 44,
+                    Width = 12,
+                    Height = 12
+                },
+                (x, y) => {
+                    float dx = x + 0.5f - 100f;
+                    float dy = y + 0.5f - 50f;
+                    return dx * dx + dy * dy <= 36f;
+                });
+        AkronEntityInspector.DeathColliderSnapshot bar =
+            AkronEntityInspector.CaptureDeathColliderSnapshot(
+                new Rectangle {
+                    X = 92,
+                    Y = 47,
+                    Width = 16,
+                    Height = 4
+                },
+                (_, _) => true);
+
+        AkronEntityInspector.DeathColliderSnapshot spinner =
+            AkronEntityInspector.CombineDeathColliderSnapshots(new[] { circle, bar });
+
+        Assert.Equal(2, spinner.PartCount);
+        Assert.True(spinner.PartContainsPixel(0, 100, 44));
+        Assert.False(spinner.PartContainsPixel(1, 100, 44));
+        Assert.True(spinner.PartContainsPixel(0, 100, 48));
+        Assert.True(spinner.PartContainsPixel(1, 100, 48));
+    }
+
+    [Fact]
+    public void MultipartDeathColliderSnapshotKeepsTheAggregatePixelBudget() {
+        int snapshotsRead = 0;
+        AkronEntityInspector.DeathColliderSnapshot first =
+            AkronEntityInspector.CaptureDeathColliderSnapshot(
+                new Rectangle {
+                    X = 0,
+                    Y = 0,
+                    Width = 256,
+                    Height = 256
+                },
+                (_, _) => false);
+        AkronEntityInspector.DeathColliderSnapshot second =
+            AkronEntityInspector.CaptureDeathColliderSnapshot(
+                new Rectangle {
+                    X = 256,
+                    Y = 0,
+                    Width = 256,
+                    Height = 256
+                },
+                (_, _) => false);
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.Null(AkronEntityInspector.CombineDeathColliderSnapshots(Snapshots()));
+        Assert.Equal(2, snapshotsRead);
+
+        IEnumerable<AkronEntityInspector.DeathColliderSnapshot> Snapshots() {
+            snapshotsRead++;
+            yield return first;
+            snapshotsRead++;
+            yield return second;
+            snapshotsRead++;
+            yield return first;
+        }
+    }
+
+    [Fact]
+    public void MultipartDeathColliderSnapshotRejectsMissingParts() {
+        AkronEntityInspector.DeathColliderSnapshot capturedPart =
+            AkronEntityInspector.CaptureDeathColliderSnapshot(
+                new Rectangle {
+                    X = 0,
+                    Y = 0,
+                    Width = 1,
+                    Height = 1
+                },
+                (_, _) => true);
+
+        Assert.Null(AkronEntityInspector.CombineDeathColliderSnapshots(
+            new[] { capturedPart, null }));
+    }
+
+    [Fact]
+    public void MultipartDeathColliderSnapshotSkipsNullEntriesBeforeCapture() {
+        string source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "../../../../Source/Tools/akron-entity-inspector.cs"));
+
+        Assert.Contains(".Where(child => child != null)", source);
+        Assert.Contains(".Select(CaptureDeathColliderSnapshot)", source);
     }
 
     [Fact]
@@ -1475,9 +1609,10 @@ public sealed class OverlayTests {
         string imguiRendererSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-imgui-renderer.cs"));
         string bindableActionsSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-bindable-actions.cs"));
 
-        Assert.Contains("StartButtonBindingCapture(actionKey, displayName, binding => TrySetDefaultButtonBinding(actionKey, binding))", startPosPopupSource);
-        Assert.Contains("ClearDefaultButtonBinding(actionKey)", startPosPopupSource);
-        Assert.Contains("DescribePopupActionBinding(actionKey)", startPosPopupSource);
+        Assert.Contains("DrawPopupActionBindingContext(\"StartPos\", \"Set\")", startPosPopupSource);
+        Assert.Contains("DrawPopupActionBindingContext(\"StartPos\", \"Load\")", startPosPopupSource);
+        Assert.Contains("DrawPopupActionBindingContext(\"StartPos\", \"Clear\")", startPosPopupSource);
+        Assert.Contains("DescribePopupActionBinding(actionKey)", bindableActionsSource);
         Assert.Contains("PopupActionKey(\"StartPos\", \"Set\")", bindableActionsSource);
         Assert.Contains("PopupActionKey(\"StartPos\", \"Load\")", bindableActionsSource);
         Assert.Contains("PopupActionKey(\"StartPos\", \"Clear\")", bindableActionsSource);
@@ -1486,6 +1621,8 @@ public sealed class OverlayTests {
         Assert.Contains("PopupActionKey(\"StartPos\", \"Clear\")", imguiRendererSource);
         Assert.Contains("StartButtonBindingCapture(actionKey, displayName, binding => TrySetDefaultButtonBinding(actionKey, binding))", imguiRendererSource);
         Assert.Contains("Right-click or Shift-click to bind.", imguiRendererSource);
+        Assert.Contains("StartButtonBindingCapture(actionKey, resolvedDisplayName, binding => TrySetDefaultButtonBinding(actionKey, binding))", bindableActionsSource);
+        Assert.Contains("ClearDefaultButtonBinding(actionKey)", bindableActionsSource);
         Assert.Contains("TryGetDefaultButtonBinding(actionKey, out ButtonBinding binding) && !IsEmptyBinding(binding)", bindableActionsSource);
         Assert.Contains("AkronModuleSettings.DescribeBinding(binding)", bindableActionsSource);
     }
