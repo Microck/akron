@@ -164,17 +164,36 @@ public sealed partial class AkronOverlay : Entity {
 
     public bool SearchOwnsCurrentKeyboardFrame {
         get {
-            if (autoKillAreaSelectionActive || autoDeafenAreaSelectionActive || startPosPlacementActive) {
-                return true;
-            }
-
-            if (!Visible || AkronPromptMenu.IsOpen) {
-                return false;
-            }
-
-            return (AkronImGuiRenderer.WantCaptureKeyboard || searchInputActive) &&
-                   IsAnyKeyboardPressed();
+            return ShouldOwnCurrentKeyboardFrame(
+                autoKillAreaSelectionActive || autoDeafenAreaSelectionActive || startPosPlacementActive,
+                Visible,
+                AkronPromptMenu.IsOpen,
+                AkronImGuiRenderer.WantCaptureKeyboard,
+                AkronImGuiRenderer.WantTextInput,
+                searchInputActive,
+                valueEditFreezeFrames > 0,
+                IsAnyKeyboardPressed());
         }
+    }
+
+    internal static bool ShouldOwnCurrentKeyboardFrame(
+        bool transientUiActive,
+        bool overlayVisible,
+        bool promptOpen,
+        bool imguiWantsKeyboard,
+        bool imguiWantsTextInput,
+        bool searchInputActive,
+        bool valueEditActive,
+        bool anyKeyPressed) {
+        if (transientUiActive) {
+            return true;
+        }
+
+        return overlayVisible &&
+               !promptOpen &&
+               (imguiWantsTextInput ||
+                valueEditActive ||
+                (anyKeyPressed && (imguiWantsKeyboard || searchInputActive)));
     }
 
     internal static bool IsGameWindowInputActive() {

@@ -86,6 +86,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     }
 
     public static bool WantCaptureKeyboard { get; private set; }
+    public static bool WantTextInput { get; private set; }
     public static bool WantCaptureMouse { get; private set; }
 
     public static void EnsureNativeResolverRegistered() {
@@ -280,6 +281,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         long imguiEnd = Stopwatch.GetTimestamp();
 
         WantCaptureKeyboard = ImGui.GetIO().WantCaptureKeyboard;
+        WantTextInput = ImGui.GetIO().WantTextInput;
         WantCaptureMouse = ImGui.GetIO().WantCaptureMouse;
         if (!renderDiagnosticLogged) {
             renderDiagnosticLogged = true;

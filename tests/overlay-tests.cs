@@ -150,18 +150,80 @@ public sealed class OverlayTests {
 
         Assert.Contains("CommandsOnUpdateClosed", source);
         Assert.Contains("Keyboard.GetState().IsKeyDown(Keys.OemPeriod)", source);
-        Assert.Contains("AkronModule.IsOverlayBindingCaptureActive ||", source);
+        Assert.Contains("AkronModule.IsOverlayBindingCaptureActive", source);
+        Assert.Contains("AkronModule.IsOverlayKeyboardInputOwned", source);
         Assert.Contains("AkronUsesPressedKeyboardKey(AkronModule.Settings, Keys.OemPeriod)", source);
+        Assert.Contains("ShouldSuppressEverestDebugConsole(", source);
         Assert.Contains("ActiveMenuBindingMatchesPressedKey(", source);
         Assert.Contains("GetBindableActions(level)", source);
         Assert.Contains("Keys.OemPeriod", source);
         Assert.Contains("return;", source);
         Assert.Contains("internal static bool IsOverlayBindingCaptureActive", moduleSource);
+        Assert.Contains("internal static bool IsOverlayKeyboardInputOwned", moduleSource);
         Assert.Contains("internal bool HasActiveBindingCapture", overlaySource);
         Assert.DoesNotContain("MInput.Keyboard.Pressed(Keys.OemPeriod)", source);
         Assert.DoesNotContain("ConsumePress()", source);
         Assert.DoesNotContain("debugConsole.Keys.RemoveAll", source);
         Assert.DoesNotContain("settings.MenuActionBindings.Keys.ToHashSet", source);
+    }
+
+    [Theory]
+    [InlineData(true, false, false, false, false)]
+    [InlineData(true, true, false, false, true)]
+    [InlineData(true, false, true, false, true)]
+    [InlineData(true, false, false, true, true)]
+    [InlineData(false, true, false, false, true)]
+    [InlineData(false, false, true, false, true)]
+    public void EverestDebugConsoleSuppressionIncludesAkronTextInput(
+        bool periodDown,
+        bool bindingCaptureActive,
+        bool keyboardInputOwned,
+        bool usesPeriodBinding,
+        bool expected) {
+        Assert.Equal(
+            expected,
+            AkronOverlay.ShouldSuppressEverestDebugConsole(
+                periodDown,
+                bindingCaptureActive,
+                keyboardInputOwned,
+                usesPeriodBinding));
+    }
+
+    [Fact]
+    public void OverlayKeyboardOwnershipIncludesActiveNumericInput() {
+        Assert.True(AkronOverlay.ShouldOwnCurrentKeyboardFrame(
+            transientUiActive: false,
+            overlayVisible: true,
+            promptOpen: false,
+            imguiWantsKeyboard: false,
+            imguiWantsTextInput: false,
+            searchInputActive: false,
+            valueEditActive: true,
+            anyKeyPressed: false));
+    }
+
+    [Fact]
+    public void OverlayKeyboardOwnershipIncludesImGuiTextInputFocus() {
+        Assert.True(AkronOverlay.ShouldOwnCurrentKeyboardFrame(
+            transientUiActive: false,
+            overlayVisible: true,
+            promptOpen: false,
+            imguiWantsKeyboard: false,
+            imguiWantsTextInput: true,
+            searchInputActive: false,
+            valueEditActive: false,
+            anyKeyPressed: false));
+    }
+
+    [Fact]
+    public void InlineNumericInputLatchesKeyboardOwnershipWhileFocused() {
+        string source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "../../../../Source/Overlay/akron-overlay-imgui-value-rows.cs"));
+
+        Assert.Contains(
+            "if (valueActive) {\n            MarkValueEditFreeze();\n        }",
+            source);
     }
 
     [Fact]
@@ -724,6 +786,95 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void DeathObjectRenderingKeepsNativeSpinnerGeometrySeparateFromPixelFixes() {
+        AkronEntityInspector.DeathColliderSnapshot circle =
+            AkronEntityInspector.CaptureDeathColliderSnapshot(
+                new Rectangle { X = 94, Y = 44, Width = 12, Height = 12 },
+                (x, y) => {
+                    float dx = x + 0.5f - 100f;
+                    float dy = y + 0.5f - 50f;
+                    return dx * dx + dy * dy <= 36f;
+                },
+                new Rectangle { X = 93, Y = 43, Width = 14, Height = 14 },
+                (x, y) => x >= 93 && x < 107 && y >= 43 && y < 57);
+        AkronEntityInspector.DeathColliderSnapshot bar =
+            AkronEntityInspector.CaptureDeathColliderSnapshot(
+                new Rectangle { X = 92, Y = 48, Width = 16, Height = 4 },
+                (_, _) => true,
+                new Rectangle { X = 91, Y = 47, Width = 18, Height = 6 },
+                (_, _) => true);
+        AkronEntityInspector.DeathColliderSnapshot snapshot =
+            AkronEntityInspector.CombineDeathColliderSnapshots(new[] { circle, bar });
+
+        AssertRectangleBounds(
+            snapshot.PartBounds(0, fixHitboxPixels: false),
+            94, 44, 12, 12);
+        AssertRectangleBounds(
+            snapshot.PartBounds(0, fixHitboxPixels: true),
+            93, 43, 14, 14);
+        AssertRectangleBounds(
+            snapshot.PartBounds(1, fixHitboxPixels: false),
+            92, 48, 16, 4);
+        AssertRectangleBounds(
+            snapshot.PartBounds(1, fixHitboxPixels: true),
+            91, 47, 18, 6);
+    }
+
+    [Fact]
+    public void MultipartDeathColliderSnapshotCountsBothDistinctGeometryBuffers() {
+        AkronEntityInspector.DeathColliderSnapshot first =
+            AkronEntityInspector.CaptureDeathColliderSnapshot(
+                new Rectangle { X = 0, Y = 0, Width = 128, Height = 256 },
+                (_, _) => false,
+                new Rectangle { X = 0, Y = 0, Width = 128, Height = 256 },
+                (_, _) => false);
+        AkronEntityInspector.DeathColliderSnapshot second =
+            AkronEntityInspector.CaptureDeathColliderSnapshot(
+                new Rectangle { X = 128, Y = 0, Width = 128, Height = 256 },
+                (_, _) => false,
+                new Rectangle { X = 128, Y = 0, Width = 128, Height = 256 },
+                (_, _) => false);
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.Null(AkronEntityInspector.CombineDeathColliderSnapshots(
+            new[] { first, second }));
+    }
+
+    [Fact]
+    public void SingleDeathColliderSnapshotRejectsCombinedGeometryOverBudgetBeforeSampling() {
+        int sampledPixels = 0;
+
+        AkronEntityInspector.DeathColliderSnapshot snapshot =
+            AkronEntityInspector.CaptureDeathColliderSnapshot(
+                new Rectangle { X = 0, Y = 0, Width = 200, Height = 200 },
+                (_, _) => {
+                    sampledPixels++;
+                    return false;
+                },
+                new Rectangle { X = 0, Y = 0, Width = 202, Height = 202 },
+                (_, _) => {
+                    sampledPixels++;
+                    return false;
+                });
+
+        Assert.Null(snapshot);
+        Assert.Equal(0, sampledPixels);
+    }
+
+    private static void AssertRectangleBounds(
+        Rectangle rectangle,
+        int x,
+        int y,
+        int width,
+        int height) {
+        Assert.Equal(x, rectangle.X);
+        Assert.Equal(y, rectangle.Y);
+        Assert.Equal(width, rectangle.Width);
+        Assert.Equal(height, rectangle.Height);
+    }
+
+    [Fact]
     public void MultipartDeathColliderSnapshotKeepsTheAggregatePixelBudget() {
         int snapshotsRead = 0;
         AkronEntityInspector.DeathColliderSnapshot first =
@@ -848,6 +999,11 @@ public sealed class OverlayTests {
     public void SessionOnlyRowsAreDisabledWithoutASession() {
         Assert.False(BuildOverlayEntryEnabled("Global", "Timescale", null)());
         Assert.False(BuildOverlayEntryEnabled("Global", "Frame Stepper", null)());
+    }
+
+    [Fact]
+    public void RestoreBackupBrowserRemainsReachableWhenTheCacheIsEmpty() {
+        Assert.True(BuildOverlayEntryEnabled("Backups", "Restore", null)());
     }
 
     [Fact]

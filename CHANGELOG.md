@@ -6,6 +6,12 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Fixed
+
+- Keep native spinner and spike geometry in death hitboxes unless Fix Hitbox Pixels is enabled.
+- Keep Everest's debug console closed while typing `.` in an Akron text field.
+- Stop the Backups panel from reopening every backup ZIP on each rendered frame.
+
 ## Akron Beta 60
 
 ### Fixed

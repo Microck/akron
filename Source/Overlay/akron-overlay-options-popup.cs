@@ -112,12 +112,25 @@ public sealed partial class AkronOverlay {
             return;
         }
 
-        openOptionsLabel = IsOptionsPopupOpen(label) ? string.Empty : label;
+        bool opening = !IsOptionsPopupOpen(label);
+        if (opening) {
+            PrepareOptionsPopup(label);
+        }
+        openOptionsLabel = opening ? label : string.Empty;
     }
 
     private void OpenOptionsPopup(string label) {
         if (!string.IsNullOrWhiteSpace(label)) {
+            PrepareOptionsPopup(label);
             openOptionsLabel = label;
+        }
+    }
+
+    internal static void PrepareOptionsPopup(string label) {
+        if (string.Equals(label, "Restore", StringComparison.OrdinalIgnoreCase)) {
+            // Refresh once when the browser opens so backups changed outside
+            // Akron appear without turning ZIP reads into per-frame UI work.
+            AkronBackupActions.RefreshBackups();
         }
     }
 

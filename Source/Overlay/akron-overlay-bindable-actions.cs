@@ -884,14 +884,32 @@ public sealed partial class AkronOverlay {
     internal static void CommandsOnUpdateClosed(
         On.Monocle.Commands.orig_UpdateClosed orig,
         global::Monocle.Commands self) {
-        if (Keyboard.GetState().IsKeyDown(Keys.OemPeriod) &&
-            (AkronModule.IsOverlayBindingCaptureActive ||
-             AkronUsesPressedKeyboardKey(AkronModule.Settings, Keys.OemPeriod))) {
-            // Akron owns the press even when its overlay prevents the bound
-            // action from executing. Do not let Everest handle the same frame.
+        bool periodDown = Keyboard.GetState().IsKeyDown(Keys.OemPeriod);
+        bool bindingCaptureActive = AkronModule.IsOverlayBindingCaptureActive;
+        bool keyboardInputOwned = AkronModule.IsOverlayKeyboardInputOwned;
+        if (ShouldSuppressEverestDebugConsole(
+                periodDown,
+                bindingCaptureActive,
+                keyboardInputOwned,
+                periodDown &&
+                !bindingCaptureActive &&
+                !keyboardInputOwned &&
+                AkronUsesPressedKeyboardKey(AkronModule.Settings, Keys.OemPeriod))) {
+            // Focused Akron input and binding capture own the whole keyboard.
+            // Period-bound actions own only their actual press while hidden.
             return;
         }
         orig(self);
+    }
+
+    internal static bool ShouldSuppressEverestDebugConsole(
+        bool periodDown,
+        bool bindingCaptureActive,
+        bool keyboardInputOwned,
+        bool usesPeriodBinding) {
+        return bindingCaptureActive ||
+               keyboardInputOwned ||
+               (periodDown && usesPeriodBinding);
     }
 
     internal static bool AkronUsesPressedKeyboardKey(AkronModuleSettings settings, Keys key) {

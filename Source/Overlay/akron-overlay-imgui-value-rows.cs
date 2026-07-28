@@ -38,6 +38,9 @@ public sealed partial class AkronOverlay {
         }
 
         bool valueActive = ImGui.IsItemActive();
+        if (valueActive) {
+            MarkValueEditFreeze();
+        }
 
         ImGui.PopItemWidth();
         ImGui.PopStyleColor(4);
