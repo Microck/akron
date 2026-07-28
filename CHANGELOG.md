@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 60
+
 ### Fixed
 
 - Open the normal binding menu by right-clicking an actionable popup option instead of showing a separate binding list.
