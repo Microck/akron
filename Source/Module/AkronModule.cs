@@ -41,6 +41,7 @@ public partial class AkronModule : EverestModule {
     public override Type SaveDataType => typeof(AkronModuleSaveData);
     public static AkronModuleSaveData SaveData => (AkronModuleSaveData) Instance._SaveData;
     internal static bool IsOverlayVisible => Overlay?.Visible == true;
+    internal static bool IsOverlayBindingCaptureActive => Overlay?.HasActiveBindingCapture == true;
 
     internal static bool EndStartPosPlacementForLoad() {
         return Overlay?.EndStartPosPlacementForLoad() == true;

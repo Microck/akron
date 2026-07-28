@@ -20,17 +20,20 @@ public sealed partial class AkronOverlay {
             1,
             9,
             popupId,
-            "StartPos snapshot slots store full Akron room snapshots, not just coordinates.");
+            "StartPos snapshot slots store full Akron room snapshots, not just coordinates.",
+            "StartPos Snapshot Slot", "Previous", "Next");
 
         if (ImGui.Button("Save##" + popupId) && Engine.Scene is Level saveLevel) {
             AkronModule.PerformSaveState(saveLevel);
         }
+        DrawPopupActionBindingContext("StartPos Snapshot Slot", "Capture");
         DrawPopupTooltip("Capture the current full room state into this slot.");
 
         ImGui.SameLine();
         if (ImGui.Button("Load##" + popupId) && Engine.Scene is Level loadLevel) {
             AkronModule.PerformLoadState(loadLevel);
         }
+        DrawPopupActionBindingContext("StartPos Snapshot Slot", "Restore");
         DrawPopupTooltip("Restore the full room state from this slot.");
 
         ImGui.TextUnformatted("Built-ins: " +
@@ -55,6 +58,7 @@ public sealed partial class AkronOverlay {
             AkronModule.Settings.GrabModeOverrideMode = mode;
             ApplyGrabModeOverrideIfEnabled();
         }
+        DrawPopupActionBindingContext("Grab Mode", label);
         DrawPopupTooltip(label switch {
             "Toggle" => "Press grab once to hold, then press again to release.",
             "Invert" => "Hold grab to release instead of to grab.",

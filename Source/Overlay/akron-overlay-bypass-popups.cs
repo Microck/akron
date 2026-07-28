@@ -7,6 +7,44 @@ namespace Celeste.Mod.Akron;
 
 public sealed partial class AkronOverlay
 {
+    private void DrawTimescalePopupControls(string popupId)
+    {
+        if (AkronModule.Session == null)
+        {
+            ImGui.TextUnformatted("Unavailable outside a save session.");
+            return;
+        }
+
+        bool enabled = AkronModule.Session.TimescaleEnabled;
+        if (ImGui.Checkbox("Enabled##" + popupId, ref enabled))
+        {
+            SetTimescaleEnabled(enabled);
+        }
+        DrawPopupActionBindingContext("Timescale", "Toggle", "Timescale / Enabled");
+        DrawPopupTooltip("Apply the configured multiplier to gameplay.");
+
+        DrawFloatStepperRow(
+            "Multiplier",
+            () => AkronModule.Session.TimescaleMultiplier,
+            SetTimescaleMultiplier,
+            -0.1f,
+            0.1f,
+            0.1f,
+            2f,
+            "%.1f",
+            popupId,
+            "Gameplay speed multiplier.",
+            "Timescale", "Decrease", "Increase");
+
+        if (ImGui.Button("Reset##" + popupId, new NumericsVector2(112f, 0f)))
+        {
+            SetTimescaleMultiplier(1f);
+            SetTimescaleEnabled(false);
+        }
+        DrawPopupActionBindingContext("Timescale", "Reset");
+        DrawPopupTooltip("Restore normal gameplay speed and turn Timescale off.");
+    }
+
     private void DrawTransitionSpeedPopupControls(string popupId)
     {
         DrawFloatStepperRow(
@@ -36,6 +74,7 @@ public sealed partial class AkronOverlay
         {
             AkronModule.Session.StepFrameRequested = true;
         }
+        DrawPopupActionBindingContext("Frame Stepper", "Step Once");
         DrawPopupTooltip("Advance one frame. Only works while Frame Stepper and Freeze Gameplay are on.");
 
         bool repeat = AkronModule.Settings.StepHoldRepeat;
@@ -43,6 +82,7 @@ public sealed partial class AkronOverlay
         {
             AkronModule.Settings.StepHoldRepeat = repeat;
         }
+        DrawPopupActionBindingContext("Frame Stepper", "Repeat", "Frame Stepper / Hold Repeat");
         DrawPopupTooltip("When enabled, holding the step key advances frames repeatedly.");
 
         DrawIntStepperRow(
@@ -54,7 +94,8 @@ public sealed partial class AkronOverlay
             1,
             120,
             popupId,
-            "Frames to wait before hold-repeat starts.");
+            "Frames to wait before hold-repeat starts.",
+            "Frame Stepper", "Delay Down", "Delay Up");
 
         DrawIntStepperRow(
             "Every",
@@ -65,7 +106,8 @@ public sealed partial class AkronOverlay
             1,
             60,
             popupId,
-            "Frames between repeated steps after the delay.");
+            "Frames between repeated steps after the delay.",
+            "Frame Stepper", "Interval Down", "Interval Up");
     }
 
     private void DrawRespawnTimePopupControls(string popupId)
@@ -109,7 +151,8 @@ public sealed partial class AkronOverlay
             15f,
             "%.1f",
             popupId,
-            "Time to hold gameplay after the pause menu closes.");
+            "Time to hold gameplay after the pause menu closes.",
+            "Pause Timer", "Seconds Down", "Seconds Up");
     }
 
     private void DrawFastLookoutPopupControls(string popupId)

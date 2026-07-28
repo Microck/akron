@@ -4,6 +4,15 @@ namespace Celeste.Mod.Akron;
 
 public sealed partial class AkronOverlay {
     private void DrawNoclipPopupControls(string popupId) {
+        bool enabled = AkronModule.Settings.Noclip;
+        if (ImGui.Checkbox("Enabled##" + popupId, ref enabled)) {
+            if (!enabled || AkronModule.TryUse(AkronFeatureKind.Noclip)) {
+                AkronModule.Settings.Noclip = enabled;
+            }
+        }
+        DrawPopupActionBindingContext("Noclip", "Toggle", "Noclip / Enabled");
+        DrawPopupTooltip("Turn noclip movement on or off.");
+
         DrawFloatStepperRow(
             "Speed",
             () => AkronModule.Settings.NoclipSpeed / 240f,
@@ -14,7 +23,8 @@ public sealed partial class AkronOverlay {
             AkronModuleSettings.ClampNoclipSpeed(900) / 240f,
             "%.1f",
             popupId,
-            "Normal noclip movement speed.");
+            "Normal noclip movement speed.",
+            "Noclip", "Speed Down", "Speed Up");
 
         DrawFloatStepperRow(
             "Grab speed",
@@ -26,12 +36,14 @@ public sealed partial class AkronOverlay {
             AkronModuleSettings.ClampNoclipFloatSpeed(450) / 90f,
             "%.1f",
             popupId,
-            "Movement speed while Grab is held during noclip.");
+            "Movement speed while Grab is held during noclip.",
+            "Noclip", "Float Down", "Float Up");
 
         bool drawOnTop = AkronModule.Settings.NoclipDrawOnTop;
         if (ImGui.Checkbox("Draw Madeline on top##" + popupId, ref drawOnTop)) {
             AkronModule.Settings.NoclipDrawOnTop = drawOnTop;
         }
+        DrawPopupActionBindingContext("Noclip", "Draw On Top", "Noclip / Draw Madeline On Top");
         DrawPopupTooltip("Render Madeline above most objects while noclip is active.");
 
         bool hidePlayer = AkronModule.Settings.NoclipHidePlayer;
@@ -42,6 +54,18 @@ public sealed partial class AkronOverlay {
     }
 
     private void DrawHazardAccuracyPopupControls(string popupId) {
+        bool enabled = AkronModule.Settings.NoclipAccuracy;
+        if (ImGui.Checkbox("Enabled##" + popupId, ref enabled)) {
+            if (!enabled || AkronModule.TryUse(AkronFeatureKind.HazardAccuracy)) {
+                AkronModule.Settings.NoclipAccuracy = enabled;
+                if (!enabled) {
+                    AkronModule.ResetNoclipAccuracy();
+                }
+            }
+        }
+        DrawPopupActionBindingContext("Hazard Accuracy", "Toggle", "Hazard Accuracy / Enabled");
+        DrawPopupTooltip("Track whether noclip movement touches hazards.");
+
         DrawIntStepperRow(
             "Invalid limit",
             () => AkronModule.Settings.NoclipAccuracyInvalidLimit,
@@ -96,6 +120,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Button("Reset Accuracy##" + popupId)) {
             AkronModule.ResetNoclipAccuracy();
         }
+        DrawPopupActionBindingContext("Hazard Accuracy", "Reset");
         ImGui.SameLine();
         if (ImGui.Button("Defaults##" + popupId)) {
             AkronModule.Settings.ResetHazardAccuracyDefaults();
