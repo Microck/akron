@@ -133,7 +133,7 @@ public sealed partial class AkronOverlay {
                 return new List<OverlayEntry> {
                     Toggle("Enabled", AkronFeatureKind.Backups, () => AkronModule.Settings.BackupsEnabled, value => AkronModule.Settings.BackupsEnabled = value, "backup", "save", "zip"),
                     Action("Create Now", AkronFeatureKind.Backups, () => AkronModule.Settings.BackupsEnabled, () => AkronModule.Settings.BackupsEnabled ? "Now" : "Disabled", () => AkronBackupActions.CreateBackup("manual"), "manual", "zip", "save"),
-                    Action("Restore", AkronFeatureKind.Backups, () => AkronBackupActions.ListBackups().Count > 0, AkronBackupActions.DescribeBackupSummary, () => ApplyOptionsPopupDelta("Restore", 1), "restore", "browser", "save"),
+                    Action("Restore", AkronFeatureKind.Backups, () => true, AkronBackupActions.DescribeBackupSummary, () => ApplyOptionsPopupDelta("Restore", 1), "restore", "browser", "save"),
                     Action("Last Result", AkronFeatureKind.Backups, () => true, () => AkronBackupActions.DescribeLastBackup(), () => ApplyOptionsPopupDelta("Last Result", 1), "status", "last backup", "errors"),
                     Action("Triggers", AkronFeatureKind.Backups, () => true, DescribeBackupTriggers, () => ApplyOptionsPopupDelta("Triggers", 1), "startup", "shutdown", "save", "chapter", "interval"),
                     Action("Retention", AkronFeatureKind.Backups, () => true, DescribeBackupRetention, () => ApplyOptionsPopupDelta("Retention", 1), "delete", "age", "count", "size", "keep")

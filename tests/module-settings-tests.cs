@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -4265,6 +4266,65 @@ public sealed class ModuleSettingsTests
 
         Assert.Equal("Open folder failed: access denied to AkronBackups", redacted);
         Assert.DoesNotContain("/tmp/akron", redacted);
+    }
+
+    [Fact]
+    public void BackupListingReusesCacheUntilExplicitRefresh()
+    {
+        string backupFolder = Path.Combine(
+            Path.GetTempPath(),
+            "akron-backup-cache-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(backupFolder);
+        AkronBackupActions.SetBackupFolderForQa(backupFolder);
+        try
+        {
+            int scansBefore = AkronBackupActions.BackupListScanCountForQa;
+            IReadOnlyList<AkronBackupEntry> first = AkronBackupActions.RefreshBackups();
+            IReadOnlyList<AkronBackupEntry> second = AkronBackupActions.ListBackups();
+
+            Assert.Same(first, second);
+            Assert.Equal(scansBefore + 1, AkronBackupActions.BackupListScanCountForQa);
+
+            AkronBackupActions.RefreshBackups();
+
+            Assert.Equal(scansBefore + 2, AkronBackupActions.BackupListScanCountForQa);
+        }
+        finally
+        {
+            AkronBackupActions.SetBackupFolderForQa(null);
+            Directory.Delete(backupFolder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RestorePopupRefreshesAnInitiallyEmptyExternalBackupCache()
+    {
+        string backupFolder = Path.Combine(
+            Path.GetTempPath(),
+            "akron-backup-refresh-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(backupFolder);
+        AkronBackupActions.SetBackupFolderForQa(backupFolder);
+        try
+        {
+            Assert.Empty(AkronBackupActions.RefreshBackups());
+
+            string backupPath = Path.Combine(backupFolder, "external.zip");
+            using (ZipFile.Open(backupPath, ZipArchiveMode.Create))
+            {
+            }
+
+            Assert.Empty(AkronBackupActions.ListBackups());
+
+            AkronOverlay.PrepareOptionsPopup("Restore");
+
+            AkronBackupEntry backup = Assert.Single(AkronBackupActions.ListBackups());
+            Assert.Equal("external.zip", backup.FileName);
+        }
+        finally
+        {
+            AkronBackupActions.SetBackupFolderForQa(null);
+            Directory.Delete(backupFolder, recursive: true);
+        }
     }
 
     [Fact]

@@ -26,13 +26,19 @@ public static class AkronBackupActions {
     private const string BackupFolderName = "AkronBackups";
     private const string MetadataEntryName = "_akron-backup.json";
     private static readonly object Sync = new object();
+    private static IReadOnlyList<AkronBackupEntry> cachedBackups;
+    private static bool backupListDirty = true;
+    private static string backupFolderOverrideForQa;
     private static bool startupBackupAttempted;
     private static double intervalSecondsUntilNextCheck = 5.0;
     private static double levelBeginSecondsUntilNextAllowed;
 
+    internal static int BackupListScanCountForQa { get; private set; }
+
     public static string LastStatus { get; private set; } = "No backup yet.";
 
-    public static string BackupFolder => Path.Combine(GetSavesFolder(), BackupFolderName);
+    public static string BackupFolder =>
+        backupFolderOverrideForQa ?? Path.Combine(GetSavesFolder(), BackupFolderName);
 
     public static string LastStatusForDisplay => FormatBackupTextForDisplay(LastStatus, BackupFolder, AkronModule.Settings.StreamerMode);
 
@@ -122,6 +128,7 @@ public static class AkronBackupActions {
                     return Fail("Backup failed: created ZIP could not be read.", showToast);
                 }
 
+                InvalidateBackupList();
                 AkronModule.Settings.BackupsLastBackupUtcTicks = DateTime.UtcNow.Ticks;
                 ApplyRetention();
                 LastStatus = "Backup created: " + Path.GetFileName(backupPath);
@@ -147,18 +154,57 @@ public static class AkronBackupActions {
     }
 
     public static IReadOnlyList<AkronBackupEntry> ListBackups() {
-        try {
-            if (!Directory.Exists(BackupFolder)) {
-                return Array.Empty<AkronBackupEntry>();
+        lock (Sync) {
+            if (!backupListDirty) {
+                return cachedBackups;
             }
 
-            return Directory.EnumerateFiles(BackupFolder, "*.zip", SearchOption.TopDirectoryOnly)
+            if (TryScanBackups(out IReadOnlyList<AkronBackupEntry> backups)) {
+                cachedBackups = backups;
+                backupListDirty = false;
+            }
+
+            return backups;
+        }
+    }
+
+    internal static IReadOnlyList<AkronBackupEntry> RefreshBackups() {
+        lock (Sync) {
+            InvalidateBackupList();
+            return ListBackups();
+        }
+    }
+
+    private static bool TryScanBackups(out IReadOnlyList<AkronBackupEntry> backups) {
+        BackupListScanCountForQa++;
+        try {
+            if (!Directory.Exists(BackupFolder)) {
+                backups = Array.Empty<AkronBackupEntry>();
+                return true;
+            }
+
+            backups = Directory.EnumerateFiles(BackupFolder, "*.zip", SearchOption.TopDirectoryOnly)
                 .Select(ReadBackupEntry)
                 .OrderByDescending(entry => entry.CreatedUtc)
                 .ToList();
+            return true;
         } catch (Exception exception) {
             LastStatus = "Backup list failed: " + exception.Message;
-            return Array.Empty<AkronBackupEntry>();
+            backups = Array.Empty<AkronBackupEntry>();
+            return false;
+        }
+    }
+
+    private static void InvalidateBackupList() {
+        lock (Sync) {
+            backupListDirty = true;
+        }
+    }
+
+    internal static void SetBackupFolderForQa(string backupFolder) {
+        lock (Sync) {
+            backupFolderOverrideForQa = backupFolder;
+            InvalidateBackupList();
         }
     }
 
@@ -187,6 +233,7 @@ public static class AkronBackupActions {
 
     internal static void ApplyRetentionForQa() {
         lock (Sync) {
+            InvalidateBackupList();
             ApplyRetention();
         }
     }
@@ -205,6 +252,7 @@ public static class AkronBackupActions {
             }
 
             backup.Pinned = pinned;
+            InvalidateBackupList();
             LastStatus = pinned ? "Pinned backup: " + backup.FileName : "Unpinned backup: " + backup.FileName;
             Toast(LastStatus);
         } catch (Exception exception) {
@@ -359,6 +407,8 @@ public static class AkronBackupActions {
                 LastStatus = "Retention failed: " + exception.Message;
             }
         }
+
+        InvalidateBackupList();
     }
 
     private static void DeleteCurrentSaveFiles(string savesFolder) {
