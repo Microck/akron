@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Fixed
+
+- End numeric-field editing when the overlay closes so fields reopen unfocused and held gameplay keys are not typed into them.
+
 ## Akron Beta 61
 
 ### Fixed

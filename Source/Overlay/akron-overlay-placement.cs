@@ -136,6 +136,7 @@ public sealed partial class AkronOverlay {
         autoKillAreaSelectionActive = true;
         autoKillAreaHasFirstCorner = false;
         autoKillAreaLastLeftDown = Mouse.GetState().LeftButton == ButtonState.Pressed;
+        imguiFrameLifecycle.RequestCleanup();
         Visible = false;
         Active = false;
         AkronModule.ShowManagedCursorForTransientUi();
@@ -199,6 +200,7 @@ public sealed partial class AkronOverlay {
         AkronModule.Settings.StartPosMousePlacement = true;
         startPosPlacementActive = true;
         startPosPlacementLastLeftDown = Mouse.GetState().LeftButton == ButtonState.Pressed;
+        imguiFrameLifecycle.RequestCleanup();
         Visible = false;
         Active = false;
         AkronModule.ShowManagedCursorForTransientUi();
@@ -266,6 +268,7 @@ public sealed partial class AkronOverlay {
         autoDeafenAreaSelectionActive = true;
         autoDeafenAreaHasFirstCorner = false;
         autoDeafenAreaLastLeftDown = Mouse.GetState().LeftButton == ButtonState.Pressed;
+        imguiFrameLifecycle.RequestCleanup();
         Visible = false;
         Active = false;
         AkronModule.ShowManagedCursorForTransientUi();

@@ -1326,12 +1326,16 @@ public partial class AkronModule : EverestModule {
             }
         }
 
-        if (overlayVisible && !Overlay.RenderImGui()) {
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Engine.ScreenMatrix);
-            try {
-                Overlay.RenderSpriteBatchFallback();
-            } finally {
-                Draw.SpriteBatch.End();
+        bool overlayImGuiFrameRequested = overlayVisible || Overlay?.NeedsImGuiFrame == true;
+        if (overlayImGuiFrameRequested) {
+            bool overlayImGuiRendered = Overlay.RenderImGui();
+            if (overlayVisible && !overlayImGuiRendered) {
+                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Engine.ScreenMatrix);
+                try {
+                    Overlay.RenderSpriteBatchFallback();
+                } finally {
+                    Draw.SpriteBatch.End();
+                }
             }
         } else if (inspectorPinVisible) {
             AkronEntityInspector.RenderInspectorPinImGui(inspectorPinLevel);

@@ -227,6 +227,132 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void KeyboardInputSessionBlocksHeldKeysUntilRelease() {
+        HashSet<Keys> blockedKeys = new HashSet<Keys> {
+            Keys.Tab,
+            Keys.D
+        };
+
+        Keys[] held = AkronImGuiRenderer.FilterPressedKeys(
+            new[] { Keys.Tab, Keys.D },
+            blockedKeys);
+        Keys[] released = AkronImGuiRenderer.FilterPressedKeys(
+            Array.Empty<Keys>(),
+            blockedKeys);
+        Keys[] pressedAgain = AkronImGuiRenderer.FilterPressedKeys(
+            new[] { Keys.D },
+            blockedKeys);
+
+        Assert.Empty(held);
+        Assert.Empty(released);
+        Assert.Empty(blockedKeys);
+        Assert.Equal(new[] { Keys.D }, pressedAgain);
+    }
+
+    [Fact]
+    public void HiddenOverlayConsumesExactlyTwoCleanupFrames() {
+        AkronImGuiFrameLifecycle lifecycle = new AkronImGuiFrameLifecycle();
+
+        lifecycle.RequestCleanup();
+
+        Assert.True(lifecycle.NeedsFrame(rendererInitialized: true));
+        Assert.Equal(
+            AkronImGuiFrameKind.Cleanup,
+            lifecycle.TakeNextFrame(rendererInitialized: true, surfaceRequested: false));
+        lifecycle.MarkCleanupFrameSubmitted();
+        Assert.True(lifecycle.NeedsFrame(rendererInitialized: true));
+        Assert.Equal(
+            AkronImGuiFrameKind.Cleanup,
+            lifecycle.TakeNextFrame(rendererInitialized: true, surfaceRequested: false));
+        lifecycle.MarkCleanupFrameSubmitted();
+        Assert.False(lifecycle.NeedsFrame(rendererInitialized: true));
+        Assert.Equal(
+            AkronImGuiFrameKind.None,
+            lifecycle.TakeNextFrame(rendererInitialized: true, surfaceRequested: false));
+    }
+
+    [Fact]
+    public void FailedCleanupFrameRemainsPending() {
+        AkronImGuiFrameLifecycle lifecycle = new AkronImGuiFrameLifecycle();
+
+        lifecycle.RequestCleanup();
+
+        Assert.Equal(
+            AkronImGuiFrameKind.Cleanup,
+            lifecycle.TakeNextFrame(rendererInitialized: true, surfaceRequested: false));
+        Assert.True(lifecycle.NeedsFrame(rendererInitialized: true));
+        Assert.Equal(
+            AkronImGuiFrameKind.Cleanup,
+            lifecycle.TakeNextFrame(rendererInitialized: true, surfaceRequested: false));
+    }
+
+    [Fact]
+    public void ImmediateReopenCleansBeforeSubmittingTheOverlayAgain() {
+        AkronImGuiFrameLifecycle lifecycle = new AkronImGuiFrameLifecycle();
+
+        lifecycle.RequestCleanup();
+
+        Assert.Equal(
+            AkronImGuiFrameKind.Cleanup,
+            lifecycle.TakeNextFrame(rendererInitialized: true, surfaceRequested: true));
+        lifecycle.MarkCleanupFrameSubmitted();
+        Assert.Equal(
+            AkronImGuiFrameKind.Cleanup,
+            lifecycle.TakeNextFrame(rendererInitialized: true, surfaceRequested: true));
+        lifecycle.MarkCleanupFrameSubmitted();
+        Assert.Equal(
+            AkronImGuiFrameKind.Surface,
+            lifecycle.TakeNextFrame(rendererInitialized: true, surfaceRequested: true));
+    }
+
+    [Fact]
+    public void SuppressingASubmittedSurfaceQueuesTwoCleanupFrames() {
+        AkronImGuiFrameLifecycle lifecycle = new AkronImGuiFrameLifecycle();
+        lifecycle.MarkSurfaceSubmitted();
+
+        Assert.True(lifecycle.NeedsFrame(rendererInitialized: true));
+        Assert.Equal(
+            AkronImGuiFrameKind.Cleanup,
+            lifecycle.TakeNextFrame(rendererInitialized: true, surfaceRequested: false));
+        lifecycle.MarkCleanupFrameSubmitted();
+        Assert.Equal(
+            AkronImGuiFrameKind.Cleanup,
+            lifecycle.TakeNextFrame(rendererInitialized: true, surfaceRequested: false));
+        lifecycle.MarkCleanupFrameSubmitted();
+        Assert.Equal(
+            AkronImGuiFrameKind.None,
+            lifecycle.TakeNextFrame(rendererInitialized: true, surfaceRequested: false));
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void ImGuiSurfaceRequestIncludesStartPosPlacement(
+        bool overlaySurfaceRequested,
+        bool startPosPlacementActive,
+        bool expected) {
+        Assert.Equal(
+            expected,
+            AkronOverlay.ShouldRequestImGuiSurface(
+                overlaySurfaceRequested,
+                startPosPlacementActive));
+    }
+
+    [Fact]
+    public void CleanupDoesNotInitializeImGuiForAnOverlayThatWasNeverRendered() {
+        AkronImGuiFrameLifecycle lifecycle = new AkronImGuiFrameLifecycle();
+
+        lifecycle.RequestCleanup();
+
+        Assert.False(lifecycle.NeedsFrame(rendererInitialized: false));
+        Assert.Equal(
+            AkronImGuiFrameKind.Surface,
+            lifecycle.TakeNextFrame(rendererInitialized: false, surfaceRequested: true));
+    }
+
+    [Fact]
     public void PeriodOwnershipHooksTheRuntimeActionWithoutMutatingSetupImports() {
         string moduleSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/AkronModule.cs"));
         string bindingSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-bindable-actions.cs"));
@@ -1532,7 +1658,8 @@ public sealed class OverlayTests {
         Assert.Contains("On.Monocle.Engine.RenderCore += EngineOnRenderCore", source);
         Assert.Contains("RenderAkronLevelHud(postRenderLevel);", source);
         Assert.DoesNotContain("AkronEntityInspector.RenderHitboxesToHud(level", source);
-        Assert.Contains("if (overlayVisible && !Overlay.RenderImGui())", source);
+        Assert.Contains("bool overlayImGuiFrameRequested = overlayVisible || Overlay?.NeedsImGuiFrame == true;", source);
+        Assert.Contains("if (overlayVisible && !overlayImGuiRendered)", source);
         Assert.Contains("On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender", source);
         Assert.Contains("ShouldHideAkronRenderSurfaces()", source);
         Assert.Contains("!ShouldRenderGameplayDebugPass(level)", source);
@@ -2110,6 +2237,7 @@ public sealed class OverlayTests {
         AkronOverlay overlay = (AkronOverlay) RuntimeHelpers.GetUninitializedObject(typeof(AkronOverlay));
         SetPrivateField(overlay, "collapsedWindowTitles", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
         SetPrivateField(overlay, "pendingImGuiCollapseSync", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        SetPrivateField(overlay, "imguiFrameLifecycle", new AkronImGuiFrameLifecycle());
         overlay.Visible = true;
         return overlay;
     }
