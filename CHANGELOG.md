@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 61
+
 ### Fixed
 
 - Keep native spinner and spike geometry in death hitboxes unless Fix Hitbox Pixels is enabled.
