@@ -15,6 +15,62 @@ using NumericsVector4 = System.Numerics.Vector4;
 
 namespace Celeste.Mod.Akron;
 
+internal enum AkronImGuiFrameKind {
+    None,
+    Cleanup,
+    Surface
+}
+
+internal sealed class AkronImGuiFrameLifecycle {
+    private const int CleanupFrameCount = 2;
+
+    private int cleanupFramesRemaining;
+    private bool surfaceSubmitted;
+
+    internal void RequestCleanup() {
+        cleanupFramesRemaining = CleanupFrameCount;
+    }
+
+    internal void MarkSurfaceSubmitted() {
+        surfaceSubmitted = true;
+    }
+
+    internal void MarkCleanupFrameSubmitted() {
+        if (cleanupFramesRemaining == 0) {
+            return;
+        }
+
+        cleanupFramesRemaining--;
+        if (cleanupFramesRemaining == 0) {
+            surfaceSubmitted = false;
+        }
+    }
+
+    internal bool NeedsFrame(bool rendererInitialized) {
+        return rendererInitialized &&
+               (cleanupFramesRemaining > 0 || surfaceSubmitted);
+    }
+
+    internal AkronImGuiFrameKind TakeNextFrame(bool rendererInitialized, bool surfaceRequested) {
+        if (!surfaceRequested && surfaceSubmitted && cleanupFramesRemaining == 0) {
+            RequestCleanup();
+        }
+
+        if (cleanupFramesRemaining > 0) {
+            if (rendererInitialized) {
+                return AkronImGuiFrameKind.Cleanup;
+            }
+
+            cleanupFramesRemaining = 0;
+            surfaceSubmitted = false;
+        }
+
+        return surfaceRequested
+            ? AkronImGuiFrameKind.Surface
+            : AkronImGuiFrameKind.None;
+    }
+}
+
 [Tracked]
 public sealed partial class AkronOverlay : Entity {
     private const float ScreenWidth = 1920f;
@@ -41,6 +97,7 @@ public sealed partial class AkronOverlay : Entity {
     private const float AkronSmallFontSize = 16f;
     private const string OverlayToggleActionKey = "__akron_overlay_toggle";
     private const string ImGuiActionSearchInputId = "##akron_action_search_input";
+    private static readonly Action EmptyImGuiLayout = () => { };
     public enum OverlayCancelAction {
         KeepOverlayOpen,
         ClearSearch,
@@ -142,6 +199,8 @@ public sealed partial class AkronOverlay : Entity {
     private string draggingLabelRowKey = string.Empty;
     private NumericsVector2 labelRowDragStart;
     private bool labelRowDragActive;
+    private readonly AkronImGuiFrameLifecycle imguiFrameLifecycle = new AkronImGuiFrameLifecycle();
+    private bool keyboardInputSessionPending = true;
     private int valueEditFreezeFrames;
     private string searchQuery = string.Empty;
     private bool searchInputActive;
@@ -289,25 +348,67 @@ public sealed partial class AkronOverlay : Entity {
     public override void Render() {
     }
 
+    internal bool NeedsImGuiFrame =>
+        imguiFrameLifecycle.NeedsFrame(AkronImGuiRenderer.IsInitialized);
+
     public bool RenderImGui() {
         if (!Visible) {
             uploadPackWindowOpen = false;
         }
 
-        if (!ShouldRenderOverlaySurface(Visible, AkronPromptMenu.IsOpen, autoKillAreaSelectionActive, autoDeafenAreaSelectionActive)) {
+        bool overlaySurfaceRequested = ShouldRenderOverlaySurface(
+            Visible,
+            AkronPromptMenu.IsOpen,
+            autoKillAreaSelectionActive,
+            autoDeafenAreaSelectionActive);
+        bool surfaceRequested = ShouldRequestImGuiSurface(
+            overlaySurfaceRequested,
+            startPosPlacementActive);
+        AkronImGuiFrameKind frameKind = imguiFrameLifecycle.TakeNextFrame(
+            AkronImGuiRenderer.IsInitialized,
+            surfaceRequested);
+
+        if (frameKind == AkronImGuiFrameKind.Cleanup) {
+            // ImGui clears a missing active widget at the start of the second
+            // frame where the widget is absent. The lifecycle submits exactly
+            // those two empty frames, so hidden gameplay has no steady-state
+            // ImGui cost.
+            bool cleanupRendered = AkronImGuiRenderer.Render(
+                EmptyImGuiLayout,
+                exposeCapture: false);
+            if (cleanupRendered) {
+                imguiFrameLifecycle.MarkCleanupFrameSubmitted();
+            }
+            return cleanupRendered;
+        }
+
+        if (frameKind == AkronImGuiFrameKind.None) {
             return false;
         }
 
         if (startPosPlacementActive) {
-            return AkronImGuiRenderer.Render(DrawStartPosPlacementEditor);
+            bool rendered = AkronImGuiRenderer.Render(DrawStartPosPlacementEditor);
+            if (rendered) {
+                imguiFrameLifecycle.MarkSurfaceSubmitted();
+            }
+            return rendered;
         }
 
         if (!Visible) {
             return false;
         }
 
+        if (keyboardInputSessionPending) {
+            keyboardInputSessionPending = false;
+            AkronImGuiRenderer.BeginInputSession();
+        }
+
         RebuildLayoutOncePerFrame(Scene as Level);
-        return AkronImGuiRenderer.Render(DrawImGuiMenu);
+        bool surfaceRendered = AkronImGuiRenderer.Render(DrawImGuiMenu);
+        if (surfaceRendered) {
+            imguiFrameLifecycle.MarkSurfaceSubmitted();
+        }
+        return surfaceRendered;
     }
 
     public void RenderSpriteBatchFallback() {
@@ -331,6 +432,7 @@ public sealed partial class AkronOverlay : Entity {
             RenderOptionsPopup();
             RenderTooltip();
         } catch (Exception exception) {
+            imguiFrameLifecycle.RequestCleanup();
             Visible = false;
             Active = false;
             Logger.Log(LogLevel.Error, nameof(AkronOverlay), "Akron SpriteBatch overlay fallback failed; hiding overlay to avoid a render crash: " + exception);
@@ -498,6 +600,9 @@ public sealed partial class AkronOverlay : Entity {
         autoDeafenAreaHasFirstCorner = false;
         uploadPackWindowOpen = false;
         valueEditFreezeFrames = 0;
+        keyboardInputSessionPending = true;
+        imguiFrameLifecycle.RequestCleanup();
+        AkronImGuiRenderer.EndInputSession();
         ClearSearchQuery();
         if (searchAutofocus) {
             RequestSearchInputFocus();
@@ -828,6 +933,12 @@ public sealed partial class AkronOverlay : Entity {
                !promptMenuOpen &&
                !autoKillAreaSelectionActive &&
                !autoDeafenAreaSelectionActive;
+    }
+
+    internal static bool ShouldRequestImGuiSurface(
+        bool overlaySurfaceRequested,
+        bool startPosPlacementActive) {
+        return overlaySurfaceRequested || startPosPlacementActive;
     }
 
     private static bool IsGamePadPressed(Buttons button) {

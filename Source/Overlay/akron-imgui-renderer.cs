@@ -26,11 +26,13 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     private static AkronImGuiRenderer instance;
     private static bool nativeResolverRegistered;
     private static IntPtr nativeLibraryHandle;
+    private static bool inputSessionRequested;
 
     private readonly GraphicsDevice graphicsDevice;
     private readonly Dictionary<IntPtr, Texture2D> loadedTextures = new Dictionary<IntPtr, Texture2D>();
     private readonly Dictionary<string, IntPtr> embeddedTextureIds = new Dictionary<string, IntPtr>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IntPtr> byteTextureIds = new Dictionary<string, IntPtr>(StringComparer.Ordinal);
+    private readonly HashSet<Keys> keyboardKeysBlockedUntilRelease = new HashSet<Keys>();
     private readonly Keys[] allKeys = Enum.GetValues(typeof(Keys)).Cast<Keys>().ToArray();
     private readonly byte[] fontBytes;
     private readonly GCHandle fontHandle;
@@ -88,6 +90,19 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     public static bool WantCaptureKeyboard { get; private set; }
     public static bool WantTextInput { get; private set; }
     public static bool WantCaptureMouse { get; private set; }
+    internal static bool IsInitialized => instance != null;
+
+    internal static void EndInputSession() {
+        inputSessionRequested = false;
+        WantCaptureKeyboard = false;
+        WantTextInput = false;
+        WantCaptureMouse = false;
+    }
+
+    internal static void BeginInputSession() {
+        EndInputSession();
+        inputSessionRequested = true;
+    }
 
     public static void EnsureNativeResolverRegistered() {
         RegisterNativeResolver();
@@ -103,7 +118,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         }
     }
 
-    public static bool Render(Action drawLayout) {
+    public static bool Render(Action drawLayout, bool exposeCapture = true) {
         if (Engine.Instance?.GraphicsDevice == null || drawLayout == null) {
             return false;
         }
@@ -120,7 +135,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
             renderInProgress = true;
             initializationFailed = false;
             instance ??= new AkronImGuiRenderer(Engine.Instance.GraphicsDevice);
-            instance.RenderFrame(drawLayout);
+            instance.RenderFrame(drawLayout, exposeCapture);
             lastFailure = string.Empty;
             return true;
         } catch (Exception exception) {
@@ -268,21 +283,26 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         loadedTextures.Remove(textureId);
     }
 
-    private void RenderFrame(Action drawLayout) {
+    private void RenderFrame(Action drawLayout, bool exposeCapture) {
         long frameStart = Stopwatch.GetTimestamp();
-        UpdateInput();
+        bool beginningInputSession = inputSessionRequested;
+        UpdateInput(beginningInputSession);
         long inputEnd = Stopwatch.GetTimestamp();
         ApplyTheme();
 
         ImGui.NewFrame();
+        if (beginningInputSession) {
+            inputSessionRequested = false;
+        }
         drawLayout();
         long layoutEnd = Stopwatch.GetTimestamp();
         ImGui.Render();
         long imguiEnd = Stopwatch.GetTimestamp();
 
-        WantCaptureKeyboard = ImGui.GetIO().WantCaptureKeyboard;
-        WantTextInput = ImGui.GetIO().WantTextInput;
-        WantCaptureMouse = ImGui.GetIO().WantCaptureMouse;
+        ImGuiIOPtr io = ImGui.GetIO();
+        WantCaptureKeyboard = exposeCapture && io.WantCaptureKeyboard;
+        WantTextInput = exposeCapture && io.WantTextInput;
+        WantCaptureMouse = exposeCapture && io.WantCaptureMouse;
         if (!renderDiagnosticLogged) {
             renderDiagnosticLogged = true;
             ImDrawDataPtr diagnosticDrawData = ImGui.GetDrawData();
@@ -331,7 +351,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     }
 #endif
 
-    private void UpdateInput() {
+    private void UpdateInput(bool beginningInputSession) {
         ImGuiIOPtr io = ImGui.GetIO();
         float elapsed = Engine.RawDeltaTime > 0f ? Engine.RawDeltaTime : 1f / 60f;
         io.DeltaTime = elapsed;
@@ -351,7 +371,16 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         io.AddMouseWheelEvent(0f, acceptsInput ? (mouse.ScrollWheelValue - scrollWheelValue) / WheelDelta : 0f);
         scrollWheelValue = mouse.ScrollWheelValue;
 
-        KeyboardState keyboard = acceptsInput ? Keyboard.GetState() : new KeyboardState();
+        KeyboardState physicalKeyboard = Keyboard.GetState();
+        if (beginningInputSession) {
+            keyboardKeysBlockedUntilRelease.Clear();
+            keyboardKeysBlockedUntilRelease.UnionWith(physicalKeyboard.GetPressedKeys());
+            previousKeyboard = new KeyboardState();
+        }
+
+        KeyboardState keyboard = acceptsInput
+            ? new KeyboardState(FilterPressedKeys(physicalKeyboard.GetPressedKeys(), keyboardKeysBlockedUntilRelease))
+            : new KeyboardState();
         foreach (Keys key in allKeys) {
             if (TryMapKey(key, out ImGuiKey imguiKey)) {
                 io.AddKeyEvent(imguiKey, keyboard.IsKeyDown(key));
@@ -366,6 +395,11 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         io.AddKeyEvent(ImGuiKey.ModShift, keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift));
         io.AddKeyEvent(ImGuiKey.ModAlt, keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt));
         previousKeyboard = keyboard;
+    }
+
+    internal static Keys[] FilterPressedKeys(Keys[] pressedKeys, HashSet<Keys> blockedKeys) {
+        blockedKeys.RemoveWhere(key => !pressedKeys.Contains(key));
+        return pressedKeys.Where(key => !blockedKeys.Contains(key)).ToArray();
     }
 
     private static void ApplyTheme() {

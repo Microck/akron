@@ -184,7 +184,8 @@ public sealed partial class AkronOverlay {
         ImGuiWindowFlags flags =
             ImGuiWindowFlags.NoResize |
             ImGuiWindowFlags.NoMove |
-            ImGuiWindowFlags.NoSavedSettings;
+            ImGuiWindowFlags.NoSavedSettings |
+            ImGuiWindowFlags.NoFocusOnAppearing;
         if (!allowScrollbar) {
             // MegaHack-style panels should only scroll when their rows overflow the available screen height.
             flags |= ImGuiWindowFlags.NoScrollbar;
