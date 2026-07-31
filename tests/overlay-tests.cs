@@ -831,6 +831,29 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void DeathHazardColliderIsCapturedBeforeCelesteRestoresTemporaryCollisionShapes()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "../../../../Source/Module/akron-module-player-runtime.cs"));
+        int suppressionCheck = source.IndexOf("if (ShouldSuppressNormalDeathForAkronInvincibility(", StringComparison.Ordinal);
+        int suppressedReturn = source.IndexOf("return null;", suppressionCheck, StringComparison.Ordinal);
+        int nativeAssistSetup = source.IndexOf("EnsureNativeAssistInvincibility();", suppressedReturn, StringComparison.Ordinal);
+        int captureDecision = source.IndexOf("ShouldCaptureDeathHazard(", nativeAssistSetup, StringComparison.Ordinal);
+        int capture = source.IndexOf("CaptureDeathHazard(level, self)", StringComparison.Ordinal);
+        int nativeDeath = source.IndexOf("PlayerDeadBody deadBody = orig(", StringComparison.Ordinal);
+        int record = source.IndexOf("RecordLastDeath(level, deathPosition, deathHazard);", StringComparison.Ordinal);
+
+        Assert.True(suppressionCheck >= 0);
+        Assert.True(suppressedReturn > suppressionCheck);
+        Assert.True(nativeAssistSetup > suppressedReturn);
+        Assert.True(captureDecision > nativeAssistSetup);
+        Assert.True(capture > captureDecision);
+        Assert.True(nativeDeath > capture);
+        Assert.True(record > nativeDeath);
+    }
+
+    [Fact]
     public void AutoKillAreaCanRenderWithDeathHitboxesWhenLiveAreaDisplayIsOff() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Hud/akron-hud-world-overlay-renderer.cs"));
 

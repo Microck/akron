@@ -39,6 +39,12 @@ public partial class AkronModule {
             EnsureNativeAssistInvincibility();
         }
 
+        bool nativeAssistInvincibilityActive = global::Celeste.SaveData.Instance?.Assists.Invincible == true;
+        AkronEntityInspector.DeathHazardSnapshot deathHazard = ShouldCaptureDeathHazard(
+                evenIfInvincible,
+                nativeAssistInvincibilityActive)
+            ? AkronEntityInspector.CaptureDeathHazard(level, self)
+            : null;
         PlayerDeadBody deadBody = orig(self, direction, evenIfInvincible, registerDeathInStats);
         bool goldenDeath = level?.Entities.OfType<Strawberry>().Any(strawberry => strawberry.Golden && strawberry.Follower.Leader != null) == true;
         if (deadBody != null && Settings.NoDeathEffect && TryUse(AkronFeatureKind.DeathVisuals) && level != null) {
@@ -70,7 +76,7 @@ public partial class AkronModule {
                 if (autoKillDeathArea.HasValue) {
                     AkronEntityInspector.RecordLastDeath(level, deathPosition, autoKillDeathArea.Value, "AutoKillArea");
                 } else {
-                    AkronEntityInspector.RecordLastDeath(level, deathPosition);
+                    AkronEntityInspector.RecordLastDeath(level, deathPosition, deathHazard);
                 }
                 AkronPracticeStats.ResetAttemptTimer(level);
             }
@@ -394,6 +400,10 @@ public partial class AkronModule {
 
     internal static bool ShouldSuppressNormalDeathForAkronInvincibility(bool evenIfInvincible, bool hazardAccuracyAllowed, bool akronInvincibilityAllowed) {
         return !evenIfInvincible && (hazardAccuracyAllowed || akronInvincibilityAllowed);
+    }
+
+    internal static bool ShouldCaptureDeathHazard(bool evenIfInvincible, bool nativeAssistInvincibilityActive) {
+        return evenIfInvincible || !nativeAssistInvincibilityActive;
     }
 
     internal static bool ShouldSkipVanillaSquishForAkronInvincibility(bool akronInvincibilityAllowed, bool allowCollisionChanges, bool forcedSquish) {

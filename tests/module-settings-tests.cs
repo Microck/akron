@@ -3324,6 +3324,20 @@ public sealed class ModuleSettingsTests
     }
 
     [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, true)]
+    public void DeathHazardCaptureSkipsDeathsRejectedByActiveAssistInvincibility(
+        bool evenIfInvincible,
+        bool nativeAssistInvincibilityActive,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            AkronModule.ShouldCaptureDeathHazard(evenIfInvincible, nativeAssistInvincibilityActive));
+    }
+
+    [Theory]
     [InlineData(false, false, false, false)]
     [InlineData(true, false, false, true)]
     [InlineData(true, true, false, false)]
@@ -3600,11 +3614,50 @@ public sealed class ModuleSettingsTests
     [InlineData(typeof(DustTrackSpinnerProbe))]
     [InlineData(typeof(DustRotateSpinnerProbe))]
     [InlineData(typeof(TriggerSpikesProbe))]
+    [InlineData(typeof(CustomSeeker))]
     public void HitboxHazardClassifierCoversCsideHazardTypes(Type entityType)
     {
         Entity entity = Assert.IsAssignableFrom<Entity>(Activator.CreateInstance(entityType));
 
         Assert.True(AkronEntityInspector.IsHazard(entity));
+    }
+
+    [Fact]
+    public void DeathHazardSelectionPrefersTheOverlappingSeekerOverANearerSpinner()
+    {
+        // The test reference strips FNA collision math, so exercise the same
+        // overlap-first rule through its pure priority contract.
+        Assert.True(AkronEntityInspector.ShouldPreferDeathHazard(
+            candidateOverlapsPlayer: true,
+            candidateDistanceSquared: 64f,
+            selectedOverlapsPlayer: false,
+            selectedDistanceSquared: 36f));
+        Assert.False(AkronEntityInspector.ShouldPreferDeathHazard(
+            candidateOverlapsPlayer: false,
+            candidateDistanceSquared: 36f,
+            selectedOverlapsPlayer: true,
+            selectedDistanceSquared: 64f));
+        Assert.True(AkronEntityInspector.ShouldPreferDeathHazard(
+            candidateOverlapsPlayer: false,
+            candidateDistanceSquared: 36f,
+            selectedOverlapsPlayer: false,
+            selectedDistanceSquared: 64f));
+    }
+
+    [Theory]
+    [InlineData(false, true, true, false)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, true, true, true)]
+    public void DeathHazardSelectionRequiresActiveCollision(
+        bool collidable,
+        bool hasCollider,
+        bool isHazard,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            AkronEntityInspector.IsSelectableDeathHazard(collidable, hasCollider, isHazard));
     }
 
     [Fact]
@@ -3653,6 +3706,14 @@ public sealed class ModuleSettingsTests
 
     private sealed class TriggerSpikesProbe : Entity
     {
+    }
+
+    private sealed class CustomSeeker : Entity
+    {
+        public CustomSeeker()
+            : base(new Vector2(0f, 0f))
+        {
+        }
     }
 
     private sealed class RefillProbe : Entity

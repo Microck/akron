@@ -138,6 +138,18 @@ public static partial class AkronEntityInspector {
         }
     }
 
+    internal sealed class DeathHazardSnapshot {
+        internal DeathHazardSnapshot(Entity entity) {
+            EntityType = entity.GetType().Name;
+            Collider = CaptureDeathColliderSnapshot(entity.Collider);
+            Bounds = entity.Collider.Bounds;
+        }
+
+        internal string EntityType { get; }
+        internal Rectangle Bounds { get; }
+        internal DeathColliderSnapshot Collider { get; }
+    }
+
     private const float CameraCullMargin = 32f;
     private const int MaxDeathColliderSnapshotPixels = 65_536;
     private const float HitboxThicknessUnitsPerGamePixel = 5f;
@@ -306,11 +318,77 @@ public static partial class AkronEntityInspector {
         frameGridRuns = 0;
     }
 
-    public static void RecordLastDeath(Level level, Vector2 deathPosition) {
-        RecordLastDeath(level, deathPosition, null, string.Empty);
+    internal static DeathHazardSnapshot CaptureDeathHazard(Level level, Player player) {
+        if (level == null) {
+            return null;
+        }
+
+        Vector2 deathPosition = player?.Center ?? Vector2.Zero;
+        Entity hazard = SelectDeathHazard(level.Entities, player?.Collider, deathPosition);
+        return hazard == null ? null : new DeathHazardSnapshot(hazard);
     }
 
-    public static void RecordLastDeath(Level level, Vector2 deathPosition, Rectangle? explicitHitbox, string explicitEntityType) {
+    internal static Entity SelectDeathHazard(
+        IEnumerable<Entity> entities,
+        Collider playerCollider,
+        Vector2 deathPosition) {
+        // PlayerCollider temporarily installs the collider that caused the
+        // contact before it calls Player.Die. Prefer that overlapping collider
+        // while it is still active, then use distance for deaths whose source
+        // cannot be identified from collision alone.
+        Entity selected = null;
+        bool selectedOverlapsPlayer = false;
+        float selectedDistanceSquared = float.MaxValue;
+        foreach (Entity entity in entities) {
+            if (!IsSelectableDeathHazard(
+                    entity.Collidable,
+                    entity.Collider != null,
+                    IsHazard(entity))) {
+                continue;
+            }
+            bool overlapsPlayer = playerCollider != null && entity.Collider.Collide(playerCollider);
+            float distanceSquared = Vector2.DistanceSquared(entity.Center, deathPosition);
+            if (selected == null || ShouldPreferDeathHazard(
+                    overlapsPlayer,
+                    distanceSquared,
+                    selectedOverlapsPlayer,
+                    selectedDistanceSquared)) {
+                selected = entity;
+                selectedOverlapsPlayer = overlapsPlayer;
+                selectedDistanceSquared = distanceSquared;
+            }
+        }
+        return selected;
+    }
+
+    internal static bool IsSelectableDeathHazard(bool collidable, bool hasCollider, bool isHazard) {
+        return collidable && hasCollider && isHazard;
+    }
+
+    internal static bool ShouldPreferDeathHazard(
+        bool candidateOverlapsPlayer,
+        float candidateDistanceSquared,
+        bool selectedOverlapsPlayer,
+        float selectedDistanceSquared) {
+        return candidateOverlapsPlayer != selectedOverlapsPlayer
+            ? candidateOverlapsPlayer
+            : candidateDistanceSquared < selectedDistanceSquared;
+    }
+
+    internal static void RecordLastDeath(Level level, Vector2 deathPosition, DeathHazardSnapshot deathHazard) {
+        RecordLastDeath(level, deathPosition, deathHazard, null, string.Empty);
+    }
+
+    internal static void RecordLastDeath(Level level, Vector2 deathPosition, Rectangle explicitHitbox, string explicitEntityType) {
+        RecordLastDeath(level, deathPosition, null, explicitHitbox, explicitEntityType);
+    }
+
+    private static void RecordLastDeath(
+        Level level,
+        Vector2 deathPosition,
+        DeathHazardSnapshot deathHazard,
+        Rectangle? explicitHitbox,
+        string explicitEntityType) {
         AkronModule.Session.LastDeathPosition = deathPosition;
         Player player = FindPlayer(level);
         AkronModule.Session.LastDeathPlayerBounds = player?.Collider?.Bounds;
@@ -320,14 +398,10 @@ public static partial class AkronEntityInspector {
             lastDeathCollider = null;
             lastDeathColliderSession = null;
         } else {
-            Entity nearbyHazard = level.Entities
-                .Where(entity => entity.Collider != null && IsHazard(entity))
-                .OrderBy(entity => Vector2.DistanceSquared(entity.Center, deathPosition))
-                .FirstOrDefault();
-            AkronModule.Session.LastDeathEntityType = nearbyHazard?.GetType().Name ?? string.Empty;
-            lastDeathCollider = CaptureDeathColliderSnapshot(nearbyHazard?.Collider);
+            AkronModule.Session.LastDeathEntityType = deathHazard?.EntityType ?? string.Empty;
+            lastDeathCollider = deathHazard?.Collider;
             lastDeathColliderSession = lastDeathCollider == null ? null : AkronModule.Session;
-            AkronModule.Session.LastDeathHitbox = nearbyHazard?.Collider?.Bounds ??
+            AkronModule.Session.LastDeathHitbox = deathHazard?.Bounds ??
                                                    new Rectangle((int) deathPosition.X - 4, (int) deathPosition.Y - 4, 8, 8);
         }
         AkronModule.Session.LastDeathHitboxVisible = true;
@@ -1185,6 +1259,8 @@ public static partial class AkronEntityInspector {
     internal static bool IsHazard(Entity entity) {
         string name = entity.GetType().Name;
         return entity is Spikes ||
+               entity is Seeker ||
+               name.EndsWith("Seeker", System.StringComparison.Ordinal) ||
                name.Contains("Spike") ||
                name.Contains("Spinner") ||
                name.Contains("Hazard") ||
