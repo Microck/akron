@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 63
+
 ### Fixed
 
 - Show the seeker collision that killed the player instead of a nearby spinner in Show Hitboxes On Death.
