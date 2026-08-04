@@ -12,20 +12,38 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronActions {
+    internal const string StartPosStateSlotPrefix = "Akron StartPos ";
     private const int MinPositionSlot = 1;
     private const int MaxPositionSlot = 9999;
 
+    // Level.Update reads this generation before processing pre-update actions.
+    // A successful Set or Load increments it so the exact StartPos frame can
+    // render before Celeste advances the room simulation.
+    internal static ulong StartPosFrameGeneration { get; private set; }
+    private static bool startPosCaptureInProgress;
+
     public static void SetStartPos(Level level) {
+        SetStartPos(level, null);
+    }
+
+    internal static void SetStartPos(Level level, Action<bool> completion) {
         if (level == null || !AkronModule.TryUse(AkronFeatureKind.StartPosTools)) {
+            completion?.Invoke(false);
             return;
         }
 
         Player player = level.Tracker.GetEntity<Player>();
         if (player == null) {
+            completion?.Invoke(false);
             return;
         }
 
-        CaptureStartPos(level, player.Position, useSpawnConfig: false, "StartPos " + AkronModule.Settings.ActiveStartPosSlot + " captured.");
+        CaptureStartPos(
+            level,
+            player.Position,
+            useSpawnConfig: false,
+            "StartPos " + AkronModule.Settings.ActiveStartPosSlot + " captured.",
+            completion);
     }
 
     public static void SetStartPosAtMouse(Level level, Vector2 worldPosition) {
@@ -33,10 +51,28 @@ public static partial class AkronActions {
             return;
         }
 
-        CaptureStartPos(level, ClampToRoom(level, worldPosition), useSpawnConfig: true, "StartPos " + AkronModule.Settings.ActiveStartPosSlot + " placed.");
+        CaptureStartPos(
+            level,
+            ClampToRoom(level, worldPosition),
+            useSpawnConfig: true,
+            "StartPos " + AkronModule.Settings.ActiveStartPosSlot + " placed.",
+            null);
     }
 
-    private static void CaptureStartPos(Level level, Vector2 position, bool useSpawnConfig, string toast) {
+    private static void CaptureStartPos(
+        Level level,
+        Vector2 position,
+        bool useSpawnConfig,
+        string toast,
+        Action<bool> completion
+    ) {
+        if (startPosCaptureInProgress) {
+            Engine.Scene?.Add(new AkronToast("StartPos capture is still finishing."));
+            completion?.Invoke(false);
+            return;
+        }
+        startPosCaptureInProgress = true;
+
         int slot = AkronModule.Settings.ActiveStartPosSlot;
         string areaSid = GetAreaSid(level);
         string stateSlotName = GetStartPosStateSlotName(areaSid, slot);
@@ -55,10 +91,16 @@ public static partial class AkronActions {
             bool restoreRespawnAtStartPos = AkronModule.Settings.RespawnAtStartPos;
             AkronModule.Settings.RespawnAtStartPos = false;
             try {
-                saveResult = AkronSaveLoadService.SaveRuntimeState(level, stateSlotName, AkronModule.Settings.SaveTimeAndDeaths);
+                // StartPos always keeps cumulative time and deaths instead of
+                // rewinding those statistics with the captured room state.
+                saveResult = AkronSaveLoadService.SaveRuntimeState(level, stateSlotName, saveTimeAndDeaths: false);
             } finally {
                 AkronModule.Settings.RespawnAtStartPos = restoreRespawnAtStartPos;
             }
+        } catch {
+            startPosCaptureInProgress = false;
+            completion?.Invoke(false);
+            throw;
         } finally {
             if (playerSnapshot != null && level.Tracker.GetEntity<Player>() is Player player) {
                 playerSnapshot.Restore(player);
@@ -67,16 +109,9 @@ public static partial class AkronActions {
         }
 
         if (saveResult != AkronSaveLoadResult.Success) {
+            startPosCaptureInProgress = false;
             Engine.Scene?.Add(new AkronToast("StartPos capture failed: " + saveResult + "."));
-            return;
-        }
-
-        string snapshotPath = GetStartPosSnapshotPath(areaSid, slot);
-        AkronSaveLoadSlot saveSlot = AkronSaveLoadService.GetRuntimeStateForDebug(stateSlotName);
-        if (!AkronPersistentStartPosSnapshots.Save(snapshotPath, saveSlot, out string snapshotError)) {
-            AkronSaveLoadService.ClearRuntimeState(stateSlotName);
-            Engine.Scene?.Add(new AkronToast("StartPos snapshot persistence failed."));
-            Logger.Log(LogLevel.Warn, nameof(AkronActions), "Failed to persist StartPos snapshot " + stateSlotName + ": " + snapshotError);
+            completion?.Invoke(false);
             return;
         }
 
@@ -90,12 +125,192 @@ public static partial class AkronActions {
             Facing = useSpawnConfig ? AkronModule.Settings.StartPosConfiguredFacing : AkronStartPosFacing.Current,
             Idle = useSpawnConfig && AkronModule.Settings.StartPosConfiguredIdle,
             Grab = useSpawnConfig && AkronModule.Settings.StartPosConfiguredGrab,
-            SnapshotPath = snapshotPath,
             StateSlotName = stateSlotName
         };
-        AkronModule.Session.StartPositions[slot] = startPos;
-        PersistStartPos(slot, startPos);
-        Engine.Scene?.Add(new AkronToast(toast));
+        try {
+            SchedulePersistentStartPosCapture(
+                level,
+                slot,
+                startPos,
+                stateSlotName,
+                toast,
+                playerSnapshot,
+                originalRespawnPoint,
+                completion);
+        } catch {
+            AkronSaveLoadService.DiscardRuntimeStateMemory(stateSlotName);
+            startPosCaptureInProgress = false;
+            completion?.Invoke(false);
+            throw;
+        }
+        if (!useSpawnConfig) {
+            StartPosFrameGeneration++;
+        }
+    }
+
+    private static void SchedulePersistentStartPosCapture(
+        Level level,
+        int slot,
+        AkronStartPos startPos,
+        string stateSlotName,
+        string toast,
+        StartPosPlayerSnapshot playerSnapshot,
+        Vector2? originalRespawnPoint,
+        Action<bool> completion
+    ) {
+        // Run outside Level.Update. Other mods can keep balanced temporary
+        // state around an engine update, such as a pushed random generator.
+        // Reloading inside that update would replace the state before the mod
+        // gets to unwind it.
+        AkronModule.ScheduleAfterStableEngineUpdate(() => {
+            if (Engine.Scene != level) {
+                AkronSaveLoadService.DiscardRuntimeStateMemory(stateSlotName);
+                startPosCaptureInProgress = false;
+                completion?.Invoke(false);
+                return;
+            }
+
+            try {
+                level.Reload();
+                level.Entities.UpdateLists();
+                AkronLevelRenderState.RelinkRendererCameras(level);
+                // The fresh room needs one update before reconstruction. Keep
+                // the exact Set pixels visible during that setup frame.
+                AkronSaveLoadSlot savedState = AkronSaveLoadService.GetRuntimeStateForDebug(stateSlotName);
+                AkronGameplayBufferState.ArmLevelPresentation(level, savedState?.GameplayBuffers);
+            } catch (Exception exception) {
+                AkronSaveLoadResult rollbackResult = AkronSaveLoadResult.Failed;
+                string rollbackError = string.Empty;
+                try {
+                    rollbackResult = AkronSaveLoadService.LoadRuntimeState(
+                        level,
+                        stateSlotName,
+                        allowDeadPlayer: true);
+                    if (playerSnapshot != null && level.Tracker.GetEntity<Player>() is Player restoredPlayer) {
+                        playerSnapshot.Restore(restoredPlayer);
+                    }
+                    level.Session.RespawnPoint = originalRespawnPoint;
+                    rollbackError = AkronSaveLoadService.LastPersistentSnapshotError;
+                } catch (Exception rollbackException) {
+                    rollbackError = rollbackException.GetType().Name + ": " + rollbackException.Message;
+                } finally {
+                    AkronSaveLoadService.DiscardRuntimeStateMemory(stateSlotName);
+                    startPosCaptureInProgress = false;
+                }
+                string rollbackDetail = rollbackResult == AkronSaveLoadResult.Success
+                    ? string.Empty
+                    : " Original room rollback failed: " + rollbackError;
+                Engine.Scene?.Add(new AkronToast(
+                    "StartPos capture failed: " + exception.Message + rollbackDetail));
+                completion?.Invoke(false);
+                return;
+            }
+
+            // Let the fresh room create first-frame callbacks and dynamic room
+            // resources. The reconstruction graph uses them as process-local
+            // anchors, then the live Set snapshot is restored before success is
+            // reported.
+            Action finishCapture = () => {
+                try {
+                    if (Engine.Scene != level) {
+                        AkronSaveLoadService.DiscardRuntimeStateMemory(stateSlotName);
+                        completion?.Invoke(false);
+                        return;
+                    }
+
+                    AkronSaveLoadResult persistResult = AkronSaveLoadResult.Failed;
+                    AkronSaveLoadResult restoreResult;
+                    string persistError = string.Empty;
+                    string stagingDirectory = Path.Combine(
+                        Path.GetTempPath(),
+                        "akron-startpos-capture-" + Guid.NewGuid().ToString("N"));
+                    AkronStartPosReconstruction.PreparedSnapshotInstall installedSnapshot = null;
+                    try {
+                        try {
+                            Directory.CreateDirectory(stagingDirectory);
+                            persistResult = AkronSaveLoadService.PersistRuntimeStateSnapshot(
+                                level,
+                                stateSlotName,
+                                stagingDirectory);
+                            persistError = AkronSaveLoadService.LastPersistentSnapshotError;
+                        } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
+                            persistError = exception.GetType().Name + ": " + exception.Message;
+                        }
+                    } finally {
+                        restoreResult = AkronSaveLoadService.LoadRuntimeState(level, stateSlotName, allowDeadPlayer: true);
+                        if (playerSnapshot != null && level.Tracker.GetEntity<Player>() is Player restoredPlayer) {
+                            playerSnapshot.Restore(restoredPlayer);
+                        }
+                        level.Session.RespawnPoint = originalRespawnPoint;
+                    }
+
+                    if (persistResult == AkronSaveLoadResult.Success &&
+                        restoreResult == AkronSaveLoadResult.Success) {
+                        installedSnapshot = AkronStartPosReconstruction.PrepareSnapshotInstall(
+                            stateSlotName,
+                            stagingDirectory);
+                        if (!installedSnapshot.Install(out string installError)) {
+                            persistResult = AkronSaveLoadResult.Failed;
+                            persistError = installError;
+                        }
+                    }
+
+                    try {
+                        if (persistResult != AkronSaveLoadResult.Success || restoreResult != AkronSaveLoadResult.Success) {
+                            AkronSaveLoadService.DiscardRuntimeStateMemory(stateSlotName);
+                            bool persistenceFailed = persistResult != AkronSaveLoadResult.Success;
+                            AkronSaveLoadResult failedResult = persistenceFailed ? persistResult : restoreResult;
+                            string detail = persistenceFailed
+                                ? persistError
+                                : AkronSaveLoadService.LastPersistentSnapshotError;
+                            string message = "StartPos capture failed: " + failedResult +
+                                             (string.IsNullOrWhiteSpace(detail) ? "." : " at " + detail);
+                            Logger.Log(LogLevel.Warn, nameof(AkronActions), message);
+                            Engine.Scene?.Add(new AkronToast(message));
+                            completion?.Invoke(false);
+                            return;
+                        }
+
+                        if (!PersistStartPos(slot, startPos)) {
+                            AkronSaveLoadService.DiscardRuntimeStateMemory(stateSlotName);
+                            const string message = "StartPos capture failed: metadata could not be saved.";
+                            Logger.Log(LogLevel.Warn, nameof(AkronActions), message);
+                            Engine.Scene?.Add(new AkronToast(message));
+                            completion?.Invoke(false);
+                            return;
+                        }
+
+                        installedSnapshot.Commit();
+                        AkronSaveLoadService.DiscardRuntimeStateMemory(stateSlotName);
+                        AkronModule.Session.StartPositions[slot] = startPos;
+                        RelinkRuntimeRenderState(level);
+                        StartPosFrameGeneration++;
+                        Engine.Scene?.Add(new AkronToast(toast));
+                        completion?.Invoke(true);
+                    } finally {
+                        installedSnapshot?.Dispose();
+                        try {
+                            if (Directory.Exists(stagingDirectory)) {
+                                Directory.Delete(stagingDirectory, recursive: true);
+                            }
+                        } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
+                            Logger.Log(LogLevel.Warn, nameof(AkronActions),
+                                "Could not delete staged StartPos snapshot: " + exception.Message);
+                        }
+                    }
+                } finally {
+                    startPosCaptureInProgress = false;
+                }
+            };
+            try {
+                AkronModule.ScheduleAfterStableEngineUpdate(finishCapture);
+            } catch {
+                AkronSaveLoadService.DiscardRuntimeStateMemory(stateSlotName);
+                startPosCaptureInProgress = false;
+                completion?.Invoke(false);
+                throw;
+            }
+        });
     }
 
     private static void ApplyPlacedStartPosBeforeCapture(Level level, Player player, Vector2 position) {
@@ -137,6 +352,10 @@ public static partial class AkronActions {
         if (level == null || !AkronModule.TryUse(AkronFeatureKind.StartPosTools)) {
             return;
         }
+        if (startPosCaptureInProgress) {
+            Engine.Scene?.Add(new AkronToast("StartPos capture is still finishing."));
+            return;
+        }
 
         int slot = AkronModule.Settings.ActiveStartPosSlot;
         AkronStartPos startPos = GetStartPos(slot);
@@ -144,16 +363,26 @@ public static partial class AkronActions {
             Engine.Scene?.Add(new AkronToast("No StartPos saved in slot " + AkronModule.Settings.ActiveStartPosSlot + "."));
             return;
         }
-        if (!string.IsNullOrWhiteSpace(startPos.SnapshotLoadError)) {
-            Engine.Scene?.Add(new AkronToast("StartPos snapshot unavailable: " + startPos.SnapshotLoadError + "."));
-            return;
-        }
         if (!IsStartPosInArea(startPos, level.Session.Area.GetSID())) {
             Engine.Scene?.Add(new AkronToast("StartPos " + AkronModule.Settings.ActiveStartPosSlot + " belongs to " + startPos.AreaSid + "."));
             return;
         }
 
-        level.OnEndOfFrame += () => RestoreStartPos(level, startPos, "Loaded StartPos " + slot + ".", slot, enableRespawnAtStartPosAfterRestore: true);
+        AkronModule.ScheduleAfterStableEngineUpdate(() => {
+            if (Engine.Scene != level) {
+                return;
+            }
+            if (startPosCaptureInProgress) {
+                return;
+            }
+
+            RestoreStartPos(
+                level,
+                startPos,
+                "Loaded StartPos " + slot + ".",
+                slot,
+                enableRespawnAtStartPosAfterRestore: true);
+        });
     }
 
     public static void LoadStartPosSlot(Level level, int slot) {
@@ -170,7 +399,7 @@ public static partial class AkronActions {
     }
 
     public static void ClearStartPos(int slot) {
-        if (AkronModule.Session?.StartPositions == null) {
+        if (AkronModule.Session?.StartPositions == null || startPosCaptureInProgress) {
             return;
         }
 
@@ -180,10 +409,6 @@ public static partial class AkronActions {
             !string.IsNullOrWhiteSpace(startPos.StateSlotName)) {
             AkronSaveLoadService.ClearRuntimeState(startPos.StateSlotName);
         }
-        if (!string.IsNullOrWhiteSpace(startPos?.SnapshotPath)) {
-            AkronPersistentStartPosSnapshots.Delete(startPos.SnapshotPath);
-        }
-
         AkronModule.Session.StartPositions.Remove(clampedSlot);
         RemovePersistedStartPos(areaSid, clampedSlot);
         if (AkronModule.Session.LastLoadedStartPosSlot == clampedSlot) {
@@ -265,12 +490,15 @@ public static partial class AkronActions {
     }
 
     internal static void RestoreStartPosAfterDeath(Level level, AkronStartPos startPos) {
-        if (level == null || startPos == null) {
+        if (level == null || startPos == null || startPosCaptureInProgress) {
             return;
         }
 
-        level.OnEndOfFrame += () => {
+        AkronModule.ScheduleAfterStableEngineUpdate(() => {
             if (Engine.Scene != level) {
+                return;
+            }
+            if (startPosCaptureInProgress) {
                 return;
             }
 
@@ -284,7 +512,7 @@ public static partial class AkronActions {
                 SpotlightWipe.FocusPoint = respawnPoint - restoredLevel.Camera.Position;
             }
             restoredLevel.DoScreenWipe(wipeIn: true);
-        };
+        });
     }
 
     private static bool RestoreStartPos(Level level, AkronStartPos startPos, string toast, int loadedSlot = 0, bool endPlacementForLoad = true, bool enableRespawnAtStartPosAfterRestore = false) {
@@ -295,31 +523,19 @@ public static partial class AkronActions {
             if (endPlacementForLoad && !AkronModule.EndStartPosPlacementForLoad()) {
                 AkronModule.Settings.StartPosMousePlacement = false;
             }
-            if (string.IsNullOrWhiteSpace(startPos.StateSlotName)) {
-                restoredStartPos = RestoreImportedStartPosPosition(level, startPos, toast);
-                if (restoredStartPos && loadedSlot > 0) {
-                    AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;
-                }
-                return restoredStartPos;
-            }
-
             AkronSaveLoadResult restored = AkronSaveLoadService.LoadRuntimeState(level, startPos.StateSlotName, allowDeadPlayer: true);
             if (restored != AkronSaveLoadResult.Success) {
-                Engine.Scene?.Add(new AkronToast("StartPos state restore failed: " + restored + "."));
+                string detail = AkronSaveLoadService.LastPersistentSnapshotError;
+                string message = "StartPos state restore failed: " + restored +
+                                 (string.IsNullOrWhiteSpace(detail) ? "." : " at " + detail);
+                Logger.Log(LogLevel.Warn, nameof(AkronActions), message);
+                Engine.Scene?.Add(new AkronToast(message));
                 return false;
             }
 
             Level currentLevel = Engine.Scene as Level ?? level;
-            Player player = currentLevel.Tracker.GetEntity<Player>();
-            if (player != null) {
-                RemoveStartPosDeathArtifacts(currentLevel);
-                if (startPos.UsesSpawnConfig) {
-                    ApplyStartPosToPlayer(player, startPos);
-                }
-                currentLevel.Session.RespawnPoint = player.Position;
-                StartStartPosCameraFollow(currentLevel, player);
-            }
             RelinkRuntimeRenderState(currentLevel);
+            StartPosFrameGeneration++;
             if (loadedSlot > 0) {
                 AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;
             }
@@ -336,70 +552,7 @@ public static partial class AkronActions {
         return restoredStartPos;
     }
 
-    private static bool RestoreImportedStartPosPosition(Level level, AkronStartPos startPos, string toast) {
-        Level currentLevel = Engine.Scene as Level ?? level;
-        if (!string.Equals(currentLevel.Session?.Level, startPos.Room, StringComparison.Ordinal)) {
-            Engine.Scene?.Add(new AkronToast("Imported StartPos is in room " + startPos.Room + "."));
-            return false;
-        }
-
-        Player player = currentLevel.Tracker.GetEntity<Player>();
-        if (player == null) {
-            Engine.Scene?.Add(new AkronToast("Imported StartPos needs a live player."));
-            return false;
-        }
-
-        RemoveStartPosDeathArtifacts(currentLevel);
-        player.Position = startPos.Position;
-        if (startPos.UsesSpawnConfig) {
-            ApplyStartPosToPlayer(player, startPos);
-        }
-
-        currentLevel.Session.RespawnPoint = player.Position;
-        StartStartPosCameraFollow(currentLevel, player);
-        RelinkRuntimeRenderState(currentLevel);
-        Engine.Scene?.Add(new AkronToast(string.IsNullOrWhiteSpace(toast) ? "Loaded imported StartPos position." : toast));
-        return true;
-    }
-
-    private static void StartStartPosCameraFollow(Level level, Player player) {
-        if (level == null || player == null) {
-            return;
-        }
-
-        level.Camera.Position = ClampCameraToRoom(level, player.CameraTarget);
-        RelinkRuntimeRenderState(level);
-        level.Add(new AkronStartPosCameraFollow());
-    }
-
-    private sealed class AkronStartPosCameraFollow : Entity {
-        private int framesRemaining = 12;
-
-        public override void Update() {
-            base.Update();
-            if (Scene is not Level level) {
-                RemoveSelf();
-                return;
-            }
-
-            Player player = level.Tracker.GetEntity<Player>();
-            if (player == null || player.Dead) {
-                RemoveSelf();
-                return;
-            }
-
-            // StartPos restores do not run the vanilla respawn camera setup. Keep
-            // the camera attached briefly so copied savestate/free-camera state
-            // cannot pin the viewport at the load frame.
-            level.Camera.Position = ClampCameraToRoom(level, player.CameraTarget);
-            framesRemaining--;
-            if (framesRemaining <= 0) {
-                RemoveSelf();
-            }
-        }
-    }
-
-    private static void RelinkRuntimeRenderState(Level level) {
+    internal static void RelinkRuntimeRenderState(Level level) {
         if (level == null) {
             return;
         }
@@ -456,61 +609,10 @@ public static partial class AkronActions {
         }
     }
 
-    private static void ApplyStartPosToPlayer(Player player, AkronStartPos startPos) {
-        player.Dead = false;
-        player.Collidable = true;
-        player.Active = true;
-        player.Visible = true;
-        player.Depth = Depths.Player;
-
-        if (startPos.Idle) {
-            player.Speed = Vector2.Zero;
-            player.StateMachine.ForceState(Player.StNormal);
-        }
-
-        if (startPos.Dashes >= 0) {
-            player.Dashes = AkronModuleSettings.ClampStartPosDashes(startPos.Dashes);
-        }
-
-        if (startPos.StaminaPercent >= 0) {
-            player.Stamina = 110f * AkronModuleSettings.ClampStartPosStaminaPercent(startPos.StaminaPercent) / 100f;
-        }
-
-        if (startPos.Facing == AkronStartPosFacing.Left) {
-            player.Facing = Facings.Left;
-        } else if (startPos.Facing == AkronStartPosFacing.Right) {
-            player.Facing = Facings.Right;
-        }
-
-        if (startPos.Grab) {
-            player.Stamina = 110f;
-            player.StateMachine.ForceState(Player.StClimb);
-        }
-    }
-
-    private static void RemoveStartPosDeathArtifacts(Level level) {
-        if (level == null) {
-            return;
-        }
-
-        foreach (PlayerDeadBody deadBody in level.Entities.OfType<PlayerDeadBody>().ToList()) {
-            deadBody.RemoveSelf();
-        }
-    }
-
     private static Vector2 ClampToRoom(Level level, Vector2 position) {
         return new Vector2(
             Calc.Clamp(position.X, level.Bounds.Left, level.Bounds.Right),
             Calc.Clamp(position.Y, level.Bounds.Top, level.Bounds.Bottom));
-    }
-
-    private static Vector2 ClampCameraToRoom(Level level, Vector2 position) {
-        Rectangle bounds = level.Bounds;
-        float maxX = Math.Max(bounds.Left, bounds.Right - 320f);
-        float maxY = Math.Max(bounds.Top, bounds.Bottom - 180f);
-        return new Vector2(
-            Calc.Clamp(position.X, bounds.Left, maxX),
-            Calc.Clamp(position.Y, bounds.Top, maxY));
     }
 
     public static AkronStartPos GetActiveStartPos() {
@@ -604,12 +706,9 @@ public static partial class AkronActions {
     }
 
     private static bool HasRestorableStartPosState(AkronStartPos startPos) {
-        // Setup-pack imports only carry a position and spawn config, not a
-        // native runtime snapshot. RestoreStartPos handles that imported path
-        // when StateSlotName is empty, so list/load gates must not reject it.
         return startPos != null &&
-               ((string.IsNullOrWhiteSpace(startPos.StateSlotName) && string.IsNullOrWhiteSpace(startPos.SnapshotPath)) ||
-                AkronSaveLoadService.HasRuntimeState(startPos.StateSlotName));
+               !string.IsNullOrWhiteSpace(startPos.StateSlotName) &&
+               AkronSaveLoadService.HasRuntimeState(startPos.StateSlotName);
     }
 
     internal static void LoadStartPositionsForLevel(Level level) {
@@ -636,7 +735,12 @@ public static partial class AkronActions {
         return BuildRuntimeStartPositions(normalizedAreaSid, GetPersistedStartPositions(normalizedAreaSid));
     }
 
-    internal static void ReplaceAllStartPositions(Dictionary<int, AkronStartPos> startPositions, AkronModuleSession targetSession = null, string targetAreaSid = "") {
+    internal static void ReplaceAllStartPositions(
+        Dictionary<int, AkronStartPos> startPositions,
+        AkronModuleSession targetSession = null,
+        string targetAreaSid = "",
+        bool persistMetadata = true
+    ) {
         Dictionary<int, AkronStartPos> normalizedStartPositions = startPositions ?? new Dictionary<int, AkronStartPos>();
         AkronModuleSaveData saveData = AkronModule.Instance == null ? null : AkronModule.SaveData;
         if (saveData == null) {
@@ -673,10 +777,16 @@ public static partial class AkronActions {
                    string.Equals(NormalizeAreaSid(targetSession.LoadedStartPositionsAreaSid), areaSid, StringComparison.Ordinal)) {
             targetSession.StartPositions = BuildRuntimeStartPositions(areaSid, GetPersistedStartPositions(areaSid));
         }
-        SaveAkronStartPosData();
+        if (persistMetadata && !SaveAkronStartPosData()) {
+            throw new IOException("Could not persist StartPos metadata.");
+        }
     }
 
-    internal static void ReplacePersistedStartPositionsForMap(AkronModuleSaveData saveData, string targetAreaSid, Dictionary<int, AkronStartPos> startPositions) {
+    internal static void ReplacePersistedStartPositionsForMap(
+        AkronModuleSaveData saveData,
+        string targetAreaSid,
+        Dictionary<int, AkronStartPos> startPositions
+    ) {
         if (saveData == null) {
             throw new ArgumentNullException(nameof(saveData));
         }
@@ -694,8 +804,25 @@ public static partial class AkronActions {
             }
         }
 
+        int[] previousSlots = (saveData.StartPositionsByMap != null &&
+                               saveData.StartPositionsByMap.TryGetValue(areaSid, out AkronPersistedStartPosMap previousMap)
+            ? previousMap?.Slots?.Keys ?? Enumerable.Empty<int>()
+            : Enumerable.Empty<int>())
+            .Select(NormalizePositionSlot)
+            .Distinct()
+            .ToArray();
+        HashSet<int> replacementSlots = (startPositions ?? new Dictionary<int, AkronStartPos>())
+            .Where(pair => pair.Value != null)
+            .Select(pair => NormalizePositionSlot(pair.Key))
+            .ToHashSet();
         if (AkronModule.Instance != null) {
-            DeletePersistedSnapshotsForArea(areaSid);
+            foreach (int previousSlot in previousSlots) {
+                if (replacementSlots.Contains(previousSlot)) {
+                    DiscardStartPosRuntimeStateMemory(areaSid, previousSlot);
+                } else {
+                    ClearStartPosRuntimeState(areaSid, previousSlot);
+                }
+            }
         }
         AkronPersistedStartPosMap replacement = new AkronPersistedStartPosMap();
         foreach (KeyValuePair<int, AkronStartPos> pair in startPositions ?? new Dictionary<int, AkronStartPos>()) {
@@ -710,11 +837,9 @@ public static partial class AkronActions {
             }
 
             int slot = NormalizePositionSlot(pair.Key);
-            ClearStartPosRuntimeState(areaSid, slot);
+            DiscardStartPosRuntimeStateMemory(areaSid, slot);
             startPos.AreaSid = areaSid;
             startPos.StateSlotName = string.Empty;
-            startPos.SnapshotPath = string.Empty;
-            PersistImportedRoomStateSnapshot(areaSid, slot, startPos);
             replacement.Slots[slot] = ToPersistedStartPos(startPos);
         }
 
@@ -724,35 +849,6 @@ public static partial class AkronActions {
         } else {
             saveData.StartPositionsByMap[areaSid] = replacement;
         }
-    }
-
-    private static void PersistImportedRoomStateSnapshot(string areaSid, int slot, AkronStartPos startPos) {
-        if (startPos == null || string.IsNullOrWhiteSpace(startPos.ImportedRoomStateSnapshot)) {
-            return;
-        }
-
-        string normalizedAreaSid = NormalizeAreaSid(areaSid);
-        string stateSlotName = GetStartPosStateSlotName(normalizedAreaSid, slot);
-        string snapshotPath = GetStartPosSnapshotPath(normalizedAreaSid, slot);
-        if (AkronPersistentStartPosSnapshots.TryImportPortableRoomState(
-                startPos.ImportedRoomStateSnapshot,
-                snapshotPath,
-                stateSlotName,
-                normalizedAreaSid,
-                startPos.Room,
-                out string importError)) {
-            startPos.SnapshotPath = snapshotPath;
-            startPos.StateSlotName = string.Empty;
-            startPos.SnapshotLoadError = string.Empty;
-            startPos.ImportedRoomStateSnapshot = string.Empty;
-            return;
-        }
-
-        startPos.SnapshotPath = string.Empty;
-        startPos.StateSlotName = string.Empty;
-        startPos.SnapshotLoadError = string.Empty;
-        startPos.ImportedRoomStateSnapshot = string.Empty;
-        Logger.Log(LogLevel.Warn, nameof(AkronActions), "Ignored imported StartPos room-state snapshot for " + normalizedAreaSid + " slot " + slot + ": " + importError);
     }
 
     private static void EnsureStartPositionsLoaded(Level level) {
@@ -766,18 +862,39 @@ public static partial class AkronActions {
         }
     }
 
-    private static void PersistStartPos(int slot, AkronStartPos startPos) {
+    private static bool PersistStartPos(int slot, AkronStartPos startPos) {
         if (startPos == null) {
-            return;
+            return false;
         }
 
         string areaSid = NormalizeAreaSid(startPos.AreaSid);
         if (string.IsNullOrWhiteSpace(areaSid) || AkronModule.Instance == null || AkronModule.SaveData == null) {
-            return;
+            return false;
         }
 
-        GetOrCreatePersistedStartPosMap(areaSid).Slots[NormalizePositionSlot(slot)] = ToPersistedStartPos(startPos);
-        SaveAkronStartPosData();
+        Dictionary<string, AkronPersistedStartPosMap> maps = AkronModule.SaveData.StartPositionsByMap;
+        AkronPersistedStartPosMap previousMap = null;
+        bool hadMap = maps != null && maps.TryGetValue(areaSid, out previousMap);
+        maps ??= AkronModule.SaveData.StartPositionsByMap = new Dictionary<string, AkronPersistedStartPosMap>(StringComparer.Ordinal);
+        AkronPersistedStartPosMap map = GetOrCreatePersistedStartPosMap(areaSid);
+        int normalizedSlot = NormalizePositionSlot(slot);
+        bool hadSlot = map.Slots.TryGetValue(normalizedSlot, out AkronPersistedStartPos previousStartPos);
+        map.Slots[normalizedSlot] = ToPersistedStartPos(startPos);
+        if (SaveAkronStartPosData()) {
+            return true;
+        }
+
+        if (hadSlot) {
+            map.Slots[normalizedSlot] = previousStartPos;
+        } else {
+            map.Slots.Remove(normalizedSlot);
+        }
+        if (!hadMap) {
+            maps.Remove(areaSid);
+        } else if (!ReferenceEquals(map, previousMap)) {
+            maps[areaSid] = previousMap;
+        }
+        return false;
     }
 
     private static void RemovePersistedStartPos(string areaSid, int slot) {
@@ -789,34 +906,13 @@ public static partial class AkronActions {
 
         int normalizedSlot = NormalizePositionSlot(slot);
         ClearStartPosRuntimeState(normalizedAreaSid, normalizedSlot);
-        if (map.Slots != null && map.Slots.TryGetValue(normalizedSlot, out AkronPersistedStartPos persisted)) {
-            if (!string.IsNullOrWhiteSpace(persisted?.SnapshotPath)) {
-                AkronPersistentStartPosSnapshots.Delete(persisted.SnapshotPath);
-            }
-            AkronPersistentStartPosSnapshots.Delete(GetStartPosSnapshotPath(normalizedAreaSid, normalizedSlot));
+        if (map.Slots != null) {
             map.Slots.Remove(normalizedSlot);
         }
         if (map.Slots == null || map.Slots.Count == 0) {
             maps.Remove(normalizedAreaSid);
         }
         SaveAkronStartPosData();
-    }
-
-    private static void DeletePersistedSnapshotsForArea(string areaSid) {
-        Dictionary<string, AkronPersistedStartPosMap> maps = AkronModule.SaveData?.StartPositionsByMap;
-        string normalizedAreaSid = NormalizeAreaSid(areaSid);
-        if (maps == null || string.IsNullOrWhiteSpace(normalizedAreaSid) || !maps.TryGetValue(normalizedAreaSid, out AkronPersistedStartPosMap map)) {
-            return;
-        }
-
-        foreach (KeyValuePair<int, AkronPersistedStartPos> pair in map.Slots ?? new Dictionary<int, AkronPersistedStartPos>()) {
-            int slot = NormalizePositionSlot(pair.Key);
-            ClearStartPosRuntimeState(normalizedAreaSid, slot);
-            if (!string.IsNullOrWhiteSpace(pair.Value?.SnapshotPath)) {
-                AkronPersistentStartPosSnapshots.Delete(pair.Value.SnapshotPath);
-            }
-            AkronPersistentStartPosSnapshots.Delete(GetStartPosSnapshotPath(normalizedAreaSid, slot));
-        }
     }
 
     private static void ClearStartPosRuntimeState(string areaSid, int slot) {
@@ -826,6 +922,16 @@ public static partial class AkronActions {
         }
 
         AkronSaveLoadService.ClearRuntimeState(GetStartPosStateSlotName(normalizedAreaSid, slot));
+    }
+
+    private static void DiscardStartPosRuntimeStateMemory(string areaSid, int slot) {
+        string normalizedAreaSid = NormalizeAreaSid(areaSid);
+        if (string.IsNullOrWhiteSpace(normalizedAreaSid)) {
+            return;
+        }
+
+        AkronSaveLoadService.ClearRuntimeStateExceptPersistentSnapshot(
+            GetStartPosStateSlotName(normalizedAreaSid, slot));
     }
 
     private static AkronPersistedStartPosMap GetOrCreatePersistedStartPosMap(string areaSid) {
@@ -868,22 +974,8 @@ public static partial class AkronActions {
             int slot = NormalizePositionSlot(pair.Key);
             string entryAreaSid = string.IsNullOrWhiteSpace(entry.AreaSid) ? normalizedAreaSid : NormalizeAreaSid(entry.AreaSid);
             string stateSlotName = GetStartPosStateSlotName(entryAreaSid, slot);
-            string snapshotPath = entry.SnapshotPath ?? string.Empty;
-            string snapshotLoadError = string.Empty;
-            if (!string.IsNullOrWhiteSpace(snapshotPath) &&
-                !AkronSaveLoadService.HasRuntimeState(stateSlotName)) {
-                if (AkronPersistentStartPosSnapshots.TryLoad(snapshotPath, stateSlotName, entryAreaSid, out AkronSaveLoadSlot loadedSlot, out string loadError)) {
-                    try {
-                        AkronSaveLoadService.HydrateRuntimeState(stateSlotName, loadedSlot);
-                    } catch (Exception exception) {
-                        snapshotLoadError = exception.GetType().Name + ": " + exception.Message;
-                    }
-                } else {
-                    snapshotLoadError = loadError;
-                }
-                if (!string.IsNullOrWhiteSpace(snapshotLoadError)) {
-                    Logger.Log(LogLevel.Warn, nameof(AkronActions), "Failed to hydrate StartPos snapshot " + stateSlotName + ": " + snapshotLoadError);
-                }
+            if (!AkronSaveLoadService.HasRuntimeState(stateSlotName)) {
+                continue;
             }
 
             startPositions[slot] = new AkronStartPos {
@@ -896,9 +988,7 @@ public static partial class AkronActions {
                 Facing = entry.Facing,
                 Idle = entry.Idle,
                 Grab = entry.Grab,
-                SnapshotPath = snapshotPath,
-                SnapshotLoadError = snapshotLoadError,
-                StateSlotName = AkronSaveLoadService.HasRuntimeState(stateSlotName) ? stateSlotName : string.Empty
+                StateSlotName = stateSlotName
             };
         }
 
@@ -916,16 +1006,17 @@ public static partial class AkronActions {
             StaminaPercent = startPos.StaminaPercent,
             Facing = startPos.Facing,
             Idle = startPos.Idle,
-            Grab = startPos.Grab,
-            SnapshotPath = startPos.SnapshotPath ?? string.Empty
+            Grab = startPos.Grab
         };
     }
 
-    private static void SaveAkronStartPosData() {
+    internal static bool SaveAkronStartPosData() {
         try {
             UserIO.SaveHandler(true, true);
+            return true;
         } catch (Exception exception) {
             Logger.Log(LogLevel.Warn, nameof(AkronActions), "Failed to save persisted StartPos metadata: " + exception.Message);
+            return false;
         }
     }
 
@@ -971,16 +1062,25 @@ public static partial class AkronActions {
         return GetStartPosStateSlotName(GetLoadedAreaSid(), slot);
     }
 
-    private static string GetStartPosStateSlotName(string areaSid, int slot) {
-        return "Akron StartPos " + SanitizeStartPosKey(areaSid) + " " + NormalizePositionSlot(slot).ToString(CultureInfo.InvariantCulture);
+    internal static string GetStartPosStateSlotName(string areaSid, int slot) {
+        return GetStartPosStateSlotName(areaSid, slot, SaveData.Instance?.FileSlot ?? -1);
     }
 
-    internal static string GetStartPosStateSlotNameForSetupPack(string areaSid, int slot) {
-        return GetStartPosStateSlotName(areaSid, slot);
+    internal static string GetStartPosStateSlotName(string areaSid, int slot, int fileSlot) {
+        return StartPosStateSlotPrefix +
+               "File " + fileSlot.ToString(CultureInfo.InvariantCulture) + " " +
+               SanitizeStartPosKey(areaSid) + " " +
+               NormalizePositionSlot(slot).ToString(CultureInfo.InvariantCulture);
     }
 
-    private static string GetStartPosSnapshotPath(string areaSid, int slot) {
-        return Path.Combine("StartPosSnapshots", SanitizeStartPosKey(areaSid), NormalizePositionSlot(slot).ToString(CultureInfo.InvariantCulture) + ".akron-startpos");
+    internal static void RefreshStartPositionsAfterSnapshotImport(string areaSid, AkronModuleSession targetSession) {
+        string normalizedAreaSid = NormalizeAreaSid(areaSid);
+        if (Engine.Scene is Level level && string.Equals(GetAreaSid(level), normalizedAreaSid, StringComparison.Ordinal)) {
+            LoadStartPositionsForLevel(level);
+        } else if (targetSession != null) {
+            targetSession.LoadedStartPositionsAreaSid = normalizedAreaSid;
+            targetSession.StartPositions = BuildRuntimeStartPositions(normalizedAreaSid, GetPersistedStartPositions(normalizedAreaSid));
+        }
     }
 
     private static string GetAreaSid(Level level) {

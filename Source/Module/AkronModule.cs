@@ -14,6 +14,7 @@ using FMOD.Studio;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Mono.Cecil;
 using MonoMod.ModInterop;
 using Mono.Cecil.Cil;
 using MonoMod.Cil;
@@ -88,6 +89,8 @@ public partial class AkronModule : EverestModule {
     private static readonly Dictionary<PlayerDeadBody, float> respawnTimeElapsed = new Dictionary<PlayerDeadBody, float>();
     private static readonly HashSet<PlayerDeadBody> noDeathEffectBodies = new HashSet<PlayerDeadBody>();
     private static bool renderCoreDiagnosticLogged;
+    private static ulong renderedStartPosFrameGeneration;
+    private static readonly Queue<Action> afterEngineUpdateActions = new Queue<Action>();
     private static readonly MethodInfo CreateKeyboardConfigUiMethod =
         typeof(EverestModule).GetMethod("CreateKeyboardConfigUI", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
     private static readonly MethodInfo CreateButtonConfigUiMethod =
@@ -123,6 +126,7 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Load() {
+        renderedStartPosFrameGeneration = AkronActions.StartPosFrameGeneration;
         AkronModuleSettings.EnsureCurrentKeybindDefaults(Settings);
         AkronModuleSettings.ClearOneShotRuntimeActions(Settings);
         AkronLog.Normal(nameof(AkronModule), "load start; " + AkronLog.DescribeSettings());
@@ -138,9 +142,11 @@ public partial class AkronModule : EverestModule {
             Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed; continuing so the module menu and overlay can still load: " + exception);
         }
         On.Celeste.Level.Begin += LevelOnBegin;
+        On.Celeste.Level.End += LevelOnEnd;
         On.Celeste.Level.UpdateTime += LevelOnUpdateTime;
         On.Celeste.Level.Update += LevelOnUpdate;
         On.Celeste.Level.BeforeRender += LevelOnBeforeRender;
+        IL.Celeste.Level.Render += LevelOnRenderForStartPosPresentation;
         On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent += HudRendererOnRenderContent;
         On.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiOnRender;
@@ -253,6 +259,7 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Unload() {
+        AkronGameplayBufferState.ResetLevelPresentation();
         AkronAudioSplitter.Unload();
         SaveAkronSettingsNow("unload");
         AkronLog.FlushDiagnosticSummaries();
@@ -263,9 +270,11 @@ public partial class AkronModule : EverestModule {
         AkronNativeSavestateSupport.Reset();
         AkronSaveLoadService.ClearRuntimeState();
         On.Celeste.Level.Begin -= LevelOnBegin;
+        On.Celeste.Level.End -= LevelOnEnd;
         On.Celeste.Level.UpdateTime -= LevelOnUpdateTime;
         On.Celeste.Level.Update -= LevelOnUpdate;
         On.Celeste.Level.BeforeRender -= LevelOnBeforeRender;
+        IL.Celeste.Level.Render -= LevelOnRenderForStartPosPresentation;
         On.Celeste.GameplayRenderer.Render -= GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent -= HudRendererOnRenderContent;
         On.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiOnRender;
@@ -327,6 +336,7 @@ public partial class AkronModule : EverestModule {
         lookoutRoutineHook = null;
         respawnTimeElapsed.Clear();
         noDeathEffectBodies.Clear();
+        afterEngineUpdateActions.Clear();
         RestoreCursorVisibility();
         RestoreNativeAssistInvincibility();
         RestoreNoclipDepth();
@@ -388,17 +398,38 @@ public partial class AkronModule : EverestModule {
         Overlay?.PrewarmLayout(self);
     }
 
+    private static void LevelOnEnd(On.Celeste.Level.orig_End orig, Level self) {
+        AkronGameplayBufferState.ResetLevelPresentation();
+        orig(self);
+    }
+
     private static void LevelOnUpdate(On.Celeste.Level.orig_Update orig, Level self) {
+        ulong startPosFrameGeneration = AkronActions.StartPosFrameGeneration;
+        if (startPosFrameGeneration != renderedStartPosFrameGeneration) {
+            // A fixed-timestep game loop can run more than one update before a
+            // render. Keep the saved frame unchanged until it is actually drawn.
+            AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
+            return;
+        }
         RunDeferredScreenWipeAction();
+        if (AkronActions.StartPosFrameGeneration != startPosFrameGeneration) {
+            return;
+        }
         UpdateDeathWipeRenderSuppression();
         UpdateStateTransitionRenderSuppression();
         EnsureOverlay(self);
         AkronScreenshotScanner.MaintainActiveScanHost(self);
         AkronAutomationService.ProcessPendingCommands(self);
+        if (AkronActions.StartPosFrameGeneration != startPosFrameGeneration) {
+            return;
+        }
 #if DEBUG
         StressUpdate(self);
 #endif
         HandleHotkeys(self);
+        if (AkronActions.StartPosFrameGeneration != startPosFrameGeneration) {
+            return;
+        }
         if (Settings.InputViewer || Settings.InputHistoryPanel || Settings.InputHistoryShowOnDeath || Settings.ShowTaps) {
             AkronInputHistory.RecordFrame();
         }
@@ -415,6 +446,9 @@ public partial class AkronModule : EverestModule {
             Overlay.Update();
             overlayUpdated = true;
             UpdateOverlayCursorState();
+            if (AkronActions.StartPosFrameGeneration != startPosFrameGeneration) {
+                return;
+            }
             if (Overlay.SearchOwnsGameplayInputThisFrame) {
                 AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
                 return;
@@ -465,6 +499,7 @@ public partial class AkronModule : EverestModule {
         AkronInternalRecorder.Update(self);
         UpdateProofRecorderGuard(self);
     }
+
 
     private static void UpdateLevelEnterSkip(LevelEnter self) {
         if (self == null || Engine.Scene != self || Session == null) {
@@ -627,6 +662,47 @@ public partial class AkronModule : EverestModule {
         }
     }
 
+    internal static void ScheduleAfterEngineUpdate(Action action) {
+        if (action != null) {
+            afterEngineUpdateActions.Enqueue(action);
+        }
+    }
+
+    internal static void ScheduleAfterStableEngineUpdate(Action action) {
+        if (action == null) {
+            return;
+        }
+
+        ScheduleAfterEngineUpdate(RunWhenStable);
+        void RunWhenStable() {
+            // A mod can wrap Akron's Engine.Update hook and keep Calc.PushRandom
+            // active until Akron returns. Reloading a room inside that scope
+            // destroys the stack before its owner can pop it. Wait until no
+            // temporary random scope is active, then perform the state change.
+            if (AkronRandomState.HasActiveScope) {
+                ScheduleAfterEngineUpdate(RunWhenStable);
+                return;
+            }
+
+            action();
+        }
+    }
+
+    private static void RunAfterEngineUpdateActions() {
+        // Drain only the actions that existed at this boundary. An action can
+        // schedule the next capture phase, which must wait for another complete
+        // engine update so a freshly loaded room can initialize normally.
+        int count = afterEngineUpdateActions.Count;
+        for (int index = 0; index < count; index++) {
+            try {
+                afterEngineUpdateActions.Dequeue().Invoke();
+            } catch (Exception exception) {
+                Logger.Log(LogLevel.Error, nameof(AkronModule),
+                    "Deferred engine-update action failed: " + exception);
+            }
+        }
+    }
+
     private static void ClearLastDeathHitboxAfterRespawn(Level level) {
         if (!AkronEntityInspector.HasVisibleLastDeathHitbox()) {
             return;
@@ -661,6 +737,34 @@ public partial class AkronModule : EverestModule {
             int removed = AkronSaveLoadService.RemoveClonedVisualRuntimeEntities(self);
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Recovered from DustEdges.BeforeRender crash by removing " + removed + " cloned visual runtime entity/entities.");
         }
+    }
+
+    private static void LevelOnRenderForStartPosPresentation(ILContext context) {
+        ILCursor cursor = new ILCursor(context);
+        // Level.Render first builds GameplayBuffers.Level, then unbinds that
+        // target before drawing it to the screen. Replace the rebuilt pixels at
+        // that exact point so the normal color-grade, zoom, HUD, and wipe path
+        // presents the saved Set frame without duplicating Celeste's renderer.
+        if (!cursor.TryGotoNext(
+                MoveType.After,
+                instruction => instruction.OpCode == OpCodes.Ldsfld &&
+                               instruction.Operand is FieldReference field &&
+                               field.DeclaringType.FullName == typeof(GameplayBuffers).FullName &&
+                               field.Name == nameof(GameplayBuffers.Level)) ||
+            !cursor.TryGotoNext(
+                MoveType.After,
+                instruction => instruction.MatchCallvirt<GraphicsDevice>("SetRenderTarget")) ||
+            !cursor.TryGotoNext(
+                MoveType.After,
+                instruction => instruction.MatchLdnull(),
+                instruction => instruction.MatchCallvirt<GraphicsDevice>("SetRenderTarget"))) {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule),
+                "Could not install exact StartPos frame presentation hook.");
+            return;
+        }
+
+        cursor.Emit(OpCodes.Ldarg_0);
+        cursor.EmitDelegate<Action<Level>>(AkronGameplayBufferState.PresentArmedLevelBuffer);
     }
 
     private static bool IsDustEdgesBeforeRenderCrash(Exception ex) {
@@ -1274,12 +1378,21 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void EngineOnRenderCore(On.Monocle.Engine.orig_RenderCore orig, Engine self) {
+        // The render boundary runs after every Engine.Update wrapper has
+        // returned. A helper can therefore release a temporary random scope
+        // before a deferred StartPos capture or restore checks for stability.
+        RunAfterEngineUpdateActions();
         orig(self);
         UpdateStateTransitionRenderSuppression();
         Scene scene = Engine.Scene;
         bool isLevelScene = scene is Level;
 
         if (scene is Level level) {
+            // Read the completed 320x180 room buffer before Akron draws its HUD.
+            // StartPos restoration tests need exact game pixels without timer text or
+            // desktop compositor noise.
+            AkronCapture.CapturePendingGameplayBufferQaFrame();
+            renderedStartPosFrameGeneration = AkronActions.StartPosFrameGeneration;
             AkronInternalRecorder.CaptureFrame(level);
             if (deathWipeRenderSuppressionActive && level.Transitioning) {
                 deathWipeRenderSuppressionHasDrawnPrimitives = true;

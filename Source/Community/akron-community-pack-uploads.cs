@@ -189,8 +189,9 @@ public static class AkronCommunityPackUploads {
                           + AkronArchive.Extension;
         string path = Path.Combine(GetTempUploadDirectory(), fileName);
         AkronSetupPack pack = BuildScopedUploadPack(AkronModule.Settings, AkronModule.Session, title, section, mapSid);
-        AkronArchive.WriteSinglePayloadArchive(
+        AkronSetupPacks.WriteArchive(
             path,
+            pack,
             new AkronArchiveManifest {
                 Kind = AkronSetupPacks.SetupArchiveKind,
                 KindVersion = 1,
@@ -199,9 +200,7 @@ public static class AkronCommunityPackUploads {
                     Game = "Celeste",
                     MapSid = mapSid?.Trim() ?? string.Empty
                 }
-            },
-            AkronSetupPacks.SetupArchivePayload,
-            AkronSetupPacks.SerializePackPayloadForArchive(pack));
+            });
         return path;
     }
 
@@ -213,6 +212,10 @@ public static class AkronCommunityPackUploads {
         string mapSid) {
         mapSid = mapSid?.Trim() ?? string.Empty;
         section = NormalizeUploadSection(section);
+        Dictionary<int, string> snapshotSourcePaths = new Dictionary<int, string>();
+        Dictionary<int, AkronStartPosPackEntry> startPositions = section == AkronSetupSection.StartPos
+            ? AkronSetupPacks.CaptureStartPositions(session, mapSid, out snapshotSourcePaths)
+            : new Dictionary<int, AkronStartPosPackEntry>();
         return new AkronSetupPack {
             Name = string.IsNullOrWhiteSpace(title) ? GenerateTitle("Akron", section) : title,
             CreatedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
@@ -220,9 +223,8 @@ public static class AkronCommunityPackUploads {
             State = BuildSectionOnlyUploadState(settings, section),
             ButtonBindings = new Dictionary<string, AkronButtonBindingPack>(),
             MenuActionBindings = new Dictionary<string, string>(),
-            StartPositions = section == AkronSetupSection.StartPos
-                ? CaptureUploadStartPositions(session, mapSid)
-                : new Dictionary<int, AkronStartPosPackEntry>()
+            StartPositions = startPositions,
+            SnapshotSourcePaths = snapshotSourcePaths
         };
     }
 
@@ -242,35 +244,6 @@ public static class AkronCommunityPackUploads {
                 break;
         }
         return target;
-    }
-
-    private static Dictionary<int, AkronStartPosPackEntry> CaptureUploadStartPositions(AkronModuleSession session, string mapSid) {
-        Dictionary<int, AkronStartPosPackEntry> entries = new Dictionary<int, AkronStartPosPackEntry>();
-        foreach (KeyValuePair<int, AkronStartPos> pair in session?.StartPositions ?? new Dictionary<int, AkronStartPos>()) {
-            AkronStartPos startPos = pair.Value;
-            if (startPos == null || !string.Equals(startPos.AreaSid ?? string.Empty, mapSid, StringComparison.Ordinal)) {
-                continue;
-            }
-
-            entries[pair.Key] = new AkronStartPosPackEntry {
-                X = startPos.Position.X,
-                Y = startPos.Position.Y,
-                Room = startPos.Room,
-                AreaSid = startPos.AreaSid,
-                RoomStateSnapshot = AkronPersistentStartPosSnapshots.CapturePortableRoomStateSnapshot(
-                    pair.Key,
-                    startPos,
-                    nameof(AkronCommunityPackUploads),
-                    "Upload Pack StartPos"),
-                UsesSpawnConfig = startPos.UsesSpawnConfig,
-                Dashes = startPos.Dashes,
-                StaminaPercent = startPos.StaminaPercent,
-                Facing = startPos.Facing,
-                Idle = startPos.Idle,
-                Grab = startPos.Grab
-            };
-        }
-        return entries;
     }
 
     private static void CopyStartPosUploadState(AkronSetupState target, AkronSetupState source) {
@@ -970,7 +943,7 @@ public static class AkronCommunityPackUploads {
             try {
                 SetUploadStatus("Creating .akr pack...", 0.04f);
                 packPath = WriteTempArchive(draft.Section, draft.Title, draft.MapSid);
-            } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is InvalidOperationException) {
+            } catch (Exception exception) when (exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException) {
                 FailUpload("Could not create temp upload archive: " + exception.Message, exception, "Could not create the .akr file.");
                 yield break;
             }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Text.Json;
@@ -41,6 +42,84 @@ public sealed class ArchiveTests : IDisposable {
         Assert.Equal("akron-archive", readManifest.Format);
         Assert.Equal("hud-labels", readManifest.Kind);
         Assert.Equal("Celeste/7-Summit", readManifest.Target.MapSid);
+    }
+
+    [Fact]
+    public void PayloadArchiveRoundTripsDeclaredBinaryAttachment() {
+        string path = Path.Combine(directory, "setup.akr");
+        string attachmentPath = Path.Combine(directory, "snapshot.gz");
+        File.WriteAllBytes(attachmentPath, new byte[] { 1, 2, 3, 4 });
+
+        AkronArchive.WritePayloadArchive(
+            path,
+            CreateManifest("setup"),
+            "setup.json",
+            "{}",
+            new Dictionary<string, string> { ["startpos/1.v6.json.gz"] = attachmentPath });
+
+        string payload = AkronArchive.ReadPayloadArchive(
+            path,
+            "setup",
+            "setup.json",
+            4096,
+            1,
+            4096,
+            out _,
+            out string[] attachmentNames);
+
+        Assert.Equal("{}", payload);
+        Assert.Equal(new[] { "startpos/1.v6.json.gz" }, attachmentNames);
+        Assert.Equal(new byte[] { 1, 2, 3, 4 }, AkronArchive.ReadBinaryEntry(path, attachmentNames[0], 4096));
+    }
+
+    [Fact]
+    public void PayloadArchiveRejectsTooManyAttachmentsOnRead() {
+        string path = Path.Combine(directory, "too-many-attachments.akr");
+        using (ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create)) {
+            WriteEntry(archive, "manifest.json", JsonSerializer.Serialize(
+                CreateManifest("setup"),
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+            WriteEntry(archive, "setup.json", "{}");
+            WriteEntry(archive, "startpos/1.v6.json.gz", "one");
+            WriteEntry(archive, "startpos/2.v6.json.gz", "two");
+        }
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() => AkronArchive.ReadPayloadArchive(
+            path,
+            "setup",
+            "setup.json",
+            4096,
+            maxAttachmentCount: 1,
+            maxTotalAttachmentBytes: 4096,
+            out _,
+            out _));
+
+        Assert.Contains("attachments exceed", exception.Message);
+    }
+
+    [Fact]
+    public void PayloadArchiveRejectsOversizedAttachmentSetOnRead() {
+        string path = Path.Combine(directory, "oversized-attachments.akr");
+        using (ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create)) {
+            WriteEntry(archive, "manifest.json", JsonSerializer.Serialize(
+                CreateManifest("setup"),
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+            WriteEntry(archive, "setup.json", "{}");
+            WriteEntry(archive, "startpos/1.v6.json.gz", "12345");
+            WriteEntry(archive, "startpos/2.v6.json.gz", "67890");
+        }
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() => AkronArchive.ReadPayloadArchive(
+            path,
+            "setup",
+            "setup.json",
+            4096,
+            maxAttachmentCount: 2,
+            maxTotalAttachmentBytes: 9,
+            out _,
+            out _));
+
+        Assert.Contains("attachments exceed", exception.Message);
     }
 
     [Fact]

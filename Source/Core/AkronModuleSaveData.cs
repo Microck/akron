@@ -24,7 +24,6 @@ public sealed class AkronPersistedStartPos {
     public AkronStartPosFacing Facing { get; set; } = AkronStartPosFacing.Current;
     public bool Idle { get; set; }
     public bool Grab { get; set; }
-    public string SnapshotPath { get; set; } = string.Empty;
 }
 
 public sealed class AkronPersistedStartPosMap {

@@ -431,7 +431,7 @@ public sealed class CommunityPackTests {
         Directory.CreateDirectory(tempDirectory);
         AkronCommunityPacks.SetSetupDirectoryProviderForTest(() => tempDirectory);
         string sourcePath = Path.Combine(tempDirectory, "oversized.akr");
-        File.WriteAllBytes(sourcePath, new byte[4 * 1024 * 1024 + 1]);
+        File.WriteAllBytes(sourcePath, new byte[] { 1 });
         try {
             AkronCommunityPackEntry entry = new AkronCommunityPackEntry {
                 Id = "oversized",
@@ -440,7 +440,7 @@ public sealed class CommunityPackTests {
                 MapSid = "Maps/Current",
                 DownloadUrl = new Uri(sourcePath).AbsoluteUri,
                 Sha256 = new string('0', 64),
-                SizeBytes = 4 * 1024 * 1024 + 1
+                SizeBytes = 512 * 1024 * 1024 + 1
             };
 
             Assert.False(AkronCommunityPacks.Import(entry, out string message));

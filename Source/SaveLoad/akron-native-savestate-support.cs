@@ -15,6 +15,134 @@ using MonoMod.Utils;
 
 namespace Celeste.Mod.Akron;
 
+internal sealed class AkronRandomState {
+    private static readonly FieldInfo RandomStackField = typeof(Calc).GetField(
+        "randomStack",
+        BindingFlags.Static | BindingFlags.NonPublic
+    ) ?? throw new InvalidOperationException("Monocle.Calc.randomStack is unavailable.");
+
+    private static readonly MethodInfo MemberwiseCloneMethod = typeof(object).GetMethod(
+        "MemberwiseClone",
+        BindingFlags.Instance | BindingFlags.NonPublic
+    ) ?? throw new InvalidOperationException("System.Object.MemberwiseClone is unavailable.");
+
+    private readonly Random currentRandom;
+    private readonly Random[] randomStackTopFirst;
+
+    private AkronRandomState(Random currentRandom, Random[] randomStackTopFirst) {
+        this.currentRandom = currentRandom;
+        this.randomStackTopFirst = randomStackTopFirst;
+    }
+
+    public static AkronRandomState Capture() {
+        Stack<Random> randomStack = GetRandomStack();
+        return new AkronRandomState(
+            CloneRandom(Calc.Random),
+            randomStack.Select(CloneRandom).ToArray()
+        );
+    }
+
+    public static AkronRandomState CaptureStable() {
+        Stack<Random> randomStack = GetRandomStack();
+        // PushRandom stores the prior generator in the stack. The bottom item
+        // is therefore the generator Celeste will use after every temporary
+        // scope has unwound. StartPos resumes at a frame boundary, so persisting
+        // that generator avoids restoring another mod's half-finished scope.
+        Random stableRandom = randomStack.Count == 0 ? Calc.Random : randomStack.Last();
+        return new AkronRandomState(CloneRandom(stableRandom), Array.Empty<Random>());
+    }
+
+    public static bool HasActiveScope => GetRandomStack().Count > 0;
+
+    public void Restore() {
+        Stack<Random> currentStack = GetRandomStack();
+        if (randomStackTopFirst.Length == 0 && currentStack.Count > 0) {
+            // A stable frame snapshot represents the base generator, not a
+            // temporary PushRandom scope owned by another mod. Keep the active
+            // generator and stack object intact, but replace the bottom entry
+            // so the saved base generator resumes after every scope unwinds.
+            Random[] activeStackTopFirst = currentStack.ToArray();
+            activeStackTopFirst[^1] = CloneRandom(currentRandom);
+            currentStack.Clear();
+            foreach (Random generator in activeStackTopFirst.Reverse()) {
+                currentStack.Push(generator);
+            }
+            return;
+        }
+
+        Calc.Random = CloneRandom(currentRandom);
+
+        // Stack<T> enumerates from top to bottom, but its constructor pushes in
+        // enumeration order. Reverse the saved order so the same RNG stays on top.
+        Stack<Random> restoredStack = new Stack<Random>(randomStackTopFirst
+            .Reverse()
+            .Select(CloneRandom));
+        RandomStackField.SetValue(null, restoredStack);
+    }
+
+    private static Stack<Random> GetRandomStack() {
+        // Calc initializes this field lazily in some Celeste builds. A null
+        // field has the same meaning as an empty stack before the first scope.
+        return RandomStackField.GetValue(null) as Stack<Random> ?? new Stack<Random>();
+    }
+
+    private static Random CloneRandom(Random source) {
+        if (source == null) {
+            return null;
+        }
+        return (Random) CloneObjectGraph(source, new Dictionary<object, object>(ReferenceEqualityComparer.Instance));
+    }
+
+    private static object CloneObjectGraph(object source, Dictionary<object, object> visited) {
+        Type type = source.GetType();
+        if (IsDeeplyImmutable(type)) {
+            return source;
+        }
+        if (visited.TryGetValue(source, out object existingClone)) {
+            return existingClone;
+        }
+
+        if (source is Array sourceArray) {
+            Array clonedArray = (Array) sourceArray.Clone();
+            visited[source] = clonedArray;
+            if (!IsDeeplyImmutable(sourceArray.GetType().GetElementType())) {
+                for (int index = 0; index < sourceArray.Length; index++) {
+                    object item = sourceArray.GetValue(index);
+                    if (item != null) {
+                        clonedArray.SetValue(CloneObjectGraph(item, visited), index);
+                    }
+                }
+            }
+            return clonedArray;
+        }
+
+        object clone = MemberwiseCloneMethod.Invoke(source, Array.Empty<object>());
+        visited[source] = clone;
+        for (Type currentType = type; currentType != null; currentType = currentType.BaseType) {
+            foreach (FieldInfo field in currentType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)) {
+                if (IsDeeplyImmutable(field.FieldType)) {
+                    continue;
+                }
+
+                object fieldValue = field.GetValue(source);
+                if (fieldValue != null) {
+                    field.SetValue(clone, CloneObjectGraph(fieldValue, visited));
+                }
+            }
+        }
+        return clone;
+    }
+
+    private static bool IsDeeplyImmutable(Type type) {
+        return type.IsPrimitive ||
+               type.IsEnum ||
+               type == typeof(string) ||
+               type == typeof(decimal) ||
+               type == typeof(IntPtr) ||
+               type == typeof(UIntPtr);
+    }
+}
+
 internal static class AkronNativeSavestateSupport {
     private static bool initialized;
     private static readonly List<IDisposable> InstalledHooks = new List<IDisposable>();
@@ -51,8 +179,8 @@ internal static class AkronNativeSavestateSupport {
     }
 
     internal static bool ShouldReturnSameObjectForNativeClone(Type type) {
-        return type == typeof(Type) ||
-               type == typeof(DustEdges) ||
+        return type == typeof(AkronRandomState) ||
+               type == typeof(Type) ||
                // Level snapshots own gameplay state, not GPU resources. Cloning FNA
                // GraphicsResource instances creates unregistered wrapper objects whose
                // finalizers can dispose texture handles that belong to the live game.
@@ -89,11 +217,14 @@ internal static class AkronNativeSavestateSupport {
                     nameof(Engine.RawDeltaTime),
                     "TimeRate",
                     "TimeRateB");
-                // System.Random internals changed under the .NET Core runtime used by
-                // the shipped Akron build. Deep-cloning Calc.Random and randomStack via
-                // uninitialized-object copying can restore an invalid RNG instance and
-                // crash vanilla Level.Update / DustEdges on the first frame after load.
-                // Akron keeps the native path stable by not snapshotting Calc RNG state.
+                // Force.DeepCloner cannot safely construct the runtime-specific
+                // System.Random implementation. Keep a valid memberwise clone instead,
+                // including Calc's nested RNG stack, so later random events repeat.
+                savedValues[typeof(Calc)] = new Dictionary<string, object> {
+                    ["RandomState"] = AkronSaveLoadService.CurrentSlotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal)
+                        ? AkronRandomState.CaptureStable()
+                        : AkronRandomState.Capture()
+                };
                 AkronSaveLoadService.SaveStaticMembers(savedValues, typeof(Glitch), nameof(Glitch.Value));
                 AkronSaveLoadService.SaveStaticMembers(savedValues, typeof(Distort), nameof(Distort.Anxiety), nameof(Distort.GameRate));
                 AkronSaveLoadService.SaveStaticMembers(savedValues, typeof(ScreenWipe), nameof(ScreenWipe.WipeColor));
@@ -139,6 +270,10 @@ internal static class AkronNativeSavestateSupport {
                     nameof(Engine.RawDeltaTime),
                     "TimeRate",
                     "TimeRateB");
+                if (savedValues.TryGetValue(typeof(Calc), out Dictionary<string, object> calcState) &&
+                    calcState.TryGetValue("RandomState", out object randomState)) {
+                    ((AkronRandomState) randomState).Restore();
+                }
                 AkronSaveLoadService.LoadStaticMembers(savedValues, typeof(Glitch), nameof(Glitch.Value));
                 AkronSaveLoadService.LoadStaticMembers(savedValues, typeof(Distort), nameof(Distort.Anxiety), nameof(Distort.GameRate));
                 AkronSaveLoadService.LoadStaticMembers(savedValues, typeof(ScreenWipe), nameof(ScreenWipe.WipeColor));
@@ -204,8 +339,6 @@ internal static class AkronNativeSavestateSupport {
                     }
                 }
 
-                ClearVertexLights(level);
-                Tracker.Refresh(level);
                 MInput.GamePads[Input.Gamepad].Rumble(0f, 0f);
             },
             clearState: null,
@@ -558,22 +691,6 @@ internal static class AkronNativeSavestateSupport {
             beforeLoadState: null,
             preCloneEntities: null
         );
-    }
-
-    private static void ClearVertexLights(Level level) {
-        VertexLight[] lights = level?.Lighting?.lights;
-        if (lights == null) {
-            return;
-        }
-
-        for (int index = 0; index < lights.Length; index++) {
-            if (lights[index] == null) {
-                continue;
-            }
-
-            lights[index].Index = -1;
-            lights[index] = null;
-        }
     }
 
     private static void InstallIlHook(MethodBase method, Action<ILCursor, ILContext> manipulator) {

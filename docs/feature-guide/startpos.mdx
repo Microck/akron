@@ -14,13 +14,43 @@ The StartPos tab is Akron's player position and room-state restore workflow. The
 | Place StartPos | Toggle | Toggle cursor placement for StartPos. The placement popup owns spawn configuration. | Cheat |
 | StartPos Switcher | Action | Configure and use previous/next StartPos switching. | Cheat |
 
+## Required state contract
+
+A StartPos is an exact gameplay-state snapshot. Loading it must restore every
+captured entity, component, reference, position, speed, timer, state machine,
+animation, coroutine, random-number state, and registered helper state to the
+captured frame. Akron stores this state in a local v6 snapshot file so it
+survives closing and restarting Celeste. Set and Load hold the room state until
+Celeste renders the restored frame.
+
+Global save-file progress stays with the active save file and is not part of
+the room snapshot. This prevents a local restore or imported pack from
+replacing player progress. Akron keeps the greater current or captured value
+for session time, session deaths, room deaths, save-file time and deaths, area
+time and deaths. These statistics do not rewind. Room simulation clocks restore
+to the Set frame because room objects and visuals use them.
+
+Akron must reject capture or load when it cannot represent required gameplay
+state exactly. It must not replace an exact StartPos with a player-only or
+session-only room reload.
+
+Akron does not load old selected-field room snapshots. A v6 snapshot contains
+the complete managed room graph, registered helper state, audio state, and
+render-buffer pixels required by the Set frame. Akron refuses the load if the
+file is missing, damaged, uses another snapshot format, or belongs to another
+map or save file. Imported StartPos packs bind their snapshots to the active
+save-file slot without importing the author's global progress. The same map
+and object-providing mods must remain installed because an exact snapshot
+cannot recreate types that no longer exist. Akron does not require CelesteTAS,
+Speedrun Tool, or another savestate mod.
+
 ## Option menus
 
 Rows with a triangle expose the controls listed below.
 
 | Option | Menu control | What it changes | Attempt status |
 |---|---|---|---|
-| StartPos | Set | Capture the current player state into the active StartPos slot. | Cheat |
+| StartPos | Set | Capture the exact current gameplay state into the active StartPos slot. | Cheat |
 | StartPos | Load | Load the active StartPos. | Cheat |
 | StartPos | Clear | Clear the active StartPos slot. | Cheat |
 | StartPos | Slot count | Set how many StartPos slots the selector and previous/next controls cycle through. Selectors always expose at least 15 slots, and raising this value exposes more. | Cheat |

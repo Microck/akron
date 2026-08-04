@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Celeste;
 using Monocle;
 
@@ -29,6 +30,32 @@ public sealed class AkronIgnoreSaveStateComponent : Component {
         }
 
         IgnoredEntities.Clear();
+    }
+
+    internal static void RemoveAllFromSnapshot(Level level) {
+        if (level == null) {
+            return;
+        }
+
+        // StartPos clones the live room before filtering ignored entities. Work
+        // only on that clone so Set cannot disturb a live helper, renderer, or
+        // entity for even one frame. Skip lifecycle callbacks because snapshot
+        // entities can own process-wide hooks that still belong to the live copy.
+        List<Entity> ignored = AkronEntityListInternals.GetAll(level.Entities)
+            .Concat(level.Entities)
+            .Where(entity => entity?.Get<AkronIgnoreSaveStateComponent>() != null)
+            .Distinct()
+            .ToList();
+        foreach (Entity entity in ignored) {
+            AkronEntityListInternals.Remove(level.Entities, entity);
+            level.TagLists.EntityRemoved(entity);
+            level.Tracker.EntityRemoved(entity);
+            entity.Scene = null;
+        }
+
+        // Tracker keeps separate entity and component indexes. Rebuild both so
+        // no component from a filtered UI entity remains reachable in the graph.
+        Tracker.Refresh(level, force: true);
     }
 }
 

@@ -5,6 +5,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using Celeste;
 using Microsoft.Xna.Framework;
@@ -100,6 +102,20 @@ public static partial class AkronCommands {
         }
 
         Log("prompt: " + AkronPromptMenu.DescribeState());
+    }
+
+    [Command("akron_qa_pixel_checkpoint", "capture and hash Celeste's next rendered 320x180 room buffer: <tag>")]
+    public static void QaPixelCheckpoint(string tag = "checkpoint") {
+        if (RequireLevel() == null) {
+            return;
+        }
+
+        if (!AkronCapture.RequestGameplayBufferQaCapture(tag, out string normalizedTag)) {
+            Log("usage: akron_qa_pixel_checkpoint <tag>");
+            return;
+        }
+
+        Log("qa-pixel-checkpoint: armed;tag=" + normalizedTag);
     }
 
     private static bool TryParseQaUploadSection(string sectionText, out AkronSetupSection section) {
@@ -358,8 +374,8 @@ public static partial class AkronCommands {
         Log("qa-session-counter: " + counter + "=" + level.Session.GetCounter(counter).ToString(CultureInfo.InvariantCulture));
     }
 
-    [Command("akron_qa_startpos_edge_capture", "set player/session edge state and capture StartPos in one frame: <slot> <x> <y> <speed-x> <speed-y> <dashes> <stamina> <facing> [flag] [counter] [value]")]
-    public static void QaStartPosEdgeCapture(string slotText = "1", string xText = "", string yText = "", string speedXText = "0", string speedYText = "0", string dashesText = "1", string staminaText = "110", string facingText = "right", string flag = "akron_qa_flag", string counter = "akron_qa_counter", string valueText = "1") {
+    [Command("akron_qa_startpos_edge_capture", "set player/session edge state and capture StartPos in one frame: <slot> <x> <y> <speed-x> <speed-y> <dashes> <stamina> <facing> [flag] [counter] [value] [pixel-tag]")]
+    public static void QaStartPosEdgeCapture(string slotText = "1", string xText = "", string yText = "", string speedXText = "0", string speedYText = "0", string dashesText = "1", string staminaText = "110", string facingText = "right", string flag = "akron_qa_flag", string counter = "akron_qa_counter", string valueText = "1", string pixelTag = "") {
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -387,7 +403,7 @@ public static partial class AkronCommands {
                 out int dashes,
                 out float stamina,
                 out Facings facing)) {
-            Log("usage: akron_qa_startpos_edge_capture <slot> <x> <y> <speed-x> <speed-y> <dashes> <stamina> <facing> [flag] [counter] [value]");
+            Log("usage: akron_qa_startpos_edge_capture <slot> <x> <y> <speed-x> <speed-y> <dashes> <stamina> <facing> [flag] [counter] [value] [pixel-tag]");
             return;
         }
 
@@ -395,39 +411,230 @@ public static partial class AkronCommands {
         ApplyControlledPlayerState(level, player, position, speed, dashes, stamina, facing);
         level.Session.SetFlag(flag, value != 0);
         level.Session.SetCounter(counter, value);
-        AkronActions.SetStartPos(level);
-        Log("qa-startpos-edge-capture: captured");
-        LogControlledPlayerProbe(level, "qa-startpos-edge-capture");
-        Log("qa-session-flag: " + flag + "=" + level.Session.GetFlag(flag).ToString().ToLowerInvariant());
-        Log("qa-session-counter: " + counter + "=" + level.Session.GetCounter(counter).ToString(CultureInfo.InvariantCulture));
-        LogStartPosStatus(level);
+        string normalizedPixelTag = string.Empty;
+        if (!string.IsNullOrWhiteSpace(pixelTag) &&
+            !AkronCapture.CaptureGameplayBufferQaFrameNow(pixelTag, out normalizedPixelTag)) {
+            Log("qa-startpos-edge-capture: failed;tag=" + normalizedPixelTag);
+            return;
+        }
+        AkronAutomationService.DeferRunCompletion();
+        try {
+            AkronActions.SetStartPos(level, captured => {
+                try {
+                    Log("qa-startpos-edge-capture: " + (captured ? "captured" : "failed") +
+                        (normalizedPixelTag.Length > 0 ? ";tag=" + normalizedPixelTag : string.Empty));
+                    if (!captured) {
+                        return;
+                    }
+                    LogControlledPlayerProbe(level, "qa-startpos-edge-capture");
+                    Log("qa-session-flag: " + flag + "=" + level.Session.GetFlag(flag).ToString().ToLowerInvariant());
+                    Log("qa-session-counter: " + counter + "=" + level.Session.GetCounter(counter).ToString(CultureInfo.InvariantCulture));
+                    LogStartPosStatus(level);
+                } finally {
+                    AkronAutomationService.CompleteDeferredRun();
+                }
+            });
+        } catch {
+            AkronAutomationService.CompleteDeferredRun();
+            throw;
+        }
     }
 
-    [Command("akron_qa_startpos_load_probe", "load StartPos and log exact end-of-frame restored player/session state: [slot] [flag] [counter]")]
-    public static void QaStartPosLoadProbe(string slotText = "1", string flag = "akron_qa_flag", string counter = "akron_qa_counter") {
+    [Command("akron_qa_startpos_reference_capture", "capture a StartPos and hash its exact rendered frame: [slot] [tag]")]
+    public static void QaStartPosReferenceCapture(string slotText = "1", string tag = "startpos-reference") {
         Level level = RequireLevel();
         if (level == null) {
             return;
         }
 
         if (!int.TryParse(slotText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int slot)) {
-            Log("usage: akron_qa_startpos_load_probe [slot] [flag] [counter]");
+            Log("usage: akron_qa_startpos_reference_capture [slot] [tag]");
+            return;
+        }
+
+        AkronActions.SetStartPosSlot(slot);
+        if (!AkronCapture.CaptureGameplayBufferQaFrameNow(tag, out string normalizedTag)) {
+            Log("qa-startpos-reference-capture: failed;tag=" + normalizedTag);
+            return;
+        }
+        AkronAutomationService.DeferRunCompletion();
+        try {
+            AkronActions.SetStartPos(level, captured => {
+                try {
+                    Log("qa-startpos-reference-capture: " + (captured ? "captured" : "failed") +
+                        ";slot=" + slot.ToString(CultureInfo.InvariantCulture) + ";tag=" + normalizedTag);
+                    if (!captured) {
+                        return;
+                    }
+                    LogControlledPlayerProbe(level, "qa-startpos-reference-capture");
+                    LogQaStartPosBackdropState(level, slot, "qa-startpos-reference-capture");
+                    LogStartPosStatus(level);
+                } finally {
+                    AkronAutomationService.CompleteDeferredRun();
+                }
+            });
+        } catch {
+            AkronAutomationService.CompleteDeferredRun();
+            throw;
+        }
+    }
+
+    [Command("akron_qa_startpos_load_probe", "load StartPos and log exact end-of-frame restored state: [slot] [flag] [counter] [pixel-tag]")]
+    public static void QaStartPosLoadProbe(string slotText = "1", string flag = "akron_qa_flag", string counter = "akron_qa_counter", string pixelTag = "") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+
+        if (!int.TryParse(slotText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int slot)) {
+            Log("usage: akron_qa_startpos_load_probe [slot] [flag] [counter] [pixel-tag]");
             return;
         }
 
         AkronActions.SetStartPosSlot(slot);
         AkronActions.LoadStartPos(level);
-        level.OnEndOfFrame += () => {
-            Level currentLevel = Engine.Scene as Level ?? level;
+        Func<Level, bool> recordProbe = currentLevel => {
+            bool waitForPixelCapture = false;
             AkronAutomationService.RecordOutput("qa-startpos-load-probe: end-of-frame");
             RecordControlledPlayerProbe(currentLevel, "qa-startpos-load-probe");
+            RecordQaStartPosBackdropState(currentLevel, slot, "qa-startpos-load-probe");
             AkronAutomationService.RecordOutput("qa-session-flag: " + flag + "=" + currentLevel.Session.GetFlag(flag).ToString().ToLowerInvariant());
             AkronAutomationService.RecordOutput("qa-session-counter: " + counter + "=" + currentLevel.Session.GetCounter(counter).ToString(CultureInfo.InvariantCulture));
             AkronAutomationService.RecordOutput("qa-session-deaths: " + currentLevel.Session.Deaths.ToString(CultureInfo.InvariantCulture));
             AkronAutomationService.RecordOutput("qa-session-room-deaths: " + currentLevel.Session.DeathsInCurrentLevel.ToString(CultureInfo.InvariantCulture));
             AkronAutomationService.RecordOutput("qa-session-time: " + currentLevel.Session.Time.ToString(CultureInfo.InvariantCulture));
+            if (!string.IsNullOrWhiteSpace(pixelTag)) {
+                if (AkronCapture.RequestGameplayBufferQaCapture(
+                        pixelTag,
+                        out string normalizedTag,
+                        AkronAutomationService.CompleteDeferredRun)) {
+                    waitForPixelCapture = true;
+                    AkronAutomationService.RecordOutput("qa-startpos-load-probe-pixel: armed;tag=" + normalizedTag);
+                } else {
+                    AkronAutomationService.RecordOutput("qa-startpos-load-probe-pixel: rejected");
+                }
+            }
+            return waitForPixelCapture;
         };
+        AkronModule.ScheduleAfterStableEngineUpdate(() => {
+            bool waitForPixelCapture = false;
+            try {
+                Level currentLevel = Engine.Scene as Level ?? level;
+                waitForPixelCapture = recordProbe(currentLevel);
+            } finally {
+                if (!waitForPixelCapture) {
+                    AkronAutomationService.CompleteDeferredRun();
+                }
+            }
+        });
+        AkronAutomationService.DeferRunCompletion();
         Log("qa-startpos-load-probe: scheduled");
+    }
+
+    private static void LogQaStartPosBackdropState(Level level, int slot, string prefix) {
+        foreach (string line in DescribeQaStartPosBackdropState(level, slot, prefix)) {
+            Log(line);
+        }
+    }
+
+    private static void RecordQaStartPosBackdropState(Level level, int slot, string prefix) {
+        foreach (string line in DescribeQaStartPosBackdropState(level, slot, prefix)) {
+            AkronAutomationService.RecordOutput(line);
+        }
+    }
+
+    private static IEnumerable<string> DescribeQaStartPosBackdropState(Level level, int slot, string prefix) {
+        if (level == null || AkronModule.Session?.StartPositions == null ||
+            !AkronModule.Session.StartPositions.TryGetValue(slot, out AkronStartPos startPos)) {
+            yield return prefix + "-backdrop: unavailable";
+            yield break;
+        }
+
+        AkronSaveLoadSlot saveSlot = AkronSaveLoadService.GetRuntimeStateForDebug(startPos.StateSlotName);
+        Level savedLevel = saveSlot?.SavedLevel;
+        yield return prefix + "-background-reference: current=" + ObjectIdentity(level.Background) +
+                     ";saved=" + ObjectIdentity(savedLevel?.Background) +
+                     ";same=" + ReferenceEquals(level.Background, savedLevel?.Background).ToString().ToLowerInvariant();
+        yield return prefix + "-foreground-reference: current=" + ObjectIdentity(level.Foreground) +
+                     ";saved=" + ObjectIdentity(savedLevel?.Foreground) +
+                     ";same=" + ReferenceEquals(level.Foreground, savedLevel?.Foreground).ToString().ToLowerInvariant();
+        yield return prefix + "-level-render-state: current=" + DescribeQaLevelRenderState(level) +
+                     ";saved=" + DescribeQaLevelRenderState(savedLevel);
+        yield return prefix + "-background-backdrops: current=" + DescribeQaBackdrops(level.Background) +
+                     ";saved=" + DescribeQaBackdrops(savedLevel?.Background);
+        yield return prefix + "-foreground-backdrops: current=" + DescribeQaBackdrops(level.Foreground) +
+                     ";saved=" + DescribeQaBackdrops(savedLevel?.Foreground);
+    }
+
+    private static string DescribeQaBackdrops(BackdropRenderer renderer) {
+        if (renderer == null) {
+            return "none";
+        }
+
+        List<string> states = new List<string>();
+        foreach (Backdrop backdrop in renderer.Backdrops.Where(candidate => candidate != null)) {
+            StringBuilder state = new StringBuilder();
+            state.Append(backdrop.GetType().Name)
+                .Append('#').Append(ObjectIdentity(backdrop))
+                .Append(",position=").Append(backdrop.Position)
+                .Append(",visible=").Append(backdrop.Visible)
+                .Append(",fade=").Append(backdrop.FadeAlphaMultiplier.ToString("R", CultureInfo.InvariantCulture));
+            if (backdrop is Snow) {
+                state.Append(",visibleFade=").Append(FormatQaExactMember(backdrop, "visibleFade"))
+                    .Append(",linearFade=").Append(FormatQaExactMember(backdrop, "linearFade"))
+                    .Append(",particles=").Append(DescribeQaSnowParticles(backdrop));
+            } else if (backdrop is Parallax) {
+                state.Append(",fadeIn=").Append(FormatQaExactMember(backdrop, "fadeIn"));
+            }
+            states.Add(state.ToString());
+        }
+        return "rendererFade=" + renderer.Fade.ToString("R", CultureInfo.InvariantCulture) +
+               ",items=" + (states.Count == 0 ? "none" : string.Join("|", states));
+    }
+
+    private static string DescribeQaLevelRenderState(Level level) {
+        if (level == null) {
+            return "none";
+        }
+
+        return "timeActive=" + level.TimeActive.ToString("R", CultureInfo.InvariantCulture) +
+               ",rawTimeActive=" + level.RawTimeActive.ToString("R", CultureInfo.InvariantCulture) +
+               ",lastColorGrade=" + FormatQaExactMember(level, "lastColorGrade") +
+               ",colorGradeEase=" + FormatQaExactMember(level, "colorGradeEase") +
+               ",colorGradeEaseSpeed=" + FormatQaExactMember(level, "colorGradeEaseSpeed") +
+               ",lightingAlpha=" + (level.Lighting?.Alpha.ToString("R", CultureInfo.InvariantCulture) ?? "none") +
+               ",displacementTimer=" + FormatQaExactMember(level.Displacement, "timer");
+    }
+
+    private static string DescribeQaSnowParticles(Backdrop backdrop) {
+        if (GetInstanceMember(backdrop, "particles") is not Array particles) {
+            return "none";
+        }
+
+        StringBuilder state = new StringBuilder();
+        for (int index = 0; index < particles.Length; index++) {
+            object particle = particles.GetValue(index);
+            state.Append(FormatQaExactMember(particle, "Position")).Append(',')
+                .Append(FormatQaExactMember(particle, "Color")).Append(',')
+                .Append(FormatQaExactMember(particle, "Speed")).Append(',')
+                .Append(FormatQaExactMember(particle, "Sin")).Append(';');
+        }
+        return AkronCapture.ComputePixelHash(Encoding.UTF8.GetBytes(state.ToString()));
+    }
+
+    private static string FormatQaExactMember(object target, string name) {
+        object value = GetInstanceMember(target, name);
+        return value switch {
+            null => "unset",
+            float floatValue => floatValue.ToString("R", CultureInfo.InvariantCulture),
+            Vector2 vectorValue => vectorValue.X.ToString("R", CultureInfo.InvariantCulture) + "," +
+                                   vectorValue.Y.ToString("R", CultureInfo.InvariantCulture),
+            _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty
+        };
+    }
+
+    private static string ObjectIdentity(object value) {
+        return value == null ? "null" : RuntimeHelpers.GetHashCode(value).ToString(CultureInfo.InvariantCulture);
     }
 
     private static bool TryParseControlledPlayerState(

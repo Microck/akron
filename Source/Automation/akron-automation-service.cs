@@ -20,6 +20,7 @@ public static class AkronAutomationService {
     private const int MaxCommandLineCharacters = 2048;
     private const int MaxOutputLines = 512;
     private const int MaxOutputLineCharacters = 4096;
+    private const int DeferredRunFrameLimit = 600;
     private static readonly List<string> RunOutput = new List<string>();
     private static readonly Queue<string> PendingCommands = new Queue<string>();
     private static readonly HashSet<string> JoinedTextArgumentCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
@@ -131,6 +132,7 @@ public static class AkronAutomationService {
         "akron_qa_pause",
         "akron_qa_pause_event",
         "akron_qa_pause_state",
+        "akron_qa_pixel_checkpoint",
         "akron_qa_player_state",
         "akron_qa_probe",
         "akron_qa_reenter_level",
@@ -150,6 +152,7 @@ public static class AkronAutomationService {
         "akron_qa_startpos_death_candidate",
         "akron_qa_startpos_edge_capture",
         "akron_qa_startpos_load_probe",
+        "akron_qa_startpos_reference_capture",
         "akron_qa_stress",
         "akron_qa_toast_label",
         "akron_qa_unlock_state",
@@ -182,8 +185,10 @@ public static class AkronAutomationService {
     private static string currentCommandText = string.Empty;
     private static bool hasActiveRun;
     private static bool isProcessing;
+    private static bool runCompletionDeferred;
     private static bool automationDirectoryReady;
     private static ulong nextIdlePollFrame;
+    private static int deferredRunFramesRemaining;
 
     private static string AutomationDirectory => Path.Combine(Everest.PathGame, "Saves", "AkronAutomation");
     private static string CommandPath => Path.Combine(AutomationDirectory, "command.txt");
@@ -212,6 +217,8 @@ public static class AkronAutomationService {
 
             PendingCommands.Clear();
             RunOutput.Clear();
+            runCompletionDeferred = false;
+            deferredRunFramesRemaining = 0;
 
             string commandFile;
             try {
@@ -255,6 +262,9 @@ public static class AkronAutomationService {
 
         isProcessing = true;
         try {
+            if (HandleDeferredRun()) {
+                return;
+            }
             if (PendingCommands.Count == 0) {
                 FinalizeRun();
                 return;
@@ -272,6 +282,9 @@ public static class AkronAutomationService {
         }
 
         if (PendingCommands.Count == 0) {
+            if (HandleDeferredRun()) {
+                return;
+            }
             FinalizeRun();
             return;
         }
@@ -285,6 +298,48 @@ public static class AkronAutomationService {
         }
 
         AppendOutput(line);
+    }
+
+    public static void DeferRunCompletion() {
+        if (hasActiveRun) {
+            runCompletionDeferred = true;
+            deferredRunFramesRemaining = DeferredRunFrameLimit;
+            WriteResult(status: "pending");
+        }
+    }
+
+    public static void CompleteDeferredRun() {
+        if (!hasActiveRun || !runCompletionDeferred) {
+            return;
+        }
+
+        runCompletionDeferred = false;
+        deferredRunFramesRemaining = 0;
+        if (PendingCommands.Count == 0) {
+            FinalizeRun();
+        } else {
+            // The render-boundary callback completed only the command that
+            // deferred the run. Keep the run open for the queued commands.
+            WriteResult(status: "pending");
+        }
+    }
+
+    private static bool HandleDeferredRun() {
+        if (!runCompletionDeferred) {
+            return false;
+        }
+        if (deferredRunFramesRemaining > 0) {
+            deferredRunFramesRemaining--;
+            return true;
+        }
+
+        FailDeferredRun();
+        return true;
+    }
+
+    private static void FailDeferredRun() {
+        AppendOutput("! deferred command did not complete within " + DeferredRunFrameLimit.ToString(CultureInfo.InvariantCulture) + " frames");
+        FinalizeRun(status: "failed");
     }
 
     private static void ExecuteCommand(string commandLine) {
@@ -348,11 +403,16 @@ public static class AkronAutomationService {
         Logger.Log(LogLevel.Info, nameof(AkronAutomationService), safeLine);
     }
 
-    private static void FinalizeRun() {
-        WriteResult(status: "complete");
+    private static void FinalizeRun(string status = "complete") {
+        WriteResult(status);
         PendingCommands.Clear();
         currentCommandText = string.Empty;
+        runCompletionDeferred = false;
+        deferredRunFramesRemaining = 0;
         hasActiveRun = false;
+        // StartPos restores Engine.FrameCounter. Reset the poll deadline to that
+        // restored clock so automation does not wait for the old frame number.
+        nextIdlePollFrame = Engine.FrameCounter;
     }
 
     private static void WriteResult(string status) {

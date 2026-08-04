@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -13,12 +14,35 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronSaveLoadService {
+    private const int MaxFreshRoomEntityListDrainPasses = 64;
+    private static readonly PropertyInfo ComponentListLockModeProperty = typeof(ComponentList).GetProperty(
+        "LockMode",
+        BindingFlags.Instance | BindingFlags.NonPublic
+    ) ?? throw new MissingMemberException(typeof(ComponentList).FullName, "LockMode");
+    private static readonly FieldInfo EntityListEntitiesField = typeof(EntityList).GetField(
+        "entities",
+        BindingFlags.Instance | BindingFlags.NonPublic
+    ) ?? throw new MissingMemberException(typeof(EntityList).FullName, "entities");
+    private static readonly FieldInfo EntityListToAddField = typeof(EntityList).GetField(
+        "toAdd",
+        BindingFlags.Instance | BindingFlags.NonPublic
+    ) ?? throw new MissingMemberException(typeof(EntityList).FullName, "toAdd");
+    private static readonly FieldInfo ComponentListComponentsField = typeof(ComponentList).GetField(
+        "components",
+        BindingFlags.Instance | BindingFlags.NonPublic
+    ) ?? throw new MissingMemberException(typeof(ComponentList).FullName, "components");
+    private static readonly FieldInfo EntityComponentsField = typeof(Entity).GetField(
+        "<Components>k__BackingField",
+        BindingFlags.Instance | BindingFlags.NonPublic
+    ) ?? throw new MissingMemberException(typeof(Entity).FullName, "<Components>k__BackingField");
     private static readonly Dictionary<int, AkronSaveLoadSlot> Slots = new Dictionary<int, AkronSaveLoadSlot>();
     private static readonly Dictionary<string, AkronSaveLoadSlot> RuntimeSlots = new Dictionary<string, AkronSaveLoadSlot>(StringComparer.Ordinal);
     private static readonly List<AkronRegisteredSaveLoadAction> RegisteredActions = new List<AkronRegisteredSaveLoadAction>();
     private static readonly List<AkronSaveLoadRiskHandler> RiskHandlers = new List<AkronSaveLoadRiskHandler>();
     private static readonly List<Func<Type, bool>> ReturnSameObjectPredicates = new List<Func<Type, bool>>();
     private static readonly List<Func<object, object>> CustomCloneProcessors = new List<Func<object, object>>();
+
+    public static string LastPersistentSnapshotError { get; private set; } = string.Empty;
 
     public static string CurrentSlotName { get; private set; } = GetSlotName(1);
 
@@ -29,6 +53,7 @@ public static partial class AkronSaveLoadService {
     }
 
     public static void ClearRuntimeState() {
+        AkronStartPosReconstruction.ReleaseOwnedResources();
         RunClearStateActions();
         foreach (AkronSaveLoadSlot saveSlot in Slots.Values.Concat(RuntimeSlots.Values).Distinct()) {
             ReleaseDormantEventInstances(saveSlot);
@@ -50,13 +75,62 @@ public static partial class AkronSaveLoadService {
         Action<Level> beforeLoadState,
         Action preCloneEntities
     ) {
-        AkronRegisteredSaveLoadAction action = new AkronRegisteredSaveLoadAction(saveState, loadState, clearState, beforeSaveState, beforeLoadState, preCloneEntities);
-        RegisteredActions.Add(action);
+        return RegisterSaveLoadAction(
+            null,
+            saveState,
+            loadState,
+            clearState,
+            beforeSaveState,
+            beforeLoadState,
+            preCloneEntities);
+    }
+
+    public static object RegisterNamedSaveLoadAction(
+        string registrationName,
+        Action<Dictionary<Type, Dictionary<string, object>>, Level> saveState,
+        Action<Dictionary<Type, Dictionary<string, object>>, Level> loadState,
+        Action clearState,
+        Action<Level> beforeSaveState,
+        Action<Level> beforeLoadState,
+        Action preCloneEntities
+    ) {
+        if (string.IsNullOrWhiteSpace(registrationName)) {
+            throw new ArgumentException("A stable save/load registration name is required.", nameof(registrationName));
+        }
+        return RegisterSaveLoadAction(
+            registrationName,
+            saveState,
+            loadState,
+            clearState,
+            beforeSaveState,
+            beforeLoadState,
+            preCloneEntities);
+    }
+
+    private static object RegisterSaveLoadAction(
+        string registrationName,
+        Action<Dictionary<Type, Dictionary<string, object>>, Level> saveState,
+        Action<Dictionary<Type, Dictionary<string, object>>, Level> loadState,
+        Action clearState,
+        Action<Level> beforeSaveState,
+        Action<Level> beforeLoadState,
+        Action preCloneEntities
+    ) {
+        AkronRegisteredSaveLoadAction action = new AkronRegisteredSaveLoadAction(
+            GetRegisteredActionId(registrationName, saveState, loadState, clearState, beforeSaveState, beforeLoadState, preCloneEntities),
+            saveState,
+            loadState,
+            clearState,
+            beforeSaveState,
+            beforeLoadState,
+            preCloneEntities);
+        AddRegisteredAction(action);
         return action;
     }
 
     public static object RegisterStaticTypes(Type type, params string[] memberNames) {
         AkronRegisteredSaveLoadAction action = new AkronRegisteredSaveLoadAction(
+            GetStaticRegistrationId(type, memberNames),
             (savedValues, _) => SaveStaticMemberValues(savedValues, type, memberNames),
             (savedValues, _) => LoadStaticMemberValues(savedValues, type, memberNames),
             null,
@@ -64,8 +138,62 @@ public static partial class AkronSaveLoadService {
             null,
             null
         );
-        RegisteredActions.Add(action);
+        AddRegisteredAction(action);
         return action;
+    }
+
+    private static string GetRegisteredActionId(string registrationName, params Delegate[] callbacks) {
+        string nameIdentity = registrationName == null
+            ? "unnamed"
+            : "named=" + registrationName.Length.ToString(CultureInfo.InvariantCulture) + ":" + registrationName;
+        string baseId = "callbacks|" + nameIdentity + "|" + string.Join("|", callbacks.Select((callback, index) =>
+            index.ToString(CultureInfo.InvariantCulture) + ":" + GetDelegateIdentity(callback)));
+        return baseId + "|registration=0";
+    }
+
+    private static string GetAvailableRegistrationId(string baseId) {
+        int registrationIndex = 0;
+        string id;
+        do {
+            id = baseId + "|registration=" + registrationIndex.ToString(CultureInfo.InvariantCulture);
+            registrationIndex++;
+        } while (RegisteredActions.Any(existing => string.Equals(existing.Id, id, StringComparison.Ordinal)));
+        return id;
+    }
+
+    private static string GetStaticRegistrationId(Type type, IEnumerable<string> memberNames) {
+        string baseId = "static|" + GetTypeIdentity(type) + "|" +
+                        string.Join(",", (memberNames ?? Array.Empty<string>()).OrderBy(name => name, StringComparer.Ordinal));
+        return GetAvailableRegistrationId(baseId);
+    }
+
+    private static string GetDelegateIdentity(Delegate callback) {
+        if (callback == null) {
+            return "null";
+        }
+
+        MethodInfo method = callback.Method;
+        return GetTypeIdentity(method.DeclaringType) + "::" + method.Name +
+               "|generic=" + method.GetGenericArguments().Length.ToString(CultureInfo.InvariantCulture) +
+               "|returns=" + GetTypeIdentity(method.ReturnType) +
+               "|parameters=" + string.Join(",", method.GetParameters().Select(parameter => GetTypeIdentity(parameter.ParameterType))) +
+               "|target=" + (callback.Target == null ? "static" : GetTypeIdentity(callback.Target.GetType()));
+    }
+
+    private static string GetTypeIdentity(Type type) {
+        if (type == null) {
+            return "unknown";
+        }
+        string assemblyName = type.Assembly.GetName().Name ?? "unknown";
+        return assemblyName + ":" + (type.FullName ?? type.Name);
+    }
+
+    private static void AddRegisteredAction(AkronRegisteredSaveLoadAction action) {
+        if (RegisteredActions.Any(existing => string.Equals(existing.Id, action.Id, StringComparison.Ordinal))) {
+            throw new InvalidOperationException(
+                "Duplicate save/load action identity. Use RegisterNamedSaveLoadAction with a stable owner name: " + action.Id);
+        }
+        RegisteredActions.Add(action);
     }
 
     public static void Unregister(object obj) {
@@ -253,8 +381,15 @@ public static partial class AkronSaveLoadService {
 
         CurrentSlotName = string.IsNullOrWhiteSpace(slotName) ? "StartPos" : slotName;
         AkronLevelRenderState renderState = AkronLevelRenderState.Capture(level);
-        IgnoreVisualRuntimeEntities(level);
-        AkronIgnoreSaveStateComponent.RemoveAll(level);
+        List<AkronGameplayBufferSnapshot> gameplayBuffers = new List<AkronGameplayBufferSnapshot>();
+        if (CurrentSlotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal)) {
+            try {
+                gameplayBuffers = AkronGameplayBufferState.Capture();
+            } catch (Exception exception) {
+                LastPersistentSnapshotError = exception.GetType().Name + ": " + exception.Message;
+                return null;
+            }
+        }
         AkronSaveLoadSlot saveSlot = null;
         try {
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
@@ -267,6 +402,8 @@ public static partial class AkronSaveLoadService {
             // collected objects, entity cycles, triggers, or room-local runtime
             // state accurately enough for practice starts.
             saveSlot = BuildNativeSlot(level, CurrentSlotName, saveTimeAndDeaths, includeLevelSnapshot: true);
+            saveSlot.GameplayBuffers = gameplayBuffers;
+            AkronIgnoreSaveStateComponent.RemoveAllFromSnapshot(saveSlot.SavedLevel);
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 Dictionary<Type, Dictionary<string, object>> savedValues = new Dictionary<Type, Dictionary<string, object>>();
                 action.SaveState?.Invoke(savedValues, level);
@@ -280,7 +417,6 @@ public static partial class AkronSaveLoadService {
             throw;
         } finally {
             AkronDeepClone.ClearSharedState();
-            AkronIgnoreSaveStateComponent.ReAddAll(level);
             renderState.Restore(level);
         }
     }
@@ -319,6 +455,56 @@ public static partial class AkronSaveLoadService {
         return AkronSaveLoadResult.Success;
     }
 
+    public static AkronSaveLoadResult PersistRuntimeStateSnapshot(
+        Level freshLevel,
+        string slotName,
+        string snapshotDirectory = null
+    ) {
+        string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
+        LastPersistentSnapshotError = string.Empty;
+        if (freshLevel == null ||
+            !RuntimeSlots.TryGetValue(normalizedSlotName, out AkronSaveLoadSlot saveSlot) ||
+            saveSlot.SavedLevel == null) {
+            LastPersistentSnapshotError = "live StartPos state is unavailable";
+            return AkronSaveLoadResult.NoState;
+        }
+
+        AkronPersistentRuntimeState savedRuntimeState = AkronPersistentRuntimeState.CaptureSaved(saveSlot);
+        AkronPersistentRuntimeState freshRuntimeState = AkronPersistentRuntimeState.CaptureCurrent(freshLevel);
+        AkronReconstructionCapture capture = AkronStartPosReconstruction.Capture(savedRuntimeState, freshRuntimeState);
+        if (!capture.Success) {
+            LastPersistentSnapshotError = capture.Error;
+            return AkronSaveLoadResult.Failed;
+        }
+
+        Dictionary<string, Dictionary<Type, Dictionary<string, object>>> freshActionState =
+            CaptureRegisteredActionState(freshLevel);
+        AkronReconstructionCapture actionCapture = AkronStartPosReconstruction.CaptureActionState(
+            saveSlot.ActionState,
+            freshActionState);
+        AkronDeepClone.ClearSharedState();
+        if (!actionCapture.Success) {
+            LastPersistentSnapshotError = "registered action state " + actionCapture.Error;
+            return AkronSaveLoadResult.Failed;
+        }
+
+        capture.Document.ActionStateDocument = actionCapture.Document;
+        capture.Document.RegisteredActionIds = RegisteredActions.Select(action => action.Id).OrderBy(id => id, StringComparer.Ordinal).ToList();
+        capture.Document.GameplayBuffers = saveSlot.GameplayBuffers;
+        if (!AkronStartPosReconstruction.SaveSnapshot(
+                normalizedSlotName,
+                saveSlot.MapSid,
+                saveSlot.LevelName,
+                saveSlot.FileSlot,
+                capture.Document,
+                out string error,
+                snapshotDirectory)) {
+            LastPersistentSnapshotError = error;
+            return AkronSaveLoadResult.Failed;
+        }
+        return AkronSaveLoadResult.Success;
+    }
+
     public static AkronSaveLoadResult RestoreRuntimeState(Level level, AkronSaveLoadSlot saveSlot, bool allowDeadPlayer = false) {
         if (level == null || saveSlot == null) {
             return AkronSaveLoadResult.NoState;
@@ -329,7 +515,7 @@ public static partial class AkronSaveLoadService {
             return AkronSaveLoadResult.Blocked;
         }
 
-        bool suppressLagPauserForStartPos = saveSlot.SlotName.StartsWith("Akron StartPos ", StringComparison.Ordinal);
+        bool suppressLagPauserForStartPos = saveSlot.SlotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal);
         if (suppressLagPauserForStartPos) {
             AkronModule.SuppressLagPauserForNativeStartPosRestore();
         }
@@ -349,6 +535,12 @@ public static partial class AkronSaveLoadService {
                     action.LoadState?.Invoke((Dictionary<Type, Dictionary<string, object>>) DeepClone(savedValues), level);
                 }
             }
+            if (saveSlot.GameplayBuffers.Count > 0 &&
+                !AkronGameplayBufferState.Restore(saveSlot.GameplayBuffers, out string bufferError)) {
+                LastPersistentSnapshotError = bufferError;
+                return AkronSaveLoadResult.Failed;
+            }
+            AkronGameplayBufferState.ArmLevelPresentation(level, saveSlot.GameplayBuffers);
             PrepareSlotPreClone(saveSlot);
         } finally {
             AkronDeepClone.ClearSharedState();
@@ -362,6 +554,7 @@ public static partial class AkronSaveLoadService {
     }
 
     public static AkronSaveLoadResult LoadRuntimeState(Level level, string slotName, bool allowDeadPlayer = false) {
+        LastPersistentSnapshotError = string.Empty;
         if (level == null) {
             return AkronSaveLoadResult.Failed;
         }
@@ -377,14 +570,407 @@ public static partial class AkronSaveLoadService {
             }
         }
 
-        return RuntimeSlots.TryGetValue(normalizedSlotName, out AkronSaveLoadSlot saveSlot)
-            ? RestoreRuntimeState(level, saveSlot, allowDeadPlayer)
+        if (RuntimeSlots.TryGetValue(normalizedSlotName, out AkronSaveLoadSlot saveSlot)) {
+            return RestoreRuntimeState(level, saveSlot, allowDeadPlayer);
+        }
+        return AkronStartPosReconstruction.HasSnapshot(normalizedSlotName)
+            ? RestorePersistentRuntimeState(level, normalizedSlotName, allowDeadPlayer)
             : AkronSaveLoadResult.NoState;
+    }
+
+    private static AkronSaveLoadResult RestorePersistentRuntimeState(
+        Level level,
+        string slotName,
+        bool allowDeadPlayer
+    ) {
+        if (!CanAccessNativeState(level, out _, allowDeadPlayer)) {
+            return AkronSaveLoadResult.Blocked;
+        }
+        if (!AkronStartPosReconstruction.TryLoadSnapshot(slotName, out AkronReconstructionDocument document, out string loadError)) {
+            LastPersistentSnapshotError = loadError;
+            return AkronSaveLoadResult.Failed;
+        }
+        if (!string.Equals(level.Session.Area.GetSID(), document.MapSid, StringComparison.Ordinal)) {
+            LastPersistentSnapshotError = "snapshot map differs";
+            return AkronSaveLoadResult.SessionMismatch;
+        }
+        if ((SaveData.Instance?.FileSlot ?? -1) != document.FileSlot) {
+            LastPersistentSnapshotError = "snapshot save file differs";
+            return AkronSaveLoadResult.SessionMismatch;
+        }
+        if (document.ActionStateDocument == null) {
+            LastPersistentSnapshotError = "snapshot registered action state is missing";
+            return AkronSaveLoadResult.Failed;
+        }
+        List<string> currentActionIds = RegisteredActions.Select(action => action.Id).OrderBy(id => id, StringComparer.Ordinal).ToList();
+        if (document.RegisteredActionIds == null || !document.RegisteredActionIds.SequenceEqual(currentActionIds, StringComparer.Ordinal)) {
+            LastPersistentSnapshotError = "registered action set differs";
+            return AkronSaveLoadResult.Failed;
+        }
+
+        // A persistent restore unloads the current room before reconstructing
+        // the saved one. Keep a native clone so every failure can return the
+        // player to the exact state that existed before Load was attempted.
+        string rollbackSlotName = AkronActions.StartPosStateSlotPrefix + "Restore rollback " + Guid.NewGuid().ToString("N");
+        AkronSaveLoadSlot rollbackSlot;
+        try {
+            rollbackSlot = CaptureRuntimeState(level, rollbackSlotName, saveTimeAndDeaths: true);
+        } catch (Exception exception) {
+            CurrentSlotName = slotName;
+            LastPersistentSnapshotError = "could not capture pre-load state: " + exception.GetType().Name + ": " + exception.Message;
+            return AkronSaveLoadResult.Failed;
+        }
+        CurrentSlotName = slotName;
+        if (rollbackSlot == null) {
+            LastPersistentSnapshotError = "could not capture pre-load state";
+            return AkronSaveLoadResult.Failed;
+        }
+
+        AkronSaveLoadResult restoreResult;
+        try {
+            AkronIgnoreSaveStateComponent.RemoveAll(level);
+            try {
+                restoreResult = RestorePersistentRuntimeStateCore(level, document);
+            } catch (Exception exception) {
+                LastPersistentSnapshotError = exception.GetType().Name + ": " + exception.Message;
+                restoreResult = AkronSaveLoadResult.Failed;
+            } finally {
+                AkronDeepClone.ClearSharedState();
+                AkronIgnoreSaveStateComponent.ReAddAll(level);
+            }
+
+            if (restoreResult == AkronSaveLoadResult.Success) {
+                return restoreResult;
+            }
+
+            string persistentFailure = LastPersistentSnapshotError;
+            AkronSaveLoadResult rollbackResult = RestoreRuntimeState(level, rollbackSlot, allowDeadPlayer: true);
+            LastPersistentSnapshotError = rollbackResult == AkronSaveLoadResult.Success
+                ? persistentFailure
+                : persistentFailure + "; pre-load state rollback failed: " + rollbackResult;
+            return restoreResult;
+        } finally {
+            CurrentSlotName = slotName;
+            ReleaseDormantEventInstances(rollbackSlot);
+        }
+    }
+
+    private static AkronSaveLoadResult RestorePersistentRuntimeStateCore(Level level, AkronReconstructionDocument document) {
+        AkronCumulativeStats cumulativeStats = AkronCumulativeStats.Capture(level);
+        foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
+            action.BeforeLoadState?.Invoke(level);
+        }
+        if (!TryLoadFreshRoom(level, document.Room, out string freshRoomError)) {
+            LastPersistentSnapshotError = freshRoomError;
+            return AkronSaveLoadResult.Failed;
+        }
+
+        Dictionary<string, Dictionary<Type, Dictionary<string, object>>> freshActionState =
+            CaptureRegisteredActionState(level);
+        AkronReconstructionRestore actionRestore = AkronStartPosReconstruction.RestoreActionState(
+            document.ActionStateDocument,
+            freshActionState);
+        if (!actionRestore.Success) {
+            LastPersistentSnapshotError = "registered action state " + actionRestore.Error;
+            AkronDeepClone.ClearSharedState();
+            return AkronSaveLoadResult.Failed;
+        }
+        try {
+            return RestorePersistentRuntimeStateAfterActionState(
+                level,
+                document,
+                cumulativeStats,
+                freshActionState,
+                actionRestore);
+        } finally {
+            // Registered callbacks receive their own clones. The reconstructed
+            // action graph is only an intermediate owner and must not retain
+            // its dormant FMOD instances after the callbacks finish.
+            AkronStartPosReconstruction.ReleaseEventInstances(actionRestore);
+        }
+    }
+
+    private static AkronSaveLoadResult RestorePersistentRuntimeStateAfterActionState(
+        Level level,
+        AkronReconstructionDocument document,
+        AkronCumulativeStats cumulativeStats,
+        Dictionary<string, Dictionary<Type, Dictionary<string, object>>> freshActionState,
+        AkronReconstructionRestore actionRestore
+    ) {
+        AkronReconstructionVerification actionVerification = AkronStartPosReconstruction.Verify(
+            document.ActionStateDocument,
+            actionRestore,
+            Array.Empty<string>());
+        if (!actionVerification.Success) {
+            LastPersistentSnapshotError = "registered action state " + actionVerification.Error;
+            AkronDeepClone.ClearSharedState();
+            return AkronSaveLoadResult.Failed;
+        }
+
+        AkronPersistentRuntimeState freshRuntimeState = AkronPersistentRuntimeState.CaptureCurrent(level);
+        AkronReconstructionRestore restore = AkronStartPosReconstruction.Restore(document, freshRuntimeState);
+        if (!restore.Success) {
+            LastPersistentSnapshotError = restore.Error;
+            TryLoadFreshRoom(level, document.Room, out _);
+            return AkronSaveLoadResult.Failed;
+        }
+        if (!ApplyPersistentRuntimeState(level, freshRuntimeState)) {
+            AkronStartPosReconstruction.ReleaseEventInstances(restore);
+            TryLoadFreshRoom(level, document.Room, out _);
+            return AkronSaveLoadResult.Failed;
+        }
+
+        // The saved tracker lists preserve the Set-frame lookup order. Refresh
+        // them against the restored entity graph so Everest can also add any
+        // process-owned tracked types registered during this game launch.
+        // Without this merge, a helper hook can index a type that the restored
+        // room did not use and crash before the first restored frame renders.
+        Tracker.Refresh(level, force: true);
+
+        foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
+            if (freshActionState.TryGetValue(action.Id, out Dictionary<Type, Dictionary<string, object>> savedValues)) {
+                action.LoadState?.Invoke((Dictionary<Type, Dictionary<string, object>>) DeepClone(savedValues), level);
+            }
+        }
+        AkronDeepClone.ClearSharedState();
+
+        // Registered helper callbacks restore their own state, but some also
+        // rebuild derived Celeste render caches as a side effect. Reapply the
+        // saved room fields to the same reconstructed objects so the final
+        // room state still belongs to the exact Set frame.
+        AkronReconstructionVerification reapply = AkronStartPosReconstruction.Reapply(document, restore);
+        if (!reapply.Success) {
+            LastPersistentSnapshotError = reapply.Error;
+            AkronStartPosReconstruction.ReleaseEventInstances(restore);
+            TryLoadFreshRoom(level, document.Room, out _);
+            return AkronSaveLoadResult.Failed;
+        }
+        if (!ApplyPersistentRuntimeState(level, freshRuntimeState)) {
+            AkronStartPosReconstruction.ReleaseEventInstances(restore);
+            TryLoadFreshRoom(level, document.Room, out _);
+            return AkronSaveLoadResult.Failed;
+        }
+        Tracker.Refresh(level, force: true);
+
+        // These cumulative values are the only state that StartPos does not
+        // rewind. Apply them before verification and mask their graph fields.
+        cumulativeStats.RestoreWithoutRewinding(level);
+        AkronReconstructionVerification verification = AkronStartPosReconstruction.Verify(
+            document,
+            restore,
+            AkronStartPosReconstruction.GetPostRestoreVerificationMasks(document));
+        if (!verification.Success) {
+            LastPersistentSnapshotError = verification.Error;
+            AkronStartPosReconstruction.ReleaseEventInstances(restore);
+            TryLoadFreshRoom(level, document.Room, out _);
+            return AkronSaveLoadResult.Failed;
+        }
+
+        AkronLevelGraphRepair.RelinkEntitiesToLevel(level);
+        AkronLevelRenderState.RelinkRendererCameras(level);
+        Audio.SetCamera(level.Camera);
+        AkronVirtualAssetReloadTracker.ReloadDisposedAssets(level);
+        if (!AkronGameplayBufferState.Restore(document.GameplayBuffers, out string gameplayBufferError)) {
+            LastPersistentSnapshotError = gameplayBufferError;
+            AkronStartPosReconstruction.ReleaseEventInstances(restore);
+            TryLoadFreshRoom(level, document.Room, out _);
+            return AkronSaveLoadResult.Failed;
+        }
+        AkronGameplayBufferState.ArmLevelPresentation(level, document.GameplayBuffers);
+        AkronStartPosReconstruction.ActivateEventInstances(restore);
+        return AkronSaveLoadResult.Success;
+    }
+
+    private static bool ApplyPersistentRuntimeState(Level level, AkronPersistentRuntimeState state) {
+        if (!ReferenceEquals(state?.Level, level)) {
+            LastPersistentSnapshotError = "snapshot level identity differs";
+            return false;
+        }
+        if (!float.IsFinite(state.EngineTimeRate) ||
+            !float.IsFinite(state.GlitchValue) ||
+            !float.IsFinite(state.DistortAnxiety) ||
+            !float.IsFinite(state.DistortGameRate)) {
+            LastPersistentSnapshotError = "snapshot process-global float is not finite";
+            return false;
+        }
+
+        Settings.Instance.GrabMode = state.GrabMode;
+        Settings.Instance.CrouchDashMode = state.CrouchDashMode;
+#pragma warning disable CS0618
+        Engine.TimeRate = state.EngineTimeRate;
+#pragma warning restore CS0618
+        Glitch.Value = state.GlitchValue;
+        Distort.Anxiety = state.DistortAnxiety;
+        Distort.GameRate = state.DistortGameRate;
+
+        foreach (EverestModule module in Everest.Modules.Where(module =>
+                     module is not AkronModule && module.GetType().Name != "NullModule")) {
+            string key = module.GetType().FullName ?? module.GetType().Name;
+            if (state.ModuleSessions.TryGetValue(key, out EverestModuleSession moduleSession)) {
+                module._Session = moduleSession;
+            }
+        }
+        return true;
+    }
+
+    private static Dictionary<string, Dictionary<Type, Dictionary<string, object>>> CaptureRegisteredActionState(Level level) {
+        Dictionary<string, Dictionary<Type, Dictionary<string, object>>> actionState =
+            new Dictionary<string, Dictionary<Type, Dictionary<string, object>>>(StringComparer.Ordinal);
+        foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
+            Dictionary<Type, Dictionary<string, object>> savedValues = new Dictionary<Type, Dictionary<string, object>>();
+            action.SaveState?.Invoke(savedValues, level);
+            actionState[action.Id] = (Dictionary<Type, Dictionary<string, object>>) DeepClone(savedValues);
+        }
+        return actionState;
+    }
+
+    private static bool TryLoadFreshRoom(Level level, string roomName, out string error) {
+        error = string.Empty;
+        LevelData room = level?.Session?.MapData?.Get(roomName ?? string.Empty);
+        if (level == null || room == null) {
+            error = "saved room is unavailable: " + (roomName ?? string.Empty);
+            return false;
+        }
+
+        try {
+            Vector2 probe = new Vector2(room.Bounds.Left, room.Bounds.Bottom);
+            level.Session.Level = room.Name;
+            level.Session.RespawnPoint = level.Session.GetSpawnPoint(probe);
+            level.StartPosition = null;
+            level.Tracker.GetEntitiesCopy<Player>().ForEach(player => player.RemoveSelf());
+            level.UnloadLevel();
+            level.Completed = false;
+            level.InCutscene = false;
+            level.SkippingCutscene = false;
+            level.LoadLevel(Player.IntroTypes.Respawn);
+            DrainFreshRoomEntityLists(level.Entities);
+            AkronLevelRenderState.RelinkRendererCameras(level);
+            return true;
+        } catch (Exception exception) {
+            error = exception.GetType().Name + ": " + exception.Message;
+            return false;
+        }
+    }
+
+    internal static void DrainFreshRoomEntityLists(EntityList entities) {
+        DrainFreshRoomEntityListsCore(
+            entities.UpdateLists,
+            () => (List<Entity>) EntityListEntitiesField.GetValue(entities),
+            () => ((List<Entity>) EntityListToAddField.GetValue(entities)).Count,
+            entity => {
+                ComponentList components = entity == null
+                    ? null
+                    : (ComponentList) EntityComponentsField.GetValue(entity);
+                if (components == null) {
+                    return false;
+                }
+                List<Component> current = (List<Component>) ComponentListComponentsField.GetValue(components);
+                int previousComponentCount = current.Count;
+                DrainFreshRoomComponentList(components);
+                return current.Count != previousComponentCount;
+            });
+    }
+
+    internal static void DrainFreshRoomEntityListsCore(
+        Action updateLists,
+        Func<IReadOnlyList<Entity>> getEntities,
+        Func<int> getPendingCount,
+        Func<Entity, bool> drainComponents
+    ) {
+        int previousCount = -1;
+        for (int pass = 0; pass < MaxFreshRoomEntityListDrainPasses; pass++) {
+            updateLists();
+            IReadOnlyList<Entity> entities = getEntities();
+            bool componentsChanged = false;
+            for (int index = 0; index < entities.Count; index++) {
+                componentsChanged |= drainComponents(entities[index]);
+            }
+            if (getPendingCount() == 0 && entities.Count == previousCount && !componentsChanged) {
+                return;
+            }
+            previousCount = entities.Count;
+        }
+
+        throw new InvalidOperationException(
+            "fresh room entity additions did not settle within " +
+            MaxFreshRoomEntityListDrainPasses.ToString(CultureInfo.InvariantCulture) +
+            " passes");
+    }
+
+    internal static void DrainFreshRoomComponentList(ComponentList components) {
+        // ComponentList flushes its pending Add/Remove callbacks when its
+        // internal lock returns to Open. A cold room load can finish its entity
+        // queue one frame before this component queue, so run the engine's own
+        // transition before the reconstruction graph indexes the fresh room.
+        object openLockMode = Enum.ToObject(ComponentListLockModeProperty.PropertyType, 0);
+        ComponentListLockModeProperty.SetValue(components, openLockMode);
+    }
+
+    private sealed class AkronCumulativeStats {
+        private long sessionTime;
+        private int sessionDeaths;
+        private int roomDeaths;
+        private long saveDataTime;
+        private int totalDeaths;
+        private long areaTime;
+        private int areaDeaths;
+        private AreaKey area;
+
+        public static AkronCumulativeStats Capture(Level level) {
+            AreaKey currentArea = level.Session.Area;
+            AreaModeStats mode = TryGetAreaModeStats(currentArea);
+            return new AkronCumulativeStats {
+                sessionTime = level.Session.Time,
+                sessionDeaths = level.Session.Deaths,
+                roomDeaths = level.Session.DeathsInCurrentLevel,
+                saveDataTime = SaveData.Instance?.Time ?? 0L,
+                totalDeaths = SaveData.Instance?.TotalDeaths ?? 0,
+                areaTime = mode?.TimePlayed ?? 0L,
+                areaDeaths = mode?.Deaths ?? 0,
+                area = currentArea
+            };
+        }
+
+        public void RestoreWithoutRewinding(Level level) {
+            // Capture runs immediately before the room unloads. Restore these
+            // recipient values exactly so an imported pack cannot add the
+            // snapshot author's larger counters.
+            level.Session.Time = sessionTime;
+            level.Session.Deaths = sessionDeaths;
+            level.Session.DeathsInCurrentLevel = roomDeaths;
+            if (SaveData.Instance == null) {
+                return;
+            }
+
+            SaveData.Instance.Time = saveDataTime;
+            SaveData.Instance.TotalDeaths = totalDeaths;
+            AreaModeStats mode = TryGetAreaModeStats(area);
+            if (mode == null) {
+                return;
+            }
+            mode.TimePlayed = areaTime;
+            mode.Deaths = areaDeaths;
+        }
+
+        private static AreaModeStats TryGetAreaModeStats(AreaKey areaKey) {
+            if (SaveData.Instance?.Areas_Safe == null ||
+                areaKey.ID < 0 || areaKey.ID >= SaveData.Instance.Areas_Safe.Count) {
+                return null;
+            }
+
+            AreaStats areaStats = SaveData.Instance.Areas_Safe[areaKey.ID];
+            int modeIndex = (int) areaKey.Mode;
+            if (areaStats?.Modes == null || modeIndex < 0 || modeIndex >= areaStats.Modes.Length) {
+                return null;
+            }
+            return areaStats.Modes[modeIndex];
+        }
     }
 
     public static bool HasRuntimeState(string slotName) {
         string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
         return RuntimeSlots.ContainsKey(normalizedSlotName) ||
+               AkronStartPosReconstruction.HasSnapshot(normalizedSlotName) ||
                ShouldBrokerRuntimeState(normalizedSlotName) && AkronSpeedrunToolBroker.IsSaved(normalizedSlotName);
     }
 
@@ -393,31 +979,28 @@ public static partial class AkronSaveLoadService {
         return saveSlot;
     }
 
-    public static void HydrateRuntimeState(string slotName, AkronSaveLoadSlot saveSlot) {
-        if (saveSlot == null) {
-            throw new ArgumentNullException(nameof(saveSlot));
-        }
-
-        string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
-        if (!string.Equals(saveSlot.SlotName, normalizedSlotName, StringComparison.Ordinal)) {
-            throw new InvalidDataException("Persistent runtime slot name mismatch.");
-        }
-
-        if (RuntimeSlots.TryGetValue(normalizedSlotName, out AkronSaveLoadSlot previousSlot) &&
-            !ReferenceEquals(previousSlot, saveSlot)) {
-            ReleaseDormantEventInstances(previousSlot);
-        }
-        PrepareSlotPreClone(saveSlot);
-        RuntimeSlots[normalizedSlotName] = saveSlot;
-    }
-
     public static void ClearRuntimeState(string slotName) {
         string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
         AkronSpeedrunToolBroker.Clear(normalizedSlotName);
+        AkronStartPosReconstruction.DeleteSnapshot(normalizedSlotName);
         if (RuntimeSlots.Remove(normalizedSlotName, out AkronSaveLoadSlot removedSlot)) {
             ReleaseDormantEventInstances(removedSlot);
             RunClearStateActions();
         }
+    }
+
+    internal static void DiscardRuntimeStateMemory(string slotName) {
+        string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
+        if (RuntimeSlots.Remove(normalizedSlotName, out AkronSaveLoadSlot removedSlot)) {
+            ReleaseDormantEventInstances(removedSlot);
+            RunClearStateActions();
+        }
+    }
+
+    internal static void ClearRuntimeStateExceptPersistentSnapshot(string slotName) {
+        string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
+        AkronSpeedrunToolBroker.Clear(normalizedSlotName);
+        DiscardRuntimeStateMemory(normalizedSlotName);
     }
 
     public static bool HasSlot(int slot) {
@@ -451,7 +1034,7 @@ public static partial class AkronSaveLoadService {
         // visual state on the next room warp. Keep StartPos on Akron's native
         // runtime clone path while preserving broker behavior for normal slots.
         return ShouldBrokerSavestatesInsteadOfNative() &&
-               !slotName.StartsWith("Akron StartPos ", StringComparison.Ordinal);
+               !slotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal);
     }
 
     public static void RegisterRiskHandler(AkronSaveLoadRiskHandler handler) {
@@ -598,8 +1181,6 @@ public static partial class AkronSaveLoadService {
             int currentDeathsInRoom = level.Session.DeathsInCurrentLevel;
             long currentSaveDataTime = SaveData.Instance?.Time ?? 0L;
             int currentTotalDeaths = SaveData.Instance?.TotalDeaths ?? 0;
-            float currentLevelTimeActive = level.TimeActive;
-            float currentLevelRawTimeActive = level.RawTimeActive;
             AreaKey currentAreaKey = level.Session.Area;
             long currentAreaTimePlayed = SaveData.Instance?.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].TimePlayed ?? 0L;
             int currentAreaDeaths = SaveData.Instance?.Areas_Safe[currentAreaKey.ID].Modes[(int) currentAreaKey.Mode].Deaths ?? 0;
@@ -628,7 +1209,6 @@ public static partial class AkronSaveLoadService {
                 // replaces Level.Camera, so positional sounds must use the
                 // restored camera before any saved FMOD handles start.
                 Audio.SetCamera(level.Camera);
-                RemoveClonedVisualRuntimeEntities(level);
                 AkronVirtualAssetReloadTracker.ReloadDisposedAssets(level);
             } else {
                 string restoredRoom = savedSession?.Level ?? saveSlot.LevelName;
@@ -674,13 +1254,12 @@ public static partial class AkronSaveLoadService {
                 level.Session.DeathsInCurrentLevel = Math.Max(currentDeathsInRoom, level.Session.DeathsInCurrentLevel);
             }
 
-            if (saveSlot.SaveTimeAndDeaths) {
-                level.TimeActive = saveSlot.LevelTimeActive;
-                level.RawTimeActive = saveSlot.LevelRawTimeActive;
-            } else {
-                level.TimeActive = Math.Max(currentLevelTimeActive, saveSlot.LevelTimeActive);
-                level.RawTimeActive = Math.Max(currentLevelRawTimeActive, saveSlot.LevelRawTimeActive);
-            }
+            // These are room simulation clocks, not cumulative player stats.
+            // Restore them exactly so time-driven visuals and entity behavior
+            // resume from the Set frame. Session and save-file time remain
+            // monotonic above when SaveTimeAndDeaths is disabled.
+            level.TimeActive = saveSlot.LevelTimeActive;
+            level.RawTimeActive = saveSlot.LevelRawTimeActive;
 
             Settings.Instance.GrabMode = saveSlot.GrabMode;
             Settings.Instance.CrouchDashMode = saveSlot.CrouchDashMode;
@@ -710,6 +1289,10 @@ public static partial class AkronSaveLoadService {
                 AkronEventInstanceUtils.ActivateDormantEventInstances(restoredEventInstances);
                 RepairClonedSoundSources(level);
             }
+
+            // Helper callbacks run immediately after this method. Rebuild all
+            // tracked type keys first, including keys registered after Set.
+            Tracker.Refresh(level, force: true);
 
             return true;
         } catch {
@@ -838,16 +1421,6 @@ public static partial class AkronSaveLoadService {
         "SpinnerDecoRenderer",
         "SpinnerBorderRenderer"
     };
-
-    private static void IgnoreVisualRuntimeEntities(Level level) {
-        if (level == null) {
-            return;
-        }
-
-        foreach (Entity entity in GetVisualRuntimeEntities(level)) {
-            IgnoreSaveState(entity);
-        }
-    }
 
     internal static int RemoveClonedVisualRuntimeEntities(Level level) {
         if (level == null) {

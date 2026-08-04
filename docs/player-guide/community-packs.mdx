@@ -37,20 +37,23 @@ Community packs use the same `.akr` import path as local exports.
 
 - **Back up first.** Export your current setup before importing a community pack so you can restore it.
 - **Check the section.** Verify that the pack's section (StartPos, Auto Kill, and so on) matches what you expect.
-- **StartPos packs can carry room state.** StartPos community packs may include portable room-state snapshots for collected entities, flags, counters, inventory, player state, and respawn state. Akron strips deaths, time, and file stats from those snapshots before export and import.
+- **StartPos packs carry exact room state.** Each imported StartPos includes its v6 snapshot, coordinates, and spawn settings. The same map and object-providing mods must be installed.
 - **Attempt-changing imports are policy-visible.** Imported settings that affect attempt counts may appear in status and proof metadata.
 - **Prefer scoped imports.** Use section-specific packs over whole-setup packs when you only need one category.
-- **Only setup archives import.** Public packs must use the current `.akr` setup archive shape: `manifest.json` plus `setup.json`, with `Kind` set to `setup` and setup format `akron-setup-v2`.
+- **Only setup archives import.** Public packs must use the current `.akr` setup archive shape: `manifest.json`, `setup.json`, and one v6 snapshot entry per StartPos, with `Kind` set to `setup` and setup format `akron-setup-v3`.
 
 ## Size Limits
 
 Akron caps catalog and pack downloads before importing:
 
 - Catalog index: 1 MiB.
-- `.akr` pack download: 4 MiB.
+- `.akr` pack download: 512 MiB.
 - Setup payload inside an `.akr`: 2 MiB.
+- Each compressed StartPos snapshot attachment: 128 MiB.
+- All compressed StartPos snapshot attachments in one pack: 509 MiB.
+- Each downloaded catalog preview image: 2 MiB, no wider or taller than 2048 pixels, and no larger than 4,194,304 pixels in total.
 
-The official Discord bot uses the same 4 MiB `.akr` limit before publishing a public catalog pack.
+The official Discord bot must allow the same 512 MiB `.akr` limit before publishing a public catalog pack.
 
 Catalog screenshots can start larger than the stored image. Official upload paths store marked-room captures privately for review, then publish optimized JPEG previews for the catalog carousel. Moderator reviews show every submitted image, and published Discord galleries include navigation and download controls. In-game uploads automatically capture rooms that contain the selected StartPos, Auto Kill, or Auto Deafen content before submission. StartPos galleries begin with Slot 1 and continue in slot order.
 

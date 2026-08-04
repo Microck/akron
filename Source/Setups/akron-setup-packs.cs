@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -27,6 +28,12 @@ public sealed class AkronSetupPack {
 
     [JsonIgnore]
     public string ArchiveMapSid { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    internal string ArchivePath { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    internal Dictionary<int, string> SnapshotSourcePaths { get; set; } = new Dictionary<int, string>();
 }
 
 public enum AkronSetupSection {
@@ -51,19 +58,20 @@ public sealed class AkronStartPosPackEntry {
     public float Y { get; set; }
     public string Room { get; set; } = string.Empty;
     public string AreaSid { get; set; } = string.Empty;
-    public string RoomStateSnapshot { get; set; } = string.Empty;
     public bool UsesSpawnConfig { get; set; }
     public int Dashes { get; set; } = -1;
     public int StaminaPercent { get; set; } = -1;
     public AkronStartPosFacing Facing { get; set; } = AkronStartPosFacing.Current;
     public bool Idle { get; set; }
     public bool Grab { get; set; }
+    public string SnapshotEntry { get; set; } = string.Empty;
+    public string SnapshotSha256 { get; set; } = string.Empty;
 }
 
 public static partial class AkronSetupPacks {
     public const string SetupArchiveKind = "setup";
     public const string SetupArchivePayload = "setup.json";
-    public const string SetupPackFormat = "akron-setup-v2";
+    public const string SetupPackFormat = "akron-setup-v3";
 
     public const int MaxStartPositions = 99;
     public const int MaxAutoKillAreas = 128;
@@ -87,6 +95,11 @@ public static partial class AkronSetupPacks {
     public const float MaxPortableStartPosCoordinate = 16_777_216f;
 
     private const int MaxSetupPayloadBytes = 2 * 1024 * 1024;
+    internal const int MaxSnapshotAttachmentBytes = 128 * 1024 * 1024;
+    // Leave room for setup.json, manifest.json, and ZIP metadata so the complete
+    // archive stays within the community pack reader's 512 MiB file limit.
+    internal const long MaxSnapshotAttachmentsBytes = 509L * 1024L * 1024L;
+    private const long MaxDecompressedSnapshotBytes = AkronStartPosReconstruction.MaxDecompressedSnapshotBytes;
 
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {
         WriteIndented = true,
@@ -349,6 +362,10 @@ public static partial class AkronSetupPacks {
         string created = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
         section = NormalizeSection(section);
         string mapSid = ResolveArchiveMapSid(session);
+        Dictionary<int, string> snapshotSourcePaths = new Dictionary<int, string>();
+        Dictionary<int, AkronStartPosPackEntry> startPositions = section is AkronSetupSection.StartPos or AkronSetupSection.Whole
+            ? CaptureStartPositions(session, mapSid, out snapshotSourcePaths)
+            : new Dictionary<int, AkronStartPosPackEntry>();
         return new AkronSetupPack {
             Name = BuildPackName(settings, name, section),
             CreatedUtc = created,
@@ -358,15 +375,28 @@ public static partial class AkronSetupPacks {
             // SerializePortablePack strips fields outside the archive section.
             ButtonBindings = CaptureButtonBindings(settings),
             MenuActionBindings = new Dictionary<string, string>(settings.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal),
-            StartPositions = CaptureStartPositions(
-                session,
-                mapSid,
-                includeRoomStateSnapshots: section is AkronSetupSection.StartPos or AkronSetupSection.Whole),
+            StartPositions = startPositions,
+            SnapshotSourcePaths = snapshotSourcePaths,
             ArchiveMapSid = mapSid
         };
     }
 
     public static void Apply(AkronModuleSettings settings, AkronModuleSession session, AkronSetupPack pack, AkronSetupSection? requestedSection = null) {
+        Apply(
+            settings,
+            session,
+            pack,
+            requestedSection,
+            () => AkronModule.Instance == null || AkronActions.SaveAkronStartPosData());
+    }
+
+    internal static void Apply(
+        AkronModuleSettings settings,
+        AkronModuleSession session,
+        AkronSetupPack pack,
+        AkronSetupSection? requestedSection,
+        Func<bool> persistStartPosMetadata
+    ) {
         if (settings == null) {
             throw new ArgumentNullException(nameof(settings));
         }
@@ -379,41 +409,104 @@ public static partial class AkronSetupPacks {
         string targetMapSid = ResolvePackTargetMapSid(pack);
         pack.ArchiveMapSid = targetMapSid;
         ValidatePortablePack(pack, section, targetMapSid);
+        int[] existingTargetSlots = (session?.StartPositions ?? new Dictionary<int, AkronStartPos>())
+            .Where(pair => string.Equals(pair.Value?.AreaSid, targetMapSid, StringComparison.Ordinal))
+            .Select(pair => pair.Key)
+            .Concat(AkronModule.Instance == null
+                ? Enumerable.Empty<int>()
+                : AkronActions.GetStartPositionsForArea(targetMapSid).Select(pair => pair.Key))
+            .Distinct()
+            .ToArray();
+        using SetupImportStateTransaction stateTransaction = section is AkronSetupSection.StartPos or AkronSetupSection.Whole
+            ? new SetupImportStateTransaction(settings, session, targetMapSid)
+            : null;
+        using PreparedStartPosImport prepared = section is AkronSetupSection.StartPos or AkronSetupSection.Whole
+            ? PrepareStartPosImport(pack, targetMapSid)
+            : null;
         if (section == AkronSetupSection.Whole) {
+            Dictionary<int, AkronStartPos> imported = null;
+            if (session != null && !string.IsNullOrWhiteSpace(pack.ArchiveMapSid)) {
+                imported = BuildStartPositions(pack.StartPositions, pack.ArchiveMapSid);
+                // Install remains reversible until the matching metadata and
+                // settings have committed below.
+                prepared?.Install(previousSlots: existingTargetSlots);
+            }
             ApplyPortableWholeState(settings, pack.State);
             ApplyButtonBindings(settings, pack.ButtonBindings);
             settings.MenuActionBindings = new Dictionary<string, string>(pack.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal);
-            if (session != null && !string.IsNullOrWhiteSpace(pack.ArchiveMapSid)) {
-                AkronActions.ReplaceAllStartPositions(BuildStartPositions(pack.StartPositions), session, pack.ArchiveMapSid);
+            if (imported != null) {
+                AkronActions.ReplaceAllStartPositions(
+                    imported,
+                    session,
+                    pack.ArchiveMapSid,
+                    persistMetadata: false);
+                if (!persistStartPosMetadata()) {
+                    throw new IOException("Could not persist imported StartPos metadata.");
+                }
+                prepared?.Commit();
+            }
+            stateTransaction?.Commit();
+            if (imported != null && prepared != null && AkronModule.Instance != null) {
+                AkronActions.RefreshStartPositionsAfterSnapshotImport(pack.ArchiveMapSid, session);
             }
             return;
         }
 
+        Dictionary<int, AkronStartPos> mergedStartPositions = null;
+        Dictionary<int, AkronStartPos> importedForMap = null;
+        if (section == AkronSetupSection.StartPos && session != null && !string.IsNullOrWhiteSpace(pack.ArchiveMapSid)) {
+            Dictionary<int, AkronStartPos> imported = BuildStartPositions(pack.StartPositions, pack.ArchiveMapSid);
+            mergedStartPositions = MergeScopedStartPositions(
+                session.StartPositions,
+                imported,
+                pack.ArchiveMapSid,
+                out Dictionary<int, int> importedSlotMap);
+            // A failed file move must leave both the old files and the old
+            // in-memory setup untouched.
+            prepared?.Install(importedSlotMap, existingTargetSlots);
+            importedForMap = mergedStartPositions
+                .Where(pair => string.Equals(pair.Value?.AreaSid, pack.ArchiveMapSid, StringComparison.Ordinal))
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
+        }
         AkronSetupState merged = settings.CaptureSetupPackState();
         ApplyStateSection(merged, pack.State, section);
         settings.ApplySetupPackState(merged);
         if (section == AkronSetupSection.Keybinds) {
             ApplyButtonBindings(settings, pack.ButtonBindings);
             settings.MenuActionBindings = new Dictionary<string, string>(pack.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal);
-        } else if (section == AkronSetupSection.StartPos && session != null && !string.IsNullOrWhiteSpace(pack.ArchiveMapSid)) {
-            Dictionary<int, AkronStartPos> imported = BuildStartPositions(pack.StartPositions);
-            AkronActions.ReplaceAllStartPositions(imported, targetSession: null, targetAreaSid: pack.ArchiveMapSid);
-            Dictionary<int, AkronStartPos> activeImported = AkronModule.Instance == null
-                ? imported
-                : AkronActions.GetStartPositionsForArea(pack.ArchiveMapSid).ToDictionary(pair => pair.Key, pair => pair.Value);
-            session.StartPositions = MergeScopedStartPositions(session.StartPositions, activeImported, pack.ArchiveMapSid);
+        } else if (importedForMap != null) {
+            AkronActions.ReplaceAllStartPositions(
+                importedForMap,
+                targetSession: null,
+                targetAreaSid: pack.ArchiveMapSid,
+                persistMetadata: false);
+            session.StartPositions = mergedStartPositions;
+            if (!persistStartPosMetadata()) {
+                throw new IOException("Could not persist imported StartPos metadata.");
+            }
+            prepared?.Commit();
+        }
+        stateTransaction?.Commit();
+        if (importedForMap != null && prepared != null && AkronModule.Instance != null) {
+            AkronActions.RefreshStartPositionsAfterSnapshotImport(pack.ArchiveMapSid, session);
         }
     }
 
     public static string ExportCurrent(string name = "", AkronSetupSection section = AkronSetupSection.Whole) {
         section = NormalizeSection(section);
-        AkronSetupPack pack = Capture(AkronModule.Settings, AkronModule.Session, name, section);
-        Directory.CreateDirectory(GetSetupDirectory());
-        string fileName = SanitizeFileName(pack.Name) + "-" + DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ", CultureInfo.InvariantCulture) + AkronArchive.Extension;
-        string path = Path.Combine(GetSetupDirectory(), fileName);
-        Write(AkronModule.Settings, AkronModule.Session, path, name, section);
-        Engine.Scene?.Add(new AkronToast("Exported " + FormatSection(section) + " setup " + pack.Name + "."));
-        return path;
+        try {
+            AkronSetupPack pack = Capture(AkronModule.Settings, AkronModule.Session, name, section);
+            Directory.CreateDirectory(GetSetupDirectory());
+            string fileName = SanitizeFileName(pack.Name) + "-" + DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ", CultureInfo.InvariantCulture) + AkronArchive.Extension;
+            string path = Path.Combine(GetSetupDirectory(), fileName);
+            Write(AkronModule.Settings, AkronModule.Session, path, name, section);
+            Engine.Scene?.Add(new AkronToast("Exported " + FormatSection(section) + " setup " + pack.Name + "."));
+            return path;
+        } catch (Exception exception) when (exception is InvalidDataException || exception is IOException || exception is UnauthorizedAccessException) {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to export Akron setup archive: " + exception.Message);
+            Engine.Scene?.Add(new AkronToast("Could not export setup pack."));
+            return string.Empty;
+        }
     }
 
     public static bool Import(string pathOrName, AkronSetupSection? section = null) {
@@ -475,19 +568,18 @@ public static partial class AkronSetupPacks {
     public static void Write(AkronModuleSettings settings, AkronModuleSession session, string path, string name = "", AkronSetupSection section = AkronSetupSection.Whole) {
         AkronSetupPack pack = Capture(settings, session, name, section);
         ValidatePortablePack(pack, pack.Section, ResolveArchiveMapSid(session));
-        AkronArchive.WriteSinglePayloadArchive(
+        WriteArchive(
             path,
+            pack,
             new AkronArchiveManifest {
                 Kind = SetupArchiveKind,
                 KindVersion = 1,
                 CreatedAt = pack.CreatedUtc,
                 Target = new AkronArchiveTarget {
                     Game = "Celeste",
-                    MapSid = ResolveArchiveMapSid(session)
+                    MapSid = pack.ArchiveMapSid
                 }
-            },
-            SetupArchivePayload,
-            SerializePackPayloadForArchive(pack));
+            });
     }
 
     internal static string SerializePackPayloadForArchive(AkronSetupPack pack) {
@@ -496,21 +588,45 @@ public static partial class AkronSetupPacks {
             return payload;
         }
 
-        List<AkronStartPosPackEntry> portableSnapshots = (pack?.StartPositions ?? new Dictionary<int, AkronStartPosPackEntry>())
-            .Values
-            .Where(entry => !string.IsNullOrWhiteSpace(entry?.RoomStateSnapshot))
-            .OrderByDescending(entry => entry.RoomStateSnapshot.Length)
-            .ToList();
-        foreach (AkronStartPosPackEntry entry in portableSnapshots) {
-            entry.RoomStateSnapshot = string.Empty;
-            payload = SerializePortablePack(pack);
-            if (Encoding.UTF8.GetByteCount(payload) <= MaxSetupPayloadBytes) {
-                Logger.Log(LogLevel.Warn, nameof(AkronSetupPacks), "Omitted StartPos room-state snapshots because the setup pack was too large.");
-                return payload;
+        throw new InvalidDataException("Setup archive payload is too large.");
+    }
+
+    internal static void WriteArchive(string path, AkronSetupPack pack, AkronArchiveManifest manifest) {
+        HashSet<string> expectedEntries = GetExpectedSnapshotEntries(pack);
+        Dictionary<string, string> attachments = new Dictionary<string, string>(StringComparer.Ordinal);
+        long attachmentBytes = 0;
+        foreach (KeyValuePair<int, AkronStartPosPackEntry> pair in pack.StartPositions ?? new Dictionary<int, AkronStartPosPackEntry>()) {
+            if (!pack.SnapshotSourcePaths.TryGetValue(pair.Key, out string snapshotPath) || !File.Exists(snapshotPath)) {
+                throw new InvalidDataException("StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + " has no exact snapshot to export.");
+            }
+            long snapshotBytes = new FileInfo(snapshotPath).Length;
+            if (snapshotBytes > MaxSnapshotAttachmentBytes) {
+                throw new InvalidDataException(
+                    "StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + " snapshot is too large to export.");
+            }
+            if (attachmentBytes > MaxSnapshotAttachmentsBytes - snapshotBytes) {
+                throw new InvalidDataException("StartPos snapshot attachments are too large to export.");
+            }
+            attachmentBytes += snapshotBytes;
+            attachments[pair.Value.SnapshotEntry] = snapshotPath;
+        }
+        if (!expectedEntries.SetEquals(attachments.Keys)) {
+            throw new InvalidDataException("StartPos snapshot attachments are incomplete.");
+        }
+
+        foreach (KeyValuePair<int, AkronStartPosPackEntry> pair in pack.StartPositions ?? new Dictionary<int, AkronStartPosPackEntry>()) {
+            string snapshotPath = attachments[pair.Value.SnapshotEntry];
+            if (!string.Equals(ComputeFileSha256(snapshotPath), pair.Value.SnapshotSha256, StringComparison.Ordinal)) {
+                throw new InvalidDataException("StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + " changed during export.");
             }
         }
 
-        throw new InvalidDataException("Setup archive payload is too large.");
+        AkronArchive.WritePayloadArchive(
+            path,
+            manifest,
+            SetupArchivePayload,
+            SerializePackPayloadForArchive(pack),
+            attachments);
     }
 
     public static AkronSetupPack Read(string path) {
@@ -518,7 +634,15 @@ public static partial class AkronSetupPacks {
     }
 
     internal static AkronSetupPack Read(string path, out AkronArchiveManifest manifest) {
-        string payload = AkronArchive.ReadSinglePayloadArchive(path, SetupArchiveKind, SetupArchivePayload, MaxSetupPayloadBytes, out manifest);
+        string payload = AkronArchive.ReadPayloadArchive(
+            path,
+            SetupArchiveKind,
+            SetupArchivePayload,
+            MaxSetupPayloadBytes,
+            MaxStartPositions,
+            MaxSnapshotAttachmentsBytes,
+            out manifest,
+            out string[] attachmentNames);
         ValidatePortablePackJson(payload);
         AkronSetupPack pack = JsonSerializer.Deserialize<AkronSetupPack>(payload, JsonOptions);
         if (pack == null || !string.Equals(pack.Format, SetupPackFormat, StringComparison.Ordinal) || pack.State == null) {
@@ -528,8 +652,94 @@ public static partial class AkronSetupPacks {
         AkronSetupSection section = NormalizeSection(pack.Section);
         ValidatePackTimestamp(pack.CreatedUtc, manifest.CreatedAt);
         ValidatePortablePack(pack, section, manifest.Target?.MapSid);
+        HashSet<string> expectedAttachments = GetExpectedSnapshotEntries(pack);
+        if (!expectedAttachments.SetEquals(attachmentNames)) {
+            throw new InvalidDataException("Setup pack snapshot entries do not match its StartPos data.");
+        }
         pack.ArchiveMapSid = manifest.Target.MapSid;
+        pack.ArchivePath = path;
         return pack;
+    }
+
+    private static HashSet<string> GetExpectedSnapshotEntries(AkronSetupPack pack) {
+        HashSet<string> entries = new HashSet<string>(StringComparer.Ordinal);
+        if (pack?.Section is not AkronSetupSection.StartPos and not AkronSetupSection.Whole) {
+            return entries;
+        }
+
+        foreach (KeyValuePair<int, AkronStartPosPackEntry> pair in pack.StartPositions ?? new Dictionary<int, AkronStartPosPackEntry>()) {
+            AkronStartPosPackEntry entry = pair.Value ?? throw new InvalidDataException("Setup pack has an invalid StartPos entry.");
+            string expectedName = GetSnapshotEntryName(pair.Key);
+            if (!string.Equals(entry.SnapshotEntry, expectedName, StringComparison.Ordinal) ||
+                entry.SnapshotSha256?.Length != 64 ||
+                !entry.SnapshotSha256.All(Uri.IsHexDigit) ||
+                !string.Equals(entry.SnapshotSha256, entry.SnapshotSha256.ToLowerInvariant(), StringComparison.Ordinal) ||
+                !entries.Add(entry.SnapshotEntry)) {
+                throw new InvalidDataException("Setup pack has invalid StartPos snapshot metadata.");
+            }
+        }
+        return entries;
+    }
+
+    private static PreparedStartPosImport PrepareStartPosImport(AkronSetupPack pack, string targetMapSid) {
+        if (pack == null || string.IsNullOrWhiteSpace(pack.ArchivePath)) {
+            return null;
+        }
+
+        string snapshotRoot = Path.GetDirectoryName(AkronStartPosReconstruction.GetSnapshotPath(string.Empty));
+        string stagingDirectory = Path.Combine(snapshotRoot, ".import-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(stagingDirectory);
+        Dictionary<int, string> stagedSnapshots = new Dictionary<int, string>();
+        try {
+            foreach (KeyValuePair<int, AkronStartPosPackEntry> pair in pack.StartPositions.OrderBy(pair => pair.Key)) {
+                AkronStartPosPackEntry entry = pair.Value;
+                byte[] compressedSnapshot = AkronArchive.ReadBinaryEntry(pack.ArchivePath, entry.SnapshotEntry, MaxSnapshotAttachmentBytes);
+                string digest = Convert.ToHexString(SHA256.HashData(compressedSnapshot)).ToLowerInvariant();
+                if (!string.Equals(digest, entry.SnapshotSha256, StringComparison.Ordinal)) {
+                    throw new InvalidDataException("StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + " snapshot checksum differs.");
+                }
+
+                using MemoryStream snapshotStream = new MemoryStream(compressedSnapshot, writable: false);
+                if (!AkronStartPosReconstruction.TryReadSnapshot(
+                        snapshotStream,
+                        out AkronReconstructionDocument document,
+                        out string readError,
+                        MaxDecompressedSnapshotBytes)) {
+                    throw new InvalidDataException("StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + " snapshot is invalid: " + readError);
+                }
+                if (!string.Equals(document.MapSid, targetMapSid, StringComparison.Ordinal) ||
+                    !string.Equals(document.Room, entry.Room, StringComparison.Ordinal)) {
+                    throw new InvalidDataException("StartPos snapshot identity does not match its pack entry.");
+                }
+
+                string targetSlotName = AkronActions.GetStartPosStateSlotName(targetMapSid, pair.Key);
+                int recipientFileSlot = SaveData.Instance?.FileSlot ?? -1;
+                if (!AkronStartPosReconstruction.SaveSnapshot(
+                        targetSlotName,
+                        targetMapSid,
+                        entry.Room,
+                        recipientFileSlot,
+                        document,
+                        out string saveError,
+                        stagingDirectory)) {
+                    throw new InvalidDataException("Could not stage StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + ": " + saveError);
+                }
+                stagedSnapshots[pair.Key] = AkronStartPosReconstruction.GetSnapshotPath(targetSlotName, stagingDirectory);
+            }
+            return new PreparedStartPosImport(stagingDirectory, targetMapSid, stagedSnapshots);
+        } catch {
+            Directory.Delete(stagingDirectory, recursive: true);
+            throw;
+        }
+    }
+
+    private static string GetSnapshotEntryName(int slot) {
+        return "startpos/" + slot.ToString(CultureInfo.InvariantCulture) + ".v6.json.gz";
+    }
+
+    private static string ComputeFileSha256(string path) {
+        using FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 
     private static string ResolveArchiveMapSid(AkronModuleSession session) {
@@ -1311,8 +1521,13 @@ public static partial class AkronSetupPacks {
         return parsed;
     }
 
-    private static Dictionary<int, AkronStartPosPackEntry> CaptureStartPositions(AkronModuleSession session, string mapSid, bool includeRoomStateSnapshots) {
+    internal static Dictionary<int, AkronStartPosPackEntry> CaptureStartPositions(
+        AkronModuleSession session,
+        string mapSid,
+        out Dictionary<int, string> snapshotSourcePaths
+    ) {
         Dictionary<int, AkronStartPosPackEntry> entries = new Dictionary<int, AkronStartPosPackEntry>();
+        snapshotSourcePaths = new Dictionary<int, string>();
         if (string.IsNullOrWhiteSpace(mapSid)) {
             return entries;
         }
@@ -1322,27 +1537,35 @@ public static partial class AkronSetupPacks {
                 continue;
             }
 
+            string snapshotPath = AkronStartPosReconstruction.GetSnapshotPath(pair.Value.StateSlotName);
+            string snapshotEntry = GetSnapshotEntryName(pair.Key);
+            bool hasSnapshot = !string.IsNullOrWhiteSpace(pair.Value.StateSlotName) && File.Exists(snapshotPath);
             entries[pair.Key] = new AkronStartPosPackEntry {
                 X = pair.Value.Position.X,
                 Y = pair.Value.Position.Y,
                 Room = pair.Value.Room,
                 AreaSid = pair.Value.AreaSid,
-                RoomStateSnapshot = includeRoomStateSnapshots
-                    ? AkronPersistentStartPosSnapshots.CapturePortableRoomStateSnapshot(pair.Key, pair.Value, nameof(AkronSetupPacks), "StartPos")
-                    : string.Empty,
                 UsesSpawnConfig = pair.Value.UsesSpawnConfig,
                 Dashes = pair.Value.Dashes,
                 StaminaPercent = pair.Value.StaminaPercent,
                 Facing = pair.Value.Facing,
                 Idle = pair.Value.Idle,
-                Grab = pair.Value.Grab
+                Grab = pair.Value.Grab,
+                SnapshotEntry = hasSnapshot ? snapshotEntry : string.Empty,
+                SnapshotSha256 = hasSnapshot ? ComputeFileSha256(snapshotPath) : string.Empty
             };
+            if (hasSnapshot) {
+                snapshotSourcePaths[pair.Key] = snapshotPath;
+            }
         }
 
         return entries;
     }
 
-    private static Dictionary<int, AkronStartPos> BuildStartPositions(Dictionary<int, AkronStartPosPackEntry> entries) {
+    private static Dictionary<int, AkronStartPos> BuildStartPositions(
+        Dictionary<int, AkronStartPosPackEntry> entries,
+        string targetMapSid
+    ) {
         Dictionary<int, AkronStartPos> startPositions = new Dictionary<int, AkronStartPos>();
         foreach (KeyValuePair<int, AkronStartPosPackEntry> pair in entries ?? new Dictionary<int, AkronStartPosPackEntry>()) {
             AkronStartPosPackEntry entry = pair.Value;
@@ -1360,8 +1583,7 @@ public static partial class AkronSetupPacks {
                 Facing = entry.Facing,
                 Idle = entry.Idle,
                 Grab = entry.Grab,
-                ImportedRoomStateSnapshot = entry.RoomStateSnapshot ?? string.Empty,
-                StateSlotName = string.Empty
+                StateSlotName = AkronActions.GetStartPosStateSlotName(targetMapSid, pair.Key)
             };
         }
 
@@ -1371,7 +1593,9 @@ public static partial class AkronSetupPacks {
     private static Dictionary<int, AkronStartPos> MergeScopedStartPositions(
         Dictionary<int, AkronStartPos> existing,
         Dictionary<int, AkronStartPos> imported,
-        string targetMapSid) {
+        string targetMapSid,
+        out Dictionary<int, int> importedSlotMap) {
+        importedSlotMap = new Dictionary<int, int>();
         HashSet<string> importedAreaSids = new HashSet<string>(
             (imported ?? new Dictionary<int, AkronStartPos>()).Values.Select(startPos => startPos?.AreaSid ?? string.Empty),
             StringComparer.Ordinal);
@@ -1389,19 +1613,18 @@ public static partial class AkronSetupPacks {
         }
 
         foreach (KeyValuePair<int, AkronStartPos> pair in imported ?? new Dictionary<int, AkronStartPos>()) {
-            int slot = NextAvailableStartPosSlot(merged, pair.Key);
+            // StartPos slot numbers belong to their map. An unrelated map can
+            // use the same number in this transient session dictionary, but it
+            // must not renumber the imported map or its snapshot file.
+            int slot = pair.Key;
+            if (pair.Value != null) {
+                pair.Value.StateSlotName = AkronActions.GetStartPosStateSlotName(targetMapSid, slot);
+            }
             merged[slot] = pair.Value;
+            importedSlotMap[pair.Key] = slot;
         }
 
         return merged;
-    }
-
-    private static int NextAvailableStartPosSlot(Dictionary<int, AkronStartPos> startPositions, int preferredSlot) {
-        int slot = Math.Max(1, preferredSlot);
-        while (startPositions.ContainsKey(slot)) {
-            slot++;
-        }
-        return slot;
     }
 
     private static string ResolveSetupPath(string pathOrName) {
@@ -1425,5 +1648,191 @@ public static partial class AkronSetupPacks {
             .Select(character => Path.GetInvalidFileNameChars().Contains(character) ? '-' : character)
             .ToArray()).Trim('-', ' ');
         return string.IsNullOrWhiteSpace(safe) ? "setup" : safe;
+    }
+
+    private sealed class PreparedStartPosImport : IDisposable {
+        private readonly string stagingDirectory;
+        private readonly string targetMapSid;
+        private readonly Dictionary<int, string> stagedSnapshots;
+        private readonly List<string> installedPaths = new List<string>();
+        private readonly Dictionary<string, string> replacedPaths = new Dictionary<string, string>(StringComparer.Ordinal);
+        private bool installed;
+        private bool committed;
+
+        public PreparedStartPosImport(string stagingDirectory, string targetMapSid, Dictionary<int, string> stagedSnapshots) {
+            this.stagingDirectory = stagingDirectory;
+            this.targetMapSid = targetMapSid;
+            this.stagedSnapshots = stagedSnapshots;
+        }
+
+        public void Install(
+            IReadOnlyDictionary<int, int> importedSlotMap = null,
+            IEnumerable<int> previousSlots = null
+        ) {
+            if (installed) {
+                throw new InvalidOperationException("Prepared StartPos snapshots are already installed.");
+            }
+            try {
+                // Back up removed slots too. Metadata rollback can only be
+                // correct when every snapshot from the previous map state is
+                // still available, not just paths replaced by imported files.
+                foreach (int previousSlot in previousSlots ?? Enumerable.Empty<int>()) {
+                    BackUpDestination(AkronStartPosReconstruction.GetSnapshotPath(
+                        AkronActions.GetStartPosStateSlotName(targetMapSid, previousSlot)));
+                }
+                foreach (KeyValuePair<int, string> snapshot in stagedSnapshots) {
+                    int targetSlot = importedSlotMap != null && importedSlotMap.TryGetValue(snapshot.Key, out int remappedSlot)
+                        ? remappedSlot
+                        : snapshot.Key;
+                    string destinationPath = AkronStartPosReconstruction.GetSnapshotPath(
+                        AkronActions.GetStartPosStateSlotName(targetMapSid, targetSlot));
+                    Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
+                    BackUpDestination(destinationPath);
+                    if (targetSlot == snapshot.Key) {
+                        File.Move(snapshot.Value, destinationPath, overwrite: true);
+                    } else {
+                        using FileStream source = new FileStream(snapshot.Value, FileMode.Open, FileAccess.Read, FileShare.Read);
+                        if (!AkronStartPosReconstruction.TryReadSnapshot(source, out AkronReconstructionDocument document, out string readError)) {
+                            throw new InvalidDataException("Could not remap imported StartPos snapshot: " + readError);
+                        }
+                        if (!AkronStartPosReconstruction.SaveSnapshot(
+                                AkronActions.GetStartPosStateSlotName(targetMapSid, targetSlot),
+                                targetMapSid,
+                                document.Room,
+                                document.FileSlot,
+                                document,
+                                out string saveError)) {
+                            throw new InvalidDataException("Could not remap imported StartPos snapshot: " + saveError);
+                        }
+                    }
+                    installedPaths.Add(destinationPath);
+                }
+                installed = true;
+            } catch {
+                RollBack();
+                throw;
+            }
+        }
+
+        private void BackUpDestination(string destinationPath) {
+            if (!File.Exists(destinationPath) || replacedPaths.ContainsKey(destinationPath)) {
+                return;
+            }
+            string backupPath = Path.Combine(stagingDirectory, "replaced-" + Guid.NewGuid().ToString("N"));
+            File.Move(destinationPath, backupPath);
+            replacedPaths[destinationPath] = backupPath;
+        }
+
+        public void Commit() {
+            if (!installed) {
+                throw new InvalidOperationException("Prepared StartPos snapshots have not been installed.");
+            }
+            committed = true;
+        }
+
+        private void RollBack() {
+            foreach (string installedPath in installedPaths) {
+                if (File.Exists(installedPath)) {
+                    File.Delete(installedPath);
+                }
+            }
+            foreach (KeyValuePair<string, string> replaced in replacedPaths) {
+                if (File.Exists(replaced.Value)) {
+                    File.Move(replaced.Value, replaced.Key, overwrite: true);
+                }
+            }
+            installedPaths.Clear();
+            replacedPaths.Clear();
+            installed = false;
+        }
+
+        public void Dispose() {
+            if (installed && !committed) {
+                RollBack();
+            }
+            try {
+                if (Directory.Exists(stagingDirectory)) {
+                    Directory.Delete(stagingDirectory, recursive: true);
+                }
+            } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
+                // The import is already committed or rolled back. A temporary
+                // directory that could not be removed must not change the
+                // reported result of that transaction.
+                Logger.Log(LogLevel.Warn, nameof(AkronSetupPacks),
+                    "Could not delete staged StartPos import: " + exception.Message);
+            }
+        }
+    }
+
+    private sealed class SetupImportStateTransaction : IDisposable {
+        private readonly AkronModuleSettings settings;
+        private readonly AkronModuleSession session;
+        private readonly AkronModuleSaveData saveData;
+        private readonly string targetMapSid;
+        private readonly AkronSetupState previousSettings;
+        private readonly Dictionary<string, AkronButtonBindingPack> previousButtonBindings;
+        private readonly Dictionary<string, string> previousMenuActionBindings;
+        private readonly Dictionary<int, AkronStartPos> previousStartPositions;
+        private readonly string previousLoadedAreaSid;
+        private readonly int previousLastLoadedSlot;
+        private readonly Dictionary<string, AkronPersistedStartPosMap> previousMaps;
+        private readonly AkronPersistedStartPosMap previousMap;
+        private readonly bool hadPreviousMap;
+        private bool committed;
+
+        public SetupImportStateTransaction(
+            AkronModuleSettings settings,
+            AkronModuleSession session,
+            string targetMapSid
+        ) {
+            this.settings = settings;
+            this.session = session;
+            this.targetMapSid = targetMapSid;
+            saveData = AkronModule.Instance == null ? null : AkronModule.SaveData;
+            previousSettings = settings.CaptureSetupPackState();
+            previousButtonBindings = CaptureButtonBindings(settings);
+            previousMenuActionBindings = new Dictionary<string, string>(
+                settings.MenuActionBindings ?? new Dictionary<string, string>(),
+                StringComparer.Ordinal);
+            previousStartPositions = session?.StartPositions;
+            previousLoadedAreaSid = session?.LoadedStartPositionsAreaSid ?? string.Empty;
+            previousLastLoadedSlot = session?.LastLoadedStartPosSlot ?? 0;
+            previousMaps = saveData?.StartPositionsByMap;
+            hadPreviousMap = previousMaps != null &&
+                             previousMaps.TryGetValue(targetMapSid, out previousMap);
+        }
+
+        public void Commit() {
+            committed = true;
+        }
+
+        public void Dispose() {
+            if (committed) {
+                return;
+            }
+
+            settings.ApplySetupPackState(previousSettings);
+            ApplyButtonBindings(settings, previousButtonBindings);
+            settings.MenuActionBindings = new Dictionary<string, string>(
+                previousMenuActionBindings,
+                StringComparer.Ordinal);
+            if (session != null) {
+                session.StartPositions = previousStartPositions;
+                session.LoadedStartPositionsAreaSid = previousLoadedAreaSid;
+                session.LastLoadedStartPosSlot = previousLastLoadedSlot;
+            }
+            if (saveData != null) {
+                if (previousMaps == null) {
+                    saveData.StartPositionsByMap = null;
+                } else {
+                    if (hadPreviousMap) {
+                        previousMaps[targetMapSid] = previousMap;
+                    } else {
+                        previousMaps.Remove(targetMapSid);
+                    }
+                    saveData.StartPositionsByMap = previousMaps;
+                }
+            }
+        }
     }
 }

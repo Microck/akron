@@ -6,6 +6,17 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Changed
+
+- Store dependency-free StartPos v6 snapshots on disk so exact room state survives closing and restarting Celeste, including active custom-map gameplay.
+- Carry each exact StartPos v6 room snapshot inside setup and community packs instead of exporting coordinates alone.
+- Use the `akron-setup-v3` pack contract. Akron rejects older `akron-setup-v2` local and community packs instead of importing partial room state.
+
+### Fixed
+
+- Restore the exact StartPos frame both in-process and after a full restart, including room objects, positions, speeds, registered helper state, audio, random state, and gameplay render buffers, before simulation continues.
+- Keep global save progress with the active file and bind imported StartPos snapshots to the recipient's save slot.
+
 ## Akron Beta 63
 
 ### Fixed

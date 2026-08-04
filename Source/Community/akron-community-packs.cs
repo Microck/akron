@@ -79,7 +79,7 @@ public static class AkronCommunityPacks {
     public const string DefaultIndexUrl = "https://akron.micr.dev/catalog/index.json";
 
     private const int MaxIndexBytes = 1024 * 1024;
-    private const int MaxPackBytes = 4 * 1024 * 1024;
+    private const int MaxPackBytes = 512 * 1024 * 1024;
     private const int MaxCatalogPacks = 512;
     private const int MaxCatalogImagesPerPack = 16;
 
@@ -423,26 +423,57 @@ public static class AkronCommunityPacks {
     private static void DownloadPack(AkronCommunityPackEntry entry, string destinationPath) {
         ValidateCatalogEntry(entry);
         Uri uri = ResolveCatalogResourceUri(entry, entry.DownloadUrl, "Pack");
-        byte[] bytes;
         if (uri.Scheme == Uri.UriSchemeFile) {
-            bytes = ReadFileBytesCapped(uri.LocalPath, MaxPackBytes, "Pack is too large.");
+            using FileStream source = new FileStream(uri.LocalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            WriteVerifiedPack(source, destinationPath, entry);
         } else if (uri.Scheme == Uri.UriSchemeHttps) {
-            bytes = ReadHttpBytesCapped(uri, MaxPackBytes, "Pack is too large.");
+            ValidatePublicHttpsUri(uri, "Remote resource");
+            using HttpResponseMessage response = Http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+            if ((int)response.StatusCode is >= 300 and < 400) {
+                throw new InvalidDataException("Remote redirects are not allowed.");
+            }
+            response.EnsureSuccessStatusCode();
+            if (response.Content.Headers.ContentLength > MaxPackBytes) {
+                throw new InvalidDataException("Pack is too large.");
+            }
+            using Stream source = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+            WriteVerifiedPack(source, destinationPath, entry);
         } else {
             throw new InvalidDataException("Pack URL is not allowed by its catalog.");
         }
+    }
 
-        if (bytes.Length > MaxPackBytes || bytes.Length != entry.SizeBytes) {
-            throw new InvalidDataException("Pack size does not match the catalog.");
+    private static void WriteVerifiedPack(Stream source, string destinationPath, AkronCommunityPackEntry entry) {
+        string temporaryPath = destinationPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try {
+            using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            using (FileStream destination = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
+                byte[] chunk = new byte[81920];
+                long total = 0;
+                int read;
+                while ((read = source.Read(chunk, 0, chunk.Length)) > 0) {
+                    total += read;
+                    if (total > MaxPackBytes) {
+                        throw new InvalidDataException("Pack is too large.");
+                    }
+                    destination.Write(chunk, 0, read);
+                    hash.AppendData(chunk, 0, read);
+                }
+                if (total != entry.SizeBytes) {
+                    throw new InvalidDataException("Pack size does not match the catalog.");
+                }
+            }
+
+            byte[] expectedHash = Convert.FromHexString(entry.Sha256);
+            if (!CryptographicOperations.FixedTimeEquals(hash.GetHashAndReset(), expectedHash)) {
+                throw new InvalidDataException("Pack checksum does not match the catalog.");
+            }
+            File.Move(temporaryPath, destinationPath, overwrite: true);
+        } finally {
+            if (File.Exists(temporaryPath)) {
+                File.Delete(temporaryPath);
+            }
         }
-
-        byte[] expectedHash = Convert.FromHexString(entry.Sha256);
-        byte[] actualHash = SHA256.HashData(bytes);
-        if (!CryptographicOperations.FixedTimeEquals(actualHash, expectedHash)) {
-            throw new InvalidDataException("Pack checksum does not match the catalog.");
-        }
-
-        File.WriteAllBytes(destinationPath, bytes);
     }
 
     internal static byte[] ReadFileBytesCapped(string path, int maxBytes, string tooLargeMessage) {
