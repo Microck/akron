@@ -19,6 +19,25 @@ public static class AkronSaveLoadExports {
         return AkronSaveLoadService.RegisterSaveLoadAction(saveState, loadState, clearState, beforeSaveState, beforeLoadState, preCloneEntities);
     }
 
+    public static object RegisterNamedSaveLoadAction(
+        string registrationName,
+        Action<Dictionary<Type, Dictionary<string, object>>, Level> saveState,
+        Action<Dictionary<Type, Dictionary<string, object>>, Level> loadState,
+        Action clearState,
+        Action<Level> beforeSaveState,
+        Action<Level> beforeLoadState,
+        Action preCloneEntities
+    ) {
+        return AkronSaveLoadService.RegisterNamedSaveLoadAction(
+            registrationName,
+            saveState,
+            loadState,
+            clearState,
+            beforeSaveState,
+            beforeLoadState,
+            preCloneEntities);
+    }
+
     public static object RegisterStaticTypes(Type type, params string[] memberNames) {
         return AkronSaveLoadService.RegisterStaticTypes(type, memberNames);
     }

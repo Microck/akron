@@ -8,6 +8,7 @@ using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
 
+[Collection(AkronSharedStateCollection.Name)]
 public sealed class ScreenshotScannerTests {
     [Fact]
     public void ExternalSceneChangesCancelOnlyActiveNonInternalScans() {
@@ -307,6 +308,59 @@ public sealed class ScreenshotScannerTests {
     public void TransparentBackgroundInferenceRecoversAlphaFromBlackAndWhitePasses() {
         Assert.Equal((255, 0, 0, 128), AkronCapture.InferTransparentChannels(255, 128, 0, 0));
         Assert.Equal((0, 0, 0, 0), AkronCapture.InferTransparentChannels(255, 0, 0, 0));
+    }
+
+    [Fact]
+    public void GameplayBufferQaHashCoversEveryRgbaChannelInOrder() {
+        byte[] rgba = { 1, 2, 3, 4, 250, 251, 252, 253 };
+
+        Assert.Equal(
+            "79a71f785ac8d1c7d24599aa9e57229c883cfc3ee8842167779fbce1547e04f2",
+            AkronCapture.ComputePixelHash(rgba));
+        Assert.NotEqual(AkronCapture.ComputePixelHash(rgba), AkronCapture.ComputePixelHash(rgba.Reverse().ToArray()));
+    }
+
+    [Fact]
+    public void PendingGameplayBufferQaCaptureAlwaysRunsItsCompletion() {
+        int completions = 0;
+        try {
+            Assert.True(AkronCapture.RequestGameplayBufferQaCapture(
+                "completion-test",
+                out string normalizedTag,
+                () => completions++));
+
+            _ = Record.Exception(AkronCapture.CapturePendingGameplayBufferQaFrame);
+            _ = Record.Exception(AkronCapture.CapturePendingGameplayBufferQaFrame);
+
+            Assert.Equal("completion-test", normalizedTag);
+            Assert.Equal(1, completions);
+        } finally {
+            AkronCapture.CapturePendingGameplayBufferQaFrame();
+        }
+    }
+
+    [Fact]
+    public void ReplacingPendingGameplayBufferQaCaptureCompletesTheDisplacedRequest() {
+        int firstCompletions = 0;
+        int secondCompletions = 0;
+        try {
+            Assert.True(AkronCapture.RequestGameplayBufferQaCapture(
+                "first-capture",
+                out _,
+                () => firstCompletions++));
+            Assert.True(AkronCapture.RequestGameplayBufferQaCapture(
+                "second-capture",
+                out _,
+                () => secondCompletions++));
+
+            Assert.Equal(1, firstCompletions);
+            Assert.Equal(0, secondCompletions);
+
+            AkronCapture.CapturePendingGameplayBufferQaFrame();
+            Assert.Equal(1, secondCompletions);
+        } finally {
+            AkronCapture.CapturePendingGameplayBufferQaFrame();
+        }
     }
 
     [Fact]

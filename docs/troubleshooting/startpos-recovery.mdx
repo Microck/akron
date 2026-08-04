@@ -5,23 +5,36 @@ description: Recover from blocked, mismatched, unsafe, or map-specific Akron Sta
 
 StartPos is Akron's public workflow for restoring position and room state. It is designed to prevent the silent application of risky or mismatched restores.
 
-## StartPos Capabilities
+## StartPos capabilities
 
-StartPos captures position, room, map SID, facing, dash count, stamina, idle/grab state, and Akron-managed restore data whenever Akron can safely preserve it.
+Setting a StartPos temporarily uses Akron's native runtime clone while Akron
+builds and validates the persistent v6 snapshot. After Set succeeds, normal
+and post-restart loads use that snapshot file. It contains room entities and
+components, their reference relationships, movement, timers, state machines,
+animation, coroutine progress, callbacks, registered helper state, Celeste's
+random generator and nested random stack, visual runtime entities, gameplay
+render-buffer pixels, and audio state. Akron holds the Set or Load state
+through fixed-timestep catch-up updates until Celeste renders it. No external
+savestate or TAS mod is required.
+
+Time and death statistics do not rewind. This is an explicit exception to the
+gameplay-state comparison, not a partial room restore.
 
 Use the `StartPos` tab for player workflows: setting, loading, clearing, selecting a slot, mouse placement, and configuring respawn at StartPos behavior.
 
-## Why a StartPos Restore May Be Blocked
+## Why a StartPos restore may be blocked
 
 Akron may block or refuse a StartPos restore if:
 
 - StartPos restore safety prohibits the action.
-- The saved StartPos belongs to a different map SID or room.
+- The saved StartPos belongs to a different map SID or save-file slot.
 - The saved runtime state is unavailable or unsafe for the current map.
+- The v6 snapshot file is missing, damaged, or incomplete.
+- The map, save file, mod set, runtime, or snapshot format differs from the capture environment.
 - The current player state cannot be restored safely.
 - The action is state-changing and is marked under the active attempt status.
 
-## Recovery Steps
+## Recovery steps
 
 <Steps>
   <Step title="Verify Policy State">
@@ -31,7 +44,7 @@ Akron may block or refuse a StartPos restore if:
     Switch setups only when the goal is room-lab routing, testing, or another "Cheat" workflow.
   </Step>
   <Step title="Verify the StartPos Slot">
-    Confirm that the active StartPos slot is set, belongs to the current map, and was captured in the target room.
+    Confirm that the active StartPos slot is set, belongs to the current map and save-file slot, and names the intended destination room. The room you load from can differ.
   </Step>
   <Step title="Review Map Policy">
     If a map is known to be risky, maintain the safe map policy instead of forcing unsafe restore behavior.
@@ -45,6 +58,6 @@ Akron may block or refuse a StartPos restore if:
   Unsafe restore overrides bypass risk blocking and are marked as "Cheat." Use them exclusively in non-submission setups; do not use them for submitted attempts.
 </Warning>
 
-## Safe Mode Stat Guards
+## Safe Mode stat guards
 
 Safe Mode stat guards prevent selected local stat fields from being altered by guarded Akron sessions. Sub-options that freeze deaths, jumps, or best-run stats are considered "Cheat" because they mutate or protect tracked statistics.

@@ -25,6 +25,10 @@ public sealed class AkronToast : Entity {
         timer = Math.Max(0.1f, durationSeconds);
         sequence = ++nextSequence;
         Tag = Tags.HUD | Tags.Global | Tags.PauseUpdate;
+        // Toasts report Akron actions; they are not room gameplay state. A Set
+        // notification can still be queued when the room clone is captured.
+        // Excluding it avoids replaying stale UI after every StartPos load.
+        AkronSaveLoadService.IgnoreSaveState(this);
     }
 
     public override void Update() {

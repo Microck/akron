@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
 using Celeste;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -10,8 +11,122 @@ namespace Celeste.Mod.Akron;
 public static class AkronCapture {
     internal const long MaxCapturePixels = 16_777_216L;
     private static string pendingPath = string.Empty;
+    private static string pendingGameplayBufferQaTag = string.Empty;
+    private static Action pendingGameplayBufferQaCompletion;
 
     internal static bool IsCapturingGameFrame { get; private set; }
+
+    internal static bool RequestGameplayBufferQaCapture(
+        string tag,
+        out string normalizedTag,
+        Action completion = null
+    ) {
+        normalizedTag = NormalizeQaTag(tag);
+        if (string.IsNullOrWhiteSpace(normalizedTag)) {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(pendingGameplayBufferQaTag)) {
+            string displacedTag = pendingGameplayBufferQaTag;
+            Action displacedCompletion = pendingGameplayBufferQaCompletion;
+            pendingGameplayBufferQaTag = string.Empty;
+            pendingGameplayBufferQaCompletion = null;
+            ReportGameplayBufferQaResult(
+                "qa-pixel-checkpoint: failed;tag=" + displacedTag + ";reason=replaced-by-new-request");
+            displacedCompletion?.Invoke();
+        }
+
+        pendingGameplayBufferQaTag = normalizedTag;
+        pendingGameplayBufferQaCompletion = completion;
+        return true;
+    }
+
+    internal static void CapturePendingGameplayBufferQaFrame() {
+        if (string.IsNullOrWhiteSpace(pendingGameplayBufferQaTag)) {
+            return;
+        }
+
+        string tag = pendingGameplayBufferQaTag;
+        Action completion = pendingGameplayBufferQaCompletion;
+        pendingGameplayBufferQaTag = string.Empty;
+        pendingGameplayBufferQaCompletion = null;
+        try {
+            CaptureGameplayBufferQaFrame(tag);
+        } finally {
+            completion?.Invoke();
+        }
+    }
+
+    internal static bool CaptureGameplayBufferQaFrameNow(string tag, out string normalizedTag) {
+        normalizedTag = NormalizeQaTag(tag);
+        return !string.IsNullOrWhiteSpace(normalizedTag) && CaptureGameplayBufferQaFrame(normalizedTag);
+    }
+
+    private static bool CaptureGameplayBufferQaFrame(string tag) {
+        RenderTarget2D texture = GameplayBuffers.Level?.Target;
+        if (texture == null || texture.IsDisposed) {
+            ReportGameplayBufferQaResult("qa-pixel-checkpoint: failed;tag=" + tag + ";reason=gameplay-buffer-unavailable");
+            return false;
+        }
+
+        try {
+            byte[] rgba = new byte[checked(texture.Width * texture.Height * 4)];
+            texture.GetData(rgba);
+            string hash = ComputePixelHash(rgba);
+            string directory = Path.Combine(Everest.PathGame, "Saves", "AkronAutomation");
+            string imagePath = Path.Combine(directory, "qa-pixel-" + tag + ".png");
+            string metadataPath = Path.Combine(directory, "qa-pixel-" + tag + ".txt");
+            Directory.CreateDirectory(directory);
+            SaveCapturedTexture(imagePath, stream => texture.SaveAsPng(stream, texture.Width, texture.Height));
+            File.WriteAllText(
+                metadataPath,
+                "sha256=" + hash + Environment.NewLine +
+                "width=" + texture.Width + Environment.NewLine +
+                "height=" + texture.Height + Environment.NewLine);
+            ReportGameplayBufferQaResult(
+                "qa-pixel-checkpoint: captured;tag=" + tag +
+                ";sha256=" + hash +
+                ";width=" + texture.Width +
+                ";height=" + texture.Height +
+                ";path=" + imagePath);
+            return true;
+        } catch (Exception exception) {
+            ReportGameplayBufferQaResult(
+                "qa-pixel-checkpoint: failed;tag=" + tag +
+                ";reason=" + exception.GetType().Name + ":" + exception.Message);
+            return false;
+        }
+    }
+
+    private static void ReportGameplayBufferQaResult(string line) {
+        AkronAutomationService.RecordOutput(line);
+        if (AkronModule.Instance != null) {
+            AkronLog.Normal(nameof(AkronCapture), line);
+        }
+    }
+
+    internal static string ComputePixelHash(byte[] rgba) {
+        return Convert.ToHexString(SHA256.HashData(rgba)).ToLowerInvariant();
+    }
+
+    private static string NormalizeQaTag(string tag) {
+        if (string.IsNullOrWhiteSpace(tag)) {
+            return string.Empty;
+        }
+
+        char[] normalized = new char[Math.Min(tag.Length, 64)];
+        int length = 0;
+        foreach (char character in tag.Trim()) {
+            if (length >= normalized.Length) {
+                break;
+            }
+            if (char.IsAsciiLetterOrDigit(character) || character == '-' || character == '_') {
+                normalized[length++] = character;
+            }
+        }
+
+        return length == 0 ? string.Empty : new string(normalized, 0, length);
+    }
 
     public static string Capture(Level level) {
         if (string.IsNullOrWhiteSpace(pendingPath)) {

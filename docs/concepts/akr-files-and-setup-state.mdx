@@ -22,14 +22,16 @@ The Akron overlay shows current policy/status state and tool state. It also supp
 
 ## .akr Files
 
-An `.akr` file is a strict ZIP archive with a manifest and one payload. Current setup packs use a `setup.json` payload, which is the archive entry name for setup data.
+An `.akr` file is a strict ZIP archive with a manifest and one main payload. Current setup packs use a `setup.json` payload. StartPos and Whole packs also contain one compressed v6 snapshot entry per saved StartPos.
 
 ```mermaid
 flowchart TD
   archive["example.akr"] --> manifest["manifest.json"]
   archive --> payload["setup.json"]
+  archive --> snapshots["startpos/*.v6.json.gz"]
   manifest --> target["Format and target"]
   payload --> settings["Setup data"]
+  snapshots --> roomState["Exact StartPos room state"]
 ```
 
 ## Scoped Sections

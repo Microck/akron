@@ -3,21 +3,23 @@ title: .akr Archive Format
 description: Technical specification for the Akron archive format, including manifests, payloads, and import safety rules.
 ---
 
-Akron uses `.akr` files to share structured setup data. An `.akr` file is a ZIP archive containing exactly one manifest and one payload. This structure ensures imports remain explicit and prevents unrelated files from being included in a pack.
+Akron uses `.akr` files to share structured setup data. An `.akr` file is a ZIP archive containing one manifest and one main payload. StartPos setup packs also contain the exact compressed snapshot named by each StartPos entry. The reader rejects every file that the payload does not declare.
 
 ## Archive Shape
 
-An archive must contain exactly two entries:
+Most archives contain two entries. StartPos and Whole setup archives add one snapshot entry per StartPos:
 
 ```mermaid
 flowchart TD
   archive["example.akr"] --> manifest["manifest.json"]
   archive --> payload["payload JSON"]
+  archive --> snapshots["startpos/*.v6.json.gz"]
   manifest --> format["Format and target"]
   payload --> data["Kind data"]
+  snapshots --> roomState["Exact StartPos room state"]
 ```
 
-The reader rejects archives containing folders, extra entries, rooted paths, backslashes, or `..` path segments, as well as those that do not match the expected payload name and kind.
+The reader rejects undeclared entries, rooted paths, backslashes, empty path segments, and `.` or `..` path segments, as well as archives that do not match the expected payload name and kind.
 
 ## Manifest
 
@@ -58,7 +60,7 @@ Setup packs use the `setup` archive contract:
 ```text
 Kind: setup
 Payload entry: setup.json
-Payload format: akron-setup-v1
+Payload format: akron-setup-v3
 Directory: Saves/AkronSetups
 ```
 
@@ -66,18 +68,22 @@ The `setup.json` payload uses the following structure:
 
 ```json
 {
-  "Format": "akron-setup-v1",
-  "Name": "Audio Setup",
-  "CreatedUtc": "2026-05-14T00:00:00.0000000Z",
-  "Section": "Audio",
-  "State": {},
-  "ButtonBindings": {},
-  "MenuActionBindings": {},
-  "StartPositions": {}
+  "format": "akron-setup-v3",
+  "name": "Whole Setup",
+  "createdUtc": "2026-05-14T00:00:00.0000000Z",
+  "section": "Whole",
+  "state": {},
+  "buttonBindings": {},
+  "menuActionBindings": {},
+  "startPositions": {}
 }
 ```
 
 The setup payload size limit is 2 MiB.
+
+Each compressed StartPos snapshot attachment is limited to 128 MiB. All
+snapshot attachments in one setup archive are limited to 509 MiB in total.
+Each expanded v6 snapshot is limited to 192 MiB while Akron validates it.
 
 ## Setup Sections
 
@@ -113,6 +119,11 @@ flowchart TD
 
 Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats.
 
+For each StartPos attachment, Akron verifies the declared checksum, map, and
+room before applying the setup. It then binds the snapshot to the recipient's
+active save-file slot. The attachment carries room and session state, not the
+author's global save progress or module save data.
+
 If an import fails, current settings remain unchanged and a short toast notification is shown. Detailed errors are written to the logs rather than the user-facing toast.
 
 ## Maintenance Requirements
@@ -138,7 +149,7 @@ New archive kinds require:
 - Comprehensive test coverage for round-trip, wrong kind, extra entries, oversized payload, and missing manifest.
 - Complete technical documentation updated on this page.
 
-Do not include multiple unrelated payloads in a single `.akr` archive. The current contract requires exactly one kind, one manifest, and one payload.
+Do not include multiple unrelated main payloads in a single `.akr` archive. The current contract requires exactly one kind, one manifest, and one main payload. Only StartPos snapshot attachments declared by `setup.json` are allowed.
 
 Archive tests live in `tests/archive-tests.cs`.
 

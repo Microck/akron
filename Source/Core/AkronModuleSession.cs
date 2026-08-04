@@ -13,9 +13,6 @@ public sealed class AkronStartPos {
     public AkronStartPosFacing Facing { get; set; } = AkronStartPosFacing.Current;
     public bool Idle { get; set; }
     public bool Grab { get; set; }
-    public string SnapshotPath { get; set; } = string.Empty;
-    internal string ImportedRoomStateSnapshot { get; set; } = string.Empty;
-    internal string SnapshotLoadError { get; set; } = string.Empty;
     internal string StateSlotName { get; set; } = string.Empty;
 }
 

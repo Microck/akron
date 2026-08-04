@@ -22,6 +22,7 @@ using XnaButtons = Microsoft.Xna.Framework.Input.Buttons;
 
 namespace Celeste.Mod.Akron.Tests;
 
+[Collection(AkronSharedStateCollection.Name)]
 public sealed class ModuleSettingsTests
 {
     [Theory]
@@ -4158,8 +4159,9 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void ImportedStartPosEntriesDoNotRequireRuntimeSnapshots()
+    public void StartPosEntriesRequireLiveRuntimeSnapshots()
     {
+        const string liveSlotName = "Akron StartPos live test slot";
         AkronStartPos imported = new AkronStartPos
         {
             AreaSid = "Example/Map",
@@ -4170,10 +4172,27 @@ public sealed class ModuleSettingsTests
             AreaSid = "Example/Map",
             StateSlotName = "Akron StartPos missing test slot"
         };
+        AkronStartPos capturedWithState = new AkronStartPos
+        {
+            AreaSid = "Example/Map",
+            StateSlotName = liveSlotName
+        };
 
-        Assert.True(InvokeStartPosInArea(imported, "Example/Map"));
-        Assert.False(InvokeStartPosInArea(imported, "Other/Map"));
-        Assert.False(InvokeStartPosInArea(capturedWithoutState, "Example/Map"));
+        FieldInfo? slotsField = typeof(AkronSaveLoadService).GetField("RuntimeSlots", BindingFlags.NonPublic | BindingFlags.Static);
+        Dictionary<string, AkronSaveLoadSlot> runtimeSlots = Assert.IsType<Dictionary<string, AkronSaveLoadSlot>>(slotsField?.GetValue(null));
+        runtimeSlots[liveSlotName] = new AkronSaveLoadSlot(liveSlotName, "room", "Example/Map", false);
+
+        try
+        {
+            Assert.False(InvokeStartPosInArea(imported, "Example/Map"));
+            Assert.False(InvokeStartPosInArea(imported, "Other/Map"));
+            Assert.False(InvokeStartPosInArea(capturedWithoutState, "Example/Map"));
+            Assert.True(InvokeStartPosInArea(capturedWithState, "Example/Map"));
+        }
+        finally
+        {
+            AkronSaveLoadService.ClearRuntimeState(liveSlotName);
+        }
     }
 
     [Fact]
@@ -4190,7 +4209,7 @@ public sealed class ModuleSettingsTests
     {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/SaveLoad/AkronSaveLoad.cs"));
 
-        Assert.Contains("saveSlot.SlotName.StartsWith(\"Akron StartPos \", StringComparison.Ordinal)", source);
+        Assert.Contains("saveSlot.SlotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal)", source);
         Assert.Contains("AkronModule.SuppressLagPauserForNativeStartPosRestore();", source);
     }
 
@@ -4660,6 +4679,10 @@ public sealed class ModuleSettingsTests
     [Fact]
     public void SetupPackArchiveRoundTripsListedSetupSystems()
     {
+        const string areaSid = "Tests/ListedSetupSystems";
+        const string room = "a-00";
+        const int startPosSlot = 3;
+        string stateSlotName = AkronActions.GetStartPosStateSlotName(areaSid, startPosSlot);
         string folder = Path.Combine(Path.GetTempPath(), "akron-setup-pack-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
         try
@@ -4718,20 +4741,33 @@ public sealed class ModuleSettingsTests
             {
                 StartPositions = new Dictionary<int, AkronStartPos>
                 {
-                    [3] = new AkronStartPos
+                    [startPosSlot] = new AkronStartPos
                     {
                         Position = new Vector2(12, 34),
-                        Room = "a-00",
-                        AreaSid = "Celeste/1-ForsakenCity",
+                        Room = room,
+                        AreaSid = areaSid,
                         UsesSpawnConfig = true,
                         Dashes = 2,
                         StaminaPercent = 55,
                         Facing = AkronStartPosFacing.Left,
                         Idle = true,
-                        Grab = true
+                        Grab = true,
+                        StateSlotName = stateSlotName
                     }
                 }
             };
+            AkronReconstructionGraph graph = new AkronReconstructionGraph(type => false);
+            AkronReconstructionCapture capture = graph.Capture(
+                new AkronSetupState { SmartStartPos = true },
+                new AkronSetupState());
+            Assert.True(capture.Success, capture.Error);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                stateSlotName,
+                areaSid,
+                room,
+                0,
+                capture.Document,
+                out string snapshotError), snapshotError);
             string path = Path.Combine(folder, "practice.akr");
 
             AkronSetupPacks.Write(source, sourceSession, path, "Practice Setup");
@@ -4778,6 +4814,7 @@ public sealed class ModuleSettingsTests
         }
         finally
         {
+            AkronStartPosReconstruction.DeleteSnapshot(stateSlotName);
             Directory.Delete(folder, recursive: true);
         }
     }
@@ -4935,9 +4972,9 @@ public sealed class ModuleSettingsTests
         Assert.True(startPosOnly.SmartStartPos);
         Assert.Equal(2, startPosOnly.StartPosConfiguredDashes);
         Assert.False(startPosOnly.AutoKill);
-        Assert.Equal(2, startPosSession.StartPositions.Count);
-        Assert.Equal("Other/Map", startPosSession.StartPositions[3].AreaSid);
-        Assert.Equal("Celeste/1-ForsakenCity", startPosSession.StartPositions[4].AreaSid);
+        AkronStartPos importedStartPos = Assert.Single(startPosSession.StartPositions).Value;
+        Assert.Equal("Celeste/1-ForsakenCity", importedStartPos.AreaSid);
+        Assert.Equal("a-00", importedStartPos.Room);
 
         AkronModuleSettings keybindsOnly = new AkronModuleSettings { SmartStartPos = false };
         AkronSetupPacks.Apply(keybindsOnly, new AkronModuleSession(), pack, AkronSetupSection.Keybinds);
