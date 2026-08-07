@@ -90,6 +90,7 @@ public partial class AkronModule : EverestModule {
     private static readonly HashSet<PlayerDeadBody> noDeathEffectBodies = new HashSet<PlayerDeadBody>();
     private static bool renderCoreDiagnosticLogged;
     private static ulong renderedStartPosFrameGeneration;
+    private static int freshRoomInitializationUpdateDepth;
     private static readonly Queue<Action> afterEngineUpdateActions = new Queue<Action>();
     private static readonly MethodInfo CreateKeyboardConfigUiMethod =
         typeof(EverestModule).GetMethod("CreateKeyboardConfigUI", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -137,9 +138,15 @@ public partial class AkronModule : EverestModule {
             AkronSpeedrunToolBroker.Initialize();
             AkronInterop.Initialize();
             AkronNativeSavestateSupport.Initialize();
+            AkronStartPosPersistence.Start();
             AkronScreenshotScanner.Load();
         } catch (Exception exception) {
             Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed; continuing so the module menu and overlay can still load: " + exception);
+        }
+        if (Engine.Instance != null) {
+            // Everest does not unload modules during every normal game exit.
+            // Drain restart copies while the game and save APIs are still alive.
+            Engine.Instance.Exiting += EngineOnExiting;
         }
         On.Celeste.Level.Begin += LevelOnBegin;
         On.Celeste.Level.End += LevelOnEnd;
@@ -260,8 +267,13 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Unload() {
+        if (Engine.Instance != null) {
+            Engine.Instance.Exiting -= EngineOnExiting;
+        }
         AkronGameplayBufferState.ResetLevelPresentation();
         AkronAudioSplitter.Unload();
+        AkronStartPosPersistence.Shutdown();
+        AkronActions.ClearPendingStartPosState();
         SaveAkronSettingsNow("unload");
         AkronLog.FlushDiagnosticSummaries();
         AkronLog.Normal(nameof(AkronModule), "unload start");
@@ -358,6 +370,11 @@ public partial class AkronModule : EverestModule {
 #pragma warning restore CS0618
     }
 
+    private static void EngineOnExiting(object sender, EventArgs eventArgs) {
+        AkronStartPosPersistence.Shutdown();
+        AkronActions.ClearPendingStartPosState();
+    }
+
     internal static void ApplyMotionSmoothingSettings() {
         if (Instance?._Settings == null || Engine.Instance == null) {
             return;
@@ -390,6 +407,7 @@ public partial class AkronModule : EverestModule {
         AkronInputHistory.ResetInputsPerSecond();
         AkronActions.LoadStartPositionsForLevel(self);
         AkronSaveLoadService.OnLevelBegin(self);
+        AkronStartPosPersistence.NotifyLevelReady(self);
         AkronPracticeStats.OnLevelBegin(self);
         AkronPracticeCounters.OnLevelBegin(self);
         AkronAutosave.NotifyLevelBegin(self);
@@ -406,6 +424,22 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void LevelOnUpdate(On.Celeste.Level.orig_Update orig, Level self) {
+        if (freshRoomInitializationUpdateDepth > 0) {
+            orig(self);
+            return;
+        }
+        if (AkronStartPosPersistence.ConsumeFreshBaselineInitializationUpdate(self)) {
+            // Give each normal room load exactly one Celeste initialization update.
+            orig(self);
+            return;
+        }
+        if (AkronStartPosPersistence.IsFreshBaselineCapturePending(self)) {
+            // Engine.Update can run several fixed updates before one render. Hold
+            // every update after room initialization until the stable-boundary
+            // capture runs, or the disk baseline would depend on frame catch-up.
+            AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
+            return;
+        }
         ulong startPosFrameGeneration = AkronActions.StartPosFrameGeneration;
         if (startPosFrameGeneration != renderedStartPosFrameGeneration) {
             // A fixed-timestep game loop can run more than one update before a
@@ -500,6 +534,24 @@ public partial class AkronModule : EverestModule {
         AkronPracticeStats.OnLevelUpdate(self);
         AkronInternalRecorder.Update(self);
         UpdateProofRecorderGuard(self);
+    }
+
+    internal static void RunFreshRoomInitializationUpdate(Level level) {
+        if (level == null) {
+            return;
+        }
+
+        freshRoomInitializationUpdateDepth++;
+        try {
+            // Match the one full Scene update used before normal baseline capture.
+            // BeforeUpdate installs queued room objects, while AfterUpdate runs the
+            // callbacks that the reconstruction graph must also see after restart.
+            level.BeforeUpdate();
+            level.Update();
+            level.AfterUpdate();
+        } finally {
+            freshRoomInitializationUpdateDepth--;
+        }
     }
 
 
@@ -617,6 +669,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void EngineOnUpdate(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime) {
+        AkronStartPosPersistence.Update();
         RunDeferredScreenWipeAction();
         UpdateDeathWipeRenderSuppression();
         AkronAudioSplitter.Update();

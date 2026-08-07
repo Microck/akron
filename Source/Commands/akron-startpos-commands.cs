@@ -278,6 +278,7 @@ public static partial class AkronCommands {
         Log("startpos-area: " + (startPos?.AreaSid ?? "unset"));
         Log("startpos-state-slot: " + (string.IsNullOrWhiteSpace(startPos?.StateSlotName) ? "none" : startPos.StateSlotName));
         Log("startpos-state-snapshot: " + (startPos != null && AkronSaveLoadService.HasRuntimeState(startPos.StateSlotName)).ToString().ToLowerInvariant());
+        Log("startpos-tracked-virtual-assets: " + AkronVirtualAssetReloadTracker.Count.ToString(CultureInfo.InvariantCulture));
         Log("startpos-last-loaded-slot: " + (AkronModule.Session?.LastLoadedStartPosSlot ?? 0).ToString(CultureInfo.InvariantCulture));
         Log("startpos-dashes: " + (startPos?.Dashes ?? AkronModule.Settings.StartPosConfiguredDashes).ToString(CultureInfo.InvariantCulture));
         Log("startpos-stamina: " + (startPos?.StaminaPercent ?? AkronModule.Settings.StartPosConfiguredStaminaPercent).ToString(CultureInfo.InvariantCulture));

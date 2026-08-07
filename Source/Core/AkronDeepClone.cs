@@ -73,6 +73,12 @@ internal static class AkronDeepClone {
         return source.DeepClone(sharedDeepCloneState);
     }
 
+    public static object CloneDormant(object source, out List<EventInstance> capturedEventInstances) {
+        object clone = null;
+        capturedEventInstances = RunWithDormantEventClones(() => clone = Clone(source));
+        return clone;
+    }
+
     public static void CopyInto(object source, object target) {
         if (source == null || target == null) {
             return;

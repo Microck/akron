@@ -115,6 +115,8 @@ internal interface IAkronReconstructionResourceAdapter {
 // fresh-room load cannot provide an equivalent object to rebind.
 internal sealed class AkronVirtualRenderTargetResourceAdapter : IAkronReconstructionResourceAdapter {
     private const string PayloadKind = "virtual-render-target-rgba-v1";
+    private static readonly AsyncLocal<IReadOnlyDictionary<object, AkronReconstructionResourcePayload>> CapturedPayloads =
+        new AsyncLocal<IReadOnlyDictionary<object, AkronReconstructionResourcePayload>>();
 
     public bool CanPersist(Type type) {
         return type == typeof(VirtualRenderTarget);
@@ -122,6 +124,39 @@ internal sealed class AkronVirtualRenderTargetResourceAdapter : IAkronReconstruc
 
     public AkronReconstructionResourcePayload Capture(object resource) {
         VirtualRenderTarget renderTarget = (VirtualRenderTarget) resource;
+        IReadOnlyDictionary<object, AkronReconstructionResourcePayload> captured = CapturedPayloads.Value;
+        if (captured != null) {
+            if (!captured.TryGetValue(renderTarget, out AkronReconstructionResourcePayload payload)) {
+                throw new InvalidOperationException(
+                    "Set-frame pixels are missing for VirtualRenderTarget " + (renderTarget.Name ?? "unnamed") + ".");
+            }
+            return ClonePayload(payload);
+        }
+        return CaptureOnGameThread(renderTarget);
+    }
+
+    internal static IReadOnlyDictionary<object, AkronReconstructionResourcePayload> CaptureSetFramePayloads(
+        IEnumerable<VirtualRenderTarget> renderTargets
+    ) {
+        Dictionary<object, AkronReconstructionResourcePayload> payloads =
+            new Dictionary<object, AkronReconstructionResourcePayload>(ReferenceEqualityComparer.Instance);
+        foreach (VirtualRenderTarget renderTarget in renderTargets ?? Enumerable.Empty<VirtualRenderTarget>()) {
+            if (renderTarget != null && !renderTarget.IsDisposed && renderTarget.Target != null) {
+                payloads[renderTarget] = CaptureOnGameThread(renderTarget);
+            }
+        }
+        return payloads;
+    }
+
+    internal static IDisposable UseCapturedPayloads(
+        IReadOnlyDictionary<object, AkronReconstructionResourcePayload> payloads
+    ) {
+        IReadOnlyDictionary<object, AkronReconstructionResourcePayload> previous = CapturedPayloads.Value;
+        CapturedPayloads.Value = payloads ?? new Dictionary<object, AkronReconstructionResourcePayload>();
+        return new AkronCapturedResourceScope(previous);
+    }
+
+    private static AkronReconstructionResourcePayload CaptureOnGameThread(VirtualRenderTarget renderTarget) {
         ValidateRenderTarget(renderTarget);
         byte[] pixels = new byte[checked(renderTarget.Width * renderTarget.Height * 4)];
         renderTarget.Target.GetData(pixels);
@@ -135,6 +170,31 @@ internal sealed class AkronVirtualRenderTargetResourceAdapter : IAkronReconstruc
             Preserve = renderTarget.Preserve,
             Bytes = pixels
         };
+    }
+
+    private static AkronReconstructionResourcePayload ClonePayload(AkronReconstructionResourcePayload payload) {
+        return new AkronReconstructionResourcePayload {
+            Kind = payload.Kind,
+            Name = payload.Name,
+            Width = payload.Width,
+            Height = payload.Height,
+            MultiSampleCount = payload.MultiSampleCount,
+            Depth = payload.Depth,
+            Preserve = payload.Preserve,
+            Bytes = payload.Bytes?.ToArray() ?? Array.Empty<byte>()
+        };
+    }
+
+    private sealed class AkronCapturedResourceScope : IDisposable {
+        private readonly IReadOnlyDictionary<object, AkronReconstructionResourcePayload> previous;
+
+        public AkronCapturedResourceScope(IReadOnlyDictionary<object, AkronReconstructionResourcePayload> previous) {
+            this.previous = previous;
+        }
+
+        public void Dispose() {
+            CapturedPayloads.Value = previous;
+        }
     }
 
     public object Restore(AkronReconstructionResourcePayload payload, object freshResource) {
@@ -5778,53 +5838,67 @@ internal static class AkronStartPosReconstruction {
     // several gigabytes of managed objects.
     internal const long MaxDecompressedSnapshotBytes = 192L * 1024L * 1024L;
     private const string SnapshotDirectoryName = "AkronStartPos";
-    private static readonly AkronReconstructionGraph Graph = new AkronReconstructionGraph(
-        IsLiveResourceType,
-        GetLiveResourceKey,
-        new AkronVirtualRenderTargetResourceAdapter(),
-        ResolveDetachedLiveResource);
+    // Persistence capture runs on its worker while restore owns live resources
+    // on the game thread. Separate graph instances keep those lifecycles from
+    // sharing mutable resource ownership.
+    private static readonly AkronReconstructionGraph CaptureGraph = CreateGraph();
+    private static readonly AkronReconstructionGraph RestoreGraph = CreateGraph();
+
+    private static AkronReconstructionGraph CreateGraph() {
+        return new AkronReconstructionGraph(
+            IsLiveResourceType,
+            GetLiveResourceKey,
+            new AkronVirtualRenderTargetResourceAdapter(),
+            ResolveDetachedLiveResource);
+    }
 
     public static AkronReconstructionCapture Capture(
         AkronPersistentRuntimeState savedState,
         AkronPersistentRuntimeState freshState
     ) {
-        return Graph.Capture(savedState, freshState);
+        return CaptureGraph.Capture(savedState, freshState);
+    }
+
+    public static IDisposable UseCapturedRenderTargets(
+        IReadOnlyDictionary<object, AkronReconstructionResourcePayload> payloads
+    ) {
+        return AkronVirtualRenderTargetResourceAdapter.UseCapturedPayloads(payloads);
     }
 
     public static AkronReconstructionCapture CaptureActionState(
         Dictionary<string, Dictionary<Type, Dictionary<string, object>>> savedState,
         Dictionary<string, Dictionary<Type, Dictionary<string, object>>> freshState
     ) {
-        return Graph.Capture(savedState, freshState);
+        return CaptureGraph.Capture(savedState, freshState);
     }
 
     public static string Serialize(AkronReconstructionDocument document) {
-        return Graph.Serialize(document);
+        return CaptureGraph.Serialize(document);
     }
 
     public static AkronReconstructionDocument Deserialize(string json) {
-        return Graph.Deserialize(json);
+        return RestoreGraph.Deserialize(json);
     }
 
     public static AkronReconstructionRestore Restore(
         AkronReconstructionDocument document,
         AkronPersistentRuntimeState freshState
     ) {
-        return Graph.Restore(document, freshState);
+        return RestoreGraph.Restore(document, freshState);
     }
 
     public static AkronReconstructionRestore RestoreActionState(
         AkronReconstructionDocument document,
         Dictionary<string, Dictionary<Type, Dictionary<string, object>>> freshState
     ) {
-        return Graph.Restore(document, freshState);
+        return RestoreGraph.Restore(document, freshState);
     }
 
     public static AkronReconstructionVerification Reapply(
         AkronReconstructionDocument document,
         AkronReconstructionRestore restore
     ) {
-        return Graph.Reapply(document, restore);
+        return RestoreGraph.Reapply(document, restore);
     }
 
     public static AkronReconstructionVerification Verify(
@@ -5832,7 +5906,7 @@ internal static class AkronStartPosReconstruction {
         AkronReconstructionRestore restore,
         IEnumerable<string> maskedPaths
     ) {
-        return Graph.Verify(document, restore, maskedPaths);
+        return RestoreGraph.Verify(document, restore, maskedPaths);
     }
 
     public static void ActivateEventInstances(AkronReconstructionRestore restore) {
@@ -5846,7 +5920,7 @@ internal static class AkronStartPosReconstruction {
     }
 
     public static void ReleaseOwnedResources() {
-        Graph.ReleaseOwnedPersistentResources();
+        RestoreGraph.ReleaseOwnedPersistentResources();
     }
 
     public static IReadOnlyList<string> GetPostRestoreVerificationMasks(AkronReconstructionDocument document) {
@@ -5910,7 +5984,7 @@ internal static class AkronStartPosReconstruction {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             using (FileStream file = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             using (GZipStream compressed = new GZipStream(file, CompressionLevel.Optimal, leaveOpen: false)) {
-                Graph.Serialize(document, compressed);
+                CaptureGraph.Serialize(document, compressed);
             }
             File.Move(temporaryPath, path, overwrite: true);
             return true;
@@ -5972,7 +6046,7 @@ internal static class AkronStartPosReconstruction {
         try {
             using GZipStream compressed = new GZipStream(snapshotStream, CompressionMode.Decompress, leaveOpen: true);
             using AkronBoundedReadStream bounded = new AkronBoundedReadStream(compressed, maxDecompressedBytes);
-            document = Graph.Deserialize(bounded);
+            document = RestoreGraph.Deserialize(bounded);
             return true;
         } catch (Exception exception) {
             error = exception.GetType().Name + ": " + exception.Message;

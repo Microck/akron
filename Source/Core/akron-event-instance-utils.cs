@@ -43,12 +43,18 @@ internal static class AkronEventInstanceUtils {
         public bool Paused { get; init; }
     }
 
+    private sealed class PersistentEventState {
+        public AkronPersistentEventInstanceState State { get; init; }
+    }
+
     private static bool initialized;
     private static readonly ConditionalWeakTable<EventInstance, ConcurrentDictionary<string, float>> CachedParameters = new ConditionalWeakTable<EventInstance, ConcurrentDictionary<string, float>>();
     private static readonly ConditionalWeakTable<EventInstance, object> ManualCloneEventInstances = new ConditionalWeakTable<EventInstance, object>();
     private static readonly ConditionalWeakTable<EventInstance, object> CachedTimelinePositions = new ConditionalWeakTable<EventInstance, object>();
     private static readonly ConditionalWeakTable<EventInstance, DormantPlaybackState> DormantPlaybackStates = new ConditionalWeakTable<EventInstance, DormantPlaybackState>();
     private static readonly ConditionalWeakTable<EventInstance, EventPathState> KnownEventPaths = new ConditionalWeakTable<EventInstance, EventPathState>();
+    private static readonly ConditionalWeakTable<EventInstance, PersistentEventState> CapturedCloneStates =
+        new ConditionalWeakTable<EventInstance, PersistentEventState>();
 
     public static void Initialize() {
         if (initialized) {
@@ -91,6 +97,11 @@ internal static class AkronEventInstanceUtils {
         if (string.IsNullOrEmpty(path)) {
             return null;
         }
+        // Only dormant clones need a frozen Set-frame description. A live clone
+        // must report its current FMOD values if a later StartPos captures it.
+        AkronPersistentEventInstanceState setFrameState = dormant
+            ? CapturePersistentState(eventInstance, path)
+            : null;
 
         EventInstance clone = Audio.CreateInstance(path);
         if (clone == null || !clone.isValid()) {
@@ -144,6 +155,11 @@ internal static class AkronEventInstanceUtils {
                 ShouldPlay = shouldPlay,
                 Paused = paused
             });
+            if (setFrameState != null) {
+                CapturedCloneStates.Add(clone, new PersistentEventState {
+                    State = ClonePersistentState(setFrameState)
+                });
+            }
         } else if (shouldPlay) {
             clone.start();
             if (paused) {
@@ -160,6 +176,9 @@ internal static class AkronEventInstanceUtils {
     ) {
         if (eventInstance == null) {
             return null;
+        }
+        if (CapturedCloneStates.TryGetValue(eventInstance, out PersistentEventState captured)) {
+            return ClonePersistentState(captured.State);
         }
         string path = GetEventPath(eventInstance);
         if (string.IsNullOrWhiteSpace(path)) {
@@ -219,6 +238,37 @@ internal static class AkronEventInstanceUtils {
         return state;
     }
 
+    private static AkronPersistentEventInstanceState ClonePersistentState(AkronPersistentEventInstanceState state) {
+        if (state == null) {
+            return null;
+        }
+        return new AkronPersistentEventInstanceState {
+            Path = state.Path,
+            Volume = state.Volume,
+            Pitch = state.Pitch,
+            Has3DAttributes = state.Has3DAttributes,
+            PositionX = state.PositionX,
+            PositionY = state.PositionY,
+            PositionZ = state.PositionZ,
+            VelocityX = state.VelocityX,
+            VelocityY = state.VelocityY,
+            VelocityZ = state.VelocityZ,
+            ForwardX = state.ForwardX,
+            ForwardY = state.ForwardY,
+            ForwardZ = state.ForwardZ,
+            UpX = state.UpX,
+            UpY = state.UpY,
+            UpZ = state.UpZ,
+            HasListenerMask = state.HasListenerMask,
+            ListenerMask = state.ListenerMask,
+            Parameters = new Dictionary<string, float>(state.Parameters ?? new Dictionary<string, float>()),
+            TimelinePosition = state.TimelinePosition,
+            ShouldPlay = state.ShouldPlay,
+            Paused = state.Paused,
+            ManualClone = state.ManualClone
+        };
+    }
+
     public static EventInstance RestorePersistentState(AkronPersistentEventInstanceState state) {
         if (state == null || string.IsNullOrWhiteSpace(state.Path)) {
             return null;
@@ -254,6 +304,13 @@ internal static class AkronEventInstanceUtils {
         DormantPlaybackStates.Add(eventInstance, new DormantPlaybackState {
             ShouldPlay = state.ShouldPlay,
             Paused = state.Paused
+        });
+        // A cold-created handle can expose FMOD defaults that the saved handle could not
+        // read, such as 3D attributes on a stopped one-shot sound. Keep the Set-frame
+        // description authoritative while the handle is dormant so reconstruction can
+        // verify the persisted state before anything starts or updates it.
+        CapturedCloneStates.Add(eventInstance, new PersistentEventState {
+            State = ClonePersistentState(state)
         });
         return eventInstance;
     }
@@ -311,6 +368,9 @@ internal static class AkronEventInstanceUtils {
             }
 
             DormantPlaybackStates.Remove(eventInstance);
+            // From this point the room owns the live handle again. Future StartPos captures
+            // must query its current values instead of reusing the prior Set-frame description.
+            CapturedCloneStates.Remove(eventInstance);
             if (!playback.ShouldPlay) {
                 continue;
             }
@@ -332,6 +392,7 @@ internal static class AkronEventInstanceUtils {
                 continue;
             }
 
+            CapturedCloneStates.Remove(eventInstance);
             eventInstance.stop(STOP_MODE.IMMEDIATE);
             eventInstance.release();
         }
@@ -352,6 +413,7 @@ internal static class AkronEventInstanceUtils {
             CachedTimelinePositions.Remove(eventInstance);
             DormantPlaybackStates.Remove(eventInstance);
             KnownEventPaths.Remove(eventInstance);
+            CapturedCloneStates.Remove(eventInstance);
             if (!eventInstance.isValid()) {
                 continue;
             }
