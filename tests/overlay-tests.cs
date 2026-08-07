@@ -216,6 +216,24 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void BackspacingIntoABroaderSearchRequestsFocusForTheNextFrame() {
+        AkronOverlay overlay = CreateOverlayForStateTest();
+        overlay.SetSearchQuery("noc");
+
+        overlay.ApplyImGuiSearchEdit("##akron_action_search", "no");
+
+        Assert.Equal("no", GetPrivateField<string>(overlay, "searchQuery"));
+        Assert.True(GetPrivateField<bool>(overlay, "searchInputActive"));
+        Assert.True(GetPrivateField<bool>(overlay, "searchInputUsesImGui"));
+        Assert.True(GetPrivateField<bool>(overlay, "searchInputFocusRequested"));
+        Assert.Equal(
+            "##akron_action_search",
+            GetPrivateField<string>(overlay, "searchInputFocusTargetId"));
+        Assert.True(overlay.SearchInputConsumedThisFrame);
+        Assert.True(overlay.SearchOwnsGameplayInputThisFrame);
+    }
+
+    [Fact]
     public void InlineNumericInputLatchesKeyboardOwnershipWhileFocused() {
         string source = File.ReadAllText(Path.Combine(
             AppContext.BaseDirectory,
@@ -2275,6 +2293,11 @@ public sealed class OverlayTests {
     private static void SetPrivateField(object target, string fieldName, object value) {
         FieldInfo field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!;
         field.SetValue(target, value);
+    }
+
+    private static T GetPrivateField<T>(object target, string fieldName) {
+        FieldInfo field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!;
+        return (T) field.GetValue(target)!;
     }
 
 }
