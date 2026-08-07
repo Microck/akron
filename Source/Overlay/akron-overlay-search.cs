@@ -84,18 +84,7 @@ public sealed partial class AkronOverlay {
         }
 
         if (changed) {
-            searchQuery = value ?? string.Empty;
-            selectedActionIndex = 0;
-            actionScrollIndex = 0;
-            selectedPanel = SelectionPanel.Actions;
-            searchInputActive = true;
-            searchInputUsesImGui = true;
-            // Filtering can add enough windows or rows to make ImGui drop the
-            // active text item for a frame. Re-acquire the same input next
-            // frame so backspacing through broader queries keeps editing.
-            RequestSearchInputFocus(id);
-            SearchInputConsumedThisFrame = true;
-            SearchOwnsGameplayInputThisFrame = true;
+            ApplyImGuiSearchEdit(id, value);
         }
 
         if (!string.IsNullOrWhiteSpace(placeholder) && string.IsNullOrEmpty(searchQuery) && !active) {
@@ -110,6 +99,21 @@ public sealed partial class AkronOverlay {
         // keyboard focus on the next frame, which selected the whole search
         // value and made the next typed letter replace it.
         return clicked;
+    }
+
+    internal void ApplyImGuiSearchEdit(string id, string value) {
+        searchQuery = value ?? string.Empty;
+        selectedActionIndex = 0;
+        actionScrollIndex = 0;
+        selectedPanel = SelectionPanel.Actions;
+        searchInputActive = true;
+        searchInputUsesImGui = true;
+        // Filtering can add enough windows or rows to make ImGui drop the
+        // active text item for a frame. Re-acquire the same input next frame
+        // so deleting into a broader query keeps editing.
+        RequestSearchInputFocus(id);
+        SearchInputConsumedThisFrame = true;
+        SearchOwnsGameplayInputThisFrame = true;
     }
 
     private void RequestSearchInputFocus(string id = "") {
