@@ -744,6 +744,60 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void CompilerIteratorOwnerAcceptsAnAuthenticatedRuntimeEntity() {
+        Type routineType = typeof(SaveLoadIcon)
+            .GetNestedTypes(BindingFlags.NonPublic)
+            .Single(type =>
+                typeof(IEnumerator).IsAssignableFrom(type) &&
+                type.GetFields(RuntimeInstanceFields).Any(field => field.FieldType == typeof(SaveLoadIcon)));
+        SaveLoadIcon owner = CreateUninitializedEntity<SaveLoadIcon>();
+
+        Assert.True(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
+            routineType,
+            ownerIsFresh: false,
+            ownerIsAuthenticatedRuntimeEntity: true,
+            owner));
+        Assert.False(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
+            routineType,
+            ownerIsFresh: false,
+            ownerIsAuthenticatedRuntimeEntity: false,
+            owner));
+        Assert.False(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
+            routineType,
+            ownerIsFresh: false,
+            ownerIsAuthenticatedRuntimeEntity: true,
+            CreateUninitializedEntity<SlashFx>()));
+    }
+
+    [Theory]
+    [InlineData("Renderers", true)]
+    [InlineData("adding", true)]
+    [InlineData("removing", true)]
+    [InlineData("unrelated", false)]
+    public void ScreenWipeAliasesUseOnlyRendererListStorage(string fieldName, bool expected) {
+        Assert.Equal(expected, AkronReconstructionGraph.IsRendererListStorageField(fieldName));
+    }
+
+    [Fact]
+    public void FreshEntityCanRestoreItsSavedOnlyNestedCollectionRecord() {
+        SeekerBarrierRenderer savedRenderer = CreateSeekerBarrierRenderer(edgeCount: 1);
+        SeekerBarrierRenderer baselineRenderer = CreateSeekerBarrierRenderer(edgeCount: 0);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(
+            new PassiveDataRoot { Value = savedRenderer },
+            new PassiveDataRoot { Value = baselineRenderer });
+        Assert.True(capture.Success, capture.Error);
+        SeekerBarrierRenderer freshRenderer = CreateSeekerBarrierRenderer(edgeCount: 0);
+        PassiveDataRoot fresh = new PassiveDataRoot { Value = freshRenderer };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Single((System.Collections.IList) GetRuntimeFieldInfo(
+            typeof(SeekerBarrierRenderer), "edges").GetValue(freshRenderer)!);
+    }
+
+    [Fact]
     public void SavedOnlyBuiltInRuntimeEntityRestoresThroughFreshEntityListStorage() {
         Scene savedScene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
         EntityList savedEntities = LinkSceneEntities(savedScene, CreateDetachedEntityList());
@@ -777,6 +831,78 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void RuntimeEntityCanonicalArrayMustBelongToItsSceneEntityList() {
+        Scene savedScene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList savedEntities = LinkSceneEntities(savedScene, CreateDetachedEntityList());
+        SetEntityListCapacity(savedEntities, 128);
+        SlashFx savedSlash = CreateUninitializedEntity<SlashFx>();
+        InitializeEmptyComponentList(savedSlash);
+        typeof(Entity).GetField("<Scene>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(savedSlash, savedScene);
+        AddDetachedEntity(savedEntities, savedSlash);
+
+        Scene baselineScene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList baselineEntities = LinkSceneEntities(baselineScene, CreateDetachedEntityList());
+        SetEntityListCapacity(baselineEntities, 128);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(
+            new UnrelatedEntityArrayRoot {
+                Unrelated = Array.Empty<Entity>(),
+                Scene = savedScene,
+                Entities = savedEntities
+            },
+            new UnrelatedEntityArrayRoot {
+                Unrelated = Array.Empty<Entity>(),
+                Scene = baselineScene,
+                Entities = baselineEntities
+            });
+        Assert.True(capture.Success, capture.Error);
+
+        AkronReconstructionNode rootNode = Assert.Single(
+            capture.Document.Nodes,
+            node => node.Id == capture.Document.RootNodeId);
+        int unrelatedArrayNodeId = Assert.Single(
+            rootNode.Fields,
+            field => field.Name == nameof(UnrelatedEntityArrayRoot.Unrelated)).Value.NodeId;
+        AkronReconstructionNode unrelatedArrayNode = Assert.Single(
+            capture.Document.Nodes,
+            node => node.Id == unrelatedArrayNodeId);
+        AkronReconstructionNode savedSlashNode = Assert.Single(
+            capture.Document.Nodes,
+            node => node.TypeName == typeof(SlashFx).AssemblyQualifiedName);
+
+        // Simulate an imported snapshot that makes an unrelated array the
+        // entity's canonical parent while retaining the real EntityList alias.
+        unrelatedArrayNode.Items.Add(new AkronReconstructionValue {
+            Kind = "reference",
+            TypeName = typeof(SlashFx).AssemblyQualifiedName!,
+            NodeId = savedSlashNode.Id
+        });
+        unrelatedArrayNode.ArrayLengths = new List<int> { 1 };
+        unrelatedArrayNode.ArrayLowerBounds = new List<int> { 0 };
+        savedSlashNode.ParentNodeId = unrelatedArrayNode.Id;
+        savedSlashNode.ParentKind = "array";
+        savedSlashNode.ParentArrayIndices = new List<int> { 0 };
+
+        Scene freshScene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList freshEntities = LinkSceneEntities(freshScene, CreateDetachedEntityList());
+        SetEntityListCapacity(freshEntities, 128);
+        UnrelatedEntityArrayRoot fresh = new UnrelatedEntityArrayRoot {
+            Unrelated = Array.Empty<Entity>(),
+            Scene = freshScene,
+            Entities = freshEntities
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(
+            restore.Success,
+            $"unrelated={fresh.Unrelated.Length};entities={GetEntityListContents(fresh.Entities).Count};error={restore.Error}");
+        Assert.Contains("entity canonical array is not owned by its scene EntityList", restore.Error);
+        Assert.Empty(GetEntityListContents(fresh.Entities));
+    }
+
+    [Fact]
     public void SavedOnlyBuiltInRuntimeEntityRestoresThroughItsSceneTrackerIndex() {
         (SavedSceneRoot saved, _) = CreateTrackedRuntimeEntityScene(includeSlash: true);
         (SavedSceneRoot baseline, _) = CreateTrackedRuntimeEntityScene(includeSlash: false);
@@ -807,6 +933,25 @@ public sealed class StartPosReconstructionTests {
         Assert.Same(
             restoredComponent,
             Assert.Single(trackedComponents[typeof(Sprite)]));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void SavedOnlyBuiltInRuntimeEntityRestoresThroughItsSceneTagIndex() {
+        (SavedSceneRoot saved, _) = CreateTaggedRuntimeEntityScene(includeSlash: true);
+        (SavedSceneRoot baseline, _) = CreateTaggedRuntimeEntityScene(includeSlash: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, _) = CreateTaggedRuntimeEntityScene(includeSlash: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        SlashFx restoredSlash = Assert.IsType<SlashFx>(Assert.Single(GetEntityListContents(fresh.Entities)));
+        TagLists tagLists = GetRuntimeField<TagLists>(fresh.Scene, "<TagLists>k__BackingField");
+        List<Entity>[] lists = GetRuntimeField<List<Entity>[]>(tagLists, "lists");
+        Assert.Same(restoredSlash, Assert.Single(lists[0]));
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
 
@@ -1061,7 +1206,7 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
 
         Assert.False(restore.Success);
-        Assert.Contains("authentic to the fresh room", restore.Error);
+        Assert.Contains("entity canonical array is not owned by its scene EntityList", restore.Error);
     }
 
     [Fact]
@@ -1092,7 +1237,7 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
 
         Assert.False(restore.Success);
-        Assert.Contains("reference edge is not authentic", restore.Error);
+        Assert.Contains("entity canonical array is not owned by its scene EntityList", restore.Error);
     }
 
     [Fact]
@@ -3478,6 +3623,12 @@ public sealed class StartPosReconstructionTests {
         public Sprite? FreshSprite;
     }
 
+    private sealed class UnrelatedEntityArrayRoot {
+        public Entity[] Unrelated = Array.Empty<Entity>();
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+    }
+
     private sealed class DerivedTrackedScene : Scene {
     }
 
@@ -3531,6 +3682,21 @@ public sealed class StartPosReconstructionTests {
             .SetValue(renderer, lights);
         renderers.Renderers.Add(renderer);
         return new RendererComponentIndexRoot { Scene = scene, Entity = entity, Renderer = renderer };
+    }
+
+    private static SeekerBarrierRenderer CreateSeekerBarrierRenderer(int edgeCount) {
+        SeekerBarrierRenderer renderer = CreateUninitializedEntity<SeekerBarrierRenderer>();
+        InitializeEmptyComponentList(renderer);
+        SetRuntimeField(renderer, "list", new List<SeekerBarrier>());
+        Type edgeType = typeof(SeekerBarrierRenderer).GetNestedType(
+            "Edge", BindingFlags.NonPublic) ?? throw new InvalidOperationException("SeekerBarrierRenderer.Edge is unavailable.");
+        System.Collections.IList edges = (System.Collections.IList) Activator.CreateInstance(
+            typeof(List<>).MakeGenericType(edgeType))!;
+        for (int index = 0; index < edgeCount; index++) {
+            edges.Add(RuntimeHelpers.GetUninitializedObject(edgeType));
+        }
+        SetRuntimeField(renderer, "edges", edges);
+        return renderer;
     }
 
     private static VertexLight[] GetLightingRendererLights(LightingRenderer renderer) {
@@ -3708,6 +3874,25 @@ public sealed class StartPosReconstructionTests {
                 });
         typeof(Scene).GetField("<Tracker>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(scene, tracker);
+        return (new SavedSceneRoot { Scene = scene, Entities = entities }, slash);
+    }
+
+    private static (SavedSceneRoot Root, SlashFx? Slash) CreateTaggedRuntimeEntityScene(bool includeSlash) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        SlashFx? slash = null;
+        if (includeSlash) {
+            slash = CreateUninitializedEntity<SlashFx>();
+            InitializeEmptyComponentList(slash);
+            SetRuntimeField(slash, "<Scene>k__BackingField", scene);
+            AddDetachedEntity(entities, slash);
+        }
+
+        TagLists tagLists = (TagLists) RuntimeHelpers.GetUninitializedObject(typeof(TagLists));
+        List<Entity>[] lists = { slash == null ? new List<Entity>() : new List<Entity> { slash } };
+        SetRuntimeField(tagLists, "lists", lists);
+        SetRuntimeField(tagLists, "unsorted", new bool[lists.Length]);
+        SetRuntimeField(scene, "<TagLists>k__BackingField", tagLists);
         return (new SavedSceneRoot { Scene = scene, Entities = entities }, slash);
     }
 

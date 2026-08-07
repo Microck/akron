@@ -497,6 +497,22 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
+    public void StartPosRestoreRebuildsTheCumulativeSlotRegistry() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int methodStart = source.IndexOf("private static bool RestoreStartPos(", StringComparison.Ordinal);
+        int methodEnd = source.IndexOf("internal static void RelinkRuntimeRenderState", methodStart, StringComparison.Ordinal);
+        string method = SourceSlice(source, methodStart, methodEnd - methodStart);
+
+        int restore = method.IndexOf("AkronSaveLoadService.LoadRuntimeState", StringComparison.Ordinal);
+        int registryReload = method.IndexOf("LoadStartPositionsForLevel(currentLevel);", StringComparison.Ordinal);
+        int loadedSlotUpdate = method.IndexOf("AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;", StringComparison.Ordinal);
+
+        Assert.True(restore >= 0);
+        Assert.True(registryReload > restore);
+        Assert.True(loadedSlotUpdate > registryReload);
+    }
+
+    [Fact]
     public void PersistentRestoreRebuildsProcessTrackerKeysBeforeVerification() {
         string source = File.ReadAllText(GetSaveLoadSourcePath());
         int restoreStart = source.IndexOf("private static AkronSaveLoadResult RestorePersistentRuntimeState", StringComparison.Ordinal);

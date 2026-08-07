@@ -536,6 +536,11 @@ public static partial class AkronActions {
             Level currentLevel = Engine.Scene as Level ?? level;
             RelinkRuntimeRenderState(currentLevel);
             StartPosFrameGeneration++;
+
+            // The room snapshot contains the Akron session from its Set boundary. Rebuild the
+            // cumulative slot registry from persisted metadata so loading an older slot cannot
+            // erase slots that the player created later.
+            LoadStartPositionsForLevel(currentLevel);
             if (loadedSlot > 0) {
                 AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;
             }
