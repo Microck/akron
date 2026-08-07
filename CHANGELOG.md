@@ -17,6 +17,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 - Restore the exact StartPos frame both in-process and after a full restart, including room objects, positions, speeds, registered helper state, audio, random state, and gameplay render buffers, before simulation continues.
 - Keep later StartPos slots available after loading an earlier slot, including custom-map runtime effects and generated room state.
 - Keep global save progress with the active file and bind imported StartPos snapshots to the recipient's save slot.
+- Show the actual death position when no hazard overlaps the player instead of choosing the nearest spike or death zone.
 
 ## Akron Beta 63
 
