@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 64
+
 ### Changed
 
 - Store dependency-free StartPos v6 snapshots on disk so exact room state survives closing and restarting Celeste, including active custom-map gameplay.
