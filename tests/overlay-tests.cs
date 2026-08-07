@@ -831,19 +831,26 @@ public sealed class OverlayTests {
     }
 
     [Fact]
-    public void DeathHazardColliderIsCapturedBeforeCelesteRestoresTemporaryCollisionShapes()
+    public void DeathHazardColliderIsCapturedLazilyBeforeNativeDeath()
     {
         string source = File.ReadAllText(Path.Combine(
             AppContext.BaseDirectory,
             "../../../../Source/Module/akron-module-player-runtime.cs"));
+        int colliderHook = source.IndexOf("private static bool PlayerColliderOnCheckForDeathHazard(", StringComparison.Ordinal);
+        int matcher = source.IndexOf("internal static PlayerColliderDeathHazardContext? MatchPlayerColliderDeathHazard(", colliderHook, StringComparison.Ordinal);
         int suppressionCheck = source.IndexOf("if (ShouldSuppressNormalDeathForAkronInvincibility(", StringComparison.Ordinal);
         int suppressedReturn = source.IndexOf("return null;", suppressionCheck, StringComparison.Ordinal);
         int nativeAssistSetup = source.IndexOf("EnsureNativeAssistInvincibility();", suppressedReturn, StringComparison.Ordinal);
         int captureDecision = source.IndexOf("ShouldCaptureDeathHazard(", nativeAssistSetup, StringComparison.Ordinal);
-        int capture = source.IndexOf("CaptureDeathHazard(level, self)", StringComparison.Ordinal);
+        int capture = source.IndexOf("CaptureDeathHazard(\n                    activeHazard.Value.Entity,", captureDecision, StringComparison.Ordinal);
         int nativeDeath = source.IndexOf("PlayerDeadBody deadBody = orig(", StringComparison.Ordinal);
         int record = source.IndexOf("RecordLastDeath(level, deathPosition, deathHazard);", StringComparison.Ordinal);
 
+        Assert.True(colliderHook >= 0);
+        Assert.True(matcher > colliderHook);
+        string hookBody = source.Substring(colliderHook, matcher - colliderHook);
+        Assert.DoesNotContain("CaptureDeathHazard(", hookBody);
+        Assert.DoesNotContain("self.OnCollide =", hookBody);
         Assert.True(suppressionCheck >= 0);
         Assert.True(suppressedReturn > suppressionCheck);
         Assert.True(nativeAssistSetup > suppressedReturn);

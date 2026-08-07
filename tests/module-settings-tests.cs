@@ -3624,10 +3624,10 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void DeathHazardSelectionPrefersTheOverlappingSeekerOverANearerSpinner()
+    public void DeathHazardSelectionRequiresOverlapAndUsesDistanceOnlyForTies()
     {
         // The test reference strips FNA collision math, so exercise the same
-        // overlap-first rule through its pure priority contract.
+        // overlap-only rule through its pure priority contract.
         Assert.True(AkronEntityInspector.ShouldPreferDeathHazard(
             candidateOverlapsPlayer: true,
             candidateDistanceSquared: 64f,
@@ -3638,11 +3638,41 @@ public sealed class ModuleSettingsTests
             candidateDistanceSquared: 36f,
             selectedOverlapsPlayer: true,
             selectedDistanceSquared: 64f));
-        Assert.True(AkronEntityInspector.ShouldPreferDeathHazard(
+        Assert.False(AkronEntityInspector.ShouldPreferDeathHazard(
             candidateOverlapsPlayer: false,
             candidateDistanceSquared: 36f,
             selectedOverlapsPlayer: false,
             selectedDistanceSquared: 64f));
+        Assert.True(AkronEntityInspector.ShouldPreferDeathHazard(
+            candidateOverlapsPlayer: true,
+            candidateDistanceSquared: 36f,
+            selectedOverlapsPlayer: true,
+            selectedDistanceSquared: 64f));
+        Assert.False(AkronEntityInspector.ShouldPreferDeathHazard(
+            candidateOverlapsPlayer: true,
+            candidateDistanceSquared: 64f,
+            selectedOverlapsPlayer: true,
+            selectedDistanceSquared: 36f));
+    }
+
+    [Fact]
+    public void ActivePlayerColliderDeathHazardOnlyMatchesTheCollidingPlayer()
+    {
+        Player collidingPlayer = (Player) RuntimeHelpers.GetUninitializedObject(typeof(Player));
+        Player otherPlayer = (Player) RuntimeHelpers.GetUninitializedObject(typeof(Player));
+        Entity entity = (Entity) RuntimeHelpers.GetUninitializedObject(typeof(Entity));
+        Collider collider = (Collider) RuntimeHelpers.GetUninitializedObject(typeof(Hitbox));
+        AkronModule.PlayerColliderDeathHazardContext activeHazard =
+            new AkronModule.PlayerColliderDeathHazardContext(collidingPlayer, entity, collider);
+
+        AkronModule.PlayerColliderDeathHazardContext matched = Assert.IsType<AkronModule.PlayerColliderDeathHazardContext>(
+            AkronModule.MatchPlayerColliderDeathHazard(collidingPlayer, activeHazard));
+        Assert.Same(entity, matched.Entity);
+        Assert.Same(collider, matched.Collider);
+        Assert.Null(AkronModule.MatchPlayerColliderDeathHazard(
+            otherPlayer, activeHazard));
+        Assert.Null(AkronModule.MatchPlayerColliderDeathHazard(
+            collidingPlayer, default));
     }
 
     [Theory]

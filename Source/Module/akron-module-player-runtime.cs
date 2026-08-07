@@ -12,6 +12,54 @@ namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
     internal const int PlayerDashState = 2;
+    private static PlayerColliderDeathHazardContext activePlayerColliderDeathHazard;
+
+    internal readonly struct PlayerColliderDeathHazardContext {
+        internal Player Player { get; }
+        internal Entity Entity { get; }
+        internal Collider Collider { get; }
+
+        internal PlayerColliderDeathHazardContext(Player player, Entity entity, Collider collider) {
+            Player = player;
+            Entity = entity;
+            Collider = collider;
+        }
+    }
+
+    private static bool PlayerColliderOnCheckForDeathHazard(
+        On.Celeste.PlayerCollider.orig_Check orig,
+        PlayerCollider self,
+        Player player
+    ) {
+        if (self.OnCollide is null) {
+            return orig(self, player);
+        }
+
+        // PlayerCollider restores the entity's normal collider before it calls OnCollide.
+        // Keep the exact owner and player-only shape selected at Check entry so PlayerOnDie
+        // can snapshot them lazily even if the callback mutates or detaches this component.
+        PlayerColliderDeathHazardContext previousHazard = activePlayerColliderDeathHazard;
+        activePlayerColliderDeathHazard = new PlayerColliderDeathHazardContext(
+            player,
+            self.Entity,
+            AkronEntityInspector.SelectPlayerColliderDeathHazardCollider(self, player));
+        try {
+            return orig(self, player);
+        } finally {
+            activePlayerColliderDeathHazard = previousHazard;
+        }
+    }
+
+    internal static PlayerColliderDeathHazardContext? MatchPlayerColliderDeathHazard(
+        Player dyingPlayer,
+        PlayerColliderDeathHazardContext activeHazard
+    ) {
+        return activeHazard.Entity != null &&
+               activeHazard.Collider != null &&
+               ReferenceEquals(dyingPlayer, activeHazard.Player)
+            ? activeHazard
+            : null;
+    }
 
     private static PlayerDeadBody PlayerOnDie(On.Celeste.Player.orig_Die orig, Player self, Vector2 direction, bool evenIfInvincible, bool registerDeathInStats) {
         Level level = self.Scene as Level;
@@ -40,11 +88,17 @@ public partial class AkronModule {
         }
 
         bool nativeAssistInvincibilityActive = global::Celeste.SaveData.Instance?.Assists.Invincible == true;
-        AkronEntityInspector.DeathHazardSnapshot deathHazard = ShouldCaptureDeathHazard(
-                evenIfInvincible,
-                nativeAssistInvincibilityActive)
-            ? AkronEntityInspector.CaptureDeathHazard(level, self)
-            : null;
+        AkronEntityInspector.DeathHazardSnapshot deathHazard = null;
+        if (ShouldCaptureDeathHazard(evenIfInvincible, nativeAssistInvincibilityActive)) {
+            PlayerColliderDeathHazardContext? activeHazard = MatchPlayerColliderDeathHazard(
+                self,
+                activePlayerColliderDeathHazard);
+            deathHazard = activeHazard.HasValue
+                ? AkronEntityInspector.CaptureDeathHazard(
+                    activeHazard.Value.Entity,
+                    activeHazard.Value.Collider)
+                : AkronEntityInspector.CaptureDeathHazard(level, self);
+        }
         PlayerDeadBody deadBody = orig(self, direction, evenIfInvincible, registerDeathInStats);
         bool goldenDeath = level?.Entities.OfType<Strawberry>().Any(strawberry => strawberry.Golden && strawberry.Follower.Leader != null) == true;
         if (deadBody != null && Settings.NoDeathEffect && TryUse(AkronFeatureKind.DeathVisuals) && level != null) {

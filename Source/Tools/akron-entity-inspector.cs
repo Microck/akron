@@ -139,10 +139,14 @@ public static partial class AkronEntityInspector {
     }
 
     internal sealed class DeathHazardSnapshot {
-        internal DeathHazardSnapshot(Entity entity) {
+        internal DeathHazardSnapshot(Entity entity)
+            : this(entity, entity.Collider) {
+        }
+
+        internal DeathHazardSnapshot(Entity entity, Collider collider) {
             EntityType = entity.GetType().Name;
-            Collider = CaptureDeathColliderSnapshot(entity.Collider);
-            Bounds = entity.Collider.Bounds;
+            Collider = CaptureDeathColliderSnapshot(collider);
+            Bounds = collider.Bounds;
         }
 
         internal string EntityType { get; }
@@ -328,14 +332,36 @@ public static partial class AkronEntityInspector {
         return hazard == null ? null : new DeathHazardSnapshot(hazard);
     }
 
+    internal static Collider SelectPlayerColliderDeathHazardCollider(PlayerCollider playerCollider, Player player) {
+        return playerCollider?.FeatherCollider != null && player?.StateMachine.State == 19
+            ? playerCollider.FeatherCollider
+            : playerCollider?.Collider ?? playerCollider?.Entity?.Collider;
+    }
+
+    internal static DeathHazardSnapshot CaptureDeathHazard(Entity entity, Collider collider) {
+        if (entity == null || collider == null) {
+            return null;
+        }
+
+        Collider normalCollider = entity.Collider;
+        try {
+            // PlayerCollider removes its temporary shape before invoking OnCollide. Reattach it
+            // only while the snapshot reads absolute bounds, then restore the normal collider.
+            entity.Collider = collider;
+            return new DeathHazardSnapshot(entity, collider);
+        } finally {
+            entity.Collider = normalCollider;
+        }
+    }
+
     internal static Entity SelectDeathHazard(
         IEnumerable<Entity> entities,
         Collider playerCollider,
         Vector2 deathPosition) {
         // PlayerCollider temporarily installs the collider that caused the
-        // contact before it calls Player.Die. Prefer that overlapping collider
-        // while it is still active, then use distance for deaths whose source
-        // cannot be identified from collision alone.
+        // contact before it calls Player.Die. Only an active overlap identifies
+        // the killing hazard. If none overlaps, RecordLastDeath uses the actual
+        // death position instead of guessing a nearby hazard.
         Entity selected = null;
         bool selectedOverlapsPlayer = false;
         float selectedDistanceSquared = float.MaxValue;
@@ -348,7 +374,7 @@ public static partial class AkronEntityInspector {
             }
             bool overlapsPlayer = playerCollider != null && entity.Collider.Collide(playerCollider);
             float distanceSquared = Vector2.DistanceSquared(entity.Center, deathPosition);
-            if (selected == null || ShouldPreferDeathHazard(
+            if (ShouldPreferDeathHazard(
                     overlapsPlayer,
                     distanceSquared,
                     selectedOverlapsPlayer,
@@ -370,9 +396,8 @@ public static partial class AkronEntityInspector {
         float candidateDistanceSquared,
         bool selectedOverlapsPlayer,
         float selectedDistanceSquared) {
-        return candidateOverlapsPlayer != selectedOverlapsPlayer
-            ? candidateOverlapsPlayer
-            : candidateDistanceSquared < selectedDistanceSquared;
+        return candidateOverlapsPlayer &&
+               (!selectedOverlapsPlayer || candidateDistanceSquared < selectedDistanceSquared);
     }
 
     internal static void RecordLastDeath(Level level, Vector2 deathPosition, DeathHazardSnapshot deathHazard) {

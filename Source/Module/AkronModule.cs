@@ -174,6 +174,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.CompleteArea_bool_bool += LevelOnCompleteArea;
         On.Celeste.Level.CompleteArea_bool_bool_bool += LevelOnCompleteArea;
         On.Celeste.Level.RegisterAreaComplete += LevelOnRegisterAreaComplete;
+        On.Celeste.PlayerCollider.Check += PlayerColliderOnCheckForDeathHazard;
         On.Celeste.Player.Die += PlayerOnDie;
         On.Celeste.Player.OnSquish += PlayerOnSquish;
         On.Celeste.Player.DashBegin += PlayerOnDashBegin;
@@ -307,6 +308,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.CompleteArea_bool_bool -= LevelOnCompleteArea;
         On.Celeste.Level.CompleteArea_bool_bool_bool -= LevelOnCompleteArea;
         On.Celeste.Level.RegisterAreaComplete -= LevelOnRegisterAreaComplete;
+        On.Celeste.PlayerCollider.Check -= PlayerColliderOnCheckForDeathHazard;
         On.Celeste.Player.Die -= PlayerOnDie;
         On.Celeste.Player.OnSquish -= PlayerOnSquish;
         On.Celeste.Player.DashBegin -= PlayerOnDashBegin;
