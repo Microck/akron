@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 66
+
 ### Changed
 
 - Recreate existing StartPos slots and setup packs for the v7 snapshot and v4 setup contracts.
