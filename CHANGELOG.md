@@ -6,6 +6,26 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Changed
+
+- Keep StartPos Set and same-session Load on the fast in-memory path, then cache the first disk restore so later Loads stay fast.
+
+### Fixed
+
+- Restore stopped custom-map sounds from StartPos disk snapshots and keep later live sound changes current for subsequent Sets.
+- Prevent replaced StartPos data, failed room baselines, and queued shutdown work from leaving stale or incomplete restart copies.
+- Keep StartPos setup imports consistent when they replace a still-saving slot or a helper mod fails its cleanup callback.
+- Block StartPos setup exports and uploads until every included restart copy has finished saving.
+- Keep unfinished StartPos restart copies bound to the save file that created them.
+- Reuse the true fresh-room baseline when a new StartPos follows a warm cross-room Load.
+- Fall back to the restart-safe StartPos after leaving and re-entering a chapter invalidates its warm copy.
+- Refresh the fresh-room baseline after normal reloads so StartPos uses current save progression.
+- Match warm and restart room initialization without pausing Akron input for the full entry wipe.
+- Keep permanent save progress and other mods' save data current during warm StartPos Loads.
+- Keep helper-owned sounds dormant and releasable while Akron holds a StartPos snapshot or fresh-room baseline.
+- Release replaced StartPos graphics after their background restart copy finishes without dropping graphics still owned by another slot.
+- Keep failed or unfinished StartPos replacements from loading an older disk snapshot, and reject stale warm copies before helper load callbacks run.
+
 ## Akron Beta 64
 
 ### Changed

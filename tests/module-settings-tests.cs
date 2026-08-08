@@ -4209,8 +4209,11 @@ public sealed class ModuleSettingsTests
         };
 
         FieldInfo? slotsField = typeof(AkronSaveLoadService).GetField("RuntimeSlots", BindingFlags.NonPublic | BindingFlags.Static);
-        Dictionary<string, AkronSaveLoadSlot> runtimeSlots = Assert.IsType<Dictionary<string, AkronSaveLoadSlot>>(slotsField?.GetValue(null));
-        runtimeSlots[liveSlotName] = new AkronSaveLoadSlot(liveSlotName, "room", "Example/Map", false);
+        Dictionary<string, AkronSaveLoadSlotOwner> runtimeSlots =
+            Assert.IsType<Dictionary<string, AkronSaveLoadSlotOwner>>(slotsField?.GetValue(null));
+        runtimeSlots[liveSlotName] = new AkronSaveLoadSlotOwner(
+            new AkronSaveLoadSlot(liveSlotName, "room", "Example/Map", false),
+            _ => { });
 
         try
         {

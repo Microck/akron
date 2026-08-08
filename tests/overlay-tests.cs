@@ -1219,7 +1219,7 @@ public sealed class OverlayTests {
         Assert.True(nextMethod > methodStart);
         string method = source[methodStart..nextMethod];
 
-        Assert.Contains("AkronModule.Session.StartPositions[slot]", method);
+        Assert.Contains("PublishPendingStartPos(fileSlot, slot, startPos)", method);
         Assert.DoesNotContain("SetStartPosSlot", method);
         Assert.DoesNotContain("NextStartPosSlot", source);
     }

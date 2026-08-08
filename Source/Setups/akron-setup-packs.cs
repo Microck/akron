@@ -439,7 +439,8 @@ public static partial class AkronSetupPacks {
                     imported,
                     session,
                     pack.ArchiveMapSid,
-                    persistMetadata: false);
+                    persistMetadata: false,
+                    replacementTransaction: stateTransaction?.StartPosReplacement);
                 if (!persistStartPosMetadata()) {
                     throw new IOException("Could not persist imported StartPos metadata.");
                 }
@@ -479,7 +480,8 @@ public static partial class AkronSetupPacks {
                 importedForMap,
                 targetSession: null,
                 targetAreaSid: pack.ArchiveMapSid,
-                persistMetadata: false);
+                persistMetadata: false,
+                replacementTransaction: stateTransaction?.StartPosReplacement);
             session.StartPositions = mergedStartPositions;
             if (!persistStartPosMetadata()) {
                 throw new IOException("Could not persist imported StartPos metadata.");
@@ -1531,6 +1533,10 @@ public static partial class AkronSetupPacks {
         if (string.IsNullOrWhiteSpace(mapSid)) {
             return entries;
         }
+        if (AkronActions.HasPendingStartPosForArea(mapSid)) {
+            throw new InvalidDataException(
+                "A StartPos restart copy is still saving. Wait for it to finish before exporting or uploading this pack.");
+        }
         foreach (KeyValuePair<int, AkronStartPos> pair in session?.StartPositions ?? new Dictionary<int, AkronStartPos>()) {
             if (pair.Value == null ||
                 (!string.IsNullOrWhiteSpace(mapSid) && !string.Equals(pair.Value.AreaSid, mapSid, StringComparison.Ordinal))) {
@@ -1778,7 +1784,11 @@ public static partial class AkronSetupPacks {
         private readonly Dictionary<string, AkronPersistedStartPosMap> previousMaps;
         private readonly AkronPersistedStartPosMap previousMap;
         private readonly bool hadPreviousMap;
+        private AkronActions.StartPosReplacementTransaction startPosReplacement;
         private bool committed;
+
+        public AkronActions.StartPosReplacementTransaction StartPosReplacement =>
+            startPosReplacement ??= AkronActions.BeginStartPosReplacement(targetMapSid);
 
         public SetupImportStateTransaction(
             AkronModuleSettings settings,
@@ -1803,10 +1813,12 @@ public static partial class AkronSetupPacks {
         }
 
         public void Commit() {
+            startPosReplacement?.Commit();
             committed = true;
         }
 
         public void Dispose() {
+            startPosReplacement?.Dispose();
             if (committed) {
                 return;
             }

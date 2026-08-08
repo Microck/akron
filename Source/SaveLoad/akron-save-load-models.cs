@@ -98,6 +98,10 @@ public sealed class AkronSaveLoadSlot {
     public float DistortGameRate { get; set; }
     public Dictionary<string, Dictionary<Type, Dictionary<string, object>>> ActionState { get; }
     internal List<AkronGameplayBufferSnapshot> GameplayBuffers { get; set; } = new List<AkronGameplayBufferSnapshot>();
+    internal IReadOnlyDictionary<object, AkronReconstructionResourcePayload> PersistentRenderTargets { get; set; } =
+        new Dictionary<object, AkronReconstructionResourcePayload>();
+    internal IReadOnlyList<AkronTrackedVirtualAssetRegistration> TrackedVirtualAssetRegistrations { get; set; } =
+        Array.Empty<AkronTrackedVirtualAssetRegistration>();
     public Dictionary<string, EverestModuleSession> ModuleSessions { get; }
     public Dictionary<string, EverestModuleSaveData> ModuleSaveData { get; }
     public HashSet<string> SessionFlags { get; set; } = new HashSet<string>();
@@ -117,6 +121,70 @@ public sealed class AkronSaveLoadSlot {
     public string SessionStartCheckpoint { get; set; } = string.Empty;
     public string SessionFurthestSeenLevel { get; set; } = string.Empty;
     public Session.CoreModes SessionCoreMode { get; set; }
+}
+
+// A disk worker reads the immutable saved graph while the runtime dictionary can
+// replace that slot with a newer Set. Keep the old graph alive until both owners
+// are finished instead of racing FMOD handle release against graph capture.
+internal sealed class AkronSaveLoadSlotOwner {
+    private readonly object sync = new object();
+    private readonly Action<AkronSaveLoadSlot> release;
+    private int references = 1;
+
+    public AkronSaveLoadSlotOwner(AkronSaveLoadSlot slot, Action<AkronSaveLoadSlot> release) {
+        Slot = slot ?? throw new ArgumentNullException(nameof(slot));
+        this.release = release ?? throw new ArgumentNullException(nameof(release));
+    }
+
+    public AkronSaveLoadSlot Slot { get; }
+
+    public AkronSaveLoadSlotLease Retain() {
+        lock (sync) {
+            if (references == 0) {
+                throw new ObjectDisposedException(nameof(AkronSaveLoadSlotOwner));
+            }
+            references++;
+        }
+        return new AkronSaveLoadSlotLease(this);
+    }
+
+    public void ReleaseOwnership() {
+        ReleaseReference();
+    }
+
+    internal void ReleaseReference() {
+        bool releaseSlot;
+        lock (sync) {
+            if (references == 0) {
+                return;
+            }
+            references--;
+            releaseSlot = references == 0;
+        }
+        if (releaseSlot) {
+            release(Slot);
+        }
+    }
+}
+
+internal sealed class AkronSaveLoadSlotLease : IDisposable {
+    private AkronSaveLoadSlotOwner owner;
+
+    public AkronSaveLoadSlotLease(AkronSaveLoadSlotOwner owner) {
+        this.owner = owner;
+    }
+
+    public AkronSaveLoadSlot Slot => owner?.Slot;
+
+    public AkronSaveLoadSlotLease Retain() {
+        return owner?.Retain();
+    }
+
+    public void Dispose() {
+        AkronSaveLoadSlotOwner releasedOwner = owner;
+        owner = null;
+        releasedOwner?.ReleaseReference();
+    }
 }
 
 // Persistent StartPos uses one graph root for the Level and its run-scoped
