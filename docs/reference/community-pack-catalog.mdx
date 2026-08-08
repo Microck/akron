@@ -127,9 +127,9 @@ The official in-game upload flow accepts StartPos, Auto Kill, and Auto Deafen pa
 
 Before publishing, verify the catalog-facing pack contract:
 
-- Verify that the archive contains `manifest.json`, `setup.json`, and the exact v6 snapshot entry named by each StartPos.
+- Verify that the archive contains `manifest.json`, `setup.json`, and the exact v7 snapshot entry named by each StartPos.
 - Verify that the manifest `Kind` is `setup`.
-- Ensure that `setup.json` uses the `akron-setup-v3` format.
+- Ensure that `setup.json` uses the `akron-setup-v4` format.
 - Verify that the entry `section` matches the setup section, unless a different scope is intended.
 - Confirm that the download URL returns the expected `.akr` archive.
 - Reject `Whole` setup packs from the public Discord catalog.

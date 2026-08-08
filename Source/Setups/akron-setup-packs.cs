@@ -71,7 +71,7 @@ public sealed class AkronStartPosPackEntry {
 public static partial class AkronSetupPacks {
     public const string SetupArchiveKind = "setup";
     public const string SetupArchivePayload = "setup.json";
-    public const string SetupPackFormat = "akron-setup-v3";
+    public const string SetupPackFormat = "akron-setup-v4";
 
     public const int MaxStartPositions = 99;
     public const int MaxAutoKillAreas = 128;
@@ -692,6 +692,11 @@ public static partial class AkronSetupPacks {
         string stagingDirectory = Path.Combine(snapshotRoot, ".import-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(stagingDirectory);
         Dictionary<int, string> stagedSnapshots = new Dictionary<int, string>();
+        Level recipientLevel = TryGetCurrentLevel();
+        AkronBerryProgressSnapshot recipientBerryProgress =
+            string.Equals(recipientLevel?.Session?.Area.GetSID(), targetMapSid, StringComparison.Ordinal)
+                ? AkronBerryProgressSnapshot.Capture(recipientLevel)
+                : null;
         try {
             foreach (KeyValuePair<int, AkronStartPosPackEntry> pair in pack.StartPositions.OrderBy(pair => pair.Key)) {
                 AkronStartPosPackEntry entry = pair.Value;
@@ -713,6 +718,7 @@ public static partial class AkronSetupPacks {
                     !string.Equals(document.Room, entry.Room, StringComparison.Ordinal)) {
                     throw new InvalidDataException("StartPos snapshot identity does not match its pack entry.");
                 }
+                document.BerryProgress = recipientBerryProgress;
 
                 string targetSlotName = AkronActions.GetStartPosStateSlotName(targetMapSid, pair.Key);
                 int recipientFileSlot = SaveData.Instance?.FileSlot ?? -1;
@@ -736,7 +742,7 @@ public static partial class AkronSetupPacks {
     }
 
     private static string GetSnapshotEntryName(int slot) {
-        return "startpos/" + slot.ToString(CultureInfo.InvariantCulture) + ".v6.json.gz";
+        return "startpos/" + slot.ToString(CultureInfo.InvariantCulture) + ".v7.json.gz";
     }
 
     private static string ComputeFileSha256(string path) {
@@ -782,10 +788,16 @@ public static partial class AkronSetupPacks {
     }
 
     private static string TryGetCurrentLevelMapSid() {
+        Level level = TryGetCurrentLevel();
+        return level?.Session?.Area.GetSID() ?? string.Empty;
+    }
+
+    private static Level TryGetCurrentLevel() {
         try {
-            return Engine.Scene is Level level ? level.Session?.Area.GetSID() ?? string.Empty : string.Empty;
+            return Engine.Scene as Level;
         } catch (Exception exception) when (exception is InvalidProgramException || exception is NullReferenceException) {
-            return string.Empty;
+            // The test reference assemblies strip the Engine getter body.
+            return null;
         }
     }
 

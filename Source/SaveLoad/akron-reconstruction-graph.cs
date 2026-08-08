@@ -23,13 +23,14 @@ using Newtonsoft.Json;
 namespace Celeste.Mod.Akron;
 
 internal sealed class AkronReconstructionDocument {
-    public const string CurrentFormat = "akron-reconstruction-v6";
+    public const string CurrentFormat = "akron-reconstruction-v7";
 
     public string Format { get; set; } = CurrentFormat;
     public string SlotName { get; set; } = string.Empty;
     public string MapSid { get; set; } = string.Empty;
     public string Room { get; set; } = string.Empty;
     public int FileSlot { get; set; } = -1;
+    public AkronBerryProgressSnapshot BerryProgress { get; set; }
     public int RootNodeId { get; set; }
     public List<AkronReconstructionNode> Nodes { get; set; } = new List<AkronReconstructionNode>();
     public AkronReconstructionDocument ActionStateDocument { get; set; }
@@ -6161,7 +6162,7 @@ internal static class AkronStartPosReconstruction {
             : directory;
         byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(slotName ?? string.Empty));
         string key = string.Concat(digest.Select(value => value.ToString("x2", CultureInfo.InvariantCulture)));
-        return Path.Combine(root, "v6-" + key + ".json.gz");
+        return Path.Combine(root, "v7-" + key + ".json.gz");
     }
 
     internal sealed class PreparedSnapshotInstall : IDisposable {

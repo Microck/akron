@@ -296,7 +296,7 @@ internal static class AkronStartPosPersistence {
 
         runningWorker?.GetAwaiter().GetResult();
         Update();
-        AkronActions.SaveAkronStartPosDataSynchronously();
+        AkronActions.SaveAkronStartPosData();
         On.Celeste.Level.LoadLevel -= LevelOnLoadLevel;
 
         lock (Sync) {

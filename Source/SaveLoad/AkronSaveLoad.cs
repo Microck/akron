@@ -613,6 +613,7 @@ public static partial class AkronSaveLoadService {
         capture.Document.ActionStateDocument = actionCapture.Document;
         capture.Document.RegisteredActionIds = new List<string>(registeredActionIds ?? Array.Empty<string>());
         capture.Document.GameplayBuffers = saveSlot.GameplayBuffers;
+        capture.Document.BerryProgress = saveSlot.BerryProgress;
         if (!AkronStartPosReconstruction.SaveSnapshot(
                 saveSlot.SlotName,
                 saveSlot.MapSid,
@@ -668,9 +669,16 @@ public static partial class AkronSaveLoadService {
                 LastPersistentSnapshotError = bufferError;
                 return AkronSaveLoadResult.Failed;
             }
-            AkronGameplayBufferState.ArmLevelPresentation(level, saveSlot.GameplayBuffers);
             PrepareRuntimeSlotPreClone(saveSlot);
             AkronStartPosPersistence.UseRuntimeFreshBaseline(saveSlot.SlotName);
+            // Berry progress is persistent save data. Apply it only after the
+            // remaining restore work can no longer report a normal failure.
+            if (saveSlot.BerryProgress != null &&
+                !saveSlot.BerryProgress.TryRestore(level, out string berryRestoreError)) {
+                LastPersistentSnapshotError = berryRestoreError;
+                return AkronSaveLoadResult.Failed;
+            }
+            AkronGameplayBufferState.ArmLevelPresentation(level, saveSlot.GameplayBuffers);
         } finally {
             AkronDeepClone.ClearSharedState();
             AkronIgnoreSaveStateComponent.ReAddAll(level);
@@ -978,6 +986,15 @@ public static partial class AkronSaveLoadService {
             TryLoadFreshRoom(level, document.Room, out _);
             return AkronSaveLoadResult.Failed;
         }
+        // Berry progress is persistent save data. Apply it only after the
+        // remaining restore work can no longer report a normal failure.
+        if (document.BerryProgress != null &&
+            !document.BerryProgress.TryRestore(level, out string berryRestoreError)) {
+            LastPersistentSnapshotError = berryRestoreError;
+            AkronStartPosReconstruction.ReleaseEventInstances(restore);
+            TryLoadFreshRoom(level, document.Room, out _);
+            return AkronSaveLoadResult.Failed;
+        }
         AkronGameplayBufferState.ArmLevelPresentation(level, document.GameplayBuffers);
         AkronStartPosReconstruction.ActivateEventInstances(restore);
         return AkronSaveLoadResult.Success;
@@ -995,7 +1012,6 @@ public static partial class AkronSaveLoadService {
             LastPersistentSnapshotError = "snapshot process-global float is not finite";
             return false;
         }
-
         Settings.Instance.GrabMode = state.GrabMode;
         Settings.Instance.CrouchDashMode = state.CrouchDashMode;
 #pragma warning disable CS0618
@@ -1317,6 +1333,7 @@ public static partial class AkronSaveLoadService {
             saveSlot.Deaths = level.Session.Deaths;
             saveSlot.DeathsInCurrentLevel = level.Session.DeathsInCurrentLevel;
             saveSlot.FileSlot = SaveData.Instance?.FileSlot ?? -1;
+            saveSlot.BerryProgress = AkronBerryProgressSnapshot.Capture(level);
             saveSlot.SaveDataTime = SaveData.Instance?.Time ?? 0L;
             saveSlot.SaveDataTotalDeaths = SaveData.Instance?.TotalDeaths ?? 0;
             if (SaveData.Instance != null) {

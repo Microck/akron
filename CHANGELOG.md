@@ -6,6 +6,15 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Changed
+
+- Recreate existing StartPos slots and setup packs for the v7 snapshot and v4 setup contracts.
+
+### Fixed
+
+- Restore berry collection progress when loading a StartPos, including after restarting Celeste.
+- Keep each chapter's StartPos slots usable after switching chapters and setting the same slots elsewhere.
+
 ## Akron Beta 65
 
 ### Changed

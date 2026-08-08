@@ -37,10 +37,10 @@ Community packs use the same `.akr` import path as local exports.
 
 - **Back up first.** Export your current setup before importing a community pack so you can restore it.
 - **Check the section.** Verify that the pack's section (StartPos, Auto Kill, and so on) matches what you expect.
-- **StartPos packs carry exact room state.** Each imported StartPos includes its v6 snapshot, coordinates, and spawn settings. The same map and object-providing mods must be installed.
+- **StartPos packs carry exact room state.** Each imported StartPos includes its v7 snapshot, coordinates, and spawn settings. The same map and object-providing mods must be installed.
 - **Attempt-changing imports are policy-visible.** Imported settings that affect attempt counts may appear in status and proof metadata.
 - **Prefer scoped imports.** Use section-specific packs over whole-setup packs when you only need one category.
-- **Only setup archives import.** Public packs must use the current `.akr` setup archive shape: `manifest.json`, `setup.json`, and one v6 snapshot entry per StartPos, with `Kind` set to `setup` and setup format `akron-setup-v3`.
+- **Only setup archives import.** Public packs must use the current `.akr` setup archive shape: `manifest.json`, `setup.json`, and one v7 snapshot entry per StartPos, with `Kind` set to `setup` and setup format `akron-setup-v4`.
 
 ## Size Limits
 

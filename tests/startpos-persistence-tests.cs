@@ -795,8 +795,8 @@ public sealed class StartPosPersistenceTests {
         string actionsSource = File.ReadAllText(GetActionsSourcePath());
         int shutdown = persistenceSource.IndexOf("public static void Shutdown", StringComparison.Ordinal);
         int update = persistenceSource.IndexOf("Update();", shutdown, StringComparison.Ordinal);
-        int synchronousSave = persistenceSource.IndexOf("AkronActions.SaveAkronStartPosDataSynchronously();", update, StringComparison.Ordinal);
-        int save = actionsSource.IndexOf("internal static void SaveAkronStartPosDataSynchronously", StringComparison.Ordinal);
+        int synchronousSave = persistenceSource.IndexOf("AkronActions.SaveAkronStartPosData();", update, StringComparison.Ordinal);
+        int save = actionsSource.IndexOf("internal static bool SaveAkronStartPosData()", StringComparison.Ordinal);
         string savePath = SourceSlice(actionsSource, save, actionsSource.IndexOf("private static Dictionary<string, int> BuildRoomOrder", save, StringComparison.Ordinal) - save);
 
         Assert.True(update > shutdown && synchronousSave > update);
@@ -1791,6 +1791,117 @@ public sealed class StartPosPersistenceTests {
         Assert.Contains("Math.Max(currentAreaDeaths", source);
         Assert.Contains("level.TimeActive = saveSlot.LevelTimeActive;", source);
         Assert.Contains("level.RawTimeActive = saveSlot.LevelRawTimeActive;", source);
+    }
+
+    [Fact]
+    public void StartPosBerryRestoreRewindsOnlyTheActiveMapProgress() {
+        EntityID savedBerry = new EntityID("a-00", 1);
+        EntityID collectedAfterSet = new EntityID("a-01", 2);
+        IEqualityComparer<EntityID> entityIdComparer = EqualityComparer<EntityID>.Create(
+            (left, right) => left.Level == right.Level && left.ID == right.ID,
+            id => HashCode.Combine(id.Level, id.ID));
+        AreaModeStats savedArea = new AreaModeStats {
+            TotalStrawberries = 1,
+            Strawberries = new HashSet<EntityID>(entityIdComparer) { savedBerry }
+        };
+        AkronBerryProgressSnapshot snapshot = AkronBerryProgressSnapshot.Capture(savedArea);
+        AreaModeStats currentArea = new AreaModeStats {
+            TotalStrawberries = 2,
+            Strawberries = new HashSet<EntityID>(entityIdComparer) { savedBerry, collectedAfterSet }
+        };
+        HashSet<EntityID> currentBerrySet = currentArea.Strawberries;
+
+        Assert.True(snapshot.TryRestore(currentArea, 7, out int restoredTotal, out string error), error);
+        Assert.Equal(6, restoredTotal);
+        Assert.Equal(1, currentArea.TotalStrawberries);
+        Assert.Same(currentBerrySet, currentArea.Strawberries);
+        Assert.True(currentArea.Strawberries.SetEquals(new[] { savedBerry }));
+    }
+
+    [Fact]
+    public void StartPosBerryRestoreKeepsGoldenBerriesOutOfRegularTotals() {
+        EntityID goldenBerry = new EntityID("a-00", 1);
+        EntityID regularBerry = new EntityID("a-01", 2);
+        IEqualityComparer<EntityID> entityIdComparer = EqualityComparer<EntityID>.Create(
+            (left, right) => left.Level == right.Level && left.ID == right.ID,
+            id => HashCode.Combine(id.Level, id.ID));
+        AreaModeStats savedArea = new AreaModeStats {
+            TotalStrawberries = 0,
+            Strawberries = new HashSet<EntityID>(entityIdComparer) { goldenBerry }
+        };
+        AkronBerryProgressSnapshot snapshot = AkronBerryProgressSnapshot.Capture(savedArea);
+        AreaModeStats currentArea = new AreaModeStats {
+            TotalStrawberries = 1,
+            Strawberries = new HashSet<EntityID>(entityIdComparer) { goldenBerry, regularBerry }
+        };
+
+        Assert.True(snapshot.TryRestore(currentArea, 6, out int restoredTotal, out string error), error);
+        Assert.Equal(5, restoredTotal);
+        Assert.Equal(0, currentArea.TotalStrawberries);
+        Assert.True(currentArea.Strawberries.SetEquals(new[] { goldenBerry }));
+    }
+
+    [Fact]
+    public void WarmAndColdStartPosPathsRestoreBerryProgressAfterFallibleWork() {
+        string saveLoadSource = File.ReadAllText(GetSaveLoadSourcePath());
+        string modelsSource = File.ReadAllText(GetSourcePath("SaveLoad", "akron-save-load-models.cs"));
+        int warmRestoreStart = saveLoadSource.IndexOf(
+            "public static AkronSaveLoadResult RestoreRuntimeState",
+            StringComparison.Ordinal);
+        int warmRestoreEnd = saveLoadSource.IndexOf(
+            "public static AkronSaveLoadResult LoadRuntimeState",
+            warmRestoreStart,
+            StringComparison.Ordinal);
+        int coldRestoreStart = saveLoadSource.IndexOf(
+            "private static AkronSaveLoadResult RestorePersistentRuntimeStateAfterActionState",
+            StringComparison.Ordinal);
+        int coldRestoreEnd = saveLoadSource.IndexOf(
+            "private static bool ApplyPersistentRuntimeState",
+            coldRestoreStart,
+            StringComparison.Ordinal);
+        string warmRestore = SourceSlice(saveLoadSource, warmRestoreStart, warmRestoreEnd - warmRestoreStart);
+        string coldRestore = SourceSlice(saveLoadSource, coldRestoreStart, coldRestoreEnd - coldRestoreStart);
+
+        Assert.Contains("saveSlot.BerryProgress = AkronBerryProgressSnapshot.Capture(level);", saveLoadSource);
+        Assert.Contains("capture.Document.BerryProgress = saveSlot.BerryProgress;", saveLoadSource);
+        Assert.True(
+            warmRestore.IndexOf("AkronGameplayBufferState.Restore", StringComparison.Ordinal) <
+            warmRestore.IndexOf("saveSlot.BerryProgress.TryRestore", StringComparison.Ordinal));
+        Assert.True(
+            coldRestore.IndexOf("AkronGameplayBufferState.Restore", StringComparison.Ordinal) <
+            coldRestore.IndexOf("document.BerryProgress.TryRestore", StringComparison.Ordinal));
+        Assert.DoesNotContain("public AkronBerryProgressSnapshot BerryProgress", modelsSource);
+    }
+
+    [Fact]
+    public void SetupPackImportBindsStartPosBerryProgressToTheRecipientSave() {
+        string source = File.ReadAllText(GetSourcePath("Setups", "akron-setup-packs.cs"));
+        int prepareStart = source.IndexOf("private static PreparedStartPosImport PrepareStartPosImport", StringComparison.Ordinal);
+        int prepareEnd = source.IndexOf("private static string GetSnapshotEntryName", prepareStart, StringComparison.Ordinal);
+        string prepareImport = SourceSlice(source, prepareStart, prepareEnd - prepareStart);
+
+        int level = prepareImport.IndexOf("Level recipientLevel = TryGetCurrentLevel();", StringComparison.Ordinal);
+        int targetCheck = prepareImport.IndexOf(
+            "string.Equals(recipientLevel?.Session?.Area.GetSID(), targetMapSid, StringComparison.Ordinal)",
+            StringComparison.Ordinal);
+        int capture = prepareImport.IndexOf("AkronBerryProgressSnapshot.Capture(recipientLevel)", StringComparison.Ordinal);
+        int loop = prepareImport.IndexOf("foreach (KeyValuePair<int, AkronStartPosPackEntry>", StringComparison.Ordinal);
+        Assert.True(level >= 0 && targetCheck > level && capture > targetCheck && capture < loop);
+        Assert.Contains("document.BerryProgress = recipientBerryProgress;", prepareImport);
+    }
+
+    [Fact]
+    public void CompletedStartPosMetadataUsesTheSynchronousModuleSavePath() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int save = source.IndexOf("internal static bool SaveAkronStartPosData()", StringComparison.Ordinal);
+        int saveEnd = source.IndexOf("private static Dictionary<string, int> BuildRoomOrder", save, StringComparison.Ordinal);
+        string savePath = SourceSlice(source, save, saveEnd - save);
+
+        Assert.Contains("Instance.SerializeSaveData", savePath);
+        Assert.Contains("Instance.WriteSaveData", savePath);
+        Assert.Contains("Instance.ReadSaveData", savePath);
+        Assert.Contains("persisted.SequenceEqual(serialized)", savePath);
+        Assert.DoesNotContain("UserIO.SaveHandler", savePath);
     }
 
     [Fact]
