@@ -88,6 +88,7 @@ public sealed class AkronSaveLoadSlot {
     public int SaveDataTotalDeaths { get; set; }
     public long AreaTimePlayed { get; set; }
     public int AreaDeaths { get; set; }
+    internal AkronBerryProgressSnapshot BerryProgress { get; set; }
     public float LevelTimeActive { get; set; }
     public float LevelRawTimeActive { get; set; }
     public GrabModes GrabMode { get; set; }
@@ -121,6 +122,117 @@ public sealed class AkronSaveLoadSlot {
     public string SessionStartCheckpoint { get; set; } = string.Empty;
     public string SessionFurthestSeenLevel { get; set; } = string.Empty;
     public Session.CoreModes SessionCoreMode { get; set; }
+}
+
+// StartPos restores the active chapter's berry progress without replacing the
+// whole SaveData object. Replacing all SaveData would also rewind progress the
+// player earned in other chapters after placing this StartPos.
+internal sealed class AkronBerryProgressSnapshot {
+    public List<AkronSessionEntityId> Strawberries { get; set; } = new List<AkronSessionEntityId>();
+    public int TotalStrawberries { get; set; }
+
+    public static AkronBerryProgressSnapshot Capture(Level level) {
+        return Capture(GetAreaModeStats(level));
+    }
+
+    internal static AkronBerryProgressSnapshot Capture(AreaModeStats areaStats) {
+        return areaStats == null
+            ? null
+            : new AkronBerryProgressSnapshot {
+                Strawberries = (areaStats.Strawberries ?? new HashSet<EntityID>())
+                    .Select(AkronSessionEntityId.FromEntityId)
+                    .ToList(),
+                // Golden berry IDs are collected, but Celeste intentionally
+                // excludes them from the regular strawberry totals.
+                TotalStrawberries = areaStats.TotalStrawberries
+            };
+    }
+
+    public bool TryRestore(Level level, out string error) {
+        error = string.Empty;
+        if (SaveData.Instance == null) {
+            return true;
+        }
+
+        AreaModeStats areaStats = GetAreaModeStats(level);
+        if (!TryRestore(
+                areaStats,
+                SaveData.Instance.TotalStrawberries_Safe,
+                out int restoredTotal,
+                out error)) {
+            return false;
+        }
+
+        SaveData.Instance.TotalStrawberries_Safe = restoredTotal;
+        return true;
+    }
+
+    internal bool TryRestore(
+        AreaModeStats areaStats,
+        int currentTotal,
+        out int restoredTotal,
+        out string error
+    ) {
+        restoredTotal = currentTotal;
+        error = string.Empty;
+        if (areaStats == null) {
+            error = "active map berry statistics are unavailable";
+            return false;
+        }
+        if (currentTotal < 0 || areaStats.TotalStrawberries < 0 ||
+            currentTotal < areaStats.TotalStrawberries) {
+            error = "current berry statistics are inconsistent";
+            return false;
+        }
+
+        List<AkronSessionEntityId> savedStrawberries = Strawberries ?? new List<AkronSessionEntityId>();
+        if (savedStrawberries.Any(id => id == null)) {
+            error = "saved berry identifier is missing";
+            return false;
+        }
+        if (TotalStrawberries < 0 || TotalStrawberries > savedStrawberries.Count) {
+            error = "saved berry total is inconsistent with its identifiers";
+            return false;
+        }
+        HashSet<(string Level, int ID)> restoredIds = new HashSet<(string Level, int ID)>();
+        List<EntityID> restoredStrawberries = new List<EntityID>(savedStrawberries.Count);
+        foreach (AkronSessionEntityId savedStrawberry in savedStrawberries) {
+            string level = savedStrawberry.Level ?? string.Empty;
+            if (!restoredIds.Add((level, savedStrawberry.ID))) {
+                error = "saved berry identifiers contain duplicates";
+                return false;
+            }
+            restoredStrawberries.Add(new EntityID(level, savedStrawberry.ID));
+        }
+
+        long totalOutsideActiveMap = (long) currentTotal - areaStats.TotalStrawberries;
+        long restoredTotalLong = totalOutsideActiveMap + TotalStrawberries;
+        if (restoredTotalLong < 0 || restoredTotalLong > int.MaxValue) {
+            error = "restored berry total is outside the supported range";
+            return false;
+        }
+
+        areaStats.Strawberries ??= new HashSet<EntityID>();
+        areaStats.Strawberries.Clear();
+        areaStats.Strawberries.UnionWith(restoredStrawberries);
+        areaStats.TotalStrawberries = TotalStrawberries;
+        restoredTotal = (int) restoredTotalLong;
+        return true;
+    }
+
+    private static AreaModeStats GetAreaModeStats(Level level) {
+        AreaKey? area = level?.Session?.Area;
+        if (!area.HasValue || SaveData.Instance?.Areas_Safe == null ||
+            area.Value.ID < 0 || area.Value.ID >= SaveData.Instance.Areas_Safe.Count) {
+            return null;
+        }
+
+        AreaStats areaStats = SaveData.Instance.Areas_Safe[area.Value.ID];
+        int mode = (int) area.Value.Mode;
+        return areaStats?.Modes != null && mode >= 0 && mode < areaStats.Modes.Length
+            ? areaStats.Modes[mode]
+            : null;
+    }
 }
 
 // A disk worker reads the immutable saved graph while the runtime dictionary can
@@ -188,8 +300,8 @@ internal sealed class AkronSaveLoadSlotLease : IDisposable {
 }
 
 // Persistent StartPos uses one graph root for the Level and its run-scoped
-// process state. Global save data stays owned by the active file so restoring
-// a local or imported StartPos cannot rewind or replace player progression.
+// process state. Global save data stays owned by the active file. The berry
+// snapshot above restores only the active map's collection progress.
 internal sealed class AkronPersistentRuntimeState {
     public Level Level { get; set; }
     public GrabModes GrabMode { get; set; }

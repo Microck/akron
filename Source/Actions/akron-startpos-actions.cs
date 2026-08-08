@@ -1138,26 +1138,26 @@ public static partial class AkronActions {
 
     internal static bool SaveAkronStartPosData() {
         try {
-            UserIO.SaveHandler(true, true);
-            return true;
-        } catch (Exception exception) {
-            Logger.Log(LogLevel.Warn, nameof(AkronActions), "Failed to save persisted StartPos metadata: " + exception.Message);
-            return false;
-        }
-    }
-
-    internal static void SaveAkronStartPosDataSynchronously() {
-        try {
             if (AkronModule.Instance == null || SaveData.Instance == null) {
-                return;
+                return false;
             }
 
             int fileSlot = SaveData.Instance.FileSlot;
             byte[] serialized = AkronModule.Instance.SerializeSaveData(fileSlot);
+            if (serialized == null) {
+                return false;
+            }
             AkronModule.Instance.WriteSaveData(fileSlot, serialized);
+            byte[] persisted = AkronModule.Instance.ReadSaveData(fileSlot);
+            if (persisted == null || !persisted.SequenceEqual(serialized)) {
+                Logger.Log(LogLevel.Warn, nameof(AkronActions),
+                    "Failed to verify persisted StartPos metadata after writing it.");
+                return false;
+            }
+            return true;
         } catch (Exception exception) {
-            Logger.Log(LogLevel.Warn, nameof(AkronActions),
-                "Failed to synchronously save persisted StartPos metadata: " + exception.Message);
+            Logger.Log(LogLevel.Warn, nameof(AkronActions), "Failed to save persisted StartPos metadata: " + exception.Message);
+            return false;
         }
     }
 

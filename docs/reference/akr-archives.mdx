@@ -13,7 +13,7 @@ Most archives contain two entries. StartPos and Whole setup archives add one sna
 flowchart TD
   archive["example.akr"] --> manifest["manifest.json"]
   archive --> payload["payload JSON"]
-  archive --> snapshots["startpos/*.v6.json.gz"]
+  archive --> snapshots["startpos/*.v7.json.gz"]
   manifest --> format["Format and target"]
   payload --> data["Kind data"]
   snapshots --> roomState["Exact StartPos room state"]
@@ -60,7 +60,7 @@ Setup packs use the `setup` archive contract:
 ```text
 Kind: setup
 Payload entry: setup.json
-Payload format: akron-setup-v3
+Payload format: akron-setup-v4
 Directory: Saves/AkronSetups
 ```
 
@@ -68,7 +68,7 @@ The `setup.json` payload uses the following structure:
 
 ```json
 {
-  "format": "akron-setup-v3",
+  "format": "akron-setup-v4",
   "name": "Whole Setup",
   "createdUtc": "2026-05-14T00:00:00.0000000Z",
   "section": "Whole",
@@ -83,7 +83,7 @@ The setup payload size limit is 2 MiB.
 
 Each compressed StartPos snapshot attachment is limited to 128 MiB. All
 snapshot attachments in one setup archive are limited to 509 MiB in total.
-Each expanded v6 snapshot is limited to 192 MiB while Akron validates it.
+Each expanded v7 snapshot is limited to 192 MiB while Akron validates it.
 
 ## Setup Sections
 

@@ -780,6 +780,11 @@ public sealed class SetupPackTests {
             new PackSnapshotState { Counter = 91 },
             new PackSnapshotState());
         Assert.True(capture.Success, capture.Error);
+        capture.Document.BerryProgress = new AkronBerryProgressSnapshot {
+            Strawberries = new List<AkronSessionEntityId> {
+                new AkronSessionEntityId { Level = "exporter-room", ID = 7 }
+            }
+        };
 
         try {
             Assert.True(AkronStartPosReconstruction.SaveSnapshot(
@@ -805,6 +810,7 @@ public sealed class SetupPackTests {
                 out AkronReconstructionDocument importedDocument,
                 out string loadError), loadError);
             Assert.Equal(SaveData.Instance?.FileSlot ?? -1, importedDocument.FileSlot);
+            Assert.Null(importedDocument.BerryProgress);
             PackSnapshotState restoredState = new PackSnapshotState();
             AkronReconstructionRestore restored = graph.Restore(importedDocument, restoredState);
             Assert.True(restored.Success, restored.Error);
@@ -1045,7 +1051,7 @@ public sealed class SetupPackTests {
             pack.StartPositions[snapshot.Key] = new AkronStartPosPackEntry {
                 AreaSid = pack.ArchiveMapSid,
                 Room = "room-" + snapshot.Key,
-                SnapshotEntry = "startpos/" + snapshot.Key + ".v6.json.gz",
+                SnapshotEntry = "startpos/" + snapshot.Key + ".v7.json.gz",
                 SnapshotSha256 = new string('0', 64)
             };
             pack.SnapshotSourcePaths[snapshot.Key] = snapshot.Value;

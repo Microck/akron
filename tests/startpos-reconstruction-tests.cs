@@ -1508,7 +1508,7 @@ public sealed class StartPosReconstructionTests {
             maxJsonBinaryBytes: 100);
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            graph.Deserialize("{\"Format\":\"akron-reconstruction-v6\",\"Nodes\":[]}"));
+            graph.Deserialize("{\"Format\":\"akron-reconstruction-v7\",\"Nodes\":[]}"));
 
         Assert.Contains("container count exceeds", exception.Message);
     }
@@ -3170,10 +3170,10 @@ public sealed class StartPosReconstructionTests {
             Assert.Equal("Celeste/1-ForsakenCity", document.MapSid);
             Assert.Equal("1", document.Room);
             Assert.Equal(0, document.FileSlot);
-            Assert.Equal("akron-reconstruction-v6", document.Format);
+            Assert.Equal("akron-reconstruction-v7", document.Format);
             Assert.Equal("LightBuffer", Assert.Single(document.GameplayBuffers).FieldName);
             Assert.Equal(new byte[] { 1, 2, 3, 4 }, document.GameplayBuffers[0].Payload.Bytes);
-            Assert.Contains("v6-", Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
+            Assert.Contains("v7-", Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
             Assert.True(File.Exists(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
         } finally {
             if (Directory.Exists(directory)) {
