@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 65
+
 ### Changed
 
 - Keep StartPos Set and same-session Load on the fast in-memory path, then cache the first disk restore so later Loads stay fast.
