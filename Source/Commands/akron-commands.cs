@@ -85,8 +85,8 @@ public static partial class AkronCommands {
 
     // Command-only diagnostic output. This is intentionally not an overlay
     // option because it reports renderer timing for development and QA.
-    [Command("akron_perf", "show Akron performance telemetry: status|reset")]
-    public static void Performance(string action = "status") {
+    [Command("akron_perf", "Akron performance telemetry: status|reset|record <label>|stop|gcevents on|off")]
+    public static void Performance(string action = "status", string label = "") {
         switch ((action ?? string.Empty).Trim().ToLowerInvariant()) {
             case "":
             case "status":
@@ -94,12 +94,33 @@ public static partial class AkronCommands {
             case "reset":
                 AkronPerformanceTelemetry.Reset();
                 break;
+            case "gcevents":
+                // A/A control for the runtime GC event subscription, so the same
+                // scenario can be run with and without it and the frame-time
+                // picture compared. Only takes effect on the next record.
+                AkronPerformanceTelemetry.GcEventsEnabled =
+                    !string.Equals(label?.Trim(), "off", StringComparison.OrdinalIgnoreCase);
+                Log("perf-gcevents: " + (AkronPerformanceTelemetry.GcEventsEnabled ? "on" : "off"));
+                break;
+            case "record":
+                // Opens the JSONL perf record under Saves/.tmp-perf. The harness
+                // in scripts/akron-perf drives this around a scripted TAS run.
+                AkronPerformanceTelemetry.StartRecording(label, out string path);
+                Log("perf-record-started: " + path);
+                break;
+            case "stop":
+                AkronPerformanceTelemetry.StopRecording();
+                Log("perf-record-stopped");
+                break;
             default:
                 Log("unknown performance action: " + action);
+                Log("usage: akron_perf status|reset|record <label>|stop|gcevents on|off");
                 return;
         }
 
         Log(AkronPerformanceTelemetry.DescribeOverlayRenderCadence());
+        Log(AkronPerformanceTelemetry.DescribeFrameCadence());
+        Log(AkronPerformanceTelemetry.DescribeGcState());
     }
 
     [Command("akron_showcase_mark", "hidden showcase marker log: sync <label>|note <label>|status")]
@@ -333,6 +354,7 @@ public static partial class AkronCommands {
         Log("no-glitch: " + AkronModule.Settings.NoGlitch.ToString().ToLowerInvariant());
         Log("no-anxiety: " + AkronModule.Settings.NoAnxiety.ToString().ToLowerInvariant());
         Log("no-distortion: " + AkronModule.Settings.NoDistortion.ToString().ToLowerInvariant());
+        Log("disable-playback: " + AkronModule.Settings.DisablePlayback.ToString().ToLowerInvariant());
         Log("glitch-value: " + Glitch.Value.ToString("0.###", CultureInfo.InvariantCulture));
         Log("distort-anxiety: " + Distort.Anxiety.ToString("0.###", CultureInfo.InvariantCulture));
         Log("distort-game-rate: " + Distort.GameRate.ToString("0.###", CultureInfo.InvariantCulture));

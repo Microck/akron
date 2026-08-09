@@ -5,7 +5,7 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronCommands {
-    [Command("akron_save_time_deaths", "show or set whether StartPos restores preserve time/deaths: on|off|status")]
+    [Command("akron_save_time_deaths", "control whether numbered Akron savestates restore captured time and death counters: on|off|status")]
     public static void SaveTimeDeaths(string action = "status") {
         switch ((action ?? string.Empty).Trim().ToLowerInvariant()) {
             case "":
@@ -43,7 +43,7 @@ public static partial class AkronCommands {
         Log("slot set: " + AkronModule.Settings.ActiveSavestateSlot);
     }
 
-    [Command("akron_save", "capture Akron StartPos state in the current or specified slot")]
+    [Command("akron_save", "capture the current room in the current or specified numbered Akron savestate slot")]
     public static void Save(string slot = "") {
         Level level = RequireLevel();
         if (level == null) {
@@ -58,7 +58,7 @@ public static partial class AkronCommands {
         Log(AkronModule.DescribeSavestateResult("Save", result, AkronModule.Settings.ActiveSavestateSlot));
     }
 
-    [Command("akron_load", "restore Akron StartPos state from the current or specified slot")]
+    [Command("akron_load", "restore the current or specified numbered Akron savestate slot")]
     public static void Load(string slot = "") {
         Level level = RequireLevel();
         if (level == null) {
@@ -73,7 +73,7 @@ public static partial class AkronCommands {
         Log(AkronModule.DescribeSavestateResult("Load", result, AkronModule.Settings.ActiveSavestateSlot));
     }
 
-    [Command("akron_startpos", "Akron StartPos: status|slot <n>|set|load|clear|prev|next|place <on|off>|dashes <n>|stamina <n>|slots <n>|facing <current|left|right>|idle <on|off>|grab <on|off>|label <on|off>|respawn <on|off>|wait <on|off|status>|smart <on|off>")]
+    [Command("akron_startpos", "Akron StartPos: status|slot <n>|set [n]|load [n]|clear [n]|prev|next|place <on|off>|dashes <n>|stamina <n>|slots <n>|facing <current|left|right>|idle <on|off>|grab <on|off>|label <on|off>|respawn <on|off|toggle|status>|wait <on|off|status>|smart <on|off>")]
     public static void StartPos(string action = "status", string value = "") {
         Level level = RequireLevel();
         if (level == null) {
@@ -140,7 +140,7 @@ public static partial class AkronCommands {
             case "slots":
             case "slotcount":
                 if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int slotCount)) {
-                    Log("usage: akron_startpos slots <1..99>");
+                    Log("usage: akron_startpos slots <1.." + AkronModuleSettings.MaximumStartPosSlots + ">");
                     return;
                 }
                 AkronModule.Settings.StartPosSlotCount = AkronModuleSettings.ClampStartPosSlotCount(slotCount);
@@ -290,6 +290,21 @@ public static partial class AkronCommands {
         Log("startpos-state-slot: " + (string.IsNullOrWhiteSpace(startPos?.StateSlotName) ? "none" : startPos.StateSlotName));
         Log("startpos-state-snapshot: " + (startPos != null && AkronSaveLoadService.HasRuntimeState(startPos.StateSlotName)).ToString().ToLowerInvariant());
         Log("startpos-tracked-virtual-assets: " + AkronVirtualAssetReloadTracker.Count.ToString(CultureInfo.InvariantCulture));
+        // The prewarm cache used to be invisible: no log line, no counter, and its only
+        // reader was a unit test. These four say whether it is filling, whether it is
+        // being used, and whether the budget is what stopped it.
+        Log("startpos-prewarm-slots: " + AkronStartPosReconstruction.PrewarmedSnapshotCount.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-prewarm-bytes: " + AkronStartPosReconstruction.PrewarmedSnapshotBytes.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-prewarm-budget-bytes: " + AkronStartPosReconstruction.MaxPrewarmedSnapshotBytes.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-prewarm-queued: " + AkronStartPosPersistence.PrewarmQueueLength.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-prewarm-stored: " + AkronStartPosReconstruction.PrewarmedSnapshotStores.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-prewarm-hits: " + AkronStartPosReconstruction.PrewarmedSnapshotHits.ToString(CultureInfo.InvariantCulture));
+        // The warm clones are the other memory population and the one that scales with
+        // the slot count, so it needs the same two numbers: what it holds and what it is
+        // allowed to hold. Without these a map that stops keeping slots warm looks
+        // identical to one that never filled up.
+        Log("startpos-warm-bytes: " + AkronSaveLoadService.WarmStartPosBytes.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-warm-budget-bytes: " + AkronSaveLoadService.MaxWarmStartPosBytes.ToString(CultureInfo.InvariantCulture));
         Log("startpos-last-loaded-slot: " + (AkronModule.Session?.LastLoadedStartPosSlot ?? 0).ToString(CultureInfo.InvariantCulture));
         Log("startpos-dashes: " + (startPos?.Dashes ?? AkronModule.Settings.StartPosConfiguredDashes).ToString(CultureInfo.InvariantCulture));
         Log("startpos-stamina: " + (startPos?.StaminaPercent ?? AkronModule.Settings.StartPosConfiguredStaminaPercent).ToString(CultureInfo.InvariantCulture));

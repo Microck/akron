@@ -93,20 +93,16 @@ The catalog is a JSON document with the following structure. Replace angle-brack
 | `sha256` | Lowercase SHA-256 digest of the exact `.akr` bytes. |
 | `sizeBytes` | Exact `.akr` byte length. |
 
-The `section` field must be one of the following values:
+The `section` field must be one of the three community-supported values:
 
 ```text
-Whole
 StartPos
-Keybinds
 AutoKill
 AutoDeafen
-Recorder
-Audio
-Hud
 ```
 
-In-game category buttons primarily focus on map-specific sharing cases: `All`, `StartPos`, `Auto Kill`, and `Auto Deafen`.
+The in-game categories are **All**, **StartPos**, **Auto Kill**, and **Auto
+Deafen**. **All** is a browser filter, not a pack section.
 
 ## Publishing guidelines
 
@@ -118,21 +114,37 @@ Before adding archives to the catalog, ensure that:
 - Catalog metadata is updated whenever the pack changes.
 - The `.akr` is no larger than 512 MiB.
 - Optional catalog image sources are no larger than 100 MiB before optimization.
-- Each pack declares no more than 16 preview images.
+- The `images` list and legacy `imageUrls` list each declare no more than 16
+  entries. The legacy `imageUrl` field can add one single preview. Akron removes
+  duplicate URLs when it builds the preview list.
 - Optimized catalog images are no larger than 2 MiB, no wider or taller than 2048 pixels, and no larger than 4,194,304 pixels in total.
 
+### Catalog reader limits
+
+| Value | Limit |
+|---|---:|
+| Index JSON | 1 MiB |
+| Entries per index | 512 |
+| Tags per entry | 32 |
+| `id`, `title`, `mapSid`, `authorName`, and preview `roomName` | 256 characters each |
+| `description` | 4,096 characters |
+| URL fields | 2,048 characters each |
+| Each tag | 64 characters |
+
 The official in-game upload flow accepts StartPos, Auto Kill, and Auto Deafen packs. Auto Kill and Auto Deafen areas are coordinate-based setup state, so catalog maintainers should reject area packs when the submitted map SID does not match the map those areas were created for.
+
+One in-game upload captures at most 10 marked rooms. For StartPos uploads, Akron orders candidate rooms by the lowest saved StartPos slot in each room before applying that limit.
 
 ## Catalog validation
 
 Before publishing, verify the catalog-facing pack contract:
 
-- Verify that the archive contains `manifest.json`, `setup.json`, and the exact v7 snapshot entry named by each StartPos.
-- Verify that the manifest `Kind` is `setup`.
-- Ensure that `setup.json` uses the `akron-setup-v4` format.
-- Verify that the entry `section` matches the setup section, unless a different scope is intended.
+- Verify that the archive contains `manifest.json`, `setup.json`, and the exact v8 snapshot entry named by each StartPos.
+- Verify that the manifest `kind` is `setup`.
+- Ensure that `setup.json` uses the `akron-setup-v5` format.
+- Verify that the entry `section` exactly matches the setup section.
 - Confirm that the download URL returns the expected `.akr` archive.
-- Reject `Whole` setup packs from the public Discord catalog.
+- Reject every section except `StartPos`, `AutoKill`, and `AutoDeafen`.
 
 The official Discord bot also enforces implementation-level safety checks before publishing:
 

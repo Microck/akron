@@ -5,21 +5,21 @@ description: Capture, restore, place, cycle, and respawn from Akron StartPos slo
 
 The StartPos tab is Akron's player position and room-state restore workflow. These rows are meant for room-lab routing and are marked as Cheat when used in submitted clean attempts.
 
-| Option | Control | What it does | Attempt status |
+| Option | Control | What it does | Classification |
 |---|---|---|---|
 | Smart StartPos | Toggle | Choose a nearby stored StartPos automatically when respawning. | Cheat |
 | StartPos Slot | Selector | Select the active StartPos slot. | Cheat |
 | Respawn at StartPos | Toggle | Play the normal death animation and wipe, then restore the selected StartPos even after moving to another room. | Cheat |
-| StartPos | Action | Set, load, or clear the active full-state snapshot. Advanced options control placement, cycling, respawn behavior, and spawn config. | Cheat |
-| Place StartPos | Toggle | Toggle cursor placement for StartPos. The placement popup owns spawn configuration. | Cheat |
-| StartPos Switcher | Action | Configure and use previous/next StartPos switching. | Cheat |
+| StartPos | Set / Load / Clear actions | Capture, restore, or clear the active full-state StartPos. The options popup also exposes numbered room-snapshot slots, direct StartPos slot loads, respawn behavior, wait behavior, and spawn configuration. | Cheat |
+| Place StartPos | Action | Enter the frozen free-camera placement editor, which includes StartPos slot, spawn configuration, and preview opacity controls. | Cheat |
+| StartPos Switcher | Action | Load the next StartPos in chapter order. Its options popup also provides Previous and Next actions. | Cheat |
 
 ## Required state contract
 
 A StartPos is an exact gameplay-state snapshot. Loading it must restore every
 captured entity, component, reference, position, speed, timer, state machine,
 animation, coroutine, random-number state, and registered helper state to the
-captured frame. Akron stores this state in a local v7 snapshot file so it
+captured frame. Akron stores this state in a local v8 snapshot file so it
 survives closing and restarting Celeste. Set and Load hold the room state until
 Celeste renders the restored frame.
 
@@ -28,36 +28,63 @@ the restored frame until a fresh gameplay input arrives. Controls held before
 the Load do not release the pause. Backdrops and respawn wipes keep moving while
 Akron waits.
 
-Global save-file progress stays with the active save file and is not part of
-the room snapshot. This prevents a local restore or imported pack from
-replacing player progress. Akron keeps the greater current or captured value
-for session time, session deaths, room deaths, save-file time and deaths, area
-time and deaths. These statistics do not rewind. Room simulation clocks restore
-to the Set frame because room objects and visuals use them.
+Akron does not replace the whole save file. A local StartPos captures the active
+map's collected berry IDs and berry count, then restores that active-map
+progress to the Set state. Berry progress for other maps stays unchanged.
+Imported StartPos packs replace the author's captured berry field with the
+recipient's current active-map berry progress before the snapshot is installed.
+
+Akron keeps the greater current or captured value for session time, session
+deaths, room deaths, save-file time and deaths, and area time and deaths. These
+statistics do not rewind. Room simulation clocks restore to the Set frame
+because room objects and visuals use them.
 
 Akron must reject capture or load when it cannot represent required gameplay
 state exactly. It must not replace an exact StartPos with a player-only or
 session-only room reload.
 
-Akron does not load old selected-field room snapshots. A v7 snapshot contains
+There is one named exception to that contract. Akron does not capture the
+playback tutorial ghost, Celeste's `playbackTutorial` entity, or the trail it
+draws. A room that has one keeps the ghost the fresh room load built, so after a
+Load the ghost is about a second before the start of its demonstration instead of
+where it was at the Set frame, and its footstep and dash sounds restart with it.
+The ghost has a collider, but nothing in Celeste checks against it, nothing
+tracks it, and no code reads it, so nothing else in the room is affected. This
+exception exists because Akron cannot prove that the saved ghost and the fresh
+room's ghost are the same object, and accepting that edge unproven would risk a
+wrong restore that reports success. It covers this one entity type, and only the
+ghosts a map places in a room. Playback figures a cutscene owns, such as
+Farewell's wave-dash tutorial, are captured and restored exactly as before. Use
+**Disable Playback** if you would rather the ghost were not there at all.
+
+Akron does not load old selected-field room snapshots. A v8 snapshot contains
 the complete managed room graph, registered helper state, audio state, and
 render-buffer pixels required by the Set frame. Akron refuses the load if the
 file is missing, damaged, uses another snapshot format, or belongs to another
-map or save file. Imported StartPos packs bind their snapshots to the active
-save-file slot without importing the author's global progress. The same map
-and object-providing mods must remain installed because an exact snapshot
-cannot recreate types that no longer exist. Akron does not require CelesteTAS,
-Speedrun Tool, or another savestate mod.
+map or save file. A snapshot format change refuses every slot set before it,
+because a snapshot names room objects by their place in a clean reload of the
+room and a change to what that reload contains moves them; those slots have to
+be set again, and Akron says so when you load one. Imported StartPos packs bind
+their snapshots to the active save-file slot without importing the author's
+progress or module save data. The
+same map and object-providing mods must remain installed because an exact
+snapshot cannot recreate types that no longer exist. Akron does not require
+CelesteTAS, Speedrun Tool, or another savestate mod.
 
 ## Option menus
 
 Rows with a triangle expose the controls listed below.
 
-| Option | Menu control | What it changes | Attempt status |
+| Option | Menu control | What it changes | Classification |
 |---|---|---|---|
+| StartPos | Snapshot slot | Select numbered Akron room-snapshot slot 1-9. These slots are separate from persistent StartPos slots. | Cheat |
+| StartPos | Snapshot Save | Capture the current full room state into the selected numbered snapshot slot. | Cheat |
+| StartPos | Snapshot Load | Restore the selected numbered room-snapshot slot. | Cheat |
 | StartPos | Set | Capture the exact current gameplay state into the active StartPos slot. | Cheat |
 | StartPos | Load | Load the active StartPos. | Cheat |
 | StartPos | Clear | Clear the active StartPos slot. | Cheat |
+| StartPos | Load slot 1-9 | Load a persistent StartPos slot directly without changing the popup first. | Cheat |
+| StartPos | Respawn here | Respawn at the active StartPos after death. | Cheat |
 | StartPos | Slot count | Set how many StartPos slots the selector and previous/next controls cycle through. Selectors always expose at least 15 slots, and raising this value exposes more. | Cheat |
 | StartPos | Dashes | Keep the native dash count or force 0-5 dashes after spawning. | Cheat |
 | StartPos | Stamina % | Keep native stamina or force a stamina percentage after spawning. | Cheat |
@@ -65,26 +92,26 @@ Rows with a triangle expose the controls listed below.
 | StartPos | Idle speed | Clear speed after spawning so the StartPos begins idle. | Cheat |
 | StartPos | Spawn grabbing | Attempt to enter Celeste's climb/grab state after spawning. | Cheat |
 | StartPos | Wait for input after load | Pause gameplay after loading until a fresh gameplay input arrives while backdrops and respawn wipes keep moving. | Cheat |
-| StartPos | Bind Set | Set a menu binding for setting a StartPos. | Cheat |
-| StartPos | Clear Set | Clear the custom Set-StartPos binding. | Cheat |
-| StartPos | Bind Load | Set a menu binding for loading a StartPos. | Cheat |
-| StartPos | Clear Load | Clear the custom Load-StartPos binding. | Cheat |
-| StartPos | Bind Clear | Set a menu binding for clearing a StartPos. | Cheat |
-| StartPos | Clear Clear | Clear the custom Clear-StartPos binding. | Cheat |
-| StartPos | Bind Load Slot 1-9 | Set a menu binding for loading slot 1-9. | Cheat |
-| StartPos | Clear Load Slot 1-9 | Clear the custom Load Slot 1-9 binding. | Cheat |
-| Place StartPos | Placement mode | Toggle mouse placement mode for StartPos. | Cheat |
-| Place StartPos | Open editor | Freeze gameplay, activate free camera, and place StartPos previews with the mouse. | Cheat |
-| Place StartPos | Slot count | Set how many StartPos slots the selector and previous/next controls cycle through. Selectors always expose at least 15 slots, and raising this value exposes more. | Cheat |
-| Place StartPos | Dashes | Keep the native dash count or force 0-5 dashes after spawning. | Cheat |
-| Place StartPos | Stamina % | Keep native stamina or force a stamina percentage after spawning. | Cheat |
-| Place StartPos | Facing | Keep native facing or force left/right after spawning. | Cheat |
-| Place StartPos | Idle speed | Clear speed after spawning so the StartPos begins idle. | Cheat |
-| Place StartPos | Spawn grabbing | Attempt to enter Celeste's climb/grab state after spawning. | Cheat |
-| Place StartPos | Preview opacity | Set mouse placement preview opacity. | Cheat |
 | StartPos Switcher | Previous | Cycle to the previous StartPos in chapter order. | Cheat |
 | StartPos Switcher | Next | Cycle to the next StartPos in chapter order. | Cheat |
-| StartPos Switcher | Bind Previous | Set a menu binding for cycling to the previous StartPos. | Cheat |
-| StartPos Switcher | Clear Previous | Clear the custom previous-StartPos binding. | Cheat |
-| StartPos Switcher | Bind Next | Set a menu binding for cycling to the next StartPos. | Cheat |
-| StartPos Switcher | Clear Next | Clear the custom next-StartPos binding. | Cheat |
+
+Right-click a bindable button or checkbox in an options popup to open its
+**Bind input** and **Clear binding** actions. On the main StartPos row,
+right-click or Shift-click **Set**, **Load**, or **Clear** to start binding that
+action directly.
+
+## Placement editor
+
+Selecting **Place StartPos** opens the frozen free-camera placement editor. It
+contains these controls:
+
+| Control | What it changes | Classification |
+|---|---|---|
+| Slot | Select the StartPos slot that receives the placed snapshot. | Cheat |
+| Slot count | Set how many StartPos slots the selector and previous/next controls cycle through. Selectors always expose at least 15 slots, and raising this value exposes more. | Cheat |
+| Dashes | Keep the native dash count or force 0-5 dashes after spawning. | Cheat |
+| Stamina % | Keep native stamina or force a stamina percentage after spawning. | Cheat |
+| Facing | Keep native facing or force left/right after spawning. | Cheat |
+| Idle speed | Clear speed after spawning so the StartPos begins idle. | Cheat |
+| Spawn grabbing | Attempt to enter Celeste's climb/grab state after spawning. | Cheat |
+| Preview opacity | Set mouse placement preview opacity. | Cheat |

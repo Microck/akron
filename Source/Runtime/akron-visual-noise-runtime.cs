@@ -85,6 +85,42 @@ public partial class AkronModule {
         }
     }
 
+    private static void PlayerPlaybackOnUpdate(On.Celeste.PlayerPlayback.orig_Update orig, PlayerPlayback self) {
+        if (!Settings.DisablePlayback) {
+            ShowPlaybackHiddenByAkron(self);
+            orig(self);
+            return;
+        }
+
+        // Farewell's wave-dash tutorial pages drive an unscened playback directly, and recording
+        // previews use a non-Level scene. Only map-placed gameplay ghosts should be suppressed.
+        if (self.Scene is not Level || !AkronPolicy.CanUse(AkronFeatureKind.DisablePlayback).Allowed) {
+            ShowPlaybackHiddenByAkron(self);
+            orig(self);
+            return;
+        }
+
+        self.Visible = false;
+        AkronPolicy.RecordFeatureUse(AkronFeatureKind.DisablePlayback);
+    }
+
+    // A ghost frozen part way through its timeline would stay invisible after the
+    // option went off, because PlayerPlayback only makes itself visible again when
+    // its loop restarts, which can be several seconds away. Vanilla never leaves a
+    // ghost invisible part way through - it hides it only once the timeline has run
+    // out - so that state is this hook's own mark and undoing it needs no bookkeeping.
+    private static void ShowPlaybackHiddenByAkron(PlayerPlayback self) {
+        if (WasPlaybackHiddenByAkron(self)) {
+            self.Visible = true;
+        }
+    }
+
+    internal static bool WasPlaybackHiddenByAkron(PlayerPlayback playback) {
+        return playback != null && !playback.Visible &&
+               playback.FrameIndex < playback.FrameCount - 1 &&
+               playback.Time < playback.TrimEnd;
+    }
+
     private static void HeatWaveOnRenderDisplacement(On.Celeste.HeatWave.orig_RenderDisplacement orig, HeatWave self, Level level) {
         if (!Settings.HideHeatDistortion || !AkronPolicy.CanUse(AkronFeatureKind.ReducedVisualNoise).Allowed) {
             orig(self, level);

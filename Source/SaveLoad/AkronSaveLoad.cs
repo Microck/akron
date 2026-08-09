@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Celeste;
 using FMOD.Studio;
 using Force.DeepCloner.Helpers;
@@ -13,8 +15,167 @@ using Monocle;
 
 namespace Celeste.Mod.Akron;
 
+// Snapshot work is by far the largest allocator Akron has, on both of its
+// background threads. The restart-copy worker walks a whole room graph and
+// writes tens to hundreds of megabytes of JSON; the prewarm worker parses the
+// same amount back in and keeps every byte of it. Every byte either one produces
+// is retained while it works, so the gen0 collections they cause have a large
+// surviving set, are expensive, and stop the game thread whichever thread
+// allocated.
+//
+// Neither worker runs at all while the player is in control. They are not slowed
+// down; they are stopped, and they resume the moment the player pauses, leaves
+// the level, waits for input after a StartPos load, or exits the game. Measured
+// on the Linux test box, an earlier version of this that allowed a 16 MiB/s
+// trickle during play still left 12.8 frames per 1000 over 33 ms and stretched
+// the degraded window from 28 s to 94 s, so the total number of dropped frames
+// went up rather than down. A rate that keeps the player in a degraded state for
+// longer is a worse trade than a stop, because the thing being protected is
+// gameplay, not throughput.
+//
+// The cost is that a slot stays non-restart-safe, and the map's other slots stay
+// unwarmed, until the player next stops playing. Four things bound it: the pause
+// menu opens the gate, a StartPos load holds it open for as long as the load
+// freezes the game thread, a Load that needs a restart copy finishes it on the
+// spot, and Shutdown forces the gate open and drains what it can before the
+// process exits.
+//
+// Stopping the worker cannot make a restart copy fail. A job only reaches the
+// worker once it holds its own retained leases on the saved clone and the fresh
+// baseline, both immutable; the room-change and room-reload failure paths act
+// only on jobs still waiting for a baseline, which this never delays. The only
+// thing a longer run can change is that a second Set on the same slot
+// supersedes the first, which is the intended outcome of setting twice.
+internal static class AkronSnapshotPacing {
+    // Sleep in slices rather than on a handle so that the gate opening, a
+    // cancellation, and shutdown are all picked up promptly without another
+    // signalling object to keep in sync with the flags below.
+    private const int SleepSliceMilliseconds = 25;
+
+    internal const string CancelledMessage = "Celeste closed before its restart copy finished";
+    internal const string AbandonedMessage = "the work was abandoned while it was parked";
+
+    private static volatile bool gameplayActive;
+    private static volatile bool forcedOpen;
+    private static volatile bool cancelled;
+
+    [ThreadStatic]
+    private static bool inPacedWork;
+    [ThreadStatic]
+    private static long parkedTicks;
+    [ThreadStatic]
+    private static Func<bool> abandoned;
+
+    // Set from the game thread once per engine update. Volatile rather than
+    // locked: the worker only needs to see the change soon, not exactly.
+    internal static bool GameplayActive {
+        get => gameplayActive;
+        set => gameplayActive = value;
+    }
+
+    // Forces the gate open regardless of what the scene is doing. Shutdown sets
+    // it so a worker mid-sleep stops waiting, and a Load that needs an
+    // outstanding copy sets it for as long as it waits: both are moments where
+    // finishing the snapshot matters more than the frame it lands in.
+    internal static bool ForcedOpen {
+        get => forcedOpen;
+        set => forcedOpen = value;
+    }
+
+    // Aborts the job in flight at its next pace point. Set only when the process
+    // is going away and the queue could not be drained in time, so that quitting
+    // stays bounded instead of holding a closed window open for the whole queue.
+    internal static bool Cancelled {
+        get => cancelled;
+        set => cancelled = value;
+    }
+
+    // Time this job spent parked rather than working. Reported alongside the
+    // wall-clock figure so "the copy took 52 seconds" cannot be read as 52
+    // seconds of work when it was 50 seconds of waiting for the player to stop.
+    internal static TimeSpan ParkedTime => TimeSpan.FromTicks(
+        (long) (parkedTicks * (10_000_000d / Stopwatch.Frequency)));
+
+    // Ambient for the duration of one job rather than a parameter threaded
+    // through the graph walk, the snapshot writer and the snapshot reader, none
+    // of which has any other reason to know about scheduling. This mirrors the
+    // captured render-target scope the reconstruction graph already uses.
+    // Thread-static, so the game thread's own captures and reads are never paced.
+    //
+    // isAbandoned is optional and exists for speculative work. A parked prewarm
+    // read is holding a snapshot file open and a half-built document in memory
+    // for as long as the player keeps playing, so it has to let go of both the
+    // moment its queue is replaced rather than waiting for the next gate opening
+    // to notice. A restart copy passes null: nothing supersedes a job that is
+    // already running.
+    internal static void BeginPacedWork(Func<bool> isAbandoned = null) {
+        inPacedWork = true;
+        parkedTicks = 0;
+        abandoned = isAbandoned;
+    }
+
+    internal static void EndPacedWork() {
+        inPacedWork = false;
+        abandoned = null;
+    }
+
+    // Called at every point in the snapshot pipeline where it is safe to stop:
+    // once per object in the fresh-room index pass, once per document node in the
+    // capture walk, once per buffer flush in the writer, and once per buffer fill
+    // in the reader. All four are a few kilobytes to a few hundred kilobytes
+    // apart, which is what bounds how much a worker can still allocate after the
+    // player takes control again. None of them holds a lock.
+    internal static void Pace() {
+        if (!inPacedWork) {
+            return;
+        }
+        if (cancelled) {
+            throw new OperationCanceledException(CancelledMessage);
+        }
+        if (!ShouldSuspend()) {
+            return;
+        }
+
+        // Only the suspending path reads the clock. Pace runs once per document
+        // node, which is millions of calls on a large map, and a timestamp on
+        // every one of them would be a measurable tax for nothing.
+        long suspendedFrom = Stopwatch.GetTimestamp();
+        try {
+            do {
+                Thread.Sleep(SleepSliceMilliseconds);
+                if (abandoned != null && abandoned()) {
+                    throw new OperationCanceledException(AbandonedMessage);
+                }
+            } while (!cancelled && ShouldSuspend());
+        } finally {
+            parkedTicks += Stopwatch.GetTimestamp() - suspendedFrom;
+        }
+        if (cancelled) {
+            throw new OperationCanceledException(CancelledMessage);
+        }
+    }
+
+    // Exposed so a test can drive the decision without a worker or a clock.
+    internal static bool ShouldSuspend() {
+        return gameplayActive && !forcedOpen;
+    }
+}
+
 public static partial class AkronSaveLoadService {
     private const int MaxFreshRoomEntityListDrainPasses = 64;
+
+    private readonly struct DetachedScreenWipe {
+        public ScreenWipe Wipe { get; }
+        public List<Renderer> Renderers { get; }
+        public int RendererIndex { get; }
+
+        public DetachedScreenWipe(ScreenWipe wipe, List<Renderer> renderers, int rendererIndex) {
+            Wipe = wipe;
+            Renderers = renderers;
+            RendererIndex = rendererIndex;
+        }
+    }
+
     private static readonly PropertyInfo ComponentListLockModeProperty = typeof(ComponentList).GetProperty(
         "LockMode",
         BindingFlags.Instance | BindingFlags.NonPublic
@@ -42,9 +203,83 @@ public static partial class AkronSaveLoadService {
     private static readonly List<Func<Type, bool>> ReturnSameObjectPredicates = new List<Func<Type, bool>>();
     private static readonly List<Func<object, object>> CustomCloneProcessors = new List<Func<object, object>>();
 
+    // How much memory the warm StartPos clones are allowed to hold between them.
+    //
+    // The slot count is the wrong unit for this and always was. Measured on the test
+    // machine, one warm slot costs 13.7 MB on vanilla Forsaken City, 15.5 MB on Spring
+    // Collab 2020's Ancient Engine and 77 MB on the same pack's Heart of the Storm - a
+    // five-fold spread inside one map pack, tracking each map's saved-state size rather
+    // than anything about the slot. At 77 MB a slot the machine ran out of memory at 36
+    // slots and 3.85 GiB of process, so the same fifty slots that cost 874 MB on one
+    // map of a pack takes the whole game down on another. A count cannot express that;
+    // bytes can.
+    //
+    // 1 GiB is chosen so the count ceiling still binds first everywhere it already fit:
+    // fifty warm slots measure 685 MB on vanilla and 874 MB on Ancient Engine, so
+    // neither map reaches this and nothing about them changes. Heart of the Storm stops
+    // adding warm clones at about thirteen instead of running the process out of memory
+    // at thirty-six. The worst case this leaves is roughly 1 GB of Celeste and mods,
+    // plus this 1 GiB, plus the read-ahead cache's own separate budget - measured at
+    // 1.2 GiB when completely full - which is a little over 3 GiB of process.
+    //
+    // This bounds the warm clones only. The prewarmed documents are a different
+    // population under MaxPrewarmedSnapshotBytes, and prewarm already skips any slot
+    // that will restore from memory, so a slot is in one population or the other.
+    internal const long MaxWarmStartPosBytes = 1024L * 1024L * 1024L;
+
+    private readonly struct WarmStartPosCost {
+        internal WarmStartPosCost(long bytes, long useStamp) {
+            Bytes = bytes;
+            UseStamp = useStamp;
+        }
+
+        internal long Bytes { get; }
+
+        // Lower is colder. Set when the slot is captured and again whenever it serves a
+        // load from memory, so the slot evicted first is the one the player has gone
+        // longest without using.
+        internal long UseStamp { get; }
+    }
+
+    private static readonly Dictionary<string, WarmStartPosCost> WarmStartPosCosts =
+        new Dictionary<string, WarmStartPosCost>(StringComparer.Ordinal);
+    private static long nextWarmStartPosUseStamp;
+
     public static string LastPersistentSnapshotError { get; private set; } = string.Empty;
 
+    // Set only when the reconstruction graph refused a saved object. The assembly-qualified
+    // name is what turns an opaque refusal into a message that can name the mod the object
+    // came from.
+    //
+    // Its scope is one load: LoadRuntimeState clears both values on the way in, and the
+    // only reader is the failure report that runs the moment LoadRuntimeState returns. A
+    // capture that fails in between can leave this value behind, and that is harmless
+    // because nothing reads it until the next load has already cleared it. Making the
+    // error's setter clear this instead was tried and reverted: the rollback that runs
+    // after a refused rebuild rewrites the error to append its own outcome, which threw
+    // the refused type away and left the player back on the raw graph text - reproduced
+    // in game on Midnight Aquarium before it shipped.
+    public static string LastPersistentSnapshotRefusedTypeName { get; private set; } = string.Empty;
+
+    // The two values always describe the same failure, so they are always written together.
+    private static void SetPersistentSnapshotFailure(string error, string refusedTypeName) {
+        LastPersistentSnapshotError = error;
+        LastPersistentSnapshotRefusedTypeName = refusedTypeName;
+    }
+
     public static string CurrentSlotName { get; private set; } = GetSlotName(1);
+
+    // HasRuntimeState answers change whenever a warm runtime slot appears or is dropped.
+    // Callers that cache a value derived from it (the StartPos list on the HUD path)
+    // compare this counter instead of re-deriving the answer every frame. Every mutation
+    // of RuntimeSlots must route through MarkRuntimeSlotsChanged.
+    private static long runtimeStateRevision;
+
+    internal static long RuntimeStateRevision => Interlocked.Read(ref runtimeStateRevision);
+
+    private static void MarkRuntimeSlotsChanged() {
+        Interlocked.Increment(ref runtimeStateRevision);
+    }
 
     public static void OnLevelBegin(Level level) {
         if (level != null) {
@@ -71,6 +306,7 @@ public static partial class AkronSaveLoadService {
         CustomCloneProcessors.Clear();
         Slots.Clear();
         RuntimeSlots.Clear();
+        MarkRuntimeSlotsChanged();
         CurrentSlotName = GetSlotName(1);
     }
 
@@ -342,6 +578,29 @@ public static partial class AkronSaveLoadService {
 
         CurrentSlotName = GetSlotName(slot);
 
+        // A savestate rewinds gameplay. It must not rewind the list of StartPos slots
+        // the player has set, which lives in Akron's module save data and session and
+        // is replaced wholesale by both restore paths. Held here rather than inside
+        // either path because the brokered path is the one every shipped build takes:
+        // SpeedrunTool restores _Session and _SaveData itself and Akron never sees the
+        // assignment. See AkronActions.RestoreStartPosCatalogAfterStateLoad.
+        //
+        // Unconditional rather than only on Success. A load can be refused before it
+        // touches anything, but it can also fail or throw after the module state has
+        // already been replaced, and telling those apart from out here means trusting
+        // a result code to describe how far a third-party mod got. The cost of being
+        // wrong the safe way is one catalog rebuild - about one stat per placed slot -
+        // on an action that is already a whole-level restore.
+        Dictionary<string, AkronPersistedStartPosMap> startPosCatalog =
+            AkronModule.Instance == null ? null : AkronModule.SaveData?.StartPositionsByMap;
+        try {
+            return LoadCore(level, slot);
+        } finally {
+            AkronActions.RestoreStartPosCatalogAfterStateLoad(level, startPosCatalog);
+        }
+    }
+
+    private static AkronSaveLoadResult LoadCore(Level level, int slot) {
         if (ShouldBrokerSavestatesInsteadOfNative()) {
             return TryBrokerLoad(level, slot);
         }
@@ -410,11 +669,12 @@ public static partial class AkronSaveLoadService {
         }
 
         CurrentSlotName = string.IsNullOrWhiteSpace(slotName) ? "StartPos" : slotName;
+        bool isStartPosCapture = CurrentSlotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal);
         AkronLevelRenderState renderState = AkronLevelRenderState.Capture(level);
         List<AkronGameplayBufferSnapshot> gameplayBuffers = new List<AkronGameplayBufferSnapshot>();
         IReadOnlyDictionary<object, AkronReconstructionResourcePayload> persistentRenderTargets =
             new Dictionary<object, AkronReconstructionResourcePayload>();
-        if (CurrentSlotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal)) {
+        if (isStartPosCapture) {
             try {
                 gameplayBuffers = AkronGameplayBufferState.Capture();
             } catch (Exception exception) {
@@ -425,6 +685,9 @@ public static partial class AkronSaveLoadService {
         int virtualAssetMarker = AkronVirtualAssetReloadTracker.Mark();
         bool retainsTrackedVirtualAssets = false;
         AkronSaveLoadSlot saveSlot = null;
+        DetachedScreenWipe entryWipe = isStartPosCapture
+            ? DetachTransientScreenWipe(level)
+            : default;
         try {
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 action.BeforeSaveState?.Invoke(level);
@@ -445,8 +708,7 @@ public static partial class AkronSaveLoadService {
             if (prepareForRestore) {
                 PrepareSlotPreClone(saveSlot);
             }
-            if (capturePersistentResources &&
-                CurrentSlotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal)) {
+            if (capturePersistentResources && isStartPosCapture) {
                 try {
                     persistentRenderTargets = AkronVirtualRenderTargetResourceAdapter.CaptureSetFramePayloads(
                         AkronVirtualAssetReloadTracker.GetRenderTargetsSince(virtualAssetMarker));
@@ -472,6 +734,7 @@ public static partial class AkronSaveLoadService {
             }
             AkronDeepClone.ClearSharedState();
             renderState.Restore(level);
+            RestoreTransientScreenWipe(level, entryWipe);
         }
     }
 
@@ -488,6 +751,7 @@ public static partial class AkronSaveLoadService {
                 AkronStartPosPersistence.RemoveRuntimeFreshBaseline(normalizedSlotName);
                 if (RuntimeSlots.Remove(normalizedSlotName, out AkronSaveLoadSlotOwner previousSlot)) {
                     previousSlot.ReleaseOwnership();
+                    MarkRuntimeSlotsChanged();
                 }
                 AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
                 return AkronSaveLoadResult.Success;
@@ -497,14 +761,166 @@ public static partial class AkronSaveLoadService {
             }
         }
 
+        // What the clone costs is measured as the capture's own allocation on this
+        // thread. The deep clone is nearly all of it, the counter is thread-local so
+        // nothing else in the process can move it, and it cannot be perturbed by a
+        // collection landing mid-capture the way a heap-size reading would be. It reads
+        // a little high, because the transient work around the clone is counted too,
+        // and high is the safe direction for a memory guard.
+        long allocatedBeforeCapture = GC.GetAllocatedBytesForCurrentThread();
         AkronSaveLoadSlot saveSlot = CaptureRuntimeState(level, normalizedSlotName, saveTimeAndDeaths);
         if (saveSlot == null) {
             return AkronSaveLoadResult.Blocked;
         }
-
         StoreRuntimeSlot(normalizedSlotName, saveSlot);
+        RecordWarmStartPosCost(normalizedSlotName, allocatedBeforeCapture);
         AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
         return AkronSaveLoadResult.Success;
+    }
+
+    private static bool IsStartPosSlotName(string slotName) {
+        return slotName != null &&
+               slotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal);
+    }
+
+    // Every path that puts a clone into RuntimeSlots has to declare what it cost, or the
+    // budget stops seeing memory that is really resident. There are two of them: a Set,
+    // and the re-cache that follows a load rebuilt from disk. The second one matters most
+    // here, because a load is exactly how a slot the trim evicted earlier comes back
+    // warm; leaving it uncounted would let the population climb past the budget one
+    // evicted-then-reloaded slot at a time.
+    private static void RecordWarmStartPosCost(string slotName, long allocatedBeforeCapture) {
+        if (!IsStartPosSlotName(slotName)) {
+            return;
+        }
+
+        long capturedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBeforeCapture;
+        WarmStartPosCosts[slotName] =
+            new WarmStartPosCost(Math.Max(capturedBytes, 0L), ++nextWarmStartPosUseStamp);
+    }
+
+    // The warm StartPos clones' total cost, recomputed from RuntimeSlots rather than
+    // kept in step by every remover. RuntimeSlots is mutated from eight places - a Set,
+    // a clear, a park, a rollback, a chapter re-entry, a broker save, a shutdown - and a
+    // running total that has to be told about each of them is a total that will drift
+    // silently, which for a memory guard means either refusing slots that would have fit
+    // or letting the game run out of memory anyway. Fifty entries is nothing to walk and
+    // this only runs when a slot is set or when a status line is built.
+    internal static long WarmStartPosBytes {
+        get {
+            long total = 0;
+            List<string> gone = null;
+            foreach (KeyValuePair<string, WarmStartPosCost> pair in WarmStartPosCosts) {
+                if (RuntimeSlots.ContainsKey(pair.Key)) {
+                    total += pair.Value.Bytes;
+                } else {
+                    (gone ??= new List<string>()).Add(pair.Key);
+                }
+            }
+            foreach (string slotName in gone ?? Enumerable.Empty<string>()) {
+                WarmStartPosCosts.Remove(slotName);
+            }
+            return total;
+        }
+    }
+
+    // Marks a slot as just used, so the eviction below reaches for it last. Called when
+    // a load is served from the warm clone; a load that rebuilds from disk does not
+    // count, because that slot is not holding any of this budget.
+    internal static void MarkWarmStartPosUsed(string slotName) {
+        string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
+        if (WarmStartPosCosts.TryGetValue(normalizedSlotName, out WarmStartPosCost cost)) {
+            WarmStartPosCosts[normalizedSlotName] =
+                new WarmStartPosCost(cost.Bytes, ++nextWarmStartPosUseStamp);
+        }
+    }
+
+    // Drops the coldest warm clones until the population is back inside its budget, and
+    // reports what it dropped so the player can be told.
+    //
+    // Dropping a warm clone is not losing the slot. The clone's whole purpose is to skip
+    // the snapshot read, so a slot that loses it still loads from its restart copy on
+    // disk and still restores the same state - the slow path every slot takes after the
+    // game is restarted. That is the degradation this trades for: a few seconds on a
+    // load, instead of the process running out of memory.
+    //
+    // A slot is only droppable once its restart copy exists and is not still being
+    // written. Until then the clone is the only copy of that state and dropping it would
+    // destroy the slot. That is also what keeps the slot just set: its own copy is
+    // pending at this point, so it is never the one evicted.
+    internal static int TrimWarmStartPosSlots(out long droppedBytes) {
+        droppedBytes = 0;
+        int dropped = 0;
+        long total = WarmStartPosBytes;
+        while (total > MaxWarmStartPosBytes) {
+            string coldest = null;
+            long coldestStamp = long.MaxValue;
+            foreach (KeyValuePair<string, WarmStartPosCost> pair in WarmStartPosCosts) {
+                if (pair.Value.UseStamp >= coldestStamp ||
+                    AkronActions.HasPendingStartPosState(pair.Key) ||
+                    !AkronStartPosReconstruction.HasSnapshot(pair.Key)) {
+                    continue;
+                }
+                coldest = pair.Key;
+                coldestStamp = pair.Value.UseStamp;
+            }
+            if (coldest == null) {
+                // Everything left is still being copied to disk. Refusing to drop it is
+                // the only correct answer; AkronActions declines the next Set instead.
+                break;
+            }
+
+            long coldestBytes = WarmStartPosCosts[coldest].Bytes;
+            AkronLog.Info(nameof(AkronSaveLoadService),
+                "StartPos warm clone for " + coldest + " dropped to stay inside the " +
+                (MaxWarmStartPosBytes / (1024d * 1024d)).ToString("F0", CultureInfo.InvariantCulture) +
+                " MB warm budget; it holds " +
+                (coldestBytes / (1024d * 1024d)).ToString("F1", CultureInfo.InvariantCulture) +
+                " MB and still loads from its restart copy.");
+            DiscardRuntimeStateMemory(coldest);
+            WarmStartPosCosts.Remove(coldest);
+            total -= coldestBytes;
+            droppedBytes += coldestBytes;
+            dropped++;
+        }
+        return dropped;
+    }
+
+    // Test seam, called from nowhere in the mod. The budget only becomes interesting at
+    // hundreds of megabytes, and the only way to get there honestly is to deep-clone
+    // tens of real Celeste rooms, which needs a running game. This installs a warm slot
+    // carrying a stated cost through the same dictionary a capture writes and the same
+    // RuntimeSlots entry a capture stores, so the reconcile, the eviction order and the
+    // blocked case all run against the real code rather than a stand-in for it. Each
+    // call takes the next use stamp, so the call order is the least-recently-used order.
+    internal static void AddWarmStartPosSlotForTests(string slotName, long bytes) {
+        string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
+        StoreRuntimeSlot(
+            normalizedSlotName,
+            new AkronSaveLoadSlot(normalizedSlotName, "test-room", "test-map", saveTimeAndDeaths: false));
+        WarmStartPosCosts[normalizedSlotName] = new WarmStartPosCost(bytes, ++nextWarmStartPosUseStamp);
+    }
+
+    // True when the warm clones are over budget and dropping every one that can be
+    // dropped would still leave them over it. That is the one state where another Set
+    // cannot be paid for, so it is asked before the capture and the clone is never made.
+    //
+    // It answers the same question the trim does, from the same two safety guards and the
+    // same numbers, rather than the weaker "is anything droppable at all" - which would
+    // wave a Set through on the strength of one small clone that does not cover the
+    // overrun, and then have no way to pay for the one it just let in.
+    internal static bool WarmStartPosBudgetIsBlocked() {
+        long total = WarmStartPosBytes;
+        if (total <= MaxWarmStartPosBytes) {
+            return false;
+        }
+        foreach (KeyValuePair<string, WarmStartPosCost> pair in WarmStartPosCosts) {
+            if (!AkronActions.HasPendingStartPosState(pair.Key) &&
+                AkronStartPosReconstruction.HasSnapshot(pair.Key)) {
+                total -= pair.Value.Bytes;
+            }
+        }
+        return total > MaxWarmStartPosBytes;
     }
 
     private static void StoreRuntimeSlot(string slotName, AkronSaveLoadSlot saveSlot) {
@@ -514,6 +930,7 @@ public static partial class AkronSaveLoadService {
             previousSlot.ReleaseOwnership();
         }
         RuntimeSlots[slotName] = owner;
+        MarkRuntimeSlotsChanged();
     }
 
     internal static AkronSaveLoadSlotLease CaptureFreshRuntimeState(Level level, string slotName) {
@@ -524,20 +941,7 @@ public static partial class AkronSaveLoadService {
         CurrentSlotName = string.IsNullOrWhiteSpace(slotName) ? "fresh baseline" : slotName;
         AkronLevelRenderState renderState = AkronLevelRenderState.Capture(level);
         int virtualAssetMarker = AkronVirtualAssetReloadTracker.Mark();
-        ScreenWipe entryWipe = level.Wipe;
-        List<Renderer> renderers = level.RendererList?.Renderers;
-        int entryWipeRendererIndex = entryWipe == null || renderers == null
-            ? -1
-            : renderers.IndexOf(entryWipe);
-        if (entryWipe != null) {
-            // The entry wipe is a transition owned by the current process, not a
-            // stable room object. Exclude it from both warm and cold baselines so
-            // their graph boundary stays identical after one initialization update.
-            level.Wipe = null;
-            if (entryWipeRendererIndex >= 0) {
-                level.RendererList.Renderers.RemoveAt(entryWipeRendererIndex);
-            }
-        }
+        DetachedScreenWipe entryWipe = DetachTransientScreenWipe(level);
         AkronSaveLoadSlot saveSlot = null;
         try {
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
@@ -556,20 +960,40 @@ public static partial class AkronSaveLoadService {
             AkronVirtualAssetReloadTracker.DiscardSince(virtualAssetMarker);
             AkronDeepClone.ClearSharedState();
             renderState.Restore(level);
-            if (entryWipe != null) {
-                level.Wipe = entryWipe;
-                if (entryWipeRendererIndex >= 0 && !renderers.Contains(entryWipe)) {
-                    level.RendererList.Renderers.Insert(
-                        Math.Min(entryWipeRendererIndex, level.RendererList.Renderers.Count),
-                        entryWipe);
-                }
-            }
+            RestoreTransientScreenWipe(level, entryWipe);
         }
 
         AkronSaveLoadSlotOwner owner = new AkronSaveLoadSlotOwner(saveSlot, ReleaseDormantEventInstances);
         AkronSaveLoadSlotLease lease = owner.Retain();
         owner.ReleaseOwnership();
         return lease;
+    }
+
+    private static DetachedScreenWipe DetachTransientScreenWipe(Level level) {
+        ScreenWipe wipe = level.Wipe;
+        List<Renderer> renderers = level.RendererList?.Renderers;
+        int rendererIndex = wipe == null || renderers == null ? -1 : renderers.IndexOf(wipe);
+        if (wipe != null) {
+            // A wipe is a transition owned by the current process, not stable
+            // room state. Saved and fresh StartPos graphs need the same boundary.
+            level.Wipe = null;
+            if (rendererIndex >= 0) {
+                renderers.RemoveAt(rendererIndex);
+            }
+        }
+        return new DetachedScreenWipe(wipe, renderers, rendererIndex);
+    }
+
+    private static void RestoreTransientScreenWipe(Level level, DetachedScreenWipe entryWipe) {
+        if (entryWipe.Wipe == null) {
+            return;
+        }
+        level.Wipe = entryWipe.Wipe;
+        if (entryWipe.RendererIndex >= 0 && !entryWipe.Renderers.Contains(entryWipe.Wipe)) {
+            entryWipe.Renderers.Insert(
+                Math.Min(entryWipe.RendererIndex, entryWipe.Renderers.Count),
+                entryWipe.Wipe);
+        }
     }
 
     internal static IReadOnlyList<string> GetRegisteredActionIdsForPersistence() {
@@ -646,6 +1070,11 @@ public static partial class AkronSaveLoadService {
         }
         AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
         AkronIgnoreSaveStateComponent.RemoveAll(level);
+        // The snapshot this restore writes back was captured without the room's
+        // playback ghosts, so the live ones have to step aside for it and step
+        // back afterwards. The room is not reloaded on this path, so the ghosts
+        // that come back are the same ones that were here a moment ago.
+        List<Entity> detachedGhosts = AkronSnapshotExclusion.DetachFromLevel(level);
         try {
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 action.BeforeLoadState?.Invoke(level);
@@ -664,10 +1093,8 @@ public static partial class AkronSaveLoadService {
                     action.LoadState?.Invoke((Dictionary<Type, Dictionary<string, object>>) DeepClone(savedValues), level);
                 }
             }
-            if (saveSlot.GameplayBuffers.Count > 0 &&
-                !AkronGameplayBufferState.Restore(saveSlot.GameplayBuffers, out string bufferError)) {
-                LastPersistentSnapshotError = bufferError;
-                return AkronSaveLoadResult.Failed;
+            if (saveSlot.GameplayBuffers.Count > 0) {
+                AkronGameplayBufferState.RestoreBestEffort(saveSlot.GameplayBuffers);
             }
             PrepareRuntimeSlotPreClone(saveSlot);
             AkronStartPosPersistence.UseRuntimeFreshBaseline(saveSlot.SlotName);
@@ -679,8 +1106,12 @@ public static partial class AkronSaveLoadService {
                 return AkronSaveLoadResult.Failed;
             }
             AkronGameplayBufferState.ArmLevelPresentation(level, saveSlot.GameplayBuffers);
+            // This load was served by the warm clone, so the slot has earned its place
+            // in the warm budget over whichever slot has gone longest without one.
+            MarkWarmStartPosUsed(saveSlot.SlotName);
         } finally {
             AkronDeepClone.ClearSharedState();
+            AkronSnapshotExclusion.ReattachToLevel(level, detachedGhosts);
             AkronIgnoreSaveStateComponent.ReAddAll(level);
             if (suppressLagPauserForStartPos) {
                 AkronModule.SuppressLagPauserForNativeStartPosRestore();
@@ -690,8 +1121,20 @@ public static partial class AkronSaveLoadService {
         return AkronSaveLoadResult.Success;
     }
 
-    public static AkronSaveLoadResult LoadRuntimeState(Level level, string slotName, bool allowDeadPlayer = false) {
-        LastPersistentSnapshotError = string.Empty;
+    // usedSnapshot reports which path actually ran. The caller cannot work this out
+    // from HasRuntimeStateInMemory before the call: a chapter re-entry leaves a stale
+    // runtime slot in memory that fails with SessionMismatch, and the load then falls
+    // through to the snapshot rebuild below. Reporting the pre-call memory state
+    // instead mislabelled a 4.6 s rebuild as a warm restore in the log, and suppressed
+    // the prewarm of the map's other slots in the one case prewarm exists for.
+    public static AkronSaveLoadResult LoadRuntimeState(
+        Level level,
+        string slotName,
+        bool allowDeadPlayer,
+        out bool usedSnapshot
+    ) {
+        usedSnapshot = false;
+        SetPersistentSnapshotFailure(string.Empty, string.Empty);
         if (level == null) {
             return AkronSaveLoadResult.Failed;
         }
@@ -722,15 +1165,46 @@ public static partial class AkronSaveLoadService {
         // still saving or has failed. Never pair that newer position metadata
         // with the previous successful snapshot from the same disk slot.
         if (AkronActions.HasPendingStartPosState(normalizedSlotName)) {
+            // A Load that reaches here already tried to finish the copy and could
+            // not, so the message has to say what the player can do about it rather
+            // than only that it is unfinished.
+            LastPersistentSnapshotError =
+                "its restart copy is still finishing; pause the game for a moment and load it again";
             return AkronSaveLoadResult.NoState;
         }
-        return AkronStartPosReconstruction.HasSnapshot(normalizedSlotName)
-            ? RestorePersistentRuntimeState(level, normalizedSlotName, allowDeadPlayer)
-            : AkronSaveLoadResult.NoState;
+        if (!AkronStartPosReconstruction.HasSnapshot(normalizedSlotName)) {
+            // A slot set before the snapshot format was bumped still has its position
+            // metadata, so it looks set and its restart copy is on disk under the
+            // previous format's name. Saying only that no copy exists would send the
+            // player looking for a disk or permissions problem. Nothing is read from
+            // that file: it was measured against a fresh room Akron no longer builds,
+            // and the whole reason for the bump is that such a document must not reach
+            // the reconstruction path.
+            LastPersistentSnapshotError = AkronStartPosReconstruction.HasSupersededSnapshot(normalizedSlotName)
+                ? "its restart copy was written by an older Akron that built rooms differently; set this StartPos again"
+                : "no restart copy of this StartPos exists on disk";
+            return AkronSaveLoadResult.NoState;
+        }
+        usedSnapshot = true;
+        return RestorePersistentRuntimeState(level, normalizedSlotName, allowDeadPlayer);
     }
 
     internal static bool HasRuntimeStateInMemory(string slotName) {
         return RuntimeSlots.ContainsKey(NormalizeRuntimeSlotName(slotName));
+    }
+
+    // "Is this slot in memory" and "will this slot load from memory" are different
+    // questions after a chapter re-entry: the runtime slot survives the re-entry but
+    // its session nonce does not, so the warm attempt above returns SessionMismatch and
+    // the load rebuilds from the snapshot. Anything deciding whether a slot is about to
+    // pay a snapshot read has to ask the second question. Measured on the test box,
+    // asking the first one made prewarm skip every slot on a map the player had
+    // re-entered, so the next Load paid the full 4.1 s read.
+    internal static bool WillRestoreFromRuntimeMemory(Level level, string slotName) {
+        return level != null &&
+               RuntimeSlots.TryGetValue(NormalizeRuntimeSlotName(slotName), out AkronSaveLoadSlotOwner owner) &&
+               owner?.Slot != null &&
+               MatchesCurrentNativeSession(level, owner.Slot);
     }
 
     private static AkronSaveLoadResult RestorePersistentRuntimeState(
@@ -741,8 +1215,8 @@ public static partial class AkronSaveLoadService {
         if (!CanAccessNativeState(level, out _, allowDeadPlayer)) {
             return AkronSaveLoadResult.Blocked;
         }
-        if (!AkronStartPosReconstruction.TryLoadSnapshot(slotName, out AkronReconstructionDocument document, out string loadError)) {
-            LastPersistentSnapshotError = loadError;
+        if (!AkronStartPosReconstruction.TryLoadSnapshot(slotName, out AkronReconstructionDocument document, out string loadError, out string loadRefusedTypeName)) {
+            SetPersistentSnapshotFailure(loadError, loadRefusedTypeName);
             return AkronSaveLoadResult.Failed;
         }
         if (!string.Equals(level.Session.Area.GetSID(), document.MapSid, StringComparison.Ordinal)) {
@@ -794,7 +1268,13 @@ public static partial class AkronSaveLoadService {
             try {
                 restoreResult = RestorePersistentRuntimeStateCore(level, document, out freshBaseline);
             } catch (Exception exception) {
-                LastPersistentSnapshotError = exception.GetType().Name + ": " + exception.Message;
+                // A saved type that will not load is refused while the document is walked,
+                // which is outside the reconstruction graph's own handlers, so an
+                // uninstalled mod arrives here rather than as a returned failure. The
+                // refusal still names the type, and that is what names the missing mod.
+                SetPersistentSnapshotFailure(
+                    exception.GetType().Name + ": " + exception.Message,
+                    exception is AkronReconstructionException refusal ? refusal.RefusedTypeName : string.Empty);
                 restoreResult = AkronSaveLoadResult.Failed;
             } finally {
                 AkronDeepClone.ClearSharedState();
@@ -804,7 +1284,7 @@ public static partial class AkronSaveLoadService {
             if (restoreResult == AkronSaveLoadResult.Success) {
                 AkronSaveLoadResult cacheResult = CacheRestoredRuntimeState(level, slotName, freshBaseline);
                 if (cacheResult != AkronSaveLoadResult.Success) {
-                    Logger.Log(LogLevel.Warn, nameof(AkronSaveLoadService),
+                    AkronLog.Warn(nameof(AkronSaveLoadService),
                         "Restored StartPos could not be cached; later Loads will use the cold path. " +
                         LastPersistentSnapshotError);
                 }
@@ -813,8 +1293,10 @@ public static partial class AkronSaveLoadService {
 
             string persistentFailure = LastPersistentSnapshotError;
             AkronSaveLoadResult rollbackResult = RestoreRuntimeState(level, rollbackSlot, allowDeadPlayer: true);
+            // A successful rollback is indistinguishable from "the button did nothing"
+            // unless the message says so. Name the outcome, not just the failure.
             LastPersistentSnapshotError = rollbackResult == AkronSaveLoadResult.Success
-                ? persistentFailure
+                ? persistentFailure + "; nothing was changed and you are still in " + level.Session.Level
                 : persistentFailure + "; pre-load state rollback failed: " + rollbackResult;
             return restoreResult;
         } finally {
@@ -830,6 +1312,7 @@ public static partial class AkronSaveLoadService {
         AkronSaveLoadSlotLease freshBaseline
     ) {
         try {
+            long allocatedBeforeCapture = GC.GetAllocatedBytesForCurrentThread();
             AkronSaveLoadSlot cachedSlot = CaptureRuntimeState(
                 level,
                 slotName,
@@ -840,6 +1323,7 @@ public static partial class AkronSaveLoadService {
                 return AkronSaveLoadResult.Failed;
             }
             StoreRuntimeSlot(slotName, cachedSlot);
+            RecordWarmStartPosCost(slotName, allocatedBeforeCapture);
             AkronStartPosPersistence.AttachRuntimeFreshBaseline(slotName, freshBaseline);
             AkronStartPosPersistence.UseRuntimeFreshBaseline(slotName);
             return AkronSaveLoadResult.Success;
@@ -881,10 +1365,18 @@ public static partial class AkronSaveLoadService {
             document.ActionStateDocument,
             freshActionState);
         if (!actionRestore.Success) {
-            LastPersistentSnapshotError = "registered action state " + actionRestore.Error;
+            SetPersistentSnapshotFailure(
+                "registered action state " + actionRestore.Error,
+                actionRestore.RefusedTypeName);
             AkronDeepClone.ClearSharedState();
             return AkronSaveLoadResult.Failed;
         }
+        // The snapshot was measured against a fresh room with its playback ghosts
+        // filtered out, and the rebuild resolves every saved object by its path in
+        // the live fresh room. One extra entity in one list would shift every later
+        // index in that list, so the live room has to match the shape the snapshot
+        // was measured against for as long as anything reads it.
+        List<Entity> detachedGhosts = AkronSnapshotExclusion.DetachFromLevel(level);
         try {
             return RestorePersistentRuntimeStateAfterActionState(
                 level,
@@ -897,6 +1389,12 @@ public static partial class AkronSaveLoadService {
             // action graph is only an intermediate owner and must not retain
             // its dormant FMOD instances after the callbacks finish.
             AkronStartPosReconstruction.ReleaseEventInstances(actionRestore);
+            // Reached on success, on a returned failure and on an exception on its
+            // way to the rollback. The failure paths reload the room, which builds
+            // its own ghosts, and ReattachToLevel drops the stale ones when it sees
+            // them. The exception path does not reload, so this is what keeps the
+            // rolled-back room from losing its ghost.
+            AkronSnapshotExclusion.ReattachToLevel(level, detachedGhosts);
         }
     }
 
@@ -912,7 +1410,9 @@ public static partial class AkronSaveLoadService {
             actionRestore,
             Array.Empty<string>());
         if (!actionVerification.Success) {
-            LastPersistentSnapshotError = "registered action state " + actionVerification.Error;
+            SetPersistentSnapshotFailure(
+                "registered action state " + actionVerification.Error,
+                actionVerification.RefusedTypeName);
             AkronDeepClone.ClearSharedState();
             return AkronSaveLoadResult.Failed;
         }
@@ -920,7 +1420,7 @@ public static partial class AkronSaveLoadService {
         AkronPersistentRuntimeState freshRuntimeState = AkronPersistentRuntimeState.CaptureCurrent(level);
         AkronReconstructionRestore restore = AkronStartPosReconstruction.Restore(document, freshRuntimeState);
         if (!restore.Success) {
-            LastPersistentSnapshotError = restore.Error;
+            SetPersistentSnapshotFailure("rebuild " + restore.Error, restore.RefusedTypeName);
             TryLoadFreshRoom(level, document.Room, out _);
             return AkronSaveLoadResult.Failed;
         }
@@ -950,7 +1450,7 @@ public static partial class AkronSaveLoadService {
         // room state still belongs to the exact Set frame.
         AkronReconstructionVerification reapply = AkronStartPosReconstruction.Reapply(document, restore);
         if (!reapply.Success) {
-            LastPersistentSnapshotError = reapply.Error;
+            SetPersistentSnapshotFailure("reapply " + reapply.Error, reapply.RefusedTypeName);
             AkronStartPosReconstruction.ReleaseEventInstances(restore);
             TryLoadFreshRoom(level, document.Room, out _);
             return AkronSaveLoadResult.Failed;
@@ -970,7 +1470,7 @@ public static partial class AkronSaveLoadService {
             restore,
             AkronStartPosReconstruction.GetPostRestoreVerificationMasks(document));
         if (!verification.Success) {
-            LastPersistentSnapshotError = verification.Error;
+            SetPersistentSnapshotFailure("verify " + verification.Error, verification.RefusedTypeName);
             AkronStartPosReconstruction.ReleaseEventInstances(restore);
             TryLoadFreshRoom(level, document.Room, out _);
             return AkronSaveLoadResult.Failed;
@@ -980,12 +1480,7 @@ public static partial class AkronSaveLoadService {
         AkronLevelRenderState.RelinkRendererCameras(level);
         Audio.SetCamera(level.Camera);
         AkronVirtualAssetReloadTracker.ReloadDisposedAssets(level);
-        if (!AkronGameplayBufferState.Restore(document.GameplayBuffers, out string gameplayBufferError)) {
-            LastPersistentSnapshotError = gameplayBufferError;
-            AkronStartPosReconstruction.ReleaseEventInstances(restore);
-            TryLoadFreshRoom(level, document.Room, out _);
-            return AkronSaveLoadResult.Failed;
-        }
+        AkronGameplayBufferState.RestoreBestEffort(document.GameplayBuffers);
         // Berry progress is persistent save data. Apply it only after the
         // remaining restore work can no longer report a normal failure.
         if (document.BerryProgress != null &&
@@ -1045,6 +1540,43 @@ public static partial class AkronSaveLoadService {
             level.Session.RespawnPoint = level.Session.GetSpawnPoint(probe);
             level.StartPosition = null;
             level.Tracker.GetEntitiesCopy<Player>().ForEach(player => player.RemoveSelf());
+            // Celeste's own room reload clears the trails before it unloads:
+            // Level.Reload runs TrailManager.Clear() immediately before
+            // UnloadLevel() and LoadLevel(Respawn). That is not decoration and it
+            // is not optional here. UnloadLevel keeps every Tags.Global entity,
+            // and TrailManager.Snapshot takes Tags.Global in Snapshot.Init while
+            // holding the live PlayerSprite and PlayerHair of the entity it was
+            // made from. Monocle never clears Component.Entity on removal, so a
+            // snapshot outlives the entity this reload destroys and keeps it
+            // reachable; LoadLevel then rebuilds the same map entity with the same
+            // EntityID, and the fresh room ends up holding two copies of one
+            // identity, one of them dead with a null Scene. A saved node then
+            // pairs with the dead copy and the restore refuses an edge that is
+            // genuinely unprovable.
+            //
+            // Level.Reload is also what a death respawn runs, so it is what
+            // produces the fresh-room baseline this restore is measured against.
+            // Do not drop this call to "simplify" the sequence: the fresh room has
+            // to be the room Celeste's own reload produces, because that is the
+            // room every authenticity rule in the reconstruction graph is written
+            // against.
+            //
+            // The UpdateLists is Akron's own and it is required for the clear to
+            // reach anything. A StartPos load runs at the render boundary after
+            // Engine.Update has returned (AkronModule.EngineOnRenderCore ->
+            // RunAfterEngineUpdateActions), so a trail created during the update
+            // that just ran - Player.CreateTrail on a dash is the common one - is
+            // still in EntityList.toAdd with a null Scene. TrailManager.Clear
+            // calls RemoveSelf, which does nothing to an entity that is not
+            // installed yet, and EntityList.UpdateLists installs toAdd before it
+            // processes toRemove. Without this line UnloadLevel's own UpdateLists
+            // installs that trail after the clear has already run, and the newest
+            // trail - the one most likely to hold the entity this reload is about
+            // to destroy - survives into the fresh room. Celeste's Level.Reload
+            // needs no equivalent because it runs from a screen-wipe callback a
+            // second after the player died, with no trail in flight.
+            level.Entities.UpdateLists();
+            TrailManager.Clear();
             level.UnloadLevel();
             level.Completed = false;
             level.InCutscene = false;
@@ -1202,6 +1734,7 @@ public static partial class AkronSaveLoadService {
         AkronStartPosPersistence.RemoveRuntimeFreshBaseline(normalizedSlotName);
         if (RuntimeSlots.Remove(normalizedSlotName, out AkronSaveLoadSlotOwner removedSlot)) {
             removedSlot.ReleaseOwnership();
+            MarkRuntimeSlotsChanged();
             RunClearStateActions();
         }
     }
@@ -1211,8 +1744,72 @@ public static partial class AkronSaveLoadService {
         AkronStartPosPersistence.RemoveRuntimeFreshBaseline(normalizedSlotName);
         if (RuntimeSlots.Remove(normalizedSlotName, out AkronSaveLoadSlotOwner removedSlot)) {
             removedSlot.ReleaseOwnership();
+            MarkRuntimeSlotsChanged();
             RunClearStateActions();
         }
+    }
+
+    // A StartPos Set has to be atomic with respect to the state its slot already held: if
+    // the replacement never becomes durable, the previous warm clone must still be there.
+    // Parking moves the owner to a private key instead of releasing it, which frees the
+    // canonical name for the new capture and keeps the previous clone alive, referenced by
+    // no catalog entry, until the Set either commits or rolls back. The parked key never
+    // reaches a StartPos entry, so nothing looks it up by name.
+    internal static string ParkRuntimeState(string slotName) {
+        string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
+        if (!RuntimeSlots.Remove(normalizedSlotName, out AkronSaveLoadSlotOwner parkedSlot)) {
+            return null;
+        }
+
+        string parkedName = normalizedSlotName + " (parked " + Guid.NewGuid().ToString("N") + ")";
+        RuntimeSlots[parkedName] = parkedSlot;
+        // Carry the warm cost across with the clone. Parking is a rename, and a rename is
+        // the one move the reconcile in WarmStartPosBytes cannot follow: the bytes are
+        // still resident, but under a key it no longer recognises, so it would write them
+        // off as freed while the clone is very much still there.
+        MoveWarmStartPosCost(normalizedSlotName, parkedName);
+        MarkRuntimeSlotsChanged();
+        return parkedName;
+    }
+
+    private static void MoveWarmStartPosCost(string fromSlotName, string toSlotName) {
+        if (WarmStartPosCosts.Remove(fromSlotName, out WarmStartPosCost cost)) {
+            WarmStartPosCosts[toSlotName] = cost;
+        }
+    }
+
+    internal static void RestoreParkedRuntimeState(string parkedName, string slotName) {
+        // The failed Set's own capture holds the canonical name. It never committed, so it
+        // is released rather than parked in turn, together with the fresh-room baseline it
+        // attached. This is the same release StoreRuntimeSlot performs when a Set replaces
+        // a warm clone, applied to the capture that is being abandoned instead.
+        //
+        // It runs even when there is no parked clone to put back. A slot whose warm clone
+        // was already gone - after a restart, or after a session mismatch dropped it - has
+        // only its snapshot, and leaving the abandoned capture on the canonical name would
+        // pair the new state with the previous metadata on the next load.
+        DiscardRuntimeStateMemory(slotName);
+        if (string.IsNullOrWhiteSpace(parkedName) ||
+            !RuntimeSlots.Remove(parkedName, out AkronSaveLoadSlotOwner parkedSlot)) {
+            return;
+        }
+
+        RuntimeSlots[NormalizeRuntimeSlotName(slotName)] = parkedSlot;
+        MoveWarmStartPosCost(parkedName, NormalizeRuntimeSlotName(slotName));
+        MarkRuntimeSlotsChanged();
+    }
+
+    internal static void DiscardParkedRuntimeState(string parkedName) {
+        if (string.IsNullOrWhiteSpace(parkedName) ||
+            !RuntimeSlots.Remove(parkedName, out AkronSaveLoadSlotOwner parkedSlot)) {
+            return;
+        }
+
+        // No RunClearStateActions here: those callbacks are global rather than per slot,
+        // and this runs on the successful-Set path, where the slot still holds live state
+        // that the callbacks would tell helper mods to throw away.
+        parkedSlot.ReleaseOwnership();
+        MarkRuntimeSlotsChanged();
     }
 
     internal static void ClearRuntimeStateExceptPersistentSnapshot(string slotName) {

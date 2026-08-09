@@ -22,9 +22,97 @@ public sealed class AkronBackupEntry {
     public bool Pinned { get; set; }
 }
 
+// One file the backup could not read. Both the status line and the archive metadata name these, because a
+// backup that quietly dropped a file would be discovered at the worst possible moment.
+internal sealed class AkronBackupSkippedFile {
+    public string RelativePath { get; set; }
+    public string Reason { get; set; }
+}
+
 public static class AkronBackupActions {
     private const string BackupFolderName = "AkronBackups";
     private const string MetadataEntryName = "_akron-backup.json";
+
+    // Where a restore unpacks the archive and holds the folder's previous contents while it swaps them.
+    internal const string RestoreWorkFolderName = "AkronRestore";
+    private const string RestoreExtractedFolderName = "extracted";
+    private const string RestorePreviousFolderName = "previous";
+
+    // The folders under Saves that belong to Akron's own runtime rather than to the player's save data. A
+    // backup never carries one, and a restore never moves, replaces or removes one.
+    //
+    // What puts a folder on this list: Akron opens, loads or hands its contents to a child process and
+    // cannot let go of them while the game runs. That matters because of Windows and is invisible on the
+    // Linux dev and test machines. Windows refuses to delete or rename a file another handle holds unless
+    // that handle permitted deletion, and refuses outright for an executable image the process has loaded;
+    // Linux unlinks a mapped .so without complaint and discards every share mode, so a Linux run cannot tell
+    // the two apart. Saves/AkronNative/<rid>/cimgui.dll is the case that proved it: Akron loads it at
+    // startup on every platform, and a restore deleted all 18 save files, threw on that one DLL, extracted
+    // nothing, and left the player with no save files at all.
+    //
+    // Saves/AkronLogs and Saves/.tmp-perf are deliberately not on this list. Akron owns those two handles
+    // and can close them, which ReleaseFilesAkronHoldsInSaves does immediately before the swap, so they
+    // round-trip through a backup like any other file.
+    private static readonly string[] AkronOwnedFolderNames = {
+        // The archives themselves. A backup that carried the older ones would double in size every time.
+        BackupFolderName,
+
+        // One saved room state per StartPos slot. These measured 207-238 MB per startup backup on the test
+        // box against a few hundred KB of actual save files, so the 1024 MB total-size cap held about four
+        // backups and retention pruned to its keep-at-least floor on the fifth boot - the player's real
+        // backup history destroyed by a feature they never asked to have backed up.
+        //
+        // A save backup is a copy of the save files. StartPos snapshots are neither: they are a practice
+        // cache, regenerable by setting the slot again, and they already have their own transport in setup
+        // packs. The consequence, stated where it is decided: a restore does not rewind StartPos saved
+        // states with the save file. A slot the player has re-set since the backup was taken loads what it
+        // holds now, not what it held then.
+        AkronStartPosReconstruction.SnapshotDirectoryName,
+
+        // The cimgui build Akron extracts from its own zip and loads at module load, unconditionally, for
+        // the lifetime of the process. Nothing can delete or replace a loaded image on Windows, and there is
+        // nothing to lose by leaving it: it is written again on the next launch if it goes missing.
+        AkronImGuiRenderer.NativeDirectoryName,
+
+        // Video output. ffmpeg is a child process holding its output file, and the replay buffer's segment
+        // files, open for as long as it records; Akron cannot make it let go without throwing away the
+        // recording the player is making. These are also not save data, and a few minutes of them outweigh
+        // every save file in the folder several times over.
+        AkronInternalRecorder.DefaultOutputFolderName,
+
+        // A player-supplied ffmpeg binary, which is a loaded executable image while a recording runs.
+        AkronInternalRecorder.ToolsFolderName,
+
+        // The automation queue's command and result files. The command file is read with FileShare.None, and
+        // the result file is written by the very command that asked for the restore.
+        AkronAutomationService.DirectoryName,
+
+        // Where a restore does its own work, so the next restore never picks it up and no backup carries it.
+        RestoreWorkFolderName
+    };
+
+    // The share mode every file in Saves is read with while it is archived.
+    //
+    // This is about Windows, and it is invisible on Linux because Linux does not enforce share modes at all.
+    // Windows refuses to open a file for reading when another handle holds it for writing, unless the reader
+    // also permits writing. Akron holds two files under Saves open for writing while the game runs:
+    // Saves/AkronLogs/akron-current.log for the whole session (Source/Core/akron-log.cs) and the performance
+    // recorder's JSONL while a recording is active (Source/Core/akron-performance-telemetry.cs). So
+    // ZipFile.CreateEntryFromFile, which hardcodes FileShare.Read, is a sharing violation on Windows for
+    // exactly the files Akron writes itself.
+    //
+    // FileShare.Delete is the other half: without it, holding a file open here would block log rotation from
+    // renaming akron-current.log and block retention from deleting files, for as long as the backup runs.
+    internal const FileShare BackupSourceShare = FileShare.ReadWrite | FileShare.Delete;
+
+    // The ZIP format stores MS-DOS timestamps and cannot represent anything outside this range.
+    private const int MinimumZipYear = 1980;
+    private const int MaximumZipYear = 2107;
+    private const int MaxSkippedFilesNamedInStatus = 3;
+
+    // S_IFREG. Unix ZIP entries carry the file type alongside the permission bits.
+    private const int RegularFileTypeBits = 0x8000;
+
     private static readonly object Sync = new object();
     private static IReadOnlyList<AkronBackupEntry> cachedBackups;
     private static bool backupListDirty = true;
@@ -99,6 +187,13 @@ public static class AkronBackupActions {
     }
 
     public static bool CreateBackup(string reason = "manual", bool showToast = true) {
+        return TryCreateBackup(reason, showToast, out _);
+    }
+
+    // Reports the files the archive could not include as well as whether it was written at all. Restore needs
+    // both: it is about to delete every save file, so a safety backup that is merely "created" is not enough.
+    internal static bool TryCreateBackup(string reason, bool showToast, out IReadOnlyList<AkronBackupSkippedFile> skipped) {
+        skipped = Array.Empty<AkronBackupSkippedFile>();
         lock (Sync) {
             try {
                 string savesFolder = GetSavesFolder();
@@ -108,20 +203,10 @@ public static class AkronBackupActions {
 
                 Directory.CreateDirectory(BackupFolder);
                 string backupPath = BuildBackupPath(reason);
-                using (ZipArchive archive = ZipFile.Open(backupPath, ZipArchiveMode.Create)) {
-                    foreach (string file in Directory.EnumerateFiles(savesFolder, "*", SearchOption.AllDirectories)) {
-                        if (IsInsideBackupFolder(file)) {
-                            continue;
-                        }
-
-                        string relativePath = GetRelativePath(savesFolder, file);
-                        archive.CreateEntryFromFile(file, relativePath, CompressionLevel.Optimal);
-                    }
-
-                    ZipArchiveEntry metadataEntry = archive.CreateEntry(MetadataEntryName, CompressionLevel.Optimal);
-                    using StreamWriter writer = new StreamWriter(metadataEntry.Open(), Encoding.UTF8);
-                    writer.Write(BuildMetadataJson(reason));
-                }
+                skipped = WriteSavesArchive(
+                    savesFolder,
+                    backupPath,
+                    skippedFiles => BuildMetadataJson(reason, skippedFiles));
 
                 if (!VerifyZipReadable(backupPath)) {
                     File.Delete(backupPath);
@@ -131,7 +216,12 @@ public static class AkronBackupActions {
                 InvalidateBackupList();
                 AkronModule.Settings.BackupsLastBackupUtcTicks = DateTime.UtcNow.Ticks;
                 ApplyRetention();
-                LastStatus = "Backup created: " + Path.GetFileName(backupPath);
+                LastStatus = "Backup created: " + Path.GetFileName(backupPath) + DescribeSkippedFiles(skipped);
+                if (skipped.Count > 0) {
+                    Logger.Log(LogLevel.Warn, nameof(AkronModule), "Backup could not read " + skipped.Count +
+                        " file(s): " + string.Join("; ", skipped.Select(entry => entry.RelativePath + ": " + entry.Reason)));
+                }
+
                 if (showToast) {
                     Toast(LastStatus);
                 }
@@ -140,6 +230,135 @@ public static class AkronBackupActions {
                 return Fail("Backup failed: " + exception.Message, showToast);
             }
         }
+    }
+
+    // Writes the archive and returns the files it could not include. Separated from CreateBackup so the
+    // archiving contract can be exercised directly against a real Saves-shaped directory: everything
+    // game-shaped (settings, toasts, retention, the toast text) stays in CreateBackup.
+    //
+    // buildMetadataJson receives the skipped list, so the archive itself carries the record of what is
+    // missing from it. The metadata entry is written last for that reason.
+    //
+    // Throwing means no usable archive was produced, and the half-written file is removed before the
+    // exception leaves: a truncated ZIP sitting in the backup folder would be listed as a backup and offered
+    // for restore.
+    internal static IReadOnlyList<AkronBackupSkippedFile> WriteSavesArchive(
+        string savesFolder,
+        string backupPath,
+        Func<IReadOnlyList<AkronBackupSkippedFile>, string> buildMetadataJson) {
+        try {
+            return WriteSavesArchiveCore(savesFolder, backupPath, buildMetadataJson);
+        } catch {
+            try {
+                if (File.Exists(backupPath)) {
+                    File.Delete(backupPath);
+                }
+            } catch {
+                // The original failure is the one worth reporting, and it is already on its way up. A partial
+                // archive that survives this is still not restorable: ZipFile.OpenRead rejects it, so it lists
+                // as "unreadable" in the browser and VerifyZipReadable turns a restore of it away.
+            }
+
+            throw;
+        }
+    }
+
+    private static IReadOnlyList<AkronBackupSkippedFile> WriteSavesArchiveCore(
+        string savesFolder,
+        string backupPath,
+        Func<IReadOnlyList<AkronBackupSkippedFile>, string> buildMetadataJson) {
+        List<AkronBackupSkippedFile> skipped = new List<AkronBackupSkippedFile>();
+        using (ZipArchive archive = ZipFile.Open(backupPath, ZipArchiveMode.Create)) {
+            foreach (string file in EnumerateFilesToArchive(savesFolder)) {
+                string relativePath = GetRelativePath(savesFolder, file);
+                FileStream source;
+                try {
+                    source = new FileStream(file, FileMode.Open, FileAccess.Read, BackupSourceShare);
+                } catch (Exception exception) {
+                    // Only the open is tolerated per file. A sharing violation, a missing file, a file deleted
+                    // while we walked the folder and a permission error all land here, and none of them may
+                    // cost the player everything else in Saves. The backup finishes and says what is missing
+                    // from it, here and in the archive metadata.
+                    //
+                    // A failure once the entry exists is deliberately not caught: ZipArchiveMode.Create cannot
+                    // remove an entry, so the archive would carry a truncated file that VerifyZipReadable
+                    // accepts and a restore would write over a good save. That fails the whole backup instead,
+                    // and WriteSavesArchive deletes the half-written archive on its way out.
+                    skipped.Add(new AkronBackupSkippedFile {
+                        RelativePath = relativePath,
+                        Reason = exception.Message
+                    });
+                    continue;
+                }
+
+                using (source) {
+                    AddFileEntry(archive, source, file, relativePath);
+                }
+            }
+
+            ZipArchiveEntry metadataEntry = archive.CreateEntry(MetadataEntryName, CompressionLevel.Optimal);
+            using StreamWriter writer = new StreamWriter(metadataEntry.Open(), Encoding.UTF8);
+            writer.Write(buildMetadataJson(skipped));
+        }
+
+        return skipped;
+    }
+
+    // Every file under Saves that belongs to the player, with the folders Akron runs out of pruned at the
+    // top level rather than filtered file by file. Every one of those folders is a top-level name, so
+    // pruning there covers all of them and keeps the archive out of the StartPos snapshot tree and out of
+    // the backup folder's own zips, neither of which it has any reason to read.
+    private static IEnumerable<string> EnumerateFilesToArchive(string savesFolder) {
+        string[] ownedFolders = BuildAkronOwnedFolders(savesFolder);
+        foreach (string entry in Directory.EnumerateFileSystemEntries(savesFolder)) {
+            if (IsAkronOwnedPath(ownedFolders, Path.GetFullPath(entry))) {
+                continue;
+            }
+
+            if (!Directory.Exists(entry)) {
+                yield return entry;
+                continue;
+            }
+
+            foreach (string file in Directory.EnumerateFiles(entry, "*", SearchOption.AllDirectories)) {
+                yield return file;
+            }
+        }
+    }
+
+    private static void AddFileEntry(ZipArchive archive, FileStream source, string path, string entryName) {
+        ZipArchiveEntry entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+        entry.LastWriteTime = ClampToZipTimestampRange(File.GetLastWriteTime(path));
+        // ZipFile.CreateEntryFromFile stored the Unix mode here and ExtractToDirectory puts it back, so
+        // dropping it would widen the automation service's owner-only files to whatever the umask allows the
+        // first time a Linux or macOS player restored a backup. This assigns rather than ORs because
+        // CreateEntry already defaults the field to a regular file at 0644, which no OR could narrow.
+        // Windows entries carry no mode, the same as before.
+        if (!OperatingSystem.IsWindows()) {
+            entry.ExternalAttributes = (RegularFileTypeBits | (int) File.GetUnixFileMode(source.SafeFileHandle)) << 16;
+        }
+
+        using Stream destination = entry.Open();
+        source.CopyTo(destination);
+    }
+
+    private static DateTimeOffset ClampToZipTimestampRange(DateTime value) {
+        return value.Year < MinimumZipYear || value.Year > MaximumZipYear
+            ? new DateTimeOffset(new DateTime(MinimumZipYear, 1, 1, 0, 0, 0))
+            : new DateTimeOffset(value);
+    }
+
+    // Kept short enough for a toast. The archive metadata carries the full list with reasons.
+    private static string DescribeSkippedFiles(IReadOnlyList<AkronBackupSkippedFile> skipped) {
+        if (skipped.Count == 0) {
+            return string.Empty;
+        }
+
+        string names = string.Join(", ", skipped.Take(MaxSkippedFilesNamedInStatus).Select(entry => entry.RelativePath));
+        string more = skipped.Count > MaxSkippedFilesNamedInStatus
+            ? ", +" + (skipped.Count - MaxSkippedFilesNamedInStatus).ToString(CultureInfo.InvariantCulture) + " more"
+            : string.Empty;
+        return " (could not read " + skipped.Count.ToString(CultureInfo.InvariantCulture) + ": " + names + more + ")";
     }
 
     public static void OpenBackupFolder() {
@@ -326,18 +545,28 @@ public static class AkronBackupActions {
                     return;
                 }
 
-                if (!CreateBackup("pre-restore", false)) {
+                // Everything below replaces the player's save files, so the safety net has to be complete. A
+                // pre-restore backup that is merely written is not enough: a file it could not read is a file
+                // that is about to be replaced with no copy of it anywhere. RestoreSavesFolder is written so
+                // that a failure leaves the save files untouched, and this is what covers the case it cannot
+                // - a restore that succeeds and turns out to have been the wrong backup.
+                if (!TryCreateBackup("pre-restore", false, out IReadOnlyList<AkronBackupSkippedFile> preRestoreSkipped)) {
                     LastStatus = "Restore stopped: pre-restore backup failed.";
                     Toast(LastStatus);
                     return;
                 }
 
-                DeleteCurrentSaveFiles(savesFolder);
-                ZipFile.ExtractToDirectory(backup.Path, savesFolder, overwriteFiles: true);
-                string metadataPath = Path.Combine(savesFolder, MetadataEntryName);
-                if (File.Exists(metadataPath)) {
-                    File.Delete(metadataPath);
+                if (preRestoreSkipped.Count > 0) {
+                    LastStatus = "Restore stopped: pre-restore backup" + DescribeSkippedFiles(preRestoreSkipped);
+                    Toast(LastStatus);
+                    return;
                 }
+
+                RestoreSavesFolder(
+                    savesFolder,
+                    backup.Path,
+                    Path.Combine(savesFolder, RestoreWorkFolderName, DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss-fff", CultureInfo.InvariantCulture)),
+                    ReleaseFilesAkronHoldsInSaves);
 
                 if (!TryLoadRestoredSaveData(backup, out string loadMessage)) {
                     LastStatus = "Restored files, but live reload failed: " + loadMessage;
@@ -411,18 +640,173 @@ public static class AkronBackupActions {
         InvalidateBackupList();
     }
 
-    private static void DeleteCurrentSaveFiles(string savesFolder) {
-        foreach (string file in Directory.EnumerateFiles(savesFolder, "*", SearchOption.AllDirectories)) {
-            if (!IsInsideBackupFolder(file)) {
-                File.Delete(file);
+    // Lets go of the two files under Saves that Akron itself keeps open while the game runs, immediately
+    // before a restore starts moving that folder around.
+    //
+    // This is a Windows problem and is invisible on Linux. Windows will not rename or delete a file that is
+    // held open unless every holder permitted deletion, and the performance recorder's JSONL does not. The
+    // log reopens itself on the next line written.
+    private static void ReleaseFilesAkronHoldsInSaves() {
+        // The log goes last on purpose. StopRecording can write a warning line through AkronLog when the GC
+        // event listener refuses to stop, and that line would reopen the handle we had just let go of.
+        AkronPerformanceTelemetry.StopRecording();
+        AkronLog.CloseLogFile();
+    }
+
+    // Puts the archive's copy of the save files back, in an order where no failure can leave the player
+    // without both copies.
+    //
+    // The order is the whole point, and it is what the first version of this got wrong: it deleted every
+    // save file and then extracted, so anything that went wrong in between cost the player everything. Here
+    // the archive is unpacked into a staging folder first, which puts the step most likely to fail - a
+    // corrupt member, a full disk, a name the filesystem will not take - before anything under Saves has
+    // changed. Only then does the live folder change, and it changes by renaming, all of it or none of it:
+    // SwapSavesFolderContents undoes every move it has made if it cannot finish, so a restore that stops
+    // leaves the save files exactly as they were. Discarding the moved-aside copy is the last thing that
+    // happens, after the restore has already succeeded.
+    //
+    // That ordering is what makes this safe rather than the list of folders a restore skips. A file Akron
+    // does not know it is holding, a file another program has open, a folder added under Saves next year:
+    // each of them turns a restore into a refusal instead of into lost save data.
+    //
+    // A move can fail at all because of Windows, and none of it is visible on the Linux dev and test
+    // machines: Windows refuses to rename or delete a file another handle holds without FILE_SHARE_DELETE,
+    // and refuses outright for an executable image the process has loaded, while Linux renames and unlinks
+    // either without complaint. A Linux run cannot tell a safe restore from a destructive one, which is how
+    // the destructive one shipped.
+    //
+    // releaseHeldFiles is called between the unpacking and the first change to Saves, so a restore that
+    // stops while unpacking never costs the player a running performance recording.
+    internal static void RestoreSavesFolder(string savesFolder, string backupPath, string workFolder, Action releaseHeldFiles) {
+        string extracted = Path.Combine(workFolder, RestoreExtractedFolderName);
+        string previous = Path.Combine(workFolder, RestorePreviousFolderName);
+        Directory.CreateDirectory(extracted);
+        Directory.CreateDirectory(previous);
+
+        try {
+            ZipFile.ExtractToDirectory(backupPath, extracted, overwriteFiles: true);
+            string metadataPath = Path.Combine(extracted, MetadataEntryName);
+            if (File.Exists(metadataPath)) {
+                File.Delete(metadataPath);
             }
+        } catch (Exception exception) {
+            TryDeleteDirectory(workFolder);
+            throw new IOException(
+                "could not unpack the backup: " + exception.Message + " Your save files were not changed.",
+                exception);
         }
 
-        foreach (string directory in Directory.EnumerateDirectories(savesFolder, "*", SearchOption.AllDirectories)
-                     .OrderByDescending(path => path.Length)) {
-            if (!IsInsideBackupFolder(directory) && !Directory.EnumerateFileSystemEntries(directory).Any()) {
-                Directory.Delete(directory);
+        releaseHeldFiles();
+
+        try {
+            SwapSavesFolderContents(savesFolder, extracted, previous);
+        } catch {
+            // SwapSavesFolderContents undoes every move it made before it throws, and an empty `previous` is
+            // the proof that it did. A `previous` with anything left in it still holds save files, and
+            // removing it would be exactly the loss this method exists to prevent, so it stays where the
+            // exception message says it is.
+            if (!Directory.EnumerateFileSystemEntries(previous).Any()) {
+                TryDeleteDirectory(workFolder);
             }
+
+            throw;
+        }
+
+        TryDeleteDirectory(workFolder);
+    }
+
+    // The one step that changes the player's Saves folder, and it changes it all at once or not at all.
+    //
+    // Two phases: everything Saves holds moves into `previous`, then everything unpacked moves in. If either
+    // phase stops for any reason, every move already made is undone in reverse and the folder is left the
+    // way it was found. Undoing the second phase first is what frees the names the first phase needs to move
+    // back into.
+    //
+    // Top-level entries rather than individual files, so a whole folder moves in one rename. That also means
+    // a folder holding one file nobody can let go of fails as a folder, which is the safe direction: the
+    // restore stops without having taken anything away.
+    //
+    // The entries are read into an array before any of them moves. Renaming entries out of a directory that
+    // is still being enumerated can skip the ones that have not been reached yet, and a save file skipped
+    // here is a save file that would silently survive a restore.
+    private static void SwapSavesFolderContents(string savesFolder, string extracted, string previous) {
+        string[] ownedFolders = BuildAkronOwnedFolders(savesFolder);
+        List<string> movedAside = new List<string>();
+        List<string> movedIn = new List<string>();
+        try {
+            foreach (string entry in ReadEntriesInAStableOrder(savesFolder)) {
+                if (IsAkronOwnedPath(ownedFolders, Path.GetFullPath(entry))) {
+                    continue;
+                }
+
+                string name = Path.GetFileName(entry);
+                MoveEntry(entry, Path.Combine(previous, name));
+                movedAside.Add(name);
+            }
+
+            foreach (string entry in ReadEntriesInAStableOrder(extracted)) {
+                string name = Path.GetFileName(entry);
+                // An entry Akron owns is dropped rather than moved in, because the live one was not taken
+                // out: an archive written before those folders were excluded still carries copies of them,
+                // and the copy of a loaded native library is precisely what a restore must not write over.
+                if (IsAkronOwnedPath(ownedFolders, Path.GetFullPath(Path.Combine(savesFolder, name)))) {
+                    continue;
+                }
+
+                MoveEntry(entry, Path.Combine(savesFolder, name));
+                movedIn.Add(name);
+            }
+        } catch (Exception swapFailure) {
+            try {
+                foreach (string name in movedIn) {
+                    MoveEntry(Path.Combine(savesFolder, name), Path.Combine(extracted, name));
+                }
+
+                foreach (string name in movedAside) {
+                    MoveEntry(Path.Combine(previous, name), Path.Combine(savesFolder, name));
+                }
+            } catch (Exception rollbackFailure) {
+                throw new IOException(
+                    "could not replace the Saves folder (" + swapFailure.Message + ") and could not put back what it had already moved (" +
+                    rollbackFailure.Message + "). Your save files are in " + previous + ".",
+                    rollbackFailure);
+            }
+
+            throw new IOException(
+                "could not replace the Saves folder: " + swapFailure.Message + " Your save files were not changed.",
+                swapFailure);
+        }
+    }
+
+    // Sorted so the same folder always moves in the same order. A step that can stop halfway is worth being
+    // able to reproduce, and it means the point a restore gave up is the same on the second run as on the
+    // first.
+    private static string[] ReadEntriesInAStableOrder(string folder) {
+        string[] entries = Directory.GetFileSystemEntries(folder);
+        Array.Sort(entries, StringComparer.Ordinal);
+        return entries;
+    }
+
+    // One rename to the filesystem either way; .NET splits it by type.
+    private static void MoveEntry(string source, string destination) {
+        if (Directory.Exists(source)) {
+            Directory.Move(source, destination);
+            return;
+        }
+
+        File.Move(source, destination);
+    }
+
+    private static void TryDeleteDirectory(string path) {
+        try {
+            if (Directory.Exists(path)) {
+                Directory.Delete(path, recursive: true);
+            }
+        } catch (Exception exception) {
+            // Only ever called where the directory holds copies nobody needs any more, so a failure costs
+            // disk space and nothing else. The restore it belongs to has already succeeded or already
+            // reported why it did not.
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Could not remove restore working folder " + path + ": " + exception.Message);
         }
     }
 
@@ -513,7 +897,7 @@ public static class AkronBackupActions {
         return path;
     }
 
-    private static string BuildMetadataJson(string reason) {
+    private static string BuildMetadataJson(string reason, IReadOnlyList<AkronBackupSkippedFile> skippedFiles) {
         Level level = Engine.Scene as Level;
         IEnumerable<string> mods = Everest.Modules
             .Where(module => module?.Metadata != null && module.GetType().Name != "NullModule")
@@ -522,7 +906,9 @@ public static class AkronBackupActions {
 
         StringBuilder builder = new StringBuilder();
         builder.AppendLine("{");
-        builder.AppendLine("  \"schema\": 1,");
+        // Schema 2 because the archive contract changed: a schema 1 archive carried
+        // Saves/AkronStartPos and a schema 2 one does not.
+        builder.AppendLine("  \"schema\": 2,");
         builder.AppendLine("  \"reason\": \"" + JsonEscape(reason) + "\",");
         builder.AppendLine("  \"createdUtc\": \"" + DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture) + "\",");
         builder.AppendLine("  \"gameVersion\": \"" + JsonEscape(Celeste.Instance?.Version?.ToString() ?? string.Empty) + "\",");
@@ -531,7 +917,16 @@ public static class AkronBackupActions {
         builder.AppendLine("  \"profileName\": \"" + JsonEscape(SaveData.Instance?.Name ?? string.Empty) + "\",");
         builder.AppendLine("  \"area\": \"" + JsonEscape(level?.Session?.Area.GetSID() ?? string.Empty) + "\",");
         builder.AppendLine("  \"room\": \"" + JsonEscape(level?.Session?.Level ?? string.Empty) + "\",");
-        builder.AppendLine("  \"mods\": [\"" + string.Join("\", \"", mods) + "\"]");
+        builder.AppendLine("  \"mods\": [\"" + string.Join("\", \"", mods) + "\"],");
+        // What a backup deliberately does not carry, named in the archive so someone
+        // restoring one is not left to work it out from what is missing. A restore also
+        // leaves these folders alone, so nothing in them is lost by restoring.
+        builder.AppendLine("  \"excludedFolders\": [\"" +
+            string.Join("\", \"", AkronOwnedFolderNames.Select(JsonEscape)) + "\"],");
+        // Named in the archive itself so anyone restoring or debugging from a backup can see what it is
+        // missing without having to have seen the toast that said so.
+        builder.AppendLine("  \"skippedFiles\": [" + string.Join(", ", skippedFiles
+            .Select(entry => "\"" + JsonEscape(entry.RelativePath + ": " + entry.Reason) + "\"")) + "]");
         builder.AppendLine("}");
         return builder.ToString();
     }
@@ -575,10 +970,45 @@ public static class AkronBackupActions {
             .Replace(trimmed.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), display);
     }
 
-    private static bool IsInsideBackupFolder(string path) {
-        string backupFolder = Path.GetFullPath(BackupFolder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        string fullPath = Path.GetFullPath(path);
-        return fullPath.StartsWith(backupFolder, StringComparison.OrdinalIgnoreCase);
+    // The one boundary between the player's save data and Akron's own runtime, used by the archive, by what
+    // a restore moves aside, and by what a restore puts back. One predicate rather than one per caller,
+    // because the three have to agree: an archive that carried a folder a restore leaves in place would try
+    // to write over the live copy, and a restore that moved away a folder the archive does not carry would
+    // take the player's StartPos slots with it and have nothing to put back.
+    //
+    // Every one of these is a folder directly under Saves, which is what lets all three callers apply the
+    // boundary to a top-level entry and be done with it.
+    //
+    // Built once per walk. The archive opens every file under Saves and the maintainer's folder holds a
+    // thousand of them, on the thread the game runs on.
+    private static string[] BuildAkronOwnedFolders(string rootFolder) {
+        string[] folders = new string[AkronOwnedFolderNames.Length];
+        for (int index = 0; index < AkronOwnedFolderNames.Length; index++) {
+            folders[index] = NormalizeFolderPath(Path.Combine(rootFolder, AkronOwnedFolderNames[index]));
+        }
+
+        return folders;
+    }
+
+    // Case-insensitively, because Windows and macOS resolve Saves/AKRONNATIVE to the folder holding the
+    // loaded library and a comparison that missed it would put a restore right back where it started. The
+    // cost on a case-sensitive filesystem is that a player folder differing only in case would be left out
+    // of backups, which is the harmless direction to be wrong in.
+    //
+    // The separator check is what keeps AkronNativeExtra from matching AkronNative.
+    private static bool IsAkronOwnedPath(string[] ownedFolders, string fullPath) {
+        foreach (string folder in ownedFolders) {
+            if (fullPath.StartsWith(folder, StringComparison.OrdinalIgnoreCase) &&
+                (fullPath.Length == folder.Length || fullPath[folder.Length] == Path.DirectorySeparatorChar)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string NormalizeFolderPath(string path) {
+        return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     private static string GetRelativePath(string root, string path) {

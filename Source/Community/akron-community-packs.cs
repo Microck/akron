@@ -273,7 +273,10 @@ public static class AkronCommunityPacks {
                 throw;
             }
             return new DownloadOutcome(entry, path, "Downloaded " + entry.Title + ".", true);
-        } catch (Exception exception) when (exception is IOException || exception is HttpRequestException || exception is TaskCanceledException || exception is UnauthorizedAccessException || exception is InvalidDataException || exception is ArgumentException || exception is FormatException) {
+        // AkronSetupPackFormatException is named on its own because InvalidDataException
+        // is sealed and it cannot derive from it. A community pack built by an older
+        // Akron arrives here, and its message is what the browser shows.
+        } catch (Exception exception) when (exception is IOException || exception is HttpRequestException || exception is TaskCanceledException || exception is UnauthorizedAccessException || exception is InvalidDataException || exception is AkronSetupPackFormatException || exception is ArgumentException || exception is FormatException) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to import Akron community pack: " + exception);
             return new DownloadOutcome(entry, string.Empty, exception.Message, false);
         }

@@ -447,7 +447,7 @@ public partial class AkronModuleSettings {
     }
 
     public static int ClampStartPosSlotCount(int count) {
-        return ClampValue(count, 1, 99);
+        return ClampValue(count, 1, MaximumStartPosSlots);
     }
 
     public static int ClampStartPosSelectableSlotCount(int count) {

@@ -53,6 +53,20 @@ public sealed class AkronButtonBindingPack {
     public List<string> MouseButtons { get; set; } = new List<string>();
 }
 
+// A pack payload written against a different setup contract than this build reads.
+//
+// Its own type, and not an InvalidDataException like the reader's other refusals,
+// because the import path has to tell it apart to say what happened instead of the flat
+// "Unsupported setup pack." a malformed archive gets: this pack is not damaged, it was
+// written by an Akron that captured StartPos room state against a fresh room this build
+// no longer produces, so its snapshots describe objects that are not where it says they
+// are. InvalidDataException is sealed, so this cannot derive from it; every catch that
+// handles a pack read names this type as well.
+public sealed class AkronSetupPackFormatException : Exception {
+    public AkronSetupPackFormatException(string message) : base(message) {
+    }
+}
+
 public sealed class AkronStartPosPackEntry {
     public float X { get; set; }
     public float Y { get; set; }
@@ -71,7 +85,20 @@ public sealed class AkronStartPosPackEntry {
 public static partial class AkronSetupPacks {
     public const string SetupArchiveKind = "setup";
     public const string SetupArchivePayload = "setup.json";
-    public const string SetupPackFormat = "akron-setup-v4";
+    // Bumped in lockstep with AkronReconstructionDocument.CurrentFormat, because a
+    // StartPos or Whole pack carries one of those documents per slot as an attachment.
+    // The documents address room objects by their place in a clean reload of the room,
+    // and Akron now rebuilds that room differently, so a pack written by an older build
+    // describes a room this build does not produce.
+    //
+    // Bumped for every pack rather than only for the ones carrying StartPos slots. The
+    // payload has one format string covering the whole pack, a Whole pack always carries
+    // StartPos, and one story - packs from an older Akron have to be exported again - is
+    // easier to act on than a rule about which sections survive.
+    //
+    // v4 -> v5: fresh-room baseline changed, so the v7 snapshots inside a v4 pack cannot
+    // be rebuilt here.
+    public const string SetupPackFormat = "akron-setup-v5";
 
     public const int MaxStartPositions = 99;
     public const int MaxAutoKillAreas = 128;
@@ -402,9 +429,7 @@ public static partial class AkronSetupPacks {
             throw new ArgumentNullException(nameof(settings));
         }
 
-        if (pack == null || !string.Equals(pack.Format, SetupPackFormat, StringComparison.Ordinal)) {
-            throw new InvalidDataException("Unsupported setup pack.");
-        }
+        RequireCurrentPackFormat(pack);
 
         AkronSetupSection section = NormalizeSection(requestedSection ?? pack.Section);
         string targetMapSid = ResolvePackTargetMapSid(pack);
@@ -505,7 +530,7 @@ public static partial class AkronSetupPacks {
             Write(AkronModule.Settings, AkronModule.Session, path, name, section);
             Engine.Scene?.Add(new AkronToast("Exported " + FormatSection(section) + " setup " + pack.Name + "."));
             return path;
-        } catch (Exception exception) when (exception is InvalidDataException || exception is IOException || exception is UnauthorizedAccessException) {
+        } catch (Exception exception) when (exception is InvalidDataException || exception is AkronSetupPackFormatException || exception is IOException || exception is UnauthorizedAccessException) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to export Akron setup archive: " + exception.Message);
             Engine.Scene?.Add(new AkronToast("Could not export setup pack."));
             return string.Empty;
@@ -523,6 +548,14 @@ public static partial class AkronSetupPacks {
         try {
             pack = Read(path);
             Apply(AkronModule.Settings, AkronModule.Session, pack, section);
+        }
+        // A pack from a different build is refused for a reason the player can act on,
+        // and it is the one refusal every player gets after a format bump, so it says
+        // what happened rather than sharing the flat message a damaged archive gets.
+        catch (AkronSetupPackFormatException ex) {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to import Akron setup archive: " + ex.Message);
+            Engine.Scene?.Add(new AkronToast(ex.Message));
+            return false;
         }
         catch (Exception ex) when (ex is InvalidDataException || ex is JsonException || ex is IOException || ex is UnauthorizedAccessException) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to import Akron setup archive: " + ex.Message);
@@ -648,7 +681,8 @@ public static partial class AkronSetupPacks {
             out string[] attachmentNames);
         ValidatePortablePackJson(payload);
         AkronSetupPack pack = JsonSerializer.Deserialize<AkronSetupPack>(payload, JsonOptions);
-        if (pack == null || !string.Equals(pack.Format, SetupPackFormat, StringComparison.Ordinal) || pack.State == null) {
+        RequireCurrentPackFormat(pack);
+        if (pack.State == null) {
             throw new InvalidDataException("Unsupported setup pack.");
         }
 
@@ -742,8 +776,41 @@ public static partial class AkronSetupPacks {
         }
     }
 
+    // The one gate on a pack's contract version, so it is also the one place that can
+    // say why a pack is refused. Every caller that used to compare pack.Format itself
+    // goes through here, so a pack cannot be applied down a path that skipped the check.
+    private static void RequireCurrentPackFormat(AkronSetupPack pack) {
+        if (pack == null) {
+            throw new InvalidDataException("Unsupported setup pack.");
+        }
+        if (string.Equals(pack.Format, SetupPackFormat, StringComparison.Ordinal)) {
+            return;
+        }
+
+        throw new AkronSetupPackFormatException(
+            "This setup pack is " + DescribePackFormat(pack) + " and Akron now reads " + SetupPackFormat +
+            ". Packs from an older Akron built rooms differently; export it again from this build.");
+    }
+
+    // The format string comes out of a pack payload, which is allowed to be 2 MiB, so it
+    // cannot go into a message that reaches a toast unbounded. Real format names are
+    // under twenty characters.
+    private static string DescribePackFormat(AkronSetupPack pack) {
+        string format = pack?.Format;
+        if (string.IsNullOrWhiteSpace(format)) {
+            return "unnamed";
+        }
+        return format.Length <= MaxReportedPackFormatChars
+            ? format
+            : format.Substring(0, MaxReportedPackFormatChars) + "...";
+    }
+
+    private const int MaxReportedPackFormatChars = 32;
+
+    // Tracks AkronReconstructionDocument.CurrentFormat, so the entry name states which
+    // fresh-room baseline the attachment was measured against.
     private static string GetSnapshotEntryName(int slot) {
-        return "startpos/" + slot.ToString(CultureInfo.InvariantCulture) + ".v7.json.gz";
+        return "startpos/" + slot.ToString(CultureInfo.InvariantCulture) + ".v8.json.gz";
     }
 
     private static string ComputeFileSha256(string path) {
@@ -1222,7 +1289,8 @@ public static partial class AkronSetupPacks {
     }
 
     private static void ValidatePortablePack(AkronSetupPack pack, AkronSetupSection section, string expectedMapSid) {
-        if (pack == null || !string.Equals(pack.Format, SetupPackFormat, StringComparison.Ordinal) || pack.State == null) {
+        RequireCurrentPackFormat(pack);
+        if (pack.State == null) {
             throw new InvalidDataException("Unsupported setup pack.");
         }
 
@@ -1731,7 +1799,32 @@ public static partial class AkronSetupPacks {
             } catch {
                 RollBack();
                 throw;
+            } finally {
+                // This transaction moves files into and out of the canonical snapshot
+                // directory without going through PreparedSnapshotInstall, so the
+                // cached File.Exists answers behind HasSnapshot must be dropped whether
+                // the install succeeded or rolled back.
+                InvalidateTouchedSnapshots();
             }
+        }
+
+        // Every other writer of the snapshot directory funnels through
+        // InvalidateSnapshotExistence, which is what drops a prewarmed document for that
+        // path and marks the write for any read still in flight. This transaction is the
+        // one that did not, and leaned on the consume-time file stamp instead - which
+        // cannot tell a replacement apart if the new file happens to share a length and
+        // a modification time. Naming the paths costs nothing and closes that.
+        private void InvalidateTouchedSnapshots() {
+            foreach (string installedPath in installedPaths) {
+                AkronStartPosReconstruction.InvalidateSnapshotExistence(installedPath);
+            }
+            foreach (string replacedPath in replacedPaths.Keys) {
+                AkronStartPosReconstruction.InvalidateSnapshotExistence(replacedPath);
+            }
+            // Still a broad flush as well: a rollback has already emptied both
+            // collections by the time this runs, and a path this transaction never
+            // recorded is exactly the case a per-path list cannot cover.
+            AkronStartPosReconstruction.ResetSnapshotExistenceCache();
         }
 
         private void BackUpDestination(string destinationPath) {
@@ -1761,6 +1854,9 @@ public static partial class AkronSetupPacks {
                     File.Move(replaced.Value, replaced.Key, overwrite: true);
                 }
             }
+            // Before the lists are cleared, so every path this rollback touched is
+            // named rather than left to the consume-time file stamp.
+            InvalidateTouchedSnapshots();
             installedPaths.Clear();
             replacedPaths.Clear();
             installed = false;

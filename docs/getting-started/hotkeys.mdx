@@ -5,11 +5,11 @@ description: Default keyboard and controller bindings for Akron actions, with ov
 
 Akron uses Everest's keyboard and controller configuration for binds. Use these configuration screens to ensure bindings remain consistent with your modded Celeste setup.
 
-## Default Keybindings
+## Default keybindings
 
 | Action | Keyboard | Controller |
 |---|---|---|
-| Toggle Overlay | `Tab` | - |
+| Open Menu (overlay toggle) | `Tab` | - |
 | Fast Lookout Hold | - | - |
 | Retry | - | - |
 | Reload Room | - | - |
@@ -29,15 +29,31 @@ Akron uses Everest's keyboard and controller configuration for binds. Use these 
 | Clear StartPos | - | - |
 | Previous StartPos | - | - |
 | Next StartPos | - | - |
+| Load StartPos Slot 1 | - | - |
+| Load StartPos Slot 2 | - | - |
+| Load StartPos Slot 3 | - | - |
+| Load StartPos Slot 4 | - | - |
+| Load StartPos Slot 5 | - | - |
+| Load StartPos Slot 6 | - | - |
+| Load StartPos Slot 7 | - | - |
+| Load StartPos Slot 8 | - | - |
+| Load StartPos Slot 9 | - | - |
 | Toggle Hitboxes | - | - |
 | Toggle Entity Inspector | - | - |
-| Click Teleport | `Left Alt` | - |
-| Cursor Zoom | `Left Alt` | - |
-| Cursor Tools | `Left Alt` | - |
+| Toggle Frame Bypass | - | - |
+| Cycle Frame Bypass Camera Smoothing | - | - |
+| Entity Inspector cursor hold | `Left Alt` | - |
+| Click Teleport cursor hold | `Left Alt` | - |
+| Cursor Zoom hold | `Left Alt` | - |
+| Cursor Tools hold | `Left Alt` | - |
 
-Actions marked `-` have no default binding on that input type. Open Menu starts on `Tab`; Click Teleport, Cursor Zoom, Cursor Tools, and Entity Inspector cursor hold default to `Left Alt` where their popup exposes a cursor bind. Other shortcut actions start unbound so you can assign them intentionally.
+Actions marked `-` have no default binding on that input type. Open Menu starts on `Tab`. Click Teleport, Cursor Zoom, Cursor Tools, and Entity Inspector cursor holds default to `Left Alt` where their popup exposes a cursor bind. Other shortcut actions start unbound so you can assign them intentionally.
 
-## Configure a Bind
+**Save State**, **Load State**, **Previous Slot**, and **Next Slot** control the separate active savestate slot from 1-9. The Keybinds tab shows the first two as **Capture StartPos State** and **Restore StartPos State**. **Set StartPos**, **Load StartPos**, **Clear StartPos**, and **Load StartPos Slot 1-9** control persistent StartPos snapshots instead.
+
+**Toggle Frame Bypass** and **Cycle Frame Bypass Camera Smoothing** work only when Motion Smoothing is loaded. Camera-smoothing cycling also requires frame bypass to be active.
+
+## Configure a bind
 
 <Steps>
   <Step title="Open Everest controls">
@@ -54,7 +70,7 @@ Actions marked `-` have no default binding on that input type. Open Menu starts 
   </Step>
 </Steps>
 
-## Keyboard and Controller Inputs
+## Keyboard and controller inputs
 
 Akron uses Celeste/Everest binding primitives where possible:
 
@@ -67,7 +83,7 @@ The binding capture popup accepts a keyboard key or a controller button. It wait
 
 Controller bindings display with controller-facing names such as `LB`, `RB`, and `DPad Left`. Multi-button controller combinations are not part of the current binding model.
 
-## Bind Recovery
+## Bind recovery
 
 If the overlay bind is unknown:
 
@@ -75,7 +91,7 @@ If the overlay bind is unknown:
 - Temporarily disable other mods if a bind conflict prevents input from reaching Akron.
 - Check Everest logs if the bind appears configured but Akron never receives it.
 
-## Recommended Binding Strategy
+## Recommended binding strategy
 
 | Workflow | Binding advice |
 |---|---|

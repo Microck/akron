@@ -208,6 +208,7 @@ public sealed class AkronSetupState {
     public bool HideWindSnow { get; set; }
     public bool HideWaterfalls { get; set; }
     public bool HideTentacles { get; set; }
+    public bool DisablePlayback { get; set; }
     public bool HideHeatDistortion { get; set; }
     public bool NoStaminaFlash { get; set; }
     public bool RefillClarity { get; set; }

@@ -208,6 +208,7 @@ public partial class AkronModuleSettings {
         HideWindSnow = resolved.HideWindSnow;
         HideWaterfalls = resolved.HideWaterfalls;
         HideTentacles = resolved.HideTentacles;
+        DisablePlayback = resolved.DisablePlayback;
         HideHeatDistortion = resolved.HideHeatDistortion;
         NoStaminaFlash = resolved.NoStaminaFlash;
         RefillClarity = resolved.RefillClarity;

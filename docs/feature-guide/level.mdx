@@ -5,84 +5,113 @@ description: Level-scoped tools for automation, freezing, proof helpers, visual 
 
 The Level tab focuses on the current level scene. Several rows are useful for routing and review, but state-changing rows can mark the attempt as Cheat.
 
-| Option | Control | What it does | Attempt status |
+| Option | Control | What it does | Classification |
 |---|---|---|---|
-| Core Mode | Selector | Set the current Core temperature mode. | Cheat |
+| Core Mode | Action | Apply the configured Hot or Cold Core Mode override, or cycle directly between Hot and Cold. | Cheat |
 | Freeze Gameplay | Action | Freeze gameplay updates until toggled off or advanced by the frame stepper. | Cheat |
-| Confirm Restart | Toggle | Require a confirmation prompt before restarting the current room attempt. | Goldberry/Hardlist clean |
-| Confirm Full Reset | Toggle | Require a confirmation prompt before fully reloading the current chapter. | Goldberry/Hardlist clean |
-| Skip Intro | Toggle | Hold confirm on repeated B-side intro title screens to enter the map. | Regular clean |
-| Skip Postcards | Toggle | Hold confirm on level-entry postcards to jump straight into the map. | Regular clean |
+| Confirm Restart | Toggle | Require a confirmation prompt before restarting the current room attempt. | Goldberry/Hardlist clear |
+| Confirm Full Reset | Toggle | Require a confirmation prompt before fully reloading the current chapter. | Goldberry/Hardlist clear |
+| Skip Intro | Toggle | Hold confirm on repeated B-side intro title screens to enter the map. | Normal clear |
+| Skip Postcards | Toggle | Hold confirm on level-entry postcards to jump straight into the map. | Normal clear |
 | Auto Kill | Toggle | Automatically kill the player after a configured map-time threshold or inside selected regions. | Cheat |
-| Respawn Time | Numeric toggle | Open respawn timing controls, including whether speedhack affects the delay. | Regular clean |
-| Pause Timer | Numeric toggle | Delay resumed gameplay after unpausing and show a center countdown. | Cheat |
-| Pause Tracker | Toggle | Record pause count, rapid pauses, and paused time. | Goldberry/Hardlist clean |
-| Lag Pauser | Toggle | Pause after a detected frame-time spike. | Goldberry/Hardlist clean |
+| Respawn Time | Toggle | Open respawn timing controls, including whether speedhack affects the delay. | Normal clear |
+| Pause Timer | Toggle | Delay resumed gameplay after unpausing and show a center countdown. | Cheat |
+| Pause Tracker | Toggle | Record pause count, rapid pauses, and paused time. | Goldberry/Hardlist clear |
+| Lag Pauser | Toggle | Pause after a detected frame-time spike. | Goldberry/Hardlist clear |
 | Freeze Timer While Paused | Toggle | Halt level and journal timer accumulation while paused. | Cheat |
-| Hide Pause Menu | Toggle | Hide Celeste's pause menu while the game remains paused. | Regular clean |
-| Auto Deafen | Toggle | Press the configured Discord Toggle Deafen hotkey after entering a selected region until death or reset. | Regular clean |
-| Deload Spinners | Toggle | Simulate spinner deload timing while the option is enabled. | Cheat |
+| Hide Pause Menu | Toggle | Hide Celeste's pause menu while the game remains paused. | Normal clear |
+| Auto Deafen | Toggle | Press the configured Discord Toggle Deafen hotkey after entering a selected region until death or reset. | Normal clear |
+| Deload Spinners | Action | Simulate spinner deload timing with the configured delay. | Cheat |
 | Show Hitboxes | Toggle | Open live hitbox controls for collision boxes, filters, colors, opacity, thickness, and style. | Cheat |
-| Fix Hitbox Pixels | Toggle | Render circular hitboxes as sampled collision pixels instead of a smooth approximate outline. | Regular clean |
+| Fix Hitbox Pixels | Toggle | Render circular hitboxes as sampled collision pixels instead of a smooth approximate outline. | Normal clear |
 | Show Hitbox Trail | Toggle | Draw recent player collision boxes behind Madeline. | Cheat |
-| Show Hitboxes On Death | Toggle | Show the death-object hitbox after dying without enabling live hitboxes. | Regular clean |
+| Show Hitboxes On Death | Toggle | Show the death-object hitbox after dying without enabling live hitboxes. | Normal clear |
 | Show Triggers | Toggle | Draw invisible Celeste trigger regions without turning on all hitboxes. | Cheat |
-| Refill Clarity | Toggle | Highlight already-visible one-use refills with a configurable outline. | Regular clean |
-| Screenshake | Toggle | Override native Celeste screenshake. Intensity 0 disables shake. | Goldberry/Hardlist clean |
-| Light Level | Toggle | Adjust light presentation for the current level. | Regular clean |
-| Bloom Level | Toggle | Adjust bloom presentation for the current level. | Regular clean |
-| Screen Tint | Toggle | Apply a configurable screen tint. | Regular clean |
-| Reduced Visual Noise | Toggle | Apply Akron's reduced visual-noise presentation settings. | Regular clean |
-| No Particles | Toggle | Suppress particle presentation. | Regular clean |
-| No Glitch | Toggle | Suppress glitch-style visual effects. | Regular clean |
-| No Anxiety | Toggle | Suppress anxiety-style visual effects. | Regular clean |
-| No Distortion | Toggle | Suppress distortion-style visual effects. | Regular clean |
-| Hide Snow | Toggle | Hide snow presentation. | Regular clean |
-| Hide Wind Snow | Toggle | Hide wind-snow presentation. | Regular clean |
-| Hide Waterfalls | Toggle | Hide waterfall presentation. | Regular clean |
-| Hide Tentacles | Toggle | Hide tentacle presentation. | Regular clean |
-| Hide Heat Distortion | Toggle | Hide heat-distortion presentation. | Regular clean |
-| No Death Wipe | Toggle | Suppress black screen wipes while preserving completion callbacks when configured. | Regular clean |
+| Refill Clarity | Toggle | Highlight already-visible one-use refills with a configurable outline. | Normal clear |
+| Screenshake | Toggle | Override native Celeste screenshake. Intensity 0 disables shake. | Goldberry/Hardlist clear |
+| Light Level | Toggle | Adjust light presentation for the current level. | Normal clear |
+| Bloom Level | Toggle | Adjust bloom presentation for the current level. | Normal clear |
+| Screen Tint | Toggle | Apply a configurable screen tint. | Normal clear |
+| Reduced Visual Noise | Toggle | Apply Akron's reduced visual-noise presentation settings. | Normal clear |
+| No Particles | Toggle | Suppress particle presentation. | Normal clear |
+| No Glitch | Toggle | Suppress glitch-style visual effects. | Normal clear |
+| No Anxiety | Toggle | Suppress anxiety-style visual effects. | Normal clear |
+| No Distortion | Toggle | Suppress distortion-style visual effects. | Normal clear |
+| Hide Snow | Toggle | Hide snow presentation. | Normal clear |
+| Hide Wind Snow | Toggle | Hide wind-snow presentation. | Normal clear |
+| Hide Waterfalls | Toggle | Hide waterfall presentation. | Normal clear |
+| Hide Tentacles | Toggle | Hide tentacle presentation. | Normal clear |
+| Disable Playback | Toggle | Hide map-placed playback tutorial ghosts and suppress their movement, audio, and trails during gameplay. | Normal clear |
+| Hide Heat Distortion | Toggle | Hide heat-distortion presentation. | Normal clear |
+| No Death Wipe | Toggle | Suppress black screen wipes while preserving completion callbacks when configured. | Normal clear |
 | No Freeze Frames | Toggle | Suppress native hitstop/freeze-frame pauses. This changes gameplay timing. | Cheat |
+
+<Note>
+  Auto Deafen hotkey injection is available on Windows and Linux, not macOS. On Linux, it needs an X display with XTest support or an available `xdotool` fallback, including `flatpak-spawn` when applicable.
+</Note>
 
 ## Option menus
 
 Rows with a triangle expose the controls listed below.
 
-| Option | Menu control | What it changes | Attempt status |
+| Option | Menu control | What it changes | Classification |
 |---|---|---|---|
-| Auto Kill | Map-time threshold | Kill the attempt when current map time reaches the configured threshold. | Cheat |
-| Auto Kill | Selected areas | Kill the attempt when Madeline enters selected rectangles. | Cheat |
-| Auto Kill | Draw areas | Draw selected Auto Kill rectangles below the Akron menu. | Cheat |
-| Auto Kill | Conditions section | Expand optional area-only filters for speed ranges, movement direction, dash count, grounded/airborne state, player state, and inverted matching. | Cheat |
-| Auto Kill | Speed ranges | Only trigger selected-area kills while Madeline's total, horizontal, or vertical absolute speed is inside configured ranges. | Cheat |
-| Auto Kill | Movement direction | Only trigger selected-area kills while Madeline is moving left, right, up, down, or still on an axis. | Cheat |
+| Core Mode | Mode | Choose the Hot or Cold override. | Cheat |
+| Core Mode | Click | Choose whether clicking the row toggles the configured override or cycles directly between Hot and Cold. | Cheat |
+| Auto Kill | Method | Choose Timer or Area mode. | Cheat |
+| Auto Kill | Seconds | Kill the attempt when current map time reaches the configured threshold. | Cheat |
+| Auto Kill | Show area | Draw the selected Auto Kill rectangle in the game viewport. | Cheat |
+| Auto Kill | Show on death hitboxes | Show Auto Kill rectangles during Show Hitboxes On Death. | Cheat |
+| Auto Kill | Default conditions for new areas | Configure the conditions copied into each new Auto Kill area. | Cheat |
+| Auto Kill | Select Area | Enter rectangle selection for Auto Kill areas. | Cheat |
+| Auto Kill | Clear | Remove all selected Auto Kill rectangles. | Cheat |
+| Auto Kill | Previous | Select the previous Auto Kill area for editing. | Cheat |
+| Auto Kill | Next | Select the next Auto Kill area for editing. | Cheat |
+| Auto Kill | Clear Selected | Remove only the selected Auto Kill area. | Cheat |
+| Auto Kill | Use Selected as Default | Copy the selected area's conditions into the default for new areas. | Cheat |
+| Auto Kill | Conditions for Area | Expand the optional filters for the selected Auto Kill area. | Cheat |
+| Auto Kill | Require speed range | Require Madeline's absolute speed to be inside the configured range. | Cheat |
+| Auto Kill | Min speed | Set the minimum absolute speed for an area trigger. | Cheat |
+| Auto Kill | Max speed | Set the maximum absolute speed for an area trigger. | Cheat |
+| Auto Kill | Require horizontal speed | Require Madeline's absolute horizontal speed to be inside the configured range. | Cheat |
+| Auto Kill | Min H speed | Set the minimum absolute horizontal speed for an area trigger. | Cheat |
+| Auto Kill | Max H speed | Set the maximum absolute horizontal speed for an area trigger. | Cheat |
+| Auto Kill | Require vertical speed | Require Madeline's absolute vertical speed to be inside the configured range. | Cheat |
+| Auto Kill | Min V speed | Set the minimum absolute vertical speed for an area trigger. | Cheat |
+| Auto Kill | Max V speed | Set the maximum absolute vertical speed for an area trigger. | Cheat |
+| Auto Kill | Require dash count | Require the configured current dash count. | Cheat |
 | Auto Kill | Dash count | Only trigger selected-area kills while Madeline has the configured current dash count. | Cheat |
-| Auto Kill | Grounded/airborne | Only trigger selected-area kills while Madeline is grounded or airborne. | Cheat |
-| Auto Kill | Player state | Only trigger selected-area kills while Madeline's internal player state id matches the configured value. | Cheat |
+| Auto Kill | Ground | Choose Any, Grounded, or Airborne. | Cheat |
+| Auto Kill | Horizontal | Choose Any, Left, Right, or Still. | Cheat |
+| Auto Kill | Vertical | Choose Any, Up, Down, or Still. | Cheat |
+| Auto Kill | Require player state | Require Madeline's internal player state to match the configured state id. | Cheat |
+| Auto Kill | State id | Set the required internal player state id. | Cheat |
 | Auto Kill | Invert conditions | Trigger selected-area kills when enabled conditions fail instead of when they pass. | Cheat |
-| Auto Kill | Clear areas | Remove all selected Auto Kill rectangles. | Cheat |
-| Auto Deafen | Hotkey | Set the Discord Toggle Deafen hotkey Akron will press. | Regular clean |
-| Auto Deafen | Test hotkey | Press the configured hotkey immediately. | Regular clean |
-| Auto Deafen | Selected areas | Trigger deafen when Madeline enters selected rectangles. | Regular clean |
-| Auto Deafen | Draw areas | Draw selected Auto Deafen rectangles below the Akron menu. | Regular clean |
-| Auto Deafen | Clear areas | Remove all selected Auto Deafen rectangles and restore the Discord audio state if Akron believes Discord is deafened. | Regular clean |
-| Respawn Time | Seconds | Configure the post-death respawn delay. | Regular clean |
-| Respawn Time | Real time | Use real elapsed time so Akron's timescale does not stretch or shrink the delay. | Regular clean |
+| Auto Deafen | Hotkey | Set the Discord Toggle Deafen hotkey Akron will press. | Normal clear |
+| Auto Deafen | Set Hotkey / Press Hotkey... | Capture the Discord Toggle Deafen hotkey Akron will press. | Normal clear |
+| Auto Deafen | Test Toggle | Press the configured hotkey immediately. | Normal clear |
+| Auto Deafen | Clear Hotkey | Clear the configured hotkey and restore Discord audio if needed. | Normal clear |
+| Auto Deafen | Area deafen | Trigger deafen when Madeline enters a selected rectangle. | Normal clear |
+| Auto Deafen | Show area | Draw selected Auto Deafen rectangles in the game viewport. | Normal clear |
+| Auto Deafen | Select Area | Enter rectangle selection for Auto Deafen areas. | Normal clear |
+| Auto Deafen | Clear | Remove all selected Auto Deafen rectangles and restore the Discord audio state if Akron believes Discord is deafened. | Normal clear |
+| Respawn Time | Seconds | Configure the post-death respawn delay. | Normal clear |
+| Respawn Time | Ignore speedhack | Use real elapsed time so Akron's timescale does not stretch or shrink the delay. | Normal clear |
 | Pause Timer | Seconds | Configure how long gameplay is held after unpausing. | Cheat |
-| Pause Timer | Remove pause darkening | Remove Celeste's leftover pause darkening during the countdown. | Cheat |
-| Lag Pauser | Threshold ms | Set the frame-time spike threshold that triggers the pause. | Goldberry/Hardlist clean |
-| Lag Pauser | Recovery grace ms | Ignore frame-time spikes briefly after respawning or entering a room. | Goldberry/Hardlist clean |
-| Lag Pauser | Repeat cooldown ms | Prevent repeated automatic pauses immediately after a lag pause. | Goldberry/Hardlist clean |
-| Lag Pauser | Ignore SRT | When Speedrun Tool is loaded, skip the brief grace window after Speedrun Tool state-transition hooks so intentional load-state hitches do not count as Lag Pauser spikes. | Goldberry/Hardlist clean |
-| Lag Pauser | Triggers | Show how many frame-time spikes triggered Lag Pauser. | Goldberry/Hardlist clean |
-| Lag Pauser | Last spike | Show the duration of the most recent frame-time spike. | Goldberry/Hardlist clean |
-| Lag Pauser | Reset threshold | Restore the default spike threshold. | Goldberry/Hardlist clean |
-| Light Level | Percent | Set the lighting override percentage while `Light Level` is enabled. | Regular clean |
-| Bloom Level | Percent | Set bloom suppression or amplification while `Bloom Level` is enabled. | Regular clean |
-| Screen Tint | Opacity | Set screen tint opacity. | Regular clean |
-| Screen Tint | Tint | Choose the screen tint color. | Regular clean |
-| Deload Spinners | Seconds before deload | Configure spinner deload simulation timing. | Cheat |
+| Pause Timer | Hide pause tint | Remove Celeste's leftover pause darkening during the countdown. | Cheat |
+| Lag Pauser | Threshold ms | Set the frame-time spike threshold that triggers the pause. | Goldberry/Hardlist clear |
+| Lag Pauser | Recovery grace ms | Ignore frame-time spikes briefly after respawning or entering a room. | Goldberry/Hardlist clear |
+| Lag Pauser | Repeat cooldown ms | Prevent repeated automatic pauses immediately after a lag pause. | Goldberry/Hardlist clear |
+| Lag Pauser | Ignore SRT | When Speedrun Tool is loaded, ignore spikes during a brief grace window after Speedrun Tool load-state hooks so intentional load-state hitches do not count as Lag Pauser spikes. | Goldberry/Hardlist clear |
+| Lag Pauser | Triggers | Show how many frame-time spikes triggered Lag Pauser. | Goldberry/Hardlist clear |
+| Lag Pauser | Last spike | Show the duration of the most recent frame-time spike. | Goldberry/Hardlist clear |
+| Lag Pauser | Reset threshold | Restore the default spike threshold. | Goldberry/Hardlist clear |
+| Light Level | Percent | Set the lighting override percentage while `Light Level` is enabled. | Normal clear |
+| Bloom Level | Percent | Set bloom suppression or amplification while `Bloom Level` is enabled. | Normal clear |
+| Screen Tint | Opacity | Set screen tint opacity. | Normal clear |
+| Screen Tint | Tint | Choose the screen tint color. | Normal clear |
+| Deload Spinners | Deload now | Simulate spinner deloading with the configured delay. | Cheat |
+| Deload Spinners | Before | Set the number of seconds before the deload to simulate from. | Cheat |
 | Show Hitboxes | Active only | Hide inactive entities from live hitbox rendering. | Cheat |
 | Show Hitboxes | Hide player | Hide the player collider from live hitbox rendering. | Cheat |
 | Show Hitboxes | Player hazard box | Draw Madeline's hazard/death hitbox separately from her solid collision box. | Cheat |
@@ -99,9 +128,16 @@ Rows with a triangle expose the controls listed below.
 | Show Hitboxes | Triggers | Set trigger area color. | Cheat |
 | Show Hitboxes | Other | Set fallback color for other collidable entities. | Cheat |
 | Show Hitboxes | Reset style | Restore Akron's default hitbox style. | Cheat |
+| Show Hitbox Trail | Show Hitbox Trail | Draw recent player collision boxes behind Madeline. | Cheat |
 | Show Hitbox Trail | Length | Set how many recent player collision boxes are kept. | Cheat |
-| Show Hitbox Trail | Opacity | Set hitbox trail opacity. | Cheat |
-| Show Hitboxes On Death | All hitboxes | During the death window, draw the regular hitbox set using `Show Hitboxes` settings. | Regular clean |
-| Show Hitboxes On Death | Player marker | Mark Madeline's recorded death position even when `All hitboxes` is active or `Hide player` is enabled. | Regular clean |
-| Show Hitboxes On Death | Death object | Set the last recorded death-object hitbox color. | Regular clean |
-| Show Hitboxes On Death | Player marker color | Set the last recorded player-position marker color. | Regular clean |
+| Show Hitbox Trail | Trail % | Set the maximum opacity for older hitbox trail samples. | Cheat |
+| Show Hitboxes On Death | All hitboxes | During the death window, draw the regular hitbox set using `Show Hitboxes` settings. | Normal clear |
+| Show Hitboxes On Death | Player marker | Mark Madeline's recorded death position even when `All hitboxes` is active or `Hide player` is enabled. | Normal clear |
+| Show Hitboxes On Death | Death object | Set the last recorded death-object hitbox color. | Normal clear |
+| Show Hitboxes On Death | Player marker | Set the last recorded player-position marker color. | Normal clear |
+| Refill Clarity | Opacity | Set the outline opacity for visible one-use refills. | Normal clear |
+| Refill Clarity | Outline | Set the outline color for visible one-use refills. | Normal clear |
+| Screenshake | Intensity | Set the screenshake override intensity. Zero disables native Celeste camera shake while Screenshake is on. | Goldberry/Hardlist clear |
+| No Death Wipe | Death only | Suppress wipes only while a level is in the death-body or dead-player window. | Normal clear |
+| No Death Wipe | All wipes | Suppress every area screen wipe while No Death Wipe is on. | Normal clear |
+| No Death Wipe | Run callbacks | Run the wipe completion action even when Akron suppresses the visual wipe. | Normal clear |

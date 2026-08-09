@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -59,6 +60,34 @@ public sealed class StartPosReconstructionTests {
     [Fact]
     public void EverestModAssetsAreTreatedAsLiveLoaderResources() {
         Assert.True(AkronStartPosReconstruction.IsLiveResourceType(typeof(ModAsset)));
+    }
+
+    [Fact]
+    public void TextureAndModAssetKeysIdentifyEquivalentFreshResources() {
+        Assert.True(AkronStartPosReconstruction.AreEquivalentLiveResources(typeof(VirtualTexture)));
+        Assert.True(AkronStartPosReconstruction.AreEquivalentLiveResources(typeof(ModAsset)));
+        Assert.False(AkronStartPosReconstruction.AreEquivalentLiveResources(typeof(Atlas)));
+    }
+
+    [Fact]
+    public void DetachedVirtualTextureResolvesFromTheVirtualContentRegistry() {
+        VirtualTexture texture = (VirtualTexture) RuntimeHelpers.GetUninitializedObject(typeof(VirtualTexture));
+        SetRuntimeField(texture, "<Path>k__BackingField", "Graphics/Atlases/Gameplay/decals/randomized");
+        SetRuntimeField(texture, "<Width>k__BackingField", 32);
+        SetRuntimeField(texture, "<Height>k__BackingField", 32);
+        VirtualContent.Assets.Add(texture);
+        try {
+            string key = typeof(VirtualTexture).AssemblyQualifiedName + "|" +
+                         AkronStartPosReconstruction.GetLiveResourceKey(texture);
+
+            object resolved = AkronStartPosReconstruction.ResolveDetachedLiveResource(
+                typeof(VirtualTexture),
+                key);
+
+            Assert.Same(texture, resolved);
+        } finally {
+            VirtualContent.Assets.Remove(texture);
+        }
     }
 
     [Fact]
@@ -132,6 +161,85 @@ public sealed class StartPosReconstructionTests {
         Assert.True(restore.Success, restore.Error);
         Assert.Same(typeof(TextMenu), fresh.TrackerKey);
         Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void CaptureAndRestoreResolveAFieldInfoMissingFromTheFreshGraph() {
+        FieldInfo member = typeof(string).GetField(nameof(string.Empty))!;
+        RuntimeMemberRoot saved = new RuntimeMemberRoot { Member = member };
+        RuntimeMemberRoot baseline = new RuntimeMemberRoot();
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            AkronStartPosReconstruction.IsLiveResourceType,
+            AkronStartPosReconstruction.GetLiveResourceKey,
+            null,
+            AkronStartPosReconstruction.ResolveDetachedLiveResource);
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        RuntimeMemberRoot fresh = new RuntimeMemberRoot();
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        FieldInfo restored = Assert.IsAssignableFrom<FieldInfo>(fresh.Member);
+        Assert.Equal(member.Module, restored.Module);
+        Assert.Equal(member.MetadataToken, restored.MetadataToken);
+        Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void CollectionVersionCountersAreDerivedBookkeeping() {
+        Assert.True(AkronReconstructionGraph.IsDerivedCollectionVersionField(
+            typeof(List<int>),
+            "_version"));
+        Assert.True(AkronReconstructionGraph.IsDerivedCollectionVersionField(
+            typeof(Dictionary<string, int>),
+            "_version"));
+        Assert.True(AkronReconstructionGraph.IsDerivedCollectionVersionField(
+            typeof(HashSet<string>),
+            "_version"));
+        Assert.False(AkronReconstructionGraph.IsDerivedCollectionVersionField(
+            typeof(List<int>.Enumerator),
+            "_version"));
+        Assert.False(AkronReconstructionGraph.IsDerivedCollectionVersionField(
+            typeof(ScalarListRoot),
+            "_version"));
+    }
+
+    [Fact]
+    public void CollectionVersionChangesDoNotInvalidateEquivalentContents() {
+        ScalarListRoot saved = new ScalarListRoot { Values = new List<int> { 3, 5, 8 } };
+        ScalarListRoot baseline = new ScalarListRoot { Values = new List<int> { 3, 5, 8 } };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode listNode = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(List<int>).AssemblyQualifiedName);
+        Assert.DoesNotContain(listNode.Fields, field => field.Name == "_version");
+        listNode.Fields.Add(new AkronReconstructionField {
+            DeclaringTypeName = typeof(List<int>).AssemblyQualifiedName!,
+            Name = "_version",
+            Path = listNode.Path + "._version",
+            Value = new AkronReconstructionValue {
+                Kind = "scalar",
+                TypeName = typeof(int).AssemblyQualifiedName!,
+                Scalar = "99"
+            }
+        });
+        ScalarListRoot fresh = new ScalarListRoot { Values = new List<int> { 3, 5, 8 } };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+        Assert.True(restore.Success, restore.Error);
+        int restoredVersion = (int) GetRuntimeFieldInfo(typeof(List<int>), "_version")
+            .GetValue(fresh.Values)!;
+        SetRuntimeField(fresh.Values, "_version", restoredVersion + 1);
+
+        Assert.Equal(new[] { 3, 5, 8 }, fresh.Values);
+        AkronReconstructionVerification verification = graph.Verify(
+            capture.Document,
+            restore,
+            Array.Empty<string>());
+        Assert.True(verification.Success, verification.Error);
     }
 
     [Fact]
@@ -507,6 +615,293 @@ public sealed class StartPosReconstructionTests {
         Assert.Contains("type is not authentic to the fresh room", restore.Error);
     }
 
+    // The load-failure message a player reads is built from the refused type, so the
+    // refusal has to carry it as data. Reading it back out of the flag text would break
+    // the moment a flag is added.
+    [Fact]
+    public void ARefusedTypeReachesTheRestoreResultAlongsideItsDiagnosticText() {
+        Entity savedEntity = CreateUninitializedEntity<Entity>();
+        Entity baselineEntity = CreateUninitializedEntity<Entity>();
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(
+            new TestRoot { RoomEntity = savedEntity },
+            new TestRoot { RoomEntity = baselineEntity });
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode entityNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(TestRoot.RoomEntity));
+        entityNode.TypeName = typeof(Player).AssemblyQualifiedName!;
+        entityNode.UseFreshObject = false;
+
+        AkronReconstructionRestore restore = graph.Restore(
+            capture.Document,
+            new TestRoot { RoomEntity = CreateUninitializedEntity<Entity>() });
+
+        Assert.False(restore.Success);
+        Assert.Equal(typeof(Player).AssemblyQualifiedName, restore.RefusedTypeName);
+    }
+
+    // An uninstalled or disabled mod shows up as a saved type this process cannot load
+    // at all, which is a different refusal site from the one above and needs the same
+    // name to reach the message.
+    [Fact]
+    public void ARefusedTypeThatWillNotLoadStillReachesTheRestoreResult() {
+        const string missingModType =
+            "SampleVariants.Variants.SampleZoom+<>c, SampleVariantMode, Version=1.0.0.0, " +
+            "Culture=neutral, PublicKeyToken=null";
+        Entity savedEntity = CreateUninitializedEntity<Entity>();
+        Entity baselineEntity = CreateUninitializedEntity<Entity>();
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(
+            new TestRoot { RoomEntity = savedEntity },
+            new TestRoot { RoomEntity = baselineEntity });
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode entityNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(TestRoot.RoomEntity));
+        entityNode.TypeName = missingModType;
+        entityNode.UseFreshObject = false;
+
+        AkronReconstructionRestore restore = graph.Restore(
+            capture.Document,
+            new TestRoot { RoomEntity = CreateUninitializedEntity<Entity>() });
+
+        Assert.False(restore.Success);
+        Assert.Contains("type is unavailable", restore.Error);
+        Assert.Equal(missingModType, restore.RefusedTypeName);
+    }
+
+    // The production case: ExtendedVariantMode is loaded, its hooks are not installed
+    // because the master switch is off, and the room really is missing what the slot
+    // saved. The player can fix that and the message has to say so.
+    [Fact]
+    public void ARefusalOnALoadedModNamesTheModAndWhatToDoAboutIt() {
+        // A real cached-closure singleton in an assembly that is neither the game's nor
+        // Akron's, which is the shape ExtendedVariantMode's ZoomLevel refusal lands on.
+        string refusedTypeName = SampleZoomLevel.Callback.Target!.GetType().AssemblyQualifiedName!;
+
+        string message = AkronStartPosRefusal.Describe(
+            "StartPos 3",
+            refusedTypeName,
+            new[] { ("SampleVariantMode", typeof(SampleZoomLevel).Assembly.GetName().Name!) });
+
+        Assert.Equal(
+            "StartPos 3 needs SampleZoomLevel from SampleVariantMode, and this room does not have it. " +
+            "Check that mod's settings, or set the slot again.",
+            message);
+        Assert.True(message!.Length <= AkronActions.MaxStartPosFailureToastLength);
+    }
+
+    [Fact]
+    public void ARefusalOnAModThatIsNoLongerLoadedSaysToTurnItBackOn() {
+        string message = AkronStartPosRefusal.Describe(
+            "StartPos 3",
+            "ExtendedVariants.Variants.ZoomLevel+<>c, ExtendedVariantMode, Version=0.50.3.0, " +
+            "Culture=neutral, PublicKeyToken=null",
+            new[] { ("CelesteTAS", "CelesteTAS") });
+
+        Assert.Equal(
+            "StartPos 3 needs ZoomLevel from ExtendedVariantMode, which Akron cannot load now. " +
+            "Turn that mod back on if you removed it, or set the slot again.",
+            message);
+        Assert.True(message!.Length <= AkronActions.MaxStartPosFailureToastLength);
+    }
+
+    // No mod owns Monocle.Sprite, so nothing the player can change explains a room that
+    // reloads without it. That is Akron's defect to fix, and the message must not send
+    // the player looking through their mod list for it.
+    [Fact]
+    public void ARefusalOnATypeNoModOwnsIsReportedAsAnAkronBug() {
+        string message = AkronStartPosRefusal.Describe(
+            "StartPos 3",
+            typeof(Sprite).AssemblyQualifiedName!,
+            new[] { ("ExtendedVariantMode", "ExtendedVariantMode") });
+
+        Assert.Equal(
+            "StartPos 3 could not be rebuilt: this room has no Sprite to match, and no mod owns " +
+            "it. If your mods have not changed, this is an Akron bug; report akron-current.log.",
+            message);
+        Assert.True(message!.Length <= AkronActions.MaxStartPosFailureToastLength);
+    }
+
+    // Everest's own CoreModule is a real EverestModule named "Everest" and it lives in
+    // Celeste.dll next to Monocle, so a plain module-list match blames "Everest" for
+    // every vanilla type Akron fails to rebuild. It is the one entry in that list that
+    // is not a mod anyone installed.
+    [Fact]
+    public void EverestsOwnModuleNeverTakesTheBlameForAVanillaType() {
+        string message = AkronStartPosRefusal.Describe(
+            "StartPos 3",
+            typeof(Sprite).AssemblyQualifiedName!,
+            new[] { ("Everest", typeof(EverestModule).Assembly.GetName().Name!) });
+
+        Assert.Equal(
+            "StartPos 3 could not be rebuilt: this room has no Sprite to match, and no mod owns " +
+            "it. If your mods have not changed, this is an Akron bug; report akron-current.log.",
+            message);
+    }
+
+    // A generic container is declared by the runtime and still fails to load when one of
+    // its arguments belongs to a mod that is gone. Blaming Akron for that would be wrong
+    // and so would telling the player to reinstall System.Private.CoreLib, so this says
+    // nothing and the caller falls back to the diagnostic text, which names the argument.
+    [Fact]
+    public void AGenericWhoseArgumentBelongsToAMissingModIsNotBlamedOnAkron() {
+        Assert.Null(AkronStartPosRefusal.Describe(
+            "StartPos 3",
+            "System.Collections.Generic.List`1[[Sample.Thing, SampleMod, Version=1.0.0.0, " +
+            "Culture=neutral, PublicKeyToken=null]], " + typeof(List<int>).Assembly.FullName,
+            Array.Empty<(string, string)>()));
+    }
+
+    // An uninstalled mod is refused while the snapshot is being read, before Restore
+    // ever sees the document, so that refusal reaches the player down a different route
+    // from every other one and has to carry the same type name with it.
+    [Fact]
+    public void ASnapshotNamingAnUnloadableTypeReportsThatTypeFromTheReader() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-refusal-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+            AkronReconstructionCapture capture = graph.Capture(
+                new TestRoot { RoomEntity = CreateUninitializedEntity<Entity>() },
+                new TestRoot { RoomEntity = CreateUninitializedEntity<Entity>() });
+            Assert.True(capture.Success, capture.Error);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                "Akron StartPos refusal 1",
+                "Celeste/1-ForsakenCity",
+                "1",
+                0,
+                capture.Document,
+                out string writeError,
+                directory), writeError);
+
+            // The file has to be edited after it is written, because writing it resolves
+            // every type it names. That is the real shape of this failure: the snapshot
+            // was written while the mod was installed and is read after it was removed.
+            const string missingModType =
+                "SampleVariants.Entities.SampleController, SampleVariantMode, Version=1.0.0.0, " +
+                "Culture=neutral, PublicKeyToken=null";
+            string snapshotPath = AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos refusal 1", directory);
+            string json;
+            using (FileStream reading = File.OpenRead(snapshotPath))
+            using (GZipStream decompressing = new GZipStream(reading, CompressionMode.Decompress))
+            using (StreamReader reader = new StreamReader(decompressing)) {
+                json = reader.ReadToEnd();
+            }
+            json = json.Replace(typeof(Entity).AssemblyQualifiedName!, missingModType);
+            using (FileStream writing = File.Create(snapshotPath))
+            using (GZipStream compressing = new GZipStream(writing, CompressionMode.Compress))
+            using (StreamWriter writer = new StreamWriter(compressing)) {
+                writer.Write(json);
+            }
+
+            bool loaded = AkronStartPosReconstruction.TryLoadSnapshot(
+                "Akron StartPos refusal 1",
+                out _,
+                out string loadError,
+                out string refusedTypeName,
+                directory);
+
+            Assert.False(loaded);
+            Assert.Contains("type is unavailable", loadError);
+            Assert.Equal(missingModType, refusedTypeName);
+            Assert.Equal(
+                "StartPos 1 needs SampleController from SampleVariantMode, which Akron cannot load " +
+                "now. Turn that mod back on if you removed it, or set the slot again.",
+                AkronStartPosRefusal.Describe("StartPos 1", refusedTypeName, Array.Empty<(string, string)>()));
+        } finally {
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    // A mod that ships more than one assembly is only matched through the one its
+    // EverestModule lives in, so a type from any other loaded assembly cannot be
+    // attributed either way. Guessing would either send the player through their mod
+    // list or file a bug report, and both would be wrong about half the time.
+    [Fact]
+    public void ALoadedAssemblyNoModuleClaimsProducesNoPlayerMessage() {
+        Assert.Null(AkronStartPosRefusal.Describe(
+            "StartPos 3",
+            typeof(JObject).AssemblyQualifiedName!,
+            new[] { ("ExtendedVariantMode", "ExtendedVariantMode") }));
+    }
+
+    // Refusals land on compiler-generated members more often than on anything else, and
+    // "ZoomLevel+<>c" names nothing a player has ever seen in a menu.
+    [Theory]
+    [InlineData("Monocle.Sprite+<PlayUtil>d__40, Celeste, Version=1.0.0.0", "Sprite")]
+    [InlineData("ExtendedVariants.Variants.ZoomLevel+<>c, ExtendedVariantMode, Version=0.50.3.0", "ZoomLevel")]
+    [InlineData("Celeste.Mod.SwapImmediatelyExtension+Flattened, Celeste, Version=1.0.0.0", "SwapImmediatelyExtension")]
+    [InlineData("Celeste.Player, Celeste, Version=1.0.0.0", "Player")]
+    public void ADisplayTypeNameIsTheOutermostTypeAPlayerCouldRecognise(string typeName, string expected) {
+        Assert.Equal(expected, AkronStartPosRefusal.GetDisplayTypeName(typeName));
+    }
+
+    // Not every refusal names an object: an array whose length differs, or a field that
+    // no longer exists, names none. There is nothing to explain, and the caller keeps
+    // showing the head of the diagnostic text instead of inventing a reason.
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("Monocle.Sprite")]
+    public void ARefusalThatNamesNoAssemblyProducesNoPlayerMessage(string refusedTypeName) {
+        Assert.Null(AkronStartPosRefusal.Describe(
+            "StartPos 3",
+            refusedTypeName,
+            new[] { ("ExtendedVariantMode", "ExtendedVariantMode") }));
+    }
+
+    // ModA.Container<ModB.State> names ModA's assembly and fails to load because ModB is
+    // the one that is gone. ModA is loaded and its settings are not the problem, so it
+    // must not be the mod the message names.
+    [Fact]
+    public void AGenericOfALoadedModWhoseArgumentIsMissingBlamesNeitherMod() {
+        Assert.Null(AkronStartPosRefusal.Describe(
+            "StartPos 3",
+            "SampleHelper.Containers.Holder`1[[Sample.Thing, SampleOtherMod, Version=1.0.0.0, " +
+            "Culture=neutral, PublicKeyToken=null]], SampleHelper, Version=1.0.0.0, " +
+            "Culture=neutral, PublicKeyToken=null",
+            new[] { ("SampleHelper", "SampleHelper") }));
+    }
+
+    // Type names come out of a snapshot file and the reader lets a string run into the
+    // megabytes, so a corrupt or hostile one must not reach the screen.
+    [Fact]
+    public void AnAbsurdlyLongTypeNameProducesNoPlayerMessage() {
+        string message = AkronStartPosRefusal.Describe(
+            "StartPos 3",
+            "Sample." + new string('x', 4096) + ", SampleVariantMode, Version=1.0.0.0, " +
+            "Culture=neutral, PublicKeyToken=null",
+            Array.Empty<(string, string)>());
+
+        Assert.Null(message);
+    }
+
+    [Fact]
+    public void AGenericTypeNameResolvesToTheAssemblyThatOwnsItRatherThanItsArguments() {
+        string typeName = typeof(List<Sprite>).AssemblyQualifiedName!;
+
+        Assert.Equal(
+            typeof(List<Sprite>).Assembly.GetName().Name,
+            AkronStartPosRefusal.GetAssemblyName(typeName));
+        Assert.Equal("List", AkronStartPosRefusal.GetDisplayTypeName(typeName));
+    }
+
+    [Fact]
+    public void ASlotLoadedWithoutANumberStillReadsAsAnInstruction() {
+        string message = AkronStartPosRefusal.Describe(
+            "StartPos",
+            typeof(SampleUnderwaterSwitchController).AssemblyQualifiedName!,
+            new[] { ("SampleVariantMode", typeof(SampleZoomLevel).Assembly.GetName().Name!) });
+
+        Assert.Equal(
+            "StartPos needs SampleUnderwaterSwitchController from SampleVariantMode, and this room " +
+            "does not have it. Check that mod's settings, or set the slot again.",
+            message);
+        Assert.True(message!.Length <= AkronActions.MaxStartPosFailureToastLength);
+    }
+
     [Fact]
     public void RestoreAllowsAFieldlessBuiltInMarkerEntityWithoutAFreshInstance() {
         AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
@@ -769,6 +1164,34 @@ public sealed class StartPosReconstructionTests {
             CreateUninitializedEntity<SlashFx>()));
     }
 
+    [Fact]
+    public void CompilerIteratorOwnerAcceptsASubclassOfTheDeclaringType() {
+        Type playUtilType = typeof(Sprite)
+            .GetNestedTypes(BindingFlags.NonPublic)
+            .Single(type => type.Name.StartsWith("<PlayUtil>", StringComparison.Ordinal));
+
+        Assert.True(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
+            playUtilType,
+            ownerIsFresh: true,
+            ownerIsAuthenticatedRuntimeEntity: false,
+            RuntimeHelpers.GetUninitializedObject(typeof(PlayerSprite))));
+        Assert.True(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
+            playUtilType,
+            ownerIsFresh: true,
+            ownerIsAuthenticatedRuntimeEntity: false,
+            RuntimeHelpers.GetUninitializedObject(typeof(Sprite))));
+        Assert.False(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
+            playUtilType,
+            ownerIsFresh: true,
+            ownerIsAuthenticatedRuntimeEntity: false,
+            RuntimeHelpers.GetUninitializedObject(typeof(Image))));
+        Assert.False(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
+            playUtilType,
+            ownerIsFresh: true,
+            ownerIsAuthenticatedRuntimeEntity: false,
+            CreateUninitializedEntity<SlashFx>()));
+    }
+
     [Theory]
     [InlineData("Renderers", true)]
     [InlineData("adding", true)]
@@ -937,6 +1360,53 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void FreshModEntityRestoresThroughItsSceneTrackerIndex() {
+        (SavedSceneRoot saved, SourceIdentifiedEntity savedEntity) =
+            CreateTrackedSourceEntityScene(includeTrackerEntry: true);
+        (SavedSceneRoot baseline, _) = CreateTrackedSourceEntityScene(includeTrackerEntry: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            AkronStartPosReconstruction.IsLiveResourceType,
+            resource => ((Type) resource).AssemblyQualifiedName!,
+            null,
+            AkronStartPosReconstruction.ResolveDetachedLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, SourceIdentifiedEntity freshEntity) =
+            CreateTrackedSourceEntityScene(includeTrackerEntry: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.NotSame(savedEntity, freshEntity);
+        Tracker tracker = GetRuntimeField<Tracker>(fresh.Scene, "<Tracker>k__BackingField");
+        Dictionary<Type, List<Entity>> trackedEntities =
+            GetRuntimeField<Dictionary<Type, List<Entity>>>(tracker, "<Entities>k__BackingField");
+        Assert.Same(freshEntity, Assert.Single(trackedEntities[typeof(SourceIdentifiedEntity)]));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void FreshModEntityRestoresThroughItsSceneTagIndex() {
+        (SavedSceneRoot saved, SourceIdentifiedEntity savedEntity) =
+            CreateTaggedSourceEntityScene(includeTagEntry: true);
+        (SavedSceneRoot baseline, _) = CreateTaggedSourceEntityScene(includeTagEntry: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, SourceIdentifiedEntity freshEntity) =
+            CreateTaggedSourceEntityScene(includeTagEntry: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.NotSame(savedEntity, freshEntity);
+        TagLists tagLists = GetRuntimeField<TagLists>(fresh.Scene, "<TagLists>k__BackingField");
+        List<Entity>[] lists = GetRuntimeField<List<Entity>[]>(tagLists, "lists");
+        Assert.Same(freshEntity, Assert.Single(lists[0]));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
     public void SavedOnlyBuiltInRuntimeEntityRestoresThroughItsSceneTagIndex() {
         (SavedSceneRoot saved, _) = CreateTaggedRuntimeEntityScene(includeSlash: true);
         (SavedSceneRoot baseline, _) = CreateTaggedRuntimeEntityScene(includeSlash: false);
@@ -1062,10 +1532,376 @@ public sealed class StartPosReconstructionTests {
             typeof(TrailManager.Snapshot), nameof(TrailManager.Snapshot.Hair), typeof(PlayerHair)));
         Assert.True(AkronReconstructionGraph.IsTrailSnapshotComponentReference(
             typeof(TrailManager.Snapshot), nameof(TrailManager.Snapshot.Sprite), typeof(PlayerSprite)));
+        Assert.True(AkronReconstructionGraph.IsTrailSnapshotComponentOwnerType(typeof(Player)));
+        Assert.True(AkronReconstructionGraph.IsTrailSnapshotComponentOwnerType(typeof(PlayerPlayback)));
         Assert.False(AkronReconstructionGraph.IsTrailSnapshotComponentReference(
             typeof(TrailManager.Snapshot), nameof(TrailManager.Snapshot.Manager), typeof(TrailManager)));
         Assert.False(AkronReconstructionGraph.IsTrailSnapshotComponentReference(
             typeof(TalkComponent.TalkComponentUI), nameof(TrailManager.Snapshot.Hair), typeof(PlayerHair)));
+        Assert.False(AkronReconstructionGraph.IsTrailSnapshotComponentOwnerType(typeof(Entity)));
+    }
+
+    [Fact]
+    public void SnapshotExclusionCoversThePlaybackGhostAndTheTrailsThatRenderIt() {
+        PlaybackGhostRoom room = CreatePlaybackGhostRoom();
+
+        Assert.True(AkronSnapshotExclusion.IsExcludedFromSnapshot(room.Ghost));
+        Assert.True(AkronSnapshotExclusion.IsExcludedFromSnapshot(room.GhostTrail));
+        // The player's dash trail has the same shape and must survive: dropping it
+        // would silently stop restoring a real piece of the player's own state.
+        Assert.False(AkronSnapshotExclusion.IsExcludedFromSnapshot(room.PlayerTrail));
+        Assert.False(AkronSnapshotExclusion.IsExcludedFromSnapshot(room.Player));
+        Assert.False(AkronSnapshotExclusion.IsExcludedFromSnapshot(room.Manager));
+    }
+
+    [Fact]
+    public void SnapshotExclusionLeavesModSubclassesOfThePlaybackGhostAlone() {
+        // The evidence that nothing reads a playback ghost is evidence about
+        // Celeste's type. A mod that subclasses it can add whatever state it likes,
+        // and dropping that state while reporting a successful load is exactly the
+        // outcome this exclusion must not produce.
+        ModdedPlayerPlayback subclassGhost = CreateUninitializedEntity<ModdedPlayerPlayback>();
+
+        Assert.False(AkronSnapshotExclusion.IsExcludedFromSnapshot(subclassGhost));
+        Assert.True(AkronSnapshotExclusion.IsExcludedFromSnapshot(
+            CreateUninitializedEntity<PlayerPlayback>()));
+    }
+
+    [Fact]
+    public void OnlyAGhostHiddenPartWayThroughItsTimelineIsTreatedAsAkronSuppressed() {
+        // Vanilla hides a ghost when its timeline runs out and shows it again when
+        // the loop restarts, so mid-timeline plus invisible is a state only the
+        // Disable Playback hook produces.
+        PlayerPlayback playback = CreateUninitializedEntity<PlayerPlayback>();
+        playback.Timeline = new List<Player.ChaserState> {
+            new Player.ChaserState(), new Player.ChaserState(), new Player.ChaserState()
+        };
+        playback.TrimEnd = 5f;
+        SetRuntimeField(playback, "index", 1);
+        SetRuntimeField(playback, "time", 2f);
+
+        playback.Visible = false;
+        Assert.True(AkronModule.WasPlaybackHiddenByAkron(playback));
+
+        playback.Visible = true;
+        Assert.False(AkronModule.WasPlaybackHiddenByAkron(playback));
+
+        // The just-constructed state is invisible with the index past the end, and
+        // the end-of-loop state is invisible at TrimEnd. Neither is Akron's doing.
+        playback.Visible = false;
+        SetRuntimeField(playback, "index", playback.Timeline.Count);
+        Assert.False(AkronModule.WasPlaybackHiddenByAkron(playback));
+
+        SetRuntimeField(playback, "index", 1);
+        SetRuntimeField(playback, "time", 5f);
+        Assert.False(AkronModule.WasPlaybackHiddenByAkron(playback));
+    }
+
+    [Fact]
+    public void SnapshotExclusionNamesOneEntityTypeAndNoOther() {
+        // The exclusion is one named type, not a growing category. Every entity
+        // type Akron refuses to save costs the player exactness, so this list
+        // changing has to be a deliberate edit with its own evidence.
+        List<Type> excluded = typeof(Entity).Assembly
+            .GetTypes()
+            .Where(type => typeof(Entity).IsAssignableFrom(type) && !type.IsAbstract &&
+                           !type.ContainsGenericParameters &&
+                           AkronSnapshotExclusion.IsExcludedFromSnapshot(
+                               (Entity) RuntimeHelpers.GetUninitializedObject(type)))
+            .ToList();
+
+        Assert.Equal(new[] { typeof(PlayerPlayback) }, excluded);
+    }
+
+    [Fact]
+    public void AnExcludedTrailSnapshotHandsItsManagerSlotBack() {
+        PlaybackGhostRoom room = CreatePlaybackGhostRoom();
+        TrailManager.Snapshot[] slots = GetRuntimeField<TrailManager.Snapshot[]>(room.Manager, "snapshots");
+
+        AkronSnapshotExclusion.ReleaseTrailManagerSlot(room.GhostTrail);
+        AkronSnapshotExclusion.ReleaseTrailManagerSlot(room.Ghost);
+
+        Assert.Null(slots[room.GhostTrail.Index]);
+        // Releasing a slot the caller did not remove would drop a live dash trail.
+        Assert.Same(room.PlayerTrail, slots[room.PlayerTrail.Index]);
+    }
+
+    [Fact]
+    public void DetachedGhostsAreNotPutBackIntoARoomThatAlreadyRebuiltItsOwn() {
+        PlaybackGhostRoom room = CreatePlaybackGhostRoom();
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        SetRuntimeField(level, "<Entities>k__BackingField", room.Entities);
+
+        // Every failing StartPos restore reloads the room, and a room load builds
+        // its own ghosts. Putting the detached ones back on top would leave one more
+        // ghost after every failed Load.
+        AkronSnapshotExclusion.ReattachToLevel(level, new List<Entity> { room.Ghost });
+
+        Assert.Single(GetEntityListContents(room.Entities), entity => entity is PlayerPlayback);
+    }
+
+    [Fact]
+    public void TrailSnapshotCanRetainAPlaybackComponentAfterItsOwnerLeavesTheScene() {
+        TrailPlaybackRoot saved = CreateDetachedPlaybackTrailScene(0.625f);
+        TrailPlaybackRoot baseline = CreateDetachedPlaybackTrailScene(0f);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TrailPlaybackRoot fresh = CreateDetachedPlaybackTrailScene(0f);
+        PlayerHair freshHair = fresh.Snapshot.Hair;
+        Image freshSprite = fresh.Snapshot.Sprite;
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(0.625f, fresh.Snapshot.Percent);
+        Assert.Same(freshHair, fresh.Snapshot.Hair);
+        Assert.Same(freshSprite, fresh.Snapshot.Sprite);
+        Assert.IsType<PlayerPlayback>(freshHair.Entity);
+        Assert.Null(freshHair.Entity.Scene);
+        Assert.DoesNotContain(freshHair.Entity, GetEntityListContents(fresh.Entities));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void AFreshRoomThatKeptTheDestroyedGhostsTrailRefusesTheRestore() {
+        // The room Akron's fresh-room reload used to leave behind. UnloadLevel keeps
+        // every Tags.Global entity, and a TrailManager.Snapshot is Tags.Global while
+        // holding the PlayerSprite and PlayerHair of the entity it was made from, so
+        // the snapshot outlives the ghost the reload destroyed and keeps it reachable
+        // with a null Scene. LoadLevel rebuilds the same map entity with the same
+        // EntityID, so the room holds two indistinguishable ghosts and the saved node
+        // pairs with the dead one.
+        PlaybackGhostReloadRoom fresh = CreateReloadedGhostRoom(trailBelongsToDestroyedGhost: true);
+
+        AkronReconstructionRestore restore = RestoreTrailingGhostDocumentInto(fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains(
+            "reconstructed reference edge is not authentic to the fresh room",
+            restore.Error);
+        Assert.Contains("edge-parent-type=Celeste.PlayerPlayback", restore.Error);
+        Assert.Contains("edge-field=<Scene>k__BackingField", restore.Error);
+        // The saved node did pair. It paired with the destroyed ghost, whose Scene is
+        // null, which is why no fresh-room edge can authenticate it.
+        Assert.Contains("edge-parent-fresh=true", restore.Error);
+        Assert.Contains("fresh-field-alias=false", restore.Error);
+    }
+
+    [Fact]
+    public void AFreshRoomWhoseTrailsBelongToItRestoresTheGhostOntoItsOwnLiveCopy() {
+        // What TryLoadFreshRoom leaves behind now that it clears the trails before
+        // UnloadLevel, the way Celeste.Level.Reload does: every snapshot the room
+        // still holds belongs to an entity the room still holds.
+        PlaybackGhostReloadRoom fresh = CreateReloadedGhostRoom(trailBelongsToDestroyedGhost: false);
+        PlayerPlayback liveGhost = fresh.Ghost;
+
+        AkronReconstructionRestore restore = RestoreTrailingGhostDocumentInto(fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        // The saved ghost has to land on the ghost the room actually holds, not on a
+        // reconstructed copy: a reconstructed one would leave the room's own trail
+        // rendering a corpse.
+        Assert.Same(liveGhost, fresh.Snapshot.Sprite.Entity);
+        Assert.Same(fresh.Level, liveGhost.Scene);
+        Assert.Contains(liveGhost, GetEntityListContents(fresh.Entities));
+        Assert.Equal(2.5f, liveGhost.Time);
+    }
+
+    private sealed class DestroyedTrailOwnerRoom {
+        public PlaybackGhostReloadRoot Root = null!;
+        public Level Level = null!;
+        public EntityList Entities = null!;
+        public Entity Owner = null!;
+        public TrailManager.Snapshot Snapshot = null!;
+    }
+
+    // The same reloaded-room shape on an entity that is not the playback ghost.
+    // Celeste.Player is the type this stands for - it trails on every dash and the
+    // fresh-room reload removes it explicitly - but Player cannot be walked headlessly
+    // because its own graph reaches stripped FNA members, so a built-in Monocle.Entity
+    // with the default EntityID takes its place. What the shape needs is only that a
+    // Tags.Global snapshot holds the entity's PlayerSprite and that the entity sits at a
+    // lower Depth than the TrailManager, which is true of the player (0) and its trails
+    // (1) exactly as it is of the ghost.
+    private static DestroyedTrailOwnerRoom CreateDestroyedTrailOwnerRoom(
+        bool ownerIsTrailing,
+        bool trailBelongsToDestroyedOwner
+    ) {
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        EntityList entities = LinkSceneEntities(level, CreateDetachedEntityList());
+
+        Entity owner = CreateUninitializedEntity<Entity>();
+        AttachGhostRoomHairAndSprite(owner);
+        SetRuntimeField(owner, "<Scene>k__BackingField", level);
+        SetGhostRoomDepth(owner, 0);
+
+        Entity? destroyed = null;
+        if (trailBelongsToDestroyedOwner) {
+            destroyed = CreateUninitializedEntity<Entity>();
+            AttachGhostRoomHairAndSprite(destroyed);
+            SetRuntimeField(destroyed, "<Scene>k__BackingField", null);
+            SetGhostRoomDepth(destroyed, 0);
+        }
+
+        TrailManager manager = CreateGhostRoomTrailManager(level, out TrailManager.Snapshot[] slots);
+        TrailManager.Snapshot? snapshot = ownerIsTrailing
+            ? CreateTrailSnapshotFrom(level, manager, slots, 0, destroyed ?? owner, depth: 1)
+            : null;
+
+        // The manager is Depth 10 and the owner is Depth 0, so a descending depth sort
+        // puts the manager first and the capture walk reaches the owner through
+        // TrailManager.snapshots[i].Sprite.<Entity> rather than through its own slot.
+        AddDetachedEntity(entities, manager);
+        if (snapshot != null) {
+            AddDetachedEntity(entities, snapshot);
+        }
+        AddDetachedEntity(entities, owner);
+
+        return new DestroyedTrailOwnerRoom {
+            Root = new PlaybackGhostReloadRoot { Level = level },
+            Level = level,
+            Entities = entities,
+            Owner = owner,
+            Snapshot = snapshot!
+        };
+    }
+
+    private static AkronReconstructionRestore RestoreTrailingOwnerDocumentInto(DestroyedTrailOwnerRoom fresh) {
+        DestroyedTrailOwnerRoom saved = CreateDestroyedTrailOwnerRoom(
+            ownerIsTrailing: true,
+            trailBelongsToDestroyedOwner: false);
+        DestroyedTrailOwnerRoom baseline = CreateDestroyedTrailOwnerRoom(
+            ownerIsTrailing: true,
+            trailBelongsToDestroyedOwner: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved.Root, baseline.Root);
+        Assert.True(capture.Success, capture.Error);
+        return graph.Restore(capture.Document, fresh.Root);
+    }
+
+    [Fact]
+    public void AnyTrailedEntityTheReloadDestroysProducesTheSameRefusalNotJustTheGhost() {
+        // The playback ghost is the reported case, not the whole of it. Every entity a
+        // TrailManager.Snapshot holds satisfies the same three conditions: the snapshot
+        // carries Tags.Global so it survives UnloadLevel, it keeps the entity's live
+        // PlayerSprite and PlayerHair, and it sorts before the entity, so the entity's
+        // canonical document path runs through the snapshot. Celeste.Player is the other
+        // stock type that reaches this shape - it trails on every dash, and
+        // TryLoadFreshRoom removes it by hand before UnloadLevel - and no snapshot
+        // exclusion covers it. Clearing the trails, which is what Celeste.Level.Reload
+        // does and what TryLoadFreshRoom now does, is what covers it.
+        DestroyedTrailOwnerRoom stale = CreateDestroyedTrailOwnerRoom(
+            ownerIsTrailing: true,
+            trailBelongsToDestroyedOwner: true);
+
+        AkronReconstructionRestore refused = RestoreTrailingOwnerDocumentInto(stale);
+
+        Assert.False(refused.Success);
+        Assert.Contains("reconstructed reference edge is not authentic to the fresh room", refused.Error);
+        Assert.Contains("edge-field=<Scene>k__BackingField", refused.Error);
+        Assert.Contains("edge-parent-fresh=true", refused.Error);
+        Assert.Contains("fresh-field-alias=false", refused.Error);
+        Assert.DoesNotContain("edge-parent-type=Celeste.PlayerPlayback", refused.Error);
+
+        // Same room, with the surviving trail belonging to the entity the room still
+        // holds. That is the room the reload leaves once it clears the trails first.
+        DestroyedTrailOwnerRoom fresh = CreateDestroyedTrailOwnerRoom(
+            ownerIsTrailing: true,
+            trailBelongsToDestroyedOwner: false);
+        Image freshSprite = fresh.Snapshot.Sprite;
+
+        AkronReconstructionRestore restored = RestoreTrailingOwnerDocumentInto(fresh);
+
+        Assert.True(restored.Success, restored.Error);
+        Assert.Same(fresh.Owner, freshSprite.Entity);
+        Assert.Same(fresh.Level, fresh.Owner.Scene);
+    }
+
+    [Fact]
+    public void AnUnpairedGhostStillTakesItsSceneEdgeOnStructuralBudgetAloneAndRestoresWrongly() {
+        // THIS TEST PINS BEHAVIOUR THAT IS WRONG. It is here so that the day it is
+        // fixed, it fails and says so.
+        //
+        // ValidateReferenceEdge accepts a reference edge with no authenticator at all
+        // whenever freshListStructuralTypeCounts holds a remaining occurrence for
+        // (target type, structural path with every list index wildcarded). That budget
+        // records that SOME object of that type sits at that path in the fresh room. It
+        // does not record WHICH, and it does not require the edge's parent to be an
+        // object the fresh room holds. So when a saved entity fails to pair - here
+        // because the fresh room rebuilt it with a different EntityID - the
+        // reconstructed copy's <Scene> edge spends the occurrence that the room's own
+        // live entity put there, and the restore reports Success.
+        //
+        // What ends up wrong is not only that edge. The room's own PlayerSprite is
+        // fresh-resolved, so its <Entity> back reference is rewritten to the
+        // reconstructed copy, the saved state lands on that copy, and the entity the
+        // room actually holds keeps its clean-load state. In game the surviving trail
+        // would render the room's sprite at the reconstructed copy's position.
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        EntityList entities = LinkSceneEntities(level, CreateDetachedEntityList());
+        PlayerPlayback liveGhost = CreatePlaybackGhost(level, sourceId: 43, depth: 9008, time: 0f);
+        Entity trailer = CreateGhostRoomTrailer(level);
+        TrailManager manager = CreateGhostRoomTrailManager(level, out TrailManager.Snapshot[] slots);
+        TrailManager.Snapshot snapshot = CreateTrailSnapshotFrom(level, manager, slots, 0, liveGhost, depth: 9009);
+        AddDetachedEntity(entities, snapshot);
+        AddDetachedEntity(entities, liveGhost);
+        AddDetachedEntity(entities, manager);
+        AddDetachedEntity(entities, trailer);
+        PlaybackGhostReloadRoom fresh = new PlaybackGhostReloadRoom {
+            Root = new PlaybackGhostReloadRoot { Level = level },
+            Level = level,
+            Entities = entities,
+            Ghost = liveGhost,
+            Snapshot = snapshot
+        };
+        Image freshSprite = snapshot.Sprite;
+        PlayerHair freshHair = snapshot.Hair;
+
+        AkronReconstructionRestore restore = RestoreTrailingGhostDocumentInto(fresh);
+
+        // Accepted, with no authenticator: the saved document asked for the fresh Level
+        // at a path the fresh room does hold a Level at, and that was enough.
+        Assert.True(restore.Success, restore.Error);
+
+        // WRONG: the room's own sprite no longer points at the ghost the room holds.
+        Entity? spriteOwner = freshSprite.Entity;
+        Assert.NotSame(liveGhost, spriteOwner);
+        PlayerPlayback reconstructedGhost = Assert.IsType<PlayerPlayback>(spriteOwner);
+        // WRONG: the reconstructed copy takes the entity-list slot of the ghost the room
+        // load built, and gets the live Level in its Scene on the occurrence budget
+        // alone. The ghost LoadLevel produced is dropped from the room entirely.
+        Assert.Same(level, reconstructedGhost.Scene);
+        Assert.Contains(reconstructedGhost, GetEntityListContents(entities));
+        Assert.DoesNotContain(liveGhost, GetEntityListContents(entities));
+        // WRONG: the saved state landed on the reconstructed copy, and the ghost the
+        // room actually holds kept its clean-load state.
+        Assert.Equal(2.5f, reconstructedGhost.Time);
+        Assert.Equal(0f, liveGhost.Time);
+        // WRONG: the surviving snapshot keeps the room's PlayerSprite but is handed a
+        // reconstructed PlayerHair, so the two halves of one trail disagree about who
+        // they belong to.
+        Assert.Same(freshSprite, snapshot.Sprite);
+        Assert.NotSame(freshHair, snapshot.Hair);
+    }
+
+    [Fact]
+    public void ASavedGhostThatWasNotTrailingPairsThroughItsOwnEntityListSlot() {
+        // The saved half of the same two-factor failure. With no live trail at the
+        // Set frame the ghost's canonical document parent is its own entity-list slot
+        // rather than a foreign entity's field, so the destroyed ghost the reloaded
+        // room still holds is never reachable at that path and the pairing goes
+        // through TryResolveFreshOwnedEntity instead.
+        PlaybackGhostReloadRoom fresh = CreateReloadedGhostRoom(trailBelongsToDestroyedGhost: true);
+        PlayerPlayback liveGhost = fresh.Ghost;
+
+        AkronReconstructionRestore restore = RestoreTrailingGhostDocumentInto(
+            fresh,
+            savedGhostIsTrailing: false);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(liveGhost, fresh.Ghost);
+        Assert.Same(fresh.Level, liveGhost.Scene);
     }
 
     [Theory]
@@ -1128,6 +1964,67 @@ public sealed class StartPosReconstructionTests {
         IEnumerator restoredIterator = Assert.Single(fresh.States);
         Assert.True(restoredIterator.MoveNext());
         Assert.Equal(11, restoredIterator.Current);
+    }
+
+    [Fact]
+    public void CompilerIteratorCanRepeatInsideItsOwnerEntityCoroutineStack() {
+        SavedSceneRoot saved = CreateDuplicateIteratorScene(includeIterator: true);
+        SavedSceneRoot baseline = CreateDuplicateIteratorScene(includeIterator: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        SavedSceneRoot fresh = CreateDuplicateIteratorScene(includeIterator: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        IteratorOwnerEntity restoredOwner = Assert.IsType<IteratorOwnerEntity>(
+            Assert.Single(GetEntityListContents(fresh.Entities)));
+        Coroutine restoredCoroutine = Assert.IsType<Coroutine>(Assert.Single(
+            GetComponentListContents(restoredOwner)));
+        IEnumerator[] restoredStack = GetRuntimeField<Stack<IEnumerator>>(
+                restoredCoroutine,
+                "enumerators")
+            .ToArray();
+        Assert.Equal(2, restoredStack.Length);
+        Assert.Same(restoredStack[0], restoredStack[1]);
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void CompilerIteratorCannotAliasIntoAnUnrelatedRootArray() {
+        SavedSceneRoot savedScene = CreateDuplicateIteratorScene(includeIterator: true);
+        IteratorOwnerEntity savedOwner = Assert.IsType<IteratorOwnerEntity>(
+            Assert.Single(GetEntityListContents(savedScene.Entities)));
+        Coroutine savedCoroutine = Assert.IsType<Coroutine>(Assert.Single(
+            GetComponentListContents(savedOwner)));
+        IEnumerator savedIterator = GetRuntimeField<Stack<IEnumerator>>(
+                savedCoroutine,
+                "enumerators")
+            .Peek();
+        IteratorAliasSceneRoot saved = new IteratorAliasSceneRoot {
+            Scene = savedScene.Scene,
+            Entities = savedScene.Entities,
+            Unrelated = new[] { savedIterator }
+        };
+        SavedSceneRoot baselineScene = CreateDuplicateIteratorScene(includeIterator: false);
+        IteratorAliasSceneRoot baseline = new IteratorAliasSceneRoot {
+            Scene = baselineScene.Scene,
+            Entities = baselineScene.Entities
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        SavedSceneRoot freshScene = CreateDuplicateIteratorScene(includeIterator: false);
+        IteratorAliasSceneRoot fresh = new IteratorAliasSceneRoot {
+            Scene = freshScene.Scene,
+            Entities = freshScene.Entities
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("reference edge is not authentic", restore.Error);
     }
 
     [Fact]
@@ -1289,6 +2186,16 @@ public sealed class StartPosReconstructionTests {
             graph.Deserialize("{\"Nodes\":[{\"DelegateCalls\":[{},{}]}]}"));
 
         Assert.Contains("complex record count exceeds", exception.Message);
+    }
+
+    [Fact]
+    public void DefaultComplexRecordBudgetCoversHeartOfStormSnapshots() {
+        // Spring Collab 2020's Heart of the Storm produced 337,736 complex
+        // records in a real two-slot remote capture. This is valid map state,
+        // so the hostile-input guard must leave room for it.
+        Assert.True(
+            AkronReconstructionGraph.DefaultMaxJsonExpensiveRecordCount >= 337_736,
+            "The default complex-record budget rejects Heart of the Storm.");
     }
 
     [Fact]
@@ -1508,7 +2415,7 @@ public sealed class StartPosReconstructionTests {
             maxJsonBinaryBytes: 100);
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            graph.Deserialize("{\"Format\":\"akron-reconstruction-v7\",\"Nodes\":[]}"));
+            graph.Deserialize("{\"Format\":\"akron-reconstruction-v8\",\"Nodes\":[]}"));
 
         Assert.Contains("container count exceeds", exception.Message);
     }
@@ -2029,6 +2936,144 @@ public sealed class StartPosReconstructionTests {
         Assert.True(restore.Success, restore.Error);
         Assert.Same(freshResource, fresh.Resource);
         Assert.Equal("fresh-process", fresh.Resource.ProcessIdentity);
+    }
+
+    [Fact]
+    public void EquivalentStableKeysReuseAvailableFreshResources() {
+        DuplicateResourceRoot saved = new DuplicateResourceRoot {
+            TargetA = new TestResource("saved-a", "shared-texture"),
+            TargetB = new TestResource("saved-b", "shared-texture"),
+            TargetC = new TestResource("saved-c", "shared-texture")
+        };
+        TestResource baselineA = new TestResource("baseline-a", "shared-texture");
+        DuplicateResourceRoot baseline = new DuplicateResourceRoot {
+            TargetA = baselineA,
+            TargetB = new TestResource("baseline-b", "shared-texture"),
+            TargetC = baselineA
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            resource => ((TestResource) resource).StableKey,
+            areEquivalentLiveResources: type => type == typeof(TestResource));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TestResource freshA = new TestResource("fresh-a", "shared-texture");
+        TestResource freshB = new TestResource("fresh-b", "shared-texture");
+        DuplicateResourceRoot fresh = new DuplicateResourceRoot {
+            TargetA = new TestResource("wrong-a", "other-a"),
+            TargetB = new TestResource("wrong-b", "other-b"),
+            TargetC = new TestResource("wrong-c", "other-c"),
+            CandidateA = freshA,
+            CandidateB = freshB
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(new[] { "fresh-a", "fresh-b" }, new[] {
+            fresh.TargetA.ProcessIdentity,
+            fresh.TargetB.ProcessIdentity,
+            fresh.TargetC.ProcessIdentity
+        }.Distinct().OrderBy(value => value));
+    }
+
+    [Fact]
+    public void DuplicateStableKeysAreRejectedWithoutAnEquivalenceContract() {
+        DuplicateResourceRoot saved = new DuplicateResourceRoot {
+            TargetA = new TestResource("saved-a", "shared-texture"),
+            TargetB = new TestResource("saved-b", "shared-texture")
+        };
+        DuplicateResourceRoot baseline = new DuplicateResourceRoot {
+            TargetA = new TestResource("baseline-a", "shared-texture"),
+            TargetB = new TestResource("baseline-b", "shared-texture")
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            resource => ((TestResource) resource).StableKey);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        DuplicateResourceRoot fresh = new DuplicateResourceRoot {
+            TargetA = new TestResource("wrong-a", "other-a"),
+            TargetB = new TestResource("wrong-b", "other-b"),
+            CandidateA = new TestResource("fresh-a", "shared-texture"),
+            CandidateB = new TestResource("fresh-b", "shared-texture")
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("fresh resource", restore.Error);
+    }
+
+    [Fact]
+    public void DetachedStableResourceWinsOverFreshStructuralCandidatesWithOtherKeys() {
+        TestResource savedResource = new TestResource("saved", "target-texture");
+        TestResourceListRoot saved = new TestResourceListRoot {
+            Holders = new List<TestResourceHolder> {
+                new TestResourceHolder { Resource = savedResource }
+            }
+        };
+        TestResourceListRoot baseline = new TestResourceListRoot {
+            Holders = new List<TestResourceHolder> {
+                new TestResourceHolder { Resource = new TestResource("baseline", "target-texture") }
+            }
+        };
+        TestResource detached = new TestResource("detached", "target-texture");
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            resource => ((TestResource) resource).StableKey,
+            resolveDetachedLiveResource: (_, key) => key.EndsWith("|target-texture", StringComparison.Ordinal)
+                ? detached
+                : null,
+            areEquivalentLiveResources: type => type == typeof(TestResource));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TestResourceListRoot fresh = new TestResourceListRoot {
+            Holders = new List<TestResourceHolder> {
+                new TestResourceHolder { Resource = new TestResource("fresh-a", "other-a") },
+                new TestResourceHolder { Resource = new TestResource("fresh-b", "other-b") }
+            }
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(detached, fresh.Holders[0].Resource);
+    }
+
+    [Fact]
+    public void DetachedStableResourceLookupIsCachedWithinARestore() {
+        DuplicateResourceRoot saved = new DuplicateResourceRoot {
+            TargetA = new TestResource("saved-a", "target-texture"),
+            TargetB = new TestResource("saved-b", "target-texture")
+        };
+        DuplicateResourceRoot baseline = new DuplicateResourceRoot {
+            TargetA = new TestResource("baseline-a", "target-texture"),
+            TargetB = new TestResource("baseline-b", "target-texture")
+        };
+        TestResource detached = new TestResource("detached", "target-texture");
+        int lookupCount = 0;
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            resource => ((TestResource) resource).StableKey,
+            resolveDetachedLiveResource: (_, _) => {
+                lookupCount++;
+                return detached;
+            },
+            areEquivalentLiveResources: type => type == typeof(TestResource));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        DuplicateResourceRoot fresh = new DuplicateResourceRoot {
+            TargetA = new TestResource("fresh-a", "other-a"),
+            TargetB = new TestResource("fresh-b", "other-b")
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(detached, fresh.TargetA);
+        Assert.Same(detached, fresh.TargetB);
+        Assert.Equal(1, lookupCount);
     }
 
     [Fact]
@@ -2630,6 +3675,93 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void RepeatedEntitiesWithoutSourceIdsMatchByEntityListTypeOrdinal() {
+        ClutterLinkedEntity savedFirst = CreateClutterLinkedEntity(11);
+        ClutterLinkedEntity savedSecond = CreateClutterLinkedEntity(22);
+        ClutterLinkedEntity savedThird = CreateClutterLinkedEntity(33);
+        savedFirst.HasBelow[savedSecond] = true;
+        savedSecond.HasBelow[savedThird] = true;
+        savedSecond.Above.Add(savedFirst);
+        savedThird.Above.Add(savedSecond);
+        SourceEntityListOwnerRoot saved = CreateSourceEntityListOwnerRoot(
+            savedFirst,
+            savedSecond,
+            savedThird);
+        SourceEntityListOwnerRoot baseline = CreateSourceEntityListOwnerRoot(
+            CreateClutterLinkedEntity(0),
+            CreateClutterLinkedEntity(0),
+            CreateClutterLinkedEntity(0));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        ClutterLinkedEntity freshFirst = CreateClutterLinkedEntity(0);
+        ClutterLinkedEntity freshSecond = CreateClutterLinkedEntity(0);
+        ClutterLinkedEntity freshThird = CreateClutterLinkedEntity(0);
+        SourceEntityListOwnerRoot fresh = CreateSourceEntityListOwnerRoot(
+            freshFirst,
+            freshSecond,
+            freshThird);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(new[] { 11, 22, 33 }, new[] { freshFirst.Value, freshSecond.Value, freshThird.Value });
+        Assert.Same(freshSecond, Assert.Single(freshFirst.HasBelow).Key);
+        Assert.Same(freshThird, Assert.Single(freshSecond.HasBelow).Key);
+        Assert.Same(freshFirst, Assert.Single(freshSecond.Above));
+        Assert.Same(freshSecond, Assert.Single(freshThird.Above));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void RepeatedGeneratedEntitiesRestoreWhenFreshTypePopulationDiffers() {
+        (SavedSceneRoot saved, ClutterLinkedEntity[] savedEntities) =
+            CreateClutterLinkedScene(11, 22, 33);
+        ClutterLinkedEntity savedFirst = savedEntities[0];
+        ClutterLinkedEntity savedSecond = savedEntities[1];
+        ClutterLinkedEntity savedThird = savedEntities[2];
+        savedFirst.HasBelow[savedSecond] = true;
+        savedSecond.Above.Add(savedThird);
+        (SavedSceneRoot baseline, _) = CreateClutterLinkedScene(0, 0, 0);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, ClutterLinkedEntity[] freshEntities) = CreateClutterLinkedScene(0, 0);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        ClutterLinkedEntity[] restored = GetEntityListContents(fresh.Entities)
+            .Cast<ClutterLinkedEntity>()
+            .ToArray();
+        Assert.Equal(new[] { 11, 22, 33 }, restored.Select(entity => entity.Value));
+        Assert.Equal(new[] { 11f, 22f, 33f }, restored.Select(entity =>
+            Assert.IsType<Hitbox>(entity.Collider).Width));
+        Assert.Contains(restored, entity => freshEntities.All(freshEntity =>
+            !ReferenceEquals(entity, freshEntity)));
+        Assert.Same(restored[1], Assert.Single(restored[0].HasBelow).Key);
+        Assert.Empty(restored[1].HasBelow);
+        Assert.Same(restored[2], Assert.Single(restored[1].Above));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void GeneratedEntityTypeAbsentFromFreshEntityListFailsClosed() {
+        (SavedSceneRoot saved, _) = CreateClutterLinkedScene(11, 22);
+        (SavedSceneRoot baseline, _) = CreateClutterLinkedScene(0, 0);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, _) = CreateClutterLinkedScene();
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("reconstructed type is not authentic", restore.Error);
+        Assert.Empty(GetEntityListContents(fresh.Entities));
+    }
+
+    [Fact]
     public void FreshEntityCannotRestoreAPeerLinkAcrossDifferentEntityLists() {
         PeerTargetEntity savedTarget = CreatePeerTargetEntity("b00", 20);
         PeerLinkEntity savedOwner = CreatePeerLinkEntity("a00", 10, savedTarget);
@@ -2914,6 +4046,53 @@ public sealed class StartPosReconstructionTests {
         return entity;
     }
 
+    private static ClutterLinkedEntity CreateClutterLinkedEntity(int value) {
+        ClutterLinkedEntity entity = CreateUninitializedEntity<ClutterLinkedEntity>();
+        InitializeEmptyComponentList(entity);
+        entity.HasBelow = new Dictionary<ClutterLinkedEntity, bool>();
+        entity.Above = new List<ClutterLinkedEntity>();
+        entity.Value = value;
+        entity.Collider = new Hitbox(Math.Max(1, value), 8f);
+        return entity;
+    }
+
+    private static (SavedSceneRoot Root, ClutterLinkedEntity[] Entities) CreateClutterLinkedScene(
+        params int[] values
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        ClutterLinkedEntity[] entities = values.Select(CreateClutterLinkedEntity).ToArray();
+        foreach (ClutterLinkedEntity entity in entities) {
+            SetRuntimeField(entity, "<Scene>k__BackingField", scene);
+            AddDetachedEntity(entityList, entity);
+        }
+        return (new SavedSceneRoot { Scene = scene, Entities = entityList }, entities);
+    }
+
+    private static SavedSceneRoot CreateDuplicateIteratorScene(bool includeIterator) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        IteratorOwnerEntity owner = CreateUninitializedEntity<IteratorOwnerEntity>();
+        ComponentList components = CreateDetachedComponentList(owner);
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+        owner.Value = 11;
+
+        Coroutine coroutine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+        SetRuntimeField(coroutine, "<Entity>k__BackingField", owner);
+        Stack<IEnumerator> iterators = new Stack<IEnumerator>();
+        if (includeIterator) {
+            IEnumerator iterator = owner.Routine().GetEnumerator();
+            Assert.True(iterator.MoveNext());
+            iterators = new Stack<IEnumerator>(new[] { iterator, iterator });
+        }
+        SetRuntimeField(coroutine, "enumerators", iterators);
+        SetRuntimeField(components, "components", new List<Component> { coroutine });
+        SetRuntimeField(components, "current", new HashSet<Component> { coroutine });
+        AddDetachedEntity(entityList, owner);
+        return new SavedSceneRoot { Scene = scene, Entities = entityList };
+    }
+
     private static NestedStateOwnerEntity CreateNestedStateOwnerEntity(string room, int id, int? value) {
         NestedStateOwnerEntity entity = CreateUninitializedEntity<NestedStateOwnerEntity>();
         InitializeEmptyComponentList(entity);
@@ -3047,6 +4226,395 @@ public sealed class StartPosReconstructionTests {
         Assert.Null(capture.Document);
     }
 
+    // IntPtr.IsPrimitive is true, so the scalar gate used to accept a process
+    // pointer and write it as a decimal string. The snapshot was accepted and
+    // could never be rebuilt: Convert.ChangeType(string, IntPtr) throws, because
+    // IntPtr is not IConvertible. Refuse at capture instead, where a slot that
+    // cannot be rebuilt is still rolled back and reported.
+    [Fact]
+    public void CaptureRefusesAProcessPointerInsteadOfWritingItAsAScalar() {
+        NativeHandleRoot saved = new NativeHandleRoot { Handle = new IntPtr(0x2A) };
+        NativeHandleRoot baseline = new NativeHandleRoot();
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.False(capture.Success);
+        Assert.Equal("$.Handle", capture.ErrorPath);
+        Assert.Contains("process pointer cannot be persisted", capture.Error);
+        // The refusal has to name what holds the pointer: the path carries field
+        // names and array indices, never a type, and the type is what points at
+        // the mod responsible.
+        Assert.Contains("pointer-type=System.IntPtr", capture.Error);
+        Assert.Contains("owner-type=" + typeof(NativeHandleRoot).FullName, capture.Error);
+        Assert.Null(capture.Document);
+    }
+
+    [Fact]
+    public void CaptureRefusesANativeUnsignedPointerOnTheSameGate() {
+        NativeUnsignedHandleRoot saved = new NativeUnsignedHandleRoot { Handle = new UIntPtr(0x2A) };
+        NativeUnsignedHandleRoot baseline = new NativeUnsignedHandleRoot();
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.False(capture.Success);
+        Assert.Equal("$.Handle", capture.ErrorPath);
+        Assert.Contains("pointer-type=System.UIntPtr", capture.Error);
+    }
+
+    // A snapshot written before that gate was fixed holds a scalar whose type is
+    // System.IntPtr, and capture can no longer produce one, so the document is
+    // edited into the shape those files already have on disk. Rebuilding one has
+    // to say which field it refused; it used to surface a bare InvalidCastException
+    // that the restore could only report against "$".
+    [Fact]
+    public void RebuildRefusesAStoredProcessPointerScalarByItsFieldPath() {
+        TestRoot saved = new TestRoot { Counter = 7 };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, new TestRoot());
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionValue counter = capture.Document.Nodes
+            .SelectMany(node => node.Fields)
+            .Single(field => field.Name == nameof(TestRoot.Counter))
+            .Value;
+        counter.TypeName = typeof(IntPtr).AssemblyQualifiedName!;
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+
+        AkronReconstructionRestore restore = graph.Restore(document, new TestRoot());
+
+        Assert.False(restore.Success);
+        Assert.Equal("$.Counter", restore.ErrorPath);
+        Assert.Contains("unsupported scalar type: System.IntPtr", restore.Error);
+        Assert.DoesNotContain("InvalidCastException", restore.Error);
+    }
+
+    // A mod session holding a string collection with a culture-aware comparer
+    // is ordinary code, and it reaches CompareInfo._sortHandle - a handle into
+    // the platform's collation data - in two hops. Capture refused the whole
+    // snapshot at that pointer, so every StartPos slot on such an install died
+    // at the first load that had to read the document, which is what a chapter
+    // change forces. The collation belongs to the process, so the rebuilt room
+    // takes its own instead of carrying a pointer across processes.
+    //
+    // This is the shape the failing install named: the log path ran through a
+    // field called "comparer", which is SortedList and SortedSet rather than
+    // the underscored "_comparer" of the hash collections. A sorted collection
+    // keeps no hash codes, so its lookups and its order are correct after a
+    // restore into a new process, which was checked with a real two-process
+    // round trip through a file.
+    [Fact]
+    public void ModuleSessionWithACultureAwareSortedListSurvivesTheDocumentRoundTrip() {
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestCultureSession {
+            SummitGems = new SortedList<string, int>(StringComparer.InvariantCultureIgnoreCase) {
+                ["beta"] = 2,
+                ["Alpha"] = 1
+            }
+        };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestCultureSession {
+            SummitGems = new SortedList<string, int>(StringComparer.InvariantCultureIgnoreCase)
+        };
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        AkronPersistentRuntimeState fresh = new AkronPersistentRuntimeState();
+        fresh.ModuleSessions["helper"] = new TestCultureSession {
+            SummitGems = new SortedList<string, int>(StringComparer.InvariantCultureIgnoreCase)
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        TestCultureSession restored = Assert.IsType<TestCultureSession>(fresh.ModuleSessions["helper"]);
+        // Verify before touching Keys: SortedList.keyList is a lazily created
+        // wrapper and the saved snapshot has it null, so reading Keys first
+        // would make the restored object differ from the document for a reason
+        // that has nothing to do with the restore.
+        AkronReconstructionVerification verification =
+            graph.Verify(document, restore, Array.Empty<string>());
+        Assert.True(verification.Success, verification.ErrorPath + ": " + verification.Error);
+        Assert.Equal(new[] { "Alpha", "beta" }, restored.SummitGems.Keys.ToArray());
+        // The comparer has to still compare the way the saved one did, or the
+        // collection silently answers a different question after a restore.
+        Assert.True(restored.SummitGems.ContainsKey("ALPHA"));
+        Assert.False(restored.SummitGems.ContainsKey("gamma"));
+    }
+
+    // The same two-hop path through a hash collection instead. Capture refused
+    // this too, and no longer does.
+    //
+    // What this test deliberately does NOT assert is that the restored set can
+    // find its own items. A hash collection stores a hash code per entry, and a
+    // culture-aware comparer hashes through a per-process seed, so a set
+    // rebuilt in a second process holds hash codes that belong to the first
+    // one. Measured with a real two-process round trip: the restored set
+    // enumerates both items and reports Count 2, and Contains returns false for
+    // both. That is not this fix's doing and not something the CompareInfo
+    // boundary can reach - a mod comparer that calls string.GetHashCode has the
+    // same defect today, with no CompareInfo anywhere near it, and the graph
+    // already re-derives exactly this state for EntityList and ComponentList
+    // and for nothing else. Asserting Contains here would pass only because the
+    // test captures and restores inside one process, which is the one case that
+    // cannot happen in game.
+    [Fact]
+    public void ModuleSessionWithACultureAwareStringSetIsCapturedAndItsContentsComeBack() {
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestCultureSession {
+            HashedGems = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase) {
+                "summit-a",
+                "summit-b"
+            }
+        };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestCultureSession {
+            HashedGems = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase)
+        };
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        AkronPersistentRuntimeState fresh = new AkronPersistentRuntimeState();
+        fresh.ModuleSessions["helper"] = new TestCultureSession {
+            HashedGems = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase)
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        TestCultureSession restored = Assert.IsType<TestCultureSession>(fresh.ModuleSessions["helper"]);
+        Assert.Equal(
+            new[] { "summit-a", "summit-b" },
+            restored.HashedGems.OrderBy(gem => gem, StringComparer.Ordinal).ToArray());
+        Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+    }
+
+    // The fresh room does not have to contain the collation the saved frame
+    // used: a CompareInfo is named by its sort name and the process hands one
+    // back on demand. Without that the anchor would have to find a fresh
+    // CompareInfo sitting at the same place in the graph, and a mod session
+    // whose shape moved after a reload would be refused for a pointer it never
+    // owned.
+    //
+    // The saved value is built with useUserOverride false, which is the one way
+    // to get a CompareInfo that is NOT the process-cached instance for its sort
+    // name. Asserting the restore comes back with the cached one is the
+    // cross-process contract stated in a single process: the rebuilding process
+    // supplies its own wrapper, matched on the name, and the saved wrapper is
+    // not carried over. Asserting Assert.Same against the saved object would
+    // pass only because one process is doing both halves.
+    [Fact]
+    public void CompareInfoMissingFromTheFreshGraphIsReacquiredByItsSortName() {
+        CompareInfo savedCollation = new CultureInfo("de-DE", useUserOverride: false).CompareInfo;
+        CompareInfo processCollation = CultureInfo.GetCultureInfo("de-DE").CompareInfo;
+        Assert.NotSame(savedCollation, processCollation);
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestCultureSession { Collation = savedCollation };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestCultureSession();
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        AkronPersistentRuntimeState fresh = new AkronPersistentRuntimeState();
+        fresh.ModuleSessions["helper"] = new TestCultureSession();
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        TestCultureSession restored = Assert.IsType<TestCultureSession>(fresh.ModuleSessions["helper"]);
+        Assert.NotSame(savedCollation, restored.Collation);
+        Assert.Same(processCollation, restored.Collation);
+        Assert.Equal("de-DE", restored.Collation.Name);
+        // "strasse" against "stra\u00dfe": German collation treats the sharp s
+        // as "ss", which ordinal comparison does not, so this says the restored
+        // wrapper really is sorting as de-DE. The escape keeps the file ASCII.
+        Assert.Equal(
+            savedCollation.Compare("strasse", "stra\u00dfe", CompareOptions.None),
+            restored.Collation.Compare("strasse", "stra\u00dfe", CompareOptions.None));
+        Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+    }
+
+    // The same shape again, with the whole collection missing from the fresh
+    // session: the list, its comparer and the collation all have to come back
+    // without a fresh counterpart to pair against. This is what a mod session
+    // that builds its collections lazily looks like on the first frame after a
+    // reload, and it is the case an anchor with no key could not serve.
+    [Fact]
+    public void ACultureAwareSortedListRebuildsWholeWhenTheFreshSessionHasNone() {
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestCultureSession {
+            SummitGems = new SortedList<string, int>(StringComparer.InvariantCultureIgnoreCase) {
+                ["beta"] = 2,
+                ["Alpha"] = 1
+            }
+        };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestCultureSession();
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        AkronPersistentRuntimeState fresh = new AkronPersistentRuntimeState();
+        fresh.ModuleSessions["helper"] = new TestCultureSession();
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        TestCultureSession restored = Assert.IsType<TestCultureSession>(fresh.ModuleSessions["helper"]);
+        Assert.Equal(new[] { "Alpha", "beta" }, restored.SummitGems.Keys.ToArray());
+        Assert.True(restored.SummitGems.ContainsKey("ALPHA"));
+    }
+
+    // An alternate sort order is a different collation under the same culture
+    // name, so a key that stopped at the culture would hand the rebuilt room
+    // the wrong one without saying so.
+    [Fact]
+    public void AlternateSortOrdersGetDistinctResourceKeys() {
+        string standard = AkronStartPosReconstruction.GetLiveResourceKey(
+            CultureInfo.GetCultureInfo("de-DE").CompareInfo);
+        string phonebook = AkronStartPosReconstruction.GetLiveResourceKey(
+            CultureInfo.GetCultureInfo("de-DE_phoneb").CompareInfo);
+        string invariant = AkronStartPosReconstruction.GetLiveResourceKey(
+            CultureInfo.InvariantCulture.CompareInfo);
+
+        Assert.Equal("sort-name=de-DE", standard);
+        Assert.Equal("sort-name=de-DE_phoneb", phonebook);
+        // The invariant culture's sort name is empty, and an empty key means
+        // "no key" to the graph, which would drop the identity check.
+        Assert.Equal("sort-name=", invariant);
+    }
+
+    // One process holds more than one CompareInfo per sort name: the invariant
+    // culture has CultureInfo.InvariantCulture.CompareInfo and the separate
+    // instance CompareInfo.GetCompareInfo("") returns. They sort identically,
+    // so the anchor is matched on the key rather than on reference identity and
+    // the fresh room's own instance is the one that survives.
+    [Fact]
+    public void AFreshCompareInfoWithTheSameSortNameIsAcceptedThoughItIsAnotherInstance() {
+        CompareInfo savedCollation = CultureInfo.InvariantCulture.CompareInfo;
+        CompareInfo freshCollation = CompareInfo.GetCompareInfo(string.Empty);
+        Assert.NotSame(savedCollation, freshCollation);
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestCultureSession { Collation = savedCollation };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestCultureSession { Collation = freshCollation };
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        AkronPersistentRuntimeState fresh = new AkronPersistentRuntimeState();
+        fresh.ModuleSessions["helper"] = new TestCultureSession { Collation = freshCollation };
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        TestCultureSession restored = Assert.IsType<TestCultureSession>(fresh.ModuleSessions["helper"]);
+        Assert.Same(freshCollation, restored.Collation);
+    }
+
+    // Two distinct instances with one sort name sort identically, but they are
+    // still two objects, and a saved graph that told them apart must not have
+    // them quietly folded into one. CompareInfo is kept out of
+    // AreEquivalentLiveResources for exactly this: the process can always hand
+    // back an instance, so nothing forces a fold, and a graph that cannot be
+    // rebuilt with its saved reference identity intact is refused by name.
+    [Fact]
+    public void TwoSavedCompareInfoInstancesSharingASortNameAreRefusedRatherThanFolded() {
+        CompareInfo first = CultureInfo.InvariantCulture.CompareInfo;
+        CompareInfo second = CompareInfo.GetCompareInfo(string.Empty);
+        Assert.NotSame(first, second);
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestCultureSession { Collation = first };
+        saved.ModuleSessions["second"] = new TestCultureSession { Collation = second };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestCultureSession { Collation = first };
+        baseline.ModuleSessions["second"] = new TestCultureSession { Collation = first };
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.False(capture.Success);
+        Assert.EndsWith(".Collation", capture.ErrorPath);
+        Assert.Contains("fresh resource", capture.Error);
+        Assert.Contains("sort-name=", capture.Error);
+    }
+
+    // A document is a file on disk and its resource key is text. Handing an
+    // unknown sort name to the process is not safe by itself: the platform
+    // parses "not-a-culture-at-all" down to the language "not" and returns a
+    // real CompareInfo for it, so the resolver can come back with a valid
+    // object that is the wrong collation. What refuses it is the key being
+    // re-derived from whatever came back and compared, and the refusal names
+    // the node rather than the document root.
+    [Fact]
+    public void ARebuildRefusesACompareInfoKeyThisProcessResolvesToADifferentSort() {
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestCultureSession {
+            Collation = CultureInfo.GetCultureInfo("de-DE").CompareInfo
+        };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestCultureSession();
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode collation = capture.Document.Nodes
+            .Single(node => node.ResourceKey.Contains("sort-name=", StringComparison.Ordinal));
+        collation.ResourceKey = collation.ResourceKey.Replace(
+            "sort-name=de-DE",
+            "sort-name=not-a-culture-at-all",
+            StringComparison.Ordinal);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        AkronPersistentRuntimeState fresh = new AkronPersistentRuntimeState();
+        fresh.ModuleSessions["helper"] = new TestCultureSession();
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.EndsWith(".Collation", restore.ErrorPath);
+        Assert.Contains("sort-name=not-a-culture-at-all", restore.Error);
+        Assert.DoesNotContain("Exception", restore.Error);
+    }
+
+    // A pointer that is not a collation handle still has to be refused: the
+    // fix names one BCL type whose native handle carries no room state, it
+    // does not open the scalar gate.
+    [Fact]
+    public void APointerOutsideTheNamedLiveResourcesIsStillRefused() {
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestNativeHandleSession { Handle = new IntPtr(0x2A) };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestNativeHandleSession();
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.False(capture.Success);
+        Assert.Contains("process pointer cannot be persisted", capture.Error);
+        Assert.Contains("owner-type=" + typeof(TestNativeHandleSession).FullName, capture.Error);
+    }
+
+    private static AkronReconstructionGraph CreateStartPosGraph() {
+        return new AkronReconstructionGraph(
+            AkronStartPosReconstruction.IsLiveResourceType,
+            AkronStartPosReconstruction.GetLiveResourceKey,
+            null,
+            AkronStartPosReconstruction.ResolveDetachedLiveResource,
+            areEquivalentLiveResources: AkronStartPosReconstruction.AreEquivalentLiveResources);
+    }
+
     [Fact]
     public void AnonymousTargetFreeRuntimeCallbackUsesTheFreshStructuralCallback() {
         Action savedCallback = CreateAnonymousCallback();
@@ -3170,10 +4738,10 @@ public sealed class StartPosReconstructionTests {
             Assert.Equal("Celeste/1-ForsakenCity", document.MapSid);
             Assert.Equal("1", document.Room);
             Assert.Equal(0, document.FileSlot);
-            Assert.Equal("akron-reconstruction-v7", document.Format);
+            Assert.Equal("akron-reconstruction-v8", document.Format);
             Assert.Equal("LightBuffer", Assert.Single(document.GameplayBuffers).FieldName);
             Assert.Equal(new byte[] { 1, 2, 3, 4 }, document.GameplayBuffers[0].Payload.Bytes);
-            Assert.Contains("v7-", Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
+            Assert.Contains("v8-", Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
             Assert.True(File.Exists(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
         } finally {
             if (Directory.Exists(directory)) {
@@ -3209,6 +4777,25 @@ public sealed class StartPosReconstructionTests {
         Assert.Contains("Snapshot expands beyond its size limit", error);
         Assert.Equal(AkronStartPosReconstruction.MaxDecompressedSnapshotBytes, Assert.IsType<long>(defaultLimit));
         Assert.NotEqual(long.MaxValue, defaultLimit);
+    }
+
+    [Fact]
+    public void DefaultExpandedSizeBudgetCoversHeartOfStormSnapshots() {
+        // The larger remote capture expanded to 228,139,144 bytes. Keep this
+        // regression threshold tied to the real player environment instead of
+        // a small synthetic graph that cannot expose decompression limits.
+        Assert.True(
+            AkronStartPosReconstruction.MaxDecompressedSnapshotBytes >= 228_139_144,
+            "The default expanded-size budget rejects Heart of the Storm.");
+
+        // And it has to leave room for a modded map that grows. The largest snapshot
+        // measured across 17 real installs is 231,081,666 bytes decompressed; at the
+        // earlier 256 MiB limit that was 11% of headroom, and the failure it buys is a
+        // slot that cannot be loaded at all rather than one that loads slowly.
+        const long largestMeasuredSnapshotBytes = 231_081_666L;
+        Assert.True(
+            AkronStartPosReconstruction.MaxDecompressedSnapshotBytes >= largestMeasuredSnapshotBytes * 3L / 2L,
+            "The expanded-size budget leaves less than 50% over the largest real snapshot.");
     }
 
     [Fact]
@@ -3328,8 +4915,26 @@ public sealed class StartPosReconstructionTests {
         public Entity AlternativeRoomEntity = null!;
     }
 
+    // A mod object that keeps a native handle. No object a vanilla room graph
+    // reaches is known to hold one, but a helper that talks to native code can.
+    private sealed class NativeHandleRoot {
+        public IntPtr Handle;
+    }
+
+    private sealed class NativeUnsignedHandleRoot {
+        public UIntPtr Handle;
+    }
+
     private sealed class RuntimeTypeRoot {
         public Type TrackerKey = null!;
+    }
+
+    private sealed class RuntimeMemberRoot {
+        public MemberInfo Member = null!;
+    }
+
+    private sealed class ScalarListRoot {
+        public List<int> Values = new List<int>();
     }
 
     private sealed class EntityListRoot {
@@ -3350,6 +4955,19 @@ public sealed class StartPosReconstructionTests {
 
     private sealed class TestEverestSession : EverestModuleSession {
         public TestSharedState Shared = null!;
+    }
+
+    // The shape the maintainer's install actually produced: a mod session that
+    // keeps a string collection whose comparer is culture-aware, plus the two
+    // narrower cases that shape is built out of.
+    private sealed class TestCultureSession : EverestModuleSession {
+        public SortedList<string, int> SummitGems = null!;
+        public HashSet<string> HashedGems = null!;
+        public CompareInfo Collation = null!;
+    }
+
+    private sealed class TestNativeHandleSession : EverestModuleSession {
+        public IntPtr Handle;
     }
 
     private sealed class TestSharedState {
@@ -3481,6 +5099,124 @@ public sealed class StartPosReconstructionTests {
         }
     }
 
+    // A capture used to copy the whole ancestor fresh-path at every field it
+    // visited, so its cost grew with the square of graph depth. That copy could
+    // never reach the document - a node only records a fresh path when it is
+    // re-paired with a fresh object found elsewhere, and both re-pairing sites
+    // supply that object's own recorded path. These two tests pin the removal:
+    // the shape test catches a reintroduced per-field copy, the identity test
+    // catches a re-pairing that lost its path.
+
+    [Fact]
+    public void CaptureCostGrowsWithGraphSizeRatherThanWithTheSquareOfItsDepth() {
+        // Doubling the depth of a chain doubles the node count. A capture that
+        // copies the ancestor path per field roughly quadruples instead; the
+        // measured figures were 3.83x before the copy was removed and 2.87x
+        // after (233,776 bytes at depth 100 against 670,688 at depth 200, the
+        // same values on every run now that the counter is thread-local), so
+        // anything at or above 3.2x is the old behaviour returning.
+        long shallow = MeasureCaptureAllocation(100);
+        long deep = MeasureCaptureAllocation(200);
+
+        Assert.True(shallow > 0);
+        Assert.True(
+            deep < shallow * 3.2,
+            "depth 100 allocated " + shallow + " bytes, depth 200 allocated " + deep + " bytes");
+    }
+
+    private static long MeasureCaptureAllocation(int depth) {
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        ChainNode saved = BuildChain(depth, valueOffset: 10);
+        ChainNode baseline = BuildChain(depth, valueOffset: 0);
+        // Warm the reflection and type-name caches so the measurement covers the
+        // walk itself rather than one-time setup.
+        graph.Capture(BuildChain(depth, valueOffset: 10), BuildChain(depth, valueOffset: 0));
+
+        // GC.GetTotalAllocatedBytes counts every thread in the process. xUnit runs test
+        // collections in parallel, so it charged this measurement for whatever else was
+        // running, which made this test fail about 30% of the time on an idle machine
+        // (the recorded flake read 233,776 bytes at depth 100 against 2,682,496 at depth
+        // 200, an 11.5x that no capture ever allocated). Capture is synchronous and
+        // single-threaded, so the thread-local counter measures exactly this call and
+        // nothing else - the same counter every other allocation assertion here uses.
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        long after = GC.GetAllocatedBytesForCurrentThread();
+
+        Assert.True(capture.Success, capture.Error);
+        Assert.Equal(depth, capture.Document.Nodes.Count);
+        return after - before;
+    }
+
+    [Fact]
+    public void ARepairedEntityStillCarriesItsFreshPathThroughAWholeSnapshotRoundTrip() {
+        // The re-pairing branch is the only producer of a non-empty FreshPath,
+        // and it is the branch the removed parameter used to feed. Drive it and
+        // follow the value all the way through the real gzip snapshot file.
+        string directory = Path.Combine(Path.GetTempPath(), "akron-freshpath-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            TestRoot saved = new TestRoot {
+                Counter = 77,
+                Primary = new TestNode { Name = "child", Value = 21 },
+                Resource = new TestResource("shared-key")
+            };
+            // The baseline holds the same resource key behind a different
+            // wrapper, which is what forces the capture down the re-pairing
+            // branch instead of pairing the object it was handed.
+            TestRoot baseline = new TestRoot {
+                Primary = new TestNode { Name = "child" },
+                Resource = new TestResource("shared-key")
+            };
+            AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+            AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+            Assert.True(capture.Success, capture.Error);
+
+            AkronReconstructionDocument captured = capture.Document;
+            List<AkronReconstructionNode> withFreshPath =
+                captured.Nodes.Where(node => node.FreshPath.Count > 0).ToList();
+
+            string path = Path.Combine(directory, "round-trip.json.gz");
+            using (FileStream file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (GZipStream compressed = new GZipStream(file, CompressionLevel.Optimal, leaveOpen: false)) {
+                graph.Serialize(captured, compressed);
+            }
+
+            AkronReconstructionDocument loaded;
+            using (FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (GZipStream compressed = new GZipStream(file, CompressionMode.Decompress, leaveOpen: false)) {
+                loaded = graph.Deserialize(compressed);
+            }
+
+            // Every fresh path survives the format unchanged, step for step.
+            Assert.Equal(captured.Nodes.Count, loaded.Nodes.Count);
+            for (int index = 0; index < captured.Nodes.Count; index++) {
+                List<AkronReconstructionPathStep> expected = captured.Nodes[index].FreshPath;
+                List<AkronReconstructionPathStep> actual = loaded.Nodes[index].FreshPath;
+                Assert.Equal(expected.Count, actual.Count);
+                for (int step = 0; step < expected.Count; step++) {
+                    Assert.Equal(expected[step].Kind, actual[step].Kind);
+                    Assert.Equal(expected[step].DeclaringTypeName, actual[step].DeclaringTypeName);
+                    Assert.Equal(expected[step].FieldName, actual[step].FieldName);
+                    Assert.Equal(expected[step].ArrayIndices, actual[step].ArrayIndices);
+                }
+            }
+
+            // And the loaded document still restores the saved state exactly.
+            TestRoot fresh = new TestRoot {
+                Primary = new TestNode { Name = "child" },
+                Resource = new TestResource("shared-key")
+            };
+            AkronReconstructionRestore restore = graph.Restore(loaded, fresh);
+            Assert.True(restore.Success, restore.Error);
+            Assert.Equal(77, fresh.Counter);
+            Assert.Equal(21, fresh.Primary.Value);
+            Assert.True(graph.Verify(loaded, restore, Array.Empty<string>()).Success);
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static ChainNode BuildChain(int count, int valueOffset) {
         ChainNode root = new ChainNode { Value = valueOffset };
         ChainNode current = root;
@@ -3506,6 +5242,14 @@ public sealed class StartPosReconstructionTests {
 
     private sealed class TestResourceListRoot {
         public List<TestResourceHolder> Holders = new List<TestResourceHolder>();
+    }
+
+    private sealed class DuplicateResourceRoot {
+        public TestResource TargetA = null!;
+        public TestResource TargetB = null!;
+        public TestResource TargetC = null!;
+        public TestResource CandidateA = null!;
+        public TestResource CandidateB = null!;
     }
 
     private sealed class TestResourceHolder {
@@ -3587,6 +5331,20 @@ public sealed class StartPosReconstructionTests {
         public List<PeerTargetEntity> Peers = new List<PeerTargetEntity>();
     }
 
+    private sealed class ClutterLinkedEntity : Entity {
+        public Dictionary<ClutterLinkedEntity, bool> HasBelow = new Dictionary<ClutterLinkedEntity, bool>();
+        public List<ClutterLinkedEntity> Above = new List<ClutterLinkedEntity>();
+        public int Value;
+    }
+
+    private sealed class IteratorOwnerEntity : Entity {
+        public int Value;
+
+        public IEnumerable Routine() {
+            yield return Value;
+        }
+    }
+
     private sealed class NestedStateOwnerEntity : Entity {
         public sealed class NestedState {
             public int Value;
@@ -3629,6 +5387,12 @@ public sealed class StartPosReconstructionTests {
         public EntityList Entities = null!;
     }
 
+    private sealed class IteratorAliasSceneRoot {
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+        public IEnumerator[] Unrelated = Array.Empty<IEnumerator>();
+    }
+
     private sealed class DerivedTrackedScene : Scene {
     }
 
@@ -3641,6 +5405,293 @@ public sealed class StartPosReconstructionTests {
         public Scene Scene = null!;
         public Entity Entity = null!;
         public LightingRenderer Renderer = null!;
+    }
+
+    private sealed class TrailPlaybackRoot {
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+        public TrailManager.Snapshot Snapshot = null!;
+    }
+
+    private sealed class PlaybackGhostRoom {
+        public EntityList Entities = null!;
+        public TrailManager Manager = null!;
+        public PlayerPlayback Ghost = null!;
+        public TrailManager.Snapshot GhostTrail = null!;
+        public Player Player = null!;
+        public TrailManager.Snapshot PlayerTrail = null!;
+    }
+
+    // A room shaped like the one the exclusion exists for: a map-placed playback
+    // ghost that is trailing, a player that is also trailing, and the manager that
+    // owns both trail slots.
+    private static PlaybackGhostRoom CreatePlaybackGhostRoom() {
+        EntityList entities = CreateDetachedEntityList();
+        TrailManager manager = CreateUninitializedEntity<TrailManager>();
+        TrailManager.Snapshot[] slots = new TrailManager.Snapshot[64];
+        SetRuntimeField(manager, "snapshots", slots);
+        AddDetachedEntity(entities, manager);
+
+        PlayerPlayback ghost = CreateUninitializedEntity<PlayerPlayback>();
+        TrailManager.Snapshot ghostTrail = CreateTrailSnapshotFor(ghost, manager, slots, index: 3);
+        AddDetachedEntity(entities, ghost);
+        AddDetachedEntity(entities, ghostTrail);
+
+        Player player = CreateUninitializedEntity<Player>();
+        TrailManager.Snapshot playerTrail = CreateTrailSnapshotFor(player, manager, slots, index: 7);
+        AddDetachedEntity(entities, player);
+        AddDetachedEntity(entities, playerTrail);
+
+        return new PlaybackGhostRoom {
+            Entities = entities,
+            Manager = manager,
+            Ghost = ghost,
+            GhostTrail = ghostTrail,
+            Player = player,
+            PlayerTrail = playerTrail
+        };
+    }
+
+    private static TrailManager.Snapshot CreateTrailSnapshotFor(
+        Entity owner,
+        TrailManager manager,
+        TrailManager.Snapshot[] slots,
+        int index
+    ) {
+        ComponentList ownerComponents = CreateDetachedComponentList(owner);
+        PlayerSprite sprite = (PlayerSprite) RuntimeHelpers.GetUninitializedObject(typeof(PlayerSprite));
+        PlayerHair hair = (PlayerHair) RuntimeHelpers.GetUninitializedObject(typeof(PlayerHair));
+        SetRuntimeField(sprite, "<Entity>k__BackingField", owner);
+        SetRuntimeField(hair, "<Entity>k__BackingField", owner);
+        hair.Sprite = sprite;
+        SetRuntimeField(ownerComponents, "components", new List<Component> { hair, sprite });
+        SetRuntimeField(ownerComponents, "current", new HashSet<Component> { hair, sprite });
+
+        TrailManager.Snapshot snapshot = CreateUninitializedEntity<TrailManager.Snapshot>();
+        InitializeEmptyComponentList(snapshot);
+        snapshot.Manager = manager;
+        snapshot.Index = index;
+        snapshot.Sprite = sprite;
+        snapshot.Hair = hair;
+        slots[index] = snapshot;
+        return snapshot;
+    }
+
+    // Production's root chain is AkronPersistentRuntimeState.Level, so a saved ghost's
+    // document path starts at $.<Level>k__BackingField. The auto-property gives the
+    // same first step here.
+    private sealed class PlaybackGhostReloadRoot {
+        public Level Level { get; set; } = null!;
+    }
+
+    private sealed class PlaybackGhostReloadRoom {
+        public PlaybackGhostReloadRoot Root = null!;
+        public Level Level = null!;
+        public EntityList Entities = null!;
+        public PlayerPlayback Ghost = null!;
+        public PlayerPlayback? DestroyedGhost;
+        public TrailManager.Snapshot Snapshot = null!;
+    }
+
+    // Builds a room in the order Monocle keeps EntityList.entities in.
+    // EntityList.CompareDepth is Math.Sign(b.actualDepth - a.actualDepth), so the list
+    // runs from the highest Depth to the lowest, and a trail snapshot takes its owner's
+    // Depth + 1 (PlayerPlayback.Update and TrailManager.Add both pass entity.Depth + 1).
+    // A trailing ghost's snapshot therefore sits at 9009, before the ghost at 9008, and
+    // the capture walk reaches the ghost through TrailManager.Snapshot.Sprite.<Entity>
+    // instead of through its own entity-list slot. That relocation is one half of the
+    // failure these tests are about.
+    private static PlaybackGhostReloadRoom CreateTrailingGhostRoom(bool ghostIsTrailing, float ghostTime) {
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        EntityList entities = LinkSceneEntities(level, CreateDetachedEntityList());
+
+        PlayerPlayback ghost = CreatePlaybackGhost(level, sourceId: 42, depth: 9008, time: ghostTime);
+        Entity trailer = CreateGhostRoomTrailer(level);
+        TrailManager manager = CreateGhostRoomTrailManager(level, out TrailManager.Snapshot[] slots);
+
+        Entity trailOwner = ghostIsTrailing ? ghost : trailer;
+        TrailManager.Snapshot snapshot = CreateTrailSnapshotFrom(
+            level,
+            manager,
+            slots,
+            index: 0,
+            owner: trailOwner,
+            depth: trailOwner.Depth + 1);
+
+        if (ghostIsTrailing) {
+            AddDetachedEntity(entities, snapshot);
+        }
+        AddDetachedEntity(entities, ghost);
+        AddDetachedEntity(entities, manager);
+        if (!ghostIsTrailing) {
+            AddDetachedEntity(entities, snapshot);
+        }
+        AddDetachedEntity(entities, trailer);
+
+        return new PlaybackGhostReloadRoom {
+            Root = new PlaybackGhostReloadRoot { Level = level },
+            Level = level,
+            Entities = entities,
+            Ghost = ghost,
+            Snapshot = snapshot
+        };
+    }
+
+    // The room Akron's fresh-room reload hands the rebuild. UnloadLevel removes every
+    // entity whose Tag does not carry Tags.Global, so the ghost is destroyed - Scene
+    // null, gone from entities - while TrailManager and TrailManager.Snapshot keep
+    // Tags.Global and survive. Nothing clears the snapshot's reference to the destroyed
+    // ghost's PlayerSprite, and LoadLevel rebuilds the ghost from the same map entity,
+    // so it carries the same EntityID.
+    //
+    // trailBelongsToDestroyedGhost false is the room the reload produces once it clears
+    // the trails first the way Celeste.Level.Reload does: whatever snapshots the room
+    // still holds belong to entities the room still holds.
+    private static PlaybackGhostReloadRoom CreateReloadedGhostRoom(bool trailBelongsToDestroyedGhost) {
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        EntityList entities = LinkSceneEntities(level, CreateDetachedEntityList());
+
+        PlayerPlayback destroyedGhost = CreatePlaybackGhost(scene: null, sourceId: 42, depth: 9008, time: 0f);
+        PlayerPlayback ghost = CreatePlaybackGhost(level, sourceId: 42, depth: 9008, time: 0f);
+        Entity trailer = CreateGhostRoomTrailer(level);
+        TrailManager manager = CreateGhostRoomTrailManager(level, out TrailManager.Snapshot[] slots);
+
+        TrailManager.Snapshot snapshot = CreateTrailSnapshotFrom(
+            level,
+            manager,
+            slots,
+            index: 0,
+            owner: trailBelongsToDestroyedGhost ? destroyedGhost : ghost,
+            depth: 9009);
+
+        AddDetachedEntity(entities, snapshot);
+        AddDetachedEntity(entities, ghost);
+        AddDetachedEntity(entities, manager);
+        AddDetachedEntity(entities, trailer);
+
+        return new PlaybackGhostReloadRoom {
+            Root = new PlaybackGhostReloadRoot { Level = level },
+            Level = level,
+            Entities = entities,
+            Ghost = ghost,
+            DestroyedGhost = destroyedGhost,
+            Snapshot = snapshot
+        };
+    }
+
+    private static AkronReconstructionRestore RestoreTrailingGhostDocumentInto(
+        PlaybackGhostReloadRoom fresh,
+        bool savedGhostIsTrailing = true
+    ) {
+        PlaybackGhostReloadRoom saved = CreateTrailingGhostRoom(savedGhostIsTrailing, ghostTime: 2.5f);
+        PlaybackGhostReloadRoom baseline = CreateTrailingGhostRoom(savedGhostIsTrailing, ghostTime: 0f);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved.Root, baseline.Root);
+        Assert.True(capture.Success, capture.Error);
+        return graph.Restore(capture.Document, fresh.Root);
+    }
+
+    private static PlayerPlayback CreatePlaybackGhost(Scene? scene, int sourceId, int depth, float time) {
+        PlayerPlayback ghost = CreateUninitializedEntity<PlayerPlayback>();
+        (PlayerSprite sprite, PlayerHair hair) = AttachGhostRoomHairAndSprite(ghost);
+        ghost.Sprite = sprite;
+        ghost.Hair = hair;
+        SetRuntimeField(ghost, "<Scene>k__BackingField", scene);
+        SetRuntimeField(ghost, "<SourceId>k__BackingField", CreateEntityId("CANADIAN_00", sourceId));
+        SetGhostRoomDepth(ghost, depth);
+        SetRuntimeField(ghost, "time", time);
+        return ghost;
+    }
+
+    // Stands in for the room's other trailing entity. Celeste.Player cannot be built
+    // here: its own trail comes from a live dash, and what this needs is only a second
+    // map entity whose PlayerSprite a snapshot can hold.
+    private static Entity CreateGhostRoomTrailer(Level level) {
+        Entity trailer = CreateUninitializedEntity<Entity>();
+        AttachGhostRoomHairAndSprite(trailer);
+        SetRuntimeField(trailer, "<Scene>k__BackingField", level);
+        SetRuntimeField(trailer, "<SourceId>k__BackingField", CreateEntityId("CANADIAN_00", 7));
+        SetGhostRoomDepth(trailer, 0);
+        return trailer;
+    }
+
+    private static TrailManager CreateGhostRoomTrailManager(Level level, out TrailManager.Snapshot[] slots) {
+        TrailManager manager = CreateUninitializedEntity<TrailManager>();
+        InitializeEmptyComponentList(manager);
+        SetRuntimeField(manager, "<Scene>k__BackingField", level);
+        SetGhostRoomDepth(manager, 10);
+        slots = new TrailManager.Snapshot[64];
+        SetRuntimeField(manager, "snapshots", slots);
+        SetRuntimeField(manager, "buffers", new VirtualRenderTarget[64]);
+        return manager;
+    }
+
+    private static TrailManager.Snapshot CreateTrailSnapshotFrom(
+        Level level,
+        TrailManager manager,
+        TrailManager.Snapshot[] slots,
+        int index,
+        Entity owner,
+        int depth
+    ) {
+        TrailManager.Snapshot snapshot = CreateUninitializedEntity<TrailManager.Snapshot>();
+        InitializeEmptyComponentList(snapshot);
+        SetRuntimeField(snapshot, "<Scene>k__BackingField", level);
+        SetGhostRoomDepth(snapshot, depth);
+        snapshot.Manager = manager;
+        snapshot.Index = index;
+        // The snapshot keeps the owner's live components rather than copies of them:
+        // TrailManager.Add hands it entity.Get<PlayerSprite>() and entity.Get<PlayerHair>(),
+        // and BeforeRender moves and renders those very objects.
+        snapshot.Sprite = GetComponentListContents(owner).OfType<PlayerSprite>().First();
+        snapshot.Hair = GetComponentListContents(owner).OfType<PlayerHair>().First();
+        slots[index] = snapshot;
+        return snapshot;
+    }
+
+    private static (PlayerSprite Sprite, PlayerHair Hair) AttachGhostRoomHairAndSprite(Entity owner) {
+        PlayerSprite sprite = (PlayerSprite) RuntimeHelpers.GetUninitializedObject(typeof(PlayerSprite));
+        PlayerHair hair = (PlayerHair) RuntimeHelpers.GetUninitializedObject(typeof(PlayerHair));
+        SetRuntimeField(sprite, "<Entity>k__BackingField", owner);
+        SetRuntimeField(hair, "<Entity>k__BackingField", owner);
+        hair.Sprite = sprite;
+        hair.Nodes = new List<Vector2>();
+        ComponentList components = CreateDetachedComponentList(owner);
+        SetRuntimeField(components, "components", new List<Component> { hair, sprite });
+        SetRuntimeField(components, "current", new HashSet<Component> { hair, sprite });
+        return (sprite, hair);
+    }
+
+    private static void SetGhostRoomDepth(Entity entity, int depth) {
+        SetRuntimeField(entity, "depth", depth);
+        SetRuntimeField(entity, "actualDepth", (double) depth);
+    }
+
+    private static TrailPlaybackRoot CreateDetachedPlaybackTrailScene(float percent) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+
+        PlayerPlayback playback = CreateUninitializedEntity<PlayerPlayback>();
+        ComponentList playbackComponents = CreateDetachedComponentList(playback);
+        PlayerSprite sprite = (PlayerSprite) RuntimeHelpers.GetUninitializedObject(typeof(PlayerSprite));
+        PlayerHair hair = (PlayerHair) RuntimeHelpers.GetUninitializedObject(typeof(PlayerHair));
+        SetRuntimeField(sprite, "<Entity>k__BackingField", playback);
+        SetRuntimeField(hair, "<Entity>k__BackingField", playback);
+        hair.Sprite = sprite;
+        hair.Nodes = new List<Vector2>();
+        playback.Sprite = sprite;
+        playback.Hair = hair;
+        SetRuntimeField(playbackComponents, "components", new List<Component> { hair, sprite });
+        SetRuntimeField(playbackComponents, "current", new HashSet<Component> { hair, sprite });
+
+        TrailManager.Snapshot snapshot = CreateUninitializedEntity<TrailManager.Snapshot>();
+        InitializeEmptyComponentList(snapshot);
+        SetRuntimeField(snapshot, "<Scene>k__BackingField", scene);
+        snapshot.Sprite = sprite;
+        snapshot.Hair = hair;
+        snapshot.Percent = percent;
+        AddDetachedEntity(entities, snapshot);
+        return new TrailPlaybackRoot { Scene = scene, Entities = entities, Snapshot = snapshot };
     }
 
     private static RendererComponentIndexRoot CreateRendererComponentIndexRoot(bool includeLightInRenderer) {
@@ -3877,6 +5928,50 @@ public sealed class StartPosReconstructionTests {
         return (new SavedSceneRoot { Scene = scene, Entities = entities }, slash);
     }
 
+    private static (SavedSceneRoot Root, SourceIdentifiedEntity Entity) CreateTrackedSourceEntityScene(
+        bool includeTrackerEntry
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        SourceIdentifiedEntity entity = CreateSourceIdentifiedEntity("a00", 10, 0);
+        InitializeEmptyComponentList(entity);
+        SetRuntimeField(entity, "<Scene>k__BackingField", scene);
+        AddDetachedEntity(entities, entity);
+
+        Tracker tracker = (Tracker) RuntimeHelpers.GetUninitializedObject(typeof(Tracker));
+        SetRuntimeField(
+            tracker,
+            "<Entities>k__BackingField",
+            new Dictionary<Type, List<Entity>> {
+                [typeof(SourceIdentifiedEntity)] = includeTrackerEntry
+                    ? new List<Entity> { entity }
+                    : new List<Entity>()
+            });
+        SetRuntimeField(tracker, "<Components>k__BackingField", new Dictionary<Type, List<Component>>());
+        SetRuntimeField(scene, "<Tracker>k__BackingField", tracker);
+        return (new SavedSceneRoot { Scene = scene, Entities = entities }, entity);
+    }
+
+    private static (SavedSceneRoot Root, SourceIdentifiedEntity Entity) CreateTaggedSourceEntityScene(
+        bool includeTagEntry
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        SourceIdentifiedEntity entity = CreateSourceIdentifiedEntity("a00", 10, 0);
+        InitializeEmptyComponentList(entity);
+        SetRuntimeField(entity, "<Scene>k__BackingField", scene);
+        AddDetachedEntity(entities, entity);
+
+        TagLists tagLists = (TagLists) RuntimeHelpers.GetUninitializedObject(typeof(TagLists));
+        List<Entity>[] lists = {
+            includeTagEntry ? new List<Entity> { entity } : new List<Entity>()
+        };
+        SetRuntimeField(tagLists, "lists", lists);
+        SetRuntimeField(tagLists, "unsorted", new bool[lists.Length]);
+        SetRuntimeField(scene, "<TagLists>k__BackingField", tagLists);
+        return (new SavedSceneRoot { Scene = scene, Entities = entities }, entity);
+    }
+
     private static (SavedSceneRoot Root, SlashFx? Slash) CreateTaggedRuntimeEntityScene(bool includeSlash) {
         Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
         EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
@@ -3990,5 +6085,743 @@ public sealed class StartPosReconstructionTests {
         general.Value = generalValue;
         exact.Value = exactValue;
         return new ExactTypedAliasRoot { General = general, Exact = exact };
+    }
+
+    // A state machine running `yield return sprite.PlayRoutine(...)` is the
+    // standard Celeste animation wait, and modded maps reach it through
+    // Sprite subclasses far more often than vanilla does. The iterator is
+    // Monocle.Sprite+<PlayUtil>d__40 whatever the sprite's concrete type is.
+    [Fact]
+    public void RestoreAllowsACompilerIteratorDeclaredOnTheOwnersBaseClass() {
+        RestoreSpriteRoutineScene(spriteFirst: true, spriteType: typeof(PlayerSprite));
+    }
+
+    // The same room, with the state machine ahead of the sprite in the
+    // component list, so the document reaches the iterator before the sprite
+    // it captured. Resolution order is not evidence about the saved state.
+    [Fact]
+    public void RestoreAllowsACompilerIteratorReachedBeforeItsCapturedOwner() {
+        RestoreSpriteRoutineScene(spriteFirst: false, spriteType: typeof(Sprite));
+    }
+
+    // The alias is only sound because it stays inside the one Coroutine that is
+    // already running the iterator. A second Coroutine on the same entity
+    // holding that same iterator is not something Monocle can produce - an
+    // iterator reaches a Coroutine's stack only by being yielded into it - and
+    // it has to keep failing loudly, or an authenticated iterator could be
+    // planted into a component the saved room never ran it on.
+    //
+    // The control half is what makes the refusal attributable: the identical
+    // room with the extra Coroutine present but empty restores, so the second
+    // component itself is not what the graph is objecting to.
+    [Fact]
+    public void RestoreRefusesACompilerIteratorAliasedIntoAnotherCoroutinesStack() {
+        Assert.True(RestoreSpriteRoutineSceneWithExtraCoroutine(ExtraCoroutine.Empty).Success);
+
+        AkronReconstructionRestore restore =
+            RestoreSpriteRoutineSceneWithExtraCoroutine(ExtraCoroutine.HoldingTheRunningIterator);
+
+        Assert.False(restore.Success);
+        Assert.Contains("Monocle.Sprite+<PlayUtil>d__40", restore.Error);
+        Assert.Contains("coroutine-stack-iterator-alias=false", restore.Error);
+    }
+
+    private static AkronReconstructionRestore RestoreSpriteRoutineSceneWithExtraCoroutine(
+        ExtraCoroutine extra
+    ) {
+        SpriteRoutineSceneRoot saved = CreateSpriteRoutineScene(true, true, typeof(PlayerSprite), extra);
+        SpriteRoutineSceneRoot baseline = CreateSpriteRoutineScene(false, true, typeof(PlayerSprite), extra);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        SpriteRoutineSceneRoot fresh = CreateSpriteRoutineScene(false, true, typeof(PlayerSprite), extra);
+        return graph.Restore(capture.Document, fresh);
+    }
+
+    private enum ExtraCoroutine {
+        None,
+        Empty,
+        HoldingTheRunningIterator
+    }
+
+    private static void RestoreSpriteRoutineScene(bool spriteFirst, Type spriteType) {
+        SpriteRoutineSceneRoot saved = CreateSpriteRoutineScene(true, spriteFirst, spriteType);
+        SpriteRoutineSceneRoot baseline = CreateSpriteRoutineScene(false, spriteFirst, spriteType);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        SpriteRoutineSceneRoot fresh = CreateSpriteRoutineScene(false, spriteFirst, spriteType);
+
+        Entity freshEntity = Assert.Single(GetEntityListContents(fresh.Entities));
+        List<Component> freshComponents = GetComponentListContents(freshEntity);
+        Sprite freshSprite = (Sprite) freshComponents.Single(c => c is Sprite);
+        Assert.Equal(spriteType, freshSprite.GetType());
+        StateMachine freshMachine = (StateMachine) freshComponents.Single(c => c is StateMachine);
+        Coroutine freshCoroutine = GetRuntimeField<Coroutine>(freshMachine, "currentCoroutine");
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(freshEntity, Assert.Single(GetEntityListContents(fresh.Entities)));
+        Assert.Same(freshSprite, GetComponentListContents(freshEntity).Single(c => c is Sprite));
+        Assert.Same(freshCoroutine, GetRuntimeField<Coroutine>(freshMachine, "currentCoroutine"));
+
+        // Stack<T> enumerates top first, so [0] is the frame running the sprite
+        // routine and [1] is the state routine that yielded it.
+        IEnumerator[] frames = GetRuntimeField<Stack<IEnumerator>>(freshCoroutine, "enumerators").ToArray();
+        Assert.Equal(2, frames.Length);
+        IEnumerator routine = GetRuntimeField<Stack<IEnumerator>>(frames[1], "enums").Single();
+        object current = GetRuntimeFieldInfo(routine.GetType(), "<>2__current").GetValue(routine)!;
+        Assert.Equal("Monocle.Sprite+<PlayUtil>d__40", current.GetType().FullName);
+        Assert.Same(freshSprite, GetRuntimeFieldInfo(current.GetType(), "<>4__this").GetValue(current));
+
+        // The live room holds that one iterator in three places: the state
+        // routine's own <>2__current, the Flattened that produced it, and the
+        // Flattened the Coroutine then pushed to run it. Restoring them as
+        // separate objects would leave the coroutine advancing an iterator the
+        // routine cannot see, so all three have to come back as one object -
+        // being accepted is not enough.
+        Assert.Same(current, GetRuntimeFieldInfo(frames[1].GetType(), "current").GetValue(frames[1]));
+        Assert.Same(current, GetRuntimeField<Stack<IEnumerator>>(frames[0], "enums").Single());
+    }
+
+    private sealed class SpriteRoutineSceneRoot {
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+    }
+
+    private sealed class SpriteStateMachineEntity : Entity {
+        public Sprite Animation = null!;
+
+        public IEnumerator StateRoutine() {
+            yield return InvokeSpritePlayUtil(Animation);
+        }
+    }
+
+    private static IEnumerator InvokeSpritePlayUtil(Sprite sprite) {
+        return (IEnumerator) typeof(Sprite)
+            .GetMethod("PlayUtil", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(sprite, null)!;
+    }
+
+    private static SpriteRoutineSceneRoot CreateSpriteRoutineScene(
+        bool includeIterator,
+        bool spriteFirst,
+        Type spriteType,
+        ExtraCoroutine extra = ExtraCoroutine.None
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        SpriteStateMachineEntity owner = CreateUninitializedEntity<SpriteStateMachineEntity>();
+        ComponentList components = CreateDetachedComponentList(owner);
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 31));
+
+        Sprite sprite = (Sprite) RuntimeHelpers.GetUninitializedObject(spriteType);
+        SetRuntimeField(sprite, "<Entity>k__BackingField", owner);
+        // Sprite.PlayUtil is `while (Animating) yield return null`, so the
+        // routine only stays mid-flight while the sprite reports it is playing.
+        SetRuntimeField(sprite, "<Animating>k__BackingField", true);
+        owner.Animation = sprite;
+
+        StateMachine machine = (StateMachine) RuntimeHelpers.GetUninitializedObject(typeof(StateMachine));
+        SetRuntimeField(machine, "<Entity>k__BackingField", owner);
+
+        // StateMachine's constructor does `currentCoroutine = new Coroutine()`
+        // and never adds it to the entity's ComponentList, so the live
+        // Coroutine's Entity stays null. Setting it here would hand the graph
+        // an ownership link the game does not provide.
+        Coroutine coroutine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+        Stack<IEnumerator> iterators = new Stack<IEnumerator>();
+        SetRuntimeField(coroutine, "enumerators", iterators);
+        SetRuntimeField(machine, "currentCoroutine", coroutine);
+        if (includeIterator) {
+            // Build the stack the way the game does rather than by hand.
+            // StateMachine.State pushes the bare state routine through
+            // Coroutine.Replace, and Coroutine.Update is then the only thing
+            // that ever advances it: it wraps the bare iterator in Everest's
+            // Flattened, calls MoveNext on the Flattened, and pushes whatever
+            // the routine yielded. Two frames is the first moment the shape is
+            // steady, and it is the shape a StartPos set during the wake-up
+            // intro captures. Advancing the inner routine by hand instead
+            // leaves Flattened.current null, which is a shape the game never
+            // produces and which hides the alias edge this room exists to
+            // exercise.
+            iterators.Push(owner.StateRoutine());
+            coroutine.Update();
+            coroutine.Update();
+        }
+
+        List<Component> ordered = spriteFirst
+            ? new List<Component> { sprite, machine }
+            : new List<Component> { machine, sprite };
+        if (extra != ExtraCoroutine.None) {
+            // A plain Coroutine component, the way an entity adds one with
+            // Add(new Coroutine(...)), so this one really does have an Entity.
+            Coroutine second = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+            SetRuntimeField(second, "<Entity>k__BackingField", owner);
+            Stack<IEnumerator> secondFrames = new Stack<IEnumerator>();
+            if (extra == ExtraCoroutine.HoldingTheRunningIterator && includeIterator) {
+                IEnumerator running = GetRuntimeField<Stack<IEnumerator>>(coroutine, "enumerators").ToArray()[0];
+                secondFrames.Push(GetRuntimeField<Stack<IEnumerator>>(running, "enums").Single().SafeEnumerate());
+            }
+            SetRuntimeField(second, "enumerators", secondFrames);
+            ordered.Add(second);
+        }
+        SetRuntimeField(components, "components", ordered);
+        SetRuntimeField(components, "current", new HashSet<Component>(ordered));
+        AddDetachedEntity(entityList, owner);
+        return new SpriteRoutineSceneRoot { Scene = scene, Entities = entityList };
+    }
+
+    // One callback object standing in two slots of the freshly loaded room.
+    //
+    // Monocle.Alarm.Set is how the game arms a one-shot timer: the component
+    // sits on its entity while it counts down and calls RemoveSelf the moment
+    // it fires, so a room a player has been standing in for a few seconds no
+    // longer carries it while a clean reload of that same room still does. The
+    // mod here hands one static Action to that timer and to a state machine's
+    // end callback. A non-capturing lambda is cached once, so this is a single
+    // delegate object whose target is the cached-closure singleton Roslyn emits
+    // per enclosing type - the shape ExtendedVariantMode's ZoomLevel callback
+    // has in a real room.
+    //
+    // So the fresh room reaches that one object through Alarm.OnComplete first
+    // and through StateMachine.ends second, while the saved frame reaches it
+    // only through StateMachine.ends. That is the path the document records for
+    // it, and it is the path the fresh index has to have a record of.
+    //
+    // Monocle.StateMachine.AddState resizes all five callback arrays, so a mod
+    // state present in one session and not the other leaves the saved ends
+    // array a different length from the fresh one. The graph then rebuilds that
+    // array from the document instead of keeping the fresh one, which is what
+    // takes the delegate's direct route to its fresh counterpart away and
+    // leaves only the structural call key.
+    [Fact]
+    public void RestoreAcceptsACallbackTheFreshRoomAlsoHoldsInAnEarlierSlot() {
+        // Controls. Dropping either ingredient restores on its own, so the
+        // refusal this test exists for is attributable to the pair and not to
+        // the vanished alarm or the resized array by itself.
+        Assert.True(RestoreSharedCallbackScene(freshAlarm: false, freshExtraState: true).Success);
+        Assert.True(RestoreSharedCallbackScene(freshAlarm: true, freshExtraState: false).Success);
+
+        AkronReconstructionRestore restore = RestoreSharedCallbackScene(
+            freshAlarm: true,
+            freshExtraState: true,
+            freshEndCallback: true,
+            out SharedCallbackSceneRoot fresh,
+            out StateMachine machineBeforeRestore);
+
+        Assert.True(restore.Success, restore.Error);
+
+        // Being accepted is not enough. The fresh state machine has to keep its
+        // identity, the rebuilt array has to be the saved room's shape, and the
+        // slot has to come back holding the callback the saved room ran.
+        StateMachine machine = (StateMachine) GetComponentListContents(
+            GetEntityListContents(fresh.Entities)[1]).Single(component => component is StateMachine);
+        Assert.Same(machineBeforeRestore, machine);
+        Action[] ends = GetRuntimeField<Action[]>(machine, "ends");
+        Assert.Equal(4, ends.Length);
+        Action restored = Assert.IsType<Action>(ends[1]);
+        Assert.Equal(SampleTimerMod.Callback.Method, restored.Method);
+        Assert.Equal(SampleTimerMod.Callback.Target!.GetType(), restored.Target!.GetType());
+
+        // The timer really is gone from the restored room: the saved frame had
+        // no alarm, so the entity that carried one in the fresh room comes back
+        // with an empty component list.
+        Assert.Empty(GetComponentListContents(GetEntityListContents(fresh.Entities)[0]));
+    }
+
+    // The boundary. Same room, same two ingredients, except the fresh state
+    // machine never carries the callback at all - only the alarm does. Nothing
+    // in a clean reload runs that callback from that slot, so the document is
+    // asking for one the fresh room does not have there and the restore has to
+    // keep refusing. This is the ExtendedVariants shape W6 proved is correct
+    // behaviour, reduced to one slot.
+    //
+    // The control half is what makes the refusal attributable: the identical
+    // room whose fresh state machine does carry the callback restores, so what
+    // the graph objects to is the missing callback and not the vanished alarm
+    // or the resized array.
+    [Fact]
+    public void RestoreStillRefusesACallbackTheFreshRoomDoesNotHoldInThatSlot() {
+        Assert.True(RestoreSharedCallbackScene(
+            freshAlarm: true,
+            freshExtraState: true,
+            freshEndCallback: true,
+            out _).Success);
+
+        AkronReconstructionRestore restore = RestoreSharedCallbackScene(
+            freshAlarm: true,
+            freshExtraState: true,
+            freshEndCallback: false,
+            out _);
+
+        Assert.False(restore.Success);
+        Assert.Contains("is not authentic to the fresh room", restore.Error);
+        Assert.Contains("SampleTimerMod", restore.Error);
+    }
+
+    private static AkronReconstructionRestore RestoreSharedCallbackScene(
+        bool freshAlarm,
+        bool freshExtraState
+    ) {
+        return RestoreSharedCallbackScene(freshAlarm, freshExtraState, true, out _, out _);
+    }
+
+    private static AkronReconstructionRestore RestoreSharedCallbackScene(
+        bool freshAlarm,
+        bool freshExtraState,
+        bool freshEndCallback,
+        out SharedCallbackSceneRoot fresh
+    ) {
+        return RestoreSharedCallbackScene(freshAlarm, freshExtraState, freshEndCallback, out fresh, out _);
+    }
+
+    private static AkronReconstructionRestore RestoreSharedCallbackScene(
+        bool freshAlarm,
+        bool freshExtraState,
+        bool freshEndCallback,
+        out SharedCallbackSceneRoot fresh,
+        out StateMachine freshMachine
+    ) {
+        // Chronology matters here and it is easy to get wrong. The baseline is
+        // a clone of the room as it loaded in the session that SET the slot, so
+        // it has to agree with the saved frame about everything that session
+        // could not have changed: AddState only grows those arrays, so a
+        // baseline with more states than the saved frame taken later in the
+        // same session is a shape no session can produce. What the baseline may
+        // differ in is what the room itself did while it was played - the timer
+        // fired and took its component away. The extra mod state and the
+        // missing callback belong to the OTHER session, the one that loads the
+        // slot back, so they appear only in the fresh room.
+        SharedCallbackSceneRoot saved = CreateSharedCallbackScene(
+            includeAlarm: false,
+            includeExtraState: false,
+            includeEndCallback: true);
+        SharedCallbackSceneRoot baseline = CreateSharedCallbackScene(
+            freshAlarm,
+            includeExtraState: false,
+            includeEndCallback: true);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        fresh = CreateSharedCallbackScene(freshAlarm, freshExtraState, freshEndCallback);
+        freshMachine = (StateMachine) GetComponentListContents(
+            GetEntityListContents(fresh.Entities)[1]).Single(component => component is StateMachine);
+        return graph.Restore(capture.Document, fresh);
+    }
+
+    private sealed class SharedCallbackSceneRoot {
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+    }
+
+    private sealed class SharedCallbackEntity : Entity {
+        public int RunState() {
+            return 1;
+        }
+
+        public int RunModState() {
+            return 2;
+        }
+    }
+
+    private static SharedCallbackSceneRoot CreateSharedCallbackScene(
+        bool includeAlarm,
+        bool includeExtraState,
+        bool includeEndCallback
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+
+        // The timer entity is first in the room, so a walk of the fresh room
+        // reaches the shared callback through the alarm before it reaches the
+        // state machine.
+        SharedCallbackEntity timerOwner = CreateUninitializedEntity<SharedCallbackEntity>();
+        ComponentList timerComponents = CreateDetachedComponentList(timerOwner);
+        SetRuntimeField(timerOwner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(timerOwner, "<SourceId>k__BackingField", CreateEntityId("a00", 11));
+        List<Component> timerOrdered = new List<Component>();
+        if (includeAlarm) {
+            // Built through Monocle's own factory rather than by hand, so the
+            // component is armed the way Alarm.Set arms one.
+            Alarm alarm = Alarm.Create(Alarm.AlarmMode.Oneshot, SampleTimerMod.Callback, 0.25f, start: true);
+            SetRuntimeField(alarm, "<Entity>k__BackingField", timerOwner);
+            timerOrdered.Add(alarm);
+        }
+        SetRuntimeField(timerComponents, "components", timerOrdered);
+        SetRuntimeField(timerComponents, "current", new HashSet<Component>(timerOrdered));
+        AddDetachedEntity(entityList, timerOwner);
+
+        SharedCallbackEntity stateOwner = CreateUninitializedEntity<SharedCallbackEntity>();
+        ComponentList stateComponents = CreateDetachedComponentList(stateOwner);
+        SetRuntimeField(stateOwner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(stateOwner, "<SourceId>k__BackingField", CreateEntityId("a00", 12));
+
+        // Monocle's own constructor and callback plumbing. The update callback
+        // is a method group on the entity, the way Celeste's Player wires its
+        // own states, so its target is the entity rather than a closure.
+        StateMachine machine = new StateMachine(4);
+        SetRuntimeField(machine, "<Entity>k__BackingField", stateOwner);
+        machine.SetCallbacks(
+            1,
+            stateOwner.RunState,
+            null,
+            null,
+            includeEndCallback ? SampleTimerMod.Callback : null);
+        if (includeExtraState) {
+            // AddState is what resizes the five callback arrays.
+            machine.AddState("mod-state", stateOwner.RunModState);
+        }
+        // Monocle's own state setter, so the machine is actually running the
+        // state whose end callback this room is about rather than sitting on
+        // the -1 no entity has ever driven it out of.
+        machine.State = 1;
+        List<Component> stateOrdered = new List<Component> { machine };
+        SetRuntimeField(stateComponents, "components", stateOrdered);
+        SetRuntimeField(stateComponents, "current", new HashSet<Component>(stateOrdered));
+        AddDetachedEntity(entityList, stateOwner);
+
+        return new SharedCallbackSceneRoot { Scene = scene, Entities = entityList };
+    }
+    // W16 proved a saved document that asks for a callback at
+    // StateMachine.ends[2] while the fresh room runs it at ends[1] is accepted,
+    // and that the restore then writes it into slot 2 of the fresh machine's
+    // own array and leaves slot 1 empty. W21 proved an exact index cannot be
+    // the fix, because a mod calling the public SetCallbacks during play to
+    // move that same callback from one state to another produces a document
+    // byte for byte identical to the one that has to be refused.
+    //
+    // The first two tests are that pair. They restore the same saved room
+    // against two fresh rooms that differ in exactly one array - names - and in
+    // nothing else. The callback sits at ends[1] in both fresh rooms and at
+    // ends[2] in both documents, so whatever separates them is the names array.
+    // That is the point: a state's identity is its name and not its id, because
+    // Monocle's AddState hands ids out in whatever order the installed mods add
+    // states.
+    //
+    // Both mod states share one update method on purpose. That leaves the end
+    // callback's slot, and what names says that slot is, as the only thing that
+    // differs between the rooms.
+
+    // The wrong restore. Two mods each add a state; in the loading session they
+    // ran in the other order, so "second-mod-state" came back as id 1 instead
+    // of id 2. The document's ends[2] is that state in the saved room and
+    // "first-mod-state" in the fresh one, so the callback would land on a state
+    // this room never runs it for.
+    //
+    // Swapping two states makes BOTH their slots disagree, and there is no
+    // carve-out for a write that happens to change nothing, so the refusal
+    // lands on the first slot the document writes into rather than on the end
+    // callback: the shared update at slot 1. That is the whole machine being
+    // refused as misaligned, which is what it is. The end callback W16 measured
+    // being misplaced is covered below by the fresh room's own ends array
+    // coming through untouched.
+    [Fact]
+    public void RestoreRefusesACallbackWhoseStateSlotTheFreshRoomReadsAsAnotherState() {
+        StateSlotSceneRoot fresh = CreateStateSlotScene(
+            true, ("second-mod-state", true), ("first-mod-state", false));
+        StateMachine machineBeforeRestore = GetStateSlotMachine(fresh);
+        Action[] endsBeforeRestore = GetRuntimeField<Action[]>(machineBeforeRestore, "ends");
+
+        AkronReconstructionRestore restore = RestoreStateSlotScene(fresh, true, movedDuringPlay: false);
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved state slot is a different state in the fresh room", restore.Error);
+        Assert.Contains("state=first-mod-state", restore.Error);
+        Assert.Contains("slot=1", restore.Error);
+        Assert.Contains("updates[1]", restore.Error);
+
+        // The refused restore leaves the fresh room's own slot alone, which is
+        // the half W16 measured going wrong: the callback stays where a clean
+        // load of this room puts it instead of moving to the saved id.
+        Assert.Same(machineBeforeRestore, GetStateSlotMachine(fresh));
+        Assert.Same(endsBeforeRestore, GetRuntimeField<Action[]>(machineBeforeRestore, "ends"));
+        Assert.Equal(SampleTimerMod.Callback.Method, endsBeforeRestore[1]!.Method);
+        Assert.Null(endsBeforeRestore[2]);
+    }
+
+    // The valid frame, and the one an exact index got wrong. Same two mods in
+    // the same order, so both rooms agree that slot 2 is "second-mod-state". A
+    // clean load wires the callback to "first-mod-state" and during play the mod
+    // called the public SetCallbacks to move it to "second-mod-state". The
+    // document is the one above and only the fresh room's names differ.
+    // Restoring it reproduces the frame the player saved, so it has to be
+    // accepted.
+    [Fact]
+    public void RestoreAcceptsACallbackAModMovedToAnotherStateSlotDuringPlay() {
+        StateSlotSceneRoot fresh = CreateStateSlotScene(
+            true, ("first-mod-state", true), ("second-mod-state", false));
+        StateMachine machineBeforeRestore = GetStateSlotMachine(fresh);
+
+        AkronReconstructionRestore restore = RestoreStateSlotScene(fresh, true, movedDuringPlay: true);
+
+        Assert.True(restore.Success, restore.Error);
+
+        // Accepted is not enough: the fresh machine has to keep its identity and
+        // the callback has to come back on the state the player left it on.
+        StateMachine machine = GetStateSlotMachine(fresh);
+        Assert.Same(machineBeforeRestore, machine);
+        Action[] ends = GetRuntimeField<Action[]>(machine, "ends");
+        Assert.Equal(3, ends.Length);
+        Assert.Null(ends[1]);
+        Action restored = Assert.IsType<Action>(ends[2]);
+        Assert.Equal(SampleTimerMod.Callback.Method, restored.Method);
+        Assert.Equal(SampleTimerMod.Callback.Target!.GetType(), restored.Target!.GetType());
+    }
+
+    // The same pair again over the callback shape Celeste's own states use: a
+    // method group on the entity rather than a mod's cached lambda. It takes a
+    // different route through the gate - the target is an object the fresh room
+    // already has, so it authenticates against that object's method set, which
+    // carries no path at all - and the first version of this fix left that route
+    // open. Both halves are here because closing a route is only right if the
+    // valid frame still goes through it - the first half of this test restores
+    // the in-play move over the same callback shape and asserts it lands.
+    [Fact]
+    public void RestoreRefusesAnEntityMethodCallbackWhoseStateSlotTheFreshRoomReadsAsAnotherState() {
+        StateSlotSceneRoot moved = CreateStateSlotScene(
+            false, ("first-mod-state", true), ("second-mod-state", false));
+        AkronReconstructionRestore inPlay = RestoreStateSlotScene(moved, false, movedDuringPlay: true);
+        Assert.True(inPlay.Success, inPlay.Error);
+        Assert.Equal(
+            nameof(StateSlotEntity.EndState),
+            GetRuntimeField<Action[]>(GetStateSlotMachine(moved), "ends")[2]!.Method.Name);
+
+        StateSlotSceneRoot fresh = CreateStateSlotScene(
+            false, ("second-mod-state", true), ("first-mod-state", false));
+        Action[] endsBeforeRestore = GetRuntimeField<Action[]>(GetStateSlotMachine(fresh), "ends");
+
+        AkronReconstructionRestore restore = RestoreStateSlotScene(fresh, false, movedDuringPlay: false);
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved state slot is a different state in the fresh room", restore.Error);
+        Assert.Contains("state=first-mod-state", restore.Error);
+        Assert.Equal(nameof(StateSlotEntity.EndState), endsBeforeRestore[1]!.Method.Name);
+        Assert.Null(endsBeforeRestore[2]);
+    }
+
+    // The other valid frame, and the one the first version of this fix got
+    // wrong. AddState is callable during play, so a mod that adds a state only
+    // once the player has something leaves the saved frame holding a state a
+    // clean load of the same room has not added yet. The freshly loaded room
+    // has no slot 2 at all, so there is nothing there for the document to
+    // disagree with: it is adding a state rather than renaming one, and the
+    // restore has to grow the machine and put the callback on it.
+    [Fact]
+    public void RestoreAcceptsACallbackOnAStateAModAddedWhileTheRoomWasPlayed() {
+        // The baseline is the room as it loaded in the session that set the
+        // slot, before the mod added its second state. AddState only ever grows
+        // these arrays, so a baseline shorter than the saved frame is exactly
+        // what one session playing forward produces.
+        StateSlotSceneRoot saved = CreateStateSlotScene(
+            true, ("first-mod-state", true), ("added-while-playing", true));
+        StateSlotSceneRoot baseline = CreateStateSlotScene(true, ("first-mod-state", true));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        StateSlotSceneRoot fresh = CreateStateSlotScene(true, ("first-mod-state", true));
+        Assert.Equal(2, GetRuntimeField<Action[]>(GetStateSlotMachine(fresh), "ends").Length);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Action[] ends = GetRuntimeField<Action[]>(GetStateSlotMachine(fresh), "ends");
+        Assert.Equal(3, ends.Length);
+        Assert.Equal(SampleTimerMod.Callback.Method, ends[1]!.Method);
+        Assert.Equal(SampleTimerMod.Callback.Method, ends[2]!.Method);
+    }
+
+    // The same wrong restore reached through the shape that made the first
+    // version of this fix miss it. Celeste and its mods routinely hold one
+    // callback object in more than one place, and a document records only the
+    // first place its capture walked to a node from. Here that first place is a
+    // plain field, so the delegate's own owner edge says "field" and says
+    // nothing about the state slot the array also puts it in. The check has to
+    // sit on the array element for this to be refused, and this test is the
+    // reason it does.
+    [Fact]
+    public void RestoreRefusesAWrongStateSlotForACallbackAFieldReachedFirst() {
+        CachedCallbackSceneRoot saved = CreateCachedCallbackScene(
+            ("first-mod-state", false), ("second-mod-state", true));
+        CachedCallbackSceneRoot baseline = CreateCachedCallbackScene(
+            ("first-mod-state", false), ("second-mod-state", true));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        // The premise: the shared callback really is recorded under the field,
+        // so nothing about the delegate node names the state slot.
+        AkronReconstructionNode delegateNode = capture.Document.Nodes.Single(candidate =>
+            candidate.DelegateCalls.Count == 1 &&
+            candidate.DelegateCalls[0].MethodName.Contains("b__", StringComparison.Ordinal));
+        Assert.Equal("field", delegateNode.ParentKind);
+        Assert.Equal(nameof(CachedCallbackSceneRoot.CachedEnd), delegateNode.ParentFieldName);
+
+        CachedCallbackSceneRoot fresh = CreateCachedCallbackScene(
+            ("second-mod-state", true), ("first-mod-state", false));
+        StateMachine freshMachine = (StateMachine) GetComponentListContents(
+            GetEntityListContents(fresh.Entities)[0]).Single(component => component is StateMachine);
+        Action[] endsBeforeRestore = GetRuntimeField<Action[]>(freshMachine, "ends");
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved state slot is a different state in the fresh room", restore.Error);
+        Assert.Contains("state=first-mod-state", restore.Error);
+        Assert.Equal(SampleTimerMod.Callback.Method, endsBeforeRestore[1]!.Method);
+        Assert.Null(endsBeforeRestore[2]);
+    }
+
+    // A root that holds the shared callback in an ordinary field declared
+    // before the room, so the capture reaches the delegate through that field
+    // first and records it as the delegate's owner edge. A mod caching its own
+    // handler in a field of its own is the everyday shape of this.
+    private sealed class CachedCallbackSceneRoot {
+        public Action CachedEnd = null!;
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+    }
+
+    private static CachedCallbackSceneRoot CreateCachedCallbackScene(
+        params (string Name, bool EndCallback)[] modStates
+    ) {
+        StateSlotSceneRoot room = CreateStateSlotScene(true, modStates);
+        return new CachedCallbackSceneRoot {
+            CachedEnd = SampleTimerMod.Callback,
+            Scene = room.Scene,
+            Entities = room.Entities
+        };
+    }
+
+    // Two chronologies reach the same saved frame - a machine whose callback is
+    // on "second-mod-state" at id 2 - and each test needs its own, because the
+    // baseline is a clone of the room as it LOADED in the session that set the
+    // slot and capture reads it.
+    //
+    // movedDuringPlay false: the mod wired the callback to "second-mod-state"
+    // at load, so the baseline already carries it there.
+    // movedDuringPlay true: the mod wired it to "first-mod-state" at load, the
+    // baseline is cloned there, and only then does the saved room call the
+    // public SetCallbacks twice to move it - the mutation the test is about,
+    // performed rather than imitated.
+    private static AkronReconstructionRestore RestoreStateSlotScene(
+        StateSlotSceneRoot fresh,
+        bool sharedModClosure,
+        bool movedDuringPlay
+    ) {
+        StateSlotSceneRoot saved = CreateStateSlotScene(
+            sharedModClosure,
+            ("first-mod-state", movedDuringPlay),
+            ("second-mod-state", !movedDuringPlay));
+        StateSlotSceneRoot baseline = CreateStateSlotScene(
+            sharedModClosure,
+            ("first-mod-state", movedDuringPlay),
+            ("second-mod-state", !movedDuringPlay));
+        if (movedDuringPlay) {
+            StateMachine savedMachine = GetStateSlotMachine(saved);
+            StateSlotEntity savedOwner = (StateSlotEntity) savedMachine.Entity;
+            Action endCallback = sharedModClosure ? SampleTimerMod.Callback : savedOwner.EndState;
+            savedMachine.SetCallbacks(1, savedOwner.RunState, null, null, null);
+            savedMachine.SetCallbacks(2, savedOwner.RunState, null, null, endCallback);
+        }
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        // Whichever chronology produced it, the saved frame is the same room.
+        Action[] savedEnds = GetRuntimeField<Action[]>(GetStateSlotMachine(saved), "ends");
+        Assert.Null(savedEnds[1]);
+        Assert.NotNull(savedEnds[2]);
+        return graph.Restore(capture.Document, fresh);
+    }
+
+    private static StateMachine GetStateSlotMachine(StateSlotSceneRoot room) {
+        return (StateMachine) GetComponentListContents(GetEntityListContents(room.Entities)[0])
+            .Single(component => component is StateMachine);
+    }
+
+    private sealed class StateSlotSceneRoot {
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+    }
+
+    private sealed class StateSlotEntity : Entity {
+        public int RunState() {
+            return 1;
+        }
+
+        public void EndState() {
+        }
+    }
+
+    // One entity carrying one Monocle StateMachine whose mod states are added
+    // through Monocle's own AddState, in the order given. AddState is what
+    // assigns the state id and what writes the names entry, so the order here
+    // is the installed mod order two sessions can disagree about.
+    private static StateSlotSceneRoot CreateStateSlotScene(
+        bool sharedModClosure,
+        params (string Name, bool EndCallback)[] modStates
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+
+        StateSlotEntity stateOwner = CreateUninitializedEntity<StateSlotEntity>();
+        ComponentList stateComponents = CreateDetachedComponentList(stateOwner);
+        SetRuntimeField(stateOwner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(stateOwner, "<SourceId>k__BackingField", CreateEntityId("a00", 12));
+
+        // One base state, so the mod states start at id 1 the way they do on a
+        // machine the game built.
+        StateMachine machine = new StateMachine(1);
+        SetRuntimeField(machine, "<Entity>k__BackingField", stateOwner);
+        Action endCallback = sharedModClosure ? SampleTimerMod.Callback : stateOwner.EndState;
+        foreach ((string name, bool endCallback_) in modStates) {
+            machine.AddState(
+                name,
+                stateOwner.RunState,
+                null,
+                null,
+                endCallback_ ? endCallback : null);
+        }
+        // Monocle's own state setter, so the machine is actually running a state
+        // rather than sitting on the -1 no entity has ever driven it out of.
+        machine.State = 1;
+        List<Component> stateOrdered = new List<Component> { machine };
+        SetRuntimeField(stateComponents, "components", stateOrdered);
+        SetRuntimeField(stateComponents, "current", new HashSet<Component>(stateOrdered));
+        AddDetachedEntity(entityList, stateOwner);
+
+        return new StateSlotSceneRoot { Scene = scene, Entities = entityList };
+    }
+}
+
+// Stand-ins for a mod's own types, used by the refusal-message tests. They are top-level
+// and in this assembly on purpose: the message builder decides what to say from the
+// assembly a refused type belongs to, so a test needs a real, loadable type in an
+// assembly that is neither the game's nor Akron's. SampleZoomLevel's callback is a
+// non-capturing lambda, so Roslyn gives it a cached-closure singleton and its type is
+// the exact compiler-generated shape ExtendedVariantMode's refusal lands on.
+internal sealed class SampleZoomLevel {
+    internal static readonly Action Callback = () => { };
+}
+
+internal sealed class SampleUnderwaterSwitchController {
+}
+
+// A mod's own type for the shared-callback room. One static readonly Action is
+// one delegate object for the whole process, and the lambda captures nothing,
+// so Roslyn puts it on this type's cached-closure singleton. That is what makes
+// the room hold the same instance in two slots with a compiler-generated target.
+internal sealed class SampleTimerMod {
+    internal static readonly Action Callback = () => { };
+}
+
+// A helper mod's own playback ghost. Its saved state is not Akron's to drop.
+internal sealed class ModdedPlayerPlayback : PlayerPlayback {
+    private ModdedPlayerPlayback()
+        : base(Microsoft.Xna.Framework.Vector2.Zero, PlayerSpriteMode.Playback, null) {
     }
 }

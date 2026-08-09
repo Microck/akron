@@ -7,7 +7,7 @@ This guide leads a contributor from an initial checkout to a local build and the
 
 ## Requirements
 
-- .NET SDK compatible with the Akron project.
+- .NET 8 SDK. The repository's `global.json` accepts 8.0.100 or a later .NET 8 feature band.
 - A Celeste/Everest install for [live verification](/contributing/testing-and-verification).
 - Access to this repository checkout.
 - Celeste references available through the normal Everest mod layout or an explicit `CelestePrefix`.
@@ -29,15 +29,15 @@ dotnet build Source/Akron.csproj -p:CelestePrefix=/path/to/Celeste
 Use the focused test for the change when possible:
 
 ```bash
-dotnet test tests/akron-tests.csproj --nologo
-```
-
-Targeted examples:
-
-```bash
 dotnet test tests/akron-tests.csproj --nologo --filter FeatureRegistryTests
 dotnet test tests/akron-tests.csproj --nologo --filter ModuleSettingsTests
 dotnet test tests/akron-tests.csproj --nologo --filter ArchiveTests
+```
+
+Run the full test project when the change affects shared behavior:
+
+```bash
+dotnet test tests/akron-tests.csproj --nologo
 ```
 
 ## Formatting
@@ -56,11 +56,11 @@ dotnet format Akron.sln
 
 ## CI reference archive
 
-GitHub Actions does not commit `lib-stripped/` into the repository. CI build and test jobs need `AKRON_CELESTE_REFS_URL` to point at a zip or tar.gz archive containing a complete `lib-stripped` reference directory.
+GitHub Actions does not commit `lib-stripped/` into the repository. CI build and test jobs need the `AKRON_CELESTE_REFS_URL` secret in the `release-build` environment to point at a zip or tar.gz archive containing a complete `lib-stripped` reference directory. The `AKRON_CELESTE_REFS_SHA256` variable in that environment must contain the archive's lowercase SHA-256 digest.
 
-Set `AKRON_CELESTE_REFS_TOKEN` only when the archive URL requires bearer-token auth.
+Set the optional `AKRON_CELESTE_REFS_TOKEN` secret in the same environment only when the archive URL requires bearer-token auth.
 
-CI fails when `AKRON_CELESTE_REFS_URL` is not configured because a passing run must prove Akron can build and test. Release packaging requires the archive and fails fast when it is missing.
+CI fails when either the URL secret or SHA-256 variable is missing. Release packaging uses the same verified archive and fails fast when its configuration is incomplete.
 
 ## Safety
 
@@ -75,7 +75,7 @@ CI fails when `AKRON_CELESTE_REFS_URL` is not configured because a passing run m
     Start with the user-facing page for the behavior you are changing.
   </Step>
   <Step title="Find the source layer">
-    Identify whether the change touches policy, overlay rows, settings, runtime behavior, persisted setup state, `.akr` import/export, archive contracts, or tests.
+    Identify whether the change touches policy, overlay rows, settings, runtime behavior, persisted setup state, `.akr` archives, archive contracts, or tests.
   </Step>
   <Step title="Add or update tests">
     Add focused tests for classification, defaults, clamps, archive shape, or non-trivial behavior.
@@ -84,6 +84,6 @@ CI fails when `AKRON_CELESTE_REFS_URL` is not configured because a passing run m
     Run formatting checks, targeted tests, build, and [live verification](/contributing/testing-and-verification) when the behavior is visual, timing-sensitive, input-driven, or map-dependent.
   </Step>
   <Step title="Update docs">
-    Update user-facing docs and [contributor architecture notes](/contributing/public-architecture) when behavior, policy, or contracts change.
+    Update user-facing docs and [contributor architecture notes](/contributing/public-architecture) when behavior, policy, or contracts change. Add a `CHANGELOG.md` entry when the change is notable and user-facing.
   </Step>
 </Steps>

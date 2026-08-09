@@ -318,6 +318,7 @@ public sealed class ModuleSettingsTests
         Assert.Equal(5, settings.MadelineTwoDashHairLength);
         Assert.Equal(5, settings.MadelineFiveDashHairLength);
         Assert.False(settings.MadelineEffectSync);
+        Assert.False(settings.DisablePlayback);
         Assert.Equal(AkronMadelineEffectSyncMode.MatchHair, settings.MadelineDashParticleSync);
         Assert.Equal(AkronMadelineEffectSyncMode.MatchHair, settings.MadelineDashTrailSync);
         Assert.Equal(AkronMadelineEffectSyncMode.MatchHair, settings.MadelineDeathEffectSync);
@@ -328,6 +329,63 @@ public sealed class ModuleSettingsTests
         Assert.Equal(AkronDeathParticleShape.Vanilla, settings.DeathParticleShape);
         Assert.Equal(0.834f, settings.DeathParticleDurationSeconds);
         Assert.Equal(AkronModuleSettings.DefaultDeathParticleCustomShape, settings.DeathParticleCustomShape);
+    }
+
+    [Fact]
+    public void DisablePlaybackRoundTripsThroughSetupState()
+    {
+        AkronModuleSettings source = new AkronModuleSettings { DisablePlayback = true };
+        AkronSetupState captured = source.CaptureSetupPackState();
+        AkronModuleSettings restored = new AkronModuleSettings();
+
+        restored.ApplySetupPackState(captured);
+
+        Assert.True(captured.DisablePlayback);
+        Assert.True(restored.DisablePlayback);
+    }
+
+    [Fact]
+    public void DisablePlaybackHookOnlySuppressesLevelPlaybackGhosts()
+    {
+        string runtimeSource = File.ReadAllText(GetSourcePath("Runtime", "akron-visual-noise-runtime.cs"));
+        int start = runtimeSource.IndexOf("private static void PlayerPlaybackOnUpdate", StringComparison.Ordinal);
+        int end = runtimeSource.IndexOf("private static void HeatWaveOnRenderDisplacement", start, StringComparison.Ordinal);
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        string handler = runtimeSource[start..end];
+        int settingCheck = handler.IndexOf("if (!Settings.DisablePlayback)", StringComparison.Ordinal);
+        int levelCheck = handler.IndexOf("self.Scene is not Level", StringComparison.Ordinal);
+        int policyCheck = handler.IndexOf("AkronPolicy.CanUse(AkronFeatureKind.DisablePlayback).Allowed", StringComparison.Ordinal);
+
+        Assert.True(settingCheck >= 0);
+        Assert.True(levelCheck > settingCheck);
+        Assert.True(policyCheck > levelCheck);
+        Assert.Equal(2, handler.Split("orig(self);").Length - 1);
+        Assert.Contains("self.Visible = false;", handler);
+        Assert.Contains("AkronPolicy.RecordFeatureUse(AkronFeatureKind.DisablePlayback);", handler);
+        Assert.DoesNotContain("TryUse", handler);
+        Assert.DoesNotContain("AkronLog", handler);
+
+        // CanUse is required in this per-entity hook, so its decision must stay a value type.
+        string policySource = File.ReadAllText(GetSourcePath("Core", "AkronPolicy.cs"));
+        Assert.Contains("public readonly struct AkronPolicyDecision", policySource);
+        string registrySource = File.ReadAllText(GetSourcePath("Core", "AkronFeatureRegistry.cs"));
+        Assert.Contains("return DefinitionByKind[index].Value;", registrySource);
+
+        string moduleSource = File.ReadAllText(GetSourcePath("Module", "AkronModule.cs"));
+        Assert.Contains("On.Celeste.PlayerPlayback.Update += PlayerPlaybackOnUpdate;", moduleSource);
+        Assert.Contains("On.Celeste.PlayerPlayback.Update -= PlayerPlaybackOnUpdate;", moduleSource);
+    }
+
+    [Fact]
+    public void DisablePlaybackConsoleRoutesUseItsFeaturePolicy()
+    {
+        string featureCommands = File.ReadAllText(GetSourcePath("Commands", "akron-feature-commands.cs"));
+        string visualCommands = File.ReadAllText(GetSourcePath("Commands", "akron-visual-commands.cs"));
+
+        Assert.Contains("\"disableplayback\" => SetFeatureToggle(action, AkronFeatureKind.DisablePlayback", featureCommands);
+        Assert.Contains("\"playback\" or \"disableplayback\" => SetFeatureToggle(action, AkronFeatureKind.DisablePlayback", visualCommands);
     }
 
     [Theory]
@@ -413,6 +471,261 @@ public sealed class ModuleSettingsTests
     public void LoggingLevelLabelsMatchPublicUiContract(AkronLoggingLevel level, string expected)
     {
         Assert.Equal(expected, AkronLog.FormatLevel(level));
+    }
+
+    [Fact]
+    public void LoggingLevelLadderKeepsDiagnosticQuieterThanVerbose()
+    {
+        // The numeric order is the verbosity ladder AkronLog.ShouldWrite compares against, and Diagnostic
+        // must stay below Verbose because Diagnostic aggregates per-event records into 60-second summaries.
+        Assert.Equal(0, (int) AkronLoggingLevel.Normal);
+        Assert.Equal(1, (int) AkronLoggingLevel.Diagnostic);
+        Assert.Equal(2, (int) AkronLoggingLevel.Verbose);
+        Assert.Equal(3, (int) AkronLoggingLevel.Trace);
+    }
+
+    [Fact]
+    public void DiagnosticLevelSuppressesVerboseAndTraceLines()
+    {
+        Assert.True(AkronLog.ShouldWrite(AkronLoggingLevel.Normal, AkronLoggingLevel.Diagnostic));
+        Assert.True(AkronLog.ShouldWrite(AkronLoggingLevel.Diagnostic, AkronLoggingLevel.Diagnostic));
+        Assert.False(AkronLog.ShouldWrite(AkronLoggingLevel.Verbose, AkronLoggingLevel.Diagnostic));
+        Assert.False(AkronLog.ShouldWrite(AkronLoggingLevel.Trace, AkronLoggingLevel.Diagnostic));
+    }
+
+    [Fact]
+    public void VerboseLevelWritesDiagnosticAndVerboseButNotTraceLines()
+    {
+        Assert.True(AkronLog.ShouldWrite(AkronLoggingLevel.Normal, AkronLoggingLevel.Verbose));
+        Assert.True(AkronLog.ShouldWrite(AkronLoggingLevel.Diagnostic, AkronLoggingLevel.Verbose));
+        Assert.True(AkronLog.ShouldWrite(AkronLoggingLevel.Verbose, AkronLoggingLevel.Verbose));
+        Assert.False(AkronLog.ShouldWrite(AkronLoggingLevel.Trace, AkronLoggingLevel.Verbose));
+    }
+
+    [Fact]
+    public void NormalLevelWritesOnlyNormalLinesAndTraceLevelWritesEverything()
+    {
+        Assert.True(AkronLog.ShouldWrite(AkronLoggingLevel.Normal, AkronLoggingLevel.Normal));
+        Assert.False(AkronLog.ShouldWrite(AkronLoggingLevel.Diagnostic, AkronLoggingLevel.Normal));
+        Assert.False(AkronLog.ShouldWrite(AkronLoggingLevel.Verbose, AkronLoggingLevel.Normal));
+        Assert.False(AkronLog.ShouldWrite(AkronLoggingLevel.Trace, AkronLoggingLevel.Normal));
+
+        Assert.True(AkronLog.ShouldWrite(AkronLoggingLevel.Normal, AkronLoggingLevel.Trace));
+        Assert.True(AkronLog.ShouldWrite(AkronLoggingLevel.Diagnostic, AkronLoggingLevel.Trace));
+        Assert.True(AkronLog.ShouldWrite(AkronLoggingLevel.Verbose, AkronLoggingLevel.Trace));
+        Assert.True(AkronLog.ShouldWrite(AkronLoggingLevel.Trace, AkronLoggingLevel.Trace));
+    }
+
+    [Fact]
+    public void UndefinedLoggingLevelFallsBackToDiagnosticOnBothSidesOfTheLadder()
+    {
+        Assert.False(AkronLog.ShouldWrite(AkronLoggingLevel.Verbose, (AkronLoggingLevel) 99));
+        Assert.True(AkronLog.ShouldWrite((AkronLoggingLevel) 99, AkronLoggingLevel.Diagnostic));
+    }
+
+    [Theory]
+    [InlineData(AkronLoggingLevel.Normal, AkronLoggingRecordMode.Skip)]
+    [InlineData(AkronLoggingLevel.Diagnostic, AkronLoggingRecordMode.Aggregate)]
+    [InlineData(AkronLoggingLevel.Verbose, AkronLoggingRecordMode.Aggregate)]
+    [InlineData(AkronLoggingLevel.Trace, AkronLoggingRecordMode.Emit)]
+    public void PolicyChecksAggregateUntilTrace(AkronLoggingLevel configured, AkronLoggingRecordMode expected)
+    {
+        Assert.Equal(expected, AkronLog.ResolvePolicyCheckRecordMode(loggingEnabled: true, configured));
+    }
+
+    [Theory]
+    [InlineData(AkronLoggingLevel.Normal, AkronLoggingRecordMode.Skip)]
+    [InlineData(AkronLoggingLevel.Diagnostic, AkronLoggingRecordMode.Aggregate)]
+    [InlineData(AkronLoggingLevel.Verbose, AkronLoggingRecordMode.Emit)]
+    [InlineData(AkronLoggingLevel.Trace, AkronLoggingRecordMode.Emit)]
+    public void FeatureUsesAggregateAtDiagnosticAndEmitFromVerbose(AkronLoggingLevel configured, AkronLoggingRecordMode expected)
+    {
+        Assert.Equal(expected, AkronLog.ResolveFeatureUseRecordMode(loggingEnabled: true, configured));
+    }
+
+    [Theory]
+    [InlineData(AkronLoggingLevel.Normal)]
+    [InlineData(AkronLoggingLevel.Diagnostic)]
+    [InlineData(AkronLoggingLevel.Verbose)]
+    [InlineData(AkronLoggingLevel.Trace)]
+    public void DisabledLoggingRecordsNothingAtAnyLevel(AkronLoggingLevel configured)
+    {
+        Assert.Equal(AkronLoggingRecordMode.Skip, AkronLog.ResolvePolicyCheckRecordMode(loggingEnabled: false, configured));
+        Assert.Equal(AkronLoggingRecordMode.Skip, AkronLog.ResolveFeatureUseRecordMode(loggingEnabled: false, configured));
+    }
+
+    [Fact]
+    public void UndefinedLoggingLevelStillAggregatesRatherThanEmitting()
+    {
+        // NormalizeLoggingLevel falls back to Diagnostic, so a corrupt setting must not turn into per-event spam.
+        Assert.Equal(AkronLoggingRecordMode.Aggregate, AkronLog.ResolvePolicyCheckRecordMode(loggingEnabled: true, (AkronLoggingLevel) 99));
+        Assert.Equal(AkronLoggingRecordMode.Aggregate, AkronLog.ResolveFeatureUseRecordMode(loggingEnabled: true, (AkronLoggingLevel) 99));
+    }
+
+    [Fact]
+    public void LoggingLevelChoicePersistsImmediately()
+    {
+        // The overlay is often killed while still open, so an in-memory-only level change is silently lost.
+        // The radio button holds no logic of its own: it hands the chosen level to the single applier, which
+        // is what makes the akron_log_level command able to stand in for a click nobody can automate.
+        string overlay = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-popup-controls.cs"));
+        int start = overlay.IndexOf("private static void DrawLoggingLevelChoice(", StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        int end = overlay.IndexOf("private static void DrawSetupSectionChoice(", start, StringComparison.Ordinal);
+        Assert.True(end > start);
+        string choice = overlay[start..end];
+
+        Assert.Contains("AkronLog.ApplyLoggingLevel(level, \"overlay-logging-level\")", choice);
+        Assert.DoesNotContain("Settings.LoggingLevel =", choice);
+        Assert.DoesNotContain("SaveAkronSettingsNow", choice);
+
+        // The persistence the radio button depends on now lives in the applier, in this order: flush the
+        // counts collected under the old level, move the level, log it, write the file before anything can
+        // kill the process.
+        string log = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Core/akron-log.cs"));
+        int applierStart = log.IndexOf("public static bool ApplyLoggingLevel(", StringComparison.Ordinal);
+        Assert.True(applierStart >= 0);
+        int flush = log.IndexOf("FlushDiagnosticSummaries();", applierStart, StringComparison.Ordinal);
+        int assign = log.IndexOf("settings.LoggingLevel = level;", flush, StringComparison.Ordinal);
+        int announce = log.IndexOf("LogSettingsChanged(\"level=\"", assign, StringComparison.Ordinal);
+        int save = log.IndexOf("return AkronModule.SaveAkronSettingsNow(reason);", announce, StringComparison.Ordinal);
+        Assert.True(flush > applierStart);
+        Assert.True(assign > flush);
+        Assert.True(announce > assign);
+        Assert.True(save > announce);
+    }
+
+    [Fact]
+    public void LogLevelCommandDrivesTheSameApplierAsTheOverlayChoice()
+    {
+        // No automation surface can click a control inside an ImGui popup, so the level radio buttons were
+        // unreachable and the fix that made a chosen level survive a kill had never been run in a game. This
+        // command is that click. It only earns that claim by calling the same applier and holding no copy of
+        // its behavior, so a command that set the level some other way would prove nothing.
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Commands/akron-feature-commands.cs"));
+        int start = source.IndexOf("public static void LogLevel(", StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        int end = source.IndexOf("public static void Feature(", start, StringComparison.Ordinal);
+        Assert.True(end > start);
+        string command = source[start..end];
+
+        Assert.Contains("AkronLog.ApplyLoggingLevel(level, \"command-logging-level\")", command);
+        Assert.DoesNotContain("Settings.LoggingLevel =", command);
+        Assert.DoesNotContain("SaveAkronSettingsNow", command);
+        Assert.DoesNotContain("FlushDiagnosticSummaries", command);
+
+        // Reachable from the automation queue, which is the only reason it can close the verification gap.
+        string token = new string('t', 32);
+        Assert.True(AkronAutomationService.TryParseCommandFileForTesting(
+            "token: " + token + "\nakron_log_level diagnostic",
+            token,
+            out IReadOnlyList<string> commands,
+            out string error), error);
+        Assert.Equal(new[] { "akron_log_level diagnostic" }, commands);
+    }
+
+    [Fact]
+    public void InterruptedSettingsWriteLeavesThePreviousFileIntact()
+    {
+        // A settings file rewritten in place is destroyed by anything that stops the writer, and a
+        // player who loses it loses every Akron setting they ever chose. The whole point of the
+        // temporary file is that the real one is never open while incomplete content exists.
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "modsettings-Akron.celeste");
+            File.WriteAllText(path, "previous settings");
+
+            Assert.Throws<InvalidOperationException>(() => AkronModule.WriteFileAtomically(path, stream =>
+            {
+                byte[] fragment = Encoding.UTF8.GetBytes("half a settings file");
+                stream.Write(fragment, 0, fragment.Length);
+                stream.Flush();
+                throw new InvalidOperationException("the writer stopped mid-file");
+            }));
+
+            Assert.Equal("previous settings", File.ReadAllText(path));
+            Assert.False(File.Exists(path + ".tmp"));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public void SettingsWriteReplacesTheFileAndLeavesNoTemporaryBehind()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "modsettings-Akron.celeste");
+            File.WriteAllText(path, "previous settings");
+
+            AkronModule.WriteFileAtomically(path, stream =>
+            {
+                byte[] contents = Encoding.UTF8.GetBytes("new settings");
+                stream.Write(contents, 0, contents.Length);
+            });
+
+            Assert.Equal("new settings", File.ReadAllText(path));
+            Assert.False(File.Exists(path + ".tmp"));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public void SettingsWriteCreatesTheTargetWhenNothingIsThereYet()
+    {
+        // First run on a fresh install: there is no previous file to rename over.
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "nested", "modsettings-Akron.celeste");
+            AkronModule.WriteFileAtomically(path, stream =>
+            {
+                byte[] contents = Encoding.UTF8.GetBytes("first settings");
+                stream.Write(contents, 0, contents.Length);
+            });
+
+            Assert.Equal("first settings", File.ReadAllText(path));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public void SavingAkronSettingsNeverWaitsOnAnotherThreadFromTheGameThread()
+    {
+        // Everest's _SaveSettings() coroutine does its work on a background thread and waits by
+        // yielding until that thread flips a captured bool. Draining it with while (MoveNext()) on
+        // the game thread stops the game loop and spins on a flag that an exception anywhere in any
+        // installed mod's SaveSettings prevents from ever flipping, which froze the game on an
+        // overlay toggle. The settings write has to stay synchronous and single threaded.
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/AkronModule.cs"));
+        int start = source.IndexOf("internal static bool SaveAkronSettingsNow(", StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        int end = source.IndexOf('}', source.IndexOf("catch (Exception exception)", start, StringComparison.Ordinal));
+        Assert.True(end > start);
+        string method = source[start..end];
+
+        Assert.DoesNotContain("MoveNext", method);
+        Assert.DoesNotContain("GetMethod(\"_SaveSettings\"", source);
+        Assert.Contains("Instance?.TrySaveSettings() == true", method);
+        Assert.Contains("public override void SaveSettings()", source);
+        Assert.Contains("WriteFileAtomically(path, stream =>", source);
+    }
+
+    private static string CreateTemporaryDirectory()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-settings-write-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        return directory;
     }
 
     [Fact]
@@ -2722,7 +3035,7 @@ public sealed class ModuleSettingsTests
         Assert.Equal(
             new[] {
                 "Timescale", "Transition Speed", "Frame Stepper", "Safe Mode", "Freeze Attempts",
-                "Submission Mode", "Pause Buffering", "Autosave"
+                "Submission Mode", "Pause Buffering", "Autosave", "Defer Engine GC"
             },
             globalLabels);
 
@@ -2734,7 +3047,7 @@ public sealed class ModuleSettingsTests
                 "Show Hitboxes", "Fix Hitbox Pixels", "Show Hitbox Trail", "Show Hitboxes On Death",
                 "Show Triggers", "Refill Clarity", "Screenshake", "Light Level", "Bloom Level", "Screen Tint",
                 "Reduced Visual Noise", "No Particles", "No Glitch", "No Anxiety", "No Distortion", "Hide Snow",
-                "Hide Wind Snow", "Hide Waterfalls", "Hide Tentacles", "Hide Heat Distortion", "No Death Wipe",
+                "Hide Wind Snow", "Hide Waterfalls", "Hide Tentacles", "Disable Playback", "Hide Heat Distortion", "No Death Wipe",
                 "No Freeze Frames"
             },
             BuildOverlayEntryLabels("Level"));
@@ -4092,10 +4405,25 @@ public sealed class ModuleSettingsTests
     [InlineData(9, 9)]
     [InlineData(15, 15)]
     [InlineData(24, 24)]
-    [InlineData(120, 99)]
+    [InlineData(120, 50)]
     public void StartPosSlotCountClampAllowsMoreThanNineSlots(int input, int expected)
     {
         Assert.Equal(expected, AkronModuleSettings.ClampStartPosSlotCount(input));
+    }
+
+    // The three StartPos slot constants have to stay ordered, and the ceiling
+    // is a measured memory limit rather than a preference: a warm slot retains
+    // a deep-cloned Level graph worth about 13.8 MB. If someone raises the cap
+    // without a fresh measurement, this is the test that should make them stop
+    // and read the comment on MaximumStartPosSlots.
+    [Fact]
+    public void StartPosSlotConstantsStayOrderedAndTheCeilingIsTheClampBound()
+    {
+        Assert.True(AkronModuleSettings.MinimumStartPosSelectableSlots <= AkronModuleSettings.DefaultStartPosSlotCount);
+        Assert.True(AkronModuleSettings.DefaultStartPosSlotCount <= AkronModuleSettings.MaximumStartPosSlots);
+        Assert.Equal(AkronModuleSettings.MaximumStartPosSlots, AkronModuleSettings.ClampStartPosSlotCount(int.MaxValue));
+        Assert.Equal(AkronModuleSettings.MaximumStartPosSlots, AkronModuleSettings.ClampStartPosSelectableSlotCount(int.MaxValue));
+        Assert.Equal(1, AkronModuleSettings.ClampStartPosSlotCount(int.MinValue));
     }
 
     [Theory]
@@ -4105,7 +4433,7 @@ public sealed class ModuleSettingsTests
     [InlineData(9, 15)]
     [InlineData(15, 15)]
     [InlineData(24, 24)]
-    [InlineData(120, 99)]
+    [InlineData(120, 50)]
     public void StartPosSelectableSlotCountAlwaysExposesAtLeastFifteenSlots(int input, int expected)
     {
         Assert.Equal(expected, AkronModuleSettings.ClampStartPosSelectableSlotCount(input));
@@ -4446,6 +4774,526 @@ public sealed class ModuleSettingsTests
             AkronBackupActions.SetBackupFolderForQa(null);
             Directory.Delete(backupFolder, recursive: true);
         }
+    }
+
+    // Akron holds Saves/AkronLogs/akron-current.log open for writing for the whole session, and the
+    // performance recorder holds its JSONL open while it records. Windows refuses to open a file for reading
+    // while another handle holds it for writing unless the reader permits writing too, so the archive has to
+    // name its share mode itself instead of using ZipFile.CreateEntryFromFile, which hardcodes
+    // FileShare.Read. Linux enforces no share modes, so the assertions below are on the contract rather than
+    // on an outcome Linux could distinguish.
+    [Fact]
+    public void BackupReadsSourceFilesWithASharedModeWindowsAccepts()
+    {
+        Assert.Equal(FileShare.ReadWrite | FileShare.Delete, AkronBackupActions.BackupSourceShare);
+
+        string source = File.ReadAllText(GetSourcePath("Actions", "akron-backup-actions.cs"));
+        int archiveWriter = source.IndexOf("internal static IReadOnlyList<AkronBackupSkippedFile> WriteSavesArchive", StringComparison.Ordinal);
+        Assert.True(archiveWriter >= 0, "WriteSavesArchive is unavailable.");
+        Assert.DoesNotContain("CreateEntryFromFile(", source, StringComparison.Ordinal);
+        Assert.Contains("FileAccess.Read, BackupSourceShare", source, StringComparison.Ordinal);
+
+        // Only the open is inside the per-file catch. Once the entry exists it cannot be taken back out of a
+        // ZipArchiveMode.Create archive, so a later failure has to fail the whole backup rather than leave a
+        // truncated member that a restore would write over a good save.
+        int perFileCatch = source.IndexOf("skipped.Add(new AkronBackupSkippedFile {", archiveWriter, StringComparison.Ordinal);
+        int addEntry = source.IndexOf("AddFileEntry(archive, source, file, relativePath);", archiveWriter, StringComparison.Ordinal);
+        Assert.True(perFileCatch > 0, "The per-file catch is unavailable.");
+        Assert.True(addEntry > perFileCatch, "The entry is written inside the per-file catch.");
+    }
+
+    // A restore deletes every save file, so it has to hold a complete copy first and has to have let go of the
+    // files Akron itself keeps open under Saves before it starts deleting.
+    [Fact]
+    public void RestoreRefusesToStartWithoutACompletePreRestoreBackup()
+    {
+        string source = File.ReadAllText(GetSourcePath("Actions", "akron-backup-actions.cs"));
+        int restore = source.IndexOf("private static void RestoreBackupConfirmed(", StringComparison.Ordinal);
+        Assert.True(restore > 0, "RestoreBackupConfirmed is unavailable.");
+
+        int preRestore = source.IndexOf("TryCreateBackup(\"pre-restore\", false, out", restore, StringComparison.Ordinal);
+        int replaceSaves = source.IndexOf("RestoreSavesFolder(", restore, StringComparison.Ordinal);
+        Assert.True(preRestore > restore);
+        Assert.True(replaceSaves > preRestore);
+
+        // The release is handed to RestoreSavesFolder rather than run before it, so it happens after the
+        // backup has been unpacked. A restore that stops while unpacking then costs the player nothing, not
+        // even a performance recording that was running.
+        Assert.Contains("ReleaseFilesAkronHoldsInSaves);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReleaseFilesAkronHoldsInSaves();", source.Substring(restore), StringComparison.Ordinal);
+
+        // The guard has to leave the method, not just set a status line and fall through into the delete.
+        Assert.Contains(
+            "if (preRestoreSkipped.Count > 0) {\n                    LastStatus = \"Restore stopped: pre-restore backup\" + DescribeSkippedFiles(preRestoreSkipped);\n                    Toast(LastStatus);\n                    return;\n                }",
+            source.Replace("\r\n", "\n"),
+            StringComparison.Ordinal);
+
+        // Both writers Akron owns under Saves have to be released, and the log has to go last: stopping the
+        // recorder can write a warning through AkronLog, which would reopen a log closed before it.
+        int releaseBody = source.IndexOf("private static void ReleaseFilesAkronHoldsInSaves() {", StringComparison.Ordinal);
+        Assert.True(releaseBody > 0);
+        int stopRecording = source.IndexOf("AkronPerformanceTelemetry.StopRecording();", releaseBody, StringComparison.Ordinal);
+        int closeLog = source.IndexOf("AkronLog.CloseLogFile();", releaseBody, StringComparison.Ordinal);
+        Assert.True(stopRecording > releaseBody);
+        Assert.True(closeLog > stopRecording);
+    }
+
+    [Fact]
+    public void AFailedArchiveLeavesNoBackupFileBehind()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            File.WriteAllText(Path.Combine(savesFolder, "readable.celeste"), "save data");
+            string backupPath = Path.Combine(backupFolder, "doomed.zip");
+
+            Assert.Throws<InvalidOperationException>(() => AkronBackupActions.WriteSavesArchive(
+                savesFolder,
+                backupPath,
+                _ => throw new InvalidOperationException("metadata failed")));
+
+            // A truncated ZIP left in the backup folder would be listed as a backup and offered for restore.
+            Assert.False(File.Exists(backupPath));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    [Fact]
+    public void BackupArchivesAFileThatIsHeldOpenForWriting()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            string logDirectory = Path.Combine(savesFolder, "AkronLogs");
+            Directory.CreateDirectory(logDirectory);
+            string logPath = Path.Combine(logDirectory, "akron-current.log");
+
+            // Opened exactly the way AkronLog.EnsureWriterLocked opens it, and left open across the backup.
+            using (FileStream held = new FileStream(logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+            using (StreamWriter writer = new StreamWriter(held, new UTF8Encoding(false)) { AutoFlush = true })
+            {
+                writer.Write("held open while the backup runs");
+
+                string backupPath = Path.Combine(backupFolder, "held-open.zip");
+                IReadOnlyList<AkronBackupSkippedFile> skipped = AkronBackupActions.WriteSavesArchive(
+                    savesFolder,
+                    backupPath,
+                    _ => "{}");
+
+                Assert.Empty(skipped);
+                using ZipArchive archive = ZipFile.OpenRead(backupPath);
+                ZipArchiveEntry entry = Assert.Single(archive.Entries, candidate => candidate.FullName == "AkronLogs/akron-current.log");
+                using StreamReader reader = new StreamReader(entry.Open(), Encoding.UTF8);
+                Assert.Equal("held open while the backup runs", reader.ReadToEnd());
+            }
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    [Fact]
+    public void BackupCompletesAndNamesTheFilesItCouldNotRead()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            File.WriteAllText(Path.Combine(savesFolder, "readable.celeste"), "save data");
+            // A symbolic link with no target enumerates as a file and throws on open, which is a genuine
+            // unreadable file rather than a simulated one. The Windows case this stands in for is a sharing
+            // violation, which produces the same per-file failure through the same catch. Creating the link
+            // needs a privilege on Windows that Linux does not ask for, and this repository builds and tests
+            // on Linux.
+            File.CreateSymbolicLink(
+                Path.Combine(savesFolder, "unreadable.celeste"),
+                Path.Combine(savesFolder, "no-such-target"));
+
+            string backupPath = Path.Combine(backupFolder, "partial.zip");
+            IReadOnlyList<AkronBackupSkippedFile> skipped = AkronBackupActions.WriteSavesArchive(
+                savesFolder,
+                backupPath,
+                skippedFiles => "skipped:" + string.Join(",", skippedFiles.Select(entry => entry.RelativePath)));
+
+            AkronBackupSkippedFile missing = Assert.Single(skipped);
+            Assert.Equal("unreadable.celeste", missing.RelativePath);
+            Assert.False(string.IsNullOrWhiteSpace(missing.Reason));
+
+            using ZipArchive archive = ZipFile.OpenRead(backupPath);
+            Assert.Contains(archive.Entries, entry => entry.FullName == "readable.celeste");
+            Assert.DoesNotContain(archive.Entries, entry => entry.FullName == "unreadable.celeste");
+
+            // The archive carries the record of what it is missing, so a backup is self-describing.
+            ZipArchiveEntry metadata = Assert.Single(archive.Entries, entry => entry.FullName == "_akron-backup.json");
+            using StreamReader reader = new StreamReader(metadata.Open(), Encoding.UTF8);
+            Assert.Equal("skipped:unreadable.celeste", reader.ReadToEnd());
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // The folders Akron runs out of, all of which sit under Saves and none of which is save data.
+    //
+    // AkronStartPos holds one saved room state per StartPos slot; measured on the test box those made every
+    // startup backup 207-238 MB, so the 1024 MB total-size cap held about four of them and retention pruned
+    // to its keep-at-least floor on the fifth boot, taking the player's real backup history with it.
+    // AkronNative holds the cimgui build Akron loads at startup, AkronRecordings holds video an ffmpeg child
+    // process is still writing, AkronTools holds a player-supplied ffmpeg binary, and AkronAutomation holds
+    // the command file the queue reads with FileShare.None. On Windows none of those can be deleted or
+    // renamed while the game holds them, which is why a backup does not carry them and a restore does not
+    // touch them.
+    [Fact]
+    public void BackupLeavesAkronsOwnRuntimeFoldersOutOfTheArchive()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            File.WriteAllText(Path.Combine(savesFolder, "0.celeste"), "save data");
+            File.WriteAllText(Path.Combine(savesFolder, "modsettings-Akron.celeste"), "settings");
+            foreach (string owned in new[] { "AkronStartPos", "AkronNative", "AkronRecordings", "AkronTools", "AkronAutomation", "AkronRestore" })
+            {
+                Directory.CreateDirectory(Path.Combine(savesFolder, owned, "nested"));
+                File.WriteAllText(Path.Combine(savesFolder, owned, "nested", "held-open"), "not save data");
+            }
+
+            // Akron closes these two itself before a restore moves anything, so they are ordinary files to a
+            // backup and have to stay in the archive.
+            Directory.CreateDirectory(Path.Combine(savesFolder, "AkronLogs"));
+            File.WriteAllText(Path.Combine(savesFolder, "AkronLogs", "akron-current.log"), "log line");
+            Directory.CreateDirectory(Path.Combine(savesFolder, ".tmp-perf"));
+            File.WriteAllText(Path.Combine(savesFolder, ".tmp-perf", "akron-perf.jsonl"), "{}");
+
+            string backupPath = Path.Combine(backupFolder, "no-runtime-folders.zip");
+            IReadOnlyList<AkronBackupSkippedFile> skipped = AkronBackupActions.WriteSavesArchive(
+                savesFolder,
+                backupPath,
+                _ => "{}");
+
+            // Left out on purpose is not the same as could not be read, so nothing is reported as skipped.
+            Assert.Empty(skipped);
+            using ZipArchive archive = ZipFile.OpenRead(backupPath);
+            Assert.Contains(archive.Entries, entry => entry.FullName == "0.celeste");
+            Assert.Contains(archive.Entries, entry => entry.FullName == "modsettings-Akron.celeste");
+            Assert.Contains(archive.Entries, entry => entry.FullName == "AkronLogs/akron-current.log");
+            Assert.Contains(archive.Entries, entry => entry.FullName == ".tmp-perf/akron-perf.jsonl");
+            Assert.DoesNotContain(archive.Entries, entry => entry.FullName.Contains("held-open", StringComparison.Ordinal));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // Saves/AkronNative/<rid>/cimgui.dll is loaded by the process at startup, on every platform, and Windows
+    // will not let anyone delete or replace a loaded image. The restore this replaces deleted all 18 save
+    // files and then threw on that one DLL, extracting nothing, so the player was left with no save files at
+    // all - observed in the game on Windows, deterministic for every Windows player.
+    //
+    // Linux unlinks a mapped .so without complaint, so the assertion has to be that the folder is left where
+    // it is rather than that removing it fails.
+    [Fact]
+    public void RestoreLeavesAkronsOwnRuntimeFoldersWhereTheyAre()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            File.WriteAllText(Path.Combine(savesFolder, "0.celeste"), "the save file on disk now");
+            Directory.CreateDirectory(Path.Combine(savesFolder, "AkronNative", "win-x64"));
+            File.WriteAllText(Path.Combine(savesFolder, "AkronNative", "win-x64", "cimgui.dll"), "the loaded library");
+
+            // An archive written before those folders were excluded still carries a copy of one, so a
+            // restore has to drop it rather than write it over the library the process has open.
+            string backupPath = Path.Combine(backupFolder, "older-archive.zip");
+            WriteTestArchive(backupPath, new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the archived save file",
+                ["AkronNative/win-x64/cimgui.dll"] = "a stale library from the backup",
+            });
+
+            AkronBackupActions.RestoreSavesFolder(savesFolder, backupPath, Path.Combine(savesFolder, "AkronRestore", "run"), () => { });
+
+            Assert.Equal("the archived save file", File.ReadAllText(Path.Combine(savesFolder, "0.celeste")));
+            Assert.Equal("the loaded library", File.ReadAllText(Path.Combine(savesFolder, "AkronNative", "win-x64", "cimgui.dll")));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    [Fact]
+    public void RestoreReplacesTheSaveFilesWithTheArchivedCopies()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            File.WriteAllText(Path.Combine(savesFolder, "0.celeste"), "the save file on disk now");
+            File.WriteAllText(Path.Combine(savesFolder, "3.celeste"), "a slot made after the backup");
+            Directory.CreateDirectory(Path.Combine(savesFolder, "AkronThemes"));
+            File.WriteAllText(Path.Combine(savesFolder, "AkronThemes", "theme.json"), "the theme on disk now");
+
+            string backupPath = Path.Combine(backupFolder, "good.zip");
+            WriteTestArchive(backupPath, new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the archived save file",
+                ["AkronThemes/theme.json"] = "the archived theme",
+                ["_akron-backup.json"] = "{}",
+            });
+
+            AkronBackupActions.RestoreSavesFolder(savesFolder, backupPath, Path.Combine(savesFolder, "AkronRestore", "run"), () => { });
+
+            Assert.Equal("the archived save file", File.ReadAllText(Path.Combine(savesFolder, "0.celeste")));
+            Assert.Equal("the archived theme", File.ReadAllText(Path.Combine(savesFolder, "AkronThemes", "theme.json")));
+            // A restore is a restore: a slot the archive does not carry is not left behind, and the archive's
+            // own metadata entry is not unpacked into the player's Saves folder.
+            Assert.False(File.Exists(Path.Combine(savesFolder, "3.celeste")));
+            Assert.False(File.Exists(Path.Combine(savesFolder, "_akron-backup.json")));
+            // And the folder it worked in is gone once it has succeeded.
+            Assert.False(Directory.Exists(Path.Combine(savesFolder, "AkronRestore", "run")));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // The invariant that matters more than any list of folders a restore skips: the save files are not
+    // touched until the backup has been unpacked, so the step most likely to fail cannot cost the player
+    // anything. The restore this replaces deleted first and unpacked second.
+    [Fact]
+    public void RestoreLeavesEverySaveFileAloneWhenTheBackupCannotBeUnpacked()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            File.WriteAllText(Path.Combine(savesFolder, "0.celeste"), "the save file on disk now");
+            File.WriteAllText(Path.Combine(savesFolder, "1.celeste"), "the second save file");
+
+            // An entry that would land outside the folder it is unpacked into. ZipFile.ExtractToDirectory
+            // refuses it, which is a real archive this restore cannot complete.
+            string backupPath = Path.Combine(backupFolder, "escaping.zip");
+            WriteTestArchive(backupPath, new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the archived save file",
+                ["../escaped.celeste"] = "outside the destination",
+            });
+
+            string workFolder = Path.Combine(savesFolder, "AkronRestore", "run");
+            Assert.Throws<IOException>(() => AkronBackupActions.RestoreSavesFolder(savesFolder, backupPath, workFolder, () => { }));
+
+            Assert.Equal("the save file on disk now", File.ReadAllText(Path.Combine(savesFolder, "0.celeste")));
+            Assert.Equal("the second save file", File.ReadAllText(Path.Combine(savesFolder, "1.celeste")));
+            Assert.False(Directory.Exists(workFolder));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // And when the failure comes later, while the folder is being cleared, every move already made is undone
+    // rather than left half done. On Windows the reason a move fails is a file another handle holds; here it
+    // is a name the move cannot take, which fails in the same place through the same path.
+    [Fact]
+    public void RestorePutsEverySaveFileBackWhenItCannotClearTheSavesFolder()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            File.WriteAllText(Path.Combine(savesFolder, "0.celeste"), "the save file on disk now");
+            File.WriteAllText(Path.Combine(savesFolder, "1.celeste"), "the second save file");
+
+            string backupPath = Path.Combine(backupFolder, "good.zip");
+            WriteTestArchive(backupPath, new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the archived save file",
+                ["1.celeste"] = "the archived second save file",
+            });
+
+            // The restore moves entries aside in name order, so 0.celeste has already moved by the time
+            // 1.celeste cannot: a directory is standing where it has to go. On Windows the reason would be a
+            // handle something else holds, which Linux cannot reproduce; it fails in the same place either
+            // way, which is what this pins.
+            string workFolder = Path.Combine(savesFolder, "AkronRestore", "run");
+            Directory.CreateDirectory(Path.Combine(workFolder, "previous", "1.celeste", "in the way"));
+
+            IOException failure = Assert.Throws<IOException>(
+                () => AkronBackupActions.RestoreSavesFolder(savesFolder, backupPath, workFolder, () => { }));
+            Assert.Contains("Your save files were not changed.", failure.Message, StringComparison.Ordinal);
+
+            Assert.Equal("the save file on disk now", File.ReadAllText(Path.Combine(savesFolder, "0.celeste")));
+            Assert.Equal("the second save file", File.ReadAllText(Path.Combine(savesFolder, "1.celeste")));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // One boundary, used by all three walks. They have to agree: an archive that carried a folder a restore
+    // leaves in place would try to write over the live copy, and a restore that removed a folder the archive
+    // does not carry would take the player's StartPos slots with it and have nothing to put back.
+    [Fact]
+    public void BackupAndRestoreAgreeOnWhatBelongsToAkron()
+    {
+        string text = File.ReadAllText(GetSourcePath("Actions", "akron-backup-actions.cs"));
+
+        Assert.Equal(2, CountOccurrences(text, "BuildAkronOwnedFolders(savesFolder)"));
+        Assert.Equal(3, CountOccurrences(text, "IsAkronOwnedPath(ownedFolders,"));
+
+        // Nothing under Saves changes until the archive has been unpacked, and the archive is unpacked
+        // somewhere else so that a failure while unpacking cannot land in the player's Saves folder.
+        int extract = text.IndexOf("ZipFile.ExtractToDirectory(backupPath, extracted", StringComparison.Ordinal);
+        int swap = text.IndexOf("SwapSavesFolderContents(savesFolder, extracted, previous);", StringComparison.Ordinal);
+        Assert.True(extract > 0, "The archive must be unpacked into a staging folder.");
+        Assert.True(swap > extract, "Saves must not change before the archive has been unpacked.");
+
+        // Both halves of the swap are undone by one rollback, and the entries moved in are undone first:
+        // they are standing on the names the entries moved aside have to come back to.
+        int swapBody = text.IndexOf("private static void SwapSavesFolderContents(", StringComparison.Ordinal);
+        int recordAside = text.IndexOf("movedAside.Add(name);", swapBody, StringComparison.Ordinal);
+        int recordIn = text.IndexOf("movedIn.Add(name);", swapBody, StringComparison.Ordinal);
+        int undoIn = text.IndexOf("foreach (string name in movedIn) {", swapBody, StringComparison.Ordinal);
+        int undoAside = text.IndexOf("foreach (string name in movedAside) {", swapBody, StringComparison.Ordinal);
+        Assert.True(recordAside > swapBody, "The swap must record what it moves aside.");
+        Assert.True(recordIn > recordAside, "The archived copies go in after the current ones have moved aside.");
+        Assert.True(undoIn > recordIn, "Both halves of the swap must be undone on failure.");
+        Assert.True(undoAside > undoIn, "The entries moved in have to be undone before the ones moved aside.");
+
+        // Each folder name is the one its owner uses, so the two cannot drift apart.
+        Assert.Equal("AkronStartPos", AkronStartPosReconstruction.SnapshotDirectoryName);
+        Assert.Equal("AkronAutomation", AkronAutomationService.DirectoryName);
+        foreach (string reference in new[]
+                 {
+                     "AkronStartPosReconstruction.SnapshotDirectoryName",
+                     "AkronImGuiRenderer.NativeDirectoryName",
+                     "AkronInternalRecorder.DefaultOutputFolderName",
+                     "AkronInternalRecorder.ToolsFolderName",
+                     "AkronAutomationService.DirectoryName",
+                 })
+        {
+            Assert.Contains(reference, text, StringComparison.Ordinal);
+        }
+    }
+
+    private static int CountOccurrences(string text, string value)
+    {
+        int count = 0;
+        for (int index = text.IndexOf(value, StringComparison.Ordinal); index >= 0; index = text.IndexOf(value, index + value.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    // Written by hand rather than through WriteSavesArchive, because these archives have to carry entries a
+    // backup would never write: a folder Akron owns, and a name that escapes the folder it unpacks into.
+    private static void WriteTestArchive(string path, Dictionary<string, string> entries)
+    {
+        using ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        foreach (KeyValuePair<string, string> entry in entries)
+        {
+            using StreamWriter writer = new StreamWriter(archive.CreateEntry(entry.Key, CompressionLevel.Optimal).Open(), Encoding.UTF8);
+            writer.Write(entry.Value);
+        }
+    }
+
+    // ZipFile.CreateEntryFromFile stored the last write time; the hand-written entry has to keep doing it, or
+    // every restored save file would come back stamped with the time of the backup.
+    [Fact]
+    public void BackupKeepsTheLastWriteTimeTheOldArchiveWriterStored()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            string file = Path.Combine(savesFolder, "stamped.celeste");
+            File.WriteAllText(file, "save data");
+            DateTime lastWrite = new DateTime(2021, 6, 5, 4, 3, 2, DateTimeKind.Local);
+            File.SetLastWriteTime(file, lastWrite);
+
+            string backupPath = Path.Combine(backupFolder, "stamps.zip");
+            Assert.Empty(AkronBackupActions.WriteSavesArchive(savesFolder, backupPath, _ => "{}"));
+
+            using ZipArchive archive = ZipFile.OpenRead(backupPath);
+            ZipArchiveEntry entry = Assert.Single(archive.Entries, candidate => candidate.FullName == "stamped.celeste");
+            Assert.Equal(lastWrite, entry.LastWriteTime.DateTime);
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // ZipFile.CreateEntryFromFile stored the Unix mode and ExtractToDirectory puts it back, so dropping it
+    // would widen the automation service's owner-only files the first time a Linux or macOS player restored a
+    // backup. ZIP entries carry no Unix mode on Windows, which is why this only runs off Windows.
+    [Fact]
+    public void BackupKeepsUnixFileModesTheOldArchiveWriterStored()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            string ownerOnly = Path.Combine(savesFolder, "owner-only.txt");
+            File.WriteAllText(ownerOnly, "token");
+            File.SetUnixFileMode(ownerOnly, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+
+            string backupPath = Path.Combine(backupFolder, "modes.zip");
+            Assert.Empty(AkronBackupActions.WriteSavesArchive(savesFolder, backupPath, _ => "{}"));
+
+            using ZipArchive archive = ZipFile.OpenRead(backupPath);
+            ZipArchiveEntry entry = Assert.Single(archive.Entries, candidate => candidate.FullName == "owner-only.txt");
+            Assert.Equal(
+                (int) (UnixFileMode.UserRead | UnixFileMode.UserWrite),
+                (entry.ExternalAttributes >> 16) & 0xFFF);
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    private static string CreateBackupTestRoot(out string savesFolder, out string backupFolder)
+    {
+        string root = Path.Combine(Path.GetTempPath(), "akron-backup-archive-" + Guid.NewGuid().ToString("N"));
+        savesFolder = Path.Combine(root, "Saves");
+        backupFolder = Path.Combine(savesFolder, "AkronBackups");
+        Directory.CreateDirectory(backupFolder);
+        AkronBackupActions.SetBackupFolderForQa(backupFolder);
+        return root;
+    }
+
+    private static void CleanUpBackupTestRoot(string root)
+    {
+        AkronBackupActions.SetBackupFolderForQa(null);
+        Directory.Delete(root, recursive: true);
+    }
+
+    private static string GetSourcePath(string directoryName, string fileName)
+    {
+        DirectoryInfo? directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            string candidate = Path.Combine(directory.FullName, "Source", directoryName, fileName);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate Akron repository root.");
     }
 
     [Fact]

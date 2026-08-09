@@ -20,6 +20,12 @@ using NumericsVector2 = System.Numerics.Vector2;
 namespace Celeste.Mod.Akron;
 
 internal sealed class AkronImGuiRenderer : IDisposable {
+    // Where the cimgui build embedded in Akron.zip is written and then loaded from. Named here rather than
+    // inline because a backup has to know about it: the process keeps this library loaded for its whole
+    // lifetime, and Windows will not let anyone delete or replace a loaded image, so a restore that tried
+    // would fail (Source/Actions/akron-backup-actions.cs).
+    internal const string NativeDirectoryName = "AkronNative";
+
     private const float WheelDelta = 120f;
     private const float FontSize = 18f;
 
@@ -921,7 +927,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     }
 
     private static IEnumerable<string> EnumerateNativeExtractionDirectories(string runtimeId) {
-        yield return Path.Combine(Everest.PathGame, "Saves", "AkronNative", runtimeId);
+        yield return Path.Combine(Everest.PathGame, "Saves", NativeDirectoryName, runtimeId);
         yield return AppContext.BaseDirectory;
         yield return Everest.PathGame;
 

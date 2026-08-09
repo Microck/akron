@@ -1,0 +1,171 @@
+# Akron perf harness scenario: deterministic movement loop.
+# Played through CelesteTAS (akron_tas_file + akron_play_tas). There is no
+# `console load` line on purpose: playback starts from whatever room the
+# driver already put the player in, so the same file is reusable and the
+# measured frames are always in-room gameplay frames.
+# The right and left halves are frame-symmetric, so the player oscillates
+# around its start position instead of walking out of the room. That keeps
+# every StartPos slot-count variation comparable.
+# Cycle = 130 frames, 12 cycles = 1560 frames (~26s at 60fps).
+
+RecordCount: 0
+
+#Start
+  30
+# cycle 1
+  20,R
+   5,R,J
+  15,R
+   1,R,X
+  14,R
+  10,R,G
+  20,L
+   5,L,J
+  15,L
+   1,L,X
+  14,L
+  10,L,G
+# cycle 2
+  20,R
+   5,R,J
+  15,R
+   1,R,X
+  14,R
+  10,R,G
+  20,L
+   5,L,J
+  15,L
+   1,L,X
+  14,L
+  10,L,G
+# cycle 3
+  20,R
+   5,R,J
+  15,R
+   1,R,X
+  14,R
+  10,R,G
+  20,L
+   5,L,J
+  15,L
+   1,L,X
+  14,L
+  10,L,G
+# cycle 4
+  20,R
+   5,R,J
+  15,R
+   1,R,X
+  14,R
+  10,R,G
+  20,L
+   5,L,J
+  15,L
+   1,L,X
+  14,L
+  10,L,G
+# cycle 5
+  20,R
+   5,R,J
+  15,R
+   1,R,X
+  14,R
+  10,R,G
+  20,L
+   5,L,J
+  15,L
+   1,L,X
+  14,L
+  10,L,G
+# cycle 6
+  20,R
+   5,R,J
+  15,R
+   1,R,X
+  14,R
+  10,R,G
+  20,L
+   5,L,J
+  15,L
+   1,L,X
+  14,L
+  10,L,G
+# cycle 7
+  20,R
+   5,R,J
+  15,R
+   1,R,X
+  14,R
+  10,R,G
+  20,L
+   5,L,J
+  15,L
+   1,L,X
+  14,L
+  10,L,G
+# cycle 8
+  20,R
+   5,R,J
+  15,R
+   1,R,X
+  14,R
+  10,R,G
+  20,L
+   5,L,J
+  15,L
+   1,L,X
+  14,L
+  10,L,G
+# cycle 9
+  20,R
+   5,R,J
+  15,R
+   1,R,X
+  14,R
+  10,R,G
+  20,L
+   5,L,J
+  15,L
+   1,L,X
+  14,L
+  10,L,G
+# cycle 10
+  20,R
+   5,R,J
+  15,R
+   1,R,X
+  14,R
+  10,R,G
+  20,L
+   5,L,J
+  15,L
+   1,L,X
+  14,L
+  10,L,G
+# cycle 11
+  20,R
+   5,R,J
+  15,R
+   1,R,X
+  14,R
+  10,R,G
+  20,L
+   5,L,J
+  15,L
+   1,L,X
+  14,L
+  10,L,G
+# cycle 12
+  20,R
+   5,R,J
+  15,R
+   1,R,X
+  14,R
+  10,R,G
+  20,L
+   5,L,J
+  15,L
+   1,L,X
+  14,L
+  10,L,G
+  60

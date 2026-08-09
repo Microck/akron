@@ -122,6 +122,7 @@ public sealed class FeatureRegistryTests
     [InlineData(AkronFeatureKind.Logging, AkronStatus.GoldberryHardlistClean)]
     [InlineData(AkronFeatureKind.JournalSnapshotCompare, AkronStatus.GoldberryHardlistClean)]
     [InlineData(AkronFeatureKind.Backups, AkronStatus.GoldberryHardlistClean)]
+    [InlineData(AkronFeatureKind.DisablePlayback, AkronStatus.RegularClean)]
     public void CheatReferenceClassifiesEveryFeatureKind(AkronFeatureKind kind, AkronStatus expectedStatus)
     {
         Assert.Equal(expectedStatus, AkronFeatureRegistry.Classify(kind));
@@ -360,6 +361,7 @@ public sealed class FeatureRegistryTests
     [InlineData("Hide Wind Snow", AkronStatus.RegularClean)]
     [InlineData("Hide Waterfalls", AkronStatus.RegularClean)]
     [InlineData("Hide Tentacles", AkronStatus.RegularClean)]
+    [InlineData("Disable Playback", AkronStatus.RegularClean)]
     [InlineData("Hide Heat Distortion", AkronStatus.RegularClean)]
     [InlineData("Fix Hitbox Pixels", AkronStatus.RegularClean)]
     [InlineData("Show Hitboxes On Death", AkronStatus.RegularClean)]

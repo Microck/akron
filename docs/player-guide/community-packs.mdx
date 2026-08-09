@@ -7,11 +7,9 @@ Community Packs opens an in-game browser where you can find and import community
 
 ## Index URL
 
-The browser reads packs from a JSON catalog at the configured **Index URL** (shown at the top of the Community Packs window). The default catalog is hosted at `https://akron.micr.dev/catalog/index.json`. You can point this to a custom URL or local `file:///` path. Catalog entries can contain map-specific StartPos, Auto Kill, Auto Deafen, and other scoped `.akr` packs.
+The browser reads packs from a JSON catalog at the configured **Index URL** (shown at the top of the Community Packs window). The default catalog is hosted at `https://akron.micr.dev/catalog/index.json`. You can point this to a custom URL or local `file:///` path. Catalog entries can contain map-specific **StartPos**, **Auto Kill**, or **Auto Deafen** `.akr` packs.
 
-The official catalog uses Akron-branded URLs, but the files are stored in Cloudflare R2 behind the website routes. Akron only sees normal HTTPS downloads: `/catalog/index.json` for the pack list, then a direct `.akr` URL when you import a selected pack.
-
-## Import a Pack
+## Import a pack
 
 <Steps>
   <Step title="Open the target map">
@@ -31,18 +29,18 @@ The official catalog uses Akron-branded URLs, but the files are stored in Cloudf
   </Step>
 </Steps>
 
-## Pack Safety
+## Pack safety
 
 Community packs use the same `.akr` import path as local exports.
 
-- **Back up first.** Export your current setup before importing a community pack so you can restore it.
-- **Check the section.** Verify that the pack's section (StartPos, Auto Kill, and so on) matches what you expect.
-- **StartPos packs carry exact room state.** Each imported StartPos includes its v7 snapshot, coordinates, and spawn settings. The same map and object-providing mods must be installed.
-- **Attempt-changing imports are policy-visible.** Imported settings that affect attempt counts may appear in status and proof metadata.
-- **Prefer scoped imports.** Use section-specific packs over whole-setup packs when you only need one category.
-- **Only setup archives import.** Public packs must use the current `.akr` setup archive shape: `manifest.json`, `setup.json`, and one v7 snapshot entry per StartPos, with `Kind` set to `setup` and setup format `akron-setup-v4`.
+- Export your current setup before importing a community pack.
+- Confirm that the pack section is StartPos, Auto Kill, or Auto Deafen.
+- For StartPos packs, install the same map and object-providing mods used by the author. Each imported StartPos includes its v8 snapshot, coordinates, and spawn settings.
+- Imported settings can affect attempt status and proof metadata when used.
+- The Community Packs browser accepts StartPos, Auto Kill, and Auto Deafen setup archives.
+- A public pack contains `manifest.json`, `setup.json`, and one v8 snapshot entry per StartPos. Its manifest `kind` is `setup` and its payload format is `akron-setup-v5`.
 
-## Size Limits
+## Size limits
 
 Akron caps catalog and pack downloads before importing:
 
@@ -52,14 +50,13 @@ Akron caps catalog and pack downloads before importing:
 - Each compressed StartPos snapshot attachment: 128 MiB.
 - All compressed StartPos snapshot attachments in one pack: 509 MiB.
 - Each downloaded catalog preview image: 2 MiB, no wider or taller than 2048 pixels, and no larger than 4,194,304 pixels in total.
+- Marked-room captures in one in-game upload: 10 rooms.
 
-The official Discord bot must allow the same 512 MiB `.akr` limit before publishing a public catalog pack.
-
-Catalog screenshots can start larger than the stored image. Official upload paths store marked-room captures privately for review, then publish optimized JPEG previews for the catalog carousel. Moderator reviews show every submitted image, and published Discord galleries include navigation and download controls. In-game uploads automatically capture rooms that contain the selected StartPos, Auto Kill, or Auto Deafen content before submission. StartPos galleries begin with Slot 1 and continue in slot order.
+Catalog screenshots can start larger than the stored image. Official upload paths store marked-room captures privately for review, then publish optimized JPEG previews for the catalog carousel. Moderator reviews show every submitted image, and published Discord galleries include navigation and download controls. In-game uploads automatically capture up to 10 rooms that contain the selected StartPos, Auto Kill, or Auto Deafen content before submission. StartPos capture rooms are ordered by the lowest saved StartPos slot in each room.
 
 In-game uploads can submit StartPos, Auto Kill, and Auto Deafen packs. Generated titles use the current map's localized name when one is available. Akron attaches the current map SID to the upload, so check that any Auto Kill or Auto Deafen areas in your active setup belong to the current map before submitting.
 
-## Catalog Contract
+## Catalog contract
 
 Catalog entries point to `.akr` downloads and identify the section, map SID, title, author, tags, and update time. See [Community pack catalog](/reference/community-pack-catalog) for the JSON schema and [Akron .akr archives](/reference/akr-archives) for archive validation rules.
 

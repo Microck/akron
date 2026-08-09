@@ -7,7 +7,7 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronCommands {
-    [Command("akron_auto_kill", "control auto kill: on|off|status|timer on|off|seconds <n>|area <x,y,w,h>|area-add <x,y,w,h>|area-select <n>|area-clear-selected|area-clear|default <condition-action>|default-from-selected|show-area on|off|show-on-death on|off|speed on|off|min-speed <n>|max-speed <n>|h-speed on|off|min-h-speed <n>|max-h-speed <n>|v-speed on|off|min-v-speed <n>|max-v-speed <n>|dash-count on|off|dashes <n>|ground any|grounded|airborne|horizontal any|left|right|still|vertical any|up|down|still|state on|off|state-id <n>|invert on|off")]
+    [Command("akron_auto_kill", "control auto kill: on|off|toggle|status|timer on|off|seconds <n>|area <x,y,w,h>|area-add <x,y,w,h>|area-select <n>|area-clear-selected|area-clear|default <condition-action>|default-from-selected|show-area on|off|show-on-death on|off|speed on|off|min-speed <n>|max-speed <n>|h-speed on|off|min-h-speed <n>|max-h-speed <n>|v-speed on|off|min-v-speed <n>|max-v-speed <n>|dash-count on|off|dashes <n>|ground any|grounded|airborne|horizontal any|left|right|still|vertical any|up|down|still|state on|off|state-id <n>|invert on|off")]
     public static void AutoKill(string action = "status", string value = "", string part2 = "", string part3 = "", string part4 = "") {
         string normalizedAction = NormalizeToken(action);
         bool editDefaults = normalizedAction is "default" or "defaults" or "template";

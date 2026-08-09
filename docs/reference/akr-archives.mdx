@@ -1,11 +1,11 @@
 ---
-title: .akr Archive Format
+title: .akr archive format
 description: Technical specification for the Akron archive format, including manifests, payloads, and import safety rules.
 ---
 
-Akron uses `.akr` files to share structured setup data. An `.akr` file is a ZIP archive containing one manifest and one main payload. StartPos setup packs also contain the exact compressed snapshot named by each StartPos entry. The reader rejects every file that the payload does not declare.
+Akron uses `.akr` files to store and share setup sections, overlay themes, HUD labels, and control-display presets. An `.akr` file is a ZIP archive containing one manifest and one main payload. StartPos setup packs also contain the exact compressed snapshot named by each StartPos entry. The reader accepts only `manifest.json`, the main payload required by the archive kind, and StartPos attachments declared by `setup.json`.
 
-## Archive Shape
+## Archive shape
 
 Most archives contain two entries. StartPos and Whole setup archives add one snapshot entry per StartPos:
 
@@ -13,7 +13,7 @@ Most archives contain two entries. StartPos and Whole setup archives add one sna
 flowchart TD
   archive["example.akr"] --> manifest["manifest.json"]
   archive --> payload["payload JSON"]
-  archive --> snapshots["startpos/*.v7.json.gz"]
+  archive --> snapshots["startpos/*.v8.json.gz"]
   manifest --> format["Format and target"]
   payload --> data["Kind data"]
   snapshots --> roomState["Exact StartPos room state"]
@@ -27,48 +27,92 @@ The `manifest.json` file uses the following structure:
 
 ```json
 {
-  "Format": "akron-archive",
-  "FormatVersion": 1,
-  "Kind": "setup",
-  "KindVersion": 1,
-  "CreatedBy": "Akron",
-  "CreatedAt": "2026-05-14T00:00:00.0000000Z",
-  "Target": {
-    "Game": "Celeste",
-    "MapSid": ""
+  "format": "akron-archive",
+  "formatVersion": 1,
+  "kind": "setup",
+  "kindVersion": 1,
+  "createdBy": "Akron",
+  "createdAt": "2026-05-14T00:00:00.0000000Z",
+  "target": {
+    "game": "Celeste",
+    "mapSid": ""
   }
 }
 ```
 
 | Field | Meaning |
 |---|---|
-| `Format` | Must be `akron-archive`. |
-| `FormatVersion` | Current value: `1`. |
-| `Kind` | Payload kind. Setup packs currently use the archive kind `setup`. |
-| `KindVersion` | Version of that payload kind. Must be positive. |
-| `CreatedBy` | Producer label. Defaults to `Akron`. |
-| `CreatedAt` | UTC creation timestamp when available. |
-| `Target.Game` | Target game. Akron setup packs use `Celeste`. |
-| `Target.MapSid` | Optional map SID for map-scoped payloads. |
+| `format` | Must be `akron-archive`. |
+| `formatVersion` | Must be `1`. |
+| `kind` | Payload kind. See the current kinds below. The value is limited to 64 characters. |
+| `kindVersion` | Must be `1`. |
+| `createdBy` | Must be `Akron`. |
+| `createdAt` | Required UTC creation timestamp ending in `Z`. |
+| `target.game` | Must be `Celeste`. |
+| `target.mapSid` | Required string for the target map SID. Use an empty string for payloads that are not map-scoped. The value is limited to 256 characters. |
 
-The manifest size limit is 16 KiB.
+The manifest must contain exactly these fields, including both fields in
+`target`. Missing, extra, differently cased, or null fields are rejected. The
+manifest size limit is 16 KiB.
 
-## Setup Payload
+## Current archive kinds
+
+| Kind | Payload entry | Payload format | Payload limit | Default directory |
+|---|---|---|---|---|
+| `setup` | `setup.json` | `akron-setup-v5` | 2 MiB, plus declared StartPos attachments | `Saves/AkronSetups` |
+| `theme` | `theme.json` | `akron-overlay-theme-v1` | 64 KiB | `Saves/AkronThemes` |
+| `hud-labels` | `hud-labels.json` | `akron-hud-labels-v1` | 256 KiB | `Saves/AkronHudLabels` |
+| `control-display` | `control-display.json` | `akron-control-display-v1` | 256 KiB | `Saves/AkronControlDisplay` |
+
+Every current kind uses manifest `kindVersion` 1. The payload format has its own version and is validated before Akron applies imported state.
+
+## Payload contract versions
+
+The archive container (`akron-archive`, `formatVersion` 1, `kindVersion` 1) describes
+the ZIP shape and the manifest. It is independent of what a payload means, and it does
+not change when a payload contract changes.
+
+The `setup` payload contract and the StartPos snapshot contract move together:
+
+| Setup payload | StartPos snapshot document | StartPos attachment name | Snapshot file on disk |
+|---|---|---|---|
+| `akron-setup-v5` | `akron-reconstruction-v8` | `startpos/<slot>.v8.json.gz` | `Saves/AkronStartPos/v8-<digest>.json.gz` |
+
+A StartPos snapshot addresses each object by its position in a clean reload of the room
+rather than by an identifier of its own. That makes a snapshot meaningful only against
+the fresh room the build that wrote it produced. When Akron changes what a clean reload
+contains, every position after the change shifts, and two objects of the same type with
+no distinguishing identity can pair the wrong way round and restore without reporting a
+failure. Both contracts are therefore bumped together whenever the fresh room changes,
+and the snapshot file name carries the same version so an older file is never read.
+
+Akron does not convert older payloads. A pack whose payload format is not the current
+one is refused when it is read, before any attachment is opened, and the message names
+both contract versions. A snapshot whose document format is not the current one is
+refused by the reader, before the reconstruction path sees it.
+
+| Change | Effect on existing data |
+|---|---|
+| `akron-setup-v4` -> `akron-setup-v5` | Every `.akr` setup pack made by an earlier build must be exported again. |
+| `akron-reconstruction-v7` -> `akron-reconstruction-v8` | Every StartPos slot set by an earlier build must be set again. Slot positions, spawn settings and keybinds are unaffected; only the saved room state behind each slot is. |
+
+## Setup payload
 
 Setup packs use the `setup` archive contract:
 
 ```text
-Kind: setup
+kind: setup
 Payload entry: setup.json
-Payload format: akron-setup-v4
+Payload format: akron-setup-v5
 Directory: Saves/AkronSetups
 ```
 
-The `setup.json` payload uses the following structure:
+The following abbreviated example shows the top-level shape of a Whole setup.
+It is not an importable payload because `state` omits its required fields:
 
 ```json
 {
-  "format": "akron-setup-v4",
+  "format": "akron-setup-v5",
   "name": "Whole Setup",
   "createdUtc": "2026-05-14T00:00:00.0000000Z",
   "section": "Whole",
@@ -79,28 +123,106 @@ The `setup.json` payload uses the following structure:
 }
 ```
 
+The reader requires the exact state fields owned by the declared section. It
+rejects missing fields, extra fields, unknown enum values, and incorrectly
+cased property names. `buttonBindings` and `menuActionBindings` are present
+only for `Keybinds` and `Whole`. `startPositions` is present only for
+`StartPos` and `Whole`. The payload `createdUtc` value must exactly match the
+manifest `createdAt` value.
+
 The setup payload size limit is 2 MiB.
 
 Each compressed StartPos snapshot attachment is limited to 128 MiB. All
 snapshot attachments in one setup archive are limited to 509 MiB in total.
-Each expanded v7 snapshot is limited to 192 MiB while Akron validates it.
+Each expanded v8 snapshot is limited to 384 MiB while Akron validates it.
+A `StartPos` or `Whole` archive can contain at most 99 StartPos entries. Each
+slot key must be in the range 1-99.
 
-## Setup Sections
+## Portable setup validation limits
 
-| Section | Included Data |
+Akron applies these limits when it writes or reads a setup pack. Values outside
+the ranges are rejected rather than clamped during pack validation.
+
+| Data | Limit |
+|---|---:|
+| StartPos entries | 99 |
+| Auto Kill areas | 128 |
+| Auto Deafen areas | 128 |
+| Custom HUD labels | 64 |
+| Control Display elements | 48 |
+| HUD row-order keys | 128 |
+| Everest button bindings | 128 |
+| Inputs in one Everest button binding | 16 total across keyboard, controller, and mouse inputs |
+| Akron menu action bindings | 256 |
+| Sound volume entries | 64 |
+| Sound override entries | 64 |
+
+| Value | Accepted range |
 |---|---|
-| `Whole` | Active setup state, button bindings, menu action bindings, and StartPos slots. |
+| StartPos coordinates | Finite values from -16,777,216 through 16,777,216 on each axis |
+| StartPos dashes | `-1` for native, or 0-5 |
+| StartPos stamina | `-1` for native, or 0-100 percent |
+| Auto Kill and Auto Deafen rectangles | Width and height must be zero or greater |
+| Recorder resolution | Width 320-3840, height 180-2160, and at most 8,294,400 total pixels |
+| Recorder framerate | 1-120 FPS |
+| Recorder bitrate | 1-200 Mbps |
+| Replay buffer | 0-300 seconds |
+| Clip pre-roll | 0-30 seconds |
+| Clip post-roll | 0-30 seconds |
+| Keyframe interval | 0-10 seconds |
+| Endscreen duration | Finite value from 0-15 seconds |
+| Recorder audio levels | 0-200 percent per track |
+| Audio speed multiplier | Finite value from 0.1x-4.0x |
+| Pitch multiplier | Finite value from 0.1x-4.0x |
+| Per-sound volume | 0-200 percent |
+| Control Display element bindings | Up to 16 action bindings and up to 16 keyboard bindings per element |
+
+Required strings cannot be empty or whitespace. Optional strings can be empty,
+but cannot exceed their listed length.
+
+| String | Requirement |
+|---|---|
+| Setup pack name | Required, at most 256 characters |
+| StartPos room and map SID | Required, at most 256 characters each |
+| Everest binding name | Required, at most 128 characters, and must name a supported `ButtonBinding` property exactly |
+| Keyboard, controller, or mouse binding input | Required, at most 64 characters, and must use the exact enum name |
+| Akron menu action name | Required, at most 128 characters |
+| Akron menu action binding | Required, at most 256 characters |
+| Audio channel name | Required, at most 128 characters |
+| Custom HUD label ID | Required, at most 128 characters |
+| Custom HUD label name | Optional, at most 128 characters |
+| Custom HUD label text | Optional, at most 4,096 characters |
+| Control Display element ID | Required, at most 128 characters |
+| Control Display element label | Optional, at most 128 characters |
+| HUD row-order key | Required, at most 128 characters |
+
+Every enum field must contain a defined named string value. Each StartPos entry
+must use the archive name `startpos/<slot>.v8.json.gz` and a 64-character
+lowercase hexadecimal SHA-256 digest.
+
+## Setup sections
+
+| Section | Included data |
+|---|---|
+| `Whole` | All portable setup state, button bindings, menu action bindings, and StartPos slots for the target map. |
 | `StartPos` | StartPos settings and saved StartPos slots. |
 | `Keybinds` | Everest `ButtonBinding` properties plus Akron menu action bindings. |
 | `AutoKill` | Auto Kill toggles, timer, area settings, rectangles, speed ranges, movement direction filters, dash-count conditions, grounded/airborne state, player state, and condition inversion. |
-| `AutoDeafen` | Auto Deafen toggle, hotkey, area settings, and rectangles. |
-| `Recorder` | Internal recorder output, replay, trigger, audio capture, codec, and preset settings. |
-| `Audio` | Audio speed, pitch shift, per-sound volumes/overrides, and audio splitter devices. |
+| `AutoDeafen` | Auto Deafen toggle, area settings, and rectangles. The local hotkey is not included. |
+| `Recorder` | Portable replay-buffer, trigger, audio-capture, codec, quality, and preset settings. |
+| `Audio` | Audio speed, pitch shift, and per-sound volumes and overrides. |
 | `Hud` | HUD widgets, labels, input displays, resource bars, counters, and HUD presentation state. |
 
-Scoped imports merge only the selected section into the current active settings without resetting unrelated settings.
+Setup packs preserve machine-local values: the screenshot export path;
+recording output folder, filename template, replay auto-start mode, and
+colorspace arguments; audio-splitter state and device selections; and the Auto
+Deafen hotkey. Whole exports omit these values too.
 
-## Import Safety Rules
+Scoped imports replace the selected portable settings without resetting
+unrelated settings. A StartPos import also replaces every StartPos slot for the
+archive's target map. Slots for other maps remain unchanged.
+
+## Import safety rules
 
 Imports follow a "fail closed" policy:
 
@@ -117,16 +239,18 @@ flowchart TD
   payloadCheck -->|Yes| apply["Apply section"]
 ```
 
-Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats.
+Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats. A pack whose payload contract predates this build is refused with a message naming both contract versions, before any StartPos attachment is opened.
 
 For each StartPos attachment, Akron verifies the declared checksum, map, and
 room before applying the setup. It then binds the snapshot to the recipient's
-active save-file slot. The attachment carries room and session state, not the
-author's global save progress or module save data.
+active save-file slot. The exported attachment contains the captured active
+map's berry progress, but import replaces that field with the recipient's
+current active-map berry progress before binding the snapshot. Akron does not
+import the author's progress or module save data.
 
-If an import fails, current settings remain unchanged and a short toast notification is shown. Detailed errors are written to the logs rather than the user-facing toast.
+If an import fails, current settings remain unchanged. Akron shows a short toast and writes the detailed error to its logs.
 
-## Maintenance Requirements
+## Maintenance requirements
 
 Settings included in `.akr` setup packs must meet these requirements:
 
@@ -138,16 +262,16 @@ Settings included in `.akr` setup packs must meet these requirements:
 
 Avoid adding compatibility shims for old local packs unless explicitly required. Akron maintains a single canonical contract to ensure clear import errors.
 
-New archive kinds are reserved for payloads that are not setup/setup sections.
+New archive kinds are reserved for payloads that are not setup packs or setup sections.
 
 New archive kinds require:
 
-- A unique `Kind`, payload entry name, payload format string, and payload size limit.
+- A unique manifest `kind`, payload entry name, payload format string, and payload size limit.
 - Dedicated single-payload archive helper methods.
 - Simple payload entry names (e.g., `labels.json`).
 - Unsupported payload-format rejection before state is applied.
-- Comprehensive test coverage for round-trip, wrong kind, extra entries, oversized payload, and missing manifest.
-- Complete technical documentation updated on this page.
+- Tests for round-trip behavior, wrong kinds, extra entries, oversized payloads, and missing manifests.
+- An update to this page that documents the complete contract.
 
 Do not include multiple unrelated main payloads in a single `.akr` archive. The current contract requires exactly one kind, one manifest, and one main payload. Only StartPos snapshot attachments declared by `setup.json` are allowed.
 

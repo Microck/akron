@@ -13,6 +13,7 @@ public sealed partial class AkronOverlay {
         }
 
         ImGui.TextWrapped("Restoring creates a pre-restore backup first.");
+        ImGui.TextWrapped("StartPos saved states are not in a backup and a restore leaves them as they are.");
         ImGui.Separator();
         foreach (AkronBackupEntry backup in backups) {
             ImGui.TextUnformatted(backup.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
@@ -47,6 +48,10 @@ public sealed partial class AkronOverlay {
         ImGui.TextWrapped(AkronBackupActions.LastStatusForDisplay);
         ImGui.TextUnformatted("Last backup: " + AkronBackupActions.DescribeLastBackup());
         ImGui.TextWrapped("Folder: " + AkronBackupActions.BackupFolderForDisplay);
+        // A backup that silently carried the StartPos snapshots was 200 MB or more each,
+        // which emptied the retention budget in four boots. Say what a backup holds where
+        // the player is looking at backups, not only in the archive metadata.
+        ImGui.TextWrapped("A backup holds your save files. Akron's own folders are left out and a restore leaves them alone: StartPos saved states, recordings, and the files Akron itself keeps open while the game runs.");
         if (ImGui.Button("Create backup now##" + popupId)) {
             AkronBackupActions.CreateBackup("manual");
         }

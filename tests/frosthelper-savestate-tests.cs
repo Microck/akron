@@ -1,5 +1,6 @@
 using System;
 using Celeste.Mod.Akron;
+using MonoMod.Utils;
 using Xunit;
 
 namespace FrostHelper.ModIntegration {
@@ -8,6 +9,7 @@ namespace FrostHelper.ModIntegration {
 }
 
 namespace Celeste.Mod.Akron.Tests {
+    [Collection(AkronSharedStateCollection.Name)]
     public sealed class FrostHelperSavestateTests {
         [Fact]
         public void FrostHelperSavestatePersistedObjectsAreReturnedByReference() {
@@ -26,7 +28,33 @@ namespace Celeste.Mod.Akron.Tests {
             }
         }
 
+        [Fact]
+        public void DeepClonePreservesMonoModDynamicDataSidecars() {
+            DynamicDataProbe probe = new DynamicDataProbe();
+            DynData<DynamicDataProbe> sourceData = new DynData<DynamicDataProbe>(probe);
+            sourceData.Set("SpringCollab2020_ignoreLighting", true);
+            sourceData.Set("owner", probe);
+            DynamicData sourceDynamicData = new DynamicData(probe);
+            sourceDynamicData.Data["mod-name"] = "SpringCollab2020";
+
+            AkronDeepClone.Initialize();
+            try {
+                DynamicDataProbe clone = Assert.IsType<DynamicDataProbe>(AkronSaveLoadService.DeepClone(probe));
+                DynData<DynamicDataProbe> cloneData = new DynData<DynamicDataProbe>(clone);
+
+                Assert.NotSame(probe, clone);
+                Assert.True(cloneData.Get<bool>("SpringCollab2020_ignoreLighting"));
+                Assert.Same(clone, cloneData.Get<DynamicDataProbe>("owner"));
+                Assert.Equal("SpringCollab2020", new DynamicData(clone).Data["mod-name"]);
+            } finally {
+                AkronDeepClone.Reset();
+            }
+        }
+
         private sealed class FrostHelperPersistedProbe : FrostHelper.ModIntegration.ISavestatePersisted {
+        }
+
+        private sealed class DynamicDataProbe {
         }
     }
 }

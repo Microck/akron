@@ -1,9 +1,9 @@
 ---
-title: Feature adding runbook
+title: Feature development runbook
 description: Add Akron features with the expected shape, placement, copy, tests, docs, and live verification evidence.
 ---
 
-Use this runbook when adding a user-facing Akron feature. Start from the player-visible behavior, then choose the smallest UI shape that expresses it.
+Use this runbook when adding a user-facing Akron feature. Start with the player-visible behavior, then choose the smallest UI control that expresses it.
 
 Most feature PRs should fit one of these shapes:
 
@@ -15,9 +15,9 @@ Most feature PRs should fit one of these shapes:
 
 If the feature does not fit one of these shapes, explain the shape in the pull request before expanding the UI or runtime surface.
 
-## Feature Shape
+## Feature shape
 
-A feature row should have one primary behavior. Submenu controls may configure that behavior, but they should not quietly add separate features.
+A feature row should have one primary behavior. Submenu controls configure that behavior.
 
 Split behavior into separate rows or separate PRs when users would reasonably enable, disable, document, test, or search for each behavior independently.
 
@@ -35,7 +35,7 @@ Avoid feature bundles:
 - Do not add a setting that activates behavior while the parent row still reads as off.
 - Do not add a row at the bottom of a tab without checking the tab's local ordering style.
 
-## Placement And Ordering
+## Placement and ordering
 
 Pick the tab users would check first. Then follow that tab's existing task groups and workflow order.
 
@@ -45,6 +45,10 @@ Do not append a new row to the end by default.
 |---|---|---|
 | `Player` | The feature directly changes Madeline, player resources, movement, or player-attached information. | Grouped as resources, practice assists, HUD controls, then player presentation. |
 | `Level` | The feature affects the current room, chapter, map state, timer, pause behavior, visual tuning, hitboxes, or level-wide rules. | Curated by impact and related systems. Place near the closest system. |
+| `StartPos` | The feature captures, restores, selects, or configures persistent StartPos state. | Follow the capture, placement, selection, and respawn workflow. |
+| `Backups` | The feature creates, restores, reports, schedules, or retains save backups. | Follow the create, restore, status, trigger, and retention workflow. |
+| `Bypass` | The feature changes completion, unlock, or berry state. | Group actions by the save or progression state they change. |
+| `Keybinds` | A bindable action needs a read-only binding overview. | Add the behavior to its owning tab, then add its binding overview in the matching workflow order. |
 | `Shortcuts` | The feature is an immediate one-shot action. | Workflow ordered. Keep restart/reload actions, spawn actions, throw actions, and cutscene actions grouped. |
 | `Creator` | The feature helps route building, map navigation, room capture, debug-map work, or entity inspection. | Keep inspection tools, room navigation, checkpoint/map navigation, then capture and export actions together. |
 | `Labels` | The feature draws persistent label-style HUD information. | Uses label row order and user row-order behavior. |
@@ -53,9 +57,11 @@ Do not append a new row to the end by default.
 | `Internal Recorder` | The feature changes recording, replay buffers, clip triggers, output, codec, or proof recording. | Curated recorder workflow order. Place near the matching recorder step. |
 | `Sound` | The feature changes audio routing, volume, pitch, speed, or playback presentation. | Grouped by sound concern. Place in the matching sound group. |
 
-When in doubt, choose the tab based on the user's mental model, not the implementation file.
+Choose the tab where players will look for the feature first.
 
-## File Map
+Supported integrations add `Speedrun Tool`, `CelesteTAS`, `Extended Variant Mode`, and `Extended Camera Dynamics` tabs when those mods are loaded. Keep integration-specific rows in the matching interop catalog instead of a base tab.
+
+## File map
 
 Common starting points:
 
@@ -65,7 +71,7 @@ Common starting points:
 | Runtime update hooks | `Source/Module/akron-module-player-runtime.cs`, `Source/Module/akron-module-visual-runtime.cs`, `Source/Runtime/akron-*.cs` |
 | Persisted settings | `Source/Module/AkronModuleSettings.cs`, `Source/Module/akron-module-settings-clamps.cs`, `Source/Module/akron-module-settings-display.cs` |
 | Setup persistence | `Source/Setups/akron-setup-settings.cs`, `Source/Setups/akron-setup-state.cs`, `Source/Setups/akron-setup-state-apply.cs` |
-| Overlay row placement | `Source/Overlay/akron-overlay-entries.cs` |
+| Overlay row placement | `Source/Overlay/akron-overlay-entries.cs` for base rows, with focused catalogs in `Source/Overlay/akron-overlay-label-entries.cs`, `Source/Overlay/akron-overlay-keybind-entries.cs`, and `Source/Overlay/akron-overlay-interop-entries.cs` |
 | Submenu controls | A focused `Source/Overlay/akron-overlay-*-popups.cs` partial |
 | Tooltip and search copy | `Source/Overlay/akron-overlay-copy.cs` |
 | Bindable actions | `Source/Overlay/akron-overlay-bindable-actions.cs` |
@@ -77,7 +83,7 @@ Common starting points:
 
 See [Implementation boundaries](/contributing/implementation-boundaries) for the full ownership map.
 
-## Simple Action Button
+## Simple action button
 
 Use this path for one-shot behavior such as spawning, exporting, restarting, loading, clearing, or skipping.
 
@@ -85,7 +91,7 @@ Implementation checklist:
 
 - Add a focused action method in the nearest action/runtime file.
 - Gate the action with `AkronModule.TryUse(...)` when using it should record policy use.
-- Add an `Action(...)` row in `Source/Overlay/akron-overlay-entries.cs`.
+- Add an `Action(...)` row in the nearest owning overlay catalog.
 - Add search aliases and tooltip copy in `Source/Overlay/akron-overlay-copy.cs`.
 - Add command/status output when automation or live verification needs it.
 - Add or update feature policy classification when the action affects run validity.
@@ -105,7 +111,7 @@ Example:
 Spawn a Theo crystal at Madeline's current position.
 ```
 
-## Runtime Toggle
+## Runtime toggle
 
 Use this path for ongoing behavior controlled by one enabled/disabled state.
 
@@ -134,7 +140,7 @@ Example:
 Replenish dash count after dash consumption during gameplay updates.
 ```
 
-## HUD Rendering Feature
+## HUD rendering feature
 
 Use this path for persistent on-screen information or player-attached display.
 
@@ -176,9 +182,9 @@ Use a submenu when:
 
 Prefer separate rows when a submenu option would need separate docs, separate policy, separate tests, or separate search behavior.
 
-## Copy Style
+## Copy style
 
-Akron UI copy should describe observable behavior, not motivation.
+Akron UI copy should describe observable behavior.
 
 Rules:
 
@@ -244,7 +250,7 @@ Include the smallest evidence that proves the change:
 - Video proof for input timing, animation, transitions, camera movement, hitboxes, and gameplay state changes.
 - Map SID, room, setup, and commands used for live checks.
 
-## Feature PR Checklist
+## Feature PR checklist
 
 Use this checklist in feature pull requests:
 
@@ -258,7 +264,7 @@ Use this checklist in feature pull requests:
 - [ ] Submenu controls are complete when used and only configure the primary behavior.
 - [ ] Settings, clamps, defaults, and setup persistence are covered when configuration is stored.
 - [ ] Command/status output is added when useful for automation or verification.
-- [ ] Policy classification and tests are updated when the feature affects clean/cheat status.
+- [ ] Policy classification and tests are updated when the feature affects classification.
 - [ ] Public docs are updated for user-facing behavior.
 - [ ] Tests cover settings, persistence, policy, command contracts, or rendering-adjacent logic where applicable.
 - [ ] Live Celeste verification evidence is included for visible, runtime, input, rendering, or gameplay behavior.

@@ -36,3 +36,40 @@ reviews:
     - "!Source/Resources/**/*.tex"
     - "!tmp/**"
     - "!checklist/**"
+  path_instructions:
+    - path: "**/*.md*"
+      instructions: |
+        Treat changed documentation as a public contract. Compare claims about
+        UI labels, control types, defaults, policy classifications, command
+        syntax, archive and persistence limits, setup scopes, and release
+        configuration against the changed source, tests, and workflows. Flag
+        only concrete mismatches and cite the conflicting repository evidence.
+
+        Keep a row's policy classification distinct from the recorded attempt
+        status. Keep persistent StartPos Set/Load separate from numbered
+        savestate Capture/Restore actions. Keep .akr setup packs separate from
+        the Backups tab's Celeste save-folder ZIPs.
+
+        Check new local links, anchors, and navigation entries. Flag credentials,
+        personal paths, or private machine details. Do not report Mintlify
+        syntax, link, or accessibility checks that CI already covers unless the
+        changed text creates a factual problem those checks cannot detect.
+  pre_merge_checks:
+    custom_checks:
+      - name: Documentation impact
+        mode: warning
+        instructions: |
+          PASS when the pull request either leaves public behavior unchanged or
+          updates the matching documentation for changes to visible UI behavior,
+          public commands, setup defaults, persistence or archive contracts, and
+          release configuration.
+
+          FAIL when one of those public contracts changes but the relevant user,
+          reference, contributor, or release documentation is missing or still
+          describes the old behavior. Cite both the changed contract and the
+          specific documentation that is missing or stale.
+
+          PASS without requiring documentation for tests, internal refactors,
+          formatting, dependency-only changes, or build-only changes that do not
+          alter a public contract. Return INCONCLUSIVE when the diff does not
+          provide enough evidence to decide.

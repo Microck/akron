@@ -1,31 +1,13 @@
 ---
 title: Custom labels
-description: Create custom HUD labels with template variables, event visibility, placement, and shareable label .akr packs.
+description: Reference for custom HUD label variables, expressions, events, placement, and shareable .akr packs.
 ---
 
-Custom labels let you add your own text rows to the Akron HUD. Use them for local status, proof context, timers, routing notes, input state, or other passive information that is useful while playing or reviewing a run.
+Custom labels let you add text rows to the Akron HUD. Use them for local status, timers, routing notes, input state, or other information that is useful while playing or reviewing a run.
 
-Custom HUD labels are **Normal clear**. They display information and do not change gameplay state.
+Custom HUD labels are **Cheat** because templates can expose exact player position, speed, stamina, dash count, configuration flags, and other internal state. That information can affect how an attempt is played.
 
-## Create a custom label
-
-<Steps>
-  <Step title="Open the Labels tab">
-    Open the Akron overlay and go to **Labels**.
-  </Step>
-  <Step title="Add a row">
-    Choose **+ Custom**. Akron creates a new custom label row, enables custom HUD labels, and selects the new row.
-  </Step>
-  <Step title="Open the row options">
-    Open the new custom label row to edit its name, text, placement, style, and event behavior.
-  </Step>
-  <Step title="Write the template">
-    Set **Text** to plain text plus variables in braces, such as `Room {room_time}` or `{overlays} / {status}`.
-  </Step>
-  <Step title="Place and test it">
-    Choose an anchor, tune the offset or absolute position, close the overlay, and verify the label is readable in a room.
-  </Step>
-</Steps>
+For setup steps, see [HUD and input tools](/player-guide/hud-and-input-tools#create-a-custom-label).
 
 ## Template text
 

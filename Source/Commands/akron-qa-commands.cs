@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -20,18 +19,10 @@ public static partial class AkronCommands {
     // controlled runtime states for repeatable live verification, not player UI.
     [Command("akron_qa_save_settings", "force a settings save for Akron live automation")]
     public static void QaSaveSettings() {
-        MethodInfo saveSettings = typeof(Everest).GetMethod("_SaveSettings", BindingFlags.Static | BindingFlags.NonPublic);
-        if (saveSettings != null) {
-            if (saveSettings.Invoke(null, Array.Empty<object>()) is IEnumerator routine) {
-                while (routine.MoveNext()) {
-                }
-            }
-            Log("qa-save-settings: saved");
-            return;
-        }
-
-        UserIO.SaveHandler(true, true);
-        Log("qa-save-settings: saved-fallback");
+        // This used to drain Everest's _SaveSettings() coroutine in a tight loop on the game thread,
+        // which freezes the game whenever the background thread that coroutine waits on does not
+        // reach its last statement. See AkronModule.SaveAkronSettingsNow.
+        Log("qa-save-settings: " + (AkronModule.SaveAkronSettingsNow("qa-command") ? "saved" : "failed"));
     }
 
     [Command("akron_qa_area_complete", "trigger Level.RegisterAreaComplete for Akron proof automation")]

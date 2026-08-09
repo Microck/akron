@@ -826,6 +826,107 @@ public sealed class SetupPackTests {
         }
     }
 
+    // The pack half of the v7 -> v8 format bump.
+    //
+    // A StartPos or Whole pack carries one reconstruction document per slot, and those
+    // documents name room objects by where they sit in a clean reload of the room. Two
+    // changes moved that baseline, so a pack written by an older Akron describes a room
+    // this build does not produce, and a shifted index can hand one entity another
+    // same-typed entity's state instead of refusing. The pack contract is versioned in
+    // lockstep with the document so the refusal happens before any attachment is read.
+
+    [Fact]
+    public void ASetupPackFromAnOlderAkronIsRefusedWithAMessageThatSaysWhatToDo() {
+        AkronSetupPack pack = AkronSetupPacks.Capture(
+            new AkronModuleSettings(), session: null, section: AkronSetupSection.Keybinds);
+        pack.Format = "akron-setup-v4";
+
+        AkronSetupPackFormatException refusal = Assert.Throws<AkronSetupPackFormatException>(
+            () => AkronSetupPacks.Apply(new AkronModuleSettings(), new AkronModuleSession(), pack));
+
+        Assert.Contains("akron-setup-v4", refusal.Message);
+        Assert.Contains(AkronSetupPacks.SetupPackFormat, refusal.Message);
+        Assert.Contains("built rooms differently", refusal.Message);
+        Assert.Contains("export it again from this build", refusal.Message);
+    }
+
+    [Fact]
+    public void AnArchiveWhosePayloadPredatesTheFormatBumpIsRefusedWhenItIsRead() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-older-pack-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string archivePath = Path.Combine(directory, "older.akr");
+        try {
+            // A Keybinds pack carries no StartPos attachment at all, so this also pins
+            // the deliberate part of the decision: the contract covers the whole pack,
+            // not only the sections that hold room state, because one story about packs
+            // from an older Akron is easier to act on than a rule about which sections
+            // happen to survive.
+            AkronSetupPack pack = AkronSetupPacks.Capture(
+                new AkronModuleSettings(), session: null, section: AkronSetupSection.Keybinds);
+            string payload = AkronSetupPacks.SerializePackPayloadForArchive(pack)
+                .Replace(AkronSetupPacks.SetupPackFormat, "akron-setup-v4", StringComparison.Ordinal);
+            AkronArchive.WriteSinglePayloadArchive(
+                archivePath, PackManifest(pack), AkronSetupPacks.SetupArchivePayload, payload);
+
+            AkronSetupPackFormatException refusal = Assert.Throws<AkronSetupPackFormatException>(
+                () => AkronSetupPacks.Read(archivePath));
+
+            Assert.Contains("akron-setup-v4", refusal.Message);
+            Assert.Contains(AkronSetupPacks.SetupPackFormat, refusal.Message);
+        } finally {
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void AStartPosPackNamesItsSnapshotAttachmentAfterTheCurrentDocumentFormat() {
+        const string areaSid = "Maps/EntryName";
+        const int slot = 6;
+        string stateSlotName = AkronActions.GetStartPosStateSlotName(areaSid, slot);
+        string directory = Path.Combine(Path.GetTempPath(), "akron-entry-name-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string archivePath = Path.Combine(directory, "startpos.akr");
+        AkronModuleSession session = new AkronModuleSession {
+            StartPositions = new Dictionary<int, AkronStartPos> {
+                [slot] = new AkronStartPos {
+                    Room = "room-a",
+                    AreaSid = areaSid,
+                    StateSlotName = stateSlotName
+                }
+            }
+        };
+        try {
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                stateSlotName, areaSid, "room-a", 0, MinimalPackDocument(), out string saveError), saveError);
+            AkronSetupPacks.Write(new AkronModuleSettings(), session, archivePath, "Entry Name", AkronSetupSection.StartPos);
+
+            AkronSetupPack written = AkronSetupPacks.Read(archivePath);
+
+            // The attachment name states which fresh-room baseline the document inside
+            // it was measured against, so it tracks the document format rather than the
+            // pack format. A stale name here would let a v7 attachment ride inside a
+            // pack that claims to be current.
+            Assert.Equal("startpos/6.v8.json.gz", Assert.Single(written.StartPositions).Value.SnapshotEntry);
+            Assert.Equal(AkronSetupPacks.SetupPackFormat, written.Format);
+        } finally {
+            AkronStartPosReconstruction.DeleteSnapshot(stateSlotName);
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    private static AkronReconstructionDocument MinimalPackDocument() {
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(type => false);
+        AkronReconstructionCapture capture = graph.Capture(
+            new PackSnapshotState { Counter = 5 },
+            new PackSnapshotState());
+        Assert.True(capture.Success, capture.Error);
+        return capture.Document;
+    }
+
     [Fact]
     public void StartPosImportRejectsAChangedSnapshotBeforeApplyingSetupState() {
         const string areaSid = "Maps/ChangedSnapshot";
@@ -1054,7 +1155,7 @@ public sealed class SetupPackTests {
             pack.StartPositions[snapshot.Key] = new AkronStartPosPackEntry {
                 AreaSid = pack.ArchiveMapSid,
                 Room = "room-" + snapshot.Key,
-                SnapshotEntry = "startpos/" + snapshot.Key + ".v7.json.gz",
+                SnapshotEntry = "startpos/" + snapshot.Key + ".v8.json.gz",
                 SnapshotSha256 = new string('0', 64)
             };
             pack.SnapshotSourcePaths[snapshot.Key] = snapshot.Value;
