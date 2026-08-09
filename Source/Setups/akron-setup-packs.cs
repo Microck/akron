@@ -117,6 +117,7 @@ public static partial class AkronSetupPacks {
     private static readonly PropertyInfo[] StartPosStateProperties = BuildStatePropertyList(
         nameof(AkronSetupState.SmartStartPos),
         nameof(AkronSetupState.RespawnAtStartPos),
+        nameof(AkronSetupState.StartPosWaitForInput),
         nameof(AkronSetupState.StartPosShowLabel),
         nameof(AkronSetupState.StartPosLabelColor),
         nameof(AkronSetupState.StartPosLabelAnchor),
@@ -912,6 +913,7 @@ public static partial class AkronSetupPacks {
     private static void CopyStartPosState(AkronSetupState target, AkronSetupState source) {
         target.SmartStartPos = source.SmartStartPos;
         target.RespawnAtStartPos = source.RespawnAtStartPos;
+        target.StartPosWaitForInput = source.StartPosWaitForInput;
         target.StartPosShowLabel = source.StartPosShowLabel;
         target.StartPosLabelColor = source.StartPosLabelColor;
         target.StartPosLabelAnchor = source.StartPosLabelAnchor;

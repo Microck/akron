@@ -41,5 +41,6 @@ modoptions_akron_speedruntoolbrokerwarnings= Speedrun Tool Broker Warnings
 modoptions_akron_savetimeanddeaths= Preserve Time And Deaths
 modoptions_akron_unsafesavestateoverride= Unsafe StartPos Override
 modoptions_akron_activesavestateslot= Active StartPos Slot
+modoptions_akron_startposwaitforinput= Wait For Input After StartPos Load
 modoptions_akron_editableflagname= Editable Flag Name
 modoptions_akron_tasfilepath= TAS File Path
