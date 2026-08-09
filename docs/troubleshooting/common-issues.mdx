@@ -5,16 +5,16 @@ description: Fix common Akron installation, overlay, hotkey, import, and capture
 
 Use this page to quickly diagnose common problems before exploring [platform-specific compatibility](/troubleshooting/compatibility).
 
-## Akron Does Not Load
+## Akron does not load
 
 Confirm the following:
 
-- The `Akron.zip` archive is located in the active Everest `Mods` directory.
+- The downloaded Akron `.zip` archive is located in the active Everest `Mods` directory. Its filename may include the release tag.
 - The game was launched using the same installation where you added the mod.
 - Everest has not disabled Akron due to a load error.
 - The Everest logs do not indicate missing dependencies or archive-shape errors.
 
-## Overlay Does Not Open
+## Overlay does not open
 
 Confirm the following:
 
@@ -24,16 +24,16 @@ Confirm the following:
 
 If the overlay still does not open, rebind the key through Everest controls and check the Everest log for errors before seeking further diagnostics.
 
-## Feature Is Blocked
+## Feature is unavailable or changes status
 
-Akron blocks or marks features based on the current policy and status state.
+Policy badges classify features, and attempt status records classified use. They do not grant or deny permission. A row can still be unavailable when it needs an active level, an external mod, a saved slot, or another runtime condition.
 
-1. Verify the visible policy and status state.
-2. Check the badge associated with the feature's policy.
-3. Inspect the popup sub-options for any strict behavioral constraints.
-4. Use a non-submission setup if the feature is expected to mark the attempt status as "Cheat."
+1. Read the row value and tooltip for its runtime requirement.
+2. Confirm that the required level, external mod, slot, or input is available.
+3. Check the row and popup suboption badges for the classification Akron will record.
+4. Use a non-submission setup if the feature is expected to mark the attempt status as Cheat.
 
-## Import Failure
+## Import failure
 
 Common causes for `.akr` import failures:
 
@@ -46,16 +46,18 @@ Common causes for `.akr` import failures:
 
 See [Akron .akr archives](/reference/akr-archives) for the import contract.
 
-## Incorrect Capture Output
+## Incorrect capture output
 
 If a screenshot, room capture, map capture, or recorder output is missing or incorrect:
 
-- Verify the output folder path and filename template.
-- Confirm that the capture mode and resolution are set correctly.
-- Disable [Streamer Mode](/concepts/proof-and-submission-mode) if you need to see detailed path information.
-- Check if a timer-freeze or capture sub-option has altered the expected behavior.
+- For screenshots, verify the output folder, filename template, capture mode, and resolution.
+- For room or map capture, verify the export path, image format, wait and offset values, and marker settings.
+- For recording, verify the output folder, filename template, codec, and FFmpeg path.
+- Disable [Streamer Mode](/player-guide/hud-and-input-tools#streamer-mode) if you need to see detailed path information.
+- If recording reports that FFmpeg did not start, install FFmpeg or set `AKRON_FFMPEG` to the executable path.
+- Check if a timer-freeze or capture suboption has altered the expected behavior.
 
-## Community Packs Are Empty
+## Community Packs shows no entries
 
 Confirm the following:
 

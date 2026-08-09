@@ -5,9 +5,9 @@ description: Set up and use Akron's runtime integrations with Motion Smoothing, 
 
 Akron detects compatible mods at runtime and adds overlay rows automatically. These integrations are optional. If a mod is not installed, its rows do not appear.
 
-External tool actions can change your attempt status. Check the **Attempt status** column for each row before using interop features in a submitted run. See [External Tools](/feature-guide/external-tools) for the full option list.
+External tool actions can change your attempt status. Check the **Classification** column for each row before using interop features in a submitted run. See [External tools](/feature-guide/external-tools) for the full option list.
 
-## Supported Integrations
+## Supported integrations
 
 | Area | What it adds |
 |---|---|
@@ -21,37 +21,45 @@ External tool actions can change your attempt status. Check the **Attempt status
 
 When Motion Smoothing is loaded, Akron drives its FPS Bypass and TPS Bypass settings directly from the overlay. You do not need to configure both mods separately because Akron applies your configured values to Motion Smoothing's runtime.
 
-Motion Smoothing's higher-FPS path keeps Celeste physics at 60 FPS while drawing extra frames, and its camera smoothing can work even at 60 Hz. Akron marks FPS Bypass and the physics-neutral smoothing options as **Regular clean**. TPS Bypass is **Cheat** because it changes simulation cadence.
+Motion Smoothing's higher-FPS path keeps Celeste simulation at 60 TPS while drawing extra frames, and its camera smoothing can work even at 60 Hz. Akron marks FPS Bypass and its physics-neutral smoothing options as **Normal clear**. **Objects: Interpolate**, **TAS mode**, and **Nasty mode** are **Cheat**. TPS Bypass is also **Cheat** because it changes simulation cadence.
 
 ## Speedrun Tool
 
 Speedrun Tool interop provides state-capture slots, room timer data, a Tab key conflict fix, and coordinated Lag Pauser handling for state transitions. The rows appear only when Speedrun Tool is loaded.
 
-- **Tab key conflict**: If both Akron and Speedrun Tool bind Tab, Akron removes Speedrun Tool's Tab binding automatically so the overlay toggle works. This runs at startup and requires no manual configuration.
-- **Room timer**: Akron reads room-timing data from Speedrun Tool's `RoomTimer` export. Room timer actions are **Regular clean** because they read data without changing live gameplay.
-- **State capture and restore**: Capture, restore, and clear actions map to Speedrun Tool's TAS save slots. These are **Cheat** because they change live game state.
-- **Lag Pauser Ignore SRT**: When Speedrun Tool is loaded, the Lag Pauser popup shows **Ignore SRT**. This option skips the brief Lag Pauser grace window after Speedrun Tool state-transition hooks so intentional load-state hitches do not count as player lag spikes.
+| Behavior | Details |
+|---|---|
+| Tab key conflict | If both Akron and Speedrun Tool bind Tab, Akron removes Speedrun Tool's Tab binding at startup so the overlay toggle works. |
+| Room timer | Akron reads room-timing data from Speedrun Tool's `RoomTimer` export. Room timer actions are **Normal clear** because they read data without changing live gameplay. |
+| State capture and restore | Capture, restore, and clear actions map to Speedrun Tool's TAS save slots. These are **Cheat** because they change live game state. |
+| Lag Pauser > Ignore SRT | Suppress Lag Pauser spike detection briefly around Speedrun Tool load-state hooks so intentional load hitches do not count as player lag spikes. |
 
 ## CelesteTAS
 
 CelesteTAS integration detects whether a TAS is active or running and provides a handoff action that starts playback for a configured `.tas` file. The rows appear only when CelesteTAS is loaded.
 
-- **TAS playback** is **Cheat** in Akron's policy model. Keep TAS handoff in practice, testing, or development setups instead of submitted attempts.
-- **TAS status** and **configured file** rows are **Regular clean** because they are read-only.
+| Behavior | Details |
+|---|---|
+| TAS playback | **Cheat**. Keep TAS handoff in practice, testing, or development setups instead of submitted attempts. |
+| TAS status and configured file | **Normal clear** because these rows are read-only. |
 
 ## Extended Variant Mode
 
 Extended Variant Mode interop exposes variant reset, master toggle, and randomizer controls when the mod is loaded. Akron reads and changes individual variant values at runtime, so the available rows depend on the installed Extended Variant Mode option list.
 
-- **Reset Extended** and **Reset Vanilla** are **Regular clean** because they restore defaults without changing live gameplay.
-- **Extended Variants Master** is **Goldberry/Hardlist clean** because some maps need Extended Variant Mode hooks enabled for their own dependencies.
-- **Extended Variants Randomizer** and user-controlled non-default variant options are **Cheat** because they change active gameplay rules.
-- Map-defined variant values are not flagged by Akron when they match Extended Variant Mode's current map-defined value.
+| Behavior | Details |
+|---|---|
+| Reset Extended and Reset Vanilla | **Normal clear** because they restore Extended Variant Mode values to their defaults. |
+| Extended Variants Master | **Goldberry/Hardlist clear** because some maps need Extended Variant Mode hooks enabled for their own dependencies. |
+| Extended Variants Randomizer and user-controlled non-default variants | **Cheat** because they change active gameplay rules. |
+| Map-defined variant values | Akron does not flag values that match Extended Variant Mode's current map-defined value. |
 
 ## Extended Camera Dynamics
 
 Extended Camera Dynamics interop exposes camera hook status and an ECD Zoom Out toggle when the mod is loaded. The toggle allows Akron Cursor Zoom to go below 100% through Extended Camera Dynamics when the current map has ECD camera hooks active. ECD zoom-out stays centered on the player. Zooming in above 100% and neutral 100% zoom still use Akron's native cursor-focused Cursor Zoom behavior.
 
-- **ECD Status** is **Regular clean** because it only reports whether the external camera hooks are active.
-- **ECD Zoom Out** is **Cheat** because it extends Akron Cursor Zoom for camera inspection.
-- **ECD Restore Zooming** is **Regular clean** because it returns Extended Camera Dynamics to its automatic camera behavior after a forced Cursor Zoom focus.
+| Behavior | Details |
+|---|---|
+| ECD Status | **Normal clear** because it only reports whether the external camera hooks are active. |
+| ECD Zoom Out | **Cheat** because it extends Akron Cursor Zoom for camera inspection. |
+| ECD Restore Zooming | **Normal clear** because it returns Extended Camera Dynamics to automatic camera behavior after a forced Cursor Zoom focus. |

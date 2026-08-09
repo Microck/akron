@@ -1,15 +1,19 @@
 ---
 title: StartPos recovery
-description: Recover from blocked, mismatched, unsafe, or map-specific Akron StartPos behavior without hiding restore risks.
+description: Recover persistent StartPos snapshots and active savestate slots without mixing their separate safety paths.
 ---
 
-StartPos is Akron's public workflow for restoring position and room state. It is designed to prevent the silent application of risky or mismatched restores.
+Akron has two separate state-restore workflows:
+
+- The `StartPos` tab's **Set** and **Load** actions use Akron's persistent StartPos snapshot for the selected StartPos slot.
+- The **Capture StartPos State** and **Restore StartPos State** bindings use the active 1-9 savestate slot. This path can use Speedrun Tool brokering and current-map compatibility overrides.
 
 ## StartPos capabilities
 
-Setting a StartPos temporarily uses Akron's native runtime clone while Akron
-builds and validates the persistent v6 snapshot. After Set succeeds, normal
-and post-restart loads use that snapshot file. It contains room entities and
+Setting a StartPos captures an in-memory native clone for same-process loads
+while a worker builds and validates the restart-safe v7 snapshot. After a
+restart, or when the in-memory copy is unavailable, Load reconstructs the state
+from that snapshot file. It contains room entities and
 components, their reference relationships, movement, timers, state machines,
 animation, coroutine progress, callbacks, registered helper state, Celeste's
 random generator and nested random stack, visual runtime entities, gameplay
@@ -17,47 +21,53 @@ render-buffer pixels, and audio state. Akron holds the Set or Load state
 through fixed-timestep catch-up updates until Celeste renders it. No external
 savestate or TAS mod is required.
 
-Time and death statistics do not rewind. This is an explicit exception to the
-gameplay-state comparison, not a partial room restore.
+Room state still restores in full. Time and death statistics are the documented
+exception and do not rewind.
 
 Use the `StartPos` tab for player workflows: setting, loading, clearing, selecting a slot, mouse placement, and configuring respawn at StartPos behavior.
 
-## Why a StartPos restore may be blocked
+## Why persistent StartPos Set or Load may fail
 
-Akron may block or refuse a StartPos restore if:
+Persistent StartPos Set or Load may fail if:
 
-- StartPos restore safety prohibits the action.
+- A Set capture is still finishing.
+- Celeste is paused, transitioning rooms, or running or skipping a cutscene.
 - The saved StartPos belongs to a different map SID or save-file slot.
-- The saved runtime state is unavailable or unsafe for the current map.
-- The v6 snapshot file is missing, damaged, or incomplete.
+- The v7 snapshot file is missing, damaged, or incomplete.
 - The map, save file, mod set, runtime, or snapshot format differs from the capture environment.
-- The current player state cannot be restored safely.
-- The action is state-changing and is marked under the active attempt status.
+
+Attempt status does not block ordinary persistent StartPos actions. Invoking Set or Load records their Cheat classification even if a later runtime check fails.
 
 ## Recovery steps
 
 <Steps>
-  <Step title="Verify Policy State">
-    Confirm that no clean-run policy state is blocking the StartPos restore or other state-changing tools.
+  <Step title="Wait for a stable room">
+    Resume Celeste, finish any room transition or cutscene, and wait for the previous Set capture to finish.
   </Step>
-  <Step title="Use Non-Submission Setup">
-    Switch setups only when the goal is room-lab routing, testing, or another "Cheat" workflow.
+  <Step title="Use a non-submission setup">
+    Use a non-submission setup for room-lab routing or tests that involve StartPos.
   </Step>
-  <Step title="Verify the StartPos Slot">
+  <Step title="Verify the StartPos slot">
     Confirm that the active StartPos slot is set, belongs to the current map and save-file slot, and names the intended destination room. The room you load from can differ.
   </Step>
-  <Step title="Review Map Policy">
-    If a map is known to be risky, maintain the safe map policy instead of forcing unsafe restore behavior.
+  <Step title="Check the snapshot">
+    If the in-memory state is unavailable, confirm that the matching v7 snapshot still exists and was created with the current map, save file, mod set, runtime, and snapshot format.
   </Step>
-  <Step title="Document the Issue">
-    If behavior remains incorrect, record the map SID, visible policy/status state, Akron setup, StartPos slot, logs, and provide screenshots.
+  <Step title="Document the issue">
+    If the problem remains, record the map SID, save-file slot, Akron setup, StartPos slot, visible error, and logs. Attach screenshots when they show the failure.
   </Step>
 </Steps>
 
+## Capture and Restore StartPos State savestates
+
+The similarly named **Capture StartPos State** and **Restore StartPos State** bindings do not use the persistent StartPos slot above. They save or load the active savestate slot from 1-9.
+
+This savestate path owns Speedrun Tool brokering and native-restore risk checks. `Current Map Compatibility` exposes **Always Use Broker** and **Allow Unsafe StartPos Restore** for this path. If capture or restore is blocked, check the active savestate slot, Speedrun Tool availability, and those current-map settings.
+
 <Warning>
-  Unsafe restore overrides bypass risk blocking and are marked as "Cheat." Use them exclusively in non-submission setups; do not use them for submitted attempts.
+  Unsafe native savestate overrides bypass risk blocking and are Cheat. Use them only for controlled testing in a non-submission setup. They do not repair a missing or damaged persistent StartPos snapshot.
 </Warning>
 
 ## Safe Mode stat guards
 
-Safe Mode stat guards prevent selected local stat fields from being altered by guarded Akron sessions. Sub-options that freeze deaths, jumps, or best-run stats are considered "Cheat" because they mutate or protect tracked statistics.
+Safe Mode stat guards prevent selected local stat fields from being altered by guarded Akron sessions. Suboptions that freeze deaths, jumps, or best-run stats are considered Cheat because they mutate or protect tracked statistics.

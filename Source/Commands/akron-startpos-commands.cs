@@ -5,7 +5,7 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronCommands {
-    [Command("akron_save_time_deaths", "show or set whether StartPos restores preserve time/deaths: on|off|status")]
+    [Command("akron_save_time_deaths", "control whether numbered Akron savestates restore captured time and death counters: on|off|status")]
     public static void SaveTimeDeaths(string action = "status") {
         switch ((action ?? string.Empty).Trim().ToLowerInvariant()) {
             case "":
@@ -43,7 +43,7 @@ public static partial class AkronCommands {
         Log("slot set: " + AkronModule.Settings.ActiveSavestateSlot);
     }
 
-    [Command("akron_save", "capture Akron StartPos state in the current or specified slot")]
+    [Command("akron_save", "capture the current room in the current or specified numbered Akron savestate slot")]
     public static void Save(string slot = "") {
         Level level = RequireLevel();
         if (level == null) {
@@ -58,7 +58,7 @@ public static partial class AkronCommands {
         Log(AkronModule.DescribeSavestateResult("Save", result, AkronModule.Settings.ActiveSavestateSlot));
     }
 
-    [Command("akron_load", "restore Akron StartPos state from the current or specified slot")]
+    [Command("akron_load", "restore the current or specified numbered Akron savestate slot")]
     public static void Load(string slot = "") {
         Level level = RequireLevel();
         if (level == null) {
@@ -73,7 +73,7 @@ public static partial class AkronCommands {
         Log(AkronModule.DescribeSavestateResult("Load", result, AkronModule.Settings.ActiveSavestateSlot));
     }
 
-    [Command("akron_startpos", "Akron StartPos: status|slot <n>|set|load|clear|prev|next|place <on|off>|dashes <n>|stamina <n>|slots <n>|facing <current|left|right>|idle <on|off>|grab <on|off>|label <on|off>|respawn <on|off>|wait <on|off|status>|smart <on|off>")]
+    [Command("akron_startpos", "Akron StartPos: status|slot <n>|set [n]|load [n]|clear [n]|prev|next|place <on|off>|dashes <n>|stamina <n>|slots <n>|facing <current|left|right>|idle <on|off>|grab <on|off>|label <on|off>|respawn <on|off|toggle|status>|wait <on|off|status>|smart <on|off>")]
     public static void StartPos(string action = "status", string value = "") {
         Level level = RequireLevel();
         if (level == null) {

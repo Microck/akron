@@ -563,7 +563,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 - Make restore reload the restored save data and return to the main menu so Celeste does not keep using stale in-level save state.
 - Exclude `Saves/AkronBackups` from future backup ZIPs so backups do not recursively include older backups.
 - Rename `Skip Cutscene / Dialogue` to `Skip Cutscene`.
-- Verify the Backups overlay and manual backup creation on the remote Windows Celeste test box, including ZIP readability and metadata contents.
+- Verify the Backups overlay and manual backup creation in a live Celeste/Everest session, including ZIP readability and metadata contents.
 
 ### Fixed
 

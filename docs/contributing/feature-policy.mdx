@@ -5,7 +5,7 @@ description: Understand how Akron classifies features, records attempt status, a
 
 Akron feature policy classifies behavior based on its impact on gameplay, proof assumptions, hidden information, and state. The single source of truth is `Source/Core/AkronFeatureRegistry.cs`.
 
-## Status Categories
+## Status categories
 
 | Status | Color | Meaning |
 |---|---:|---|
@@ -18,12 +18,15 @@ Do not introduce new policy words. Akron does not use Yellow, Practice, or a sep
 `AkronStatus` order matters because attempt status escalates by enum value:
 
 ```csharp
-GoldberryHardlistClean = 0
-RegularClean = 1
-Cheat = 2
+Unclassified = 0,
+GoldberryHardlistClean = 1,
+RegularClean = 2,
+Cheat = 3
 ```
 
-## Classification Flow
+`Unclassified` is the new or reset attempt state before Akron records feature use. Feature definitions use the other three values.
+
+## Classification flow
 
 ```mermaid
 flowchart TD
@@ -47,7 +50,7 @@ Examples:
 
 - Safe Mode can be clean while stat-freeze suboptions are Cheat.
 - Room or map capture can be clean while a timer-freeze suboption is Cheat.
-- Input history can be Goldberry/Hardlist clear while extra history review options are Normal clear.
+- Death Stats can be Goldberry/Hardlist clear while the PB loss prompt is Normal clear.
 
 Implementation rules:
 
@@ -56,7 +59,7 @@ Implementation rules:
 3. If a tooltip suboption differs from the parent, add it to `UiSuboptionClassifications`.
 4. Add or update tests in `tests/feature-registry-tests.cs`.
 
-## Feature Shape
+## Feature shape
 
 Pick the row type based on how the user interacts with it.
 
@@ -71,7 +74,7 @@ Pick the row type based on how the user interacts with it.
 
 Configuration values should not activate a feature by themselves. For example, if a sound override volume is set to `150` but the per-sound modifier is off, the live game should use vanilla sound volume.
 
-## Classification Examples
+## Classification examples
 
 | Behavior | Default status | Why |
 |---|---|---|
@@ -79,15 +82,17 @@ Configuration values should not activate a feature by themselves. For example, i
 | Screenshake reduction | `GoldberryHardlistClean` | Accessibility comfort with no gameplay state change. |
 | Recording, screenshots, and proof output | `GoldberryHardlistClean` | Proof workflow only. |
 | Death or attempt counters | `GoldberryHardlistClean` | Allowed when unobtrusive and not used as hidden run-state advice. |
-| Room names, status labels, and custom labels | `RegularClean` | Clean overlay information, but not strict-submission approved by default. |
+| Room names and status labels | `RegularClean` | Clean overlay information, but not strict-submission approved by default. |
 | Audio routing, volume, pitch, or playback-speed presentation | `RegularClean` | Presentation/accessibility change that can affect verification context. |
 | Visual noise reduction, trails, tint, and lighting | `RegularClean` | Visual changes are case-by-case for strict submissions. |
 | Import/export of settings | `RegularClean` | Configuration workflow, unless it enables Cheat behavior during a run. |
 | StartPos, warps, and reload room | `Cheat` | State or position manipulation. |
 | Live hitboxes, triggers, trajectory, entity flags, and session flags | `Cheat` | Hidden information during an active attempt. |
 | Stamina, dash count, exact speed, and resource HUDs | `Cheat` | Info-mod behavior. |
-| Noclip, invincibility, infinite resources, and variants | `Cheat` | Gameplay mutation. |
-| Pause/frame stepping, timescale, TPS bypass, and FPS bypass | `Cheat` | Simulation timing or proof assumptions change. |
+| Custom labels | `Cheat` | Templates can expose exact player, resource, configuration, and run state. |
+| Noclip, invincibility, infinite resources, and user-controlled non-default variants | `Cheat` | Gameplay mutation. |
+| FPS Bypass without interpolation, TAS mode, or Nasty mode | `RegularClean` | Raises draw cadence while keeping Celeste physics at 60 TPS. |
+| Pause/frame stepping, timescale, and TPS bypass | `Cheat` | Simulation timing or proof assumptions change. |
 | Camera offset, cursor zoom, and free camera | `Cheat` | Camera tools can reveal or emphasize information not normally available. |
 | Input shortcuts such as Neutral Drop or Backboost | `Cheat` | Synthesizes or changes execution inputs. |
 | Respawn time, death visuals, and respawn animation | `RegularClean` | Post-death pacing and presentation do not affect live gameplay. |
@@ -103,7 +108,7 @@ Policy is enforced through:
 - Feature registry tests.
 - [Clean vs cheat classifications](/concepts/clean-vs-cheat).
 
-## Writing Policy Reasons
+## Writing policy reasons
 
 Good reasons say what behavior affects policy:
 
@@ -113,9 +118,9 @@ Good reasons say what behavior affects policy:
 
 Avoid marketing text, vague value claims, or reasons tied to a specific UI layout.
 
-## Tooltip Writing
+## Tooltip writing
 
-Tooltips should describe what the feature does. They should not justify why a player might use it.
+Tooltips describe observable behavior.
 
 Good tooltip style:
 
@@ -138,7 +143,7 @@ Examples:
 
 Prefer concrete verbs such as show, hide, dim, mute, route, export, import, record, set, clear, save, load, reset, apply, reduce, skip, clamp, cache, and filter.
 
-## Feature Registry Checklist
+## Feature registry checklist
 
 When adding or changing a policy-visible feature:
 

@@ -3,50 +3,53 @@ title: Compatibility
 description: Diagnose Everest, platform, map, and external-tool compatibility issues.
 ---
 
-Akron operates within the Everest Celeste environment. Compatibility issues typically arise from the active installation path, map-specific runtime behavior, availability of external tools, or platform-specific file locations.
+Akron runs inside Everest. Compatibility issues usually come from the active installation path, map-specific behavior, missing external tools, or platform-specific file locations.
 
-## Installation and Prefix Issues
+## Installation and prefix issues
 
 If files are in the correct locations but Akron fails to load, verify the active runtime:
 
-- Steam and Steam Flatpak may utilize different filesystem roots.
+- Steam and Steam Flatpak may use different filesystem roots.
 - Wine or Proton prefixes may isolate Celeste data.
 - Portable installations may use their own `Mods` and `Saves` directories.
 - Copied mod archives may reside in an installation folder other than the one currently being launched.
 
-## Map Compatibility
+## Persistent StartPos compatibility
 
-Some maps require conservative StartPos restore behavior. Akron provides per-map compatibility overrides for cases where standard StartPos restores are unsafe for a specific map.
+The `StartPos` tab's persistent **Set** and **Load** actions use Akron's native runtime snapshot path. Current-map broker and unsafe-native overrides do not control this path.
 
-These overrides are located in the Everest Akron mod options under `Current Map Compatibility`. They serve as escape hatches for controlled testing and should not be used as standard recovery steps.
+If persistent StartPos Load fails:
 
-If a StartPos restore is blocked:
+1. Confirm that the saved StartPos belongs to the current map and save-file slot. Its saved room can differ from the room you load from.
+2. Resume Celeste and finish any room transition or cutscene.
+3. Check whether the snapshot is missing, damaged, or from a different runtime or mod set.
+4. See [StartPos recovery](/troubleshooting/startpos-recovery) for the complete persistent-snapshot checks.
 
-1. Verify the visible policy and status state.
-2. Review the map compatibility policy.
-3. Confirm that the saved StartPos belongs to the current map and save-file slot. Its saved room can differ from the room you load from.
-4. Avoid using unsafe restore overrides unless you are intentionally testing that path in a non-submission setup.
+## Savestate map compatibility
 
-## External Tool Compatibility
+The separate **Capture StartPos State** and **Restore StartPos State** bindings use the active 1-9 savestate slot. Per-map overrides apply to this savestate path.
 
-| Tool | Compatibility Note |
+Find **Always Use Broker** and **Allow Unsafe StartPos Restore** under `Current Map Compatibility` in Everest's Akron options. Use the unsafe restore option only for controlled testing in a non-submission setup.
+
+## External tool compatibility
+
+| Tool | Compatibility note |
 |---|---|
-| Motion Smoothing | FPS and TPS bypass rows appear when the mod is loaded at runtime. Akron does not declare Motion Smoothing as a formal Everest dependency. Motion Smoothing's higher-FPS path keeps physics at 60 FPS when TPS Bypass is off, so Akron marks FPS Bypass and the physics-neutral smoothing options as **Regular clean**. |
-| Speedrun Tool | External timing and compatibility interfaces are available when the mod is loaded. |
-| CelesteTAS | TAS handoff delegates active control and is marked as "Cheat." |
+| Motion Smoothing | FPS and TPS bypass rows appear when the mod is loaded at runtime. Akron does not declare Motion Smoothing as a formal Everest dependency. Motion Smoothing's higher-FPS path keeps simulation at 60 TPS when TPS Bypass is off, so Akron marks FPS Bypass and the physics-neutral smoothing options as **Normal clear**. |
+| Speedrun Tool | Akron can display Speedrun Tool's room time, run its room-time export command, and use its broker for the separate active savestate slots. |
+| CelesteTAS | TAS handoff delegates active control and is marked as **Cheat**. |
 | Extended Variant Mode | Variant controls appear when the mod is loaded at runtime. Dynamic rows depend on the installed Extended Variant Mode option list. |
 | Extended Camera Dynamics | Camera status and ECD Zoom Out rows appear when the mod is loaded at runtime. Akron Cursor Zoom uses ECD camera focus only for below-100% player-centered zoom while ECD hooks are active; native Akron cursor-focused zoom-in remains unchanged. |
-| External Timers | Room timer export and synchronization are supported as part of the room timing workflow. |
-| Discord Deafen | Auto Deafen simulates the configured hotkey; it does not directly manage Discord's internal state. |
+| Discord Deafen | Auto Deafen simulates the configured hotkey; it does not directly manage Discord's internal state. Hotkey injection is implemented only on Windows and Linux. Linux requires an accessible X11 or XWayland display and uses XTest when available, with `xdotool` or `flatpak-spawn` fallbacks. Native Wayland injection is not supported. |
 
 Motion Smoothing's current compatibility notes call out two cases that matter in Akron:
 
 - **Fancy** camera smoothing changes Celeste's rendering pipeline and is currently documented as incompatible with `auspicioushelper`.
 - **Dynamic** framerate mode allows arbitrary FPS, but can conflict with mods that hook the main XNA tick path.
-- **Interpolate** object smoothing can add 1-2 frames of input delay, so Akron treats that selected value as "Cheat" even though the Extrapolate object-smoothing value is "Regular clean."
+- **Interpolate** object smoothing can add 1-2 frames of input delay, so Akron treats that selected value as **Cheat** even though the Extrapolate object-smoothing value is **Normal clear**.
 
-## Rendering and Capture
+## Rendering and capture
 
 Visual verification is necessary for rendering-sensitive features, including overlays, hitboxes, camera, zoom, death transitions, room captures, map captures, and screenshots.
 
-If a rendering feature behaves inconsistently across different hosts, please document the host, platform, map SID, visible policy/status state, and Akron setup, and provide screenshot evidence before filing an issue.
+When rendering differs across hosts, include the host, platform, map SID, visible policy/status state, Akron setup, and screenshot evidence in the issue.

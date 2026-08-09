@@ -5,7 +5,7 @@ description: Configure visual noise, overlay themes, hitbox style, audio present
 
 Akron includes visual and audio settings for comfort, clarity, and presentation. Most of these settings are classified as **Goldberry/Hardlist clear** or **Normal clear** because they do not mutate gameplay or reveal hidden state. Strict submissions may still evaluate presentation changes case by case.
 
-## Visual Noise and Presentation
+## Visual noise and presentation
 
 | Area | Settings |
 |---|---|
@@ -21,9 +21,9 @@ Akron includes visual and audio settings for comfort, clarity, and presentation.
 | Golden transparency | Reduce golden berry and follower opacity. |
 | Hide player | Hide Madeline visually while keeping gameplay state unchanged. |
 
-## Overlay Themes
+## Overlay themes
 
-Akron ships with six built-in overlay themes and supports custom theme packs:
+Akron ships with 11 built-in overlay themes and supports custom theme packs:
 
 | Preset | Description |
 |---|---|
@@ -33,55 +33,64 @@ Akron ships with six built-in overlay themes and supports custom theme packs:
 | Midnight | Deep blue palette with cool-toned text. |
 | Crimson | Dark red palette with warm-toned text. |
 | Terminal | Dark green palette inspired by terminal displays. |
+| Symbiote | Dark purple palette with muted pink accents. |
+| Carbon | Dark gray palette with orange accents. |
+| Retro | Light beige palette with dark text. |
+| Coniferous | Dark gray palette with green accents. |
+| Wine | Dark burgundy palette with pale text. |
 
-Each theme controls window color, header color, text color, muted text color, and disabled text color. You can also configure overlay opacity, scale, blur, and animation speed independently of the active theme. Use the **Export theme** and **Import theme** buttons to save and share custom theme packs.
+Each theme controls window, header, header-hover, frame, text, muted-text, and disabled-text colors. You can also configure overlay opacity, scale, blur, and animation speed independently of the active theme. Open **Interface > Theme** and use **Export .akr** or **Import Latest .akr** to save or load a custom theme pack.
 
-## Hitbox Style and Colors
+## Hitbox style and colors
 
 When hitbox viewing is active, Akron lets you customize hitbox appearance per entity category:
 
-- **Player**: color, trail visibility, trail length, and trail opacity.
-- **Solids**: fill opacity and outline color.
-- **Hazards**: separate color from general solids.
-- **Triggers**: dedicated trigger color.
-- **Death markers**: death position color and death-player marker color.
-- **General**: line thickness and fill opacity.
+| Setting | Effect |
+|---|---|
+| Player | Set color, trail visibility, trail length, and trail opacity. |
+| Solids | Set fill opacity and outline color. |
+| Hazards | Set a separate color from general solids. |
+| Triggers | Set a dedicated trigger color. |
+| Death markers | Set the death position and death-player marker colors. |
+| General | Set line thickness and fill opacity. |
 
 Reset hitbox style to defaults from the hitbox popup controls.
 
-## Audio Presentation
+## Audio presentation
 
-Akron can lower volume beyond normal constraints, adjust music and SFX volumes independently, change active audio playback speed, or pitch-shift audio. These are classified as presentation and accessibility settings as long as they do not change simulation timing.
+Akron can lower volume below Celeste's normal slider range, adjust music and SFX volumes independently, change audio playback speed, or shift pitch. These are classified as presentation and accessibility settings as long as they do not change simulation timing.
 
 <Note>
   Audio speed changes the playback speed of active audio. It does not change the game simulation tick rate.
 </Note>
 
-## Madeline Visuals
+## Madeline visuals
 
 Akron supports several categories of Madeline visual customization:
 
-- **Madeline Colors**: Override hair color per dash state (no-dash through five-dash) with an optional gradient animation.
-- **Custom Trail**: Set fixed-color or rainbow trails with configurable opacity, cut rate, and pulse effects.
-- **Madeline Hair Length**: Set the number of hair segments per dash state (no-dash through five-dash).
-- **Madeline Effect Sync**: Match dash particles, dash trails, death effects, feather color, and crown color to the active hair color.
-- **Death Particles**: Customize the death-burst particle color mode, flash and outline colors, lifetime, preset shape, or custom 8x8 pixel shape.
-- **Trail Visibility**: Choose Vanilla, Hidden, or Always show trail mode for Madeline's trail (via **Always Show Trail**, **No Ghost Trail**, or **No Trails**).
+| Setting | Effect |
+|---|---|
+| Madeline Colors | Override hair color per dash state (no-dash through five-dash) with an optional gradient animation. |
+| Custom Trail | Set fixed-color or rainbow trails with configurable opacity, cut rate, and pulse effects. |
+| Madeline Hair Length | Set the number of hair segments per dash state (no-dash through five-dash). |
+| Madeline Effect Sync | Match dash particles, dash trails, death effects, feather color, and crown color to the active hair color. |
+| Death Particles | Customize the death-burst particle color mode, flash and outline colors, lifetime, preset shape, or custom 8x8 pixel shape. |
+| Trail Visibility | Choose Vanilla, Hidden, or Always show trail mode for Madeline's trail through **Always Show Trail**, **No Ghost Trail**, or **No Trails**. |
 
 All of these change presentation without moving the player or changing collision.
 
 ## Screenshake
 
-Screenshake reduction is **Goldberry/Hardlist clear**. It is an accessibility comfort control that suppresses or reduces camera shake without changing gameplay state. You can also configure a specific screenshake intensity override instead of fully disabling it.
+Screenshake reduction is **Goldberry/Hardlist clear**. It is an accessibility comfort control that suppresses or reduces camera shake without changing gameplay state. You can configure a specific intensity or disable screenshake fully.
 
-## Workflow: Set Up a Comfort Configuration
+## Set up a comfort configuration
 
 <Steps>
   <Step title="Enable reduced visual noise">
-    In the Akron overlay, open the **Level** tab and toggle the noise channels you want to suppress: particles, trails, glitch, anxiety, distortion, weather, waterfalls, tentacles, or heat distortion. Enable **Reduced Visual Noise** to activate all channels at once.
+    In the Akron overlay, open the **Level** tab. **Reduced Visual Noise** suppresses particles, trails, glitch, anxiety, and distortion together. Configure snow, wind snow, waterfalls, tentacles, and heat distortion separately.
   </Step>
   <Step title="Choose an overlay theme">
-    Cycle through the theme presets in the overlay header until you find a comfortable palette. Adjust overlay opacity and scale to taste.
+    Open **Interface > Theme** and choose a preset. Adjust overlay opacity and scale to taste.
   </Step>
   <Step title="Reduce screenshake">
     Enable **Screenshake** and set the intensity to your preferred level. Set intensity to 0 to fully disable camera shake.
@@ -94,9 +103,9 @@ Screenshake reduction is **Goldberry/Hardlist clear**. It is an accessibility co
   </Step>
 </Steps>
 
-## Configuration Advice
+## Configuration advice
 
 - Keep accessibility and presentation settings in a dedicated setup when they represent your default way to play.
-- Keep camera inspection tools such as free camera, camera offset, and cursor zoom in explicit map-inspection or testing setups rather than in your default play setup.
+- Keep camera inspection tools such as free camera, camera offset, and cursor zoom in dedicated map-inspection or testing setups.
 - Do not assume that a **Goldberry/Hardlist clear** or **Normal clear** presentation feature is accepted by every strict external rule source.
 - Use [Clean vs cheat](/concepts/clean-vs-cheat) when preparing for a submitted run.

@@ -3,46 +3,32 @@ title: Sound
 description: Audio routing, low-volume handling, speed, pitch, and per-sound volume overrides.
 ---
 
-The Sound tab changes audio presentation. Per-sound rows come from Akron's current sound override list.
+The Sound tab changes audio presentation. Sound overrides are collapsed under five expandable groups: **Player**, **Objects**, **Entities**, **Ambience**, and **UI**. Expand a group to show its per-sound rows; search also reveals matching rows while a group is collapsed.
 
-| Option | Control | What it does | Attempt status |
+| Option | Control | What it does | Classification |
 |---|---|---|---|
 | Audio Splitter | Toggle | Route music and sound effects to configured output devices. | Normal clear |
 | Allow Low Volume | Toggle | Force music and SFX to configured low-volume values while enabled. | Normal clear |
-| Audio Speed | Numeric toggle | Control whether audio follows timescale, stays normal, or uses an independent speed multiplier. | Normal clear |
-| Pitch Shift | Numeric toggle | Control whether active music/ambience pitch is preserved, follows audio speed, or uses an independent multiplier. | Normal clear |
-| Bird Squawk | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Broken Window | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Conveyor | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Core Block | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Death | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Respawn | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Golden Death | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Dialogue | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Dream Block | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Drum Swap Block | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Fireball | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Heart Collect | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Item Crystal Death | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Kevin Block | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Lava Barrier | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Lightning Ambience | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Lightning Strike | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Move Block | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Oshiro Boss | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Pico-8 Flag | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Seeker | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Spring | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Touch Switch Complete | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Farewell Wind | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Ridge Wind | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
-| Zip Mover | Toggle | Override volume for the matching Celeste sound event. | Normal clear |
+| Audio Speed | Toggle | Control whether audio follows timescale, stays normal, or uses an independent speed multiplier. | Normal clear |
+| Pitch Shift | Toggle | Control whether active music/ambience pitch is preserved, follows audio speed, or uses an independent multiplier. | Normal clear |
+
+## Sound override groups
+
+Each per-sound row is a **Normal clear** toggle that enables or disables the matching volume override.
+
+| Expandable group | Per-sound rows |
+|---|---|
+| Player | Death, Respawn, Golden Death |
+| Objects | Broken Window, Conveyor, Core Block, Dream Block, Drum Swap Block, Kevin Block, Move Block, Spring, Touch Switch Complete, Zip Mover |
+| Entities | Fireball, Lava Barrier, Lightning Strike, Oshiro Boss, Seeker |
+| Ambience | Bird Squawk, Lightning Ambience, Farewell Wind, Ridge Wind |
+| UI | Dialogue, Heart Collect, Item Crystal Death, Pico-8 Flag |
 
 ## Option menus
 
 Rows with a triangle expose the controls listed below.
 
-| Option | Menu control | What it changes | Attempt status |
+| Option | Menu control | What it changes | Classification |
 |---|---|---|---|
 | Audio Splitter | Reload Devices | Refresh FMOD output devices visible to Celeste. | Normal clear |
 | Audio Splitter | Main | Choose the output device for the main audio route. | Normal clear |

@@ -3,9 +3,9 @@ title: Implementation boundaries
 description: Keep Akron changes in the right source layer and avoid growing the core files.
 ---
 
-Use this reference when a change spans UI, settings, policy, runtime behavior, `.akr` packs, commands, HUD, or tests. It defines where new code must reside to ensure contributor changes remain focused.
+Use this reference when a change spans UI, settings, policy, runtime behavior, `.akr` archives, commands, HUD, or tests. Put new code in the closest existing owner so each change stays focused.
 
-## Feature Flow
+## Feature flow
 
 Most feature work crosses these layers:
 
@@ -17,7 +17,7 @@ flowchart LR
   runtime --> verify["Tests or live verification"]
 ```
 
-## Primary Files
+## Primary files
 
 | Concern | Primary files |
 |---|---|
@@ -28,14 +28,18 @@ flowchart LR
 | HUD rendering | `Source/Hud/AkronHudRenderer.cs`, `Source/Hud/akron-hud-*.cs` |
 | Save/load internals | `Source/SaveLoad/AkronSaveLoad.cs`, `Source/SaveLoad/akron-save-load-*.cs` |
 | Internal recording | `Source/Recorder/akron-internal-recorder*.cs`, `Source/Recorder/akron-internal-audio-recorder.cs` |
-| `.akr` import/export | `Source/Setups/akron-setup-packs.cs`, `Source/Setups/akron-setup-file-picker.cs`, `Source/Packs/akron-archive.cs` |
+| `.akr` archive contract | `Source/Packs/akron-archive.cs` |
+| Setup archives and file picker | `Source/Setups/akron-setup-packs.cs`, `Source/Setups/akron-setup-file-picker.cs` |
+| Theme archives | `Source/Overlay/akron-overlay-themes.cs` |
+| HUD-label archives | `Source/Hud/akron-custom-hud-label-catalog.cs` |
+| Control-display archives | `Source/Input/akron-input-board.cs` |
 | Debug and automation commands | `Source/Commands/akron-commands.cs`, `Source/Commands/akron-*-commands.cs` |
 | Verification | `tests/feature-registry-tests.cs`, `tests/module-settings-tests.cs`, feature-specific tests |
 | Community packs | `Source/Community/akron-community-packs.cs`, `Source/Community/akron-community-pack-browser.cs` |
 
-## Adding A Feature
+## Adding a feature
 
-Start from behavior, not from the UI label.
+Define the behavior before naming its UI row.
 
 1. Decide whether the feature is a toggle, button, numeric toggle, radio/dropdown mode, checkbox list, or read-only label.
 2. Add settings only for state that must persist.
@@ -48,7 +52,20 @@ Start from behavior, not from the UI label.
 9. Add tests for classification, defaults, clamps, archive shape, or non-trivial behavior.
 10. Update docs when visible behavior, policy, file locations, debug commands, or `.akr` contracts change.
 
-## Overlay Boundaries
+## `.akr` archive boundaries
+
+`Source/Packs/akron-archive.cs` owns the shared ZIP manifest, entry validation, size checks, and payload helpers. Each archive kind owns its payload schema and import/export behavior:
+
+| Archive kind | Owner |
+|---|---|
+| Setup | `Source/Setups/akron-setup-packs.cs` |
+| Overlay theme | `Source/Overlay/akron-overlay-themes.cs` |
+| Custom HUD labels | `Source/Hud/akron-custom-hud-label-catalog.cs` |
+| Control display | `Source/Input/akron-input-board.cs` |
+
+Keep OS-specific setup file-picker process launching in `Source/Setups/akron-setup-file-picker.cs`.
+
+## Overlay boundaries
 
 Keep `Source/Overlay/AkronOverlay.cs` focused on overlay orchestration. Use existing row helpers before adding UI machinery.
 
@@ -95,9 +112,9 @@ Use focused overlay partials for feature families:
 | Madeline visual popups | `Source/Overlay/akron-overlay-madeline-popups.cs` |
 | Runtime utility popups | `Source/Overlay/akron-overlay-runtime-popups.cs` |
 
-`Source/Overlay/akron-overlay-popup-controls.cs` is a containment boundary for the current option-popup catalog. When a popup grows into a full editor, browser, or feature-family surface, move that family into a smaller focused partial instead of growing the catalog further.
+`Source/Overlay/akron-overlay-popup-controls.cs` is a containment boundary for the current option-popup catalog. Move a popup family into a focused partial when it grows into a full editor, browser, or feature-family surface.
 
-## Module And Runtime Boundaries
+## Module and runtime boundaries
 
 Keep `Source/Module/AkronModule.cs` focused on lifecycle and hook orchestration. If a feature family needs several helpers around one visual or runtime concept, put those helpers in a focused partial and call into it from the hook.
 
@@ -115,7 +132,7 @@ Keep `Source/Module/AkronModule.cs` focused on lifecycle and hook orchestration.
 | Completion clearing, native unlocks, berry obtain, and unlock-state persistence | `Source/Actions/akron-unlock-actions.cs` |
 | Room-stat timing and TSV export | `Source/Runtime/akron-practice-stats.cs` |
 
-## Settings Boundaries
+## Settings boundaries
 
 Keep the main settings file focused on persisted properties, menu entries, formatting, and clamp helpers.
 
@@ -139,7 +156,7 @@ For numeric settings:
 - Keep the row label as on/off when the feature has an enabled state.
 - Put numeric configuration in the option menu.
 
-## Save, HUD, And Inspector Boundaries
+## Save, HUD, and inspector boundaries
 
 Keep `Source/SaveLoad/AkronSaveLoad.cs` focused on save/load orchestration and native restore sequencing.
 
@@ -167,7 +184,7 @@ Hitbox viewer entity selection, last-death marker state, player trail capture, a
 
 Custom HUD label rendering, template formatting, obstruction handling, and layout belong in `Source/Hud/akron-custom-hud-labels.cs`. Default label construction, cloning, active label mutation, preset insertion, and `.akr` label-pack import/export belong in `Source/Hud/akron-custom-hud-label-catalog.cs`.
 
-## Command Boundaries
+## Command boundaries
 
 DebugRC and file-backed automation commands should route into the same runtime helpers as the overlay.
 
@@ -198,7 +215,7 @@ Keep `Source/Commands/akron-commands.cs` for shared command plumbing. Put focuse
 | Custom HUD labels | `Source/Commands/akron-label-commands.cs` |
 | Autosave, spinner deload simulation, and per-SFX volume | `Source/Commands/akron-utility-commands.cs` |
 
-## Review Traps
+## Review traps
 
 Before finishing a feature, check for these common mistakes:
 

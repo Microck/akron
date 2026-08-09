@@ -1,48 +1,48 @@
 ---
-title: "Release Configuration"
-description: "Repository variables, secrets, and public release surfaces required for Akron releases."
+title: Release configuration
+description: Repository variables, secrets, and public release surfaces required for Akron releases.
 ---
-
-# Release Configuration
 
 Akron releases depend on GitHub Actions, GameBanana, Celeste reference assemblies, and the public documentation site at `akron.micr.dev`. This page lists the non-secret configuration contract so release failures can be diagnosed without exposing credentials.
 
 Do not paste real secret values into issues, pull requests, docs, commit messages, or workflow logs.
 
-## Repository Variables
+## Variables
 
-| Name | Required | Example | Purpose |
-| --- | --- | --- | --- |
-| `GAMEBANANA_SUBMISSION_ID` | Yes | `681169` | GameBanana mod id used by the release publisher and README link sync. |
-| `GAMEBANANA_BROWSER` | No | `cloakbrowser` | Browser automation package used by the GameBanana publisher. Defaults to `cloakbrowser`. |
-| `GAMEBANANA_USER_AGENT` | No | Browser user agent string | User agent replayed by the GameBanana publisher when stored auth was captured with a browser profile that GameBanana expects to see again. |
-| `TAILSCALE_EXIT_NODE` | Conditional | `akron-publisher` or `100.x.y.z` | Trusted exit node for GameBanana publishing when GitHub-hosted runner IPs are rejected. |
-| `TAILSCALE_TAGS` | Conditional | `tag:ci` | Tailscale tags assigned to the ephemeral Actions node. Defaults to `tag:ci`. |
+| Name | Scope | Required | Example | Purpose |
+| --- | --- | --- | --- | --- |
+| `AKRON_CELESTE_REFS_SHA256` | `release-build` environment | Yes | 64 lowercase hexadecimal characters | SHA-256 digest of the exact Celeste reference archive used by CI and release builds. |
+| `GAMEBANANA_SUBMISSION_ID` | Repository | No | `681169` | Optional GameBanana publisher override. The release workflow defaults to Akron's mod id, `681169`; link sync uses `AKRON_GAMEBANANA_MOD_ID` separately. |
+| `GAMEBANANA_USER_AGENT` | Repository | No | Browser user agent string | User agent replayed by the GameBanana publisher when stored auth was captured with a browser profile that GameBanana expects to see again. |
+| `TAILSCALE_EXIT_NODE` | Repository | Conditional | `akron-publisher` or `100.x.y.z` | Trusted exit node for GameBanana publishing when GitHub-hosted runner IPs are rejected. |
+| `TAILSCALE_TAGS` | Repository | Conditional | `tag:ci` | Tailscale tags assigned to the ephemeral Actions node. Defaults to `tag:ci`. |
 
-## Repository Secrets
+## Secrets
 
-| Name | Required | Example Shape | Purpose |
-| --- | --- | --- | --- |
-| `AKRON_CELESTE_REFS_URL` | Yes | `https://.../akron-celeste-refs.zip` | Archive containing the stripped Celeste reference DLLs required for CI and release builds. |
-| `AKRON_CELESTE_REFS_TOKEN` | No | GitHub token or storage token | Optional token used when the Celeste reference archive is private. |
-| `AKRON_WEBSITE_TOKEN` | Yes | GitHub token with `contents:write` | Updates `Microck/akron-website` when the release workflow syncs GameBanana fallback file ids. |
-| `GAMEBANANA_COOKIES` | Alternative | Base64 JSON cookie payload | Legacy cookie input for the GameBanana publisher. Prefer storage state when available. |
-| `GAMEBANANA_STORAGE_STATE_B64` | Alternative | Base64 Playwright storage state | Authenticated GameBanana browser state for automated publishing. |
-| `GAMEBANANA_STORAGE_STATE_B64_GZ` | Alternative | Base64 gzip-compressed Playwright storage state | Storage-state variant for values too large for GitHub's normal secret size limit. |
-| `GAMEBANANA_USERNAME` | Local fallback | Account username | Fallback for local/manual publisher runs. GitHub-hosted runners currently require cookie or storage-state auth. |
-| `GAMEBANANA_PASSWORD` | Local fallback | Account password | Fallback for local/manual publisher runs. Do not depend on this for unattended GitHub releases. |
-| `TS_OAUTH_CLIENT_ID` | Conditional | Tailscale OAuth client id | Required when `TAILSCALE_EXIT_NODE` is configured. |
-| `TS_OAUTH_SECRET` | Conditional | Tailscale OAuth secret | Required when `TAILSCALE_EXIT_NODE` is configured. |
+| Name | Scope | Required | Example shape | Purpose |
+| --- | --- | --- | --- | --- |
+| `AKRON_CELESTE_REFS_URL` | `release-build` environment | Yes | `https://.../akron-celeste-refs.zip` | Archive containing the stripped Celeste reference DLLs required for CI and release builds. |
+| `AKRON_CELESTE_REFS_TOKEN` | `release-build` environment | No | GitHub token or storage token | Optional token used when the Celeste reference archive is private. |
+| `AKRON_WEBSITE_TOKEN` | `release` environment | Yes | GitHub token with `contents:write` | Updates `Microck/akron-website` when the release workflow syncs GameBanana fallback file ids. |
+| `GAMEBANANA_COOKIES` | `release` environment | Alternative | Base64 JSON cookie payload | Legacy cookie input for the GameBanana publisher. Prefer storage state when available. |
+| `GAMEBANANA_STORAGE_STATE_B64` | `release` environment | Alternative | Base64 Playwright storage state | Authenticated GameBanana browser state for automated publishing. |
+| `GAMEBANANA_STORAGE_STATE_B64_GZ` | `release` environment | Alternative | Base64 gzip-compressed Playwright storage state | Storage-state variant for values too large for GitHub's normal secret size limit. |
+| `GAMEBANANA_USERNAME` | `release` environment | No | Account username | Optional fallback for local/manual runs and workflow retries when stored authentication cannot edit the submission. |
+| `GAMEBANANA_PASSWORD` | `release` environment | No | Account password | Optional fallback paired with `GAMEBANANA_USERNAME`. Cookie or storage-state authentication remains required for unattended releases. |
+| `TS_OAUTH_CLIENT_ID` | `release` environment | Conditional | Tailscale OAuth client id | Required when `TAILSCALE_EXIT_NODE` is configured. |
+| `TS_OAUTH_SECRET` | `release` environment | Conditional | Tailscale OAuth secret | Required when `TAILSCALE_EXIT_NODE` is configured. |
 
 At least one of `GAMEBANANA_COOKIES`, `GAMEBANANA_STORAGE_STATE_B64`, or `GAMEBANANA_STORAGE_STATE_B64_GZ` must be configured for unattended GameBanana publishing.
 
-## Public Release Surfaces
+For local or manual publishing, `GAMEBANANA_BROWSER` can select the browser automation package. The GitHub release workflow pins this value to `cloakbrowser`; it is not a repository variable.
+
+## Public release surfaces
 
 Every Akron release is expected to leave these public surfaces consistent:
 
-| Surface | Expected State |
+| Surface | Expected state |
 | --- | --- |
-| GitHub Release | The tag has a release with `Akron-<tag>.zip`, `Akron-<tag>.zip.sha256`, and release notes extracted from `CHANGELOG.md`. |
+| GitHub Release | The tag has a release with `Akron-<tag>.zip`, its `.zip.sha256` checksum, the `.dependencies.json` dependency manifest, the `.cdx.json` CycloneDX SBOM, and notes extracted from `CHANGELOG.md`. |
 | GameBanana | The mod page has a release update and downloadable file for the same tag. |
 | `akron.micr.dev` | Documentation and fallback GameBanana file ids match the released version. |
 | README | The Olympus and raw-download buttons point at `akron.micr.dev/olympus` and `akron.micr.dev/raw`. |

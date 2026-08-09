@@ -1,15 +1,18 @@
 ---
-title: File Locations
-description: Complete reference of Akron file paths for saves, recordings, captures, proofs, and mod data.
+title: File locations
+description: Akron file paths for saves, recordings, captures, proofs, and mod data.
 ---
 
-All paths are relative to `Everest.PathGame` (the active Celeste/Everest installation directory). The exact root varies across Steam, Flatpak, Wine, portable installs, and custom prefixes.
+Most paths are relative to `Everest.PathGame` (the active Celeste/Everest installation directory). StartPos snapshots resolve from `AppContext.BaseDirectory`, which normally points to the same installation root. The exact root varies across Steam, Flatpak, Wine, portable installs, and custom prefixes.
 
-## User Data
+## User data
 
 | Path | Contents |
 |---|---|
 | `Saves/AkronSetups` | Exported and imported `.akr` setup packs. |
+| `Saves/AkronBackups` | Automatic and manual save backups. |
+| `Saves/AkronLogs` | Akron diagnostic logs and rotated log files. |
+| `Saves/AkronStartPos` | Runtime-managed, compressed v7 StartPos snapshots. Do not edit these files manually. |
 | `Saves/AkronRecordings` | Video recordings and clips. Akron writes here by default; the output folder is configurable via the recorder settings. |
 | `Saves/AkronAutomation` | Automation command-queue input and result files. Normal player workflows do not need this directory. |
 | `Saves/AkronProof` | Proof sidecar JSON files written by the proof system and area-completion captures. |
@@ -17,23 +20,24 @@ All paths are relative to `Everest.PathGame` (the active Celeste/Everest install
 | `Saves/AkronControlDisplay` | Control Display preset files for import and export. |
 | `Saves/AkronThemes` | Overlay theme `.akr` packs for import and export. |
 | `Saves/AkronHudLabels` | Custom HUD label `.akr` packs for import and export. |
-| `Saves/AkronTools` | Downloaded tool binaries, such as the bundled ffmpeg executable. |
+| `Saves/AkronTools` | Locally supplied tool binaries. The recorder checks `Saves/AkronTools/ffmpeg` before system locations. |
 | `Saves/AkronNative` | Extracted native runtime libraries, organized by runtime identifier. |
 | `Saves/AkronDebug` | Debug snapshots written on demand for troubleshooting. |
+| `Saves/AkronShowcaseMarkers` | Diagnostic timeline and detail TSV files. Akron creates this directory only when showcase markers are explicitly enabled. |
 
 For a Flatpak-based Steam install, the typical base path is:
 
-```
+```text
 ~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Celeste
 ```
 
-## Screenshot Tool Exports
+## Screenshot tool exports
 
 The screenshot scanner writes images to an export tree under `Everest.PathGame`. The default root folder is `AkronScreenshotTool_Exports` and is configurable via the screenshot tool settings.
 
 The directory layout is:
 
-```
+```text
 {ExportRoot}/{chapter SID}/{side letter}/{room name}/{filename}.{png|jpg}
 ```
 
@@ -41,7 +45,7 @@ Each captured room also gets a `room.json` file with room position, room size, c
 
 Room Capture writes a merged room collage as `merged.png` or `merged.jpg` in the captured room directory when the scan tiles can be merged safely. Map Capture writes the same per-room output and also writes a world-space chapter collage as `map.png` or `map.jpg` at the side-level export directory when at least one scanned room can be merged. If **Only marked rooms** is enabled, Map Capture writes separate room images under `marked-rooms/<timestamp>/` instead of writing a side-level map collage. If **Downscale map** is enabled, the map collage may be scaled down to avoid unsafe image dimensions.
 
-## Mod Data
+## Mod data
 
 | Path | Contents |
 |---|---|
@@ -51,10 +55,10 @@ Room Capture writes a merged room collage as `merged.png` or `merged.jpg` in the
 
 When Streamer Mode is active, Akron-owned UI displays only the filename or final folder name instead of the full local filesystem path.
 
-## Shareable Files
+## Shareable files
 
 | File type | Sharing note |
 |---|---|
-| `.akr` files | Setup packs intended for backup or sharing. |
+| `.akr` files | Setup, theme, HUD-label, and control-display packs intended for preserving setup state or sharing. These are separate from Backups tab ZIPs. |
 | Catalog JSON | Community-pack index data maintained for shared catalog browsing. |
 | Runtime-managed files | Not intended for manual editing unless a troubleshooting page gives explicit recovery steps. |

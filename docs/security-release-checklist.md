@@ -1,10 +1,17 @@
-# Security release checklist
+---
+title: Security release checklist
+description: Rotate exposed credentials and verify provider, deployment, and release controls when needed.
+---
 
-Use this checklist after the repository security tests pass and before publishing Akron or deploying Akron Discord. It covers controls that source changes cannot apply to provider accounts automatically.
+Use this checklist before publishing Akron or deploying Akron Discord after a security-sensitive change or possible credential exposure. It covers controls that source changes cannot apply to provider accounts automatically.
 
-## 1. Rotate exposed credentials
+This checklist includes credential rotation and deployment recovery. For the
+normal one-time setup of release environments, tag rules, and provider access,
+use [Pre-release security checklist](./pre-release-security-checklist.md).
 
-Rotate every credential that appeared in the retained local environment-file backup:
+## 1. Rotate exposed credentials when needed
+
+If a credential might have been exposed, rotate every affected value before release. Depending on the affected system, this can include:
 
 - Discord bot token
 - R2 access key secret
@@ -15,7 +22,7 @@ Rotate every credential that appeared in the retained local environment-file bac
 
 Update the deployment secret stores directly. Do not put replacement values in Git, issue text, CI logs, or this checklist. Restart the affected services only after both sides of each shared secret have been updated.
 
-After rotation, run a redacted full-history Gitleaks scan against every local and remote ref. Only then decide whether to remove the retained local jj revision containing the old backup. History cleanup is not a substitute for rotation.
+After rotation, run a redacted full-history Gitleaks scan against every local and remote ref. If the scan identifies a retained revision containing a secret, decide whether history cleanup is required. History cleanup is not a substitute for rotation.
 
 ## 2. Lock down host files
 
@@ -50,8 +57,8 @@ Confirm that upload attribution only reaches a member of the configured guild an
 ## 5. Configure release secrets and approvals
 
 - Set `AKRON_CELESTE_REFS_SHA256` to the reviewed SHA-256 of the exact private reference archive.
-- Create protected `release-build` and `release` environments with required
-  maintainer approval and self-review disabled.
+- Keep `release-build` available to required CI checks without deployment approval.
+- Require a maintainer reviewer for `release` when a second maintainer is available. A solo maintainer may authorize publishing only after completing the pre-release checklist.
 - Restrict GameBanana, Tailscale, and GitHub publishing secrets to the isolated publish job/environment.
 - Protect the default branches in both `Microck/akron` and
   `Microck/akron-discord` with required CI checks, no force pushes, and no
@@ -66,4 +73,4 @@ Confirm that upload attribution only reaches a member of the configured guild an
 - Run the redacted secret scan.
 - Build the player archive and verify that it contains no PDB, environment, database, test, or credential files.
 - Generate and retain the release SBOM and GitHub artifact attestation.
-- Test the upload, moderation, catalog download, and pack-import paths on the remote Linux Mint machine before announcing the release.
+- Test the upload, moderation, catalog download, and pack-import paths in the maintained release test environment before announcing the release.

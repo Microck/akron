@@ -10,9 +10,9 @@
   },
   "favicon": "/images/favicon.png",
   "colors": {
-    "primary": "#A86048",
+    "primary": "#A45D45",
     "light": "#F0D8A8",
-    "dark": "#A86048"
+    "dark": "#A45D45"
   },
   "background": {
     "color": {
@@ -52,7 +52,7 @@
       "googlebot": "index, follow",
       "keywords": "Akron, Celeste mod, Everest mod, Celeste tools, StartPos, .akr packs, proof metadata, practice tools",
       "robots": "index, follow",
-      "theme-color": "#A86048"
+      "theme-color": "#A45D45"
     }
   },
   "markdown": {
@@ -120,7 +120,7 @@
         ]
       },
       {
-        "group": ".akr Packs",
+        "group": ".akr packs",
         "pages": [
           "akr-packs/manage-setups",
           "akr-packs/import-export"
@@ -154,6 +154,14 @@
           "contributing/testing-and-verification",
           "contributing/public-architecture",
           "contributing/implementation-boundaries"
+        ]
+      },
+      {
+        "group": "Maintainers",
+        "pages": [
+          "pre-release-security-checklist",
+          "release-runbook",
+          "security-release-checklist"
         ]
       },
       {

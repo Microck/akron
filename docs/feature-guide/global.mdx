@@ -3,42 +3,41 @@ title: Global
 description: Session-wide controls for speed, safety, submission metadata, autosave, and transition behavior.
 ---
 
-The Global tab collects options that affect the entire Akron session rather than one HUD surface or one room tool.
+The Global tab contains session-wide options.
 
-| Option | Control | What it does | Attempt status |
+| Option | Control | What it does | Classification |
 |---|---|---|---|
-| Timescale | Numeric toggle | Enable a configured gameplay timescale and edit its multiplier independently. | Cheat |
-| Transition Speed | Numeric toggle | Adjust the next room-transition speed multiplier. Values below 1x are slower and values above 1x are faster. | Cheat |
-| Frame Stepper | Toggle | Step one frozen frame and configure hold-to-repeat stepping. | Cheat |
-| FPS Bypass | Numeric toggle | Raise the draw cadence or enable Motion Smoothing's smoothing pipeline while keeping Celeste physics at 60 FPS. | Regular clean |
-| TPS Bypass | Numeric toggle | Change the simulation tick cadence. | Cheat |
-| Safe Mode | Toggle | Safe Mode indicator plus optional local stat guards for deaths, jumps, and best-run fields. | Regular clean |
+| Timescale | Numeric input | Enable a configured gameplay timescale and edit its multiplier independently. | Cheat |
+| Transition Speed | Toggle | Adjust the next room-transition speed multiplier. Values below 1x are slower and values above 1x are faster. | Cheat |
+| Frame Stepper | Toggle | Enable frame stepping while Freeze Gameplay is on and configure hold-to-repeat stepping. | Cheat |
+| FPS Bypass | Numeric input | Raise the draw cadence or enable Motion Smoothing's smoothing pipeline while keeping Celeste physics at 60 TPS when TPS Bypass is off. | Normal clear |
+| TPS Bypass | Numeric input | Change the simulation tick cadence. | Cheat |
+| Safe Mode | Toggle | Safe Mode indicator plus optional local stat guards for deaths, jumps, and best-run fields. | Normal clear |
 | Freeze Attempts | Toggle | Restore the current save slot's death counter while Safe Mode is active. | Cheat |
-| Submission Mode | Toggle | Enable recording metadata defaults and related warning surfaces without changing gameplay itself. | Goldberry/Hardlist clean |
+| Submission Mode | Toggle | Enable recording metadata defaults and related warning surfaces without changing gameplay itself. | Goldberry/Hardlist clear |
 | Pause Buffering | Toggle | Choose whether configured hotkeys can fire while Celeste is paused. | Cheat |
-| Autosave | Toggle | Save Akron-owned backup state automatically at configured safe points. | Regular clean |
+| Autosave | Toggle | Save the active Celeste file automatically at configured triggers, with optional settings saves. | Goldberry/Hardlist clear |
+
+<Note>
+  FPS Bypass and TPS Bypass appear only when Motion Smoothing is loaded. FPS Bypass changes drawing while Celeste physics stays at 60 TPS when TPS Bypass is off. TPS Bypass changes the physics cadence.
+</Note>
 
 ## Option menus
 
 Rows with a triangle expose the controls listed below.
 
-| Option | Menu control | What it changes | Attempt status |
+| Option | Menu control | What it changes | Classification |
 |---|---|---|---|
-| FPS Bypass | Target FPS | Draw target while FPS Bypass is enabled. Motion Smoothing keeps Celeste physics at 60 FPS while drawing extra frames. | Regular clean |
-| FPS Bypass | Method | Interval keeps render cadence aligned to physics ticks. Dynamic allows arbitrary FPS but is riskier for code that hooks the main tick. | Regular clean |
-| FPS Bypass | Smooth Camera | Fancy is highest quality, Fast is cheaper but can jitter backgrounds, Off leaves the camera pixel-locked. | Regular clean |
-| FPS Bypass | Objects | Extrapolate predicts between physics frames. Interpolate uses prior frames and can add 1-2 frames of delay. | Regular clean for Extrapolate; Cheat for Interpolate |
+| FPS Bypass | Target FPS | Draw target while FPS Bypass is enabled. When TPS Bypass is off, Motion Smoothing keeps Celeste physics at 60 TPS while drawing extra frames. | Normal clear |
+| FPS Bypass | Method | Interval keeps render cadence aligned to physics ticks. Dynamic allows arbitrary FPS but is riskier for code that hooks the main tick. | Normal clear |
+| FPS Bypass | Smooth Camera | Fancy is highest quality, Fast is cheaper but can jitter backgrounds, Off leaves the camera pixel-locked. | Normal clear |
+| FPS Bypass | Objects | Extrapolate predicts between physics frames. Interpolate uses prior frames and can add 1-2 frames of delay. | Normal clear for Extrapolate; Cheat for Interpolate |
 | FPS Bypass | TAS mode | Keeps overworld updates locked for TAS compatibility while level gameplay remains controlled by TPS Bypass. | Cheat |
-| FPS Bypass | Subpixel Madeline | Reference option for drawing Madeline and held items at subpixel render positions. | Regular clean |
-| FPS Bypass | Smooth background | Reference option for high-resolution background compositing in Fancy camera smoothing. | Regular clean |
-| FPS Bypass | Smooth foreground | Reference option for high-resolution foreground compositing in Fancy camera smoothing. | Regular clean |
-| FPS Bypass | Hide edge gaps | Reference option: slightly zooms the level to hide gaps introduced by fractional camera offsets. | Regular clean |
+| FPS Bypass | Subpixel Madeline | Reference option for drawing Madeline and held items at subpixel render positions. | Normal clear |
+| FPS Bypass | Smooth background | Reference option for high-resolution background compositing in Fancy camera smoothing. | Normal clear |
+| FPS Bypass | Smooth foreground | Reference option for high-resolution foreground compositing in Fancy camera smoothing. | Normal clear |
+| FPS Bypass | Hide edge gaps | Reference option: slightly zooms the level to hide gaps introduced by fractional camera offsets. | Normal clear |
 | FPS Bypass | Nasty mode | Apply the experimental smoothing preset that Motion Smoothing recommends avoiding in real gameplay. | Cheat |
-| TPS Bypass | Target TPS | Simulation update target while TPS Bypass is enabled. Unlike FPS Bypass, this changes physics cadence. | Cheat |
-| Timescale | Enabled | Toggle gameplay timescale on or off. | Cheat |
-| Timescale | Decrease | Lower the gameplay timescale multiplier. | Cheat |
-| Timescale | Increase | Raise the gameplay timescale multiplier. | Cheat |
-| Timescale | Reset | Return gameplay speed to normal. | Cheat |
 | Frame Stepper | Step once | Advance one frozen frame. Only works while Frame Stepper and Freeze Gameplay are on. | Cheat |
 | Frame Stepper | Hold key repeats | When enabled, holding the step key advances frames repeatedly. | Cheat |
 | Frame Stepper | Delay | Frames to wait before hold-repeat starts. | Cheat |
@@ -46,13 +45,14 @@ Rows with a triangle expose the controls listed below.
 | Safe Mode | Freeze deaths | Restore the current save slot's death counter while Safe Mode is active. | Cheat |
 | Safe Mode | Freeze jumps | Restore the current save slot's jump counter while Safe Mode is active. | Cheat |
 | Safe Mode | Freeze best run | Restore the current save slot's best-run fields while Safe Mode is active. | Cheat |
-| Autosave | Interval | Seconds between automatic save attempts. | Regular clean |
-| Autosave | Minimum delay | Cooldown before another automatic save can run. | Regular clean |
-| Autosave | Room load | Autosave on room load. | Regular clean |
-| Autosave | Spawn update | Autosave on spawn update. | Regular clean |
-| Autosave | Respawn | Autosave on respawn. | Regular clean |
-| Autosave | Pause | Autosave on pause. | Regular clean |
-| Autosave | Avoid gameplay | Avoid gameplay. | Regular clean |
-| Autosave | Save settings | Save settings. | Regular clean |
-| Autosave | Hide saving icon | Hide saving icon. | Regular clean |
-| Transition Speed | Multiplier | Adjust the next room-transition speed multiplier. Values below 1x are slower and values above 1x are faster. | Cheat |
+| Autosave | Interval | Seconds between automatic save attempts. | Goldberry/Hardlist clear |
+| Autosave | Minimum delay | When Avoid gameplay is on, block automatic saves until this cooldown has passed after entering a level or completing a save. | Goldberry/Hardlist clear |
+| Autosave | Room load | Autosave on room load. | Goldberry/Hardlist clear |
+| Autosave | Spawn update | Autosave on spawn update. | Goldberry/Hardlist clear |
+| Autosave | Respawn | Autosave on respawn. | Goldberry/Hardlist clear |
+| Autosave | Pause | Autosave on pause. | Goldberry/Hardlist clear |
+| Autosave | Avoid gameplay | Defer automatic saves while the minimum-delay cooldown is active. | Goldberry/Hardlist clear |
+| Autosave | Save settings | Save Celeste settings with the active save file. | Goldberry/Hardlist clear |
+| Autosave | Hide saving icon | Hide Celeste's save and load icons while this setting is on. | Goldberry/Hardlist clear |
+| Autosave | Save now | Save the current file immediately through Akron's autosave path, even when Autosave is off or the minimum-delay cooldown is active. | Goldberry/Hardlist clear |
+| Transition Speed | Speed | Adjust the next room-transition speed multiplier. Values below 1x are slower and values above 1x are faster. | Cheat |
