@@ -274,6 +274,7 @@ public partial class AkronModule : EverestModule {
         AkronAudioSplitter.Unload();
         AkronStartPosPersistence.Shutdown();
         AkronActions.ClearPendingStartPosState();
+        AkronActions.ClearStartPosInputWait();
         SaveAkronSettingsNow("unload");
         AkronLog.FlushDiagnosticSummaries();
         AkronLog.Normal(nameof(AkronModule), "unload start");
@@ -384,6 +385,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void LevelOnBegin(On.Celeste.Level.orig_Begin orig, Level self) {
+        AkronActions.ClearStartPosInputWait();
         try {
             orig(self);
         } catch (NullReferenceException ex) when (ex.StackTrace?.IndexOf("DustEdges.BeforeRender", StringComparison.Ordinal) >= 0) {
@@ -420,6 +422,7 @@ public partial class AkronModule : EverestModule {
 
     private static void LevelOnEnd(On.Celeste.Level.orig_End orig, Level self) {
         AkronGameplayBufferState.ResetLevelPresentation();
+        AkronActions.ClearStartPosInputWait();
         orig(self);
     }
 
@@ -495,6 +498,10 @@ public partial class AkronModule : EverestModule {
             }
         } else {
             UpdateOverlayCursorState();
+        }
+
+        if (AkronActions.UpdateStartPosInputWait(self)) {
+            return;
         }
 
         RefreshRefillClaritySprites(self);

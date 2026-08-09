@@ -424,6 +424,7 @@ public partial class AkronModuleSettings {
             FreeCameraMouseControl = FreeCameraMouseControl,
             SmartStartPos = SmartStartPos,
             RespawnAtStartPos = RespawnAtStartPos,
+            StartPosWaitForInput = StartPosWaitForInput,
             StartPosShowLabel = StartPosShowLabel,
             StartPosLabelColor = StartPosLabelColor,
             StartPosLabelAnchor = StartPosLabelAnchor,

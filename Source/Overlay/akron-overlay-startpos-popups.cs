@@ -39,6 +39,12 @@ public sealed partial class AkronOverlay {
         DrawPopupActionBindingContext("StartPos", "Respawn", "StartPos / Respawn Here");
         DrawPopupTooltip("Respawn at the active StartPos after death.");
 
+        bool waitForInput = AkronModule.Settings.StartPosWaitForInput;
+        if (ImGui.Checkbox("Wait for input after load##" + popupId, ref waitForInput)) {
+            AkronModule.Settings.StartPosWaitForInput = waitForInput;
+        }
+        DrawPopupTooltip("Hold the restored frame until a fresh gameplay input, while backdrops and wipes continue.");
+
         DrawStartPosConfigControls(popupId);
 
     }

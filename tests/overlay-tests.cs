@@ -136,6 +136,8 @@ public sealed class OverlayTests {
         Assert.Contains("AkronActions.LoadStartPosSlot(level, slot)", startPosSource);
         Assert.Contains("DrawPopupActionBindingContext(\"StartPos\", actionName)", startPosSource);
         Assert.Contains("DrawPopupActionBindingContext(\"StartPos\", \"Respawn\"", startPosSource);
+        Assert.Contains("Wait for input after load##", startPosSource);
+        Assert.Contains("AkronModule.Settings.StartPosWaitForInput = waitForInput", startPosSource);
         Assert.Contains("entry.OptionsPopupKey, \"StartPos Snapshot Slot\"", popupSource);
         Assert.Contains("DrawSavestateSlotPopupControls(popupId);", popupSource);
         Assert.Contains("DrawStartPosPopupControls(popupId);", popupSource);

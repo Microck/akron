@@ -415,6 +415,7 @@ public sealed class AkronSetupState {
     public bool FreeCameraMouseControl { get; set; }
     public bool SmartStartPos { get; set; }
     public bool RespawnAtStartPos { get; set; }
+    public bool StartPosWaitForInput { get; set; }
     public bool StartPosShowLabel { get; set; }
     public int StartPosLabelColor { get; set; } = 0xFFFFFF;
     public AkronHudAnchor StartPosLabelAnchor { get; set; } = AkronHudAnchor.TopLeft;

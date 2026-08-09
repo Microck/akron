@@ -342,12 +342,17 @@ public static partial class AkronActions {
                 return;
             }
 
-            RestoreStartPos(
+            if (!RestoreStartPos(
                 level,
                 startPos,
                 "Loaded StartPos " + slot + ".",
                 slot,
-                enableRespawnAtStartPosAfterRestore: true);
+                enableRespawnAtStartPosAfterRestore: true)) {
+                return;
+            }
+
+            Level currentLevel = Engine.Scene as Level ?? level;
+            BeginStartPosInputWait(currentLevel, waitingForWipe: false);
         });
     }
 
@@ -486,11 +491,13 @@ public static partial class AkronActions {
             if (restoredLevel.Session.RespawnPoint is Vector2 respawnPoint) {
                 SpotlightWipe.FocusPoint = respawnPoint - restoredLevel.Camera.Position;
             }
-            restoredLevel.DoScreenWipe(wipeIn: true);
+            BeginStartPosInputWait(restoredLevel, waitingForWipe: true);
+            restoredLevel.DoScreenWipe(wipeIn: true, () => CompleteStartPosInputWaitWipe(restoredLevel));
         });
     }
 
     private static bool RestoreStartPos(Level level, AkronStartPos startPos, string toast, int loadedSlot = 0, bool endPlacementForLoad = true, bool enableRespawnAtStartPosAfterRestore = false) {
+        ClearStartPosInputWait();
         bool restoreRespawnAtStartPos = AkronModule.Settings.RespawnAtStartPos;
         bool restoredStartPos = false;
         AkronModule.Settings.RespawnAtStartPos = false;

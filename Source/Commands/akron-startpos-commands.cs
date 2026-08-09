@@ -73,7 +73,7 @@ public static partial class AkronCommands {
         Log(AkronModule.DescribeSavestateResult("Load", result, AkronModule.Settings.ActiveSavestateSlot));
     }
 
-    [Command("akron_startpos", "Akron StartPos: status|slot <n>|set|load|clear|prev|next|place <on|off>|dashes <n>|stamina <n>|slots <n>|facing <current|left|right>|idle <on|off>|grab <on|off>|label <on|off>|respawn <on|off>|smart <on|off>")]
+    [Command("akron_startpos", "Akron StartPos: status|slot <n>|set|load|clear|prev|next|place <on|off>|dashes <n>|stamina <n>|slots <n>|facing <current|left|right>|idle <on|off>|grab <on|off>|label <on|off>|respawn <on|off>|wait <on|off|status>|smart <on|off>")]
     public static void StartPos(string action = "status", string value = "") {
         Level level = RequireLevel();
         if (level == null) {
@@ -179,6 +179,17 @@ public static partial class AkronCommands {
             case "respawn":
                 if (!ApplyStartPosRespawnAction(value)) {
                     return;
+                }
+                break;
+            case "wait":
+            case "waitforinput":
+                string waitAction = NormalizeToken(value);
+                if (waitAction.Length > 0 && waitAction != "status") {
+                    if (!TryParseBoolean(value, out bool waitForInput)) {
+                        Log("usage: akron_startpos wait <on|off|status>");
+                        return;
+                    }
+                    AkronModule.Settings.StartPosWaitForInput = waitForInput;
                 }
                 break;
             case "smart":
@@ -291,6 +302,7 @@ public static partial class AkronCommands {
         Log("startpos-label-opacity: " + AkronModule.Settings.StartPosLabelStyle.Opacity.ToString(CultureInfo.InvariantCulture));
         Log("startpos-preview-opacity: " + AkronModule.Settings.StartPosPreviewOpacity.ToString(CultureInfo.InvariantCulture));
         Log("startpos-respawn: " + AkronModule.Settings.RespawnAtStartPos.ToString().ToLowerInvariant());
+        Log("startpos-wait-for-input: " + AkronModule.Settings.StartPosWaitForInput.ToString().ToLowerInvariant());
         Log("smart-startpos: " + AkronModule.Settings.SmartStartPos.ToString().ToLowerInvariant());
     }
 }

@@ -1145,6 +1145,59 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
+    public void StartPosInputWaitIgnoresHeldControlsUntilANewControlIsPressed() {
+        AkronStartPosInputWait wait = new AkronStartPosInputWait();
+        AkronStartPosInputFlags held = AkronStartPosInputFlags.MoveLeft | AkronStartPosInputFlags.Jump;
+
+        wait.Begin(held, waitingForWipe: false);
+
+        Assert.True(wait.Active);
+        Assert.False(wait.Advance(held));
+        Assert.False(wait.Advance(AkronStartPosInputFlags.MoveLeft));
+        Assert.True(wait.Advance(AkronStartPosInputFlags.MoveLeft | AkronStartPosInputFlags.Dash));
+        Assert.False(wait.Active);
+    }
+
+    [Fact]
+    public void StartPosInputWaitTreatsDirectionChangesAsFreshInput() {
+        AkronStartPosInputWait wait = new AkronStartPosInputWait();
+        wait.Begin(AkronStartPosInputFlags.MoveLeft, waitingForWipe: false);
+
+        Assert.True(wait.Advance(AkronStartPosInputFlags.MoveRight));
+        Assert.False(wait.Active);
+    }
+
+    [Fact]
+    public void StartPosInputWaitDoesNotAcceptInputUntilTheRespawnWipeFinishes() {
+        AkronStartPosInputWait wait = new AkronStartPosInputWait();
+        AkronStartPosInputFlags duringWipe = AkronStartPosInputFlags.Dash | AkronStartPosInputFlags.Jump;
+
+        wait.Begin(AkronStartPosInputFlags.Dash, waitingForWipe: true);
+
+        Assert.True(wait.WaitingForWipe);
+        Assert.False(wait.Advance(duringWipe));
+
+        wait.CompleteWipe(duringWipe);
+
+        Assert.False(wait.WaitingForWipe);
+        Assert.False(wait.Advance(duringWipe));
+        Assert.False(wait.Advance(AkronStartPosInputFlags.Dash));
+        Assert.True(wait.Advance(AkronStartPosInputFlags.Dash | AkronStartPosInputFlags.Grab));
+    }
+
+    [Fact]
+    public void ClearingStartPosInputWaitReturnsItToAnInactiveState() {
+        AkronStartPosInputWait wait = new AkronStartPosInputWait();
+        wait.Begin(AkronStartPosInputFlags.Jump, waitingForWipe: false);
+
+        wait.Clear();
+
+        Assert.False(wait.Active);
+        Assert.False(wait.WaitingForWipe);
+        Assert.False(wait.Advance(AkronStartPosInputFlags.Dash));
+    }
+
+    [Fact]
     public void PersistentRestoreUsesStableActionIdsAndProtectsIgnoredEntitiesAndStats() {
         string source = File.ReadAllText(GetSaveLoadSourcePath());
         int restore = source.IndexOf("private static AkronSaveLoadResult RestorePersistentRuntimeState", StringComparison.Ordinal);
@@ -1939,9 +1992,31 @@ public sealed class StartPosPersistenceTests {
         Assert.Contains("!deadBody.HasGolden", playerRuntimeSource);
         Assert.Contains("if (Engine.Scene != level)", source);
         Assert.Contains("SpotlightWipe.FocusPoint = respawnPoint - restoredLevel.Camera.Position;", source);
-        Assert.Contains("restoredLevel.DoScreenWipe(wipeIn: true);", source);
+        Assert.Contains("restoredLevel.DoScreenWipe(wipeIn: true, () => CompleteStartPosInputWaitWipe(restoredLevel));", source);
         Assert.Contains("level.Reload();", source);
         Assert.Equal(1, playerRuntimeSource.Split("AkronActions.RestoreStartPosAfterDeath(level, startPosRespawn)").Length - 1);
+    }
+
+    [Fact]
+    public void SuccessfulStartPosLoadsWaitForFreshInputAndKeepBackdropPresentationRunning() {
+        string actionsSource = File.ReadAllText(GetActionsSourcePath());
+        string waitSource = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-input-wait.cs"));
+        string moduleSource = File.ReadAllText(GetModuleSourcePath());
+        string commandsSource = File.ReadAllText(GetSourcePath("Commands", "akron-startpos-commands.cs"));
+
+        Assert.Contains("BeginStartPosInputWait(currentLevel, waitingForWipe: false);", actionsSource);
+        Assert.Contains("BeginStartPosInputWait(restoredLevel, waitingForWipe: true);", actionsSource);
+        Assert.Contains("CompleteStartPosInputWaitWipe(restoredLevel)", actionsSource);
+        Assert.Contains("if (AkronActions.UpdateStartPosInputWait(self))", moduleSource);
+        Assert.Contains("AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(level);", waitSource);
+        Assert.Contains("level.Wipe?.Update(level);", waitSource);
+        Assert.Contains("level.HiresSnow?.Update(level);", waitSource);
+        Assert.Contains("level.Foreground.Update(level);", waitSource);
+        Assert.Contains("level.Background.Update(level);", waitSource);
+        Assert.Contains("AkronActions.ClearStartPosInputWait();", moduleSource);
+        Assert.Contains("AkronModule.Settings.StartPosWaitForInput = waitForInput;", commandsSource);
+        Assert.Contains("startpos-wait-for-input:", commandsSource);
+        Assert.Contains("wait <on|off|status>", commandsSource);
     }
 
     [Fact]

@@ -559,6 +559,7 @@ public sealed class SetupPackTests {
             AudioSpeed = true,
             AudioSpeedMultiplier = 1.25f,
             SmartStartPos = false,
+            StartPosWaitForInput = false,
             StartPosSlotCount = 3
         };
         target.SoundVolumes["bird-squawk"] = 125;
@@ -584,6 +585,7 @@ public sealed class SetupPackTests {
                 AudioSpeed = false,
                 AudioSpeedMultiplier = 0.5f,
                 SmartStartPos = true,
+                StartPosWaitForInput = true,
                 StartPosSlotCount = 7,
                 StartPosConfiguredDashes = 2,
                 StartPosConfiguredStaminaPercent = 80
@@ -611,6 +613,7 @@ public sealed class SetupPackTests {
         Assert.Equal(125, target.SoundVolumes["bird-squawk"]);
         Assert.True(target.SoundVolumeOverrides["bird-squawk"]);
         Assert.True(target.SmartStartPos);
+        Assert.True(target.StartPosWaitForInput);
         Assert.Equal(7, target.StartPosSlotCount);
         Assert.Equal(2, target.StartPosConfiguredDashes);
         Assert.Equal(80, target.StartPosConfiguredStaminaPercent);

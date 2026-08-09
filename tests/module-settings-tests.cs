@@ -1012,6 +1012,7 @@ public sealed class ModuleSettingsTests
         Assert.Equal(750, settings.LagPauserRecoveryGraceMs);
         Assert.Equal(1000, settings.LagPauserRepeatCooldownMs);
         Assert.False(settings.FreeCameraMouseControl);
+        Assert.False(settings.StartPosWaitForInput);
     }
 
     [Theory]
