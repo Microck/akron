@@ -202,7 +202,7 @@ internal sealed class AkronVirtualRenderTargetResourceAdapter : IAkronReconstruc
         ValidatePayload(payload);
         VirtualRenderTarget renderTarget = freshResource as VirtualRenderTarget;
         bool created = false;
-        if (!DescriptorMatches(payload, renderTarget)) {
+        if (!PixelLayoutMatches(payload, renderTarget)) {
             renderTarget = VirtualContent.CreateRenderTarget(
                 payload.Name,
                 payload.Width,
@@ -223,18 +223,19 @@ internal sealed class AkronVirtualRenderTargetResourceAdapter : IAkronReconstruc
         }
     }
 
-    public void RestoreExisting(AkronReconstructionResourcePayload payload, VirtualRenderTarget renderTarget) {
+    public bool RestoreExisting(AkronReconstructionResourcePayload payload, VirtualRenderTarget renderTarget) {
         ValidatePayload(payload);
-        if (!DescriptorMatches(payload, renderTarget)) {
-            throw new InvalidOperationException("Virtual render target descriptor differs.");
+        if (!PixelLayoutMatches(payload, renderTarget)) {
+            return false;
         }
         renderTarget.Target.SetData(payload.Bytes);
+        return true;
     }
 
     public bool Verify(AkronReconstructionResourcePayload payload, object resource) {
         try {
             ValidatePayload(payload);
-            if (resource is not VirtualRenderTarget renderTarget || !DescriptorMatches(payload, renderTarget)) {
+            if (resource is not VirtualRenderTarget renderTarget || !PixelLayoutMatches(payload, renderTarget)) {
                 return false;
             }
             byte[] pixels = new byte[payload.Bytes.Length];
@@ -245,12 +246,12 @@ internal sealed class AkronVirtualRenderTargetResourceAdapter : IAkronReconstruc
         }
     }
 
-    private static bool DescriptorMatches(
+    private static bool PixelLayoutMatches(
         AkronReconstructionResourcePayload payload,
         VirtualRenderTarget renderTarget
     ) {
-        return renderTarget != null && !renderTarget.IsDisposed &&
-               renderTarget.Name == payload.Name &&
+        // Name is a debug label and does not affect the XNA resource layout.
+        return renderTarget != null && !renderTarget.IsDisposed && renderTarget.Target != null &&
                renderTarget.Width == payload.Width &&
                renderTarget.Height == payload.Height &&
                renderTarget.MultiSampleCount == payload.MultiSampleCount &&
@@ -295,39 +296,46 @@ internal static class AkronGameplayBufferState {
         return snapshots;
     }
 
-    public static bool Restore(IReadOnlyList<AkronGameplayBufferSnapshot> snapshots, out string error) {
-        error = string.Empty;
-        try {
-            Dictionary<string, AkronGameplayBufferSnapshot> savedByName =
-                (snapshots ?? Array.Empty<AkronGameplayBufferSnapshot>()).ToDictionary(
-                    snapshot => snapshot.FieldName,
-                    StringComparer.Ordinal);
-            List<FieldInfo> fields = GetBufferFields();
-            if (savedByName.Count != fields.Count) {
-                throw new InvalidOperationException("Gameplay buffer set differs.");
+    public static void RestoreBestEffort(IReadOnlyList<AkronGameplayBufferSnapshot> snapshots) {
+        Dictionary<string, AkronGameplayBufferSnapshot> savedByName = new Dictionary<string, AkronGameplayBufferSnapshot>(
+            StringComparer.Ordinal);
+        foreach (AkronGameplayBufferSnapshot snapshot in snapshots ?? Array.Empty<AkronGameplayBufferSnapshot>()) {
+            if (snapshot == null || string.IsNullOrEmpty(snapshot.FieldName) || !savedByName.TryAdd(snapshot.FieldName, snapshot)) {
+                LogSkippedBuffer(snapshot?.FieldName, "snapshot entry is invalid or duplicated");
             }
-
-            foreach (FieldInfo field in fields) {
-                if (!savedByName.TryGetValue(field.Name, out AkronGameplayBufferSnapshot snapshot)) {
-                    throw new InvalidOperationException("Gameplay buffer is missing: " + field.Name);
-                }
-                if (field.GetValue(null) is not VirtualRenderTarget renderTarget) {
-                    throw new InvalidOperationException("Gameplay buffer is unavailable: " + field.Name);
-                }
-                Adapter.RestoreExisting(snapshot.Payload, renderTarget);
-            }
-
-            foreach (FieldInfo field in fields) {
-                AkronGameplayBufferSnapshot snapshot = savedByName[field.Name];
-                if (!Adapter.Verify(snapshot.Payload, field.GetValue(null))) {
-                    throw new InvalidOperationException("Gameplay buffer pixels differ: " + field.Name);
-                }
-            }
-            return true;
-        } catch (Exception exception) {
-            error = exception.GetType().Name + ": " + exception.Message;
-            return false;
         }
+
+        foreach (FieldInfo field in GetBufferFields()) {
+            if (!savedByName.TryGetValue(field.Name, out AkronGameplayBufferSnapshot snapshot)) {
+                LogSkippedBuffer(field.Name, "snapshot is missing");
+                continue;
+            }
+            if (field.GetValue(null) is not VirtualRenderTarget renderTarget) {
+                LogSkippedBuffer(field.Name, "current render target is unavailable");
+                continue;
+            }
+
+            try {
+                // Gameplay buffers are derived presentation state. A camera or graphics
+                // mod can resize them after Set, so an incompatible buffer must not turn
+                // an otherwise valid StartPos into a half-applied failed restore.
+                if (!Adapter.RestoreExisting(snapshot.Payload, renderTarget)) {
+                    LogSkippedBuffer(field.Name, "current render target dimensions differ");
+                    continue;
+                }
+                if (!Adapter.Verify(snapshot.Payload, renderTarget)) {
+                    LogSkippedBuffer(field.Name, "restored pixels differ");
+                }
+            } catch (Exception exception) {
+                LogSkippedBuffer(field.Name, exception.GetType().Name + ": " + exception.Message);
+            }
+        }
+    }
+
+    private static void LogSkippedBuffer(string fieldName, string reason) {
+        Logger.Log(LogLevel.Warn, nameof(AkronGameplayBufferState),
+            "Skipped StartPos gameplay buffer " +
+            (string.IsNullOrEmpty(fieldName) ? "<unknown>" : fieldName) + ": " + reason);
     }
 
     public static void ArmLevelPresentation(Level level, IReadOnlyList<AkronGameplayBufferSnapshot> snapshots) {
@@ -1805,8 +1813,14 @@ internal sealed class AkronReconstructionGraph {
             return candidate;
         }
 
-        private FreshResource FindFreshResource(string key, string path) {
+        private FreshResource FindFreshResource(Type resourceType, string key, string path) {
             if (!freshResources.TryGetValue(key, out HashSet<FreshResource> matches)) {
+                object detachedResource = owner.resolveDetachedLiveResource?.Invoke(resourceType, key);
+                if (detachedResource != null &&
+                    detachedResource.GetType() == resourceType &&
+                    string.Equals(key, ResourceKey(detachedResource), StringComparison.Ordinal)) {
+                    return GetFreshCandidate(detachedResource, Array.Empty<AkronReconstructionPathStep>());
+                }
                 throw new AkronReconstructionException(path, "fresh resource key is unavailable: " + key);
             }
             if (matches.Count != 1) {
@@ -1922,7 +1936,7 @@ internal sealed class AkronReconstructionGraph {
                 string freshResourceKey = freshTypeMatches ? ResourceKey(freshValue) : string.Empty;
                 if (!string.IsNullOrWhiteSpace(savedResourceKey) &&
                     (!freshTypeMatches || !string.Equals(savedResourceKey, freshResourceKey, StringComparison.Ordinal))) {
-                    FreshResource matchedResource = FindFreshResource(savedResourceKey, path);
+                    FreshResource matchedResource = FindFreshResource(savedType, savedResourceKey, path);
                     freshValue = matchedResource.Value;
                     freshPath = ClonePath(matchedResource.Path);
                     freshTypeMatches = freshValue.GetType() == savedType;
@@ -6274,7 +6288,7 @@ internal static class AkronStartPosReconstruction {
             return null;
         }
 
-        string assemblyQualifiedName = typedResourceKey.Substring(separator + 1);
+        string resourceKey = typedResourceKey.Substring(separator + 1);
         if (typeof(EverestModule).IsAssignableFrom(resourceType)) {
             return Everest.Modules.FirstOrDefault(module => module?.GetType() == resourceType);
         }
@@ -6283,13 +6297,79 @@ internal static class AkronStartPosReconstruction {
                 .Select(module => module?._Settings)
                 .FirstOrDefault(settings => settings?.GetType() == resourceType);
         }
-        if (!typeof(Type).IsAssignableFrom(resourceType)) {
+        if (typeof(Type).IsAssignableFrom(resourceType)) {
+            Type resolved = Type.GetType(resourceKey, throwOnError: false);
+            return resolved != null && resourceType.IsInstanceOfType(resolved)
+                ? resolved
+                : null;
+        }
+        if (typeof(Assembly).IsAssignableFrom(resourceType)) {
+            return AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(assembly =>
+                assembly.GetType() == resourceType &&
+                string.Equals(assembly.FullName, resourceKey, StringComparison.Ordinal));
+        }
+        if (!typeof(MemberInfo).IsAssignableFrom(resourceType)) {
             return null;
         }
-        Type resolved = Type.GetType(assemblyQualifiedName, throwOnError: false);
-        return resolved != null && resourceType.IsInstanceOfType(resolved)
-            ? resolved
-            : null;
+
+        string[] memberKeyParts = resourceKey.Split('|');
+        if (memberKeyParts.Length != 5 ||
+            !Guid.TryParseExact(memberKeyParts[1], "D", out Guid moduleVersionId) ||
+            !int.TryParse(
+                memberKeyParts[2],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out int metadataToken) ||
+            !TryDecodeMemberContext(memberKeyParts[3], out Type[] genericTypeArguments) ||
+            !TryDecodeMemberContext(memberKeyParts[4], out Type[] genericMethodArguments)) {
+            return null;
+        }
+
+        string assemblyName = memberKeyParts[0];
+        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies().Where(candidate =>
+                     string.Equals(candidate.FullName, assemblyName, StringComparison.Ordinal))) {
+            foreach (Module module in assembly.GetModules().Where(candidate =>
+                         candidate.ModuleVersionId == moduleVersionId)) {
+                try {
+                    MemberInfo member = module.ResolveMember(
+                        metadataToken,
+                        genericTypeArguments,
+                        genericMethodArguments);
+                    member = ApplyMemberGenericContext(
+                        member,
+                        genericTypeArguments,
+                        genericMethodArguments);
+                    if (member?.GetType() == resourceType) {
+                        return member;
+                    }
+                } catch (ArgumentException) {
+                    // The saved token is not valid for this exact module.
+                }
+            }
+        }
+        return null;
+    }
+
+    private static MemberInfo ApplyMemberGenericContext(
+        MemberInfo member,
+        Type[] genericTypeArguments,
+        Type[] genericMethodArguments
+    ) {
+        // Module.ResolveMember can still return a member bound to the generic type
+        // definition, so locate the same metadata token on the constructed type.
+        if (genericTypeArguments.Length > 0 && member?.DeclaringType?.IsGenericTypeDefinition == true) {
+            Type declaringType = member.DeclaringType.MakeGenericType(genericTypeArguments);
+            member = declaringType
+                .GetMembers(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public |
+                            BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+                .FirstOrDefault(candidate =>
+                    candidate.MetadataToken == member.MetadataToken &&
+                    candidate.MemberType == member.MemberType);
+        }
+        if (genericMethodArguments.Length > 0 && member is MethodInfo { IsGenericMethodDefinition: true } method) {
+            member = method.MakeGenericMethod(genericMethodArguments);
+        }
+        return member;
     }
 
     internal static string GetLiveResourceKey(object resource) {
@@ -6297,8 +6377,17 @@ internal static class AkronStartPosReconstruction {
             return type.AssemblyQualifiedName ?? type.FullName ?? type.Name;
         }
         if (resource is MemberInfo member) {
+            Type[] genericTypeArguments = member.DeclaringType is { IsGenericType: true, ContainsGenericParameters: false }
+                ? member.DeclaringType.GetGenericArguments()
+                : Type.EmptyTypes;
+            Type[] genericMethodArguments = member is MethodInfo { IsGenericMethod: true, ContainsGenericParameters: false } method
+                ? method.GetGenericArguments()
+                : Type.EmptyTypes;
             return member.Module.Assembly.FullName + "|" +
-                   member.MetadataToken.ToString(CultureInfo.InvariantCulture);
+                   member.Module.ModuleVersionId.ToString("D") + "|" +
+                   member.MetadataToken.ToString(CultureInfo.InvariantCulture) + "|" +
+                   EncodeMemberContext(genericTypeArguments) + "|" +
+                   EncodeMemberContext(genericMethodArguments);
         }
         if (resource is Assembly assembly) {
             return assembly.FullName ?? assembly.GetName().Name;
@@ -6326,5 +6415,33 @@ internal static class AkronStartPosReconstruction {
                    asset.Height.ToString(CultureInfo.InvariantCulture);
         }
         return string.Empty;
+    }
+
+    private static string EncodeMemberContext(IEnumerable<Type> types) {
+        return string.Join(",", types.Select(type =>
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(type.AssemblyQualifiedName))));
+    }
+
+    private static bool TryDecodeMemberContext(string encoded, out Type[] types) {
+        if (string.IsNullOrEmpty(encoded)) {
+            types = Type.EmptyTypes;
+            return true;
+        }
+
+        try {
+            string[] encodedTypes = encoded.Split(',');
+            types = new Type[encodedTypes.Length];
+            for (int index = 0; index < encodedTypes.Length; index++) {
+                string typeName = Encoding.UTF8.GetString(Convert.FromBase64String(encodedTypes[index]));
+                types[index] = Type.GetType(typeName, throwOnError: false);
+                if (types[index] == null) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (FormatException) {
+            types = Type.EmptyTypes;
+            return false;
+        }
     }
 }

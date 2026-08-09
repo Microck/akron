@@ -1,8 +1,10 @@
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Celeste;
 using FMOD.Studio;
 using Force.DeepCloner;
@@ -22,6 +24,10 @@ internal static class AkronDeepClone {
     [ThreadStatic] private static bool cloneEventInstancesAsDormant;
     [ThreadStatic] private static List<EventInstance> dormantEventInstances;
 
+    private static readonly DynamicDataMapAccessor DynamicDataMap =
+        DynamicDataMapAccessor.Create(typeof(DynamicData)) ?? DynamicDataMapAccessor.Empty;
+    private static readonly ConcurrentDictionary<Type, DynamicDataMapAccessor[]> GenericDynamicDataMaps =
+        new ConcurrentDictionary<Type, DynamicDataMapAccessor[]>();
     private static DeepCloneState sharedDeepCloneState = new DeepCloneState();
     private static bool configured;
 
@@ -235,17 +241,109 @@ internal static class AkronDeepClone {
     }
 
     private static void CloneDynamicDataIfPresent(object source, object clone, DeepCloneState state) {
-        // Speedrun Tool also preserves MonoMod DynamicData sidecars. The public
-        // shape of DynamicData differs between MonoMod builds, so Akron keeps this
-        // reflective and skips the sidecar when the runtime does not expose it.
-        FieldInfo dataMapField = typeof(DynamicData).GetField("_DataMap", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-        if (dataMapField?.GetValue(null) is not IDictionary dataMap || !dataMap.Contains(source)) {
+        if (ReferenceEquals(source, clone)) {
             return;
         }
 
-        object value = dataMap[source];
-        object clonedValue = value.DeepClone(state);
-        dataMap[clone] = clonedValue;
+        // MonoMod stores DynamicData and DynData<T> values outside the target object in
+        // separate conditional-weak-table sidecars. DeepCloner cannot discover those
+        // references by walking the object, so copy both maps with the same clone state.
+        DynamicDataMap.CloneEntry(source, clone, state);
+        foreach (DynamicDataMapAccessor map in GetGenericDynamicDataMaps(source.GetType())) {
+            map.CloneEntry(source, clone, state);
+        }
+    }
+
+    private static DynamicDataMapAccessor[] GetGenericDynamicDataMaps(Type targetType) {
+        if (targetType.IsValueType) {
+            return Array.Empty<DynamicDataMapAccessor>();
+        }
+
+        return GenericDynamicDataMaps.GetOrAdd(targetType, CreateGenericDynamicDataMaps);
+    }
+
+    private static DynamicDataMapAccessor[] CreateGenericDynamicDataMaps(Type targetType) {
+        List<DynamicDataMapAccessor> maps = new List<DynamicDataMapAccessor>();
+        HashSet<Type> mappedTypes = new HashSet<Type>();
+        for (Type current = targetType; current != null; current = current.BaseType) {
+            mappedTypes.Add(current);
+        }
+        foreach (Type interfaceType in targetType.GetInterfaces()) {
+            mappedTypes.Add(interfaceType);
+        }
+
+        foreach (Type mappedType in mappedTypes) {
+            DynamicDataMapAccessor map = DynamicDataMapAccessor.Create(
+                typeof(DynData<>).MakeGenericType(mappedType));
+            if (map != null) {
+                maps.Add(map);
+            }
+        }
+        return maps.ToArray();
+    }
+
+    private sealed class DynamicDataMapAccessor {
+        private delegate bool TryGetValue(object key, out object value);
+
+        public static readonly DynamicDataMapAccessor Empty = new DynamicDataMapAccessor(
+            (object _, out object value) => {
+                value = null;
+                return false;
+            },
+            (_, _) => { });
+
+        private readonly TryGetValue tryGetValue;
+        private readonly Action<object, object> replace;
+
+        private DynamicDataMapAccessor(TryGetValue tryGetValue, Action<object, object> replace) {
+            this.tryGetValue = tryGetValue;
+            this.replace = replace;
+        }
+
+        public static DynamicDataMapAccessor Create(Type sidecarType) {
+            FieldInfo mapField = sidecarType.GetField(
+                "_DataMap",
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            object map = mapField?.GetValue(null);
+            if (map == null) {
+                return null;
+            }
+
+            Type mapType = map.GetType();
+            Type[] mapArguments = mapType.IsGenericType ? mapType.GetGenericArguments() : Type.EmptyTypes;
+            if (mapArguments.Length != 2 || mapArguments[0] != typeof(object)) {
+                return null;
+            }
+
+            MethodInfo createTyped = typeof(DynamicDataMapAccessor).GetMethod(
+                nameof(CreateTyped),
+                BindingFlags.Static | BindingFlags.NonPublic);
+            return (DynamicDataMapAccessor) createTyped
+                ?.MakeGenericMethod(mapArguments[1])
+                .Invoke(null, new[] { map });
+        }
+
+        private static DynamicDataMapAccessor CreateTyped<TValue>(object mapObject) where TValue : class {
+            ConditionalWeakTable<object, TValue> typedMap = (ConditionalWeakTable<object, TValue>) mapObject;
+            return new DynamicDataMapAccessor(
+                (object key, out object value) => {
+                    bool found = typedMap.TryGetValue(key, out TValue typedValue);
+                    value = typedValue;
+                    return found;
+                },
+                (key, value) => {
+                    typedMap.Remove(key);
+                    typedMap.Add(key, (TValue) value);
+                });
+        }
+
+        public void CloneEntry(object source, object clone, DeepCloneState state) {
+            if (!tryGetValue(source, out object sidecar)) {
+                return;
+            }
+
+            replace(clone, sidecar.DeepClone(state));
+        }
     }
 
     private static bool IsHashSet(Type type) {
