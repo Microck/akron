@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -132,6 +133,68 @@ public sealed class StartPosReconstructionTests {
         Assert.True(restore.Success, restore.Error);
         Assert.Same(typeof(TextMenu), fresh.TrackerKey);
         Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void CaptureAndRestoreResolveAFieldInfoMissingFromTheFreshGraph() {
+        FieldInfo member = typeof(string).GetField(nameof(string.Empty))!;
+        RuntimeMemberRoot saved = new RuntimeMemberRoot { Member = member };
+        RuntimeMemberRoot baseline = new RuntimeMemberRoot();
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            AkronStartPosReconstruction.IsLiveResourceType,
+            AkronStartPosReconstruction.GetLiveResourceKey,
+            null,
+            AkronStartPosReconstruction.ResolveDetachedLiveResource);
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        RuntimeMemberRoot fresh = new RuntimeMemberRoot();
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        FieldInfo restored = Assert.IsAssignableFrom<FieldInfo>(fresh.Member);
+        Assert.Equal(member.Module, restored.Module);
+        Assert.Equal(member.MetadataToken, restored.MetadataToken);
+        Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void ReflectionMemberKeysPreserveModuleIdentity() {
+        FieldInfo member = typeof(string).GetField(nameof(string.Empty))!;
+        string key = AkronStartPosReconstruction.GetLiveResourceKey(member);
+        string expectedKey = member.Module.Assembly.FullName + "|" +
+                             member.Module.ModuleVersionId.ToString("D") + "|" +
+                             member.MetadataToken.ToString(CultureInfo.InvariantCulture) + "||";
+        string typePrefix = member.GetType().AssemblyQualifiedName + "|";
+
+        Assert.Equal(expectedKey, key);
+        MemberInfo resolved = Assert.IsAssignableFrom<MemberInfo>(
+            AkronStartPosReconstruction.ResolveDetachedLiveResource(member.GetType(), typePrefix + key));
+        Assert.Equal(member.Module, resolved.Module);
+        Assert.Equal(member.MetadataToken, resolved.MetadataToken);
+
+        string wrongModuleKey = member.Module.Assembly.FullName + "|" +
+                                Guid.Empty.ToString("D") + "|" +
+                                member.MetadataToken.ToString(CultureInfo.InvariantCulture) + "||";
+        Assert.Null(AkronStartPosReconstruction.ResolveDetachedLiveResource(
+            member.GetType(),
+            typePrefix + wrongModuleKey));
+    }
+
+    [Fact]
+    public void ReflectionMemberKeysPreserveConstructedGenericContext() {
+        MethodInfo member = typeof(GenericMemberProbe<string>)
+            .GetMethod(nameof(GenericMemberProbe<string>.Convert))!
+            .MakeGenericMethod(typeof(int));
+        string key = AkronStartPosReconstruction.GetLiveResourceKey(member);
+        string typePrefix = member.GetType().AssemblyQualifiedName + "|";
+
+        MethodInfo resolved = Assert.IsAssignableFrom<MethodInfo>(
+            AkronStartPosReconstruction.ResolveDetachedLiveResource(member.GetType(), typePrefix + key));
+
+        Assert.Equal(typeof(GenericMemberProbe<string>), resolved.DeclaringType);
+        Assert.Equal(typeof(int), Assert.Single(resolved.GetGenericArguments()));
     }
 
     [Fact]
@@ -3330,6 +3393,16 @@ public sealed class StartPosReconstructionTests {
 
     private sealed class RuntimeTypeRoot {
         public Type TrackerKey = null!;
+    }
+
+    private sealed class RuntimeMemberRoot {
+        public MemberInfo Member = null!;
+    }
+
+    private sealed class GenericMemberProbe<T> {
+        public TResult Convert<TResult>(T value) {
+            return default!;
+        }
     }
 
     private sealed class EntityListRoot {

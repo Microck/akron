@@ -898,13 +898,30 @@ public sealed class StartPosPersistenceTests {
         int beforeSaveActions = source.IndexOf("action.BeforeSaveState?.Invoke(level);", captureStart, StringComparison.Ordinal);
         int roomClone = source.IndexOf("BuildNativeSlot(level, CurrentSlotName", captureStart, StringComparison.Ordinal);
         int restoreStart = source.IndexOf("private static AkronSaveLoadResult RestorePersistentRuntimeState", StringComparison.Ordinal);
-        int bufferRestore = source.IndexOf("AkronGameplayBufferState.Restore(document.GameplayBuffers", restoreStart, StringComparison.Ordinal);
+        int bufferRestore = source.IndexOf("AkronGameplayBufferState.RestoreBestEffort(document.GameplayBuffers", restoreStart, StringComparison.Ordinal);
 
         Assert.True(captureStart >= 0);
         Assert.True(bufferCapture > captureStart);
         Assert.True(beforeSaveActions > bufferCapture);
         Assert.True(roomClone > beforeSaveActions);
         Assert.True(bufferRestore > restoreStart);
+    }
+
+    [Fact]
+    public void GameplayBufferChangesCannotAbortAnAppliedStartPosRestore() {
+        string saveLoadSource = File.ReadAllText(GetSaveLoadSourcePath());
+        string reconstructionSource = File.ReadAllText(GetSourcePath("SaveLoad", "akron-reconstruction-graph.cs"));
+        int pixelLayoutStart = reconstructionSource.IndexOf("private static bool PixelLayoutMatches", StringComparison.Ordinal);
+        int pixelLayoutEnd = reconstructionSource.IndexOf("private static void ValidateRenderTarget", pixelLayoutStart, StringComparison.Ordinal);
+        string pixelLayoutSource = reconstructionSource.Substring(pixelLayoutStart, pixelLayoutEnd - pixelLayoutStart);
+
+        Assert.Contains("public static void RestoreBestEffort", reconstructionSource);
+        Assert.Contains("if (!Adapter.RestoreExisting", reconstructionSource);
+        Assert.Contains("renderTarget.Target != null", pixelLayoutSource);
+        Assert.Contains("Skipped StartPos gameplay buffer", reconstructionSource);
+        Assert.Contains("AkronGameplayBufferState.RestoreBestEffort(saveSlot.GameplayBuffers);", saveLoadSource);
+        Assert.Contains("AkronGameplayBufferState.RestoreBestEffort(document.GameplayBuffers);", saveLoadSource);
+        Assert.DoesNotContain("!AkronGameplayBufferState.Restore", saveLoadSource);
     }
 
     [Fact]

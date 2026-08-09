@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Fixed
+
+- Fix StartPos loads that could crash Spring Collab rooms or fail after a camera mod resized gameplay buffers.
+
 ## Akron Beta 67
 
 ### Added

@@ -664,10 +664,8 @@ public static partial class AkronSaveLoadService {
                     action.LoadState?.Invoke((Dictionary<Type, Dictionary<string, object>>) DeepClone(savedValues), level);
                 }
             }
-            if (saveSlot.GameplayBuffers.Count > 0 &&
-                !AkronGameplayBufferState.Restore(saveSlot.GameplayBuffers, out string bufferError)) {
-                LastPersistentSnapshotError = bufferError;
-                return AkronSaveLoadResult.Failed;
+            if (saveSlot.GameplayBuffers.Count > 0) {
+                AkronGameplayBufferState.RestoreBestEffort(saveSlot.GameplayBuffers);
             }
             PrepareRuntimeSlotPreClone(saveSlot);
             AkronStartPosPersistence.UseRuntimeFreshBaseline(saveSlot.SlotName);
@@ -980,12 +978,7 @@ public static partial class AkronSaveLoadService {
         AkronLevelRenderState.RelinkRendererCameras(level);
         Audio.SetCamera(level.Camera);
         AkronVirtualAssetReloadTracker.ReloadDisposedAssets(level);
-        if (!AkronGameplayBufferState.Restore(document.GameplayBuffers, out string gameplayBufferError)) {
-            LastPersistentSnapshotError = gameplayBufferError;
-            AkronStartPosReconstruction.ReleaseEventInstances(restore);
-            TryLoadFreshRoom(level, document.Room, out _);
-            return AkronSaveLoadResult.Failed;
-        }
+        AkronGameplayBufferState.RestoreBestEffort(document.GameplayBuffers);
         // Berry progress is persistent save data. Apply it only after the
         // remaining restore work can no longer report a normal failure.
         if (document.BerryProgress != null &&
