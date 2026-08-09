@@ -19,9 +19,14 @@ The StartPos tab is Akron's player position and room-state restore workflow. The
 A StartPos is an exact gameplay-state snapshot. Loading it must restore every
 captured entity, component, reference, position, speed, timer, state machine,
 animation, coroutine, random-number state, and registered helper state to the
-captured frame. Akron stores this state in a local v6 snapshot file so it
+captured frame. Akron stores this state in a local v7 snapshot file so it
 survives closing and restarting Celeste. Set and Load hold the room state until
 Celeste renders the restored frame.
+
+When **Wait for input after load** is enabled, Akron keeps gameplay paused after
+the restored frame until a fresh gameplay input arrives. Controls held before
+the Load do not release the pause. Backdrops and respawn wipes keep moving while
+Akron waits.
 
 Global save-file progress stays with the active save file and is not part of
 the room snapshot. This prevents a local restore or imported pack from
@@ -34,7 +39,7 @@ Akron must reject capture or load when it cannot represent required gameplay
 state exactly. It must not replace an exact StartPos with a player-only or
 session-only room reload.
 
-Akron does not load old selected-field room snapshots. A v6 snapshot contains
+Akron does not load old selected-field room snapshots. A v7 snapshot contains
 the complete managed room graph, registered helper state, audio state, and
 render-buffer pixels required by the Set frame. Akron refuses the load if the
 file is missing, damaged, uses another snapshot format, or belongs to another
@@ -59,6 +64,7 @@ Rows with a triangle expose the controls listed below.
 | StartPos | Facing | Keep native facing or force left/right after spawning. | Cheat |
 | StartPos | Idle speed | Clear speed after spawning so the StartPos begins idle. | Cheat |
 | StartPos | Spawn grabbing | Attempt to enter Celeste's climb/grab state after spawning. | Cheat |
+| StartPos | Wait for input after load | Pause gameplay after loading until a fresh gameplay input arrives while backdrops and respawn wipes keep moving. | Cheat |
 | StartPos | Bind Set | Set a menu binding for setting a StartPos. | Cheat |
 | StartPos | Clear Set | Clear the custom Set-StartPos binding. | Cheat |
 | StartPos | Bind Load | Set a menu binding for loading a StartPos. | Cheat |
