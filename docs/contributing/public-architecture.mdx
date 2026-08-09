@@ -3,16 +3,16 @@ title: Public architecture
 description: Understand Akron's public architecture, runtime boundaries, settings flow, policy gates, and verification surfaces.
 ---
 
-Akron is structured around several core public concepts: overlay UI, persisted settings, `.akr` packs, policy gates, runtime services, capture/proof output, and verification tests.
+Akron is structured around several core public concepts: overlay UI, persisted settings, `.akr` archives, policy gates, runtime services, capture/proof output, and verification tests.
 
-## System Shape
+## System shape
 
 ```mermaid
 flowchart TD
   overlay["Overlay UI"] --> settings["Settings"]
   settings --> policy["Policy"]
   policy --> runtime["Runtime"]
-  settings --> packs[".akr packs"]
+  settings --> packs[".akr archives"]
   runtime --> capture["Capture and proof"]
   runtime --> interop["Interop"]
   tests["Verification"] --> policy
@@ -20,18 +20,18 @@ flowchart TD
   tests --> runtime
 ```
 
-## Main Boundaries
+## Main boundaries
 
 | Boundary | Responsibility |
 |---|---|
-| Overlay | Presents rows, actions, popups, search, policy badges, and feature-specific browsers. Large browser surfaces, complex popup editors, fallback rendering, search, action binding, and layout helpers live in focused overlay partials. |
+| Overlay | Presents rows, actions, popups, search, policy badges, and feature-specific browsers. Large surfaces live in focused feature files or overlay partials. |
 | Settings | Stores user-configurable values and persisted setup state. Setup capture, setup application, HUD settings, defaults, clamps, display helpers, and recorder settings live in focused partials. |
 | Policy | Classifies features and records or blocks use under active policy. |
 | Runtime | Applies gameplay, visual, capture, interop, proof behavior, and module lifecycle hooks. Feature-family runtime, command, HUD, save/load, recorder, and inspector logic should live beside that feature family instead of in the core module file. |
-| `.akr` packs | Exports/imports scoped settings. Setup archive contracts and section copying live in the setup-pack service; OS-specific file picker process launching lives in a focused setup file-picker partial. |
+| `.akr` archives | Imports and exports setup state, overlay themes, custom HUD labels, and control-display presets. The shared archive contract lives in `Source/Packs/akron-archive.cs`; each payload schema stays with its owning feature. |
 | Tests | Enforce registry coverage, defaults, archive safety, and behavior contracts. |
 
-## Policy Calls
+## Policy calls
 
 Use the policy system according to intent:
 

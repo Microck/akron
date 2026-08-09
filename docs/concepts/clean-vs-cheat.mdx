@@ -3,19 +3,21 @@ title: Clean vs cheat classifications
 description: Understand how Akron classifies features as Goldberry/Hardlist clear, Normal clear, or Cheat.
 ---
 
-Akron classifies tools by what they do to an attempt, not by whether the tool is useful. A feature can be useful for practice, routing, accessibility, or proof work and still be marked Cheat when it changes gameplay, exposes hidden information, or weakens the evidence for a submitted clear.
+Akron classifies tools by their effect on an attempt. Practice, routing, accessibility, and proof tools can be Cheat when they change gameplay, expose hidden information, or weaken evidence for a submitted clear.
 
-Use this page when you want to understand why a feature has a policy badge. Use the [Feature guide](/feature-guide) when you need the current status for a specific overlay row.
+Use this page when you want to understand why a feature has a policy badge. Use the [Feature guide](/feature-guide) when you need the current classification for a specific overlay row.
 
 ## The three classes
 
 | Class | Meaning | Typical examples |
 |---|---|---|
 | Goldberry/Hardlist clear | Akron treats the behavior as compatible with its strictest supported clean category. | Input display, proof capture helpers, simple confirmation prompts. |
-| Normal clear | The behavior does not mutate gameplay, but it is not strict-approved by default. | Room labels, visual presentation, audio routing, custom labels, workflow helpers. |
+| Normal clear | Akron's ordinary-play category for behavior that is not strict-approved by default. | Room labels, visual presentation, audio routing, retry and workflow helpers. |
 | Cheat | The behavior changes gameplay, exposes hidden or exact internal state, manipulates run state, or changes proof assumptions. | StartPos restore, warps, hitboxes, noclip, infinite resources, timescale, input-assist shortcuts. |
 
-These classes are not moral labels. They describe how Akron records and guards an attempt.
+These are technical classifications for attempt recording and safeguards.
+
+A policy badge shows the registry classification for a row or suboption. The attempt-status chip shows the strictest classification recorded for the current attempt. Displaying a badge does not mean that row has already changed the attempt status.
 
 ## How Akron decides
 
@@ -56,12 +58,12 @@ Examples:
 
 ## Normal clear
 
-Normal clear is for behavior Akron allows in ordinary play but does not treat as strict-approved by default. This is the right class for most quality-of-life, accessibility, overlay, and workflow features that do not change gameplay.
+Normal clear is Akron's ordinary-play category for behavior that is not strict-approved by default. It often covers quality-of-life, accessibility, overlay, and workflow features, but it is not limited to behavior that leaves gameplay untouched.
 
 Common reasons:
 
 - It changes presentation or readability.
-- It displays broad local status rather than precise hidden state.
+- It displays broad local status.
 - It helps with workflow outside the actual execution of a clear.
 - It integrates with external tools without delegating control or restoring state.
 
@@ -70,13 +72,12 @@ Examples:
 | Behavior | Why it fits |
 |---|---|
 | Room labels | Shows passive room information. |
-| Custom HUD labels | Displays configured local status text without changing gameplay. |
-| Audio speed or pitch | Presentation/accessibility behavior, not simulation timing. |
+| Audio speed or pitch | Changes audio playback while preserving simulation timing. |
 | Streamer Mode | Redacts local paths from Akron-owned UI and proof output. |
 | Import/export setup | Moves configuration between setups. |
 | Visual noise reduction | Presentation change that strict submissions may still evaluate case by case. |
 
-Normal clear does not mean "accepted by every leaderboard." It means Akron did not record Cheat behavior.
+Akron's Normal clear label records no Cheat behavior; each leaderboard still applies its own rules.
 
 ## Cheat
 
@@ -98,15 +99,16 @@ Examples:
 | Room warp or click teleport | Moves the player outside normal traversal. |
 | Hitbox or trigger display | Reveals invisible collision or trigger regions. |
 | Stamina, dash, or exact speed HUDs | Shows precise resource or movement state. |
+| Custom HUD labels | Templates can show exact position, speed, resources, flags, and other internal state. |
 | Noclip, invincibility, infinite resources | Changes core gameplay rules. |
 | Timescale or TPS bypass | Changes simulation timing. |
 | Neutral Drop or Backboost shortcuts | Synthesizes execution inputs. |
 
-Cheat tools are still valid practice and debugging tools. Akron marks them so submitted-run context is not ambiguous.
+Akron records Cheat tool use to preserve context for submitted runs.
 
 ## Suboptions can be stricter
 
-Do not judge a row only by its parent label. A clean parent row can include a stricter popup option when that option changes the behavior.
+Check the exact option badge. A popup option can be stricter than its parent row.
 
 Examples:
 
@@ -117,44 +119,29 @@ Examples:
 | Safe Mode | Freezing deaths, jumps, or best-run stats rewrites saved stat outcomes. |
 | Free Camera | Freezing gameplay while moving the camera changes level simulation. |
 
-For players, the practical rule is simple: read the badge and tooltip for the exact option you are enabling, not only the row title.
+For players, read the badge and tooltip for the exact option you are enabling.
 
 ## Attempt status only escalates
 
-During an attempt, Akron records the strictest behavior that happened. Turning a feature off later does not erase earlier use.
+During an attempt, Akron keeps the strictest classification recorded by its policy hooks. For actions that use `TryUse`, recording happens as soon as the invocation passes the policy check and before the action checks later runtime prerequisites. An action that fails afterward can therefore still raise the attempt status. Turning a feature off later does not erase the recorded classification.
+
+A new or reset attempt starts as **Unclassified**. This is the state before Akron records a classification, not a fourth feature class.
 
 ```mermaid
 flowchart TD
-  strict["Goldberry/Hardlist clear"] -->|Normal clear feature used| normal["Normal clear"]
-  strict -->|Cheat feature used| cheat["Cheat"]
-  normal -->|Cheat feature used| cheat
+  unclassified["Unclassified"] -->|Goldberry/Hardlist clear recorded| strict["Goldberry/Hardlist clear"]
+  unclassified -->|Normal clear recorded| normal["Normal clear"]
+  unclassified -->|Cheat recorded| cheat["Cheat"]
+  strict -->|Normal clear recorded| normal
+  strict -->|Cheat recorded| cheat
+  strict -->|Feature disabled| strict
+  normal -->|Cheat recorded| cheat
   normal -->|Feature disabled| normal
   cheat -->|Feature disabled| cheat
 ```
 
-This is intentional. Akron tracks what happened during the attempt, not only the current menu state.
+This is intentional. Akron keeps recorded classifications throughout the attempt, including admitted invocations that later fail a runtime prerequisite.
 
-## Contributor checklist
+## Contributor guidance
 
-When assigning a policy class to a new feature, classify the observable behavior first and the UI location second.
-
-- If the feature changes gameplay, state, timing, control, or proof assumptions, classify it as Cheat.
-- If it exposes hidden or exact internal state during active play, classify it as Cheat.
-- If it only changes presentation, workflow, or broad local status, classify it as Normal clear unless strict policy already accepts it.
-- If it is passive proof support or local input display, consider Goldberry/Hardlist clear.
-- If one popup option is stricter than the parent row, classify the suboption separately.
-- Write the policy reason as behavior, not intent.
-
-Good policy reasons:
-
-- `Displays local inputs without changing gameplay.`
-- `Draws hidden trigger volumes for map inspection.`
-- `Changes simulation cadence and gameplay timing.`
-
-Weak policy reasons:
-
-- `Useful for practice.`
-- `Convenient.`
-- `Probably safe.`
-
-The implementation source of truth is `Source/Core/AkronFeatureRegistry.cs`. Public docs should explain the model here and list current row behavior in the [Feature guide](/feature-guide).
+If you are adding or classifying a feature, use [Feature policy](/contributing/feature-policy) for implementation rules, registry requirements, and the contributor checklist.

@@ -5,7 +5,7 @@ description: Player movement, resource, presentation, assist, invincibility, noc
 
 The Player tab covers Madeline-facing controls. Visual-only rows are generally presentation settings; movement, resource, teleport, and input-assist rows are Cheat.
 
-| Option | Control | What it does | Attempt status |
+| Option | Control | What it does | Classification |
 |---|---|---|---|
 | Invincibility | Toggle | Prevent normal deaths with Akron's invincibility mode, or switch to Celeste's native Assist behavior. | Cheat |
 | Air Jumps | Toggle | Open controls for infinite or limited airborne extra jumps. | Cheat |
@@ -13,50 +13,62 @@ The Player tab covers Madeline-facing controls. Visual-only rows are generally p
 | Infinite Stamina | Toggle | Keep player stamina replenished during gameplay updates. | Cheat |
 | Ground Refills | Toggle | Change whether standing on the ground restores dash and stamina resources. | Cheat |
 | Dash Count | Toggle | Override the active dash count used for room entry, transitions, and dash refills. | Cheat |
-| Grab Mode | Toggle | Open grab-mode controls for Hold, Toggle, and Invert. | Regular clean |
-| Set Inventory | Action | Toggle the current room inventory override. | Cheat |
+| Grab Mode | Toggle | Open grab-mode controls for Hold, Toggle, and Invert. | Normal clear |
+| Set Inventory | Action | Apply the configured dash and extra-jump inventory to Madeline, with an optional restore of the pre-click values on death. | Cheat |
 | Dream State | Action | Toggle whether Madeline can dash through dream blocks. | Cheat |
 | Noclip | Toggle | Open fly-noclip controls for movement speed, grab-held slow speed, and draw-on-top visibility. | Cheat |
 | Click Teleport | Toggle | Hold the cursor hotkey, then click to teleport to the in-room cursor position. | Cheat |
 | Dash Redirect | Toggle | Keep selected dash directions from being converted by Celeste's redirect rules. | Cheat |
 | Hazard Accuracy | Toggle | Prevent deaths while tracking invalid hazard contacts, accuracy, and optional tint. | Cheat |
-| Fast Lookout | Numeric toggle | Speed up vanilla lookout camera movement while holding the configured bind. | Cheat |
-| Golden Start | Action | Give Madeline the chapter's golden berry from the first room. | Goldberry/Hardlist clean |
+| Fast Lookout | Toggle | Speed up vanilla lookout camera movement while holding the configured bind. | Cheat |
+| Golden Start | Action | Give Madeline the chapter's golden berry from the first room. | Goldberry/Hardlist clear |
 | Show Trajectory | Toggle | Draw a short current-velocity movement preview. | Cheat |
-| Control Display | Toggle | Display live inputs on a customizable board with editable keys, bindings, colors, and placement. | Goldberry/Hardlist clean |
+| Control Display | Toggle | Display live inputs on a customizable board with editable keys, bindings, colors, and placement. | Goldberry/Hardlist clear |
 | Dash Bar | Toggle | Show dash pips as a compact dash resource display. | Cheat |
 | Dash Number | Toggle | Show the current dash count as a small number above Madeline. | Cheat |
 | Stamina Bar | Toggle | Open Stamina Meter-style controls for player-attached and HUD stamina bars. | Cheat |
 | Speed Number | Toggle | Show current speed as a small number above Madeline. | Cheat |
-| Hide Player | Toggle | Hide Madeline while keeping gameplay state unchanged. | Regular clean |
-| Golden Transparency | Toggle | Make the golden berry and follower more transparent while the option is enabled. | Regular clean |
-| Madeline Colors | Toggle | Customize Madeline's dash-state hair colors without flattening every state to one color. | Regular clean |
-| Madeline Hair Length | Toggle | Customize Madeline's normal dash-state hair segment counts. | Regular clean |
-| Madeline Effect Sync | Toggle | Match selected player visual effects to Madeline's active hair color. | Regular clean |
-| Custom Trail | Toggle | Customize forced trail color, rainbow mode, pulse, opacity, and cut rate. | Regular clean |
-| Always Show Trail | Toggle | Force Madeline's dash trail to render continuously. | Regular clean |
-| No Ghost Trail | Toggle | Suppress Celeste player trail ghosts. | Regular clean |
-| No Trails | Toggle | Clear player trail effects while enabled. | Regular clean |
-| No Stamina Flash | Toggle | Suppress the low-stamina flash effect while leaving stamina rules unchanged. | Regular clean |
-| Death Particles | Toggle | Customize death-burst particle colors, lifetime, preset shape, or a custom 8x8 pixel shape. | Regular clean |
-| No Death Effect | Toggle | Suppress death particles and death-effect visual noise. | Regular clean |
-| No Respawn Animation | Toggle | Shorten and hide the death-body respawn animation. | Regular clean |
+| Hide Player | Toggle | Hide Madeline while keeping gameplay state unchanged. | Normal clear |
+| Golden Transparency | Toggle | Make the golden berry and follower more transparent while the option is enabled. | Normal clear |
+| Madeline Colors | Toggle | Customize Madeline's dash-state hair colors without flattening every state to one color. | Normal clear |
+| Madeline Hair Length | Toggle | Customize Madeline's normal dash-state hair segment counts. | Normal clear |
+| Madeline Effect Sync | Toggle | Match selected player visual effects to Madeline's active hair color. | Normal clear |
+| Custom Trail | Toggle | Customize forced trail color, rainbow mode, pulse, opacity, and cut rate. | Normal clear |
+| Always Show Trail | Toggle | Force Madeline's dash trail to render continuously. | Normal clear |
+| No Ghost Trail | Toggle | Suppress Celeste player trail ghosts. | Normal clear |
+| No Trails | Toggle | Clear player trail effects while enabled. | Normal clear |
+| No Stamina Flash | Toggle | Suppress the low-stamina flash effect while leaving stamina rules unchanged. | Normal clear |
+| Death Particles | Toggle | Customize death-burst particle colors, lifetime, preset shape, or a custom 8x8 pixel shape. | Normal clear |
+| No Death Effect | Toggle | Suppress death particles and death-effect visual noise. | Normal clear |
+| No Respawn Animation | Toggle | Shorten and hide the death-body respawn animation. | Normal clear |
 
 ## Option menus
 
 Rows with a triangle expose the controls listed below.
 
-| Option | Menu control | What it changes | Attempt status |
+| Option | Menu control | What it changes | Classification |
 |---|---|---|---|
 | Air Jumps | Infinite jumps | Allow every unhandled airborne jump press to trigger another normal jump. | Cheat |
 | Air Jumps | Extra jumps | Configure a limited number of extra airborne jumps. Used when Infinite jumps is off. | Cheat |
 | Air Jumps | Dash verticals | Allow Air Jumps to cancel vertical or upward dash directions. Off keeps vanilla dash-jump direction rules for supers and hypers. | Cheat |
-| Custom Trail | Mode: Fixed/Rainbow | Choose fixed color or rainbow color cycling for custom trails. | Regular clean |
-| Custom Trail | Pulse | Pulse custom trail brightness over time. | Regular clean |
-| Custom Trail | Cut rate | Emit one custom trail every N frames. 1 is the densest trail. | Regular clean |
-| Custom Trail | Opacity | Set custom trail opacity percentage. | Regular clean |
-| Custom Trail | Rainbow | Set rainbow cycle speed. | Regular clean |
-| Custom Trail | Color | Set the fixed custom trail color. | Regular clean |
+| Set Inventory | Dashes | Set the dash inventory applied when Set Inventory is clicked. | Cheat |
+| Set Inventory | Jumps | Set the extra air jumps applied through Air Jumps. Zero disables extra jumps. | Cheat |
+| Set Inventory | Restore on Death | Restore the pre-click dash and Air Jumps settings on the next death. | Cheat |
+| Set Inventory | Set | Apply the configured inventory to Madeline now. | Cheat |
+| Dream State | Toggle dream state | Toggle whether Madeline's current inventory can use dream blocks. | Cheat |
+| Click Teleport | Cursor | Show or capture the hold input used to activate the teleport cursor. | Cheat |
+| Click Teleport | Bind | Capture a keyboard chord or controller button for the cursor hold input. | Cheat |
+| Click Teleport | Clear | Clear the cursor hold binding. | Cheat |
+| Click Teleport | Default | Restore Akron's default cursor hold binding. | Cheat |
+| Golden Start | Status | Show whether the current level is a safe first-room start context. | Goldberry/Hardlist clear |
+| Golden Start | Used this session | Show whether Golden Start has already run in the current session. | Goldberry/Hardlist clear |
+| Golden Start | Run Golden Start | Run Celeste's golden-start helper when Akron detects a safe first-room start context. | Goldberry/Hardlist clear |
+| Custom Trail | Mode: Fixed/Rainbow | Choose fixed color or rainbow color cycling for custom trails. | Normal clear |
+| Custom Trail | Pulse | Pulse custom trail brightness over time. | Normal clear |
+| Custom Trail | Cut rate | Emit one custom trail every N frames. 1 is the densest trail. | Normal clear |
+| Custom Trail | Opacity | Set custom trail opacity percentage. | Normal clear |
+| Custom Trail | Rainbow | Set rainbow cycle speed. | Normal clear |
+| Custom Trail | Color | Set the fixed custom trail color. | Normal clear |
 | Dash Bar | Player bar | Attach the dash bar near Madeline. | Cheat |
 | Dash Bar | Player | Player-attached dash-bar placement relative to Madeline (Above or Below). | Cheat |
 | Dash Bar | Player X | Horizontal offset for the player-attached dash bar. | Cheat |
@@ -84,63 +96,63 @@ Rows with a triangle expose the controls listed below.
 | Dash Number | Text | Dash number text color. | Cheat |
 | Dash Number | Outline | Dash number outline color. | Cheat |
 | Fast Lookout | Multiplier | Set lookout camera speed while the hold bind is pressed. | Cheat |
-| Golden Transparency | Opacity | Set golden berry and follower opacity percentage used while Golden Transparency is toggled on. | Regular clean |
-| Golden Transparency | Reset opacity | Restore the default 55% golden transparency opacity. | Regular clean |
-| Grab Mode | Hold | Vanilla grab behavior: hold the grab key to grab. | Regular clean |
-| Grab Mode | Toggle | Press grab once to hold, then press again to release. | Regular clean |
-| Grab Mode | Invert | Hold grab to release instead of to grab. | Regular clean |
+| Golden Transparency | Opacity | Set golden berry and follower opacity percentage used while Golden Transparency is toggled on. | Normal clear |
+| Golden Transparency | Reset opacity | Restore the default 55% golden transparency opacity. | Normal clear |
+| Grab Mode | Hold | Vanilla grab behavior: hold the grab key to grab. | Normal clear |
+| Grab Mode | Toggle | Press grab once to hold, then press again to release. | Normal clear |
+| Grab Mode | Invert | Hold grab to release instead of to grab. | Normal clear |
 | Ground Refills | Dash refill | Allow ground contact to restore dash charges while Ground Refills is enabled. | Cheat |
 | Ground Refills | Stamina refill | Allow ground contact to restore stamina while Ground Refills is enabled. | Cheat |
 | Hazard Accuracy | Invalid limit | Optional invalid-contact warning threshold. Zero disables the warning. | Cheat |
 | Hazard Accuracy | Screen tint | Tint the gameplay screen when Hazard Accuracy detects invalid contact. | Cheat |
 | Hazard Accuracy | On invalid entry | Flash the tint once when a new invalid contact streak begins. | Cheat |
 | Hazard Accuracy | While touching | Keep refreshing the tint for as long as Madeline overlaps invalid terrain or hazards. | Cheat |
-| Hazard Accuracy | Bottom killbox detection | Counts bottom killbox overlap as invalid contact before invincibility rescue moves Madeline back to the room spawn. | Cheat |
 | Hazard Accuracy | Tint color | Screen tint color used when Hazard Accuracy detects invalid contact. | Cheat |
 | Hazard Accuracy | Tint opacity | Tint opacity percentage. | Cheat |
 | Hazard Accuracy | Tint duration | Tint fade duration in milliseconds after invalid contact stops. | Cheat |
 | Hazard Accuracy | Reset Accuracy | Reset the accumulated hazard accuracy statistics. | Cheat |
-| Hazard Accuracy | Defaults | Restore default tint settings: tint off, red, 90% opacity, and 0 ms duration. | Cheat |
+| Hazard Accuracy | Defaults | Restore the defaults: tint on, While touching, red, 30% opacity, and 250 ms duration. | Cheat |
 | Invincibility | Akron | Prevent normal deaths without enabling Celeste Assist invincibility. | Cheat |
 | Invincibility | Native | Use Celeste's native Assist invincibility behavior. | Cheat |
 | Invincibility | Bottomless rescue | In Akron mode, teleport back to the room spawn after falling below the bottom killbox. Enabled by default. | Cheat |
 | Invincibility | Crush collision | In Akron mode, let vanilla squish handling run, including moving-block collision changes. Enabled by default. | Cheat |
 | Invincibility | Lava/ice pushback | In Akron mode, push lava or ice away and kick Madeline like native Assist invincibility. Enabled by default. | Cheat |
 | Invincibility | Spike ground refills | In Akron mode, allow ground dash refills while Madeline overlaps spikes. Enabled by default. | Cheat |
-| Madeline Colors | No-dash color | Customize depleted-dash blue hair. | Regular clean |
-| Madeline Colors | One-dash color | Customize normal dash-available hair. This is the only custom state enabled by default. | Regular clean |
-| Madeline Colors | Two-dash color | Customize two-dash pink hair. | Regular clean |
-| Madeline Colors | Three-dash color | Customize hair when Madeline has three dashes. | Regular clean |
-| Madeline Colors | Four-dash color | Customize hair when Madeline has four dashes. | Regular clean |
-| Madeline Colors | Five-dash color | Customize hair when Madeline has five or more dashes. | Regular clean |
-| Madeline Colors | Gradient | Animate customized states between Gradient A and Gradient B. | Regular clean |
-| Madeline Colors | Speed | Gradient cycle speed. | Regular clean |
-| Madeline Colors | No dash | Color used when Madeline has no dash. | Regular clean |
-| Madeline Colors | One dash | Color used for baseline dash-available Madeline. | Regular clean |
-| Madeline Colors | Two dash | Color used when Madeline has two dashes. | Regular clean |
-| Madeline Colors | Three dash | Color used when Madeline has three dashes. | Regular clean |
-| Madeline Colors | Four dash | Color used when Madeline has four dashes. | Regular clean |
-| Madeline Colors | Five dash | Color used when Madeline has five or more dashes. | Regular clean |
-| Madeline Colors | Gradient A | Gradient start color. | Regular clean |
-| Madeline Colors | Gradient B | Gradient end color. | Regular clean |
-| Madeline Hair Length | No dash | Hair segment count when Madeline has no dash. | Regular clean |
-| Madeline Hair Length | One dash | Hair segment count when Madeline has one dash. | Regular clean |
-| Madeline Hair Length | Two dash | Hair segment count when Madeline has two dashes. | Regular clean |
-| Madeline Hair Length | Three dash | Hair segment count when Madeline has three dashes. | Regular clean |
-| Madeline Hair Length | Four dash | Hair segment count when Madeline has four dashes. | Regular clean |
-| Madeline Hair Length | Five dash | Hair segment count when Madeline has five or more dashes. | Regular clean |
-| Madeline Effect Sync | Dash particles | Match dash burst particles to the active hair color. | Regular clean |
-| Madeline Effect Sync | Dash trail | Match custom trail color to the active hair color. | Regular clean |
-| Madeline Effect Sync | Death effect | Match the death burst effect to the active hair color. | Regular clean |
-| Madeline Effect Sync | Feather color | Allow Madeline Colors to keep coloring feather-state hair. | Regular clean |
-| Madeline Effect Sync | Crown color | Match compatible crown sprites to the active hair color. | Regular clean |
-| Death Particles | Color: Hair/Custom | Choose whether the primary particle color follows Madeline's death-effect hair color or uses the configured primary color. | Regular clean |
-| Death Particles | Shape | Choose Vanilla, Circle, Square, Diamond, Plus, Star, or Custom particle sprites. | Regular clean |
-| Death Particles | Duration | Set the death-burst lifetime in seconds. Vanilla is about 0.83 seconds. | Regular clean |
-| Death Particles | Primary | Set the custom primary particle color. | Regular clean |
-| Death Particles | Flash | Set the alternating flash color. | Regular clean |
-| Death Particles | Outline | Set the one-pixel particle outline color. | Regular clean |
-| Death Particles | Custom shape | Draw the 8x8 pixel mask used by the Custom shape preset. | Regular clean |
+| Madeline Colors | No-dash color | Customize depleted-dash blue hair. | Normal clear |
+| Madeline Colors | One-dash color | Customize normal dash-available hair. This is the only custom state enabled by default. | Normal clear |
+| Madeline Colors | Two-dash color | Customize two-dash pink hair. | Normal clear |
+| Madeline Colors | Three-dash color | Customize hair when Madeline has three dashes. | Normal clear |
+| Madeline Colors | Four-dash color | Customize hair when Madeline has four dashes. | Normal clear |
+| Madeline Colors | Five-dash color | Customize hair when Madeline has five or more dashes. | Normal clear |
+| Madeline Colors | Gradient | Animate customized states between Gradient A and Gradient B. | Normal clear |
+| Madeline Colors | Speed | Gradient cycle speed. | Normal clear |
+| Madeline Colors | No dash | Color used when Madeline has no dash. | Normal clear |
+| Madeline Colors | One dash | Color used for baseline dash-available Madeline. | Normal clear |
+| Madeline Colors | Two dash | Color used when Madeline has two dashes. | Normal clear |
+| Madeline Colors | Three dash | Color used when Madeline has three dashes. | Normal clear |
+| Madeline Colors | Four dash | Color used when Madeline has four dashes. | Normal clear |
+| Madeline Colors | Five dash | Color used when Madeline has five or more dashes. | Normal clear |
+| Madeline Colors | Gradient A | Gradient start color. | Normal clear |
+| Madeline Colors | Gradient B | Gradient end color. | Normal clear |
+| Madeline Hair Length | No dash | Hair segment count when Madeline has no dash. | Normal clear |
+| Madeline Hair Length | One dash | Hair segment count when Madeline has one dash. | Normal clear |
+| Madeline Hair Length | Two dash | Hair segment count when Madeline has two dashes. | Normal clear |
+| Madeline Hair Length | Three dash | Hair segment count when Madeline has three dashes. | Normal clear |
+| Madeline Hair Length | Four dash | Hair segment count when Madeline has four dashes. | Normal clear |
+| Madeline Hair Length | Five dash | Hair segment count when Madeline has five or more dashes. | Normal clear |
+| Madeline Effect Sync | Dash particles | Match dash burst particles to the active hair color. | Normal clear |
+| Madeline Effect Sync | Dash trail | Match custom trail color to the active hair color. | Normal clear |
+| Madeline Effect Sync | Death effect | Match the death burst effect to the active hair color. | Normal clear |
+| Madeline Effect Sync | Feather color | Allow Madeline Colors to keep coloring feather-state hair. | Normal clear |
+| Madeline Effect Sync | Crown color | Match compatible crown sprites to the active hair color. | Normal clear |
+| Death Particles | Color: Hair/Custom | Choose whether the primary particle color follows Madeline's death-effect hair color or uses the configured primary color. | Normal clear |
+| Death Particles | Shape | Choose Vanilla, Circle, Square, Diamond, Plus, Star, or Custom particle sprites. | Normal clear |
+| Death Particles | Duration | Set the death-burst lifetime in seconds. Vanilla is about 0.83 seconds. | Normal clear |
+| Death Particles | Primary | Set the custom primary particle color. | Normal clear |
+| Death Particles | Flash | Set the alternating flash color. | Normal clear |
+| Death Particles | Outline | Set the one-pixel particle outline color. | Normal clear |
+| Death Particles | Custom shape | Draw the 8x8 pixel mask used by the Custom shape preset. | Normal clear |
+| Death Particles | Reset custom | Restore the custom canvas to a simple filled block. | Normal clear |
 | Noclip | Speed | Configure noclip movement speed. | Cheat |
 | Noclip | Grab speed | Configure slower movement while grab is held. | Cheat |
 | Noclip | Draw Madeline on top | Render Madeline above most objects while noclip is active. | Cheat |
@@ -164,36 +176,36 @@ Rows with a triangle expose the controls listed below.
 | Show Trajectory | Use hitbox color | Use Show Hitboxes' player color for trajectory end hitboxes, matching Akron's source behavior. | Cheat |
 | Show Trajectory | Jump held | Set the path color for jump-pressed/held prediction. | Cheat |
 | Show Trajectory | Jump released | Set the path color for jump-released prediction. | Cheat |
-| Control Display | Corner | Choose the screen corner used by the input board. | Goldberry/Hardlist clean |
-| Control Display | Source | Choose whether keys light from Celeste actions or physical keyboard keys. | Goldberry/Hardlist clean |
-| Control Display | Scale | Set the input-board scale percentage. | Goldberry/Hardlist clean |
-| Control Display | Opacity | Set the input-board opacity percentage. | Goldberry/Hardlist clean |
-| Control Display | Compact keyboard | Replace the layout with a tight WASD-style block with actions attached. | Goldberry/Hardlist clean |
-| Control Display | Split clusters | Replace the layout with separated menu/action and direction clusters. | Goldberry/Hardlist clean |
-| Control Display | Save Full .akr | Export the complete Control Display setup, including layout, labels, keys, colors, and text scale. | Goldberry/Hardlist clean |
-| Control Display | Import Latest .akr | Import the newest full Control Display preset from Saves/AkronControlDisplay. | Goldberry/Hardlist clean |
-| Control Display | Label preset: Names | Apply action-name labels to the existing board keys without moving them. | Goldberry/Hardlist clean |
-| Control Display | Label preset: Keyboard | Apply keyboard-style labels to the existing board keys without moving them. | Goldberry/Hardlist clean |
-| Control Display | Label preset: Arrows | Apply arrow-style labels to the existing board keys without moving them. | Goldberry/Hardlist clean |
-| Control Display | Label preset: Short | Apply compact labels to the existing board keys without moving them. | Goldberry/Hardlist clean |
-| Control Display | Add key | Add a new visible key to the editable input board layout. | Goldberry/Hardlist clean |
-| Control Display | Duplicate | Duplicate the selected input-board key. | Goldberry/Hardlist clean |
-| Control Display | Remove | Remove the selected input-board key when more than one key remains. | Goldberry/Hardlist clean |
-| Control Display | Selected | Choose which input-board key is being edited. | Goldberry/Hardlist clean |
-| Control Display | Label | Set the text shown inside the selected input-board key. | Goldberry/Hardlist clean |
-| Control Display | Visible | Show or hide the selected input-board key. | Goldberry/Hardlist clean |
-| Control Display | X | Set the selected key's horizontal board position. | Goldberry/Hardlist clean |
-| Control Display | Y | Set the selected key's vertical board position. | Goldberry/Hardlist clean |
-| Control Display | Width | Set the selected key's width. | Goldberry/Hardlist clean |
-| Control Display | Height | Set the selected key's height. | Goldberry/Hardlist clean |
-| Control Display | Text scale | Set the selected key's label text scale. | Goldberry/Hardlist clean |
-| Control Display | Game action | Choose the Celeste action used by the selected key when Source is Game Actions. | Goldberry/Hardlist clean |
-| Control Display | Keyboard keys | Set the physical keys used by the selected key when Source is Keyboard Keys. | Goldberry/Hardlist clean |
-| Control Display | Fill | Set the selected key's background color. | Goldberry/Hardlist clean |
-| Control Display | Pressed | Set the selected key's held-input color. | Goldberry/Hardlist clean |
-| Control Display | Stroke | Set the selected key's outline color. | Goldberry/Hardlist clean |
-| Control Display | Text | Set the selected key's label color. | Goldberry/Hardlist clean |
-| Control Display | Outline | Set the selected key's outline width. | Goldberry/Hardlist clean |
+| Control Display | Corner | Choose the screen corner used by the input board. | Goldberry/Hardlist clear |
+| Control Display | Source | Choose whether keys light from Celeste actions or physical keyboard keys. | Goldberry/Hardlist clear |
+| Control Display | Scale | Set the input-board scale percentage. | Goldberry/Hardlist clear |
+| Control Display | Opacity | Set the input-board opacity percentage. | Goldberry/Hardlist clear |
+| Control Display | Compact keyboard | Replace the layout with a tight WASD-style block with actions attached. | Goldberry/Hardlist clear |
+| Control Display | Split clusters | Replace the layout with separated menu/action and direction clusters. | Goldberry/Hardlist clear |
+| Control Display | Save Full .akr | Export the complete Control Display setup, including layout, labels, keys, colors, and text scale. | Goldberry/Hardlist clear |
+| Control Display | Import Latest .akr | Import the newest full Control Display preset from Saves/AkronControlDisplay. | Goldberry/Hardlist clear |
+| Control Display | Label preset: Names | Apply action-name labels to the existing board keys without moving them. | Goldberry/Hardlist clear |
+| Control Display | Label preset: Keyboard | Apply keyboard-style labels to the existing board keys without moving them. | Goldberry/Hardlist clear |
+| Control Display | Label preset: Arrows | Apply arrow-style labels to the existing board keys without moving them. | Goldberry/Hardlist clear |
+| Control Display | Label preset: Short | Apply compact labels to the existing board keys without moving them. | Goldberry/Hardlist clear |
+| Control Display | Add key | Add a new visible key to the editable input board layout. | Goldberry/Hardlist clear |
+| Control Display | Duplicate | Duplicate the selected input-board key. | Goldberry/Hardlist clear |
+| Control Display | Remove | Remove the selected input-board key when more than one key remains. | Goldberry/Hardlist clear |
+| Control Display | Selected | Choose which input-board key is being edited. | Goldberry/Hardlist clear |
+| Control Display | Label | Set the text shown inside the selected input-board key. | Goldberry/Hardlist clear |
+| Control Display | Visible | Show or hide the selected input-board key. | Goldberry/Hardlist clear |
+| Control Display | X | Set the selected key's horizontal board position. | Goldberry/Hardlist clear |
+| Control Display | Y | Set the selected key's vertical board position. | Goldberry/Hardlist clear |
+| Control Display | Width | Set the selected key's width. | Goldberry/Hardlist clear |
+| Control Display | Height | Set the selected key's height. | Goldberry/Hardlist clear |
+| Control Display | Text scale | Set the selected key's label text scale. | Goldberry/Hardlist clear |
+| Control Display | Game action | Choose the Celeste action used by the selected key when Source is Game Actions. | Goldberry/Hardlist clear |
+| Control Display | Keyboard keys | Set the physical keys used by the selected key when Source is Keyboard Keys. | Goldberry/Hardlist clear |
+| Control Display | Fill | Set the selected key's background color. | Goldberry/Hardlist clear |
+| Control Display | Pressed | Set the selected key's held-input color. | Goldberry/Hardlist clear |
+| Control Display | Stroke | Set the selected key's outline color. | Goldberry/Hardlist clear |
+| Control Display | Text | Set the selected key's label color. | Goldberry/Hardlist clear |
+| Control Display | Outline | Set the selected key's outline width. | Goldberry/Hardlist clear |
 | Show Trajectory | End hitbox | Custom end-hitbox color when not inheriting Show Hitboxes' player color. | Cheat |
 | Speed Number | Mode: Total/Horizontal/Vertical | Choose whether the number uses total, horizontal, or vertical speed. | Cheat |
 | Speed Number | Offset Y | Vertical offset from Madeline's center. | Cheat |

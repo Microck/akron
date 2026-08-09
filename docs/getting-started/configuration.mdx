@@ -5,14 +5,14 @@ description: Akron configuration workflow, import and export, and safety default
 
 Akron configuration is organized around the overlay, setup packs, and feature-specific options. Configure the visible setup first, then tune individual tool options.
 
-## Configuration Order
+## Configuration order
 
 <Steps>
   <Step title="Open the overlay">
     Use Akron's overlay as the main player-facing control surface. Confirm the current status and active tools before changing individual options.
   </Step>
-  <Step title="Confirm the current policy state">
-    Check the visible policy and status state before enabling features. The status indicates whether features are allowed, blocked, or would escalate the attempt status.
+  <Step title="Review the feature badge">
+    Check each feature's policy badge before enabling it. The badge shows how Akron classifies the feature, and the attempt status shows the highest classification recorded during the current attempt. These indicators do not grant or deny permission to use a feature.
   </Step>
   <Step title="Set overlay behavior">
     Configure overlay scale, opacity, pause behavior, search behavior, and visual defaults so the UI is usable in your setup.
@@ -20,22 +20,22 @@ Akron configuration is organized around the overlay, setup packs, and feature-sp
   <Step title="Enable specific tools">
     Enable only the tools needed for the current workflow. Keep state-changing features out of submitted-run setups.
   </Step>
-  <Step title="Export a backup">
-    Export a `.akr` backup once the setup is stable, especially before sharing settings or experimenting with attempt-changing features.
+  <Step title="Export the setup">
+    Export the current setup as a `.akr` pack once it is stable, especially before sharing settings or testing options classified as Cheat.
   </Step>
 </Steps>
 
-## Import and Export
+## Import and export
 
-Use `.akr` files for backup and sharing. You can export the whole Akron setup or a scoped section such as StartPos, keybinds, Auto Kill, Auto Deafen, recorder settings, audio settings, or HUD settings.
+Use `.akr` setup packs to save and share configuration. You can export the whole Akron setup or a scoped section such as StartPos, keybinds, Auto Kill, Auto Deafen, recorder settings, audio settings, or HUD settings.
 
 See [Import and export .akr packs](/akr-packs/import-export) for the workflow and [Akron .akr archives](/reference/akr-archives) for the reference contract.
 
-## Safety Defaults
+## Safety defaults
 
 Keep these defaults unless you know why you need a different setup:
 
 - Keep submission-oriented workflows in explicit proof-specific setups.
 - Keep StartPos restore, warps, hitboxes, entity inspection, and timescale inside explicit room-lab or testing setups.
-- Export a `.akr` backup before importing community packs.
+- Export the current setup before importing community packs.
 - Treat Cheat feature use as attempt-changing even if the feature is later disabled.

@@ -1,9 +1,9 @@
 ---
 title: Import and export .akr packs
-description: Export, import, and share whole or scoped Akron .akr setup packs for backups and map-specific workflows.
+description: Export, import, and share whole or scoped Akron .akr setup packs for preserved setups and map-specific workflows.
 ---
 
-Akron uses `.akr` files to back up and share setups. Export the whole Akron setup or a single scoped section.
+Akron uses `.akr` files to save and share setup state. Export the whole Akron setup or a single scoped section. These packs are separate from the Backups tab's Celeste save-folder ZIPs.
 
 ![Akron .akr export scope picker in the Akron overlay](/images/akr-export-scope.png)
 
@@ -14,7 +14,7 @@ Akron uses `.akr` files to back up and share setups. Export the whole Akron setu
     Open the Akron overlay, go to **Interface**, and choose **Export Setup**.
   </Step>
   <Step title="Choose the scope">
-    Select `Whole` for a full backup, or choose a scoped section: `StartPos`, `Keybinds`, `AutoKill`, `AutoDeafen`, `Recorder`, `Audio`, or `Hud`.
+    Select **Whole** for all portable setup state, or choose **StartPos**, **Keybinds**, **Auto Kill**, **Auto Deafen**, **Recorder**, **Audio**, or **HUD**.
   </Step>
   <Step title="Export the pack">
     Confirm the export to write the `.akr` file to the Akron setup export directory.
@@ -34,13 +34,13 @@ Akron uses `.akr` files to back up and share setups. Export the whole Akron setu
     Open the Akron overlay, go to **Interface**, and choose **Import Setup**.
   </Step>
   <Step title="Choose the import scope">
-    Select `Whole` for a full setup import. For scoped packs, choose the target section before selecting the `.akr` file.
+    Select **Whole** to import all portable setup state. For scoped packs, choose the target section before selecting the `.akr` file.
   </Step>
-  <Step title="Select and confirm">
-    Choose the `.akr` file in the file browser and confirm that the scope matches the intended change.
+  <Step title="Select the pack">
+    Choose the `.akr` file. Akron imports it immediately using the scope selected above.
   </Step>
-  <Step title="Apply and test">
-    Apply the import, then test the changed settings in a non-submission context.
+  <Step title="Test the imported settings">
+    Test the changed settings in a non-submission context.
   </Step>
 </Steps>
 
@@ -48,19 +48,19 @@ Akron uses `.akr` files to back up and share setups. Export the whole Akron setu
 
 | Section | Import behavior |
 |---|---|
-| `Whole` | Replaces the full setup state, button bindings, menu action bindings, and StartPos slots. |
-| `StartPos` | Merges StartPos settings and saved slots. |
-| `Keybinds` | Merges Everest button bindings and Akron menu action bindings. |
-| `AutoKill` | Merges Auto Kill trigger and area state. |
-| `AutoDeafen` | Merges Auto Deafen trigger, hotkey, and area state. |
-| `Recorder` | Merges recorder output, replay, trigger, audio, codec, and preset state. |
-| `Audio` | Merges audio speed, pitch, volume, override, and device state. |
-| `Hud` | Merges HUD widgets, labels, input displays, resource bars, counters, and HUD presentation state. |
+| **Whole** | Replaces all portable setup state, button bindings, menu action bindings, and StartPos slots for the target map. |
+| **StartPos** | Replaces StartPos settings and every saved slot for the pack's target map. Slots for other maps remain. |
+| **Keybinds** | Replaces Everest button bindings and Akron menu action bindings. |
+| **Auto Kill** | Replaces Auto Kill trigger and area state. |
+| **Auto Deafen** | Replaces the Auto Deafen toggle and area state. The local hotkey remains unchanged. |
+| **Recorder** | Replaces portable replay-buffer, trigger, audio-capture, codec, quality, and preset state. |
+| **Audio** | Replaces audio speed, pitch, per-sound volume, and override state. |
+| **HUD** | Replaces HUD widgets, labels, input displays, resource bars, counters, and HUD presentation state. |
 
-Scoped imports replace only the selected section and do not reset unrelated settings.
+Scoped imports replace only the selected portable section and do not reset unrelated settings. Setup packs preserve the screenshot export path; recording output folder, filename template, replay auto-start mode, and colorspace arguments; audio-splitter state and device selections; and the Auto Deafen hotkey. Whole packs preserve these machine-local values too.
 
 <Warning>
-  Importing a configuration does not make cheat behavior clean. Imported cheat options can mark an attempt as Cheat when used.
+  Imported options classified as Cheat can mark the attempt as Cheat when used.
 </Warning>
 
 See [Akron .akr archives](/reference/akr-archives) for the archive format.

@@ -3,9 +3,9 @@ title: Capture and recording
 description: Take screenshots, capture rooms and maps, record gameplay clips, and export proof metadata.
 ---
 
-Akron capture tools support review, sharing, proof context, and creator workflows. Capture output does not change gameplay unless a specific suboption states otherwise.
+Use Akron's capture tools to save screenshots, room or map images, recordings, and proof metadata. A capture changes gameplay only when a stricter suboption says so.
 
-## Capture Surfaces
+## Capture surfaces
 
 | Surface | Use it for |
 |---|---|
@@ -15,14 +15,14 @@ Akron capture tools support review, sharing, proof context, and creator workflow
 | Internal recorder | Record local frames with audio, replay buffer, codec selection, and event-based clip triggers. |
 | Proof sidecar | Export a JSON file with classification, active-feature list, and proof telemetry. |
 
-## Capture Workflow
+## Capture workflow
 
 <Steps>
   <Step title="Open the capture surface">
     Use the overlay row or a configured shortcut for the capture tool you need.
   </Step>
   <Step title="Configure output">
-    For screenshots, room capture, and map capture, set the output folder, filename template, scale, and preview visibility. For recording, configure codec, replay buffer duration, and clip triggers.
+    For the screenshot tool, set the output folder, filename template, scale, and preview visibility. For room or map capture, set the export path, image format, wait and offset values, marker options, and capture behavior. For recording, configure output, codec, replay buffer duration, audio, and clip triggers.
   </Step>
   <Step title="Check policy suboptions">
     Timer-freeze or proof-affecting suboptions can be stricter than the base capture row. Read the badge before enabling.
@@ -36,17 +36,42 @@ Akron capture tools support review, sharing, proof context, and creator workflow
 
 The internal recorder captures local frames for review without changing gameplay state. It provides output, audio, replay buffer, codec, clip trigger, and preset configuration through the **Internal Recorder** overlay tab.
 
+<Warning>
+  Internal Recorder is experimental and requires FFmpeg. Akron first checks the `AKRON_FFMPEG` environment variable and `Saves/AkronTools/ffmpeg`. On Unix-like systems it then uses `/run/host/usr/bin/ffmpeg` when present or `/usr/bin/ffmpeg`; on other systems it runs `ffmpeg` from the process path. Test the resulting video before relying on it for proof.
+</Warning>
+
 Preset shortcuts (**CPU**, **NVIDIA**, **AMD**) select a codec and quality combination in one step. Available codecs include x264 (CPU), H.264 NVENC (NVIDIA), H.264 AMF (AMD), HEVC NVENC, and VP9.
 
 For proof-oriented use, combine recorder settings with **Submission Mode** and proof helpers. A video alone does not capture all proof context.
 
-## Streamer Mode and Output Paths
+## Capture a proof-oriented attempt
 
-When **Streamer Mode** is active, Akron replaces local filesystem paths with filenames in HUD, overlay, and proof displays. Streamer Mode does not hide in-game data such as room IDs, flags, entity text, or StartPos coordinates.
+<Steps>
+  <Step title="Check the submission rules">
+    Confirm which video, metadata, screenshots, and Akron settings the target community requires. Akron records context, but it does not decide whether a run is accepted.
+  </Step>
+  <Step title="Prepare Akron">
+    Apply the intended setup, enable **Submission Mode**, and enable only the proof helpers required for the submission.
+  </Step>
+  <Step title="Arm capture">
+    Start recording or replay buffering before the attempt. If **Proof Recorder Guard** warns that capture is not armed, fix the recorder state before continuing.
+  </Step>
+  <Step title="Start a fresh attempt">
+    Begin from the expected attempt status. Watch the status during play so classified feature use is visible.
+  </Step>
+  <Step title="Review the output">
+    Inspect the video and any proof sidecar, screenshot, or journal output before submitting it. See [Proof and submission mode](/concepts/proof-and-submission-mode) for what Akron records and what it cannot prove.
+  </Step>
+</Steps>
+
+## Streamer Mode and output paths
+
+When **Streamer Mode** is active, Akron replaces local filesystem paths with filenames or final folder names in HUD, overlay, and proof displays. Streamer Mode does not hide in-game data such as room IDs, flags, entity text, or StartPos coordinates.
 
 ## Troubleshooting
 
 - If a capture is blank or cropped, verify the capture mode and output resolution.
 - If output paths appear hidden, check whether **Streamer Mode** is active.
-- If proof capture warns that recording is not armed, enable **Proof Recorder Guard** or review the recorder settings.
+- If Proof Recorder Guard warns that capture is not armed, start recording or replay buffering before the attempt.
+- If recording reports that FFmpeg did not start, install FFmpeg or set `AKRON_FFMPEG` to the executable path.
 - If capture freezes timers, check whether a stricter suboption is enabled.

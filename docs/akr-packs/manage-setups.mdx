@@ -1,13 +1,13 @@
 ---
 title: Manage .akr setups
-description: Back up, reset, and maintain directly configured Akron setup state.
+description: Export, import, and maintain Akron setup state.
 ---
 
-Akron setup state covers the options, bindings, StartPos slots, and scoped tool settings that you can export into `.akr` packs. Use setup packs to back up direct configuration or share a focused group of settings.
+Akron setup state includes the options, bindings, StartPos slots, and tool settings that `.akr` setup packs can carry.
 
 ## Start from current settings
 
-Configure Akron directly, then export the current settings as a setup pack once they match the state you want to preserve. Organize setups around visible tool groups and scoped packs.
+Configure Akron directly, then export the current settings as a setup pack once they match the state you want to preserve. Export a scoped pack when you need to share one tool group.
 
 ## Maintain setups
 
@@ -16,7 +16,7 @@ Configure Akron directly, then export the current settings as a setup pack once 
     Export a fresh baseline before changing individual tools.
   </Step>
   <Step title="Change one tool group at a time">
-    Configure overlay behavior, HUD tools, StartPos tools, visual settings, and interop separately to easily identify configuration issues.
+    Configure overlay behavior, HUD tools, StartPos tools, visual settings, and interop one group at a time so you can identify configuration issues.
   </Step>
   <Step title="Export a pack">
     Export an `.akr` setup pack when the setup is stable.
@@ -26,13 +26,13 @@ Configure Akron directly, then export the current settings as a setup pack once 
   </Step>
 </Steps>
 
-## Reset strategy
+## Restore a baseline
 
-Use reset actions when your setup state has drifted too far from its intended baseline. Prefer exporting a setup pack first if it contains map-specific StartPos slots or carefully tuned binds.
+Import the previously exported scope when a tool group no longer matches your intended baseline. A scoped import restores that group while leaving unrelated settings alone. StartPos imports replace slots for the pack's target map and keep slots for other maps.
 
 ## Clean setup hygiene
 
 - Keep state-changing tools out of submitted-run setups.
-- Check suboptions, not only parent rows.
+- Check every suboption.
 - Avoid importing whole setup packs from untrusted sources into submitted-run setups.
 - Use [Clean vs cheat classifications](/concepts/clean-vs-cheat) when deciding where a setting belongs.

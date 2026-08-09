@@ -7,13 +7,14 @@ The overlay is Akron's primary UI. It is organized into stable in-game tabs. Opt
 
 Use [Menu anatomy](/player-guide/menu-anatomy) when you need shared vocabulary for issue reports, suggestions, or screenshots.
 
-## Main Areas
+## Main areas
 
 | Area | Use it for |
 |---|---|
 | Global | Current-session controls such as timescale, transition speed, frame stepping, safe mode, submission mode, and autosave. |
 | Level | Level-scoped tools such as Auto Kill, Auto Deafen, freeze, respawn time, visual noise, hitboxes, triggers, and proof helpers. |
 | StartPos | Start position capture, placement, slot selection, smart matching, and respawn-at-StartPos behavior. |
+| Backups | Automatic and manual save backups, restore actions, results, triggers, and retention. |
 | Bypass | Save and completion mutation tools such as instant complete, unlocks, and berry obtain actions. |
 | Keybinds | Overlay, menu, and action bindings. |
 | Player | Player-facing HUD controls such as Control Display, plus movement, visual, resource, and assist controls. |
@@ -26,25 +27,25 @@ Use [Menu anatomy](/player-guide/menu-anatomy) when you need shared vocabulary f
 
 See [External integrations](/feature-guide/external-tools) for Motion Smoothing, Speedrun Tool, CelesteTAS, Extended Variant Mode, and Extended Camera Dynamics rows that appear only when those mods are loaded.
 
-## Search And Popups
+## Search and popups
 
 Use overlay search when you know the option name. Many rows have a popup or tooltip with configuration values. Changing a popup value stores the setting; the parent row still controls whether that behavior is enabled.
 
-## Policy Badges
+## Policy badges
 
-Rows can show policy status. Read the badge and any popup suboption badges before enabling a feature.
+Rows can show policy badges. Read the row badge and any popup suboption badges before enabling a feature.
 
 <Warning>
   A clean parent row can contain a stricter suboption. For example, a capture feature can be clean while a timer-freeze suboption is Cheat.
 </Warning>
 
-## Safe Overlay Habits
+## Safe overlay habits
 
 - Check the visible attempt status and policy indicators before enabling features.
 - Keep attempt-changing tools in explicit room-lab or testing setups, not submitted-run setups.
-- Use Everest's Akron mod options only when you intentionally need an advanced policy preset.
-- Use search to find the exact row instead of changing adjacent settings by mistake.
-- Export a `.akr` backup before importing shared packs or making broad changes.
+- Use Everest's Akron mod options for Safe Mode or per-map compatibility overrides. These settings are separate from attempt status.
+- Use search to select the exact row and avoid adjacent settings.
+- Export the current setup before importing shared packs or making broad changes.
 
 ## Troubleshooting
 

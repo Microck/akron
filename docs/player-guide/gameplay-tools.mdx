@@ -5,25 +5,25 @@ description: Use Akron retry, reload, StartPos, room warp, hitboxes, freeze, fra
 
 Akron gameplay tools help with routing, learning, and map inspection. Using many of these tools marks the active attempt as **Cheat** because they change state, timing, position, or execution.
 
-## Common Tools
+## Common tools
 
-| Tool | Use it for | Policy |
+| Tool | Use it for | Classification |
 |---|---|---|
-| Retry hotkey | End the current attempt through Celeste's retry flow. | Normal clear when it matches the configured allowed behavior. |
-| Room reload | Restart the current room outside normal play. | Cheat. |
-| Chapter reload | Restart the current chapter through Celeste's loader. | Normal clear. |
-| Room warp | Teleport to a selected room. | Cheat. |
-| Click Teleport, Cursor Zoom, and Entity Inspector | Use the cursor for quick position, camera inspection, and object inspection tools. Cursor Tools can temporarily enable selected cursor-driven tools while held, with one left-click action selected at a time. | Cheat. |
-| Free Camera | Move the room camera independently with movement input or optional mouse control. | Cheat. |
-| Hitbox viewer | Draw collision and hazard hitboxes for timing and spatial review. | Cheat. |
-| Entity Inspector | Hold the inspector cursor bind to pin entities or triggers, highlight hovered and pinned targets, and inspect runtime and map-source details. | Cheat. |
-| StartPos tools | Capture and restore StartPos snapshots, including smart same-room respawn selection. | Cheat. |
-| Frame advance and freeze | Freeze gameplay updates and advance one frame at a time. | Cheat. |
-| Timescale | Change gameplay update speed between 0.1× and 2.0×. | Cheat. |
-| Auto Kill | Kill the player automatically after a configured map-time threshold or inside selected regions. | Cheat. |
-| Auto Deafen | Press the configured Discord deafen hotkey when entering a selected region. Stays active until death or reset. | Normal clear. |
+| Retry | End the current attempt through Celeste's retry flow. | Normal clear |
+| Reload Room | Restart the current room outside normal play. | Cheat |
+| Reload Chapter | Restart the current chapter through Celeste's loader. | Normal clear |
+| Room Warp | Teleport to a selected room. | Cheat |
+| Click Teleport, Cursor Zoom, and Entity Inspector | Use the cursor for quick position, camera inspection, and object inspection tools. Cursor Tools can temporarily enable selected cursor-driven tools while held, with one left-click action selected at a time. | Cheat |
+| Free Camera | Move the room camera independently with movement input or optional mouse control. | Cheat |
+| Show Hitboxes | Draw collision and hazard hitboxes for timing and spatial review. | Cheat |
+| Entity Inspector | Hold the inspector cursor bind to pin entities or triggers, highlight hovered and pinned targets, and inspect runtime and map-source details. | Cheat |
+| StartPos tools | Capture and restore StartPos snapshots, including smart same-room respawn selection. | Cheat |
+| Frame Stepper | Freeze gameplay updates and advance one frame at a time. | Cheat |
+| Timescale | Change gameplay update speed between 0.1x and 2.0x. | Cheat |
+| Auto Kill | Kill the player automatically after a configured map-time threshold or inside selected regions. | Cheat |
+| Auto Deafen | Press the configured Discord deafen hotkey when entering a selected region. Stays active until death or reset. | Normal clear |
 
-## Room-Lab Workflow
+## Room-lab workflow
 
 <Steps>
   <Step title="Use a non-submission setup">
@@ -36,19 +36,19 @@ Akron gameplay tools help with routing, learning, and map inspection. Using many
     State-changing tools - StartPos restore, Room reload, frame tools, and timescale - mark the active attempt as Cheat. Check the status label before resuming a clean attempt.
   </Step>
   <Step title="Keep exports scoped">
-    Export only the relevant StartPos snapshot or section when sharing map-specific setups.
+    Export the StartPos section when sharing map-specific StartPos setups. It includes every saved StartPos slot for the target map.
   </Step>
 </Steps>
 
-## StartPos Safety
+## StartPos safety
 
-StartPos is Akron's built-in workflow for saving and restoring room positions. Each StartPos snapshot stores the full room state - not just coordinates - so repeated attempts start from the intended setup.
+StartPos is Akron's built-in workflow for saving and restoring room positions. Each StartPos snapshot stores the player coordinates and runtime room state. Loading it restores room state but does not rewind cumulative time or death statistics.
 
-If StartPos restore is blocked, check the visible policy status, the map compatibility settings, and whether the saved snapshot belongs to the current map and save-file slot. The saved room is the restore destination, so the current room can differ.
+If persistent StartPos Load is unavailable, wait for capture to finish and check the current map and save-file slot, snapshot presence and integrity, and runtime or mod-set compatibility. Current Map Compatibility broker and unsafe-native settings apply only to the separate Capture/Restore StartPos State savestate bindings. The saved room is the restore destination, so the current room can differ.
 
 See [StartPos recovery](/troubleshooting/startpos-recovery) for recovery guidance.
 
-## Input Shortcut Caution
+## Input shortcut caution
 
 Shortcuts that synthesize or modify execution inputs are Cheat. This includes input-assist shortcuts such as Neutral Drop and Backboost.
 

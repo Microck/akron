@@ -6,7 +6,7 @@ Akron is an Everest code mod for Celeste. Contributions should stay focused on t
 
 Akron does not preserve old local states by default. Prefer one current, canonical implementation with clear errors over compatibility shims unless compatibility support is explicitly requested.
 
-## Local Setup
+## Local setup
 
 Build the mod project:
 
@@ -42,11 +42,11 @@ dotnet test tests/akron-tests.csproj --nologo --filter ArchiveTests
 
 Set `CelestePrefix` if the checkout is not inside the normal Everest `Mods/Akron/Source` layout or if the Celeste references live elsewhere.
 
-GitHub Actions uses a private reference archive instead of committing `lib-stripped/`. Set `AKRON_CELESTE_REFS_URL` to a zip or tar.gz archive containing a complete `lib-stripped` reference directory. Set `AKRON_CELESTE_REFS_TOKEN` only when the archive URL requires bearer-token auth.
+GitHub Actions obtains `lib-stripped/` from a private reference archive. Configure the `AKRON_CELESTE_REFS_URL` secret in the `release-build` environment with a zip or tar.gz archive containing a complete `lib-stripped` reference directory. Configure the `AKRON_CELESTE_REFS_SHA256` variable in the same environment with the archive's lowercase SHA-256 digest. Set the optional `AKRON_CELESTE_REFS_TOKEN` secret in that environment only when the archive URL requires bearer-token auth.
 
-CI fails when `AKRON_CELESTE_REFS_URL` is not configured because a green run must prove the mod can build and test. Release packaging also requires that archive and fails fast when it is missing.
+CI fails when either `AKRON_CELESTE_REFS_URL` or `AKRON_CELESTE_REFS_SHA256` is missing. Release packaging uses the same verified archive and fails fast when its configuration is incomplete.
 
-## Local Tooling
+## Local tooling
 
 Canonical verification commands are documented in the docs site:
 
@@ -56,13 +56,14 @@ Canonical verification commands are documented in the docs site:
 
 Use live Celeste/Everest verification when behavior depends on rendering, input timing, screen transitions, camera state, hitboxes, overlay layout, capture output, external integrations, or map-specific runtime state.
 
-## Pull Requests
+## Pull requests
 
 Before submitting, confirm that:
 
 - [ ] The diff is scoped to one goal.
 - [ ] Public docs are updated when user-facing behavior changes.
-- [ ] Feature policy docs and registry tests are updated when status classification changes.
+- [ ] `CHANGELOG.md` is updated for notable user-facing changes.
+- [ ] Feature policy docs and registry tests are updated when feature classification changes.
 - [ ] Tests are added or updated when behavior, persistence, archive shape, policy, or setup defaults change.
 - [ ] Changed C# project files were formatted with `dotnet format Akron.sln --include <changed-csharp-files>`.
 - [ ] New options or features include screenshot or video proof when the behavior is visible, input-driven, timing-sensitive, rendering-sensitive, capture-related, or gameplay-facing.
@@ -73,9 +74,9 @@ Before submitting, confirm that:
 
 Screenshots or video should show the smallest surface that proves the change. Use screenshots for static UI, overlay, path, policy, or layout behavior. Use video for animation, input timing, recording, screen transitions, camera movement, hitboxes, or gameplay state changes.
 
-## Feature Pull Requests
+## Feature pull requests
 
-Feature PRs should follow the [Feature adding runbook](docs/contributing/feature-adding-runbook.mdx). The runbook covers expected feature shape, tab placement, ordering, tooltip style, implementation surfaces, tests, and live verification.
+Feature PRs should follow the [Feature development runbook](docs/contributing/feature-adding-runbook.mdx). The runbook covers expected feature shape, tab placement, ordering, tooltip style, implementation surfaces, tests, and live verification.
 
 For feature PRs, confirm that:
 
@@ -85,18 +86,18 @@ For feature PRs, confirm that:
 - [ ] Overlay row behavior, tooltip/search copy, and optional submenu controls are complete.
 - [ ] Settings, clamps, setup persistence, and defaults are covered if the feature stores configuration.
 - [ ] Command/status output is added when useful for automation or verification.
-- [ ] `AkronFeatureRegistry` and policy tests/docs are updated when the feature affects clean/cheat status.
+- [ ] `AkronFeatureRegistry` and policy tests/docs are updated when the feature affects classification.
 - [ ] Public docs are updated for user-facing behavior.
 - [ ] Tests cover settings, persistence, policy, command contracts, or rendering-adjacent logic where applicable.
 - [ ] Live Celeste verification evidence is included for visible, runtime, input, rendering, or gameplay behavior.
 
-## AI-Assisted Contributions
+## AI-assisted contributions
 
 AI-assisted contributions are allowed. A pull request may contain code, tests, documentation, screenshots, or other changes that were partially or substantially generated with AI assistance.
 
-AI use must be disclosed. The contributor remains responsible for the full contribution, including all AI-assisted portions. AI-generated work must be reviewed and tested by a human before submission.
+AI assistance must be disclosed when it materially helped produce the contribution. The contributor remains responsible for every AI-assisted portion. AI-generated work must be reviewed and tested by a human before submission.
 
-### Your Pull Request Must Include
+### Your pull request must include
 
 Each field exists for contributor verification and project auditing. Fill in every field completely. Partial disclosures may be returned for revision.
 
@@ -112,18 +113,17 @@ Disclosure fields must be factual. Do not claim human review, testing, verificat
   product name, marketing label, or abbreviation.
   Examples of valid identifiers: `openai/gpt-5.5`, `anthropic/claude-sonnet-5`,
   `zhipuai/glm-5.2`, `google/gemini-3-pro`, `deepseek/deepseek-v4`.
-  Use the `lab/model-name` convention. If you are unsure of the canonical
+  Use the `provider/model-name` convention. If you are unsure of the canonical
   identifier, check https://models.dev or the provider's API documentation.
 
-  These values are NOT valid: `unknown`, `default`, `auto`, `latest`, `GPT-5`,
+  These values are not valid: `unknown`, `default`, `auto`, `latest`, `GPT-5`,
   `Claude`, `Codex`, blank, or any guessed or abbreviated name.
 
   If the tool does not expose the underlying model identifier (for example,
   a tool that auto-routes or hides the model), state the exact tool name and
-  version, and write `model_not_exposed` in this field with an explanation
-  of why the model could not be identified. A PR with `model_not_exposed`
-  may be returned for revision unless the tool genuinely provides no way to
-  determine the model.
+  version, and write `model_not_exposed` in this field. Explain why the tool
+  does not expose the model. `model_not_exposed` is valid only for tools that
+  provide no way to determine the underlying model.
 - `human_testing`: What tests, checks, screenshots, live Celeste verification, or manual review did a human perform?
   This must describe real human testing that actually happened. If no human testing was performed, the pull request is not ready.
 - `contribution_summary`: One sentence describing what changed.
@@ -132,14 +132,14 @@ Before submitting, confirm that:
 
 - You understand the proposed changes.
 - A human ran the relevant tests, checks, or live verification.
-- The disclosure accurately describes the AI tool and model used.
+- The disclosure accurately describes the AI tool and either the model used or why the model was not exposed.
 - No field contains fabricated, guessed, or placeholder information.
 - The contribution does not include secrets, private data, copied code, or material that violates licensing requirements.
 - Incorrect, unsafe, unnecessary, or unverifiable AI output has been corrected or removed.
 
 Pull requests will not be rejected solely because AI was used. They may be rejected or returned for revision if the disclosure is incomplete, inaccurate, fabricated, unverifiable, or if the contribution appears to have been submitted without real human testing.
 
-## Contribution License
+## Contribution license
 
 CC BY-NC-ND 4.0 does not normally allow sharing adapted material. Akron's
 copyright holders grant a limited exception to modify and share Akron-owned
@@ -155,7 +155,7 @@ royalty-free license to use, reproduce, modify, distribute, sublicense, and
 relicense the contribution as part of Akron. This grant does not change the
 licenses of third-party material identified in `licenses/third-party-notices.txt`.
 
-## Auth, Data, And Test Safety
+## Auth, data, and test safety
 
 - Do not commit `.env` files, tokens, local session state, personal Celeste paths, or private mod archives.
 - Prefer unit tests, fixtures, and local fake data over live authenticated or network-dependent tests.
@@ -163,23 +163,23 @@ licenses of third-party material identified in `licenses/third-party-notices.txt
 - Keep screenshots and captures focused on evidence. Do not include unrelated local overlays, usernames, or private paths.
 - New options or features need visual proof when the result is visible to players. Fixes need after evidence for the corrected behavior; before evidence is preferred when it is practical to capture or reproduce.
 
-## Feature Policy
+## Feature policy
 
-Akron classifies behavior as `GoldberryHardlistClean`, `RegularClean`, or `Cheat`. Do not introduce new policy words or hidden status categories.
+Akron classifies behavior as `GoldberryHardlistClean`, `RegularClean`, or `Cheat`. Do not introduce new policy words or hidden classification categories.
 
 When a change affects policy:
 
-1. Classify the smallest meaningful behavior, not only the parent UI row.
+1. Classify the smallest meaningful behavior, including stricter suboptions.
 2. Update `Source/Core/AkronFeatureRegistry.cs`.
 3. Add or update registry tests.
-4. Regenerate or update public feature status docs when needed.
+4. Regenerate or update public feature classification docs when needed.
 5. Explain what the feature does, not whether it is "for practice" or "for cheating."
 
-## Release Notes
+## Release notes
 
-For notable user-facing changes, update the relevant docs page. If a future release-note workflow is added, call out breaking overlay, `.akr`, or file-location changes explicitly.
+Record notable user-facing changes in `CHANGELOG.md` under the active release or `Unreleased` section. Update the relevant docs page as well. Call out breaking overlay, `.akr`, or file-location changes explicitly.
 
-## Review Policy
+## Review policy
 
 This repository may be maintained by a small or solo team. Required status checks should stay green even when formal approving reviews are not enforced.
 

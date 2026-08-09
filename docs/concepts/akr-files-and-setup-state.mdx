@@ -3,13 +3,13 @@ title: .akr files and setup state
 description: Understand Akron setup state, scoped exports, and shareable archive files.
 ---
 
-Akron setup state stores options, bindings, StartPos slots, and scoped tool settings for the current play context. `.akr` files are the shareable archive format Akron uses for setup packs and other structured data.
+Akron setup state includes options, bindings, StartPos slots, and scoped tool settings. Akron also uses `.akr` archives for setup packs, overlay themes, HUD labels, and control-display presets.
 
-## Setup State
+## Setup state
 
-Use separate setup packs for different goals so state-changing tools do not bleed into clean-play or accessibility setups. For most players, the practical choice is the setup pack or overlay section they are importing.
+Use separate setup packs for clean play, accessibility settings, map inspection, and state-changing room-lab tools.
 
-The Akron overlay shows current policy/status state and tool state. It also supports `.akr` import/export for backing up or sharing the whole setup or a scoped section.
+The overlay shows the current attempt status and tool state. It can export the whole setup or one scoped section.
 
 | Goal | Recommended setup |
 |---|---|
@@ -20,7 +20,7 @@ The Akron overlay shows current policy/status state and tool state. It also supp
 | Inspect maps | Map inspection setup |
 | Tune presentation and comfort | Accessibility or HUD setup |
 
-## .akr Files
+## .akr files
 
 An `.akr` file is a strict ZIP archive with a manifest and one main payload. Current setup packs use a `setup.json` payload. StartPos and Whole packs also contain one compressed v7 snapshot entry per saved StartPos.
 
@@ -34,28 +34,31 @@ flowchart TD
   snapshots --> roomState["Exact StartPos room state"]
 ```
 
-## Scoped Sections
+## Scoped sections
 
 Akron can export and import a whole setup or a focused section:
 
 | Section | Use it for |
 |---|---|
-| `Whole` | Full setup state plus bindings and slots. |
-| `StartPos` | Map or room StartPos snapshots. |
-| `Keybinds` | Button bindings and Akron menu action bindings. |
-| `Auto Kill` | Auto Kill trigger and area settings. |
-| `Auto Deafen` | Auto Deafen trigger, hotkey, and area settings. |
-| `Recorder` | Internal recorder, replay, audio, codec, and trigger settings. |
-| `Audio` | Audio speed, pitch, per-sound volumes, and device settings. |
-| `HUD` | HUD widgets, labels, input displays, resource bars, counters, and HUD presentation state. |
+| **Whole** | All portable setup state plus bindings and target-map StartPos slots. |
+| **StartPos** | Map or room StartPos snapshots and settings. |
+| **Keybinds** | Button bindings and Akron menu action bindings. |
+| **Auto Kill** | Auto Kill trigger and area settings. |
+| **Auto Deafen** | Auto Deafen toggle and area settings. The local hotkey is preserved. |
+| **Recorder** | Portable replay-buffer, trigger, audio-capture, codec, quality, and preset settings. |
+| **Audio** | Audio speed, pitch, and per-sound volumes and overrides. |
+| **HUD** | HUD widgets, labels, input displays, resource bars, counters, and HUD presentation state. |
 
-Scoped imports merge only the selected section into the current active settings. Unrelated settings are not affected.
+Scoped imports replace only the selected portable settings. StartPos imports
+also replace every slot for the pack's target map while preserving slots for
+other maps. Setup packs keep machine-local paths, device choices, recording
+colorspace arguments, and the Auto Deafen hotkey unchanged.
 
-## Sharing Guidance
+## Sharing guidance
 
 - Export only the section needed by the recipient.
 - Prefer scoped StartPos, Auto Kill, Auto Deafen, Recorder, or Audio packs over whole setup packs for map-specific sharing.
-- Keep a backup export before importing community packs.
+- Export the current setup before importing community packs.
 - Treat imported attempt-changing options as policy-visible when used.
 
 See [Import and export .akr packs](/akr-packs/import-export) for the workflow and [Akron .akr archives](/reference/akr-archives) for the reference contract.
