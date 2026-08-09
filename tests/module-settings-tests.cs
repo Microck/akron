@@ -3720,54 +3720,61 @@ public sealed class ModuleSettingsTests
         Assert.Equal(expectedHeight, height);
     }
 
-    private sealed class CrystalStaticSpinnerProbe : Entity
+    // Entity's parameterless constructor calls Vector2.Zero, whose body is
+    // removed from the stripped FNA test reference. The position overload lets
+    // these classifier probes run their own initializers without invoking it.
+    private abstract class EntityProbe : Entity
     {
-    }
-
-    private sealed class DustStaticSpinnerProbe : Entity
-    {
-    }
-
-    private sealed class DustTrackSpinnerProbe : Entity
-    {
-    }
-
-    private sealed class DustRotateSpinnerProbe : Entity
-    {
-    }
-
-    private sealed class TriggerSpikesProbe : Entity
-    {
-    }
-
-    private sealed class CustomSeeker : Entity
-    {
-        public CustomSeeker()
-            : base(new Vector2(0f, 0f))
+        protected EntityProbe()
+            : base(new Vector2())
         {
         }
     }
 
-    private sealed class RefillProbe : Entity
+    private sealed class CrystalStaticSpinnerProbe : EntityProbe
     {
     }
 
-    private sealed class CustomOneUseRefillProbe : Entity
+    private sealed class DustStaticSpinnerProbe : EntityProbe
+    {
+    }
+
+    private sealed class DustTrackSpinnerProbe : EntityProbe
+    {
+    }
+
+    private sealed class DustRotateSpinnerProbe : EntityProbe
+    {
+    }
+
+    private sealed class TriggerSpikesProbe : EntityProbe
+    {
+    }
+
+    private sealed class CustomSeeker : EntityProbe
+    {
+    }
+
+    private sealed class RefillProbe : EntityProbe
+    {
+    }
+
+    private sealed class CustomOneUseRefillProbe : EntityProbe
     {
         public bool oneUse = true;
     }
 
-    private sealed class CustomReusableRefillProbe : Entity
+    private sealed class CustomReusableRefillProbe : EntityProbe
     {
         public bool oneUse = false;
     }
 
-    private sealed class CustomOnlyOnceRefillProbe : Entity
+    private sealed class CustomOnlyOnceRefillProbe : EntityProbe
     {
         public bool onlyOnce { get; } = true;
     }
 
-    private sealed class CustomOneUseGemProbe : Entity
+    private sealed class CustomOneUseGemProbe : EntityProbe
     {
         public bool oneUse = true;
     }
