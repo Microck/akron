@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 67
+
 ### Added
 
 - Wait for a fresh gameplay input after loading a StartPos while backdrops and respawn wipes keep moving.
