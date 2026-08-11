@@ -6,6 +6,12 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Fixed
+
+- Restore StartPos slots across rooms and after leaving or restarting a map, including positions set during room wipes in large custom maps such as Heart of the Storm.
+- Restore StartPos in rooms with groups of linked mod entities, such as Spring Collab 2020's Ancient Engine.
+- Keep loading a StartPos from re-enabling **Respawn at StartPos** after the player turns it off.
+
 ## Akron Beta 68
 
 ### Fixed

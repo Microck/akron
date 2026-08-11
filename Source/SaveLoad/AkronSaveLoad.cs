@@ -15,6 +15,23 @@ namespace Celeste.Mod.Akron;
 
 public static partial class AkronSaveLoadService {
     private const int MaxFreshRoomEntityListDrainPasses = 64;
+
+    private readonly struct DetachedScreenWipes {
+        public ScreenWipe LevelWipe { get; }
+        public List<Renderer> Renderers { get; }
+        public Stack<(ScreenWipe Wipe, int Index)> RendererWipes { get; }
+
+        public DetachedScreenWipes(
+            ScreenWipe levelWipe,
+            List<Renderer> renderers,
+            Stack<(ScreenWipe Wipe, int Index)> rendererWipes
+        ) {
+            LevelWipe = levelWipe;
+            Renderers = renderers;
+            RendererWipes = rendererWipes;
+        }
+    }
+
     private static readonly PropertyInfo ComponentListLockModeProperty = typeof(ComponentList).GetProperty(
         "LockMode",
         BindingFlags.Instance | BindingFlags.NonPublic
@@ -410,11 +427,12 @@ public static partial class AkronSaveLoadService {
         }
 
         CurrentSlotName = string.IsNullOrWhiteSpace(slotName) ? "StartPos" : slotName;
+        bool isStartPosCapture = CurrentSlotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal);
         AkronLevelRenderState renderState = AkronLevelRenderState.Capture(level);
         List<AkronGameplayBufferSnapshot> gameplayBuffers = new List<AkronGameplayBufferSnapshot>();
         IReadOnlyDictionary<object, AkronReconstructionResourcePayload> persistentRenderTargets =
             new Dictionary<object, AkronReconstructionResourcePayload>();
-        if (CurrentSlotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal)) {
+        if (isStartPosCapture) {
             try {
                 gameplayBuffers = AkronGameplayBufferState.Capture();
             } catch (Exception exception) {
@@ -425,6 +443,9 @@ public static partial class AkronSaveLoadService {
         int virtualAssetMarker = AkronVirtualAssetReloadTracker.Mark();
         bool retainsTrackedVirtualAssets = false;
         AkronSaveLoadSlot saveSlot = null;
+        DetachedScreenWipes? entryWipes = isStartPosCapture
+            ? DetachTransientScreenWipes(level)
+            : null;
         try {
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 action.BeforeSaveState?.Invoke(level);
@@ -445,8 +466,7 @@ public static partial class AkronSaveLoadService {
             if (prepareForRestore) {
                 PrepareSlotPreClone(saveSlot);
             }
-            if (capturePersistentResources &&
-                CurrentSlotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal)) {
+            if (capturePersistentResources && isStartPosCapture) {
                 try {
                     persistentRenderTargets = AkronVirtualRenderTargetResourceAdapter.CaptureSetFramePayloads(
                         AkronVirtualAssetReloadTracker.GetRenderTargetsSince(virtualAssetMarker));
@@ -472,6 +492,7 @@ public static partial class AkronSaveLoadService {
             }
             AkronDeepClone.ClearSharedState();
             renderState.Restore(level);
+            RestoreTransientScreenWipes(level, entryWipes);
         }
     }
 
@@ -524,20 +545,7 @@ public static partial class AkronSaveLoadService {
         CurrentSlotName = string.IsNullOrWhiteSpace(slotName) ? "fresh baseline" : slotName;
         AkronLevelRenderState renderState = AkronLevelRenderState.Capture(level);
         int virtualAssetMarker = AkronVirtualAssetReloadTracker.Mark();
-        ScreenWipe entryWipe = level.Wipe;
-        List<Renderer> renderers = level.RendererList?.Renderers;
-        int entryWipeRendererIndex = entryWipe == null || renderers == null
-            ? -1
-            : renderers.IndexOf(entryWipe);
-        if (entryWipe != null) {
-            // The entry wipe is a transition owned by the current process, not a
-            // stable room object. Exclude it from both warm and cold baselines so
-            // their graph boundary stays identical after one initialization update.
-            level.Wipe = null;
-            if (entryWipeRendererIndex >= 0) {
-                level.RendererList.Renderers.RemoveAt(entryWipeRendererIndex);
-            }
-        }
+        DetachedScreenWipes entryWipes = DetachTransientScreenWipes(level);
         AkronSaveLoadSlot saveSlot = null;
         try {
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
@@ -556,20 +564,50 @@ public static partial class AkronSaveLoadService {
             AkronVirtualAssetReloadTracker.DiscardSince(virtualAssetMarker);
             AkronDeepClone.ClearSharedState();
             renderState.Restore(level);
-            if (entryWipe != null) {
-                level.Wipe = entryWipe;
-                if (entryWipeRendererIndex >= 0 && !renderers.Contains(entryWipe)) {
-                    level.RendererList.Renderers.Insert(
-                        Math.Min(entryWipeRendererIndex, level.RendererList.Renderers.Count),
-                        entryWipe);
-                }
-            }
+            RestoreTransientScreenWipes(level, entryWipes);
         }
 
         AkronSaveLoadSlotOwner owner = new AkronSaveLoadSlotOwner(saveSlot, ReleaseDormantEventInstances);
         AkronSaveLoadSlotLease lease = owner.Retain();
         owner.ReleaseOwnership();
         return lease;
+    }
+
+    private static DetachedScreenWipes DetachTransientScreenWipes(Level level) {
+        ScreenWipe levelWipe = level.Wipe;
+        RendererList rendererList = AkronLevelRenderState.RendererListField?.GetValue(level) as RendererList;
+        List<Renderer> renderers = rendererList?.Renderers;
+        Stack<(ScreenWipe Wipe, int Index)> rendererWipes = new Stack<(ScreenWipe, int)>();
+        if (renderers != null) {
+            for (int index = renderers.Count - 1; index >= 0; index--) {
+                if (renderers[index] is ScreenWipe wipe) {
+                    rendererWipes.Push((wipe, index));
+                    renderers.RemoveAt(index);
+                }
+            }
+        }
+        // Wipes are process-owned transitions, not stable room state. Level.Wipe
+        // can clear before its renderer leaves the list, so exclude both forms.
+        level.Wipe = null;
+        return new DetachedScreenWipes(levelWipe, renderers, rendererWipes);
+    }
+
+    private static void RestoreTransientScreenWipes(Level level, DetachedScreenWipes? boundary) {
+        if (!boundary.HasValue) {
+            return;
+        }
+        DetachedScreenWipes entryWipes = boundary.Value;
+        level.Wipe = entryWipes.LevelWipe;
+        if (entryWipes.Renderers == null) {
+            return;
+        }
+        foreach ((ScreenWipe wipe, int index) in entryWipes.RendererWipes) {
+            if (!entryWipes.Renderers.Contains(wipe)) {
+                entryWipes.Renderers.Insert(
+                    Math.Min(index, entryWipes.Renderers.Count),
+                    wipe);
+            }
+        }
     }
 
     internal static IReadOnlyList<string> GetRegisteredActionIdsForPersistence() {
@@ -963,6 +1001,18 @@ public static partial class AkronSaveLoadService {
         // These cumulative values are the only state that StartPos does not
         // rewind. Apply them before verification and mask their graph fields.
         cumulativeStats.RestoreWithoutRewinding(level);
+        // Tracker refresh and registered callbacks can mutate collection
+        // versions while rebuilding derived indexes. Versions are part of a
+        // paused enumerator's Set-frame state, so they must be the last graph
+        // assignments before verification.
+        AkronReconstructionVerification collectionVersions =
+            AkronStartPosReconstruction.ReapplyCollectionVersions(restore);
+        if (!collectionVersions.Success) {
+            LastPersistentSnapshotError = collectionVersions.Error;
+            AkronStartPosReconstruction.ReleaseEventInstances(restore);
+            TryLoadFreshRoom(level, document.Room, out _);
+            return AkronSaveLoadResult.Failed;
+        }
         AkronReconstructionVerification verification = AkronStartPosReconstruction.Verify(
             document,
             restore,

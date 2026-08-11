@@ -346,8 +346,7 @@ public static partial class AkronActions {
                 level,
                 startPos,
                 "Loaded StartPos " + slot + ".",
-                slot,
-                enableRespawnAtStartPosAfterRestore: true)) {
+                slot)) {
                 return;
             }
 
@@ -496,10 +495,13 @@ public static partial class AkronActions {
         });
     }
 
-    private static bool RestoreStartPos(Level level, AkronStartPos startPos, string toast, int loadedSlot = 0, bool endPlacementForLoad = true, bool enableRespawnAtStartPosAfterRestore = false) {
+    private static bool RestoreStartPos(Level level, AkronStartPos startPos, string toast, int loadedSlot = 0, bool endPlacementForLoad = true) {
         ClearStartPosInputWait();
         bool restoreRespawnAtStartPos = AkronModule.Settings.RespawnAtStartPos;
-        bool restoredStartPos = false;
+        Dictionary<string, AkronPersistedStartPosMap> startPosCatalogSnapshot =
+            AkronModule.Instance == null
+                ? null
+                : SnapshotStartPosCatalog(AkronModule.SaveData?.StartPositionsByMap);
         AkronModule.Settings.RespawnAtStartPos = false;
         try {
             if (endPlacementForLoad && !AkronModule.EndStartPosPlacementForLoad()) {
@@ -507,7 +509,17 @@ public static partial class AkronActions {
             }
             bool wasInMemory = AkronSaveLoadService.HasRuntimeStateInMemory(startPos.StateSlotName);
             Stopwatch restoreTimer = Stopwatch.StartNew();
-            AkronSaveLoadResult restored = AkronSaveLoadService.LoadRuntimeState(level, startPos.StateSlotName, allowDeadPlayer: true);
+            AkronSaveLoadResult restored;
+            try {
+                restored = AkronSaveLoadService.LoadRuntimeState(level, startPos.StateSlotName, allowDeadPlayer: true);
+            } finally {
+                // Module save data is part of the gameplay rewind. The StartPos
+                // catalog is not: it can contain slots created after this
+                // snapshot, and those newer entries must remain loadable.
+                RestoreStartPosCatalog(
+                    AkronModule.Instance == null ? null : AkronModule.SaveData,
+                    startPosCatalogSnapshot);
+            }
             restoreTimer.Stop();
             if (restored != AkronSaveLoadResult.Success) {
                 string detail = AkronSaveLoadService.LastPersistentSnapshotError;
@@ -532,17 +544,70 @@ public static partial class AkronActions {
             if (loadedSlot > 0) {
                 AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;
             }
-            restoredStartPos = true;
-
             if (!string.IsNullOrWhiteSpace(toast)) {
                 Engine.Scene?.Add(new AkronToast(toast));
             }
         } finally {
-            AkronModule.Settings.RespawnAtStartPos = (enableRespawnAtStartPosAfterRestore && restoredStartPos)
-                || restoreRespawnAtStartPos;
+            AkronModule.Settings.RespawnAtStartPos = restoreRespawnAtStartPos;
         }
 
-        return restoredStartPos;
+        return true;
+    }
+
+    internal static Dictionary<string, AkronPersistedStartPosMap> SnapshotStartPosCatalog(
+        Dictionary<string, AkronPersistedStartPosMap> startPositionsByMap
+    ) {
+        Dictionary<string, AkronPersistedStartPosMap> snapshot =
+            new Dictionary<string, AkronPersistedStartPosMap>(
+                startPositionsByMap?.Count ?? 0,
+                StringComparer.Ordinal);
+        if (startPositionsByMap == null) {
+            return snapshot;
+        }
+
+        foreach (KeyValuePair<string, AkronPersistedStartPosMap> mapPair in startPositionsByMap) {
+            AkronPersistedStartPosMap map = mapPair.Value;
+            if (map == null) {
+                snapshot[mapPair.Key] = null;
+                continue;
+            }
+
+            Dictionary<int, AkronPersistedStartPos> slots =
+                new Dictionary<int, AkronPersistedStartPos>(map.Slots?.Count ?? 0);
+            if (map.Slots != null) {
+                foreach (KeyValuePair<int, AkronPersistedStartPos> slotPair in map.Slots) {
+                    AkronPersistedStartPos startPos = slotPair.Value;
+                    slots[slotPair.Key] = startPos == null
+                        ? null
+                        : new AkronPersistedStartPos {
+                            X = startPos.X,
+                            Y = startPos.Y,
+                            Room = startPos.Room,
+                            AreaSid = startPos.AreaSid,
+                            UsesSpawnConfig = startPos.UsesSpawnConfig,
+                            Dashes = startPos.Dashes,
+                            StaminaPercent = startPos.StaminaPercent,
+                            Facing = startPos.Facing,
+                            Idle = startPos.Idle,
+                            Grab = startPos.Grab
+                        };
+                }
+            }
+            snapshot[mapPair.Key] = new AkronPersistedStartPosMap { Slots = slots };
+        }
+
+        return snapshot;
+    }
+
+    internal static void RestoreStartPosCatalog(
+        AkronModuleSaveData saveData,
+        Dictionary<string, AkronPersistedStartPosMap> startPosCatalogSnapshot
+    ) {
+        if (saveData == null) {
+            return;
+        }
+
+        saveData.StartPositionsByMap = startPosCatalogSnapshot;
     }
 
     internal static void RelinkRuntimeRenderState(Level level) {
@@ -711,9 +776,10 @@ public static partial class AkronActions {
 
         string areaSid = GetAreaSid(level);
         AkronModule.Session.LoadedStartPositionsAreaSid = areaSid;
+        Dictionary<int, AkronPersistedStartPos> persistedStartPositions = GetPersistedStartPositions(areaSid);
         Dictionary<int, AkronStartPos> startPositions = BuildRuntimeStartPositions(
             areaSid,
-            GetPersistedStartPositions(areaSid));
+            persistedStartPositions);
         string pendingKey = BuildPendingStartPosKey(GetCurrentFileSlot(), areaSid);
         if (PendingStartPositionsByFileAndMap.TryGetValue(pendingKey, out Dictionary<int, AkronStartPos> pending)) {
             foreach (KeyValuePair<int, AkronStartPos> pair in pending) {
