@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 69
+
 ### Fixed
 
 - Restore StartPos slots across rooms and after leaving or restarting a map, including positions set during room wipes in large custom maps such as Heart of the Storm.
