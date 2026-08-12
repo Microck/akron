@@ -63,6 +63,112 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void TextureAndModAssetKeysIdentifyEquivalentFreshResources() {
+        Assert.True(AkronStartPosReconstruction.AreEquivalentLiveResources(typeof(VirtualTexture)));
+        Assert.True(AkronStartPosReconstruction.AreEquivalentLiveResources(typeof(ModAsset)));
+        Assert.False(AkronStartPosReconstruction.AreEquivalentLiveResources(typeof(Atlas)));
+    }
+
+    [Fact]
+    public void DetachedVirtualTextureMatchesTheVirtualContentRegistryEntry() {
+        VirtualTexture texture = (VirtualTexture) RuntimeHelpers.GetUninitializedObject(typeof(VirtualTexture));
+        SetRuntimeField(texture, "<Path>k__BackingField", "Graphics/Atlases/Gameplay/decals/randomized");
+        SetRuntimeField(texture, "<Width>k__BackingField", 32);
+        SetRuntimeField(texture, "<Height>k__BackingField", 32);
+        ICollection<VirtualAsset> assets = GetVirtualContentAssets();
+        assets.Add(texture);
+        try {
+            object resolved = AkronStartPosReconstruction.ResolveDetachedVirtualTexture(
+                typeof(VirtualTexture),
+                AkronStartPosReconstruction.GetLiveResourceKey(texture),
+                assets);
+
+            Assert.Same(texture, resolved);
+        } finally {
+            assets.Remove(texture);
+        }
+    }
+
+    [Fact]
+    public void RetainedClutterTextureSizesSurviveAtlasReplacementBetweenRooms() {
+        VirtualTexture retained = CreateVirtualTexture(
+            "Graphics/Atlases/Gameplay/objects/clutter/metal_13",
+            24,
+            16);
+        VirtualTexture current = CreateVirtualTexture(
+            "Graphics/Atlases/Gameplay/objects/clutter/metal_14",
+            24,
+            24);
+        VirtualTexture otherGroup = CreateVirtualTexture(
+            "Graphics/Atlases/Gameplay/objects/clutter/wood_00",
+            24,
+            16);
+
+        (int Width, int Height)[] sizes = AkronStartPosReconstruction
+            .GetRetainedClutterTextureSizes(
+                "objects/clutter/metal",
+                new VirtualAsset[] { retained, current, otherGroup })
+            .OrderBy(size => size.Width)
+            .ThenBy(size => size.Height)
+            .ToArray();
+
+        Assert.Equal(new[] { (24, 16), (24, 24) }, sizes);
+    }
+
+    [Fact]
+    public void InstalledClutterTextureSizesLoadAssetsMissingFromVirtualContent() {
+        TestModAsset matching = new TestModAsset(
+            "Graphics/Atlases/Gameplay/objects/clutter/metal_13",
+            typeof(Texture2D),
+            "png");
+        TestModAsset sameSizedMatch = new TestModAsset(
+            "Graphics/Atlases/Gameplay/objects/clutter/metal_15",
+            typeof(Texture2D),
+            "png");
+        TestModAsset unavailableMatch = new TestModAsset(
+            "Graphics/Atlases/Gameplay/objects/clutter/metal_17",
+            typeof(Texture2D),
+            "png");
+        TestModAsset otherGroup = new TestModAsset(
+            "Graphics/Atlases/Gameplay/objects/clutter/wood_00",
+            typeof(Texture2D),
+            "png");
+        TestModAsset wrongType = new TestModAsset(
+            "Graphics/Atlases/Gameplay/objects/clutter/metal_14",
+            typeof(string),
+            "png");
+        TestModAsset wrongFormat = new TestModAsset(
+            "Graphics/Atlases/Gameplay/objects/clutter/metal_16",
+            typeof(Texture2D),
+            "txt");
+        List<string> loadedPaths = new List<string>();
+
+        (int Width, int Height)[] sizes = AkronStartPosReconstruction
+            .GetInstalledClutterTextureSizes(
+                "objects/clutter/metal",
+                new ModAsset[] {
+                    matching,
+                    sameSizedMatch,
+                    unavailableMatch,
+                    otherGroup,
+                    wrongType,
+                    wrongFormat
+                },
+                asset => {
+                    loadedPaths.Add(asset.PathVirtual);
+                    return ReferenceEquals(asset, unavailableMatch)
+                        ? null!
+                        : CreateVirtualTexture(asset.PathVirtual, 24, 16);
+                })
+            .ToArray();
+
+        Assert.Equal(new[] { (24, 16) }, sizes);
+        Assert.Equal(
+            new[] { matching.PathVirtual, sameSizedMatch.PathVirtual, unavailableMatch.PathVirtual },
+            loadedPaths);
+    }
+
+    [Fact]
     public void EverestSettingsHaveAStableDetachedResourceKey() {
         TestEverestSettings settings = new TestEverestSettings();
 
@@ -198,6 +304,108 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void CollectionVersionRestoresWithAPausedEnumerator() {
+        ScalarListRoot saved = CreateCollectionEnumeratorRoot(incrementVersion: true);
+        ScalarListRoot baseline = CreateCollectionEnumeratorRoot(incrementVersion: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode listNode = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(List<int>).AssemblyQualifiedName);
+        Assert.Contains(listNode.Fields, field => field.Name == "_version");
+        ScalarListRoot fresh = CreateCollectionEnumeratorRoot(incrementVersion: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        AkronReconstructionVerification verification = graph.Verify(
+            capture.Document,
+            restore,
+            Array.Empty<string>());
+        Assert.True(verification.Success, verification.Error);
+        Assert.True(fresh.Enumerator.MoveNext());
+        Assert.Equal(5, fresh.Enumerator.Current);
+    }
+
+    [Fact]
+    public void CollectionVersionCanBeFinalizedAfterPostRestoreMutation() {
+        ScalarListRoot saved = CreateCollectionEnumeratorRoot(incrementVersion: true);
+        ScalarListRoot baseline = CreateCollectionEnumeratorRoot(incrementVersion: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        ScalarListRoot fresh = CreateCollectionEnumeratorRoot(incrementVersion: false);
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+        Assert.True(restore.Success, restore.Error);
+
+        // A derived-state rebuild can touch a list without changing its
+        // contents. The assignment still increments List<T>._version.
+        fresh.Values[0] = fresh.Values[0];
+        AkronReconstructionVerification reapply = graph.ReapplyCollectionVersions(restore);
+
+        Assert.True(reapply.Success, reapply.Error);
+        AkronReconstructionVerification verification = graph.Verify(
+            capture.Document,
+            restore,
+            Array.Empty<string>());
+        Assert.True(verification.Success, verification.Error);
+        Assert.True(fresh.Enumerator.MoveNext());
+        Assert.Equal(5, fresh.Enumerator.Current);
+    }
+
+    [Fact]
+    public void HashCollectionsRebuildDerivedBucketsWithoutMovingPausedEntries() {
+        HashCollectionRoot saved = CreateHashCollectionRoot(incrementVersion: true);
+        HashCollectionRoot baseline = CreateHashCollectionRoot(incrementVersion: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        HashCollectionRoot fresh = CreateHashCollectionRoot(incrementVersion: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        ReferenceHashKey[] keys = fresh.Values.Keys.OrderBy(key => key.Value).ToArray();
+        Assert.Equal(new[] { 1, 2 }, keys.Select(key => key.Value));
+        Assert.Equal(3, fresh.Values[keys[0]]);
+        Assert.Equal(5, fresh.Values[keys[1]]);
+        Assert.All(keys, key => Assert.Contains(key, fresh.Members));
+        AkronReconstructionVerification verification = graph.Verify(
+            capture.Document,
+            restore,
+            Array.Empty<string>());
+        Assert.True(verification.Success, verification.Error);
+        Assert.True(fresh.Enumerator.MoveNext());
+        Assert.Equal(2, fresh.Enumerator.Current.Key.Value);
+        Assert.False(fresh.Enumerator.MoveNext());
+        Assert.True(fresh.MemberEnumerator.MoveNext());
+        Assert.Equal(2, fresh.MemberEnumerator.Current.Value);
+        Assert.False(fresh.MemberEnumerator.MoveNext());
+    }
+
+    [Fact]
+    public void EntityMembershipRepairPreservesAPausedEnumeratorAfterARemovedEntry() {
+        EntityMembershipEnumeratorRoot saved = CreateEntityMembershipEnumeratorRoot();
+        EntityMembershipEnumeratorRoot baseline = CreateEntityMembershipEnumeratorRoot();
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        EntityMembershipEnumeratorRoot fresh = CreateEntityMembershipEnumeratorRoot();
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        AkronReconstructionVerification verification = graph.Verify(
+            capture.Document,
+            restore,
+            Array.Empty<string>());
+        Assert.True(verification.Success, verification.Error);
+        Assert.True(fresh.Enumerator.MoveNext());
+        Assert.Equal(2, Assert.IsType<SourceIdentifiedEntity>(fresh.Enumerator.Current).Value);
+        Assert.False(fresh.Enumerator.MoveNext());
+    }
+
+    [Fact]
     public void ReconstructionRestoresCyclesSharedReferencesAndCallbacksOntoFreshObjects() {
         TestResource savedResource = new TestResource("saved-process");
         TestNode savedChild = new TestNode {
@@ -293,6 +501,7 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
 
         Assert.False(restore.Success);
+        Assert.Contains("authentic", restore.Error, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("delegate method is not authentic to the fresh room", restore.Error);
     }
 
@@ -1000,6 +1209,53 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void FreshModEntityRestoresThroughItsSceneTrackerIndex() {
+        (SavedSceneRoot saved, SourceIdentifiedEntity savedEntity) =
+            CreateTrackedSourceEntityScene(includeTrackerEntry: true);
+        (SavedSceneRoot baseline, _) = CreateTrackedSourceEntityScene(includeTrackerEntry: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            AkronStartPosReconstruction.IsLiveResourceType,
+            resource => ((Type) resource).AssemblyQualifiedName!,
+            null,
+            AkronStartPosReconstruction.ResolveDetachedLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, SourceIdentifiedEntity freshEntity) =
+            CreateTrackedSourceEntityScene(includeTrackerEntry: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.NotSame(savedEntity, freshEntity);
+        Tracker tracker = GetRuntimeField<Tracker>(fresh.Scene, "<Tracker>k__BackingField");
+        Dictionary<Type, List<Entity>> trackedEntities =
+            GetRuntimeField<Dictionary<Type, List<Entity>>>(tracker, "<Entities>k__BackingField");
+        Assert.Same(freshEntity, Assert.Single(trackedEntities[typeof(SourceIdentifiedEntity)]));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void FreshModEntityRestoresThroughItsSceneTagIndex() {
+        (SavedSceneRoot saved, SourceIdentifiedEntity savedEntity) =
+            CreateTaggedSourceEntityScene(includeTagEntry: true);
+        (SavedSceneRoot baseline, _) = CreateTaggedSourceEntityScene(includeTagEntry: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, SourceIdentifiedEntity freshEntity) =
+            CreateTaggedSourceEntityScene(includeTagEntry: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.NotSame(savedEntity, freshEntity);
+        TagLists tagLists = GetRuntimeField<TagLists>(fresh.Scene, "<TagLists>k__BackingField");
+        List<Entity>[] lists = GetRuntimeField<List<Entity>[]>(tagLists, "lists");
+        Assert.Same(freshEntity, Assert.Single(lists[0]));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
     public void SavedOnlyBuiltInRuntimeEntityRestoresThroughItsSceneTagIndex() {
         (SavedSceneRoot saved, _) = CreateTaggedRuntimeEntityScene(includeSlash: true);
         (SavedSceneRoot baseline, _) = CreateTaggedRuntimeEntityScene(includeSlash: false);
@@ -1120,15 +1376,542 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
-    public void TrailSnapshotOnlyAcceptsItsTwoPlayerComponentAliases() {
+    public void TrailSnapshotAcceptsPlayerHairAndBuiltInImageOwners() {
         Assert.True(AkronReconstructionGraph.IsTrailSnapshotComponentReference(
             typeof(TrailManager.Snapshot), nameof(TrailManager.Snapshot.Hair), typeof(PlayerHair)));
         Assert.True(AkronReconstructionGraph.IsTrailSnapshotComponentReference(
             typeof(TrailManager.Snapshot), nameof(TrailManager.Snapshot.Sprite), typeof(PlayerSprite)));
+        Assert.True(AkronReconstructionGraph.IsTrailSnapshotComponentOwnerType(
+            nameof(TrailManager.Snapshot.Hair), typeof(Player)));
+        Assert.True(AkronReconstructionGraph.IsTrailSnapshotComponentOwnerType(
+            nameof(TrailManager.Snapshot.Hair), typeof(PlayerPlayback)));
+        Assert.True(AkronReconstructionGraph.IsTrailSnapshotComponentOwnerType(
+            nameof(TrailManager.Snapshot.Sprite), typeof(BirdPath)));
         Assert.False(AkronReconstructionGraph.IsTrailSnapshotComponentReference(
             typeof(TrailManager.Snapshot), nameof(TrailManager.Snapshot.Manager), typeof(TrailManager)));
         Assert.False(AkronReconstructionGraph.IsTrailSnapshotComponentReference(
             typeof(TalkComponent.TalkComponentUI), nameof(TrailManager.Snapshot.Hair), typeof(PlayerHair)));
+        Assert.False(AkronReconstructionGraph.IsTrailSnapshotComponentOwnerType(
+            nameof(TrailManager.Snapshot.Hair), typeof(BirdPath)));
+        Assert.False(AkronReconstructionGraph.IsTrailSnapshotComponentOwnerType(
+            nameof(TrailManager.Snapshot.Sprite), typeof(SourceIdentifiedEntity)));
+    }
+
+    [Fact]
+    public void TrailSnapshotCanRetainAPlaybackComponentAfterItsOwnerLeavesTheScene() {
+        TrailPlaybackRoot saved = CreatePlaybackTrailScene(0.625f, attachOwnerToScene: false);
+        TrailPlaybackRoot baseline = CreatePlaybackTrailScene(0f, attachOwnerToScene: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TrailPlaybackRoot fresh = CreatePlaybackTrailScene(0f, attachOwnerToScene: false);
+        PlayerHair freshHair = fresh.Snapshot.Hair;
+        Image freshSprite = fresh.Snapshot.Sprite;
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(0.625f, fresh.Snapshot.Percent);
+        Assert.Same(freshHair, fresh.Snapshot.Hair);
+        Assert.Same(freshSprite, fresh.Snapshot.Sprite);
+        Entity restoredOwner = GetRuntimeField<Entity>(freshHair, "<Entity>k__BackingField");
+        Assert.IsType<PlayerPlayback>(restoredOwner);
+        Assert.Null(GetRuntimeField<Scene>(restoredOwner, "<Scene>k__BackingField"));
+        Assert.DoesNotContain(GetEntityListContents(fresh.Entities), entity =>
+            ReferenceEquals(entity, restoredOwner));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void TrailSnapshotCanRetainAFreshPlaybackSceneAfterItsOwnerLeavesTheEntityList() {
+        TrailPlaybackRoot saved = CreatePlaybackTrailScene(
+            0.625f,
+            attachOwnerToScene: false,
+            assignOwnerScene: true);
+        TrailPlaybackRoot baseline = CreatePlaybackTrailScene(
+            0f,
+            attachOwnerToScene: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TrailPlaybackRoot fresh = CreatePlaybackTrailScene(
+            0f,
+            attachOwnerToScene: false);
+        PlayerHair freshHair = fresh.Snapshot.Hair;
+        Entity freshOwner = GetRuntimeField<Entity>(freshHair, "<Entity>k__BackingField");
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(freshOwner, GetRuntimeField<Entity>(fresh.Snapshot.Hair, "<Entity>k__BackingField"));
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(freshOwner, "<Scene>k__BackingField"));
+        Assert.DoesNotContain(GetEntityListContents(fresh.Entities), entity =>
+            ReferenceEquals(entity, freshOwner));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void TrailSnapshotCanReuseAFreshPlaybackSpriteOutsideTheOwnerComponentList() {
+        TrailPlaybackRoot saved = CreatePlaybackTrailScene(
+            0.625f,
+            attachOwnerToScene: false,
+            assignOwnerScene: true,
+            includeSpriteComponent: false);
+        TrailPlaybackRoot baseline = CreatePlaybackTrailScene(
+            0f,
+            attachOwnerToScene: false,
+            includeSpriteComponent: false,
+            snapshotUsesSprite: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TrailPlaybackRoot fresh = CreatePlaybackTrailScene(
+            0f,
+            attachOwnerToScene: false,
+            includeSpriteComponent: false,
+            snapshotUsesSprite: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(fresh.Sprite, fresh.Snapshot.Sprite);
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void DetachedSpriteCannotUseTrailAuthenticationWithoutASnapshotReference() {
+        TrailPlaybackRoot saved = CreatePlaybackTrailScene(
+            0.625f,
+            attachOwnerToScene: false,
+            assignOwnerScene: true,
+            includeSpriteComponent: false,
+            snapshotUsesSprite: false);
+        TrailPlaybackRoot baseline = CreatePlaybackTrailScene(
+            0f,
+            attachOwnerToScene: false,
+            includeSpriteComponent: false,
+            snapshotUsesSprite: false);
+        baseline.Sprite = null!;
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TrailPlaybackRoot fresh = CreatePlaybackTrailScene(
+            0f,
+            attachOwnerToScene: false,
+            includeSpriteComponent: false,
+            snapshotUsesSprite: false);
+        fresh.Sprite = null!;
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("authentic", restore.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TrailSnapshotCannotReuseANonListSpriteWithoutAnOwnedSiblingComponent() {
+        TrailPlaybackRoot saved = CreatePlaybackTrailScene(
+            0.625f,
+            attachOwnerToScene: false,
+            assignOwnerScene: true,
+            includeSpriteComponent: false,
+            includeHairComponent: false);
+        TrailPlaybackRoot baseline = CreatePlaybackTrailScene(
+            0f,
+            attachOwnerToScene: false,
+            includeSpriteComponent: false,
+            includeHairComponent: false,
+            snapshotUsesSprite: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TrailPlaybackRoot fresh = CreatePlaybackTrailScene(
+            0f,
+            attachOwnerToScene: false,
+            includeSpriteComponent: false,
+            includeHairComponent: false,
+            snapshotUsesSprite: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("authentic", restore.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void FreshDetachedEntitySceneStillRequiresAnAuthenticatedOwnerPath() {
+        DetachedPlaybackSceneRoot saved = CreateDetachedPlaybackScene(assignOwnerScene: true);
+        DetachedPlaybackSceneRoot baseline = CreateDetachedPlaybackScene(assignOwnerScene: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        DetachedPlaybackSceneRoot fresh = CreateDetachedPlaybackScene(assignOwnerScene: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("authentic", restore.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TrailSnapshotCannotReplaceAPlaybackSceneFromADifferentFreshScene() {
+        TrailPlaybackRoot saved = CreatePlaybackTrailScene(
+            0.625f,
+            attachOwnerToScene: false,
+            assignOwnerScene: true);
+        TrailPlaybackRoot baseline = CreatePlaybackTrailScene(
+            0f,
+            attachOwnerToScene: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TrailPlaybackRoot fresh = CreatePlaybackTrailScene(
+            0f,
+            attachOwnerToScene: false);
+        Entity freshOwner = GetRuntimeField<Entity>(fresh.Snapshot.Hair, "<Entity>k__BackingField");
+        Scene differentScene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
+        LinkSceneEntities(differentScene, CreateDetachedEntityList());
+        SetRuntimeField(freshOwner, "<Scene>k__BackingField", differentScene);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("authentic", restore.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Same(differentScene, GetRuntimeField<Scene>(freshOwner, "<Scene>k__BackingField"));
+    }
+
+    [Fact]
+    public void TrailSnapshotCanRetainABirdPathSpriteWhenFreshTrailPointsAtDifferentSource() {
+        TrailBirdPathRoot saved = CreateBirdPathTrailScene(
+            "CANADIAN_00", 10, 0.625f, attachOwnerToScene: false, useSprite: true);
+        TrailBirdPathRoot baseline = CreateBirdPathTrailScene(
+            "CANADIAN_00", 20, 0f, attachOwnerToScene: false, useSprite: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TrailBirdPathRoot fresh = CreateBirdPathTrailScene(
+            "CANADIAN_00", 20, 0f, attachOwnerToScene: false, useSprite: false);
+        Image freshSprite = fresh.Snapshot.Sprite;
+        Entity freshOwner = GetRuntimeField<Entity>(freshSprite, "<Entity>k__BackingField");
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(0.625f, fresh.Snapshot.Percent);
+        Assert.NotSame(freshSprite, fresh.Snapshot.Sprite);
+        Image restoredSprite = Assert.IsType<Sprite>(fresh.Snapshot.Sprite);
+        Entity restoredOwner = GetRuntimeField<Entity>(restoredSprite, "<Entity>k__BackingField");
+        Assert.IsType<BirdPath>(restoredOwner);
+        Assert.NotSame(freshOwner, restoredOwner);
+        Assert.Null(GetRuntimeField<Scene>(restoredOwner, "<Scene>k__BackingField"));
+        Assert.DoesNotContain(GetEntityListContents(fresh.Entities), entity =>
+            ReferenceEquals(entity, restoredOwner));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void TrailSnapshotCannotAuthenticateABirdPathThroughADifferentManager() {
+        TrailBirdPathRoot saved = CreateBirdPathTrailScene(
+            "CANADIAN_00", 10, 0.625f, attachOwnerToScene: false, useSprite: true);
+        TrailBirdPathRoot baseline = CreateBirdPathTrailScene(
+            "CANADIAN_00", 20, 0f, attachOwnerToScene: false, useSprite: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode snapshotNode = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(TrailManager.Snapshot).AssemblyQualifiedName);
+        AkronReconstructionField managerField = snapshotNode.Fields.Single(field =>
+            field.Name == nameof(TrailManager.Snapshot.Manager));
+        AkronReconstructionNode otherManagerNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(TrailBirdPathRoot.OtherManager));
+        managerField.Value = new AkronReconstructionValue {
+            Kind = "reference",
+            NodeId = otherManagerNode.Id
+        };
+        TrailBirdPathRoot fresh = CreateBirdPathTrailScene(
+            "CANADIAN_00", 20, 0f, attachOwnerToScene: false, useSprite: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("authentic", restore.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TrailSnapshotCannotAuthenticateABirdPathStillAttachedToTheSavedScene() {
+        TrailBirdPathRoot saved = CreateBirdPathTrailScene(
+            "CANADIAN_00", 10, 0.625f, attachOwnerToScene: true, useSprite: true);
+        TrailBirdPathRoot baseline = CreateBirdPathTrailScene(
+            "CANADIAN_00", 20, 0f, attachOwnerToScene: false, useSprite: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TrailBirdPathRoot fresh = CreateBirdPathTrailScene(
+            "CANADIAN_00", 20, 0f, attachOwnerToScene: false, useSprite: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("authentic", restore.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TrailSnapshotCanRestoreAMissingSpriteOntoItsFreshAttachedBirdPath() {
+        TrailBirdPathRoot saved = CreateBirdPathTrailScene(
+            "CANADIAN_00", 10, 0.625f, attachOwnerToScene: true, useSprite: true);
+        TrailBirdPathRoot baseline = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeSpriteComponent: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode savedSpriteNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(TrailManager.Snapshot.Sprite));
+        AkronReconstructionNode savedOwnerNode = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(BirdPath).AssemblyQualifiedName);
+        Assert.False(savedSpriteNode.UseFreshObject);
+        // Heart of the Storm resolves the BirdPath from the fresh EntityList
+        // even though its Sprite did not exist in the room-entry baseline.
+        savedOwnerNode.UseFreshObject = true;
+        TrailBirdPathRoot fresh = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeSpriteComponent: false);
+        Entity freshOwner = Assert.Single(GetEntityListContents(fresh.Entities).OfType<BirdPath>());
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Sprite restoredSprite = Assert.IsType<Sprite>(fresh.Snapshot.Sprite);
+        Assert.Same(freshOwner, GetRuntimeField<Entity>(restoredSprite, "<Entity>k__BackingField"));
+        Assert.Contains(restoredSprite, GetComponentListContents(freshOwner));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void ExactFreshFieldAcceptsTheSavedRuntimeSubtype() {
+        Entity freshOwner = CreateUninitializedEntity<Entity>();
+        Hitbox freshCollider = new Hitbox(8f, 4f, -4f, -4f);
+        SetRuntimeField(freshOwner, "collider", freshCollider);
+        FieldInfo colliderField = GetRuntimeFieldInfo(typeof(Entity), "collider");
+
+        bool matched = AkronReconstructionGraph.TryGetCompatibleFreshFieldValue(
+            colliderField,
+            typeof(Hitbox),
+            freshOwner,
+            out object matchedCollider);
+
+        Assert.True(matched);
+        Assert.Same(freshCollider, matchedCollider);
+        Assert.False(AkronReconstructionGraph.TryGetCompatibleFreshFieldValue(
+            colliderField,
+            typeof(Collider),
+            freshOwner,
+            out _));
+    }
+
+    [Fact]
+    public void TrailSnapshotCannotRestoreAMissingComponentWithoutManagerOwnership() {
+        TrailBirdPathRoot saved = CreateBirdPathTrailScene(
+            "CANADIAN_00", 10, 0.625f, attachOwnerToScene: true, useSprite: true);
+        TrailBirdPathRoot baseline = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeSpriteComponent: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode savedOwnerNode = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(BirdPath).AssemblyQualifiedName);
+        savedOwnerNode.UseFreshObject = true;
+        AkronReconstructionNode snapshotNode = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(TrailManager.Snapshot).AssemblyQualifiedName);
+        snapshotNode.Fields.Single(field => field.Name == nameof(TrailManager.Snapshot.Sprite)).Value =
+            new AkronReconstructionValue { Kind = "null" };
+        TrailBirdPathRoot fresh = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeSpriteComponent: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+    }
+
+    [Fact]
+    public void TrailSnapshotCanRestoreAnAttachedMapOwnerConsumedByFreshSessionState() {
+        TrailBirdPathRoot saved = CreateBirdPathTrailScene(
+            "CANADIAN_00", 10, 0.625f, attachOwnerToScene: true, useSprite: true);
+        TrailBirdPathRoot baseline = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeSpriteComponent: false,
+            includeOwnerInGraph: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode sourceDataNode = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(EntityData).AssemblyQualifiedName);
+        AkronReconstructionNode savedOwnerNode = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(BirdPath).AssemblyQualifiedName);
+        Assert.True(sourceDataNode.UseFreshObject);
+        Assert.False(savedOwnerNode.UseFreshObject);
+        TrailBirdPathRoot fresh = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeSpriteComponent: false,
+            includeOwnerInGraph: false);
+        Assert.Empty(GetEntityListContents(fresh.Entities).OfType<BirdPath>());
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        BirdPath restoredOwner = Assert.Single(GetEntityListContents(fresh.Entities).OfType<BirdPath>());
+        Sprite restoredSprite = Assert.IsType<Sprite>(fresh.Snapshot.Sprite);
+        Assert.Same(restoredOwner, GetRuntimeField<Entity>(restoredSprite, "<Entity>k__BackingField"));
+        Assert.Same(fresh.SourceData, GetRuntimeField<EntityData>(restoredOwner, "_sourceData"));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void TrailSnapshotCanRestoreTheColliderOwnedByAMissingMapOwner() {
+        TrailBirdPathRoot saved = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0.625f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeCollider: true);
+        TrailBirdPathRoot baseline = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeSpriteComponent: false,
+            includeOwnerInGraph: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TrailBirdPathRoot fresh = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeSpriteComponent: false,
+            includeOwnerInGraph: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        BirdPath restoredOwner = Assert.Single(GetEntityListContents(fresh.Entities).OfType<BirdPath>());
+        Hitbox restoredCollider = Assert.IsType<Hitbox>(GetRuntimeField<Collider>(restoredOwner, "collider"));
+        Assert.Equal(8f, GetRuntimeField<float>(restoredCollider, "width"));
+        Assert.Equal(4f, GetRuntimeField<float>(restoredCollider, "height"));
+        Assert.Same(restoredOwner, GetRuntimeField<Entity>(restoredCollider, "<Entity>k__BackingField"));
+    }
+
+    [Fact]
+    public void TrailSnapshotCannotReconstructAMapOwnerWhenMatchingFreshOwnersExist() {
+        TrailBirdPathRoot saved = CreateBirdPathTrailScene(
+            "CANADIAN_00", 10, 0.625f, attachOwnerToScene: true, useSprite: true);
+        TrailBirdPathRoot baseline = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeSpriteComponent: false,
+            includeOwnerInGraph: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TrailBirdPathRoot fresh = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeSpriteComponent: false);
+        TrailBirdPathRoot duplicateRoot = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeSpriteComponent: false);
+        BirdPath duplicateOwner = Assert.Single(
+            GetEntityListContents(duplicateRoot.Entities).OfType<BirdPath>());
+        SetRuntimeField(duplicateOwner, "<Scene>k__BackingField", fresh.Scene);
+        AddDetachedEntity(fresh.Entities, duplicateOwner);
+        Assert.Equal(2, GetEntityListContents(fresh.Entities).OfType<BirdPath>().Count());
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("authentic", restore.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, GetEntityListContents(fresh.Entities).OfType<BirdPath>().Count());
+    }
+
+    [Fact]
+    public void TrailSnapshotCanSelectTheFreshOwnerFieldWhenSpriteTypeIsAmbiguous() {
+        TrailBirdPathRoot saved = CreateBirdPathTrailScene(
+            "CANADIAN_00", 10, 0.625f, attachOwnerToScene: true, useSprite: true);
+        TrailBirdPathRoot baseline = CreateBirdPathTrailScene(
+            "CANADIAN_00",
+            10,
+            0f,
+            attachOwnerToScene: true,
+            useSprite: true,
+            includeSpriteComponent: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode savedSpriteNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(TrailManager.Snapshot.Sprite));
+        AkronReconstructionNode savedOwnerNode = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(BirdPath).AssemblyQualifiedName);
+        savedSpriteNode.UseFreshObject = true;
+        savedOwnerNode.UseFreshObject = true;
+
+        TrailBirdPathRoot fresh = CreateBirdPathTrailScene(
+            "CANADIAN_00", 10, 0f, attachOwnerToScene: true, useSprite: true);
+        BirdPath freshOwner = Assert.Single(GetEntityListContents(fresh.Entities).OfType<BirdPath>());
+        Sprite expectedSprite = GetRuntimeField<Sprite>(freshOwner, "sprite");
+        Sprite otherSprite = (Sprite) RuntimeHelpers.GetUninitializedObject(typeof(Sprite));
+        SetRuntimeField(otherSprite, "<Entity>k__BackingField", freshOwner);
+        ComponentList freshComponents = GetRuntimeField<ComponentList>(
+            freshOwner,
+            "<Components>k__BackingField");
+        GetComponentListContents(freshOwner).Add(otherSprite);
+        GetRuntimeField<HashSet<Component>>(freshComponents, "current").Add(otherSprite);
+        fresh.Snapshot.Sprite = null;
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(expectedSprite, fresh.Snapshot.Sprite);
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
 
     [Theory]
@@ -1191,6 +1974,114 @@ public sealed class StartPosReconstructionTests {
         IEnumerator restoredIterator = Assert.Single(fresh.States);
         Assert.True(restoredIterator.MoveNext());
         Assert.Equal(11, restoredIterator.Current);
+    }
+
+    [Fact]
+    public void CompilerIteratorCanRepeatInsideItsOwnerEntityCoroutineStack() {
+        SavedSceneRoot saved = CreateDuplicateIteratorScene(includeIterator: true);
+        SavedSceneRoot baseline = CreateDuplicateIteratorScene(includeIterator: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        SavedSceneRoot fresh = CreateDuplicateIteratorScene(includeIterator: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        IteratorOwnerEntity restoredOwner = Assert.IsType<IteratorOwnerEntity>(
+            Assert.Single(GetEntityListContents(fresh.Entities)));
+        Coroutine restoredCoroutine = Assert.IsType<Coroutine>(Assert.Single(
+            GetComponentListContents(restoredOwner)));
+        IEnumerator[] restoredStack = GetRuntimeField<Stack<IEnumerator>>(
+                restoredCoroutine,
+                "enumerators")
+            .ToArray();
+        Assert.Equal(2, restoredStack.Length);
+        Assert.Same(restoredStack[0], restoredStack[1]);
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void FreshCompilerIteratorCanRepeatInsideItsOwnerEntityCoroutineStack() {
+        FreshIteratorAliasSceneRoot saved = CreateFreshIteratorAliasScene(includeComponentAlias: true);
+        FreshIteratorAliasSceneRoot baseline = CreateFreshIteratorAliasScene(includeComponentAlias: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode iteratorNode = capture.Document.Nodes.Single(node =>
+            node.ParentNodeId == capture.Document.RootNodeId &&
+            node.ParentFieldName == nameof(FreshIteratorAliasSceneRoot.Canonical));
+        Assert.True(iteratorNode.UseFreshObject);
+        FreshIteratorAliasSceneRoot fresh = CreateFreshIteratorAliasScene(includeComponentAlias: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        IteratorOwnerEntity restoredOwner = Assert.IsType<IteratorOwnerEntity>(
+            Assert.Single(GetEntityListContents(fresh.Entities)));
+        Coroutine restoredCoroutine = Assert.IsType<Coroutine>(Assert.Single(
+            GetComponentListContents(restoredOwner)));
+        Assert.Same(
+            fresh.Canonical,
+            Assert.Single(GetRuntimeField<Stack<IEnumerator>>(restoredCoroutine, "enumerators")));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void FreshCompilerIteratorCannotEnterAnotherEntityCoroutineStack() {
+        FreshIteratorAliasSceneRoot saved = CreateFreshIteratorAliasScene(
+            includeComponentAlias: true,
+            useDifferentComponentOwner: true);
+        FreshIteratorAliasSceneRoot baseline = CreateFreshIteratorAliasScene(
+            includeComponentAlias: false,
+            useDifferentComponentOwner: true);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        FreshIteratorAliasSceneRoot fresh = CreateFreshIteratorAliasScene(
+            includeComponentAlias: false,
+            useDifferentComponentOwner: true);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("reference edge is not authentic", restore.Error);
+    }
+
+    [Fact]
+    public void CompilerIteratorCannotAliasIntoAnUnrelatedRootArray() {
+        SavedSceneRoot savedScene = CreateDuplicateIteratorScene(includeIterator: true);
+        IteratorOwnerEntity savedOwner = Assert.IsType<IteratorOwnerEntity>(
+            Assert.Single(GetEntityListContents(savedScene.Entities)));
+        Coroutine savedCoroutine = Assert.IsType<Coroutine>(Assert.Single(
+            GetComponentListContents(savedOwner)));
+        IEnumerator savedIterator = GetRuntimeField<Stack<IEnumerator>>(
+                savedCoroutine,
+                "enumerators")
+            .Peek();
+        IteratorAliasSceneRoot saved = new IteratorAliasSceneRoot {
+            Scene = savedScene.Scene,
+            Entities = savedScene.Entities,
+            Unrelated = new[] { savedIterator }
+        };
+        SavedSceneRoot baselineScene = CreateDuplicateIteratorScene(includeIterator: false);
+        IteratorAliasSceneRoot baseline = new IteratorAliasSceneRoot {
+            Scene = baselineScene.Scene,
+            Entities = baselineScene.Entities
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        SavedSceneRoot freshScene = CreateDuplicateIteratorScene(includeIterator: false);
+        IteratorAliasSceneRoot fresh = new IteratorAliasSceneRoot {
+            Scene = freshScene.Scene,
+            Entities = freshScene.Entities
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("reference edge is not authentic", restore.Error);
     }
 
     [Fact]
@@ -1352,6 +2243,16 @@ public sealed class StartPosReconstructionTests {
             graph.Deserialize("{\"Nodes\":[{\"DelegateCalls\":[{},{}]}]}"));
 
         Assert.Contains("complex record count exceeds", exception.Message);
+    }
+
+    [Fact]
+    public void DefaultComplexRecordBudgetCoversHeartOfStormSnapshots() {
+        // Spring Collab 2020's Heart of the Storm produced 337,736 complex
+        // records in a real two-slot remote capture. This is valid map state,
+        // so the hostile-input guard must leave room for it.
+        Assert.True(
+            AkronReconstructionGraph.DefaultMaxJsonExpensiveRecordCount >= 337_736,
+            "The default complex-record budget rejects Heart of the Storm.");
     }
 
     [Fact]
@@ -2095,6 +2996,144 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void EquivalentStableKeysReuseAvailableFreshResources() {
+        DuplicateResourceRoot saved = new DuplicateResourceRoot {
+            TargetA = new TestResource("saved-a", "shared-texture"),
+            TargetB = new TestResource("saved-b", "shared-texture"),
+            TargetC = new TestResource("saved-c", "shared-texture")
+        };
+        TestResource baselineA = new TestResource("baseline-a", "shared-texture");
+        DuplicateResourceRoot baseline = new DuplicateResourceRoot {
+            TargetA = baselineA,
+            TargetB = new TestResource("baseline-b", "shared-texture"),
+            TargetC = baselineA
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            resource => ((TestResource) resource).StableKey,
+            areEquivalentLiveResources: type => type == typeof(TestResource));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TestResource freshA = new TestResource("fresh-a", "shared-texture");
+        TestResource freshB = new TestResource("fresh-b", "shared-texture");
+        DuplicateResourceRoot fresh = new DuplicateResourceRoot {
+            TargetA = new TestResource("wrong-a", "other-a"),
+            TargetB = new TestResource("wrong-b", "other-b"),
+            TargetC = new TestResource("wrong-c", "other-c"),
+            CandidateA = freshA,
+            CandidateB = freshB
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(new[] { "fresh-a", "fresh-b" }, new[] {
+            fresh.TargetA.ProcessIdentity,
+            fresh.TargetB.ProcessIdentity,
+            fresh.TargetC.ProcessIdentity
+        }.Distinct().OrderBy(value => value));
+    }
+
+    [Fact]
+    public void DuplicateStableKeysAreRejectedWithoutAnEquivalenceContract() {
+        DuplicateResourceRoot saved = new DuplicateResourceRoot {
+            TargetA = new TestResource("saved-a", "shared-texture"),
+            TargetB = new TestResource("saved-b", "shared-texture")
+        };
+        DuplicateResourceRoot baseline = new DuplicateResourceRoot {
+            TargetA = new TestResource("baseline-a", "shared-texture"),
+            TargetB = new TestResource("baseline-b", "shared-texture")
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            resource => ((TestResource) resource).StableKey);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        DuplicateResourceRoot fresh = new DuplicateResourceRoot {
+            TargetA = new TestResource("wrong-a", "other-a"),
+            TargetB = new TestResource("wrong-b", "other-b"),
+            CandidateA = new TestResource("fresh-a", "shared-texture"),
+            CandidateB = new TestResource("fresh-b", "shared-texture")
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("fresh resource", restore.Error);
+    }
+
+    [Fact]
+    public void DetachedStableResourceWinsOverFreshStructuralCandidatesWithOtherKeys() {
+        TestResource savedResource = new TestResource("saved", "target-texture");
+        TestResourceListRoot saved = new TestResourceListRoot {
+            Holders = new List<TestResourceHolder> {
+                new TestResourceHolder { Resource = savedResource }
+            }
+        };
+        TestResourceListRoot baseline = new TestResourceListRoot {
+            Holders = new List<TestResourceHolder> {
+                new TestResourceHolder { Resource = new TestResource("baseline", "target-texture") }
+            }
+        };
+        TestResource detached = new TestResource("detached", "target-texture");
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            resource => ((TestResource) resource).StableKey,
+            resolveDetachedLiveResource: (_, key) => key.EndsWith("|target-texture", StringComparison.Ordinal)
+                ? detached
+                : null,
+            areEquivalentLiveResources: type => type == typeof(TestResource));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        TestResourceListRoot fresh = new TestResourceListRoot {
+            Holders = new List<TestResourceHolder> {
+                new TestResourceHolder { Resource = new TestResource("fresh-a", "other-a") },
+                new TestResourceHolder { Resource = new TestResource("fresh-b", "other-b") }
+            }
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(detached, fresh.Holders[0].Resource);
+    }
+
+    [Fact]
+    public void DetachedStableResourceLookupIsCachedWithinARestore() {
+        DuplicateResourceRoot saved = new DuplicateResourceRoot {
+            TargetA = new TestResource("saved-a", "target-texture"),
+            TargetB = new TestResource("saved-b", "target-texture")
+        };
+        DuplicateResourceRoot baseline = new DuplicateResourceRoot {
+            TargetA = new TestResource("baseline-a", "target-texture"),
+            TargetB = new TestResource("baseline-b", "target-texture")
+        };
+        TestResource detached = new TestResource("detached", "target-texture");
+        int lookupCount = 0;
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            resource => ((TestResource) resource).StableKey,
+            resolveDetachedLiveResource: (_, _) => {
+                lookupCount++;
+                return detached;
+            },
+            areEquivalentLiveResources: type => type == typeof(TestResource));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        DuplicateResourceRoot fresh = new DuplicateResourceRoot {
+            TargetA = new TestResource("fresh-a", "other-a"),
+            TargetB = new TestResource("fresh-b", "other-b")
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(detached, fresh.TargetA);
+        Assert.Same(detached, fresh.TargetB);
+        Assert.Equal(1, lookupCount);
+    }
+
+    [Fact]
     public void StructuralOwnerPathFindsAFreshResourceWhenItsRuntimeNameAndListIndexChange() {
         TestResource savedResource = new TestResource("saved-process", "snapshot-0");
         TestResourceListRoot saved = new TestResourceListRoot {
@@ -2693,6 +3732,311 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void RepeatedEntitiesWithoutSourceIdsMatchByEntityListTypeOrdinal() {
+        ClutterLinkedEntity savedFirst = CreateClutterLinkedEntity(11);
+        ClutterLinkedEntity savedSecond = CreateClutterLinkedEntity(22);
+        ClutterLinkedEntity savedThird = CreateClutterLinkedEntity(33);
+        savedFirst.HasBelow[savedSecond] = true;
+        savedSecond.HasBelow[savedThird] = true;
+        savedSecond.Above.Add(savedFirst);
+        savedThird.Above.Add(savedSecond);
+        SourceEntityListOwnerRoot saved = CreateSourceEntityListOwnerRoot(
+            savedFirst,
+            savedSecond,
+            savedThird);
+        SourceEntityListOwnerRoot baseline = CreateSourceEntityListOwnerRoot(
+            CreateClutterLinkedEntity(0),
+            CreateClutterLinkedEntity(0),
+            CreateClutterLinkedEntity(0));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        ClutterLinkedEntity freshFirst = CreateClutterLinkedEntity(0);
+        ClutterLinkedEntity freshSecond = CreateClutterLinkedEntity(0);
+        ClutterLinkedEntity freshThird = CreateClutterLinkedEntity(0);
+        SourceEntityListOwnerRoot fresh = CreateSourceEntityListOwnerRoot(
+            freshFirst,
+            freshSecond,
+            freshThird);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(new[] { 11, 22, 33 }, new[] { freshFirst.Value, freshSecond.Value, freshThird.Value });
+        Assert.True(freshFirst.HasBelow.ContainsKey(freshSecond));
+        Assert.True(freshSecond.HasBelow.ContainsKey(freshThird));
+        Assert.Same(freshSecond, Assert.Single(freshFirst.HasBelow).Key);
+        Assert.Same(freshThird, Assert.Single(freshSecond.HasBelow).Key);
+        Assert.Same(freshFirst, Assert.Single(freshSecond.Above));
+        Assert.Same(freshSecond, Assert.Single(freshThird.Above));
+        AkronReconstructionVerification verification = graph.Verify(
+            capture.Document,
+            restore,
+            Array.Empty<string>());
+        Assert.True(verification.Success, verification.Error);
+    }
+
+    [Fact]
+    public void RepeatedGeneratedEntitiesRestoreWhenFreshTypePopulationDiffers() {
+        (SavedSceneRoot saved, ClutterLinkedEntity[] savedEntities) =
+            CreateClutterLinkedScene((11, 0, 8), (22, 8, 8), (33, 16, 16));
+        ClutterLinkedEntity savedFirst = savedEntities[0];
+        ClutterLinkedEntity savedSecond = savedEntities[1];
+        ClutterLinkedEntity savedThird = savedEntities[2];
+        Assert.Equal(new[] { 0f, 8f, 16f }, savedEntities.Select(entity => entity.Position.X));
+        savedFirst.HasBelow[savedSecond] = true;
+        savedSecond.Above.Add(savedThird);
+        (SavedSceneRoot baseline, _) =
+            CreateClutterLinkedScene((0, 0, 8), (0, 8, 8), (0, 16, 16));
+        AkronGeneratedTilePartitionContract contract = new AkronGeneratedTilePartitionContract(
+            typeof(ClutterLinkedEntity),
+            typeof(ClutterSourceAreaEntity),
+            nameof(ClutterLinkedEntity.BlockColor),
+            _ => new[] { (8, 8), (16, 8) });
+        int contractRequestCount = 0;
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            _ => string.Empty,
+            generatedTilePartitionContractProvider: () => {
+                contractRequestCount++;
+                return contract;
+            });
+        Assert.Equal(0, contractRequestCount);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        Assert.Equal(0, contractRequestCount);
+        Dictionary<int, AkronReconstructionNode> nodes = capture.Document.Nodes.ToDictionary(node => node.Id);
+        AkronReconstructionNode generatedEntityWithOwnedCanonicalPath = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(ClutterLinkedEntity).AssemblyQualifiedName &&
+            node.ParentKind == "array" &&
+            nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode? storageNode) &&
+            storageNode != null &&
+            nodes.TryGetValue(storageNode.ParentNodeId, out AkronReconstructionNode? listNode) &&
+            listNode != null &&
+            listNode.ParentFieldName == nameof(ClutterLinkedEntity.Above));
+        AkronReconstructionNode primaryEntityStorage = capture.Document.Nodes.Single(node =>
+            node.Kind == "array" &&
+            node.ParentFieldName == "_items" &&
+            nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode? listNode) &&
+            listNode != null &&
+            listNode.ParentFieldName == "entities");
+        Assert.Contains(primaryEntityStorage.Items, item =>
+            item.Kind == "reference" && item.NodeId == generatedEntityWithOwnedCanonicalPath.Id);
+        (SavedSceneRoot fresh, ClutterLinkedEntity[] freshEntities) =
+            CreateClutterLinkedScene((0, 0, 16), (0, 16, 16));
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(1, contractRequestCount);
+        ClutterLinkedEntity[] restored = GetEntityListContents(fresh.Entities)
+            .OfType<ClutterLinkedEntity>()
+            .ToArray();
+        Assert.Equal(new[] { 11, 22, 33 }, restored.Select(entity => entity.Value));
+        Assert.Equal(new[] { 8f, 8f, 16f }, restored.Select(entity =>
+            GetRuntimeField<float>(
+                Assert.IsType<Hitbox>(GetRuntimeField<Collider>(entity, "collider")),
+                "width")));
+        Assert.Contains(restored, entity => freshEntities.All(freshEntity =>
+            !ReferenceEquals(entity, freshEntity)));
+        Assert.True(restored[0].HasBelow.ContainsKey(restored[1]));
+        Assert.Same(restored[1], Assert.Single(restored[0].HasBelow).Key);
+        Assert.Empty(restored[1].HasBelow);
+        Assert.Same(restored[2], Assert.Single(restored[1].Above));
+        AkronReconstructionVerification reapply = graph.Reapply(capture.Document, restore);
+        Assert.True(reapply.Success, reapply.Error);
+        Assert.Equal(1, contractRequestCount);
+        AkronReconstructionVerification verification = graph.Verify(
+            capture.Document,
+            restore,
+            Array.Empty<string>());
+        Assert.True(verification.Success, verification.Error);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RestoreTreatsAnIncompatibleOptionalGeneratedTileContractAsUnavailable(bool ambiguousField) {
+        Exception contractError = ambiguousField
+            ? new AmbiguousMatchException("duplicate optional mod field")
+            : new ArgumentException("changed optional mod shape");
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            generatedTilePartitionContractProvider: () => throw contractError);
+        PassiveDataRoot saved = new PassiveDataRoot { Value = 37 };
+        AkronReconstructionCapture capture = graph.Capture(saved, new PassiveDataRoot());
+        Assert.True(capture.Success, capture.Error);
+        PassiveDataRoot fresh = new PassiveDataRoot();
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(37, fresh.Value);
+    }
+
+    [Fact]
+    public void UncontractedGeneratedEntityPopulationDriftFailsClosed() {
+        (SavedSceneRoot saved, _) =
+            CreateClutterLinkedScene((11, 0, 8), (22, 8, 8), (33, 16, 16));
+        (SavedSceneRoot baseline, _) =
+            CreateClutterLinkedScene((0, 0, 8), (0, 8, 8), (0, 16, 16));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, _) = CreateClutterLinkedScene((0, 0, 16), (0, 16, 16));
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("authentic", restore.Error);
+    }
+
+    [Fact]
+    public void GeneratedEntityOutsideAuthenticatedSourceAreaFailsClosed() {
+        (SavedSceneRoot saved, _) =
+            CreateClutterLinkedScene((11, 0, 8), (22, 8, 8), (33, 40, 16));
+        (SavedSceneRoot baseline, _) =
+            CreateClutterLinkedScene((0, 0, 8), (0, 8, 8), (0, 40, 16));
+        AkronGeneratedTilePartitionContract contract = new AkronGeneratedTilePartitionContract(
+            typeof(ClutterLinkedEntity),
+            typeof(ClutterSourceAreaEntity),
+            nameof(ClutterLinkedEntity.BlockColor),
+            _ => new[] { (8, 8), (16, 8) });
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            _ => string.Empty,
+            generatedTilePartitionContractProvider: () => contract);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, _) = CreateClutterLinkedScene((0, 0, 16), (0, 16, 16));
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("authentic", restore.Error);
+    }
+
+    [Fact]
+    public void GeneratedEntityBeyondTheSavedListSizeFailsClosed() {
+        (SavedSceneRoot saved, _) =
+            CreateClutterLinkedScene((11, 0, 8), (22, 8, 8), (33, 16, 16));
+        (SavedSceneRoot baseline, _) =
+            CreateClutterLinkedScene((0, 0, 8), (0, 8, 8), (0, 16, 16));
+        AkronGeneratedTilePartitionContract contract = new AkronGeneratedTilePartitionContract(
+            typeof(ClutterLinkedEntity),
+            typeof(ClutterSourceAreaEntity),
+            nameof(ClutterLinkedEntity.BlockColor),
+            _ => new[] { (8, 8), (16, 8) });
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            _ => string.Empty,
+            generatedTilePartitionContractProvider: () => contract);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode savedEntityStorage = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(List<Entity>).AssemblyQualifiedName &&
+            node.ParentFieldName == "entities");
+        savedEntityStorage.Fields.Single(field => field.Name == "_size").Value.Scalar = "3";
+        (SavedSceneRoot fresh, _) = CreateClutterLinkedScene((0, 0, 16), (0, 16, 16));
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("authentic", restore.Error);
+    }
+
+    [Fact]
+    public void GeneratedEntityWithAConflictingSceneFailsClosedAfterSiblingAuthentication() {
+        (SavedSceneRoot saved, ClutterLinkedEntity[] savedEntities) =
+            CreateClutterLinkedScene((11, 0, 8), (22, 8, 8), (33, 16, 16));
+        savedEntities[1].Above.Add(savedEntities[2]);
+        saved.OtherScene = CreateDetachedScene();
+        SetRuntimeField(savedEntities[2], "<Scene>k__BackingField", saved.OtherScene);
+        SetRuntimeField(savedEntities[2], "<SourceId>k__BackingField", CreateEntityId("other", 77));
+        (SavedSceneRoot baseline, ClutterLinkedEntity[] baselineEntities) =
+            CreateClutterLinkedScene((0, 0, 8), (0, 8, 8), (0, 16, 16));
+        baselineEntities[1].Above.Add(baselineEntities[2]);
+        baseline.OtherScene = CreateDetachedScene();
+        SetRuntimeField(baselineEntities[2], "<Scene>k__BackingField", baseline.OtherScene);
+        SetRuntimeField(baselineEntities[2], "<SourceId>k__BackingField", CreateEntityId("other", 77));
+        AkronGeneratedTilePartitionContract contract = new AkronGeneratedTilePartitionContract(
+            typeof(ClutterLinkedEntity),
+            typeof(ClutterSourceAreaEntity),
+            nameof(ClutterLinkedEntity.BlockColor),
+            _ => new[] { (8, 8), (16, 8) });
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            _ => string.Empty,
+            generatedTilePartitionContractProvider: () => contract);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        Dictionary<int, AkronReconstructionNode> nodes = capture.Document.Nodes.ToDictionary(node => node.Id);
+        AkronReconstructionNode conflictingEntityNode = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(ClutterLinkedEntity).AssemblyQualifiedName &&
+            node.ParentKind == "array" &&
+            nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode? storageNode) &&
+            storageNode != null &&
+            nodes.TryGetValue(storageNode.ParentNodeId, out AkronReconstructionNode? listNode) &&
+            listNode != null &&
+            listNode.ParentFieldName == nameof(ClutterLinkedEntity.Above));
+        int savedSceneNodeId = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(SavedSceneRoot.Scene)).Id;
+        int conflictingSceneNodeId = conflictingEntityNode.Fields.Single(field =>
+            field.Name == "<Scene>k__BackingField").Value.NodeId;
+        Assert.NotEqual(savedSceneNodeId, conflictingSceneNodeId);
+        AkronReconstructionNode authenticatedSiblingNode = capture.Document.Nodes
+            .Where(node =>
+                node.TypeName == typeof(ClutterLinkedEntity).AssemblyQualifiedName &&
+                node.Id != conflictingEntityNode.Id &&
+                node.Fields.Any(field =>
+                    field.Name == "<Scene>k__BackingField" &&
+                    field.Value.NodeId == savedSceneNodeId))
+            .OrderBy(node => node.Id)
+            .First();
+        Assert.True(authenticatedSiblingNode.Id < conflictingEntityNode.Id);
+        authenticatedSiblingNode.UseFreshObject = false;
+        conflictingEntityNode.UseFreshObject = false;
+        AkronReconstructionNode conflictingCanonicalStorage = nodes[conflictingEntityNode.ParentNodeId];
+        AkronReconstructionNode primaryEntityStorage = capture.Document.Nodes.Single(node =>
+            node.Kind == "array" &&
+            node.ParentFieldName == "_items" &&
+            nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode? listNode) &&
+            listNode != null &&
+            listNode.ParentFieldName == "entities" &&
+            node.Items.Any(item =>
+                item.Kind == "reference" && item.NodeId == conflictingEntityNode.Id));
+        capture.Document.Nodes.Remove(conflictingCanonicalStorage);
+        capture.Document.Nodes.Insert(
+            capture.Document.Nodes.IndexOf(primaryEntityStorage),
+            conflictingCanonicalStorage);
+        (SavedSceneRoot fresh, ClutterLinkedEntity[] freshEntities) =
+            CreateClutterLinkedScene((0, 0, 16), (0, 16, 16));
+        freshEntities[1].Above.Add(CreateClutterLinkedEntity(0, 16, 16));
+        fresh.OtherScene = CreateDetachedScene();
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("entity canonical array is not owned by its scene EntityList", restore.Error);
+    }
+
+    [Fact]
+    public void GeneratedEntityTypeAbsentFromFreshEntityListFailsClosed() {
+        (SavedSceneRoot saved, _) = CreateClutterLinkedScene((11, 0, 16), (22, 16, 16));
+        (SavedSceneRoot baseline, _) = CreateClutterLinkedScene((0, 0, 16), (0, 16, 16));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, _) = CreateClutterLinkedScene();
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("reconstructed type is not authentic", restore.Error);
+        Assert.DoesNotContain(GetEntityListContents(fresh.Entities), entity => entity is ClutterLinkedEntity);
+    }
+
+    [Fact]
     public void FreshEntityCannotRestoreAPeerLinkAcrossDifferentEntityLists() {
         PeerTargetEntity savedTarget = CreatePeerTargetEntity("b00", 20);
         PeerLinkEntity savedOwner = CreatePeerLinkEntity("a00", 10, savedTarget);
@@ -2977,6 +4321,123 @@ public sealed class StartPosReconstructionTests {
         return entity;
     }
 
+    private static ClutterLinkedEntity CreateClutterLinkedEntity(
+        int value,
+        int x = 0,
+        int width = 8
+    ) {
+        ClutterLinkedEntity entity = CreateUninitializedEntity<ClutterLinkedEntity>();
+        InitializeEmptyComponentList(entity);
+        entity.HasBelow = new Dictionary<ClutterLinkedEntity, bool>();
+        entity.Above = new List<ClutterLinkedEntity>();
+        entity.BlockColor = "metal";
+        entity.Value = value;
+        entity.Position = new Vector2 { X = x, Y = 0f };
+        SetRuntimeField(entity, "collider", CreateDetachedHitbox(width, 8f));
+        return entity;
+    }
+
+    private static (SavedSceneRoot Root, ClutterLinkedEntity[] Entities) CreateClutterLinkedScene(
+        params (int Value, int X, int Width)[] values
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        ClutterSourceAreaEntity sourceArea = CreateUninitializedEntity<ClutterSourceAreaEntity>();
+        InitializeEmptyComponentList(sourceArea);
+        sourceArea.BlockColor = "metal";
+        sourceArea.Position = new Vector2 { X = 0f, Y = 0f };
+        SetRuntimeField(sourceArea, "collider", CreateDetachedHitbox(32f, 8f));
+        SetRuntimeField(sourceArea, "<Scene>k__BackingField", scene);
+        SetRuntimeField(sourceArea, "<SourceId>k__BackingField", CreateEntityId("a00", 900));
+        AddDetachedEntity(entityList, sourceArea);
+        ClutterLinkedEntity[] entities = values
+            .Select(value => CreateClutterLinkedEntity(value.Value, value.X, value.Width))
+            .ToArray();
+        foreach (ClutterLinkedEntity entity in entities) {
+            SetRuntimeField(entity, "<Scene>k__BackingField", scene);
+            AddDetachedEntity(entityList, entity);
+        }
+        return (new SavedSceneRoot { Scene = scene, Entities = entityList }, entities);
+    }
+
+    private static Scene CreateDetachedScene() {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        LinkSceneEntities(scene, CreateDetachedEntityList());
+        return scene;
+    }
+
+    private static SavedSceneRoot CreateDuplicateIteratorScene(bool includeIterator) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        IteratorOwnerEntity owner = CreateUninitializedEntity<IteratorOwnerEntity>();
+        ComponentList components = CreateDetachedComponentList(owner);
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+        owner.Value = 11;
+
+        Coroutine coroutine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+        SetRuntimeField(coroutine, "<Entity>k__BackingField", owner);
+        Stack<IEnumerator> iterators = new Stack<IEnumerator>();
+        if (includeIterator) {
+            IEnumerator iterator = owner.Routine().GetEnumerator();
+            Assert.True(iterator.MoveNext());
+            iterators = new Stack<IEnumerator>(new[] { iterator, iterator });
+        }
+        SetRuntimeField(coroutine, "enumerators", iterators);
+        SetRuntimeField(components, "components", new List<Component> { coroutine });
+        SetRuntimeField(components, "current", new HashSet<Component> { coroutine });
+        AddDetachedEntity(entityList, owner);
+        return new SavedSceneRoot { Scene = scene, Entities = entityList };
+    }
+
+    private static FreshIteratorAliasSceneRoot CreateFreshIteratorAliasScene(
+        bool includeComponentAlias,
+        bool useDifferentComponentOwner = false
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        IteratorOwnerEntity owner = CreateUninitializedEntity<IteratorOwnerEntity>();
+        ComponentList ownerComponents = CreateDetachedComponentList(owner);
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+        owner.Value = 11;
+
+        IteratorOwnerEntity componentOwner = owner;
+        ComponentList components = ownerComponents;
+        if (useDifferentComponentOwner) {
+            componentOwner = CreateUninitializedEntity<IteratorOwnerEntity>();
+            components = CreateDetachedComponentList(componentOwner);
+            SetRuntimeField(componentOwner, "<Scene>k__BackingField", scene);
+            SetRuntimeField(
+                componentOwner,
+                "<SourceId>k__BackingField",
+                CreateEntityId("a00", 11));
+            componentOwner.Value = 22;
+        }
+
+        IEnumerator iterator = owner.Routine().GetEnumerator();
+        Assert.True(iterator.MoveNext());
+        Coroutine coroutine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+        SetRuntimeField(coroutine, "<Entity>k__BackingField", componentOwner);
+        SetRuntimeField(
+            coroutine,
+            "enumerators",
+            includeComponentAlias
+                ? new Stack<IEnumerator>(new[] { iterator })
+                : new Stack<IEnumerator>());
+        SetRuntimeField(components, "components", new List<Component> { coroutine });
+        SetRuntimeField(components, "current", new HashSet<Component> { coroutine });
+        AddDetachedEntity(entityList, owner);
+        if (useDifferentComponentOwner) {
+            AddDetachedEntity(entityList, componentOwner);
+        }
+        return new FreshIteratorAliasSceneRoot {
+            Canonical = iterator,
+            Scene = scene,
+            Entities = entityList
+        };
+    }
+
     private static NestedStateOwnerEntity CreateNestedStateOwnerEntity(string room, int id, int? value) {
         NestedStateOwnerEntity entity = CreateUninitializedEntity<NestedStateOwnerEntity>();
         InitializeEmptyComponentList(entity);
@@ -3008,16 +4469,18 @@ public sealed class StartPosReconstructionTests {
 
     [Fact]
     public void MissingFreshOrdinaryCollectionStorageIsReconstructed() {
-        TestRoot saved = new TestRoot {
-            Values = new Dictionary<string, int> { ["saved"] = 37 }
+        OrdinaryHashCollectionRoot saved = new OrdinaryHashCollectionRoot {
+            Values = new Dictionary<string, int> { ["saved"] = 37 },
+            Members = new HashSet<string> { "saved" }
         };
-        TestRoot baseline = new TestRoot {
-            Values = new Dictionary<string, int> { ["saved"] = 0 }
+        OrdinaryHashCollectionRoot baseline = new OrdinaryHashCollectionRoot {
+            Values = new Dictionary<string, int> { ["saved"] = 0 },
+            Members = new HashSet<string> { "saved" }
         };
         AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
         AkronReconstructionCapture capture = graph.Capture(saved, baseline);
         Assert.True(capture.Success, capture.Error);
-        TestRoot fresh = new TestRoot { Values = new Dictionary<string, int>() };
+        OrdinaryHashCollectionRoot fresh = new OrdinaryHashCollectionRoot();
 
         AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
 
@@ -3025,6 +4488,7 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionVerification verification = graph.Verify(capture.Document, restore, Array.Empty<string>());
         Assert.True(verification.Success, verification.Error);
         Assert.Equal(37, fresh.Values["saved"]);
+        Assert.Contains("saved", fresh.Members);
     }
 
     [Fact]
@@ -3275,6 +4739,16 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void DefaultExpandedSizeBudgetCoversHeartOfStormSnapshots() {
+        // The larger remote capture expanded to 228,139,144 bytes. Keep this
+        // regression threshold tied to the real player environment instead of
+        // a small synthetic graph that cannot expose decompression limits.
+        Assert.True(
+            AkronStartPosReconstruction.MaxDecompressedSnapshotBytes >= 228_139_144,
+            "The default expanded-size budget rejects Heart of the Storm.");
+    }
+
+    [Fact]
     public void DefaultSnapshotPathUsesTheApplicationBaseDirectory() {
         string path = AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos default path test");
 
@@ -3391,6 +4865,11 @@ public sealed class StartPosReconstructionTests {
         public Entity AlternativeRoomEntity = null!;
     }
 
+    private sealed class OrdinaryHashCollectionRoot {
+        public Dictionary<string, int> Values = new Dictionary<string, int>();
+        public HashSet<string> Members = new HashSet<string>();
+    }
+
     private sealed class RuntimeTypeRoot {
         public Type TrackerKey = null!;
     }
@@ -3403,6 +4882,87 @@ public sealed class StartPosReconstructionTests {
         public TResult Convert<TResult>(T value) {
             return default!;
         }
+    }
+
+    private sealed class ScalarListRoot {
+        public List<int> Values = new List<int>();
+        public IEnumerator<int> Enumerator = null!;
+    }
+
+    private static ScalarListRoot CreateCollectionEnumeratorRoot(bool incrementVersion) {
+        List<int> values = new List<int> { 3, 5, 8 };
+        if (incrementVersion) {
+            // Keep the values identical while making the collection version
+            // differ from a freshly loaded room.
+            values[0] = 3;
+        }
+        IEnumerator<int> enumerator = values.GetEnumerator();
+        Assert.True(enumerator.MoveNext());
+        return new ScalarListRoot { Values = values, Enumerator = enumerator };
+    }
+
+    private sealed class HashCollectionRoot {
+        public Dictionary<ReferenceHashKey, int> Values = new Dictionary<ReferenceHashKey, int>();
+        public HashSet<ReferenceHashKey> Members = new HashSet<ReferenceHashKey>();
+        public IEnumerator<KeyValuePair<ReferenceHashKey, int>> Enumerator = null!;
+        public IEnumerator<ReferenceHashKey> MemberEnumerator = null!;
+    }
+
+    private sealed class EntityMembershipEnumeratorRoot {
+        public EntityList Entities = null!;
+        public IEnumerator<Entity> Enumerator = null!;
+    }
+
+    private sealed class ReferenceHashKey {
+        public int Value;
+    }
+
+    private static HashCollectionRoot CreateHashCollectionRoot(bool incrementVersion) {
+        ReferenceHashKey removed = new ReferenceHashKey { Value = 0 };
+        ReferenceHashKey first = new ReferenceHashKey { Value = 1 };
+        ReferenceHashKey second = new ReferenceHashKey { Value = 2 };
+        Dictionary<ReferenceHashKey, int> values = new Dictionary<ReferenceHashKey, int> {
+            [removed] = 0,
+            [first] = 3,
+            [second] = 5
+        };
+        HashSet<ReferenceHashKey> members = new HashSet<ReferenceHashKey> { removed, first, second };
+        Assert.True(values.Remove(removed));
+        Assert.True(members.Remove(removed));
+        if (incrementVersion) {
+            // Keep the logical contents unchanged while proving that bucket
+            // repair also preserves the saved collection and enumerator state.
+            values[first] = 3;
+        }
+        IEnumerator<KeyValuePair<ReferenceHashKey, int>> enumerator = values.GetEnumerator();
+        Assert.True(enumerator.MoveNext());
+        Assert.Same(first, enumerator.Current.Key);
+        IEnumerator<ReferenceHashKey> memberEnumerator = members.GetEnumerator();
+        Assert.True(memberEnumerator.MoveNext());
+        Assert.Same(first, memberEnumerator.Current);
+        return new HashCollectionRoot {
+            Values = values,
+            Members = members,
+            Enumerator = enumerator,
+            MemberEnumerator = memberEnumerator
+        };
+    }
+
+    private static EntityMembershipEnumeratorRoot CreateEntityMembershipEnumeratorRoot() {
+        SourceIdentifiedEntity removed = CreateSourceIdentifiedEntity("a00", 0, 0);
+        SourceIdentifiedEntity first = CreateSourceIdentifiedEntity("a00", 1, 1);
+        SourceIdentifiedEntity second = CreateSourceIdentifiedEntity("a00", 2, 2);
+        SourceEntityListOwnerRoot owner = CreateSourceEntityListOwnerRoot(first, second);
+        HashSet<Entity> membership = new HashSet<Entity> { removed, first, second };
+        Assert.True(membership.Remove(removed));
+        SetRuntimeField(owner.Entities, "current", membership);
+        IEnumerator<Entity> enumerator = membership.GetEnumerator();
+        Assert.True(enumerator.MoveNext());
+        Assert.Same(first, enumerator.Current);
+        return new EntityMembershipEnumeratorRoot {
+            Entities = owner.Entities,
+            Enumerator = enumerator
+        };
     }
 
     private sealed class EntityListRoot {
@@ -3581,6 +5141,14 @@ public sealed class StartPosReconstructionTests {
         public List<TestResourceHolder> Holders = new List<TestResourceHolder>();
     }
 
+    private sealed class DuplicateResourceRoot {
+        public TestResource TargetA = null!;
+        public TestResource TargetB = null!;
+        public TestResource TargetC = null!;
+        public TestResource CandidateA = null!;
+        public TestResource CandidateB = null!;
+    }
+
     private sealed class TestResourceHolder {
         public TestResource Resource = null!;
     }
@@ -3660,6 +5228,38 @@ public sealed class StartPosReconstructionTests {
         public List<PeerTargetEntity> Peers = new List<PeerTargetEntity>();
     }
 
+    private sealed class ClutterLinkedEntity : Entity {
+        public Dictionary<ClutterLinkedEntity, bool> HasBelow = new Dictionary<ClutterLinkedEntity, bool>();
+        public List<ClutterLinkedEntity> Above = new List<ClutterLinkedEntity>();
+        public string BlockColor = string.Empty;
+        public int Value;
+    }
+
+    private sealed class ClutterSourceAreaEntity : Entity {
+        public string BlockColor = string.Empty;
+    }
+
+    private sealed class TestModAsset : ModAsset {
+        public TestModAsset(string path, Type type, string format) : base(null!) {
+            PathVirtual = path;
+            Type = type;
+            Format = format;
+        }
+
+        protected override void Open(out Stream stream, out bool isSection) {
+            stream = Stream.Null;
+            isSection = false;
+        }
+    }
+
+    private sealed class IteratorOwnerEntity : Entity {
+        public int Value;
+
+        public IEnumerable Routine() {
+            yield return Value;
+        }
+    }
+
     private sealed class NestedStateOwnerEntity : Entity {
         public sealed class NestedState {
             public int Value;
@@ -3694,10 +5294,23 @@ public sealed class StartPosReconstructionTests {
         public Scene Scene = null!;
         public EntityList Entities = null!;
         public Sprite? FreshSprite;
+        public Scene? OtherScene;
     }
 
     private sealed class UnrelatedEntityArrayRoot {
         public Entity[] Unrelated = Array.Empty<Entity>();
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+    }
+
+    private sealed class IteratorAliasSceneRoot {
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+        public IEnumerator[] Unrelated = Array.Empty<IEnumerator>();
+    }
+
+    private sealed class FreshIteratorAliasSceneRoot {
+        public IEnumerator Canonical = null!;
         public Scene Scene = null!;
         public EntityList Entities = null!;
     }
@@ -3714,6 +5327,184 @@ public sealed class StartPosReconstructionTests {
         public Scene Scene = null!;
         public Entity Entity = null!;
         public LightingRenderer Renderer = null!;
+    }
+
+    private sealed class TrailPlaybackRoot {
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+        public TrailManager.Snapshot Snapshot = null!;
+        public PlayerSprite Sprite = null!;
+    }
+
+    private sealed class DetachedPlaybackSceneRoot {
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+        public PlayerPlayback Playback = null!;
+    }
+
+    private sealed class TrailBirdPathRoot {
+        public EntityData SourceData = null!;
+        public TrailManager Manager = null!;
+        public TrailManager OtherManager = null!;
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+        public TrailManager.Snapshot Snapshot = null!;
+    }
+
+    private static TrailPlaybackRoot CreatePlaybackTrailScene(
+        float percent,
+        bool attachOwnerToScene,
+        bool assignOwnerScene = false,
+        bool includeSpriteComponent = true,
+        bool includeHairComponent = true,
+        bool snapshotUsesSprite = true
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+
+        PlayerPlayback playback = CreateUninitializedEntity<PlayerPlayback>();
+        ComponentList playbackComponents = CreateDetachedComponentList(playback);
+        PlayerSprite sprite = (PlayerSprite) RuntimeHelpers.GetUninitializedObject(typeof(PlayerSprite));
+        PlayerHair hair = (PlayerHair) RuntimeHelpers.GetUninitializedObject(typeof(PlayerHair));
+        SetRuntimeField(sprite, "<Entity>k__BackingField", playback);
+        SetRuntimeField(hair, "<Entity>k__BackingField", playback);
+        hair.Sprite = sprite;
+        hair.Nodes = new List<Vector2>();
+        playback.Sprite = sprite;
+        playback.Hair = hair;
+        List<Component> components = new List<Component>();
+        if (includeHairComponent) {
+            components.Add(hair);
+        }
+        if (includeSpriteComponent) {
+            components.Add(sprite);
+        }
+        SetRuntimeField(playbackComponents, "components", components);
+        SetRuntimeField(playbackComponents, "current", new HashSet<Component>(components));
+
+        TrailManager.Snapshot snapshot = CreateUninitializedEntity<TrailManager.Snapshot>();
+        InitializeEmptyComponentList(snapshot);
+        SetRuntimeField(snapshot, "<Scene>k__BackingField", scene);
+        snapshot.Sprite = snapshotUsesSprite ? sprite : null;
+        snapshot.Hair = hair;
+        snapshot.Percent = percent;
+        CreateTrailManager(scene, snapshot);
+        AddDetachedEntity(entities, snapshot);
+        if (attachOwnerToScene || assignOwnerScene) {
+            SetRuntimeField(playback, "<Scene>k__BackingField", scene);
+        }
+        if (attachOwnerToScene) {
+            AddDetachedEntity(entities, playback);
+        }
+        return new TrailPlaybackRoot {
+            Scene = scene,
+            Entities = entities,
+            Snapshot = snapshot,
+            Sprite = sprite
+        };
+    }
+
+    private static DetachedPlaybackSceneRoot CreateDetachedPlaybackScene(bool assignOwnerScene) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        PlayerPlayback playback = CreateUninitializedEntity<PlayerPlayback>();
+        CreateDetachedComponentList(playback);
+        if (assignOwnerScene) {
+            SetRuntimeField(playback, "<Scene>k__BackingField", scene);
+        }
+        return new DetachedPlaybackSceneRoot {
+            Scene = scene,
+            Entities = entities,
+            Playback = playback
+        };
+    }
+
+    private static TrailBirdPathRoot CreateBirdPathTrailScene(
+        string room,
+        int id,
+        float percent,
+        bool attachOwnerToScene,
+        bool useSprite,
+        bool includeSpriteComponent = true,
+        bool includeOwnerInGraph = true,
+        bool includeCollider = false
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+
+        LevelData levelData = (LevelData) RuntimeHelpers.GetUninitializedObject(typeof(LevelData));
+        SetRuntimeField(levelData, "Name", room);
+        EntityData sourceData = (EntityData) RuntimeHelpers.GetUninitializedObject(typeof(EntityData));
+        SetRuntimeField(sourceData, "ID", id);
+        SetRuntimeField(sourceData, "Name", "birdPath");
+        SetRuntimeField(sourceData, "Level", levelData);
+
+        BirdPath birdPath = CreateUninitializedEntity<BirdPath>();
+        ComponentList birdComponents = CreateDetachedComponentList(birdPath);
+        SetRuntimeField(birdPath, "<SourceId>k__BackingField", CreateEntityId(room, id));
+        SetRuntimeField(birdPath, "_sourceData", sourceData);
+        if (includeCollider) {
+            Hitbox collider = CreateDetachedHitbox(8f, 4f, -4f, -4f);
+            SetRuntimeField(birdPath, "collider", collider);
+            SetRuntimeField(collider, "<Entity>k__BackingField", birdPath);
+        }
+        Image? sprite = includeOwnerInGraph && includeSpriteComponent
+            ? (Image) RuntimeHelpers.GetUninitializedObject(useSprite ? typeof(Sprite) : typeof(Image))
+            : null;
+        if (sprite != null) {
+            SetRuntimeField(sprite, "<Entity>k__BackingField", birdPath);
+        }
+        SetRuntimeField(birdPath, "sprite", sprite as Sprite);
+        SetRuntimeField(
+            birdComponents,
+            "components",
+            sprite == null ? new List<Component>() : new List<Component> { sprite });
+        SetRuntimeField(
+            birdComponents,
+            "current",
+            sprite == null ? new HashSet<Component>() : new HashSet<Component> { sprite });
+
+        TrailManager.Snapshot snapshot = CreateUninitializedEntity<TrailManager.Snapshot>();
+        InitializeEmptyComponentList(snapshot);
+        SetRuntimeField(snapshot, "<Scene>k__BackingField", scene);
+        snapshot.Sprite = sprite;
+        snapshot.Percent = percent;
+        TrailManager manager = CreateTrailManager(scene, snapshot);
+        TrailManager otherManager = CreateEmptyTrailManager(scene);
+
+        // Keep the Snapshot before the sprite owner so BirdPath is first
+        // captured through Manager.snapshots[].Sprite.Entity. TrailManager is
+        // fresh and scene-linked, but is not itself in the EntityList.
+        AddDetachedEntity(entities, snapshot);
+        if (includeOwnerInGraph && attachOwnerToScene) {
+            SetRuntimeField(birdPath, "<Scene>k__BackingField", scene);
+            AddDetachedEntity(entities, birdPath);
+        }
+        return new TrailBirdPathRoot {
+            Scene = scene,
+            Entities = entities,
+            SourceData = sourceData,
+            Snapshot = snapshot,
+            Manager = manager,
+            OtherManager = otherManager
+        };
+    }
+
+    private static TrailManager CreateTrailManager(Scene scene, TrailManager.Snapshot snapshot) {
+        TrailManager manager = CreateUninitializedEntity<TrailManager>();
+        InitializeEmptyComponentList(manager);
+        SetRuntimeField(manager, "<Scene>k__BackingField", scene);
+        SetRuntimeField(manager, "snapshots", new[] { snapshot });
+        SetRuntimeField(snapshot, nameof(TrailManager.Snapshot.Manager), manager);
+        return manager;
+    }
+
+    private static TrailManager CreateEmptyTrailManager(Scene scene) {
+        TrailManager manager = CreateUninitializedEntity<TrailManager>();
+        InitializeEmptyComponentList(manager);
+        SetRuntimeField(manager, "<Scene>k__BackingField", scene);
+        SetRuntimeField(manager, "snapshots", Array.Empty<TrailManager.Snapshot>());
+        return manager;
     }
 
     private static RendererComponentIndexRoot CreateRendererComponentIndexRoot(bool includeLightInRenderer) {
@@ -3831,8 +5622,31 @@ public sealed class StartPosReconstructionTests {
         GetRuntimeFieldInfo(owner.GetType(), name).SetValue(owner, value);
     }
 
-    private static T GetRuntimeField<T>(object owner, string name) where T : class {
+    private static T GetRuntimeField<T>(object owner, string name) {
         return (T) GetRuntimeFieldInfo(owner.GetType(), name).GetValue(owner)!;
+    }
+
+    private static ICollection<VirtualAsset> GetVirtualContentAssets() {
+        FieldInfo assetsField = typeof(VirtualContent).GetField(
+            "assets",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!;
+        if (assetsField.GetValue(null) is ICollection<VirtualAsset> assets) {
+            return assets;
+        }
+
+        // The stripped CI reference omits VirtualContent's static initializer.
+        // Supply the backing registry that the real game initializes itself.
+        List<VirtualAsset> initializedAssets = new List<VirtualAsset>();
+        assetsField.SetValue(null, initializedAssets);
+        return initializedAssets;
+    }
+
+    private static VirtualTexture CreateVirtualTexture(string path, int width, int height) {
+        VirtualTexture texture = (VirtualTexture) RuntimeHelpers.GetUninitializedObject(typeof(VirtualTexture));
+        SetRuntimeField(texture, "<Path>k__BackingField", path);
+        SetRuntimeField(texture, "<Width>k__BackingField", width);
+        SetRuntimeField(texture, "<Height>k__BackingField", height);
+        return texture;
     }
 
     private static List<Entity> GetEntityListContents(EntityList entities) {
@@ -3902,6 +5716,14 @@ public sealed class StartPosReconstructionTests {
         GetRuntimeField<HashSet<Entity>>(entities, "current").Add(entity);
     }
 
+    private static Hitbox CreateDetachedHitbox(float width, float height, float x = 0f, float y = 0f) {
+        Hitbox hitbox = (Hitbox) RuntimeHelpers.GetUninitializedObject(typeof(Hitbox));
+        SetRuntimeField(hitbox, "width", width);
+        SetRuntimeField(hitbox, "height", height);
+        SetRuntimeField(hitbox, "Position", new Vector2 { X = x, Y = y });
+        return hitbox;
+    }
+
     private static void SetEntityListCapacity(EntityList entities, int capacity) {
         GetRuntimeField<List<Entity>>(entities, "entities").Capacity = capacity;
     }
@@ -3948,6 +5770,50 @@ public sealed class StartPosReconstructionTests {
         typeof(Scene).GetField("<Tracker>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(scene, tracker);
         return (new SavedSceneRoot { Scene = scene, Entities = entities }, slash);
+    }
+
+    private static (SavedSceneRoot Root, SourceIdentifiedEntity Entity) CreateTrackedSourceEntityScene(
+        bool includeTrackerEntry
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        SourceIdentifiedEntity entity = CreateSourceIdentifiedEntity("a00", 10, 0);
+        InitializeEmptyComponentList(entity);
+        SetRuntimeField(entity, "<Scene>k__BackingField", scene);
+        AddDetachedEntity(entities, entity);
+
+        Tracker tracker = (Tracker) RuntimeHelpers.GetUninitializedObject(typeof(Tracker));
+        SetRuntimeField(
+            tracker,
+            "<Entities>k__BackingField",
+            new Dictionary<Type, List<Entity>> {
+                [typeof(SourceIdentifiedEntity)] = includeTrackerEntry
+                    ? new List<Entity> { entity }
+                    : new List<Entity>()
+            });
+        SetRuntimeField(tracker, "<Components>k__BackingField", new Dictionary<Type, List<Component>>());
+        SetRuntimeField(scene, "<Tracker>k__BackingField", tracker);
+        return (new SavedSceneRoot { Scene = scene, Entities = entities }, entity);
+    }
+
+    private static (SavedSceneRoot Root, SourceIdentifiedEntity Entity) CreateTaggedSourceEntityScene(
+        bool includeTagEntry
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        SourceIdentifiedEntity entity = CreateSourceIdentifiedEntity("a00", 10, 0);
+        InitializeEmptyComponentList(entity);
+        SetRuntimeField(entity, "<Scene>k__BackingField", scene);
+        AddDetachedEntity(entities, entity);
+
+        TagLists tagLists = (TagLists) RuntimeHelpers.GetUninitializedObject(typeof(TagLists));
+        List<Entity>[] lists = {
+            includeTagEntry ? new List<Entity> { entity } : new List<Entity>()
+        };
+        SetRuntimeField(tagLists, "lists", lists);
+        SetRuntimeField(tagLists, "unsorted", new bool[lists.Length]);
+        SetRuntimeField(scene, "<TagLists>k__BackingField", tagLists);
+        return (new SavedSceneRoot { Scene = scene, Entities = entities }, entity);
     }
 
     private static (SavedSceneRoot Root, SlashFx? Slash) CreateTaggedRuntimeEntityScene(bool includeSlash) {

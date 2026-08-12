@@ -731,17 +731,49 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
-    public void FreshBaselineCaptureExcludesTheTransientEntryWipe() {
+    public void TransientScreenWipeBoundaryRestoresEveryWipeAtItsOriginalIndex() {
+        Level level = CreateLevelWithRendererList(out List<Renderer> renderers);
+        Renderer before = CreateUninitializedRenderer<LightingRenderer>();
+        ScreenWipe firstWipe = CreateUninitializedRenderer<SpotlightWipe>();
+        Renderer between = CreateUninitializedRenderer<DisplacementRenderer>();
+        ScreenWipe secondWipe = CreateUninitializedRenderer<SpotlightWipe>();
+        Renderer after = CreateUninitializedRenderer<LightingRenderer>();
+        renderers.AddRange(new[] { before, firstWipe, between, secondWipe, after });
+        level.Wipe = firstWipe;
+
+        object detached = InvokeDetachTransientScreenWipes(level);
+
+        Assert.Null(level.Wipe);
+        Assert.Equal(new[] { before, between, after }, renderers);
+
+        InvokeRestoreTransientScreenWipes(level, detached);
+
+        Assert.Same(firstWipe, level.Wipe);
+        Assert.Equal(new Renderer[] { before, firstWipe, between, secondWipe, after }, renderers);
+    }
+
+    [Fact]
+    public void MissingTransientScreenWipeBoundaryLeavesAnActiveWipeUntouched() {
+        Level level = CreateLevelWithRendererList(out List<Renderer> renderers);
+        ScreenWipe wipe = CreateUninitializedRenderer<SpotlightWipe>();
+        renderers.Add(wipe);
+        level.Wipe = wipe;
+        InvokeRestoreTransientScreenWipes(level, null);
+
+        Assert.Same(wipe, level.Wipe);
+        Assert.Same(wipe, Assert.Single(renderers));
+    }
+
+    [Fact]
+    public void RuntimeStartPosCaptureExcludesTheTransientEntryWipe() {
         string source = File.ReadAllText(GetSaveLoadSourcePath());
-        int capture = source.IndexOf("internal static AkronSaveLoadSlotLease CaptureFreshRuntimeState", StringComparison.Ordinal);
-        int captureEnd = source.IndexOf("internal static IReadOnlyList<string> GetRegisteredActionIdsForPersistence", capture, StringComparison.Ordinal);
+        int capture = source.IndexOf("public static AkronSaveLoadSlot CaptureRuntimeState", StringComparison.Ordinal);
+        int captureEnd = source.IndexOf("public static AkronSaveLoadResult SaveRuntimeState", capture, StringComparison.Ordinal);
         string capturePath = SourceSlice(source, capture, captureEnd - capture);
 
-        Assert.Contains("ScreenWipe entryWipe = level.Wipe", capturePath);
-        Assert.Contains("level.Wipe = null", capturePath);
-        Assert.Contains("level.RendererList.Renderers.RemoveAt", capturePath);
-        Assert.Contains("level.Wipe = entryWipe", capturePath);
-        Assert.Contains("level.RendererList.Renderers.Insert", capturePath);
+        Assert.Contains("bool isStartPosCapture = CurrentSlotName.StartsWith(AkronActions.StartPosStateSlotPrefix", capturePath);
+        Assert.Contains("DetachTransientScreenWipes(level)", capturePath);
+        Assert.Contains("RestoreTransientScreenWipes(level, entryWipes)", capturePath);
     }
 
     [Fact]
@@ -974,13 +1006,53 @@ public sealed class StartPosPersistenceTests {
         int methodEnd = source.IndexOf("internal static void RelinkRuntimeRenderState", methodStart, StringComparison.Ordinal);
         string method = SourceSlice(source, methodStart, methodEnd - methodStart);
 
+        int preserveCatalog = method.IndexOf("Dictionary<string, AkronPersistedStartPosMap> startPosCatalogSnapshot", StringComparison.Ordinal);
+        int snapshotCatalog = method.IndexOf("SnapshotStartPosCatalog", preserveCatalog, StringComparison.Ordinal);
         int restore = method.IndexOf("AkronSaveLoadService.LoadRuntimeState", StringComparison.Ordinal);
+        int restoreCatalog = method.IndexOf("RestoreStartPosCatalog", restore, StringComparison.Ordinal);
         int registryReload = method.IndexOf("LoadStartPositionsForLevel(currentLevel);", StringComparison.Ordinal);
         int loadedSlotUpdate = method.IndexOf("AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;", StringComparison.Ordinal);
 
-        Assert.True(restore >= 0);
-        Assert.True(registryReload > restore);
+        Assert.True(preserveCatalog >= 0 && snapshotCatalog > preserveCatalog);
+        Assert.True(restore > snapshotCatalog);
+        Assert.True(restoreCatalog > restore);
+        Assert.True(registryReload > restoreCatalog);
         Assert.True(loadedSlotUpdate > registryReload);
+    }
+
+    [Fact]
+    public void RestoringAnOlderStartPosPreservesSlotsCreatedLater() {
+        Dictionary<string, AkronPersistedStartPosMap> currentCatalog = new Dictionary<string, AkronPersistedStartPosMap> {
+            ["Map/A"] = new AkronPersistedStartPosMap {
+                Slots = new Dictionary<int, AkronPersistedStartPos> {
+                    [1] = new AkronPersistedStartPos { AreaSid = "Map/A", Room = "room-a" },
+                    [2] = new AkronPersistedStartPos { AreaSid = "Map/A", Room = "room-b" }
+                }
+            },
+            ["Map/B"] = new AkronPersistedStartPosMap {
+                Slots = new Dictionary<int, AkronPersistedStartPos> {
+                    [7] = new AkronPersistedStartPos { AreaSid = "Map/B", Room = "room-c" }
+                }
+            }
+        };
+        Dictionary<string, AkronPersistedStartPosMap> protectedCatalog =
+            AkronActions.SnapshotStartPosCatalog(currentCatalog);
+        AkronModuleSaveData restoredSnapshotSaveData = new AkronModuleSaveData {
+            StartPositionsByMap = currentCatalog
+        };
+
+        // Persistent reconstruction can mutate existing dictionaries and entries in place.
+        // Model that exact failure mode rather than only replacing the top-level reference.
+        currentCatalog["Map/A"].Slots[1].Room = "rewound-room";
+        currentCatalog["Map/A"].Slots.Remove(2);
+        currentCatalog.Remove("Map/B");
+        AkronActions.RestoreStartPosCatalog(restoredSnapshotSaveData, protectedCatalog);
+
+        Assert.Same(protectedCatalog, restoredSnapshotSaveData.StartPositionsByMap);
+        Assert.Equal(new[] { "Map/A", "Map/B" }, restoredSnapshotSaveData.StartPositionsByMap.Keys.OrderBy(sid => sid));
+        Assert.Equal(new[] { 1, 2 }, restoredSnapshotSaveData.StartPositionsByMap["Map/A"].Slots.Keys.OrderBy(slot => slot));
+        Assert.Equal("room-a", restoredSnapshotSaveData.StartPositionsByMap["Map/A"].Slots[1].Room);
+        Assert.Equal("room-c", restoredSnapshotSaveData.StartPositionsByMap["Map/B"].Slots[7].Room);
     }
 
     [Fact]
@@ -1755,7 +1827,7 @@ public sealed class StartPosPersistenceTests {
         int restoreNotification = actionsSource.IndexOf("StartPosFrameGeneration++;", renderRelink, StringComparison.Ordinal);
         Assert.True(restoreNotification > renderRelink);
 
-        int successfulRestore = actionsSource.IndexOf("restoredStartPos = true;", restoreNotification, StringComparison.Ordinal);
+        int successfulRestore = actionsSource.IndexOf("return true;", restoreNotification, StringComparison.Ordinal);
         Assert.True(successfulRestore > restoreNotification);
 
         int persistedStartPos = actionsSource.IndexOf("PersistStartPos(slot, startPos, fileSlot, saveData)", StringComparison.Ordinal);
@@ -1995,12 +2067,25 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
-    public void LoadingStartPosArmsNativeDeathReloadAfterSuccessfulRestore() {
+    public void LoadingStartPosPreservesTheRespawnPreference() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int load = source.IndexOf("public static void LoadStartPos(Level level)", StringComparison.Ordinal);
+        int loadEnd = source.IndexOf("public static void LoadStartPosSlot", load, StringComparison.Ordinal);
+        int restore = source.IndexOf("private static bool RestoreStartPos(", StringComparison.Ordinal);
+        int restoreEnd = source.IndexOf("internal static void RelinkRuntimeRenderState", restore, StringComparison.Ordinal);
+        string loadPath = SourceSlice(source, load, loadEnd - load);
+        string restorePath = SourceSlice(source, restore, restoreEnd - restore);
+
+        Assert.DoesNotContain("enableRespawnAtStartPosAfterRestore", loadPath);
+        Assert.DoesNotContain("enableRespawnAtStartPosAfterRestore", restorePath);
+        Assert.Contains("AkronModule.Settings.RespawnAtStartPos = restoreRespawnAtStartPos;", restorePath);
+    }
+
+    [Fact]
+    public void EnabledStartPosRespawnUsesTheLastLoadedSlotAfterDeath() {
         string source = File.ReadAllText(GetActionsSourcePath());
         string playerRuntimeSource = File.ReadAllText(GetPlayerRuntimeSourcePath());
 
-        Assert.Contains("enableRespawnAtStartPosAfterRestore: true", source);
-        Assert.Contains("enableRespawnAtStartPosAfterRestore && restoredStartPos", source);
         Assert.Contains("if (loadedSlot > 0)", source);
         Assert.Contains("AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;", source);
         Assert.Contains("RestoreStartPosAfterDeath(Level level, AkronStartPos startPos)", source);
@@ -2162,6 +2247,44 @@ public sealed class StartPosPersistenceTests {
     private static string SourceTail(string source, int start) {
         Assert.InRange(start, 0, source.Length);
         return source.Substring(start);
+    }
+
+    private static Level CreateLevelWithRendererList(out List<Renderer> renderers) {
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        RendererList rendererList = (RendererList) Activator.CreateInstance(
+            typeof(RendererList),
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            args: new object?[] { level },
+            culture: null
+        )!;
+        renderers = new List<Renderer>();
+        rendererList.Renderers = renderers;
+        typeof(Scene).GetField(
+            "<RendererList>k__BackingField",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(level, rendererList);
+        return level;
+    }
+
+    private static TRenderer CreateUninitializedRenderer<TRenderer>() where TRenderer : Renderer {
+        return (TRenderer) RuntimeHelpers.GetUninitializedObject(typeof(TRenderer));
+    }
+
+    private static object InvokeDetachTransientScreenWipes(Level level) {
+        return GetTransientScreenWipeMethod("DetachTransientScreenWipes")
+            .Invoke(null, new object[] { level })!;
+    }
+
+    private static void InvokeRestoreTransientScreenWipes(Level level, object? detached) {
+        GetTransientScreenWipeMethod("RestoreTransientScreenWipes")
+            .Invoke(null, new[] { level, detached });
+    }
+
+    private static MethodInfo GetTransientScreenWipeMethod(string name) {
+        return typeof(AkronSaveLoadService).GetMethod(
+            name,
+            BindingFlags.Static | BindingFlags.NonPublic
+        ) ?? throw new MissingMethodException(typeof(AkronSaveLoadService).FullName, name);
     }
 
     private static string GetActionsSourcePath() {
