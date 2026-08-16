@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Celeste;
@@ -96,6 +97,199 @@ internal static class AkronStartPosPersistence {
             AkronSnapshotPacing.Cancelled = false;
         }
         On.Celeste.Level.LoadLevel += LevelOnLoadLevel;
+
+        // Snapshots written under a previous format version are dead the moment the
+        // format moves, and nothing else ever removes them, so one file per slot is
+        // left on disk at every bump. Sweeping them is a directory listing plus a
+        // delete each, and nothing waits on the result, so it runs off the game
+        // thread once per Start rather than on any player-facing path.
+        Task.Run(() => SweepSupersededSnapshots());
+    }
+
+    // Removes StartPos snapshots whose file name carries a format version older than
+    // the one this build writes, and returns what that recovered.
+    //
+    // These files need no liveness test, which is the only reason this method exists
+    // and a sweep of current-format orphans does not. A snapshot is read through
+    // exactly one path, AkronStartPosReconstruction.GetSnapshotPath(slotName), which
+    // builds the current name; a file under an older name is never opened by any
+    // slot, on any save file, ever again. Even if one did arrive at a current path,
+    // ValidateDocumentHeader refuses a document written against a fresh-room baseline
+    // this build no longer builds. So there is nothing to prove about who might still
+    // want the file - only that the name test cannot misfire.
+    //
+    // A partial sweep is not a partial state: every file it deletes is independently
+    // dead, so stopping halfway leaves the remainder exactly as it was.
+    internal static (int Files, long Bytes) SweepSupersededSnapshots(string directory = null) {
+        int files = 0;
+        long bytes = 0;
+        try {
+            string probePath = AkronStartPosReconstruction.GetSnapshotPath(string.Empty, directory);
+            string root = Path.GetDirectoryName(probePath);
+            if (string.IsNullOrEmpty(root) ||
+                !TryReadSnapshotNaming(Path.GetFileName(probePath), out SnapshotNaming naming)) {
+                return (0, 0);
+            }
+
+            foreach (string path in Directory.EnumerateFiles(root)) {
+                if (!naming.IsSuperseded(Path.GetFileName(path))) {
+                    continue;
+                }
+
+                long size = 0;
+                try {
+                    FileInfo info = new FileInfo(path);
+                    size = info.Exists ? info.Length : 0;
+                    File.Delete(path);
+                } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
+                    AkronLog.Warn(nameof(AkronStartPosPersistence),
+                        "Could not remove the superseded StartPos snapshot " + path + ": " + exception.Message);
+                    continue;
+                }
+                files++;
+                bytes += size;
+            }
+        } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
+            // The snapshot folder is missing or unreadable. Nothing here is worth
+            // reporting as a failure: the sweep only ever reclaims disk, and the next
+            // launch tries again.
+            return (files, bytes);
+        }
+
+        if (files > 0) {
+            AkronLog.Normal(nameof(AkronStartPosPersistence),
+                "Removed " + files.ToString(CultureInfo.InvariantCulture) +
+                " StartPos snapshot(s) saved under a format this build no longer reads, recovering " +
+                (bytes / 1024.0 / 1024.0).ToString("F1", CultureInfo.InvariantCulture) +
+                " MB. Those slots have to be set again.");
+        }
+        return (files, bytes);
+    }
+
+    // The shape of a snapshot file name, read back from the writer rather than
+    // repeated here.
+    //
+    // A version literal written out here would go on matching after the format had
+    // moved off it, and this is the test that decides whether a file is deleted, so
+    // the one thing it must never do is call a live name superseded. The format
+    // moved twice while this was being written, which is the whole argument. Instead
+    // it asks GetSnapshotPath for the name this build writes for a known slot, finds
+    // that slot's digest inside it, and takes what is on either side as the version
+    // prefix and the extension. Anything it cannot parse leaves the sweep doing
+    // nothing, which is the safe direction for a delete.
+    private readonly struct SnapshotNaming {
+        private readonly string versionStem;
+        private readonly string versionSeparator;
+        private readonly string suffix;
+        private readonly int digestLength;
+        private readonly int currentVersion;
+
+        public SnapshotNaming(string versionStem, string versionSeparator, int currentVersion, int digestLength, string suffix) {
+            this.versionStem = versionStem;
+            this.versionSeparator = versionSeparator;
+            this.currentVersion = currentVersion;
+            this.digestLength = digestLength;
+            this.suffix = suffix;
+        }
+
+        // True for a name of exactly the shape this build writes, carrying a lower
+        // format version. Three separate reasons for the strictness:
+        //
+        // - Whole-name, not prefix: the temporary file a write lands through is
+        //   "<current name>.<guid>.tmp", and deleting one would break a copy in
+        //   flight.
+        // - Lower, not merely different: a build that is older than the files it
+        //   finds is a downgrade, and taking a newer build's snapshots away from it
+        //   would be gratuitous - they become readable again on the way back up.
+        // - The digest has to look like a digest: the folder is Akron's, but a
+        //   file the player put there is not something to delete on a length match.
+        public bool IsSuperseded(string fileName) {
+            int prefixLength = fileName.Length - digestLength - suffix.Length;
+            if (prefixLength <= versionStem.Length + versionSeparator.Length ||
+                !fileName.EndsWith(suffix, StringComparison.Ordinal) ||
+                !fileName.StartsWith(versionStem, StringComparison.Ordinal) ||
+                string.CompareOrdinal(fileName, prefixLength - versionSeparator.Length, versionSeparator, 0, versionSeparator.Length) != 0) {
+                return false;
+            }
+
+            int digitsStart = versionStem.Length;
+            int digitsLength = prefixLength - versionSeparator.Length - digitsStart;
+            if (!TryReadVersion(fileName, digitsStart, digitsLength, out int version) || version >= currentVersion) {
+                return false;
+            }
+
+            for (int index = prefixLength; index < prefixLength + digestLength; index++) {
+                char character = fileName[index];
+                if (!(character >= '0' && character <= '9') && !(character >= 'a' && character <= 'f')) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool TryReadVersion(string value, int start, int length, out int version) {
+            version = 0;
+            // Bounded so a name carrying a very long run of digits cannot overflow the
+            // comparison into looking older than it is.
+            if (length <= 0 || length > 9) {
+                return false;
+            }
+            for (int index = start; index < start + length; index++) {
+                char character = value[index];
+                if (character < '0' || character > '9') {
+                    return false;
+                }
+                version = (version * 10) + (character - '0');
+            }
+            return true;
+        }
+    }
+
+    private static bool TryReadSnapshotNaming(string currentFileName, out SnapshotNaming naming) {
+        naming = default;
+        if (string.IsNullOrEmpty(currentFileName)) {
+            return false;
+        }
+
+        // Mirrors BuildSnapshotSlotDigest(string.Empty): the digest of the slot name
+        // GetSnapshotPath was probed with. Locating it splits the name into the parts
+        // that do not depend on the slot.
+        string digest = Convert.ToHexString(SHA256.HashData(Array.Empty<byte>())).ToLowerInvariant();
+        int digestStart = currentFileName.IndexOf(digest, StringComparison.Ordinal);
+        if (digestStart <= 0) {
+            return false;
+        }
+
+        string prefix = currentFileName.Substring(0, digestStart);
+        string suffix = currentFileName.Substring(digestStart + digest.Length);
+        if (suffix.Length == 0) {
+            return false;
+        }
+
+        // The prefix is "<stem><version number><separator>". Splitting it that way is
+        // what lets the test say "the same scheme, an older number" rather than "not
+        // the current name", which would also match anything else sharing the folder.
+        int digitsStart = 0;
+        while (digitsStart < prefix.Length && (prefix[digitsStart] < '0' || prefix[digitsStart] > '9')) {
+            digitsStart++;
+        }
+        int digitsEnd = digitsStart;
+        int currentVersion = 0;
+        while (digitsEnd < prefix.Length && prefix[digitsEnd] >= '0' && prefix[digitsEnd] <= '9') {
+            currentVersion = (currentVersion * 10) + (prefix[digitsEnd] - '0');
+            digitsEnd++;
+        }
+        if (digitsEnd == digitsStart || digitsEnd - digitsStart > 9) {
+            return false;
+        }
+
+        naming = new SnapshotNaming(
+            prefix.Substring(0, digitsStart),
+            prefix.Substring(digitsEnd),
+            currentVersion,
+            digest.Length,
+            suffix);
+        return true;
     }
 
     public static void NotifyLevelReady(Level level, bool refreshBaseline = false) {

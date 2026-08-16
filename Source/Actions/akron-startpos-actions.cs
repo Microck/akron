@@ -661,14 +661,20 @@ public static partial class AkronActions {
     // this one, not the one on the load path, and "No StartPos saved in slot 3" would
     // send them looking for a slot they know they set.
     //
-    // The superseded file is counted, never opened. It was measured against a fresh room
-    // Akron no longer builds, and letting one reach the reconstruction path is the whole
-    // reason the format moved.
+    // The catalog is what says the slot was set, not the leftover file. Both answer
+    // today, but only the catalog keeps answering: the superseded file is swept once
+    // nothing can read it, and evidence that a player set a slot cannot live in a file
+    // this build intends to delete. The catalog also survives the next bump, and every
+    // one after it, for free.
+    //
+    // It is deliberately not asserted that an update is what emptied the slot. A slot in
+    // the catalog with nothing left to load is overwhelmingly a format bump, but a
+    // backup restored over a save file that has cleared slots since reaches this too,
+    // and the action is the same for both.
     internal static string DescribeMissingStartPos(Level level, int slot) {
-        string stateSlotName = GetStartPosStateSlotName(GetAreaSid(level), slot);
-        return AkronStartPosReconstruction.HasSupersededSnapshot(stateSlotName)
+        return GetPersistedStartPositions(GetAreaSid(level)).ContainsKey(NormalizePositionSlot(slot))
             ? "StartPos " + slot.ToString(CultureInfo.InvariantCulture) +
-              " was saved by an older Akron that built rooms differently, so it cannot be loaded. Set it again."
+              " was set on this map, but the state it saved is gone - an Akron update can do this. Set it again."
             : "No StartPos saved in slot " + slot.ToString(CultureInfo.InvariantCulture) + ".";
     }
 
@@ -765,12 +771,8 @@ public static partial class AkronActions {
     // map full of slots is told. The persisted metadata is what the bump does not touch,
     // so it is what can tell an emptied map apart from one that never had a slot.
     internal static string DescribeEmptyStartPosList(Level level) {
-        string areaSid = GetAreaSid(level);
-        List<string> stateSlotNames = GetPersistedStartPositions(areaSid).Keys
-            .Select(slot => GetStartPosStateSlotName(areaSid, slot))
-            .ToList();
-        return AkronStartPosReconstruction.HasSupersededSnapshot(stateSlotNames)
-            ? "This chapter's StartPos slots were saved by an older Akron that built rooms differently. Set them again."
+        return GetPersistedStartPositions(GetAreaSid(level)).Count > 0
+            ? "This chapter's StartPos slots were set, but the state they saved is gone - an Akron update can do this. Set them again."
             : "No StartPos entries in this chapter.";
     }
 
@@ -1774,7 +1776,12 @@ public static partial class AkronActions {
     }
 
     private static Dictionary<int, AkronPersistedStartPos> GetPersistedStartPositions(string areaSid) {
-        Dictionary<string, AkronPersistedStartPosMap> maps = AkronModule.SaveData?.StartPositionsByMap;
+        // AkronModule.SaveData reads through Instance without checking it, the way
+        // ReplaceAllStartPositions already has to allow for. The catalog is what says a
+        // slot was ever set, so it is read from message paths that have to answer
+        // without a game behind them.
+        Dictionary<string, AkronPersistedStartPosMap> maps =
+            AkronModule.Instance == null ? null : AkronModule.SaveData?.StartPositionsByMap;
         string normalizedAreaSid = NormalizeAreaSid(areaSid);
         if (maps == null ||
             string.IsNullOrWhiteSpace(normalizedAreaSid) ||

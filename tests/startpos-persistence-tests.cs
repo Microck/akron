@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -515,7 +516,12 @@ public sealed class StartPosPersistenceTests {
         // The slot list keeps only slots HasRuntimeState answers for, so every slot set
         // before the bump vanishes from it rather than failing to load. This sentence is
         // the one the player actually gets after an update, which makes it the one that
-        // has to name the cause and the fix.
+        // has to name the fix.
+        //
+        // A headless test has no loaded save file, so the catalog is empty and only the
+        // never-set branch can run here. Leaving a superseded file on disk must not move
+        // it: the file is swept, the catalog is not, and reading the file back would put
+        // the message on evidence that is about to be deleted.
         const int slot = 9998;
         string stateSlotName = AkronActions.GetStartPosStateSlotName(string.Empty, slot);
         string supersededPath = SupersededSnapshotPath(stateSlotName, null);
@@ -527,13 +533,29 @@ public sealed class StartPosPersistenceTests {
             WriteSnapshotWithFormat(supersededPath, "akron-reconstruction-v7");
 
             Assert.Equal(
-                "StartPos 9998 was saved by an older Akron that built rooms differently, so it cannot be loaded. Set it again.",
+                "No StartPos saved in slot 9998.",
                 AkronActions.DescribeMissingStartPos(null, slot));
         } finally {
             if (File.Exists(supersededPath)) {
                 File.Delete(supersededPath);
             }
         }
+
+        // The other branch needs a loaded save file, so it is pinned in the source the
+        // way this file already pins Previous and Next.
+        string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-actions.cs"));
+        int describe = source.IndexOf(
+            "internal static string DescribeMissingStartPos(Level level, int slot)", StringComparison.Ordinal);
+        int describeEnd = source.IndexOf("public static void LoadStartPos(", describe, StringComparison.Ordinal);
+        string describeMethod = SourceSlice(source, describe, describeEnd - describe);
+
+        Assert.Contains(
+            "GetPersistedStartPositions(GetAreaSid(level)).ContainsKey(NormalizePositionSlot(slot))",
+            describeMethod);
+        Assert.Contains(
+            "was set on this map, but the state it saved is gone - an Akron update can do this. Set it again.",
+            describeMethod);
+        Assert.DoesNotContain("HasSupersededSnapshot", describeMethod);
     }
 
     [Fact]
@@ -548,9 +570,9 @@ public sealed class StartPosPersistenceTests {
                 currentSlot, "Tests/FormatBump", "room", 0, MinimalDocument(), out string saveError, directory), saveError);
             WriteSnapshotWithFormat(SupersededSnapshotPath(supersededSlot, directory), "akron-reconstruction-v7");
 
-            // Previous/Next asks about the whole map at once, because a bump empties the
-            // list rather than failing one slot. One superseded slot among current ones
-            // has to be found, and a map with nothing left behind must not claim there is.
+            // Asking about a set of slots in one pass over the folder. One superseded
+            // slot among current ones has to be found, and a map with nothing left
+            // behind must not claim there is.
             Assert.False(AkronStartPosReconstruction.HasSupersededSnapshot(
                 new[] { currentSlot, neverSetSlot }, directory));
             Assert.True(AkronStartPosReconstruction.HasSupersededSnapshot(
@@ -562,6 +584,173 @@ public sealed class StartPosPersistenceTests {
                 Directory.Delete(directory, recursive: true);
             }
         }
+    }
+
+    // The name a build older than this one addressed the same slot by. Same derivation
+    // as SupersededSnapshotPath, with the version chosen by the caller so the sweep can
+    // be shown to answer for every version below the current one rather than for v7
+    // alone.
+    private static string SnapshotPathWithVersion(string slotName, string? directory, string version) {
+        string currentPath = AkronStartPosReconstruction.GetSnapshotPath(slotName, directory);
+        string currentFileName = Path.GetFileName(currentPath);
+        return Path.Combine(
+            Path.GetDirectoryName(currentPath)!,
+            version + currentFileName.Substring(currentFileName.IndexOf('-')));
+    }
+
+    // The version prefix one above the one this build writes, read out of a current
+    // file name so the fixture follows the format instead of pinning a number that a
+    // bump would turn into the current one.
+    private static string NextSnapshotVersion(string currentFileName) {
+        string prefix = currentFileName.Substring(0, currentFileName.IndexOf('-'));
+        int digits = 0;
+        while (digits < prefix.Length && (prefix[digits] < '0' || prefix[digits] > '9')) {
+            digits++;
+        }
+        return prefix.Substring(0, digits) +
+               (int.Parse(prefix.Substring(digits), CultureInfo.InvariantCulture) + 1)
+                   .ToString(CultureInfo.InvariantCulture);
+    }
+
+    [Fact]
+    public void SnapshotsFromAnOlderFormatAreSweptAndTheCurrentOneIsLeftLoadable() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-sweep-" + Guid.NewGuid().ToString("N"));
+        string liveSlot = "Akron StartPos live " + Guid.NewGuid().ToString("N");
+        string deadSlot = "Akron StartPos dead " + Guid.NewGuid().ToString("N");
+        try {
+            Directory.CreateDirectory(directory);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                liveSlot, "Tests/Sweep", "room", 0, MinimalDocument(), out string saveError, directory), saveError);
+            // Three versions below the current one, so the sweep is shown to answer for
+            // the scheme rather than for the single version this bump moved off.
+            string v5 = SnapshotPathWithVersion(deadSlot, directory, "v5");
+            string v6 = SnapshotPathWithVersion(deadSlot, directory, "v6");
+            string v7 = SnapshotPathWithVersion(liveSlot, directory, "v7");
+            WriteSnapshotWithFormat(v5, "akron-reconstruction-v5");
+            WriteSnapshotWithFormat(v6, "akron-reconstruction-v6");
+            WriteSnapshotWithFormat(v7, "akron-reconstruction-v7");
+
+            (int files, long bytes) = AkronStartPosPersistence.SweepSupersededSnapshots(directory);
+
+            Assert.Equal(3, files);
+            Assert.True(bytes > 0);
+            Assert.False(File.Exists(v5));
+            Assert.False(File.Exists(v6));
+            // The superseded copy of a slot that also has a current one goes too, and
+            // the current one it sits next to has to survive its removal.
+            Assert.False(File.Exists(v7));
+            Assert.True(AkronStartPosReconstruction.HasSnapshot(liveSlot, directory));
+            Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
+                liveSlot, out AkronReconstructionDocument document, out string loadError, directory), loadError);
+            Assert.Equal(AkronReconstructionDocument.CurrentFormat, document.Format);
+
+            // Idempotent: a second launch finds nothing left to do.
+            Assert.Equal((0, 0L), AkronStartPosPersistence.SweepSupersededSnapshots(directory));
+        } finally {
+            AkronStartPosReconstruction.ResetSnapshotExistenceCache();
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void TheSweepRemovesNothingThatIsNotAnOlderSnapshotOfThisExactScheme() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-sweep-" + Guid.NewGuid().ToString("N"));
+        string slotName = "Akron StartPos shapes " + Guid.NewGuid().ToString("N");
+        try {
+            Directory.CreateDirectory(directory);
+            string currentPath = AkronStartPosReconstruction.GetSnapshotPath(slotName, directory);
+            string currentFileName = Path.GetFileName(currentPath);
+            string digestAndSuffix = currentFileName.Substring(currentFileName.IndexOf('-') + 1);
+            int digestLength = digestAndSuffix.IndexOf('.');
+            string suffix = digestAndSuffix.Substring(digestLength);
+
+            // Every one of these is a near miss the sweep must not take.
+            string[] keep = {
+                // The name this build writes.
+                currentPath,
+                // The temporary file a write lands through, which a prefix-only test
+                // would match and a copy in flight would then lose.
+                currentPath + "." + Guid.NewGuid().ToString("N") + ".tmp",
+                // A newer build's snapshot, seen by an older build after a downgrade.
+                // Derived from the current version so it stays one above it.
+                Path.Combine(directory, NextSnapshotVersion(currentFileName) + "-" + digestAndSuffix),
+                // Renamed by hand: nothing Akron writes carries an upper-case version.
+                Path.Combine(directory, "V7-" + digestAndSuffix),
+                // Right length, wrong alphabet where the digest belongs.
+                Path.Combine(directory, "v7-" + new string('z', digestLength) + suffix),
+                // The scheme without a version number at all.
+                Path.Combine(directory, "backup-" + digestAndSuffix),
+                // Not this scheme.
+                Path.Combine(directory, "notes.txt")
+            };
+            foreach (string path in keep) {
+                File.WriteAllText(path, "keep");
+            }
+            // A staging directory under the snapshot folder. EnumerateFiles is top level
+            // only, and an import in flight owns what is inside one.
+            string staging = Path.Combine(directory, ".import-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(staging);
+            string stagedOldFormat = Path.Combine(staging, "v7-" + digestAndSuffix);
+            File.WriteAllText(stagedOldFormat, "keep");
+
+            Assert.Equal((0, 0L), AkronStartPosPersistence.SweepSupersededSnapshots(directory));
+
+            foreach (string path in keep) {
+                Assert.True(File.Exists(path), path);
+            }
+            Assert.True(File.Exists(stagedOldFormat));
+        } finally {
+            AkronStartPosReconstruction.ResetSnapshotExistenceCache();
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void TheSweepIsANoOpWhenThereIsNoSnapshotFolderToRead() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-sweep-missing-" + Guid.NewGuid().ToString("N"));
+        Assert.False(Directory.Exists(directory));
+
+        // A first launch has no snapshot folder. The sweep only ever reclaims disk, so
+        // there is nothing here to report as a failure.
+        Assert.Equal((0, 0L), AkronStartPosPersistence.SweepSupersededSnapshots(directory));
+    }
+
+    [Fact]
+    public void TheSweepReadsTheCurrentFormatVersionFromTheWriterRatherThanFromALiteral() {
+        string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
+        int sweep = source.IndexOf(
+            "internal static (int Files, long Bytes) SweepSupersededSnapshots(", StringComparison.Ordinal);
+        int sweepEnd = source.IndexOf("private static bool TryReadSnapshotNaming(", sweep, StringComparison.Ordinal);
+        string sweepSource = SourceSlice(source, sweep, sweepEnd - sweep);
+
+        // A version literal here would keep matching after the format moved off it,
+        // which is a live snapshot deleted on the first launch of the next build. The
+        // shape comes from GetSnapshotPath, so it moves when the writer moves. The
+        // comments name the current version to explain that, so only the code is
+        // asserted on.
+        Assert.Contains("AkronStartPosReconstruction.GetSnapshotPath(string.Empty, directory)", sweepSource);
+        string sweepCode = string.Join(
+            "\n",
+            sweepSource.Split('\n').Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+
+        // The version prefix and the extension are read out of the writer at run time,
+        // so this fails on whatever the current version happens to be rather than on a
+        // number this test would have to be edited to keep up with.
+        string currentFileName = Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("probe"));
+        Assert.DoesNotContain(
+            currentFileName.Substring(0, currentFileName.IndexOf('-') + 1), sweepCode);
+        Assert.DoesNotContain(currentFileName.Substring(currentFileName.IndexOf('.')), sweepCode);
+        Assert.DoesNotContain(AkronReconstructionDocument.CurrentFormat, sweepCode);
+
+        // And it runs once per Start, off the game thread.
+        int start = source.IndexOf("public static void Start()", StringComparison.Ordinal);
+        int startEnd = source.IndexOf(
+            "internal static (int Files, long Bytes) SweepSupersededSnapshots(", start, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(() => SweepSupersededSnapshots());", SourceSlice(source, start, startEnd - start));
     }
 
     [Fact]
@@ -576,9 +765,19 @@ public sealed class StartPosPersistenceTests {
         // because reaching them needs a Level and a save file.
         Assert.Contains("DescribeEmptyStartPosList(level)", shiftMethod);
         Assert.Contains(
-            "This chapter's StartPos slots were saved by an older Akron that built rooms differently. Set them again.",
+            "This chapter's StartPos slots were set, but the state they saved is gone - an Akron update can do this. Set them again.",
             source);
         Assert.Contains("No StartPos entries in this chapter.", source);
+
+        // The map-level sentence is on the catalog for the same reason the slot-level
+        // one is: the leftover file it used to read is swept once nothing can read it.
+        int describeEmpty = source.IndexOf(
+            "internal static string DescribeEmptyStartPosList(Level level)", StringComparison.Ordinal);
+        int describeEmptyEnd = source.IndexOf("public static void ShiftStartPos(", describeEmpty, StringComparison.Ordinal);
+        string describeEmptyMethod = SourceSlice(source, describeEmpty, describeEmptyEnd - describeEmpty);
+
+        Assert.Contains("GetPersistedStartPositions(GetAreaSid(level)).Count > 0", describeEmptyMethod);
+        Assert.DoesNotContain("HasSupersededSnapshot", describeEmptyMethod);
     }
 
     [Fact]
