@@ -385,7 +385,8 @@ public static partial class AkronActions {
             (droppedWarmSlots == 1 ? " StartPos slot on this map is" : " StartPos slots on this map are") +
             " no longer held in memory (" +
             (droppedBytes / (1024d * 1024d)).ToString("F0", CultureInfo.InvariantCulture) +
-            " MB). They still load, from disk."));
+            " MB). " +
+            (droppedWarmSlots == 1 ? "It still loads, from disk." : "They still load, from disk.")));
     }
 
     internal static void CompletePersistentStartPosCapture(

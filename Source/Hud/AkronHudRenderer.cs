@@ -93,11 +93,20 @@ public static partial class AkronHudRenderer {
             RenderDashBar(level, player, HudEdgePadding, ref y);
         }
 
-        if (player != null && ShouldRenderDashNumber(settings, AkronModule.TryUse(AkronFeatureKind.ResourceBars))) {
+        // The settings check is repeated in front of TryUse on purpose. TryUse is not a
+        // question, it records a feature use and can raise a policy toast, and C# evaluates
+        // it before ShouldRenderDashNumber can decide the element is switched off. As an
+        // argument it therefore ran on every HUD frame whatever the setting said, which
+        // recorded about sixty uses a second and pinned the attempt status to Cheat -
+        // "Displays already-current player speed above Madeline" - on installs with the
+        // speed number off. Every other element on this screen short-circuits the same way.
+        if (player != null && settings.DashNumber &&
+            ShouldRenderDashNumber(settings, AkronModule.TryUse(AkronFeatureKind.ResourceBars))) {
             RenderDashNumber(level, player);
         }
 
-        if (player != null && ShouldRenderSpeedNumber(settings, AkronModule.TryUse(AkronFeatureKind.SpeedNumber))) {
+        if (player != null && settings.SpeedNumber &&
+            ShouldRenderSpeedNumber(settings, AkronModule.TryUse(AkronFeatureKind.SpeedNumber))) {
             RenderSpeedNumber(level, player);
         }
 
