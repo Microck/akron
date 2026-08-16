@@ -4606,6 +4606,193 @@ public sealed class StartPosReconstructionTests {
         Assert.Contains("owner-type=" + typeof(TestNativeHandleSession).FullName, capture.Error);
     }
 
+    // The in-game shape from W29 and W31: a StartPos taken while dialogue is up
+    // captures a Textbox, whose frame is an MTexture out of GFX.Portraits, and
+    // the room this StartPos rebuilds into loaded with no dialogue on screen -
+    // so nothing in the fresh room references that atlas. A skippable cutscene
+    // widens this from "while the box is on screen" to "for as long as the
+    // handler holds the cutscene's textbox", because Level.onCutsceneSkip is
+    // never cleared once set. The atlas is process content either way, so the
+    // rebuilt frame gets the one this process loaded.
+    //
+    // GFX.Portraits is pointed at a second instance carrying the same key,
+    // which is the only way to tell "the process supplied it" from "the saved
+    // object was carried over" inside one process. Assert.Same against the
+    // saved atlas would pass on a broken resolver.
+    [Fact]
+    public void APortraitsAtlasMissingFromTheFreshRoomIsReacquiredFromTheProcess() {
+        Atlas savedAtlas = CreatePortraitsAtlas();
+        Atlas processAtlas = CreatePortraitsAtlas();
+        Assert.NotSame(savedAtlas, processAtlas);
+        Atlas previousPortraits = GFX.Portraits;
+        GFX.Portraits = processAtlas;
+        try {
+            AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+            saved.ModuleSessions["helper"] = new TestPortraitSession {
+                Frame = CreateAtlasTexture(savedAtlas)
+            };
+            AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+            baseline.ModuleSessions["helper"] = new TestPortraitSession();
+            AkronReconstructionGraph graph = CreateStartPosGraph();
+
+            AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+            Assert.True(capture.Success, capture.Error);
+            AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+            AkronPersistentRuntimeState fresh = new AkronPersistentRuntimeState();
+            fresh.ModuleSessions["helper"] = new TestPortraitSession();
+
+            AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+            Assert.True(restore.Success, restore.Error);
+            TestPortraitSession restored = Assert.IsType<TestPortraitSession>(fresh.ModuleSessions["helper"]);
+            Assert.NotNull(restored.Frame);
+            Atlas restoredAtlas = ReadTextureAtlas(restored.Frame!);
+            Assert.NotSame(savedAtlas, restoredAtlas);
+            Assert.Same(processAtlas, restoredAtlas);
+            Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+        } finally {
+            GFX.Portraits = previousPortraits;
+        }
+    }
+
+    // The resolver names the game's own content and nothing else, so an atlas
+    // this process never loaded is still refused rather than silently paired
+    // with whichever atlas happens to be lying around. The refusal has to carry
+    // the data path, because that is the only thing that says which mod's
+    // content the slot was lost over.
+    [Fact]
+    public void AnAtlasThisProcessNeverLoadedIsStillRefused() {
+        Atlas savedAtlas = new Atlas {
+            DataMethod = "FromAtlas",
+            DataPath = Path.Combine("Graphics", "Atlases", "AkronHelperNeverLoaded"),
+            RelativeDataPath = "Graphics/Atlases/AkronHelperNeverLoaded/",
+            DataFormat = Atlas.AtlasDataFormat.PackerNoAtlas
+        };
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestPortraitSession {
+            Frame = CreateAtlasTexture(savedAtlas)
+        };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestPortraitSession();
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.False(capture.Success);
+        Assert.EndsWith("._Atlas", capture.ErrorPath);
+        Assert.Contains("fresh resource key is unavailable", capture.Error);
+        Assert.Contains("AkronHelperNeverLoaded", capture.Error);
+    }
+
+    // Every atlas the game loads has to be reachable, not just the one the
+    // observed defect named. The lookup is over the static Atlas fields of GFX
+    // and MTN, so a field added to either is picked up without being listed
+    // anywhere, and this is what would fail if that lookup were narrowed to
+    // GFX.Portraits by name.
+    [Fact]
+    public void EveryContentAtlasTheGameLoadedResolvesByItsOwnKey() {
+        Atlas savedAtlas = new Atlas {
+            DataMethod = "FromAtlas",
+            DataPath = Path.Combine("Graphics", "Atlases", "Checkpoints"),
+            RelativeDataPath = "Graphics/Atlases/Checkpoints/",
+            DataFormat = Atlas.AtlasDataFormat.PackerNoAtlas
+        };
+        Atlas processAtlas = new Atlas {
+            DataMethod = savedAtlas.DataMethod,
+            DataPath = savedAtlas.DataPath,
+            RelativeDataPath = savedAtlas.RelativeDataPath,
+            DataFormat = savedAtlas.DataFormat
+        };
+        Atlas previousCheckpoints = MTN.Checkpoints;
+        MTN.Checkpoints = processAtlas;
+        try {
+            AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+            saved.ModuleSessions["helper"] = new TestPortraitSession {
+                Frame = CreateAtlasTexture(savedAtlas)
+            };
+            AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+            baseline.ModuleSessions["helper"] = new TestPortraitSession();
+            AkronReconstructionGraph graph = CreateStartPosGraph();
+
+            AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+            Assert.True(capture.Success, capture.Error);
+            AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+            AkronPersistentRuntimeState fresh = new AkronPersistentRuntimeState();
+            fresh.ModuleSessions["helper"] = new TestPortraitSession();
+
+            AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+            Assert.True(restore.Success, restore.Error);
+            TestPortraitSession restored = Assert.IsType<TestPortraitSession>(fresh.ModuleSessions["helper"]);
+            Assert.Same(processAtlas, ReadTextureAtlas(restored.Frame!));
+        } finally {
+            MTN.Checkpoints = previousCheckpoints;
+        }
+    }
+
+    // Sorting the same is not being the same object, and neither is loading
+    // from the same path. Two content atlases carrying one key are two objects
+    // the rebuilt room cannot tell apart, so the slot is refused by key rather
+    // than paired with whichever the lookup reached first. This is the same
+    // stance CompareInfo takes, and it is why the lookup is not a FirstOrDefault.
+    [Fact]
+    public void TwoContentAtlasesSharingOneKeyAreRefusedRatherThanGuessedBetween() {
+        Atlas previousPortraits = GFX.Portraits;
+        Atlas previousMisc = GFX.Misc;
+        GFX.Portraits = CreatePortraitsAtlas();
+        GFX.Misc = CreatePortraitsAtlas();
+        try {
+            AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+            saved.ModuleSessions["helper"] = new TestPortraitSession {
+                Frame = CreateAtlasTexture(CreatePortraitsAtlas())
+            };
+            AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+            baseline.ModuleSessions["helper"] = new TestPortraitSession();
+            AkronReconstructionGraph graph = CreateStartPosGraph();
+
+            AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+            Assert.False(capture.Success);
+            Assert.EndsWith("._Atlas", capture.ErrorPath);
+            Assert.Contains("fresh resource key is unavailable", capture.Error);
+            Assert.Contains("Graphics", capture.Error);
+        } finally {
+            GFX.Portraits = previousPortraits;
+            GFX.Misc = previousMisc;
+        }
+    }
+
+    private static Atlas CreatePortraitsAtlas() {
+        // The key GFX.Portraits carries in game, verbatim from the W29 log:
+        // FromAtlas|Graphics\Atlases\Portraits|Graphics/Atlases/Portraits/|PackerNoAtlas.
+        return new Atlas {
+            DataMethod = "FromAtlas",
+            DataPath = Path.Combine("Graphics", "Atlases", "Portraits"),
+            RelativeDataPath = "Graphics/Atlases/Portraits/",
+            DataFormat = Atlas.AtlasDataFormat.PackerNoAtlas
+        };
+    }
+
+    // MTexture.Atlas has a setter, but these tests build against the stripped
+    // Celeste reference assembly, where property bodies do nothing. The backing
+    // field is also the node the in-game refusal named, so writing it directly
+    // is the closer reproduction as well as the working one.
+    private static MTexture CreateAtlasTexture(Atlas atlas) {
+        MTexture texture = new MTexture { AtlasPath = "textbox/default" };
+        typeof(MTexture)
+            .GetField("_Atlas", RuntimeInstanceFields)!
+            .SetValue(texture, atlas);
+        return texture;
+    }
+
+    private static Atlas ReadTextureAtlas(MTexture texture) {
+        return (Atlas) typeof(MTexture)
+            .GetField("_Atlas", RuntimeInstanceFields)!
+            .GetValue(texture)!;
+    }
+
     private static AkronReconstructionGraph CreateStartPosGraph() {
         return new AkronReconstructionGraph(
             AkronStartPosReconstruction.IsLiveResourceType,
@@ -4968,6 +5155,12 @@ public sealed class StartPosReconstructionTests {
 
     private sealed class TestNativeHandleSession : EverestModuleSession {
         public IntPtr Handle;
+    }
+
+    // Stands in for the Textbox field the in-game refusal walked through:
+    // an MTexture the saved frame owns, whose atlas is process content.
+    private sealed class TestPortraitSession : EverestModuleSession {
+        public MTexture? Frame;
     }
 
     private sealed class TestSharedState {

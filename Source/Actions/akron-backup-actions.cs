@@ -42,13 +42,15 @@ public static class AkronBackupActions {
     // backup never carries one, and a restore never moves, replaces or removes one.
     //
     // What puts a folder on this list: Akron opens, loads or hands its contents to a child process and
-    // cannot let go of them while the game runs. That matters because of Windows and is invisible on the
-    // Linux dev and test machines. Windows refuses to delete or rename a file another handle holds unless
-    // that handle permitted deletion, and refuses outright for an executable image the process has loaded;
-    // Linux unlinks a mapped .so without complaint and discards every share mode, so a Linux run cannot tell
-    // the two apart. Saves/AkronNative/<rid>/cimgui.dll is the case that proved it: Akron loads it at
-    // startup on every platform, and a restore deleted all 18 save files, threw on that one DLL, extracted
-    // nothing, and left the player with no save files at all.
+    // cannot let go of them while the game runs. That matters because of two separate Windows mechanisms
+    // and is invisible on the Linux dev and test machines. Any open file handle beneath a folder blocks a
+    // rename of that folder, regardless of its share mode, so a restore safely refuses. A loaded executable
+    // image is different: Windows refuses to delete the mapped file but permits renaming both the file and
+    // its parent folder, so only this list keeps a restore from moving the image aside and replacing it.
+    // Linux renames and unlinks open and mapped files without complaint and enforces no share modes, so a
+    // Linux run cannot distinguish either case. Saves/AkronNative/<rid>/cimgui.dll is the case that proved
+    // it: Akron loads it at startup on every platform, and a restore deleted all 18 save files, threw on
+    // that one DLL, extracted nothing, and left the player with no save files at all.
     //
     // Saves/AkronLogs and Saves/.tmp-perf are deliberately not on this list. Akron owns those two handles
     // and can close them, which ReleaseFilesAkronHoldsInSaves does immediately before the swap, so they
@@ -70,8 +72,9 @@ public static class AkronBackupActions {
         AkronStartPosReconstruction.SnapshotDirectoryName,
 
         // The cimgui build Akron extracts from its own zip and loads at module load, unconditionally, for
-        // the lifetime of the process. Nothing can delete or replace a loaded image on Windows, and there is
-        // nothing to lose by leaving it: it is written again on the next launch if it goes missing.
+        // the lifetime of the process. Windows refuses to delete the loaded image but permits renaming it
+        // and the folder above it, so this name, not a failed rename, keeps a restore away from the library.
+        // There is nothing to lose by leaving it: it is written again on the next launch if it goes missing.
         AkronImGuiRenderer.NativeDirectoryName,
 
         // Video output. ffmpeg is a child process holding its output file, and the replay buffer's segment
@@ -568,14 +571,15 @@ public static class AkronBackupActions {
                     Path.Combine(savesFolder, RestoreWorkFolderName, DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss-fff", CultureInfo.InvariantCulture)),
                     ReleaseFilesAkronHoldsInSaves);
 
-                if (!TryLoadRestoredSaveData(backup, out string loadMessage)) {
-                    LastStatus = "Restored files, but live reload failed: " + loadMessage;
-                    Toast(LastStatus);
-                    return;
-                }
+                bool reloaded = TryReloadOpenSaveData(out string reloadMessage);
 
+                // The overworld is rebuilt either way. A new Overworld builds a new OuiFileSelect, and
+                // that is what reads the restored files off disk, so it is how the restore becomes
+                // visible when there was no save open to reload.
                 Engine.Scene = new OverworldLoader(Overworld.StartMode.MainMenu);
-                LastStatus = "Restored backup: " + backup.FileName;
+                LastStatus = reloaded
+                    ? "Restored backup: " + backup.FileName
+                    : "Restored backup: " + backup.FileName + ", but the open save could not be reloaded: " + reloadMessage;
                 Toast(LastStatus);
             } catch (Exception exception) {
                 Fail("Restore failed: " + exception.Message, true);
@@ -643,9 +647,9 @@ public static class AkronBackupActions {
     // Lets go of the two files under Saves that Akron itself keeps open while the game runs, immediately
     // before a restore starts moving that folder around.
     //
-    // This is a Windows problem and is invisible on Linux. Windows will not rename or delete a file that is
-    // held open unless every holder permitted deletion, and the performance recorder's JSONL does not. The
-    // log reopens itself on the next line written.
+    // This is a Windows problem and is invisible on Linux. Renaming either containing folder fails while
+    // any file handle remains open beneath it, regardless of the handle's share mode. The log reopens itself
+    // on the next line written.
     private static void ReleaseFilesAkronHoldsInSaves() {
         // The log goes last on purpose. StopRecording can write a warning line through AkronLog when the GC
         // event listener refuses to stop, and that line would reopen the handle we had just let go of.
@@ -666,14 +670,17 @@ public static class AkronBackupActions {
     // happens, after the restore has already succeeded.
     //
     // That ordering is what makes this safe rather than the list of folders a restore skips. A file Akron
-    // does not know it is holding, a file another program has open, a folder added under Saves next year:
-    // each of them turns a restore into a refusal instead of into lost save data.
+    // does not know it is holding, a file another program has open or a folder added under Saves next year
+    // cannot cost save data, because nothing is discarded until the swap has already worked. An open handle
+    // beneath a folder makes its rename refuse, which is the safe direction. A loaded image does not: its
+    // folder can move and only deleting the moved-aside image fails after the restored files are in place.
     //
     // A move can fail at all because of Windows, and none of it is visible on the Linux dev and test
-    // machines: Windows refuses to rename or delete a file another handle holds without FILE_SHARE_DELETE,
-    // and refuses outright for an executable image the process has loaded, while Linux renames and unlinks
-    // either without complaint. A Linux run cannot tell a safe restore from a destructive one, which is how
-    // the destructive one shipped.
+    // machines: Windows blocks a folder rename when any open handle is beneath it, regardless of share mode,
+    // but a loaded executable image is a mapped section rather than an open handle and does not block that
+    // rename. Linux renames and unlinks both open and mapped files without complaint and enforces no share
+    // modes at all. A Linux run cannot tell a safe restore from a destructive one, which is how the
+    // destructive one shipped.
     //
     // releaseHeldFiles is called between the unpacking and the first change to Saves, so a restore that
     // stops while unpacking never costs the player a running performance recording.
@@ -690,7 +697,7 @@ public static class AkronBackupActions {
                 File.Delete(metadataPath);
             }
         } catch (Exception exception) {
-            TryDeleteDirectory(workFolder);
+            DiscardRestoreWorkFolder(savesFolder, workFolder);
             throw new IOException(
                 "could not unpack the backup: " + exception.Message + " Your save files were not changed.",
                 exception);
@@ -706,13 +713,13 @@ public static class AkronBackupActions {
             // removing it would be exactly the loss this method exists to prevent, so it stays where the
             // exception message says it is.
             if (!Directory.EnumerateFileSystemEntries(previous).Any()) {
-                TryDeleteDirectory(workFolder);
+                DiscardRestoreWorkFolder(savesFolder, workFolder);
             }
 
             throw;
         }
 
-        TryDeleteDirectory(workFolder);
+        DiscardRestoreWorkFolder(savesFolder, workFolder);
     }
 
     // The one step that changes the player's Saves folder, and it changes it all at once or not at all.
@@ -810,6 +817,36 @@ public static class AkronBackupActions {
         }
     }
 
+    // Removes the folder one restore worked in, then Saves/AkronRestore itself if that was the last thing
+    // left in it. Without the second half an empty AkronRestore stayed in Saves after every restore, which
+    // took away the only meaning that folder had: that a restore did not finish.
+    //
+    // The container goes with a non-recursive delete, which is the whole race argument. Windows
+    // RemoveDirectory fails with ERROR_DIR_NOT_EMPTY and Linux rmdir(2) fails with ENOTEMPTY, so the
+    // emptiness check and the removal are the same syscall and there is no window in which this can take a
+    // container out from under a work folder that is in it. Two restores cannot overlap inside one process
+    // anyway - RestoreBackupConfirmed holds Sync for all of it - so what this covers is a second process
+    // sharing the same Saves folder, and a work folder a crashed restore left behind.
+    //
+    // The one window that does exist: a second process that has created the container but not yet its work
+    // folder inside it can have the container removed underneath it. Directory.CreateDirectory builds the
+    // whole chain in one call, so that window is inside a single call, and losing it makes the create throw
+    // before that restore has touched a single save file. A refusal, not lost data.
+    private static void DiscardRestoreWorkFolder(string savesFolder, string workFolder) {
+        TryDeleteDirectory(workFolder);
+
+        try {
+            // Composed from the constant rather than taken as the parent of workFolder, which would be the
+            // Saves folder itself if a caller ever passed a work folder one level up.
+            Directory.Delete(Path.Combine(savesFolder, RestoreWorkFolderName), recursive: false);
+        } catch {
+            // Nothing to report and nothing to do. A container that still holds something is one another
+            // restore is working in or one a crashed restore left behind, and both are reasons to leave it
+            // exactly where it is. Failing costs an empty directory, which is the whole of what this
+            // method is tidying up.
+        }
+    }
+
     private static AkronBackupEntry ReadBackupEntry(string path) {
         FileInfo file = new FileInfo(path);
         string reason = string.Empty;
@@ -838,32 +875,48 @@ public static class AkronBackupActions {
         };
     }
 
-    private static bool TryLoadRestoredSaveData(AkronBackupEntry backup, out string message) {
-        int slot = DetermineRestoreSlot(backup);
-        if (slot < 0) {
-            message = "no save slot could be determined";
-            return false;
+    // Only an open save can be stale: Celeste writes SaveData.Instance back over its file on the next save,
+    // so that in-memory copy must not overwrite the restored data. With no save open there is nothing to
+    // correct, and starting a profile the player did not pick would load that slot's mod save data and mod
+    // sessions behind their back. The stale slot is therefore the open one, not the backup's metadata slot;
+    // those differ when a backup from one profile is restored while another profile is open. FileSlot -1 is
+    // Celeste's real debug save rather than a no-save sentinel, which is why the check is on the instance.
+    internal static bool TryReloadOpenSaveData(out string message) {
+        SaveData open = SaveData.Instance;
+        if (open == null) {
+            message = string.Empty;
+            return true;
         }
 
+        // Neither of these can throw. FileSlot is a field, and SaveData.GetFilename either returns the slot
+        // number or the literal "debug". Everything below them can, which is what the catch is for.
+        int slot = open.FileSlot;
         string filename = SaveData.GetFilename(slot);
-        SaveData saveData = UserIO.Load<SaveData>(filename);
-        if (saveData == null) {
+
+        try {
+            SaveData restored = UserIO.Load<SaveData>(filename);
+            if (restored != null) {
+                SaveData.Start(restored, slot);
+                message = string.Empty;
+                return true;
+            }
+
             message = "could not load " + filename;
-            return false;
+        } catch (Exception exception) {
+            // Everything here runs after the restored files are already on disk, so nothing that goes wrong
+            // in it may reach the caller's "Restore failed" handler and tell the player their save files did
+            // not come back. SaveData.Start runs every installed module's session load, so one mod throwing
+            // is enough to reach this.
+            message = "could not reload " + filename + ": " + exception.Message;
         }
 
-        SaveData.Start(saveData, slot);
-        message = string.Empty;
-        return true;
-    }
-
-    private static int DetermineRestoreSlot(AkronBackupEntry backup) {
-        if (int.TryParse(backup?.SaveSlot, NumberStyles.Integer, CultureInfo.InvariantCulture, out int metadataSlot) &&
-            metadataSlot >= 0) {
-            return metadataSlot;
-        }
-
-        return SaveData.Instance?.FileSlot ?? -1;
+        // The reload did not happen, so what is still in memory is either the pre-restore save or a
+        // half-loaded one, and Celeste writes that back over its file at the next save - which would put the
+        // data the restore just replaced straight back on top of the restored data. Dropping it leaves the
+        // game with no save open, which is the state it boots into and the state the main menu the caller
+        // returns to is built for.
+        SaveData.Instance = null;
+        return false;
     }
 
     private static bool VerifyZipReadable(string path) {

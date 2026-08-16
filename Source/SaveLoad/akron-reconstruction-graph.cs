@@ -7987,6 +7987,18 @@ internal static class AkronStartPosReconstruction {
                 asset?.GetType() == resourceType &&
                 string.Equals(GetLiveResourceKey(asset), resourceKey, StringComparison.Ordinal));
         }
+        if (typeof(Atlas).IsAssignableFrom(resourceType)) {
+            // A content atlas is loaded once for the process and handed out by
+            // name. The fresh room only holds a reference to one while
+            // something the room built happens to draw from it, so an atlas the
+            // saved frame reached is routinely absent from the fresh-room index
+            // while the process still owns the identical object: a Textbox
+            // takes its frame from GFX.Portraits, and a room that loaded
+            // without dialogue on screen has no path to that atlas at all.
+            // Without this the anchor has nothing to pair with and the whole
+            // slot is refused over content that never went anywhere.
+            return ResolveContentAtlas(resourceType, resourceKey);
+        }
         if (typeof(EverestModule).IsAssignableFrom(resourceType)) {
             return Everest.Modules.FirstOrDefault(module => module?.GetType() == resourceType);
         }
@@ -8054,6 +8066,47 @@ internal static class AkronStartPosReconstruction {
             }
         }
         return null;
+    }
+
+    // Where the game keeps the atlases it loads for the whole process. Both are
+    // plain static fields, and Everest rebinds them in place when it reloads an
+    // atlas, so the field is read on every lookup rather than the object being
+    // cached here. The fields are found by type rather than by name, so an
+    // atlas either type gains is covered without being listed.
+    //
+    // These two types are deliberately the whole list. There is no process-wide
+    // registry of Atlas instances to enumerate - Monocle does not keep one and
+    // Everest does not add one - so an atlas a helper mod built and kept to
+    // itself is still refused, by name, with its data path in the message.
+    // Reaching those would mean walking the statics of every type in every
+    // loaded assembly on a capture worker, which costs more than the refusal it
+    // would avoid.
+    private static readonly Type[] ContentAtlasOwners = { typeof(GFX), typeof(MTN) };
+
+    // Two of these carrying one key would be two distinct objects the rebuilt
+    // room cannot tell apart, and Atlas is deliberately absent from
+    // AreEquivalentLiveResources, so handing back whichever came first would be
+    // the quiet fold this file refuses everywhere else. Returning nothing
+    // instead falls through to a refusal that names the key. No two atlases the
+    // game loads share one: the key carries the data path, and each field is
+    // loaded from a path of its own.
+    private static Atlas ResolveContentAtlas(Type resourceType, string resourceKey) {
+        Atlas match = null;
+        foreach (Type owner in ContentAtlasOwners) {
+            foreach (FieldInfo field in owner.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)) {
+                if (!typeof(Atlas).IsAssignableFrom(field.FieldType) ||
+                    field.GetValue(null) is not Atlas atlas ||
+                    atlas.GetType() != resourceType ||
+                    !string.Equals(GetLiveResourceKey(atlas), resourceKey, StringComparison.Ordinal)) {
+                    continue;
+                }
+                if (match != null && !ReferenceEquals(match, atlas)) {
+                    return null;
+                }
+                match = atlas;
+            }
+        }
+        return match;
     }
 
     internal static string GetLiveResourceKey(object resource) {

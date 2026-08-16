@@ -15,7 +15,7 @@ A backup holds your save files. It leaves out the folders Akron itself runs out 
 | `Saves/AkronRecordings` | Video, which FFmpeg is still writing while you record. |
 | `Saves/AkronTools` | An FFmpeg build you put there yourself. |
 | `Saves/AkronAutomation` | Scratch files for the automation queue used to test Akron. |
-| `Saves/AkronRestore` | Where a restore does its work. |
+| `Saves/AkronRestore` | Where a restore does its work. It is removed when the restore finishes, so a folder of this name left behind means a restore was interrupted. |
 
 The StartPos folder is the one worth knowing about, because it used to be included: at hundreds of megabytes per backup the total-size limit then deleted the older backups you wanted to keep. Restoring a backup never removes a StartPos slot - and never rewinds one either. A slot you have re-set since the backup was taken still holds what you set last.
 
@@ -23,7 +23,7 @@ Everything else in your Saves folder is backed up and restored, including `Saves
 
 Use it before risky mod changes, save-file edits, testing sessions, or any run where losing the current profile would be expensive. Backups can be created manually or triggered on launch, close, save/settings writes, chapter entry, and timed intervals.
 
-Restore is intentionally conservative. Akron verifies the selected ZIP, creates a `pre-restore` backup of the current save files, unpacks the selected backup, puts it in place, reloads the restored save slot, and returns to the main menu so Celeste does not keep using stale in-level save data. That safety backup stays in the browser like any other backup, so you can recover the state you had immediately before the restore.
+Restore is intentionally conservative. Akron verifies the selected ZIP, creates a `pre-restore` backup of the current save files, unpacks the selected backup, puts it in place, reloads the save file you have open so Celeste does not keep using stale save data, and returns to the main menu. If you had no save file open, which is the case at the main menu, there is nothing to reload and Akron just rebuilds the menu so the file list shows the restored files. That safety backup stays in the browser like any other backup, so you can recover the state you had immediately before the restore.
 
 Restore stops before it changes anything if the `pre-restore` backup could not read every file, and names what it missed. It also closes the Akron log and stops any performance recording, because both write into the Saves folder it is about to replace.
 

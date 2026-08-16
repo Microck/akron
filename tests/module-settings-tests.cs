@@ -4838,6 +4838,39 @@ public sealed class ModuleSettingsTests
         Assert.True(closeLog > stopRecording);
     }
 
+    // The overworld rebuild is what makes OuiFileSelect read the restored files from disk, so a failed
+    // in-memory reload must never skip it. That early return was the defect this contract prevents.
+    [Fact]
+    public void RestoreAlwaysRebuildsTheOverworldAfterTryingToReloadTheOpenSave()
+    {
+        string source = File.ReadAllText(GetSourcePath("Actions", "akron-backup-actions.cs"));
+        Assert.DoesNotContain("no save slot could be determined", source, StringComparison.Ordinal);
+
+        int restore = source.IndexOf("private static void RestoreBackupConfirmed(", StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("\n    private static void ApplyRetention()", restore, StringComparison.Ordinal);
+        Assert.True(restore > 0, "RestoreBackupConfirmed is unavailable.");
+        Assert.True(nextMethod > restore, "RestoreBackupConfirmed has no detectable end.");
+
+        string restoreBody = source.Substring(restore, nextMethod - restore);
+        int reload = restoreBody.IndexOf("TryReloadOpenSaveData(", StringComparison.Ordinal);
+        int rebuild = restoreBody.IndexOf("Engine.Scene = new OverworldLoader", StringComparison.Ordinal);
+        Assert.True(reload > 0, "The open save must be reloaded before the scene changes.");
+        Assert.True(rebuild > reload, "The overworld rebuild must follow the reload attempt.");
+        Assert.DoesNotContain("return;", restoreBody.Substring(reload, rebuild - reload), StringComparison.Ordinal);
+
+        // The reload runs after the restored files are already on disk, and SaveData.Start runs every
+        // installed module's session load, so a mod throwing there would otherwise reach the caller's
+        // "Restore failed" handler and report a restore that worked as one that did not.
+        int reloadMethod = source.IndexOf("internal static bool TryReloadOpenSaveData(", StringComparison.Ordinal);
+        int afterReloadMethod = source.IndexOf("\n    private static bool VerifyZipReadable(", reloadMethod, StringComparison.Ordinal);
+        Assert.True(reloadMethod > 0, "TryReloadOpenSaveData is unavailable.");
+        Assert.True(afterReloadMethod > reloadMethod, "TryReloadOpenSaveData has no detectable end.");
+        Assert.Contains(
+            "catch (Exception exception) {",
+            source.Substring(reloadMethod, afterReloadMethod - reloadMethod),
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public void AFailedArchiveLeavesNoBackupFileBehind()
     {
@@ -5062,6 +5095,70 @@ public sealed class ModuleSettingsTests
         }
     }
 
+    // A clean restore must remove the AkronRestore container itself, or its presence cannot identify work
+    // left behind by a crashed restore.
+    [Fact]
+    public void RestoreRemovesTheEmptyWorkContainerAfterSuccess()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            File.WriteAllText(Path.Combine(savesFolder, "0.celeste"), "the save file on disk now");
+            string backupPath = Path.Combine(backupFolder, "good.zip");
+            WriteTestArchive(backupPath, new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the archived save file",
+            });
+
+            AkronBackupActions.RestoreSavesFolder(
+                savesFolder,
+                backupPath,
+                Path.Combine(savesFolder, "AkronRestore", "run"),
+                () => { });
+
+            Assert.Equal("the archived save file", File.ReadAllText(Path.Combine(savesFolder, "0.celeste")));
+            Assert.False(Directory.Exists(Path.Combine(savesFolder, "AkronRestore")));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // A sibling work folder can belong to a concurrent process or a crashed restore. The non-recursive
+    // container delete is what makes preserving that evidence a filesystem contract rather than luck.
+    [Fact]
+    public void RestoreKeepsTheWorkContainerWhenAnotherWorkFolderRemains()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            File.WriteAllText(Path.Combine(savesFolder, "0.celeste"), "the save file on disk now");
+            string siblingFile = Path.Combine(savesFolder, "AkronRestore", "other-run", "evidence.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(siblingFile)!);
+            File.WriteAllText(siblingFile, "another restore still owns this");
+
+            string backupPath = Path.Combine(backupFolder, "good.zip");
+            WriteTestArchive(backupPath, new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the archived save file",
+            });
+
+            AkronBackupActions.RestoreSavesFolder(
+                savesFolder,
+                backupPath,
+                Path.Combine(savesFolder, "AkronRestore", "run"),
+                () => { });
+
+            Assert.True(Directory.Exists(Path.Combine(savesFolder, "AkronRestore")));
+            Assert.Equal("another restore still owns this", File.ReadAllText(siblingFile));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
     // The invariant that matters more than any list of folders a restore skips: the save files are not
     // touched until the backup has been unpacked, so the step most likely to fail cannot cost the player
     // anything. The restore this replaces deleted first and unpacked second.
@@ -5093,6 +5190,82 @@ public sealed class ModuleSettingsTests
         finally
         {
             CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // An unpack failure happens before Saves changes, but its empty work container must still be removed so
+    // AkronRestore continues to identify an interrupted restore rather than every failed archive.
+    [Fact]
+    public void RestoreUnpackFailureRemovesTheEmptyWorkContainer()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            File.WriteAllText(Path.Combine(savesFolder, "0.celeste"), "the save file on disk now");
+            File.WriteAllText(Path.Combine(savesFolder, "1.celeste"), "the second save file");
+
+            string backupPath = Path.Combine(backupFolder, "escaping.zip");
+            WriteTestArchive(backupPath, new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the archived save file",
+                ["../escaped.celeste"] = "outside the destination",
+            });
+
+            Assert.Throws<IOException>(() => AkronBackupActions.RestoreSavesFolder(
+                savesFolder,
+                backupPath,
+                Path.Combine(savesFolder, "AkronRestore", "run"),
+                () => { }));
+
+            Assert.Equal("the save file on disk now", File.ReadAllText(Path.Combine(savesFolder, "0.celeste")));
+            Assert.Equal("the second save file", File.ReadAllText(Path.Combine(savesFolder, "1.celeste")));
+            Assert.False(Directory.Exists(Path.Combine(savesFolder, "AkronRestore")));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // The main menu, where Restore is most likely to be pressed, has no open save to reload. That is success,
+    // not the old "no save slot could be determined" failure, because no in-memory save can overwrite disk.
+    [Fact]
+    public void ReloadWithNoOpenSaveSucceeds()
+    {
+        SaveData? previous = SaveData.Instance;
+        try
+        {
+            SaveData.Instance = null;
+
+            Assert.True(AkronBackupActions.TryReloadOpenSaveData(out string message));
+            Assert.Empty(message);
+        }
+        finally
+        {
+            SaveData.Instance = previous;
+        }
+    }
+
+    // The reload exists to stop the copy Celeste is holding in memory from being written back over the files
+    // the restore just put on disk. A reload that cannot happen - the archive did not carry that slot, the
+    // file will not read, a mod throws while its session loads - has to drop that copy for the same reason,
+    // or the one save the restore could not correct is the one that overwrites it. There is no save file for
+    // slot 0 anywhere near the test run, so the load fails the way a missing slot would.
+    [Fact]
+    public void AReloadThatFailsLeavesNoStaleSaveInMemory()
+    {
+        SaveData? previous = SaveData.Instance;
+        try
+        {
+            SaveData.Instance = new SaveData { FileSlot = 0 };
+
+            Assert.False(AkronBackupActions.TryReloadOpenSaveData(out string message));
+            Assert.NotEmpty(message);
+            Assert.Null(SaveData.Instance);
+        }
+        finally
+        {
+            SaveData.Instance = previous;
         }
     }
 
