@@ -4,80 +4,79 @@
 
 <p align="center">
   <a href="https://gamebanana.com/mods/681169"><img src="https://img.shields.io/github/v/release/Microck/akron?display_name=tag&style=flat-square&label=release&color=000000" alt="release badge"></a>
-  <a href="https://gamebanana.com/mods/681169"><img src="https://img.shields.io/badge/dynamic/json?style=flat-square&label=downloads&color=000000&query=%24%5B0%5D&url=https%3A%2F%2Fapi.gamebanana.com%2FCore%2FItem%2FData%3Fitemtype%3DMod%26itemid%3D681169%26fields%3Ddownloads" alt="GameBanana downloads badge"></a>
+  <a href="https://gamebanana.com/mods/681169"><img src="https://img.shields.io/badge/dynamic/json?style=flat-square&label=downloads&color=000000&query=%24%5B0%5D&url=https%3A%2F%2Fapi.gamebanana.com%2FCore%2FItem%2FData%3Fitemtype%3DMod%26itemid%3D681169%26fields%3Ddownloads" alt="gamebanana downloads badge"></a>
   <a href="https://github.com/Microck/akron/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Microck/akron/ci.yml?branch=main&style=flat-square&label=ci&color=000000" alt="ci badge"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-CC%20BY--NC--ND%204.0-000000?style=flat-square" alt="license badge"></a>
 </p>
 
-## Akron
+## what is Akron?
 
-Akron is a player-facing utility suite for Celeste that runs inside Everest. Its in-game overlay provides practice, routing, HUD, capture, setup-sharing, and attempt-status tools.
+Akron is a player-facing utility suite for Celeste that runs inside Everest. it centers on an in-game overlay for practice, routing, hud visibility, capture, setup sharing, and visible attempt status.
 
-The overlay keeps common tools beside the game. Players can check their setup, adjust practice and HUD tools, capture play, and return to the level.
+the overlay keeps common player tools close to the game instead of scattered across separate menus. players can check the current setup, adjust practice or hud surfaces, capture play, and move back into the level without changing context.
 
-[Documentation](https://akron.micr.dev/docs) | [GameBanana](https://gamebanana.com/mods/681169)
+[documentation](https://akron.micr.dev/docs) | [gamebanana](https://gamebanana.com/mods/681169)
 
-## Quickstart
+## quickstart
 
 [<img src="docs/images/olympus-one-click-install.png" alt="Olympus 1-click install" height="50">](https://akron.micr.dev/olympus)
 [<img src="docs/images/raw-download.png" alt="raw download" height="50">](https://akron.micr.dev/raw)
 
-1. Install Akron with Olympus, or download it from [GameBanana](https://gamebanana.com/mods/681169) and place the downloaded mod archive in your Everest `Mods` folder. Do not unzip manual installs unless a release explicitly says to.
-2. Launch Celeste through Everest.
-3. Press `Tab` to open Akron.
+1. install Akron with Olympus, or download it from [gamebanana](https://gamebanana.com/mods/681169) and place the downloaded mod archive in your Everest `Mods` folder. do not unzip manual installs unless a release explicitly says to.
+2. launch Celeste through Everest.
+3. press `Tab` to open Akron.
 
-## Included tools
+## what does it include?
 
-### Overlay and HUD
+### overlay and hud
 
-The tabbed in-game overlay includes HUD widgets for labels, inputs, timers, resources, stats, and setup state. It is the main surface for checking and changing options while staying inside Celeste.
+the tabbed in-game overlay includes hud widgets for labels, inputs, timers, resources, stats, and setup state. it is the main surface for checking and changing options while staying inside Celeste.
 
-### Practice and routing
+### practice and routing
 
-StartPos tools, retry and reload helpers, frame and timescale controls, and room-lab utilities are grouped around setup, routing, and quickly returning to the part of a map that needs practice.
+startpos tools, retry and reload helpers, frame and timescale controls, and room-lab utilities are grouped around setup, routing, and quickly returning to the part of a map that needs practice.
 
-### Status and policy
+### status and policy
 
-Policy badges show each row's classification. The attempt-status chip shows the strictest classification Akron recorded for the current attempt. Community submission rules remain the authority for run acceptance.
+policy badges show each row's classification. the attempt-status chip shows the strictest classification Akron recorded for the current attempt. community submission rules remain the authority for run acceptance.
 
 ### .akr setup packs
 
-`.akr` setup packs save, import, and share scoped Akron setups. They are used for personal setups and community packs for map-specific configurations.
+`.akr` setup packs save, import, and share scoped Akron setups. they are used for personal setups and community packs for map-specific configurations.
 
-### Capture tools
+### capture tools
 
-Screenshots and internal recording support sharing or reviewing play.
+screenshots and internal recording support sharing or reviewing play.
 
-See the [feature guide](https://akron.micr.dev/docs/feature-guide) for the current option reference.
+see the [feature guide](https://akron.micr.dev/docs/feature-guide) for the current option reference.
 
-## External integrations
+## external integrations
 
-When a supported external mod is installed, Akron adds rows that control or report its features. Each tool remains a separate installation.
+some overlay rows appear only when supported external mods are installed. Akron does not depend on, bundle, or replace those tools; it provides a visual gui for ease of use. each tool remains a separate installation:
 
-| Tool | Akron integration |
-|---|---|
-| [Motion Smoothing](https://gamebanana.com/mods/514173) | Controls for FPS/TPS bypass settings and related smoothing options. |
-| [Speedrun Tool](https://gamebanana.com/tools/6597) | Status, savestate slots, capture/restore/clear actions, room timer export, and optional Lag Pauser handling for load-state hitches. |
-| [CelesteTAS](https://gamebanana.com/tools/6715) | TAS status, the configured TAS file, and a playback handoff. |
-| [Extended Variant Mode](https://gamebanana.com/mods/53650) | Available variant options exposed by the mod. |
-| [Extended Camera Dynamics](https://gamebanana.com/mods/548940) | Camera hook status and Cursor Zoom zoom-out support when ECD camera hooks are active. |
+- **[Motion Smoothing](https://gamebanana.com/mods/514173):** controls for fps/tps bypass settings and related smoothing options.
+- **[Speedrun Tool](https://gamebanana.com/tools/6597):** status, savestate slots, capture/restore/clear actions, room timer export, and optional Lag Pauser handling for load-state hitches.
+- **[CelesteTAS](https://gamebanana.com/tools/6715):** tas status, the configured tas file, and a playback handoff.
+- **[Extended Variant Mode](https://gamebanana.com/mods/53650):** available variant options exposed by the mod.
+- **[Extended Camera Dynamics](https://gamebanana.com/mods/548940):** camera hook status and Cursor Zoom zoom-out support when ECD camera hooks are active.
 
-See the [compatibility](https://akron.micr.dev/docs/troubleshooting/compatibility) and [external integrations](https://akron.micr.dev/docs/feature-guide/external-tools) docs for details.
+see the [compatibility](https://akron.micr.dev/docs/troubleshooting/compatibility) and [external integrations](https://akron.micr.dev/docs/feature-guide/external-tools) docs for details.
 
-## Contributing
+## contributing
 
-Akron is a .NET Everest mod. For local development:
+Akron is a .NET Everest mod. for local development:
 
 ```bash
+dotnet format Akron.sln --include Source/Core/AkronFeatureRegistry.cs tests/feature-registry-tests.cs
 dotnet build Source/Akron.csproj
 dotnet test tests/akron-tests.csproj --nologo
 ```
 
-Read the [contributor docs](https://akron.micr.dev/docs/contributing/development-setup) for formatting and focused checks before changing feature policy, setup packs, or public behavior.
+read the [contributor docs](https://akron.micr.dev/docs/contributing/development-setup) before changing feature policy, setup packs, or public behavior.
 
-## Support
+## support
 
-Optional support is available on [Ko-fi](https://ko-fi.com/microck). Donations help cover the domain, storage, and hosting. Akron's current features are free.
+if Akron helps with your Celeste practice, routing, captures, or setup sharing, optional support is available on [ko-fi](https://ko-fi.com/microck). donations help cover ongoing development costs like domain, infrastructure, storage, and hosting, so they help keep the mod maintained. no features are or will be locked behind donations or a paywall.
 
 <p align="left">
   <a href="https://ko-fi.com/microck">
@@ -85,6 +84,6 @@ Optional support is available on [Ko-fi](https://ko-fi.com/microck). Donations h
   </a>
 </p>
 
-## License
+## license
 
 Akron-owned material is licensed under [Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International](LICENSE). Third-party components remain under the separate terms listed in [third-party notices](licenses/third-party-notices.txt).
