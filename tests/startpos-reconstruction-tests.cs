@@ -374,6 +374,60 @@ public sealed class StartPosReconstructionTests {
         Assert.Contains("delegate method is not authentic to the fresh room", restore.Error);
     }
 
+    // A refused callback has to name the mod whose method it is, or the player gets the
+    // graph's own text and nothing to act on. The delegate refusal reports the type that
+    // declares the method rather than the field's own type, because the field is usually
+    // a plain Action and the method is the only part of the edge a mod owns.
+    //
+    // The document is edited rather than captured twice, the same way the two refusals
+    // above are built: the room this stands for is a mod that installs a different method
+    // in that slot than the one it installed when the slot was set, and a snapshot naming
+    // a method the fresh room does not run is exactly what that produces. The reader
+    // cannot tell the two apart, and building it from two mod versions is not something a
+    // unit test can do.
+    [Fact]
+    public void ARefusedDelegateMethodNamesTheModThatDeclaresIt() {
+        TestNode savedChild = new TestNode();
+        TestRoot saved = new TestRoot { Primary = savedChild };
+        saved.Callback = savedChild.Increment;
+        TestNode baselineChild = new TestNode();
+        TestRoot baseline = new TestRoot { Primary = baselineChild };
+        baseline.Callback = baselineChild.Increment;
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode delegateNode = Assert.Single(
+            capture.Document.Nodes,
+            node => node.DelegateCalls.Count > 0);
+        AkronReconstructionDelegateCall call = Assert.Single(delegateNode.DelegateCalls);
+        MethodInfo modMethod = typeof(ProbeHelperModA).GetMethod(
+            nameof(ProbeHelperModA.Leave),
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+        call.Target = new AkronReconstructionValue { Kind = "null" };
+        call.DeclaringTypeName = modMethod.DeclaringType!.AssemblyQualifiedName!;
+        call.MethodName = modMethod.Name;
+        call.ReturnTypeName = modMethod.ReturnType.AssemblyQualifiedName!;
+        call.ParameterTypeNames = new List<string>();
+        TestNode freshChild = new TestNode();
+        TestRoot fresh = new TestRoot { Primary = freshChild };
+        fresh.Callback = freshChild.Increment;
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("delegate method is not authentic to the fresh room", restore.Error);
+        Assert.Contains(";method=" + nameof(ProbeHelperModA.Leave), restore.Error);
+        // The type the load message is built from, and the sentence it builds.
+        Assert.Equal(typeof(ProbeHelperModA).AssemblyQualifiedName, restore.RefusedTypeName);
+        Assert.Equal(
+            "StartPos 3 needs ProbeHelperModA from SampleHelper, and this room does not have it. " +
+            "Check that mod's settings, or set the slot again.",
+            AkronStartPosRefusal.Describe(
+                "StartPos 3",
+                restore.RefusedTypeName,
+                new[] { ("SampleHelper", typeof(ProbeHelperModA).Assembly.GetName().Name!) }));
+    }
+
     [Fact]
     public void RestoreRejectsAnArrayAllocationLargerThanTheSnapshotLimit() {
         TestRoot saved = new TestRoot { Numbers = new[] { 1 } };
@@ -7600,6 +7654,108 @@ public sealed class StartPosReconstructionTests {
         Assert.Contains("coroutine-stack-iterator-alias=false", restore.Error);
     }
 
+    // The other half of the deferral. Taking an iterator on trust because its
+    // captured owner has not been reached yet is only sound if the verdict is
+    // re-asked once every node is resolved, and this is the room where the
+    // deferred answer is no.
+    //
+    // A mod adds a Sprite to a map entity while the room is played - Add(new
+    // Sprite(...)) from a trigger or a routine, which is ordinary mod code - and
+    // plays an animation on it. The state machine is mid `yield return
+    // sprite.PlayUtil()`, so the coroutine holds Monocle.Sprite+<PlayUtil>d__40
+    // with that sprite in <>4__this. A clean reload of the same room rebuilds the
+    // entity and the state machine, because the map places both, and does not
+    // rebuild the sprite, because nothing has run the mod code that added it. So
+    // the document reconstructs the sprite as an owned component of the fresh
+    // entity, and the iterator's owner is that reconstruction rather than
+    // anything the reloaded room supplied.
+    //
+    // The state machine sits ahead of the sprite in the component list, so the
+    // document reaches the iterator first and the iterator is deferred. Nothing
+    // later makes its owner authentic, and the load has to refuse: an iterator
+    // whose captured this is not an object the fresh room supplied is one the
+    // fresh room cannot be running.
+    [Fact]
+    public void RestoreRefusesADeferredCompilerIteratorWhoseOwnerTheFreshRoomDoesNotSupply() {
+        // Control. The same room, same document order, with the sprite placed by
+        // the map so a clean reload carries it. It restores, so what the graph
+        // objects to below is the missing owner and not the ordering.
+        Assert.True(RestoreRuntimeAddedSpriteRoutineScene(
+            cleanReloadCarriesTheSprite: true,
+            spriteFirst: false).Success);
+
+        AkronReconstructionRestore restore = RestoreRuntimeAddedSpriteRoutineScene(
+            cleanReloadCarriesTheSprite: false,
+            spriteFirst: false,
+            out SpriteRoutineSceneRoot fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains(
+            "reconstructed compiler iterator owner is not authentic to the fresh room",
+            restore.Error);
+        Assert.Contains("Monocle.Sprite+<PlayUtil>d__40", restore.Error);
+        // The refusal runs before any assignment, so the room is still the room
+        // the reload built: its entity, carrying only the component the map
+        // placed.
+        Entity freshEntity = Assert.Single(GetEntityListContents(fresh.Entities));
+        Assert.IsType<StateMachine>(Assert.Single(GetComponentListContents(freshEntity)));
+    }
+
+    // The same room with the sprite ahead of the state machine in the component
+    // list. Its owner is resolved before the iterator, so nothing is deferred and
+    // the structural rule refuses it instead - the rule that already refused this
+    // room before the deferral existed. Recorded here because it is the evidence
+    // that the deferred refusal above replaces a refusal rather than adding one:
+    // this room does not load on either side of the change, only the sentence
+    // differs.
+    [Fact]
+    public void ACompilerIteratorWhoseOwnerTheFreshRoomDoesNotSupplyIsRefusedInEitherDocumentOrder() {
+        AkronReconstructionRestore restore = RestoreRuntimeAddedSpriteRoutineScene(
+            cleanReloadCarriesTheSprite: false,
+            spriteFirst: true);
+
+        Assert.False(restore.Success);
+        Assert.Contains("reconstructed type is not authentic to the fresh room", restore.Error);
+        Assert.Contains("Monocle.Sprite+<PlayUtil>d__40", restore.Error);
+    }
+
+    private static AkronReconstructionRestore RestoreRuntimeAddedSpriteRoutineScene(
+        bool cleanReloadCarriesTheSprite,
+        bool spriteFirst
+    ) {
+        return RestoreRuntimeAddedSpriteRoutineScene(
+            cleanReloadCarriesTheSprite,
+            spriteFirst,
+            out _);
+    }
+
+    // The saved room always carries the sprite, because that is the frame the
+    // player set the slot on. cleanReloadCarriesTheSprite is what separates a
+    // sprite the map places from one mod code added after the level loaded, and
+    // it applies to the baseline and to the fresh room together - both are clean
+    // reloads of the same room.
+    private static AkronReconstructionRestore RestoreRuntimeAddedSpriteRoutineScene(
+        bool cleanReloadCarriesTheSprite,
+        bool spriteFirst,
+        out SpriteRoutineSceneRoot fresh
+    ) {
+        SpriteRoutineSceneRoot saved = CreateSpriteRoutineScene(true, spriteFirst, typeof(Sprite));
+        SpriteRoutineSceneRoot baseline = CreateSpriteRoutineScene(
+            false,
+            spriteFirst,
+            typeof(Sprite),
+            includeSprite: cleanReloadCarriesTheSprite);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        fresh = CreateSpriteRoutineScene(
+            false,
+            spriteFirst,
+            typeof(Sprite),
+            includeSprite: cleanReloadCarriesTheSprite);
+        return graph.Restore(capture.Document, fresh);
+    }
+
     private static AkronReconstructionRestore RestoreSpriteRoutineSceneWithExtraCoroutine(
         ExtraCoroutine extra
     ) {
@@ -7682,7 +7838,8 @@ public sealed class StartPosReconstructionTests {
         bool includeIterator,
         bool spriteFirst,
         Type spriteType,
-        ExtraCoroutine extra = ExtraCoroutine.None
+        ExtraCoroutine extra = ExtraCoroutine.None,
+        bool includeSprite = true
     ) {
         Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
         EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
@@ -7691,12 +7848,19 @@ public sealed class StartPosReconstructionTests {
         SetRuntimeField(owner, "<Scene>k__BackingField", scene);
         SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 31));
 
-        Sprite sprite = (Sprite) RuntimeHelpers.GetUninitializedObject(spriteType);
-        SetRuntimeField(sprite, "<Entity>k__BackingField", owner);
-        // Sprite.PlayUtil is `while (Animating) yield return null`, so the
-        // routine only stays mid-flight while the sprite reports it is playing.
-        SetRuntimeField(sprite, "<Animating>k__BackingField", true);
-        owner.Animation = sprite;
+        // includeSprite: false is the room whose sprite mod code added after the
+        // level loaded, so a clean reload of that room does not carry it. The
+        // entity still does, and the state machine still does, because both come
+        // from the map.
+        Sprite sprite = null!;
+        if (includeSprite) {
+            sprite = (Sprite) RuntimeHelpers.GetUninitializedObject(spriteType);
+            SetRuntimeField(sprite, "<Entity>k__BackingField", owner);
+            // Sprite.PlayUtil is `while (Animating) yield return null`, so the
+            // routine only stays mid-flight while the sprite reports it is playing.
+            SetRuntimeField(sprite, "<Animating>k__BackingField", true);
+            owner.Animation = sprite;
+        }
 
         StateMachine machine = (StateMachine) RuntimeHelpers.GetUninitializedObject(typeof(StateMachine));
         SetRuntimeField(machine, "<Entity>k__BackingField", owner);
@@ -7726,9 +7890,11 @@ public sealed class StartPosReconstructionTests {
             coroutine.Update();
         }
 
-        List<Component> ordered = spriteFirst
-            ? new List<Component> { sprite, machine }
-            : new List<Component> { machine, sprite };
+        List<Component> ordered = !includeSprite
+            ? new List<Component> { machine }
+            : spriteFirst
+                ? new List<Component> { sprite, machine }
+                : new List<Component> { machine, sprite };
         if (extra != ExtraCoroutine.None) {
             // A plain Coroutine component, the way an entity adds one with
             // Add(new Coroutine(...)), so this one really does have an Entity.
