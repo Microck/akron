@@ -8,6 +8,9 @@ using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using Celeste;
 using Microsoft.Xna.Framework;
@@ -5301,6 +5304,70 @@ public sealed class StartPosReconstructionTests {
         Assert.Same(typeof(string), freshSession.Holders[0].Kind);
     }
 
+    // The same rule over the population it used to miss entirely. Everest never
+    // hands a mod's dll to the runtime by path - EverestModuleAssemblyContext
+    // reads the relinked dll into memory and calls LoadFromStream so the file is
+    // not locked - so no mod assembly has ever had a Location, and asking whether
+    // one came off disk answered no for every mod-owned Type there has ever been.
+    // Their names are the mod's own, off the mod's own dll, so the key does name
+    // the resource and a process that cannot resolve it does not have it.
+    //
+    // The saved room is one this install could set: the mod was installed, so the
+    // room it loaded with holds the type too. The room it rebuilds into does not,
+    // which is what uninstalling the mod leaves behind, and the fresh holder's
+    // own Type is what the wildcarded owner path would hand over in its place.
+    [Fact]
+    public void ARebuildRefusesAListHeldModOwnedTypeThisInstallNoLongerHas() {
+        Type modOwned = LoadThroughEverestModuleContext(
+                "AkronProbeUninstalledMod",
+                BuildProbeModAssembly("AkronProbeUninstalledModAsm"))
+            .GetTypes()
+            .Single(candidate => candidate.Name == "HelperState");
+        // The premise, both halves. The assembly is the shape Everest produces,
+        // and nothing in this process can resolve its name back to it, which is
+        // what an uninstalled mod looks like from the restore's side.
+        Assert.False(modOwned.Assembly.IsDynamic);
+        Assert.Empty(modOwned.Assembly.Location);
+        Assert.Null(Type.GetType(modOwned.AssemblyQualifiedName!, throwOnError: false));
+
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestListHeldResourceSession {
+            Holders = new List<TestListHeldResourceHolder> {
+                new TestListHeldResourceHolder { Kind = modOwned }
+            }
+        };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestListHeldResourceSession {
+            Holders = new List<TestListHeldResourceHolder> {
+                new TestListHeldResourceHolder { Kind = modOwned }
+            }
+        };
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode kind = capture.Document.Nodes
+            .Single(node => node.ResourceKey.Contains("AkronProbeUninstalledModAsm", StringComparison.Ordinal));
+        Assert.True(kind.PortableResourceKey);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        AkronPersistentRuntimeState fresh = new AkronPersistentRuntimeState();
+        fresh.ModuleSessions["helper"] = new TestListHeldResourceSession {
+            Holders = new List<TestListHeldResourceHolder> {
+                new TestListHeldResourceHolder { Kind = typeof(string) }
+            }
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("fresh resource identity differs", restore.Error);
+        Assert.EndsWith(".Kind", restore.ErrorPath);
+        // Without the fix this reports success and the rebuilt room holds
+        // typeof(string) where the saved frame held the mod's type.
+        TestListHeldResourceSession freshSession =
+            Assert.IsType<TestListHeldResourceSession>(fresh.ModuleSessions["helper"]);
+        Assert.Same(typeof(string), freshSession.Holders[0].Kind);
+    }
+
     // The control, and the reason the classification is per resource rather than per
     // type. Everest emits assemblies while the game runs and numbers them in the
     // order that process happened to build them, so the same logical type is
@@ -5373,6 +5440,33 @@ public sealed class StartPosReconstructionTests {
         Assert.False(AkronStartPosReconstruction.HasPortableLiveResourceKey(emitted));
         Assert.False(AkronStartPosReconstruction.HasPortableLiveResourceKey(emitted.Assembly));
         Assert.False(AkronStartPosReconstruction.HasPortableLiveResourceKey(byteLoaded));
+
+        // A mod's assembly. Everest loads every one of them from a stream, so
+        // Location is empty and IsDynamic is false - the same two answers the
+        // byte-loaded row above gives - and the load context is what separates
+        // them. Everest's context means the bytes came off the mod's own dll, so
+        // the name is the mod's; Assembly.Load(byte[]) builds a context of its
+        // own, so the name is whatever this process chose.
+        Assembly modAssembly = LoadThroughEverestModuleContext(
+            "AkronProbeNamedMod",
+            BuildProbeModAssembly("AkronProbeNamedModAsm"));
+        Type modOwned = modAssembly.GetTypes().Single(candidate => candidate.Name == "HelperState");
+        Assert.Empty(modAssembly.Location);
+        Assert.False(modAssembly.IsDynamic);
+        Assert.True(AkronStartPosReconstruction.HasPortableLiveResourceKey(modAssembly));
+        Assert.True(AkronStartPosReconstruction.HasPortableLiveResourceKey(modOwned));
+        // What "portable" is claiming, shown rather than asserted about: a second
+        // load of the same mod at the same version derives the same key, so a
+        // process that cannot produce the key does not have the type.
+        Type reloaded = LoadThroughEverestModuleContext(
+                "AkronProbeNamedModAgain",
+                BuildProbeModAssembly("AkronProbeNamedModAsm"))
+            .GetTypes()
+            .Single(candidate => candidate.Name == "HelperState");
+        Assert.NotSame(modOwned, reloaded);
+        Assert.Equal(
+            AkronStartPosReconstruction.GetLiveResourceKey(modOwned),
+            AkronStartPosReconstruction.GetLiveResourceKey(reloaded));
         // The assembly-qualified name of a constructed generic spells out the
         // assembly of every type argument, so one emitted argument makes the whole
         // key unrepeatable even though List<> itself came off disk.
@@ -5416,6 +5510,88 @@ public sealed class StartPosReconstructionTests {
         return assembly.DefineDynamicModule("m")
             .DefineType("AkronProbe.Emitted", TypeAttributes.Public)
             .CreateType();
+    }
+
+    // A complete managed assembly with one public type, assembled in memory and
+    // never written anywhere. Its name comes out of the metadata written here,
+    // which is what makes building it twice produce the same name - the property
+    // a mod's dll on disk has and an assembly this process named for itself does
+    // not.
+    private static byte[] BuildProbeModAssembly(string assemblyName) {
+        MetadataBuilder metadata = new MetadataBuilder();
+        metadata.AddAssembly(
+            metadata.GetOrAddString(assemblyName),
+            new Version(1, 0, 0, 0),
+            default,
+            default,
+            0,
+            System.Reflection.AssemblyHashAlgorithm.None);
+        metadata.AddModule(
+            0,
+            metadata.GetOrAddString(assemblyName + ".dll"),
+            metadata.GetOrAddGuid(Guid.NewGuid()),
+            default,
+            default);
+        AssemblyReferenceHandle runtime = metadata.AddAssemblyReference(
+            metadata.GetOrAddString("System.Runtime"),
+            new Version(8, 0, 0, 0),
+            default,
+            metadata.GetOrAddBlob(new byte[] { 0xB0, 0x3F, 0x5F, 0x7F, 0x11, 0xD5, 0x0A, 0x3A }),
+            default,
+            default);
+        TypeReferenceHandle systemObject = metadata.AddTypeReference(
+            runtime,
+            metadata.GetOrAddString("System"),
+            metadata.GetOrAddString("Object"));
+        // Every assembly begins with the <Module> pseudo-type, and the type after
+        // it is the one this probe holds.
+        metadata.AddTypeDefinition(
+            default,
+            default,
+            metadata.GetOrAddString("<Module>"),
+            default,
+            MetadataTokens.FieldDefinitionHandle(1),
+            MetadataTokens.MethodDefinitionHandle(1));
+        metadata.AddTypeDefinition(
+            TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            metadata.GetOrAddString("AkronProbe"),
+            metadata.GetOrAddString("HelperState"),
+            systemObject,
+            MetadataTokens.FieldDefinitionHandle(1),
+            MetadataTokens.MethodDefinitionHandle(1));
+
+        BlobBuilder image = new BlobBuilder();
+        new ManagedPEBuilder(
+            PEHeaderBuilder.CreateLibraryHeader(),
+            new MetadataRootBuilder(metadata),
+            new BlobBuilder(),
+            flags: CorFlags.ILOnly).Serialize(image);
+        return image.ToArray();
+    }
+
+    // The load Everest performs for every installed mod. Its
+    // EverestModuleAssemblyContext reads the relinked dll into memory and calls
+    // LoadFromStream so the file on disk is never locked, which is why a mod's
+    // assembly reports no Location. The constructor is Everest-internal, so it is
+    // reached the only way a test can reach it; everything after that is the real
+    // context doing the real load. The context is kept alive rather than disposed:
+    // it is what resolves the loaded assembly's own references, so a disposed one
+    // leaves the assembly unable to bind even System.Object. Each context
+    // registers itself under its mod name for as long as it lives, so every call
+    // passes a mod name of its own.
+    private static Assembly LoadThroughEverestModuleContext(string modName, byte[] image) {
+        EverestModuleMetadata metadata = new EverestModuleMetadata {
+            Name = modName,
+            VersionString = "1.0.0",
+            PathDirectory = Path.GetTempPath(),
+            DLL = modName + ".dll"
+        };
+        EverestModuleAssemblyContext context = (EverestModuleAssemblyContext)
+            typeof(EverestModuleAssemblyContext)
+                .GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .Single()
+                .Invoke(new object[] { metadata });
+        return context.LoadFromStream(new MemoryStream(image));
     }
 
     // A pointer that is not a collation handle still has to be refused: the
@@ -7920,6 +8096,116 @@ public sealed class StartPosReconstructionTests {
         }
     }
 
+    // The unnamed half of the state-slot defect. Nine popular helpers still add
+    // states with the pre-2023 reflection idiom, which resizes the four callback
+    // arrays and never names, so both sides of the restore read the added slot as
+    // unnamed and a name comparison reads that as agreement. The two rooms below
+    // are the same population - one base state, mod A's state and mod B's state -
+    // and differ only in the order the two mods ran, which is what a mod install
+    // or removal changes between setting a slot and loading it.
+    //
+    // Both tests build the machine through Monocle's own SetCallbacks and assert
+    // on the machine's own ends array afterwards, so the callbacks the rooms
+    // actually run are what is measured.
+    [Fact]
+    public void ARestoreRefusesAnUnnamedStateSlotTheFreshRoomBuiltForAnotherMod() {
+        StateSlotSceneRoot saved = CreateUnnamedStateSlotScene(
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave),
+            (ProbeHelperModB.Drive, ProbeHelperModB.Leave));
+        StateSlotSceneRoot baseline = CreateUnnamedStateSlotScene(
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave),
+            (ProbeHelperModB.Drive, ProbeHelperModB.Leave));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        StateSlotSceneRoot fresh = CreateUnnamedStateSlotScene(
+            (ProbeHelperModB.Drive, ProbeHelperModB.Leave),
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave));
+        StateMachine freshMachine = GetStateSlotMachine(fresh);
+        // The premise: the machine really is short-named, so nothing in names
+        // separates slot 1 from slot 2 in either room.
+        Assert.Single(GetRuntimeField<string[]>(freshMachine, "names"));
+        Assert.Equal(3, GetRuntimeField<Action[]>(freshMachine, "ends").Length);
+        Assert.Equal(
+            new[] { "<null>", nameof(ProbeHelperModB), nameof(ProbeHelperModA) },
+            UnnamedSceneEndMethodNames(fresh));
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved state slot is a different state in the fresh room", restore.Error);
+        // The refused restore leaves this room running its own arrangement: mod
+        // B's state is still the one this session numbered 1. Without the fix the
+        // restore reports success and both arrays come back in the saved order,
+        // [<null>,ProbeHelperModA,ProbeHelperModB], while this session's mods go
+        // on holding the ids a clean load handed them.
+        Assert.Equal(
+            new[] { "<null>", nameof(ProbeHelperModB), nameof(ProbeHelperModA) },
+            UnnamedSceneEndMethodNames(fresh));
+    }
+
+    // The control, and the reason an unnamed slot cannot simply be refused. Every
+    // player of those nine helpers loads this room on every restore: the mod set
+    // did not change, both sessions numbered the states the same way, and the
+    // saved frame is the arrangement the fresh room already has. Refusing a write
+    // into an unnamed slot outright would cost all of them their slot.
+    [Fact]
+    public void AnUnnamedStateSlotTheFreshRoomNumberedTheSameWayIsStillRestored() {
+        StateSlotSceneRoot saved = CreateUnnamedStateSlotScene(
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave),
+            (ProbeHelperModB.Drive, ProbeHelperModB.Leave));
+        StateSlotSceneRoot baseline = CreateUnnamedStateSlotScene(
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave),
+            (ProbeHelperModB.Drive, ProbeHelperModB.Leave));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        StateSlotSceneRoot fresh = CreateUnnamedStateSlotScene(
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave),
+            (ProbeHelperModB.Drive, ProbeHelperModB.Leave));
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(
+            new[] { "<null>", nameof(ProbeHelperModA), nameof(ProbeHelperModB) },
+            UnnamedSceneEndMethodNames(fresh));
+    }
+
+    // The unnamed analogue of RestoreAcceptsACallbackAModMovedToAnotherStateSlot
+    // DuringPlay, and the reason the fallback reads updates and coroutines rather
+    // than all four callback arrays. Both sessions numbered the two states the
+    // same way and the same mods drive them, so both rooms agree about what slot
+    // 1 and slot 2 are. The one difference is where mod A's end callback sits:
+    // the clean load leaves it on slot 2 and the saved frame has it on slot 1,
+    // which is the public SetCallbacks being used during play. Widening the
+    // fallback to begins and ends would refuse this frame.
+    [Fact]
+    public void AnUnnamedStateSlotAcceptsAnEndCallbackAModMovedWhileTheRoomWasPlayed() {
+        StateSlotSceneRoot saved = CreateUnnamedStateSlotScene(
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave),
+            (ProbeHelperModB.Drive, null!));
+        StateSlotSceneRoot baseline = CreateUnnamedStateSlotScene(
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave),
+            (ProbeHelperModB.Drive, null!));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        StateSlotSceneRoot fresh = CreateUnnamedStateSlotScene(
+            (ProbeHelperModA.Drive, null!),
+            (ProbeHelperModB.Drive, ProbeHelperModA.Leave));
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(
+            new[] { "<null>", nameof(ProbeHelperModA), "<null>" },
+            UnnamedSceneEndMethodNames(fresh));
+    }
+
     // One entity carrying one Monocle StateMachine whose mod states are added
     // through Monocle's own AddState, in the order given. AddState is what
     // assigns the state id and what writes the names entry, so the order here
@@ -7928,6 +8214,20 @@ public sealed class StartPosReconstructionTests {
         bool sharedModClosure,
         params (string Name, bool EndCallback)[] modStates
     ) {
+        return CreateStateSlotScene((machine, stateOwner) => {
+            Action endCallback = sharedModClosure ? SampleTimerMod.Callback : stateOwner.EndState;
+            foreach ((string name, bool endCallback_) in modStates) {
+                machine.AddState(
+                    name,
+                    stateOwner.RunState,
+                    null,
+                    null,
+                    endCallback_ ? endCallback : null);
+            }
+        });
+    }
+
+    private static StateSlotSceneRoot CreateStateSlotScene(Action<StateMachine, StateSlotEntity> addModStates) {
         Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
         EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
 
@@ -7940,15 +8240,7 @@ public sealed class StartPosReconstructionTests {
         // machine the game built.
         StateMachine machine = new StateMachine(1);
         SetRuntimeField(machine, "<Entity>k__BackingField", stateOwner);
-        Action endCallback = sharedModClosure ? SampleTimerMod.Callback : stateOwner.EndState;
-        foreach ((string name, bool endCallback_) in modStates) {
-            machine.AddState(
-                name,
-                stateOwner.RunState,
-                null,
-                null,
-                endCallback_ ? endCallback : null);
-        }
+        addModStates(machine, stateOwner);
         // Monocle's own state setter, so the machine is actually running a state
         // rather than sitting on the -1 no entity has ever driven it out of.
         machine.State = 1;
@@ -7958,6 +8250,48 @@ public sealed class StartPosReconstructionTests {
         AddDetachedEntity(entityList, stateOwner);
 
         return new StateSlotSceneRoot { Scene = scene, Entities = entityList };
+    }
+
+    // The pre-2023 reflection idiom, performed rather than imitated: resize the
+    // four callback arrays, leave names alone, then wire the new slot through
+    // Monocle's own public SetCallbacks. This is what XaphanHelper,
+    // BrokemiaHelper, JackalHelper, IsaGrabBag and PrismaticHelper still ship,
+    // and the slot it produces is unnamed on both sides of a restore.
+    private static int AddUnnamedState(StateMachine machine, Func<int> update, Action end) {
+        Action[] begins = GetRuntimeField<Action[]>(machine, "begins");
+        Func<int>[] updates = GetRuntimeField<Func<int>[]>(machine, "updates");
+        Action[] ends = GetRuntimeField<Action[]>(machine, "ends");
+        Func<IEnumerator>[] coroutines = GetRuntimeField<Func<IEnumerator>[]>(machine, "coroutines");
+        int slot = begins.Length;
+        Array.Resize(ref begins, slot + 1);
+        Array.Resize(ref updates, slot + 1);
+        Array.Resize(ref ends, slot + 1);
+        Array.Resize(ref coroutines, slot + 1);
+        SetRuntimeField(machine, "begins", begins);
+        SetRuntimeField(machine, "updates", updates);
+        SetRuntimeField(machine, "ends", ends);
+        SetRuntimeField(machine, "coroutines", coroutines);
+        machine.SetCallbacks(slot, update, null, null, end);
+        return slot;
+    }
+
+    // One room whose only mod states came through the reflection idiom, in the
+    // order given. The order is the installed mod order two sessions disagree
+    // about, exactly as it is for AddState above.
+    private static StateSlotSceneRoot CreateUnnamedStateSlotScene(
+        params (Func<int> Update, Action End)[] modStates
+    ) {
+        return CreateStateSlotScene((machine, _) => {
+            foreach ((Func<int> update, Action end) in modStates) {
+                AddUnnamedState(machine, update, end);
+            }
+        });
+    }
+
+    private static string[] UnnamedSceneEndMethodNames(StateSlotSceneRoot room) {
+        return GetRuntimeField<Action[]>(GetStateSlotMachine(room), "ends")
+            .Select(callback => callback?.Method.DeclaringType?.Name ?? "<null>")
+            .ToArray();
     }
 }
 
@@ -7980,6 +8314,29 @@ internal sealed class SampleUnderwaterSwitchController {
 // the room hold the same instance in two slots with a compiler-generated target.
 internal sealed class SampleTimerMod {
     internal static readonly Action Callback = () => { };
+}
+
+// Two helper mods that add a state through the pre-2023 reflection idiom. Each
+// drives its own state with its own update method and leaves it with its own end
+// method, which is the whole of what separates the two states once neither is
+// named. They are top-level and distinct types on purpose: a shift moves a slot
+// from one mod's code to the other's, and that is what the fix reads.
+internal static class ProbeHelperModA {
+    internal static int Drive() {
+        return 1;
+    }
+
+    internal static void Leave() {
+    }
+}
+
+internal static class ProbeHelperModB {
+    internal static int Drive() {
+        return 1;
+    }
+
+    internal static void Leave() {
+    }
 }
 
 // A helper mod's own playback ghost. Its saved state is not Akron's to drop.

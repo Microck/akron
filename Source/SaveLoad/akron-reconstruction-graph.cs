@@ -10,6 +10,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Loader;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -780,6 +781,17 @@ internal sealed class AkronReconstructionGraph {
     private static readonly string StateMachineTypeName = TypeName(typeof(StateMachine));
     private static readonly string[] StateMachineCallbackFieldNames = { "begins", "updates", "ends", "coroutines" };
     private static readonly FieldInfo[] StateMachineCallbackFields = StateMachineCallbackFieldNames
+        .Select(name => typeof(StateMachine).GetField(name, RuntimeInstanceFields))
+        .ToArray();
+    // The two of those four that say what a state IS rather than what happens at
+    // its edges: StateMachine.Update calls updates[state] and starts
+    // coroutines[state], so between them they are the code a state runs. begins
+    // and ends are deliberately left out - a mod is free to rewire the edges of a
+    // state it already owns while the room is played, and that is a move
+    // ValidateStateSlotAssignment must not refuse. The two sides of the
+    // comparison read this same list in this same order.
+    private static readonly string[] StateMachineDriverFieldNames = { "updates", "coroutines" };
+    private static readonly FieldInfo[] StateMachineDriverFields = StateMachineDriverFieldNames
         .Select(name => typeof(StateMachine).GetField(name, RuntimeInstanceFields))
         .ToArray();
     private static readonly FieldInfo StateMachineNamesField =
@@ -2611,9 +2623,11 @@ internal sealed class AkronReconstructionGraph {
         private readonly HashSet<string> freshStructuralDelegateCalls = new HashSet<string>(StringComparer.Ordinal);
         // What each state slot of every fresh Monocle.StateMachine means, keyed
         // by the machine itself so two machines of one type in one room cannot
-        // lend each other a state name. See ValidateStateSlotAssignment.
-        private readonly Dictionary<object, string[]> freshStateSlotNames =
-            new Dictionary<object, string[]>(ReferenceEqualityComparer.Instance);
+        // lend each other a state name. Name is what the machine calls the slot
+        // and Driver is the code it runs there; see ValidateStateSlotAssignment
+        // for which of the two decides a write and why.
+        private readonly Dictionary<object, (string Name, string Driver)[]> freshStateSlots =
+            new Dictionary<object, (string Name, string Driver)[]>(ReferenceEqualityComparer.Instance);
         private Dictionary<int, AkronReconstructionNode> savedStateSlotArrays;
         private readonly Dictionary<object, HashSet<string>> freshInstanceDelegateMethods =
             new Dictionary<object, HashSet<string>>(ReferenceEqualityComparer.Instance);
@@ -2965,7 +2979,7 @@ internal sealed class AkronReconstructionGraph {
             // the machine rather than about a path, so once is enough however
             // many places the room reaches it from.
             if (value is StateMachine freshStateMachine) {
-                IndexFreshStateSlotNames(freshStateMachine);
+                IndexFreshStateSlots(freshStateMachine);
             }
 
             try {
@@ -3006,11 +3020,12 @@ internal sealed class AkronReconstructionGraph {
             }
         }
 
-        // One entry per state slot the fresh machine has, holding the state that
-        // slot is. Read here rather than off the machine later, because names is
-        // the last field the document restores: by the time a callback array is
-        // written, reading the machine would read the document's names back.
-        private void IndexFreshStateSlotNames(StateMachine machine) {
+        // One entry per state slot the fresh machine has, holding what that slot
+        // is called and what it runs. Read here rather than off the machine
+        // later, because names and the callback arrays are both fields the
+        // document restores: by the time a callback array is written, reading the
+        // machine would read the document's own answer back.
+        private void IndexFreshStateSlots(StateMachine machine) {
             string[] names = StateMachineNamesField?.GetValue(machine) as string[];
             int slots = 0;
             foreach (FieldInfo callbackField in StateMachineCallbackFields) {
@@ -3018,7 +3033,7 @@ internal sealed class AkronReconstructionGraph {
                     slots = callbacks.Length;
                 }
             }
-            string[] slotNames = new string[slots];
+            (string Name, string Driver)[] slotCoordinates = new (string Name, string Driver)[slots];
             for (int slot = 0; slot < slots; slot++) {
                 // Monocle keeps names no longer than the callback arrays, and
                 // GetStateName finds no name for a slot past its end - it
@@ -3026,9 +3041,35 @@ internal sealed class AkronReconstructionGraph {
                 // slot as unnamed rather than leaving it unrecorded. Recording
                 // null rather than the id keeps a state a mod happened to name
                 // "2" from matching an unnamed slot 2 on the other side.
-                slotNames[slot] = names != null && slot < names.Length ? names[slot] : null;
+                slotCoordinates[slot] = (
+                    names != null && slot < names.Length ? names[slot] : null,
+                    FreshStateSlotDriver(machine, slot));
             }
-            freshStateSlotNames[machine] = slotNames;
+            freshStateSlots[machine] = slotCoordinates;
+        }
+
+        // The code the fresh machine runs at one slot, written the way
+        // SavedStateSlotDriver writes it from the document so the two strings are
+        // comparable. A delegate's invocation list is spelled out because a mod
+        // can add to a callback rather than replace it, and one call is the
+        // ordinary case.
+        private static string FreshStateSlotDriver(StateMachine machine, int slot) {
+            StringBuilder driver = new StringBuilder();
+            foreach (FieldInfo driverField in StateMachineDriverFields) {
+                driver.Append(driverField.Name).Append('=');
+                if (driverField.GetValue(machine) is Array callbacks &&
+                    slot < callbacks.Length &&
+                    callbacks.GetValue(slot) is Delegate callback) {
+                    foreach (Delegate call in callback.GetInvocationList()) {
+                        driver.Append(TypeName(call.Method.DeclaringType))
+                            .Append('.')
+                            .Append(call.Method.Name)
+                            .Append('+');
+                    }
+                }
+                driver.Append(';');
+            }
+            return driver.ToString();
         }
 
         private bool ShouldIndexFreshEdge(object value, HashSet<object> visited) {
@@ -6199,27 +6240,55 @@ internal sealed class AkronReconstructionGraph {
         // which is what a cached mod lambda is - records the field, and a check
         // reading the delegate's own edge would never see the slot.
         //
-        // What this does NOT close: a state added by the pre-2023 reflection
-        // idiom, where a mod-local extension method resizes begins, updates,
-        // ends and coroutines and never names. Everest's own patch expects
-        // that: GetStateName finds no name for such a slot and hands back the
-        // state id as a string. The snapshot here records it as unnamed, two
-        // unnamed slots agree, so a shift among them is still accepted
-        // silently. That idiom is still shipped by XaphanHelper, BrokemiaHelper,
-        // JackalHelper, IsaGrabBag and PrismaticHelper among others, so this
-        // closes the named half of the defect only. Those machines have a
-        // visible signature - names.Length < begins.Length - and refusing writes
-        // into their unnamed slots is the follow-up, not something this rule
-        // does today. Two narrower wrong restores also stay open, both
-        // reproduced and neither reachable through any published mod: a slot
-        // whose four saved callbacks are all null is never checked, because the
-        // check only runs where a value is written, so a machine that lost a
-        // state like that can still take a callback at the wrong id; and
-        // SavedStateSlotArrays below keeps one owner per array node, so two
-        // machines sharing one callback array - which needs reflection, the
-        // public API cannot do it - let the later one lend the earlier one its
-        // name. Keeping every owner and refusing when any disagrees is the fix
-        // if a mod is ever seen to alias them.
+        // A slot neither side names has no name to compare, and a name
+        // comparison alone reads that as agreement. The pre-2023 reflection
+        // idiom produces exactly that: a mod-local extension method resizes
+        // begins, updates, ends and coroutines and never names, so the state it
+        // adds is unnamed in both sessions and a shift among such slots used to
+        // be accepted silently. Everest's own patch expects unnamed slots -
+        // GetStateName hands back the state id as a string for one - and the
+        // idiom is still shipped by XaphanHelper, BrokemiaHelper, JackalHelper,
+        // IsaGrabBag and PrismaticHelper among others, so refusing every write
+        // into an unnamed slot would cost all of their players every slot on
+        // every load, shift or no shift.
+        //
+        // So an unnamed slot falls back to the only other thing the machine says
+        // about it: the code it runs there, updates[slot] and coroutines[slot],
+        // taken by declaring type and method name. A shift moves the slot from
+        // one mod's state to another's and those differ; a mod set that did not
+        // change wires the same methods in both sessions and this refuses
+        // nothing. The condition is "neither side names this slot" rather than
+        // the shorter names array those helpers leave behind, because the two
+        // are not the same set: Seeker asks for ten states and names eight,
+        // AngryOshiro asks for ten and names six, so a machine can have unnamed
+        // slots inside a names array of full length, and a mod that fills one of
+        // those through the public SetCallbacks has the same defect with no
+        // short names to show for it.
+        //
+        // What the fallback costs: a mod that changes an unnamed state's own
+        // update or coroutine while the room is played is refused, because
+        // without a name there is nothing to tell that change from the slot
+        // having become another mod's state, and the second is the silent wrong
+        // restore. Rewiring begins and ends is not affected, and neither is
+        // moving one of them between two unnamed slots - that is the same in-play
+        // move the named half accepts above, and the drivers still pin both
+        // slots while it happens.
+        //
+        // Three wrong restores stay open, none reachable through any published
+        // mod. Two were reproduced when the named half landed. A slot whose four
+        // saved callbacks are all null is never checked, because the check only
+        // runs where a value is written, so a machine that lost a state like
+        // that can still take a callback at the wrong id - and no driver reaches
+        // it either, for the same reason. And SavedStateSlotArrays below keeps
+        // one owner per array node, so two machines sharing one callback array -
+        // which needs reflection, the public API cannot do it - let the later
+        // one lend the earlier one its coordinates; keeping every owner and
+        // refusing when any disagrees is the fix if a mod is ever seen to alias
+        // them. The third is this fallback's own floor and is reasoned rather
+        // than reproduced: two unnamed slots that both hold no update and no
+        // coroutine have the same empty driver, so a shift between them is
+        // accepted and their begin and end callbacks swap. A state like that
+        // runs nothing while it is current and never advances out of itself.
         private void ValidateStateSlotAssignment(
             AkronReconstructionNode arrayNode,
             int slot,
@@ -6228,12 +6297,20 @@ internal sealed class AkronReconstructionGraph {
         ) {
             if (!SavedStateSlotArrays().TryGetValue(arrayNode.Id, out AkronReconstructionNode machineNode) ||
                 !Objects.TryGetValue(machineNode.Id, out object freshMachine) ||
-                !freshStateSlotNames.TryGetValue(freshMachine, out string[] freshNames) ||
-                slot >= freshNames.Length) {
+                !freshStateSlots.TryGetValue(freshMachine, out (string Name, string Driver)[] freshSlots) ||
+                slot >= freshSlots.Length) {
                 return;
             }
             string savedName = SavedStateSlotName(machineNode, slot);
-            if (string.Equals(freshNames[slot], savedName, StringComparison.Ordinal)) {
+            string freshName = freshSlots[slot].Name;
+            if (freshName == null && savedName == null) {
+                if (string.Equals(
+                        freshSlots[slot].Driver,
+                        SavedStateSlotDriver(machineNode, slot),
+                        StringComparison.Ordinal)) {
+                    return;
+                }
+            } else if (string.Equals(freshName, savedName, StringComparison.Ordinal)) {
                 return;
             }
             // Name the mod the same way a refused callback does, from the type
@@ -6282,6 +6359,45 @@ internal sealed class AkronReconstructionGraph {
             }
             AkronReconstructionValue name = namesNode.Items[slot];
             return name?.Kind == ScalarValueKind ? name.Scalar : null;
+        }
+
+        // The code the saved machine ran at one slot, read out of the document
+        // rather than off any live object, and written the way
+        // FreshStateSlotDriver writes the fresh room's answer. No such array, no
+        // such index or a null callback all contribute nothing here, and the
+        // fresh machine holding nothing there contributes nothing too, so the
+        // two match.
+        //
+        // One shape does not match, and it refuses rather than accepts: a
+        // callback whose method is generated at runtime. CaptureDelegate records
+        // no call for one unless it can name the detour behind it, while the
+        // fresh machine still spells out whatever it holds, so the slot is
+        // refused. That takes a state callback built by MonoMod or by
+        // DynamicMethod rather than passed to SetCallbacks as a method or a
+        // lambda, which is not a shape any mod has been seen to produce, and
+        // refusing is the direction this rule is for.
+        private string SavedStateSlotDriver(AkronReconstructionNode machineNode, int slot) {
+            StringBuilder driver = new StringBuilder();
+            foreach (string driverFieldName in StateMachineDriverFieldNames) {
+                driver.Append(driverFieldName).Append('=');
+                AkronReconstructionValue callbacks = FindReferenceField(machineNode, driverFieldName);
+                if (callbacks != null &&
+                    nodes.TryGetValue(callbacks.NodeId, out AkronReconstructionNode callbacksNode) &&
+                    slot >= 0 &&
+                    slot < callbacksNode.Items.Count &&
+                    callbacksNode.Items[slot]?.Kind == ReferenceValueKind &&
+                    nodes.TryGetValue(callbacksNode.Items[slot].NodeId, out AkronReconstructionNode callbackNode)) {
+                    foreach (AkronReconstructionDelegateCall call in
+                             callbackNode.DelegateCalls ?? new List<AkronReconstructionDelegateCall>()) {
+                        driver.Append(call.DeclaringTypeName)
+                            .Append('.')
+                            .Append(call.MethodName)
+                            .Append('+');
+                    }
+                }
+                driver.Append(';');
+            }
+            return driver.ToString();
         }
 
         private void TrackDisplacedEventInstance(object currentValue, object restoredValue) {
@@ -7192,7 +7308,7 @@ internal static class AkronStartPosReconstruction {
             // a real name. Without this, List<T> would be judged on the core library
             // alone while its name carries a bare "T" that two different parameters
             // share.
-            return type.AssemblyQualifiedName != null && IsFileBackedMetadata(type);
+            return type.AssemblyQualifiedName != null && HasReproducibleMetadataName(type);
         }
         // A MemberInfo deliberately falls through to the last return. Its key is the
         // assembly's full name plus a metadata token, and a token names a position in
@@ -7203,15 +7319,16 @@ internal static class AkronStartPosReconstruction {
         // Assembly.FullName. Celeste itself is rebuilt at the same version, and Everest
         // regenerates MMHOOK_Celeste.dll whenever the mod set changes.
         //
-        // File backing proves the assembly came off disk. It does not prove it is the
-        // same build, and nothing in the key does. So a MemberInfo key is a label on
-        // this build rather than a name for the member, and the structural owner path
-        // that carries it today keeps carrying it.
+        // HasReproducibleAssemblyName below says the next process derives the same
+        // assembly name. It does not say the assembly is the same build, and nothing in
+        // this key does. So a MemberInfo key is a label on this build rather than a name
+        // for the member, and the structural owner path that carries it today keeps
+        // carrying it.
         if (resource is Assembly assembly) {
-            return IsFileBackedAssembly(assembly);
+            return HasReproducibleAssemblyName(assembly);
         }
         if (resource is EverestModule || resource is EverestModuleSettings) {
-            return IsFileBackedMetadata(resource.GetType());
+            return HasReproducibleMetadataName(resource.GetType());
         }
         if (resource is Atlas || resource is ModAsset) {
             // Both keys read like content - a data path, a virtual path, a source
@@ -7243,39 +7360,57 @@ internal static class AkronStartPosReconstruction {
         return false;
     }
 
-    // An assembly the runtime built or was handed as bytes has no file behind it,
-    // and nothing names it but the name whoever produced it chose. Everest emits
-    // assemblies while the game runs and numbers them in build order, and a mod that
-    // compiles a helper at startup and loads it with Assembly.Load(byte[]) gets a
-    // fresh name per process without ever being dynamic. Location is empty for both
-    // and non-empty for anything loaded off disk, which is the distinction that
-    // matters: a key naming a file-backed assembly means the same thing in the next
-    // process, and a key naming either of the others does not.
+    // Does the next process derive this assembly's name again, or did this one make
+    // it up? A Type's key, an EverestModule's and an EverestModuleSettings' are all
+    // built out of the assembly's name, so this is the whole of what decides whether
+    // those keys name their resource.
     //
-    // This answers no for every mod assembly as well, and that is a known hole rather
-    // than a conservative margin. EverestModuleAssemblyContext.LoadRelinkedAssembly
-    // reads the relinked dll into memory and calls LoadFromStream so the file on disk
-    // is not locked, so a mod's assembly has an empty Location however ordinary it is.
-    // Its name is in fact reproducible, so every mod-owned Type, EverestModule and
-    // EverestModuleSettings keeps a key that does name its resource, and site A goes on
-    // waiving that key for the wildcarded owner path.
+    // Three populations, and each answers differently:
     //
-    // The error that leaves open is a wrong restore, not a false refusal: a mod-owned
-    // reflection resource this process genuinely lacks is answered by whatever object
-    // sits at the saved structural position, silently. That is today's behaviour and it
-    // is not made worse here, but it is the direction that costs a room rather than a
-    // slot, and narrowing it needs Everest asked which load context an assembly came
-    // from - nothing on Assembly separates a relinked mod assembly from bytes a mod
-    // compiled itself at startup, which is the case this must go on answering no for.
-    private static bool IsFileBackedAssembly(Assembly assembly) {
-        return assembly != null && !assembly.IsDynamic && !string.IsNullOrEmpty(assembly.Location);
+    // - Emitted. AssemblyBuilder takes whatever name the caller passed and callers
+    //   number them in the order this process happened to build them. IsDynamic says
+    //   so.
+    // - Loaded off a file by the runtime. The name came out of that file's metadata,
+    //   so the next process reads the same name off the same file. Location says so.
+    // - Loaded from bytes. Location is empty and IsDynamic is false for a mod's
+    //   assembly and for a helper a mod compiled at startup and handed to
+    //   Assembly.Load(byte[]) alike, and nothing on Assembly separates them. The
+    //   load context does. EverestModuleAssemblyContext.LoadRelinkedAssembly reads a
+    //   relinked dll into memory and calls LoadFromStream so the file on disk is not
+    //   locked, so every installed mod's assembly is in one of those contexts and its
+    //   name is the mod's own, off the mod's own dll. Assembly.Load(byte[]) builds an
+    //   IndividualAssemblyLoadContext of its own instead - measured on .NET 8 - so it
+    //   is not one of Everest's, and neither is a context a mod builds for itself.
+    //
+    // Asking whether the assembly came off disk, which is what this used to do,
+    // answers no for every mod assembly there has ever been, because of the
+    // LoadFromStream above. That waived the key for every mod-owned Type,
+    // EverestModule and EverestModuleSettings at site A, and the error direction there
+    // is a wrong restore rather than a false refusal: a mod-owned reflection resource
+    // this process genuinely lacks was answered by whatever object sat at the saved
+    // structural position, silently.
+    //
+    // This says which assembly is loaded and deliberately not which BUILD of it. A
+    // MemberInfo key is an assembly name plus a metadata token, and rebuilding an
+    // assembly at the same name and version moves tokens, so a MemberInfo key is a
+    // label on one build rather than a name for the member. MemberInfo therefore never
+    // reaches here: HasPortableLiveResourceKey falls it through to its last return.
+    private static bool HasReproducibleAssemblyName(Assembly assembly) {
+        if (assembly == null || assembly.IsDynamic) {
+            return false;
+        }
+        if (!string.IsNullOrEmpty(assembly.Location)) {
+            return true;
+        }
+        return AssemblyLoadContext.GetLoadContext(assembly) is EverestModuleAssemblyContext;
     }
 
     // A Type's key is its assembly-qualified name, which spells out the assembly of
     // every type inside it as well as its own. List<T> over an emitted type lives in
     // the core library and still carries the emitted assembly's made-up name in its
-    // key, so the whole shape has to be file-backed for the key to name anything.
-    private static bool IsFileBackedMetadata(Type type) {
+    // key, so every assembly the shape names has to be reproducibly named for the key
+    // to name anything.
+    private static bool HasReproducibleMetadataName(Type type) {
         if (type == null) {
             return false;
         }
@@ -7287,13 +7422,13 @@ internal static class AkronStartPosReconstruction {
             return false;
         }
         if (type.HasElementType) {
-            return IsFileBackedMetadata(type.GetElementType());
+            return HasReproducibleMetadataName(type.GetElementType());
         }
         if (type.IsGenericType &&
-            type.GetGenericArguments().Any(argument => !IsFileBackedMetadata(argument))) {
+            type.GetGenericArguments().Any(argument => !HasReproducibleMetadataName(argument))) {
             return false;
         }
-        return IsFileBackedAssembly(type.Assembly);
+        return HasReproducibleAssemblyName(type.Assembly);
     }
 
     // Every EntityID the map lays out in one room, however this run's session flags
