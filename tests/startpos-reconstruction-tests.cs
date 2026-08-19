@@ -1923,37 +1923,55 @@ public sealed class StartPosReconstructionTests {
         Assert.NotSame(freshHair, snapshot.Hair);
     }
 
-    // The room that decides what the occurrence budget is allowed to do. The map here
-    // is unchanged - it lays both ghosts out on both sides - so the map rule is inert
-    // and the budget is the only thing between the saved frame and the corruption the
-    // test above pins.
+    // The room the occurrence budget decided by document order alone, and the one this
+    // rule exists for. The map is identical on both sides and still lays out every id
+    // in play, so the map rule is inert; a saved entity fails to pair only because this
+    // run's session built a different one of two same-typed map entities. Two saved
+    // trails put two PlayerSprite.<Entity> back references on one wildcarded path,
+    // entities._items[*].Sprite.<Entity>, and the reload left one PlayerPlayback there:
+    // one occurrence against two edges.
     //
-    // Two saved trails put two PlayerSprite.<Entity> back references on one wildcarded
-    // path, entities._items[*].Sprite.<Entity>, and the reload left one PlayerPlayback
-    // there. The paired ghost's edge is validated first and spends it, so the
-    // unpairable ghost's identical edge finds the budget gone and is refused.
+    // Measured before this was closed, same population, same map, only the order of the
+    // two entities in the saved document reversed:
     //
-    // Measured, both ways, because this is the trade W33 wrote down as acceptable and
-    // did not build: stop a fresh-resolved target's edge from spending and this exact
-    // document accepts instead, drops the ghost the reload built out of the room, and
-    // reports success. That is why the budget keeps its order dependence and the map
-    // rule carries the saved entities that must not depend on document order.
-    [Fact]
-    public void APairedTrailAheadOfAnUnpairableGhostStillSpendsTheOccurrenceThatRefusesIt() {
-        PlaybackGhostReloadRoom fresh = CreateTwoTrailReloadedGhostRoomWithRenumberedGhost();
+    //   paired trail first  - the paired edge spent the occurrence and the unpairable
+    //                         one was refused.
+    //   unpairable first    - the unpairable edge took the occurrence and the restore
+    //                         reported success, with the ghost the reload built gone
+    //                         from the room, a reconstruction wearing SourceId 42 and
+    //                         the saved time=2.5 in its list slot, and the surviving
+    //                         trail's live PlayerSprite pointed at the reconstruction
+    //                         while its PlayerHair still pointed at the reload's ghost.
+    //
+    // Both orders refuse now, and for the same reason in both:
+    // RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps. The count could not see the
+    // contradiction - this document says the paired ghost is still in the room and also
+    // says that ghost's live sprite belongs to something the room does not have - and
+    // freshOwners is complete before any edge is validated, so the verdict no longer
+    // depends on which edge is reached first.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnUnpairableTrailedMapEntityIsRefusedInEitherDocumentOrder(bool unpairableFirst) {
+        PlaybackGhostReloadRoom fresh =
+            CreateTwoTrailReloadedGhostRoomTheSessionBuiltDifferently(unpairableFirst);
         PlayerPlayback liveGhost = fresh.Ghost;
         Image freshSprite = fresh.Snapshot.Sprite;
         Entity? pairedGhost = freshSprite.Entity;
 
         AkronReconstructionRestore restore = RestoreTwoTrailGhostDocumentInto(
             fresh,
-            mapIdsWhenSet: new[] { 42, 7 },
-            mapIdsAtReload: new[] { 42, 7 });
+            unpairableFirst,
+            mapIdsWhenSet: new[] { 42, 7, 8 },
+            mapIdsAtReload: new[] { 42, 7, 8 });
 
         Assert.False(restore.Success);
-        Assert.Contains("reconstructed reference edge is not authentic to the fresh room", restore.Error);
-        Assert.Contains("edge-field=<Entity>k__BackingField", restore.Error);
-        Assert.Equal(typeof(PlayerPlayback).AssemblyQualifiedName, restore.RefusedTypeName);
+        Assert.Contains(
+            "reconstructed reference edge would drop a fresh object this document keeps",
+            restore.Error);
+        // The refusal names the node the write would have dropped, which is the one
+        // thing a log reader needs to see that the two claims contradict each other.
+        Assert.Contains(";displaced-node=", restore.Error);
         // Refused before any assignment, so the room is still the room the reload built:
         // its own ghost, in the list, with its clean-load state, and the trail that
         // survived still pointing at the ghost that owns it.
@@ -3465,11 +3483,17 @@ public sealed class StartPosReconstructionTests {
     // Only the order that works is asserted, and that is deliberate. W30 5.1 measured
     // that this same population is refused when the document lists the live entity
     // first, because that entity's edge spends the one occurrence the rebuilt one then
-    // needs. That order dependence is still here and this pass does not close it: the
-    // two candidate fixes both loosen the occurrence budget, and
-    // APairedTrailAheadOfAnUnpairableGhostStillSpendsTheOccurrenceThatRefusesIt is the
-    // room that measures what loosening it costs. Closing this needs an authenticator
-    // for a saved entity the map still places, which is a design of its own.
+    // needs. That half of the order dependence is still here: the room is refused
+    // rather than restored, which costs a slot and corrupts nothing, and both candidate
+    // fixes for it loosen the occurrence budget.
+    //
+    // The half that mattered is closed.
+    // AnUnpairableTrailedMapEntityIsRefusedInEitherDocumentOrder is the room where the
+    // other order used to report success and leave the room wrong; it now refuses
+    // whichever way the document lists it. What separates the two is not the map - by
+    // map evidence they are the same room - but whether the write drops a fresh object
+    // this document keeps. Here it drops nothing: the entity is rebuilt beside the one
+    // the room did build.
     [Fact]
     public void ASavedMapEntityTheReloadDidNotBuildIsRebuiltBesideTheOnesItDid() {
         SourceIdentifiedEntity savedAbsent = CreateSourceIdentifiedEntity("a00", 10, 37);
@@ -4258,6 +4282,65 @@ public sealed class StartPosReconstructionTests {
         Assert.True(restore.Success, restore.Error);
         Assert.Same(freshTarget, freshOwner.Peer);
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    // The crossed population through a named field, and the reason
+    // RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps asks whether the displaced
+    // object is one the document keeps rather than only whether the slot is occupied.
+    //
+    // The saved frame deleted entity 22 and this reload did not build entity 21, so the
+    // fresh owner cached 22 in the field the document wants 21 in. The saved population
+    // is the truth: 21 is rebuilt, 22 is dropped, and the owner ends up pointing at 21.
+    // Nothing in the document keeps 22 - no node is paired with it - so the write is not
+    // a contradiction, and refusing on an occupied slot alone would refuse this room.
+    [Fact]
+    public void AFreshEntityTakesBackThePeerTheSavedFrameKeptWhenTheReloadCachedAnother() {
+        PeerTargetEntity savedKeptPeer = CreatePeerTargetEntity("a00", 20);
+        PeerTargetEntity savedAbsentPeer = CreatePeerTargetEntity("a00", 21);
+        PeerLinkEntity savedKeptOwner = CreatePeerLinkEntity("a00", 10, savedKeptPeer);
+        PeerLinkEntity savedCrossedOwner = CreatePeerLinkEntity("a00", 11, savedAbsentPeer);
+        SourceEntityListOwnerRoot saved = CreateSourceEntityListOwnerRoot(
+            savedKeptOwner, savedKeptPeer, savedCrossedOwner, savedAbsentPeer);
+        PeerTargetEntity baselineKeptPeer = CreatePeerTargetEntity("a00", 20);
+        PeerTargetEntity baselineAbsentPeer = CreatePeerTargetEntity("a00", 21);
+        SourceEntityListOwnerRoot baseline = CreateSourceEntityListOwnerRoot(
+            CreatePeerLinkEntity("a00", 10, baselineKeptPeer),
+            baselineKeptPeer,
+            CreatePeerLinkEntity("a00", 11, baselineAbsentPeer),
+            baselineAbsentPeer,
+            // The one the player destroyed before the slot was set.
+            CreatePeerTargetEntity("a00", 22));
+        PeerTargetEntity freshKeptPeer = CreatePeerTargetEntity("a00", 20);
+        PeerTargetEntity freshDeletedPeer = CreatePeerTargetEntity("a00", 22);
+        PeerLinkEntity freshKeptOwner = CreatePeerLinkEntity("a00", 10, freshKeptPeer);
+        PeerLinkEntity freshCrossedOwner = CreatePeerLinkEntity("a00", 11, freshDeletedPeer);
+        SourceEntityListOwnerRoot fresh = CreateSourceEntityListOwnerRoot(
+            freshKeptOwner, freshKeptPeer, freshCrossedOwner, freshDeletedPeer);
+        AkronReconstructionGraph graph = CreateMapAwareGraph(new TestMapPlacement()
+            .Place(baseline, "a00", 10, 11, 20, 21, 22)
+            .Place(fresh, "a00", 10, 11, 20, 21, 22));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        capture.Document.Room = "a00";
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        // The owner the reload did wire keeps the room's own peer.
+        Assert.Same(freshKeptPeer, freshKeptOwner.Peer);
+        // The other one is rebuilt and takes the slot the reload had filled with 22.
+        PeerTargetEntity rebuiltPeer = Assert.IsType<PeerTargetEntity>(freshCrossedOwner.Peer);
+        Assert.Equal(21, rebuiltPeer.SourceId.ID);
+        // Monocle.Entity is IEnumerable<Component>, so xUnit compares two entities by
+        // their components rather than by reference. Ask for the reference directly.
+        Assert.DoesNotContain(
+            GetEntityListContents(fresh.Entities),
+            entity => ReferenceEquals(entity, freshDeletedPeer));
+        Assert.Contains(
+            GetEntityListContents(fresh.Entities),
+            entity => ReferenceEquals(entity, rebuiltPeer));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+        Assert.True(graph.Reapply(capture.Document, restore).Success);
     }
 
     [Fact]
@@ -6818,32 +6901,56 @@ public sealed class StartPosReconstructionTests {
         };
     }
 
-    // The same ghost room with a second trail, owned by a ghost that does pair, sorted
-    // ahead of the unpairable one. Both trails put their owner's <Scene> edge at the
-    // same wildcarded path - entities._items[*].Sprite.<Entity>.<Scene> - so the two
-    // edges draw on one occurrence budget, and the paired owner's edge is validated
-    // first. That is the only thing this room adds over CreateTrailingGhostRoom.
-    private static PlaybackGhostReloadRoom CreateTwoTrailGhostRoom(float ghostTime) {
+    // The same ghost room with a second trail, owned by a ghost that does pair. Both
+    // trails put their owner's <Scene> edge at the same wildcarded path -
+    // entities._items[*].Sprite.<Entity>.<Scene> - so the two edges draw on one
+    // occurrence budget. That is the only thing this room adds over
+    // CreateTrailingGhostRoom.
+    //
+    // unpairableFirst swaps which of the two entities the document reaches first, and
+    // nothing else: the depths that decide EntityList.CompareDepth order swap with it,
+    // and so does which trail TrailManager still points at, because the trail the room
+    // holds first has to be the registered one either way. Without that second swap the
+    // leading trail's Manager.snapshots edge reaches the other ghost first and moves it
+    // to a different wildcarded path, so the two edges stop competing and the room stops
+    // being the same room.
+    private static PlaybackGhostReloadRoom CreateTwoTrailGhostRoom(float ghostTime, bool unpairableFirst) {
         Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
         EntityList entities = LinkSceneEntities(level, CreateDetachedEntityList());
-        // Above the unpairable ghost, so its trail heads the list and it is the paired
-        // entity the document reaches first.
-        PlayerPlayback pairedGhost = CreatePlaybackGhost(level, sourceId: 7, depth: 9011, time: 0f);
-        PlayerPlayback ghost = CreatePlaybackGhost(level, sourceId: 42, depth: 9008, time: ghostTime);
+        int pairedDepth = unpairableFirst ? 9008 : 9011;
+        int ghostDepth = unpairableFirst ? 9011 : 9008;
+        PlayerPlayback pairedGhost = CreatePlaybackGhost(level, sourceId: 7, depth: pairedDepth, time: 0f);
+        PlayerPlayback ghost = CreatePlaybackGhost(level, sourceId: 42, depth: ghostDepth, time: ghostTime);
         TrailManager manager = CreateGhostRoomTrailManager(level, out TrailManager.Snapshot[] slots);
+        // The trail that is not written back into manager.snapshots is a real state:
+        // TrailManager recycles a slot by overwriting it while the snapshot it replaced
+        // is still in the scene. It is also what keeps that snapshot's document path in
+        // the entity list beside the other one rather than underneath the array.
         TrailManager.Snapshot pairedTrail = CreateTrailSnapshotFrom(
-            level, manager, slots, index: 0, owner: pairedGhost, depth: 9012);
-        // Not written back into manager.snapshots. TrailManager recycles a slot by
-        // overwriting it while the snapshot it replaced is still in the scene, so a
-        // trail the room holds and the array no longer points at is a real state - and
-        // it is what keeps this snapshot's document path in the entity list beside the
-        // paired one rather than underneath the array.
+            level,
+            manager,
+            unpairableFirst ? new TrailManager.Snapshot[64] : slots,
+            index: 0,
+            owner: pairedGhost,
+            depth: pairedDepth + 1);
         TrailManager.Snapshot ghostTrail = CreateTrailSnapshotFrom(
-            level, manager, new TrailManager.Snapshot[64], index: 1, owner: ghost, depth: 9009);
-        AddDetachedEntity(entities, pairedTrail);
-        AddDetachedEntity(entities, pairedGhost);
-        AddDetachedEntity(entities, ghostTrail);
-        AddDetachedEntity(entities, ghost);
+            level,
+            manager,
+            unpairableFirst ? slots : new TrailManager.Snapshot[64],
+            index: unpairableFirst ? 0 : 1,
+            owner: ghost,
+            depth: ghostDepth + 1);
+        if (unpairableFirst) {
+            AddDetachedEntity(entities, ghostTrail);
+            AddDetachedEntity(entities, ghost);
+            AddDetachedEntity(entities, pairedTrail);
+            AddDetachedEntity(entities, pairedGhost);
+        } else {
+            AddDetachedEntity(entities, pairedTrail);
+            AddDetachedEntity(entities, pairedGhost);
+            AddDetachedEntity(entities, ghostTrail);
+            AddDetachedEntity(entities, ghost);
+        }
         AddDetachedEntity(entities, manager);
         return new PlaybackGhostReloadRoom {
             Root = new PlaybackGhostReloadRoot { Level = level },
@@ -6854,28 +6961,55 @@ public sealed class StartPosReconstructionTests {
         };
     }
 
-    // What that room's reload leaves: the ghost rebuilt under a different EntityID, so
-    // the saved one cannot pair, and both surviving trails belonging to the ghost that
-    // did - it dashed twice and the rebuilt one has not trailed yet.
+    // What that room's reload leaves. The map is identical on both sides and lays out
+    // 42, 7 and 8; the session built 42 and 7 when the slot was set and 7 and 8 at the
+    // reload, which is the ordinary way one of two same-typed map entities changes
+    // between two loads of one room - Session.DoNotLoad, a flag a mod reads in its
+    // EntityLoader, a follower the room does not rebuild. No id moved: Everest derives
+    // every EntityID from the map file's own id attribute, so an entity cannot be
+    // renumbered without the map changing, and a changed map is the other rule's.
     //
-    // Both trails hold that one ghost's PlayerSprite, so the reload's walk reaches the
-    // Level through a trail exactly once however many trails point at it, while the
-    // second trail still records that a PlayerPlayback sits at the end of that path.
-    // One occurrence against the saved document's two edges is what makes them compete.
-    private static PlaybackGhostReloadRoom CreateTwoTrailReloadedGhostRoomWithRenumberedGhost() {
+    // So the saved ghost 42 cannot pair, and both surviving trails belong to the ghost
+    // that can - it dashed twice and ghost 8 has not trailed yet. Both trails hold that
+    // one ghost's PlayerSprite, so the reload's walk reaches the Level through a trail
+    // exactly once however many trails point at it, while the second trail still
+    // records that a PlayerPlayback sits at the end of that path. One occurrence
+    // against the saved document's two edges is what makes them compete.
+    private static PlaybackGhostReloadRoom CreateTwoTrailReloadedGhostRoomTheSessionBuiltDifferently(
+        bool unpairableFirst
+    ) {
         Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
         EntityList entities = LinkSceneEntities(level, CreateDetachedEntityList());
-        PlayerPlayback pairedGhost = CreatePlaybackGhost(level, sourceId: 7, depth: 9011, time: 0f);
-        PlayerPlayback liveGhost = CreatePlaybackGhost(level, sourceId: 43, depth: 9008, time: 0f);
+        int pairedDepth = unpairableFirst ? 9008 : 9011;
+        int ghostDepth = unpairableFirst ? 9011 : 9008;
+        PlayerPlayback pairedGhost = CreatePlaybackGhost(level, sourceId: 7, depth: pairedDepth, time: 0f);
+        PlayerPlayback liveGhost = CreatePlaybackGhost(level, sourceId: 8, depth: ghostDepth, time: 0f);
         TrailManager manager = CreateGhostRoomTrailManager(level, out TrailManager.Snapshot[] slots);
         TrailManager.Snapshot pairedTrail = CreateTrailSnapshotFrom(
-            level, manager, slots, index: 0, owner: pairedGhost, depth: 9012);
+            level,
+            manager,
+            unpairableFirst ? new TrailManager.Snapshot[64] : slots,
+            index: 0,
+            owner: pairedGhost,
+            depth: pairedDepth + 1);
         TrailManager.Snapshot secondTrail = CreateTrailSnapshotFrom(
-            level, manager, new TrailManager.Snapshot[64], index: 1, owner: pairedGhost, depth: 9009);
-        AddDetachedEntity(entities, pairedTrail);
-        AddDetachedEntity(entities, pairedGhost);
-        AddDetachedEntity(entities, secondTrail);
-        AddDetachedEntity(entities, liveGhost);
+            level,
+            manager,
+            unpairableFirst ? slots : new TrailManager.Snapshot[64],
+            index: unpairableFirst ? 0 : 1,
+            owner: pairedGhost,
+            depth: ghostDepth + 1);
+        if (unpairableFirst) {
+            AddDetachedEntity(entities, secondTrail);
+            AddDetachedEntity(entities, liveGhost);
+            AddDetachedEntity(entities, pairedTrail);
+            AddDetachedEntity(entities, pairedGhost);
+        } else {
+            AddDetachedEntity(entities, pairedTrail);
+            AddDetachedEntity(entities, pairedGhost);
+            AddDetachedEntity(entities, secondTrail);
+            AddDetachedEntity(entities, liveGhost);
+        }
         AddDetachedEntity(entities, manager);
         return new PlaybackGhostReloadRoom {
             Root = new PlaybackGhostReloadRoot { Level = level },
@@ -6888,11 +7022,12 @@ public sealed class StartPosReconstructionTests {
 
     private static AkronReconstructionRestore RestoreTwoTrailGhostDocumentInto(
         PlaybackGhostReloadRoom fresh,
+        bool unpairableFirst,
         int[] mapIdsWhenSet,
         int[] mapIdsAtReload
     ) {
-        PlaybackGhostReloadRoom saved = CreateTwoTrailGhostRoom(ghostTime: 2.5f);
-        PlaybackGhostReloadRoom baseline = CreateTwoTrailGhostRoom(ghostTime: 0f);
+        PlaybackGhostReloadRoom saved = CreateTwoTrailGhostRoom(2.5f, unpairableFirst);
+        PlaybackGhostReloadRoom baseline = CreateTwoTrailGhostRoom(0f, unpairableFirst);
         TestMapPlacement placement = new TestMapPlacement()
             .Place(baseline.Root, "CANADIAN_00", mapIdsWhenSet)
             .Place(fresh.Root, "CANADIAN_00", mapIdsAtReload);

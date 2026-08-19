@@ -3923,21 +3923,27 @@ internal sealed class AkronReconstructionGraph {
                         ";edge-field=" + (edgeField?.Name ?? "<array>"),
                         target.TypeName);
                 }
+                // The count admits this edge, so ask the one question it cannot.
+                RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps(
+                    target,
+                    targetType,
+                    edgeParent,
+                    edgeParentType,
+                    edgeField,
+                    exactOwnerEdge);
                 // Every edge spends, including one whose target the fresh room already
-                // holds. Exempting those was tried and reverted: it leaves the budget
-                // standing longer for everything, and the thing that then gets in is
-                // whatever carries no identity at all. The room that measures it is
-                // APairedTrailAheadOfAnUnpairableGhostStillSpendsTheOccurrenceThatRefusesIt -
-                // one paired trail ahead of an unpairable ghost, where not spending on
-                // the paired edge hands the ghost the occurrence, drops the entity the
-                // reload built, and reports success.
+                // holds. Exempting those was tried and reverted twice: it leaves the
+                // budget standing longer for everything, and the thing that then gets
+                // in is whatever carries no identity at all.
                 //
-                // So the budget keeps the order dependence W30 5.1 measured, and it is
-                // still open. What closes it is an authenticator for a saved entity the
-                // map still places, not a looser count - and that authenticator has to
-                // refuse the room above, which by map evidence alone is the same room.
-                // The one thing that separates them is measured and written down in
-                // that test; building the authenticator on it is a pass of its own.
+                // No test fails when this line is reverted any more, and that is worth
+                // saying rather than leaving to be discovered. The room that used to
+                // fail is AnUnpairableTrailedMapEntityIsRefusedInEitherDocumentOrder,
+                // and the refusal above now catches it whichever way the count is kept.
+                // Keeping the spend is still right: it is what makes the count mean the
+                // number of objects the fresh room has here, and a widened count would
+                // admit reconstructions at every path where nothing is displaced and so
+                // where the refusal above is silent.
                 freshListStructuralTypeCounts[listPathKey] = remaining - 1;
                 return;
             }
@@ -3994,6 +4000,89 @@ internal sealed class AkronReconstructionGraph {
                     ";edge-field=" + (edgeField?.Name ?? "<array>"),
                     target.TypeName);
             }
+            // The exact path admits this edge, so ask the one question it cannot.
+            RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps(
+                target,
+                targetType,
+                edgeParent,
+                edgeParentType,
+                edgeField,
+                exactOwnerEdge);
+        }
+
+        // The last thing asked of an edge the two structural tests above have already
+        // admitted: would writing this reconstruction into a named field of an object
+        // the fresh room supplied drop the value that field holds, when some other node
+        // of this same document is already paired with it?
+        //
+        // A document that asks for that says two contradictory things about one room:
+        // that the displaced object is still in it - a node holds it and restores its
+        // state onto it - and that a live object's field belongs to something the room
+        // does not have. Neither structural test can see the contradiction. The
+        // occurrence budget counts objects, "the fresh room holds N of this type at
+        // this shape of path", and a reconstruction spends from that count in document
+        // order, so reversing two entities in the saved list flips the same room from
+        // refused to accepted. freshStructuralTypes is weaker still: the exact path it
+        // matches is the path of the very object being dropped, so the evidence
+        // admitting the reconstruction is the existence of the thing it destroys.
+        //
+        // The room this closes is
+        // AnUnpairableTrailedMapEntityIsRefusedInEitherDocumentOrder: two trailed map
+        // entities the map still places, one of which the reloaded room rebuilt under a
+        // different EntityID. With the paired entity's trail first the budget was
+        // already gone and the unpairable one was refused; with the unpairable one first
+        // it took the occurrence, and the restore reported success while the ghost the
+        // reload built was dropped from the room and the surviving trail's live
+        // PlayerSprite was pointed at the reconstruction. Both orders refuse now.
+        //
+        // The pairing is what makes the refusal safe, and "the fresh field holds
+        // anything" is deliberately not the test. A fresh field holding an object the
+        // saved frame deleted is the crossed population - the saved frame is the truth,
+        // dropping that object is the correct outcome, and the restore has to succeed.
+        // Measured: refusing on a non-null value alone refuses
+        // AFreshEntityTakesBackThePeerTheSavedFrameKeptWhenTheReloadCachedAnother, which
+        // restores correctly today. Only a displaced object the document itself keeps
+        // is evidence of anything.
+        //
+        // Collection storage is excluded because an element position is not a named
+        // slot. Arrays reach their elements with no field at all; a Dictionary or
+        // HashSet entry reaches its value through a field of the entry struct, and
+        // which entry holds which object is an artefact of hash layout, so writing a
+        // different object into one displaces nothing. Without that exclusion the
+        // membership set of a room's own EntityList refuses every rebuilt entity.
+        //
+        // Order-independent by construction: freshOwners is complete before
+        // ValidateReferenceAuthenticity runs, so the verdict cannot depend on which
+        // edge is validated first, which is the whole point of the rule.
+        private void RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps(
+            AkronReconstructionNode target,
+            Type targetType,
+            AkronReconstructionNode edgeParent,
+            Type edgeParentType,
+            AkronReconstructionField edgeField,
+            bool exactOwnerEdge
+        ) {
+            if (exactOwnerEdge || edgeField == null || edgeParentType.IsValueType ||
+                resolvedFreshObjectNodes.Contains(target.Id) ||
+                !resolvedFreshObjectNodes.Contains(edgeParent.Id) ||
+                !Objects.TryGetValue(edgeParent.Id, out object freshParent)) {
+                return;
+            }
+            FieldInfo field = ResolveField(edgeField.DeclaringTypeName, edgeField.Name, edgeField.Path);
+            if (!field.DeclaringType.IsInstanceOfType(freshParent) ||
+                field.GetValue(freshParent) is not object displaced ||
+                !freshOwners.TryGetValue(displaced, out int displacedNodeId)) {
+                return;
+            }
+            throw new AkronReconstructionException(
+                target.Path,
+                "reconstructed reference edge would drop a fresh object this document keeps;type=" +
+                targetType.FullName +
+                ";edge-parent-type=" + edgeParent.TypeName +
+                ";edge-field=" + edgeField.Name +
+                ";displaced-type=" + displaced.GetType().FullName +
+                ";displaced-node=" + displacedNodeId.ToString(CultureInfo.InvariantCulture),
+                target.TypeName);
         }
 
         private bool IsExactSavedOwnerEdge(
