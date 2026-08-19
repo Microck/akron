@@ -41,7 +41,26 @@ internal sealed class AkronReconstructionDocument {
     // v7 and earlier documents are refused outright, never upgraded and never read.
     //
     // v7 -> v8: fresh-room baseline changed (trail parity fix, PlayerPlayback exclusion).
-    public const string CurrentFormat = "akron-reconstruction-v8";
+    // v8 -> v9: nodes now carry the capture-side identity evidence the restore needs.
+    //   A saved live resource records whether its ResourceKey names the resource
+    //   (PortableResourceKey) and a saved map entity records whether the map placed
+    //   its EntityID (MapPlacedEntity). Without that evidence the restore cannot tell
+    //   a key or an id that a second process genuinely cannot produce from one that
+    //   merely got a new label, so it falls back to a wildcarded structural path and
+    //   can hand the rebuilt room a different object while reporting success. A v8
+    //   document carries none of it, and reading one anyway would give two documents
+    //   claiming the same format two different guarantees, so v8 is refused outright.
+    //
+    //   The map half covers the room document only. ActionStateDocument is captured
+    //   and restored from Dictionary roots (AkronSaveLoadService.PersistRuntimeStateSnapshot
+    //   and RestoreActionState), which hold no Level, so GetMapPlacedEntityIds has no
+    //   map to read there and every Entity a registered action's state reaches is
+    //   stamped false whatever the map says. That is symmetric - the restore reads the
+    //   same false and refuses nothing - so it fails to the behaviour of a v8 document
+    //   for those nodes rather than to a wrong restore. The key half has no such
+    //   limit: it is read off the saved object and applies to every node in both
+    //   documents.
+    public const string CurrentFormat = "akron-reconstruction-v9";
 
     public string Format { get; set; } = CurrentFormat;
     public string SlotName { get; set; } = string.Empty;
@@ -72,6 +91,25 @@ internal sealed class AkronReconstructionNode {
     public int ParentDelegateIndex { get; set; } = -1;
     public bool UseFreshObject { get; set; }
     public string ResourceKey { get; set; } = string.Empty;
+    // The two identity facts capture knows and restore cannot work out for itself,
+    // because working them out needs the saved object and the saved map, and a
+    // restore has neither. Both are written on the saved side and read on the fresh
+    // side, and both are absent from the JSON when false, which is every node that
+    // is not a keyed live resource or a map entity.
+    //
+    // PortableResourceKey: the ResourceKey above names this resource rather than
+    // labelling this instance, so a process that cannot find that key does not have
+    // the resource. Set for a content-addressed or registry-addressed key - a
+    // culture sort name, a file-backed texture path, a reflection key from an
+    // assembly loaded off disk. Not set for a key built from a name the running
+    // process made up, which a second process renames for the same resource.
+    [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+    public bool PortableResourceKey { get; set; }
+    // MapPlacedEntity: the map laid this entity's EntityID out in its room when the
+    // slot was set. An id the map owns going missing means the map changed; an id
+    // the map never owned going missing means nothing, because a mod made it up.
+    [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+    public bool MapPlacedEntity { get; set; }
     public List<AkronReconstructionPathStep> FreshPath { get; set; } = new List<AkronReconstructionPathStep>();
     public List<AkronReconstructionField> Fields { get; set; } = new List<AkronReconstructionField>();
     public List<AkronReconstructionValue> Items { get; set; } = new List<AkronReconstructionValue>();
@@ -752,6 +790,18 @@ internal sealed class AkronReconstructionGraph {
     private readonly IAkronReconstructionResourceAdapter resourceAdapter;
     private readonly Func<Type, string, object> resolveDetachedLiveResource;
     private readonly Func<Type, bool> areEquivalentLiveResources;
+    // Asked of the saved object at capture, never of a fresh candidate. The question
+    // is whether the saved key names the resource, and only the saved object can
+    // answer it: a fresh candidate is a different object whose own key may be
+    // classified the other way, which would waive exactly the keys this exists to
+    // hold. Both callbacks below are optional, and a graph without them writes no
+    // evidence and reads none, which is what every graph that has no live-resource
+    // policy and no map wants.
+    private readonly Func<object, bool> hasPortableLiveResourceKey;
+    // The EntityIDs the map lays out in one room, asked of the room a clean load
+    // produced. Called once per room name per capture or restore, so the map is
+    // walked once however many entities ask about it.
+    private readonly Func<object, string, IEnumerable<int>> getMapPlacedEntityIds;
     private readonly long maxJsonTokenCount;
     private readonly long maxJsonContainerCount;
     private readonly int maxJsonStringChars;
@@ -821,13 +871,17 @@ internal sealed class AkronReconstructionGraph {
         long maxJsonNodeCount = DefaultMaxJsonNodeCount,
         long maxJsonRecordCount = DefaultMaxJsonRecordCount,
         long maxJsonExpensiveRecordCount = DefaultMaxJsonExpensiveRecordCount,
-        Func<Type, bool> areEquivalentLiveResources = null
+        Func<Type, bool> areEquivalentLiveResources = null,
+        Func<object, bool> hasPortableLiveResourceKey = null,
+        Func<object, string, IEnumerable<int>> getMapPlacedEntityIds = null
     ) {
         this.isLiveResource = isLiveResource ?? throw new ArgumentNullException(nameof(isLiveResource));
         this.getLiveResourceKey = getLiveResourceKey;
         this.resourceAdapter = resourceAdapter;
         this.resolveDetachedLiveResource = resolveDetachedLiveResource;
         this.areEquivalentLiveResources = areEquivalentLiveResources;
+        this.hasPortableLiveResourceKey = hasPortableLiveResourceKey;
+        this.getMapPlacedEntityIds = getMapPlacedEntityIds;
         this.maxJsonTokenCount = maxJsonTokenCount;
         this.maxJsonContainerCount = maxJsonContainerCount;
         this.maxJsonStringChars = maxJsonStringChars;
@@ -1817,6 +1871,32 @@ internal sealed class AkronReconstructionGraph {
         return !string.IsNullOrEmpty(id.Level);
     }
 
+    // Does the map lay this EntityID out in its room? Capture asks it of the clean
+    // reload it measures against and writes the answer onto the node; restore asks
+    // it of the room it is rebuilding into. The two answers together say whether the
+    // map changed under a saved entity, which is the only thing that tells a map
+    // edit apart from session state deciding not to build an entity this time.
+    //
+    // The per-room set is built once and reused, because a room's map data is a flat
+    // list and a room with several hundred entities would otherwise be scanned once
+    // per entity. A graph with no map callback answers false for everything, which
+    // leaves both sides of the comparison silent rather than guessing.
+    private bool IsMapPlacedEntityId(
+        object roomRoot,
+        EntityID entityId,
+        Dictionary<string, HashSet<int>> placedIdsByRoom
+    ) {
+        if (getMapPlacedEntityIds == null || !HasStableSourceId(entityId)) {
+            return false;
+        }
+        if (!placedIdsByRoom.TryGetValue(entityId.Level, out HashSet<int> placedIds)) {
+            placedIds = new HashSet<int>(
+                getMapPlacedEntityIds(roomRoot, entityId.Level) ?? Enumerable.Empty<int>());
+            placedIdsByRoom[entityId.Level] = placedIds;
+        }
+        return placedIds.Contains(entityId.ID);
+    }
+
     private static bool EntityIdsMatch(EntityID left, EntityID right) {
         return left.ID == right.ID && string.Equals(left.Level, right.Level, StringComparison.Ordinal);
     }
@@ -1861,9 +1941,16 @@ internal sealed class AkronReconstructionGraph {
         private readonly Dictionary<Type, HashSet<FreshResource>> freshRoomObjects = new Dictionary<Type, HashSet<FreshResource>>();
         private readonly Dictionary<object, FreshResource> freshCandidates =
             new Dictionary<object, FreshResource>(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<string, HashSet<int>> mapPlacedEntityIdsByRoom =
+            new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
+        // The clean reload this capture is measured against. Its map is the map the
+        // slot was set on, so it is what decides whether an entity's id is one the
+        // map owns.
+        private readonly object freshBaselineRoot;
 
         public CaptureContext(AkronReconstructionGraph owner, object freshRoot) {
             this.owner = owner;
+            freshBaselineRoot = freshRoot;
             if (owner.getLiveResourceKey != null) {
                 IndexFreshResources(freshRoot);
             }
@@ -2169,6 +2256,18 @@ internal sealed class AkronReconstructionGraph {
                 ParentDelegateIndex = parentDelegateIndex,
                 UseFreshObject = liveAnchor || useFreshObject,
                 ResourceKey = savedLiveResourceKey,
+                // Both facts are read off the saved object, which is the only place
+                // they exist. A restore holds the fresh room and the document and
+                // neither of them can say what the saved key was derived from or
+                // what the map looked like when the slot was set.
+                PortableResourceKey = liveAnchor &&
+                                      !string.IsNullOrWhiteSpace(savedLiveResourceKey) &&
+                                      owner.hasPortableLiveResourceKey?.Invoke(savedValue) == true,
+                MapPlacedEntity = savedValue is Entity mapEntity &&
+                                  owner.IsMapPlacedEntityId(
+                                      freshBaselineRoot,
+                                      GetEntitySourceId(mapEntity),
+                                      mapPlacedEntityIdsByRoom),
                 FreshPath = matchedFreshPath ?? new List<AkronReconstructionPathStep>()
             };
             Document.Nodes.Add(node);
@@ -2506,6 +2605,8 @@ internal sealed class AkronReconstructionGraph {
         private readonly HashSet<string> freshStructuralTypes = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<string, int> freshListStructuralTypeCounts =
             new Dictionary<string, int>(StringComparer.Ordinal);
+        private readonly Dictionary<string, HashSet<int>> mapPlacedEntityIdsByRoom =
+            new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
         private readonly HashSet<string> freshStaticDelegateMethods = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> freshStructuralDelegateCalls = new HashSet<string>(StringComparer.Ordinal);
         // What each state slot of every fresh Monocle.StateMachine means, keyed
@@ -2578,6 +2679,8 @@ internal sealed class AkronReconstructionGraph {
 
             foreach (AkronReconstructionNode node in document.Nodes.OrderBy(node => node.Id)) {
                 Type type = ResolveType(node.TypeName, node.Path);
+                // Before any resolver or authenticator sees this node. See the method.
+                RefuseMapEntityTheMapNoLongerPlaces(node, type);
                 object restoredObject;
                 if (node.Id == document.RootNodeId) {
                     restoredObject = freshRoot;
@@ -3043,6 +3146,71 @@ internal sealed class AkronReconstructionGraph {
                     culture: CultureInfo.InvariantCulture);
             }
             return RuntimeHelpers.GetUninitializedObject(type);
+        }
+
+        // A saved entity whose EntityID the map no longer lays out in the room being
+        // rebuilt. Two different things stop the reloaded room from containing a saved
+        // entity's id, and only one of them is safe to rebuild through:
+        //
+        //   session state. The map still lays this id out; this run's flags meant
+        //   LoadLevel skipped it. The saved frame is the truth, the entity is rebuilt
+        //   beside the ones the room did build, and that restore works.
+        //
+        //   a changed map. The id is gone from the map, so the room the document was
+        //   measured against no longer exists. Every same-typed entity in the room is
+        //   a different map entity, and rebuilding the saved one hands it a live
+        //   entity's list slot, its components and its saved state while the entity
+        //   LoadLevel built is dropped - reported as success, because the only thing
+        //   consulted is that the fresh room holds SOME object of this type at this
+        //   wildcarded list path.
+        //
+        // The map is what tells them apart, and one bit per node is all it takes: an
+        // id the map owned when the slot was set, gone from the map now, is a changed
+        // map. An id the map never owned - one a mod made up for an entity it spawns
+        // itself - carries no evidence either way and is left alone, which is why the
+        // node records what capture saw rather than the restore asking the map alone.
+        //
+        // Only ids belonging to document.Room count, and that is the whole jurisdiction
+        // of the rule. An entity the player is carrying keeps the SourceId the room it
+        // was picked up in gave it - Leader.GainFollower leaves Tags.Persistent on a
+        // strawberry and Level.TransitionRoutine carries persistent entities across, so
+        // a berry picked up in a01 is still a01:5 while the player stands in a40 - and
+        // UnloadLevel keeps only Tags.Global, so that node never pairs and always
+        // reaches here. An edit to a01 says nothing about whether rebuilding it would
+        // displace one of a40's entities, which is the harm above, and a golden-berry
+        // run would otherwise make every slot in the chapter depend on the first room's
+        // ids. document.Room is the room TryLoadFreshRoom loaded, so it is exactly the
+        // population being rebuilt.
+        //
+        // Called once per node before anything resolves it, and deliberately: the
+        // resolvers decide whether an authenticator ever runs, and none of them is
+        // entitled to overrule an identity the map itself has dropped.
+        // TryResolveFreshFieldAlias in particular has no SourceId check, so a saved map
+        // entity held in an ordinary field outside entity or component list storage
+        // used to bind to whatever the fresh room kept in that field - measured: the
+        // saved state of entity 10 landing on the entity the edited map calls 99, with
+        // that entity's SourceId overwritten to 10 and the load reporting success.
+        //
+        // Running first also covers a saved map entity that would have paired, and that
+        // is the right answer rather than an accident of placement. Everest derives an
+        // EntityID from map data for everything LoadLevel builds and for everything
+        // EntityList.Add sees during a map entity's construction, so a reloaded room
+        // carrying a stable SourceId the current map does not place got it from mod code
+        // setting the field itself - and the document is still measured against a room
+        // this map no longer produces.
+        private void RefuseMapEntityTheMapNoLongerPlaces(AkronReconstructionNode node, Type type) {
+            if (!node.MapPlacedEntity || !typeof(Entity).IsAssignableFrom(type) ||
+                !TryGetSavedEntityId(node, out EntityID savedEntityId) ||
+                !string.Equals(savedEntityId.Level, document.Room, StringComparison.Ordinal) ||
+                owner.IsMapPlacedEntityId(freshRoot, savedEntityId, mapPlacedEntityIdsByRoom)) {
+                return;
+            }
+            throw new AkronReconstructionException(
+                node.Path,
+                "saved map entity is no longer placed by this map;type=" + type.FullName +
+                ";saved-entity-id=" + (savedEntityId.Level ?? string.Empty) + ":" +
+                savedEntityId.ID.ToString(CultureInfo.InvariantCulture),
+                node.TypeName);
         }
 
         private bool IsAuthenticatedCompilerIteratorState(AkronReconstructionNode node, Type type) {
@@ -3714,6 +3882,21 @@ internal sealed class AkronReconstructionGraph {
                         ";edge-field=" + (edgeField?.Name ?? "<array>"),
                         target.TypeName);
                 }
+                // Every edge spends, including one whose target the fresh room already
+                // holds. Exempting those was tried and reverted: it leaves the budget
+                // standing longer for everything, and the thing that then gets in is
+                // whatever carries no identity at all. The room that measures it is
+                // APairedTrailAheadOfAnUnpairableGhostStillSpendsTheOccurrenceThatRefusesIt -
+                // one paired trail ahead of an unpairable ghost, where not spending on
+                // the paired edge hands the ghost the occurrence, drops the entity the
+                // reload built, and reports success.
+                //
+                // So the budget keeps the order dependence W30 5.1 measured, and it is
+                // still open. What closes it is an authenticator for a saved entity the
+                // map still places, not a looser count - and that authenticator has to
+                // refuse the room above, which by map evidence alone is the same room.
+                // The one thing that separates them is measured and written down in
+                // that test; building the authenticator on it is a pass of its own.
                 freshListStructuralTypeCounts[listPathKey] = remaining - 1;
                 return;
             }
@@ -5779,7 +5962,19 @@ internal sealed class AkronReconstructionGraph {
                 // and generated name after a clean room load. In that case the
                 // owner field is the stable identity. A fixed field still
                 // requires its explicit resource key to match.
-                matchedByStructuralPath = HasListStorageIndex(structuralPath);
+                //
+                // That is true of a key built from a name the running process
+                // made up, and false of one that names the resource. Capture
+                // classified the saved key on the saved object and wrote the
+                // answer onto the node, so a key this process cannot find is
+                // either a resource this install does not have - refuse, the
+                // caller's key comparison says so by name - or a label the
+                // reload regenerated, which is what this path is for. The
+                // candidate is still returned either way: the refusal that
+                // follows names the key, which says more than "path
+                // unavailable" would.
+                matchedByStructuralPath = HasListStorageIndex(structuralPath) &&
+                                          !node.PortableResourceKey;
                 return structuralMatches[0];
             }
             if (keyMatches.Count > 1 || structuralMatches.Count > 1) {
@@ -6953,8 +7148,221 @@ internal static class AkronStartPosReconstruction {
             GetLiveResourceKey,
             new AkronVirtualRenderTargetResourceAdapter(),
             ResolveDetachedLiveResource,
-            areEquivalentLiveResources: AreEquivalentLiveResources);
+            areEquivalentLiveResources: AreEquivalentLiveResources,
+            hasPortableLiveResourceKey: HasPortableLiveResourceKey,
+            getMapPlacedEntityIds: GetMapPlacedEntityIds);
     }
+
+    // Does GetLiveResourceKey name this resource, or label this instance? The two
+    // read the same way and mean opposite things when a second process cannot find
+    // the key. A name that is missing means the resource is missing: a sort this
+    // install cannot open, a texture file this install does not have, a type from an
+    // assembly this install did not load. A label that is missing means nothing at
+    // all, because the process that wrote it made it up and the process reading it
+    // made up a different one for the same resource - which is what the restore's
+    // structural owner path exists to carry.
+    //
+    // Asked of the saved object during capture and written onto its node. It is a
+    // property of the individual resource and not of its type: two Types are named
+    // or labelled by where their assembly came from, and two VirtualAssets by
+    // whether the wrapper has a content path. Asking a fresh candidate instead would
+    // classify a different object, which is how the previous attempt at this waived
+    // the exact keys it was written to hold.
+    //
+    // The branches follow GetLiveResourceKey's, in its order, so no object can take
+    // corresponding branches in the two functions. Four of them deliberately collapse
+    // rather than mirror: Atlas and ModAsset answer no whether or not their path is
+    // set, MemberInfo answers no outright for the reason spelled out below, and both
+    // arms of VirtualAsset - including the file-backed VirtualTexture arm - fall to the
+    // last return for the reason spelled out there. Anything with no key never reaches
+    // here at all, because capture only asks when the key is non-empty.
+    internal static bool HasPortableLiveResourceKey(object resource) {
+        if (resource is CompareInfo) {
+            // A sort name. Every install derives the same one for the same
+            // collation, and one it cannot open is a collation it does not have.
+            return true;
+        }
+        if (resource is Type type) {
+            // GetLiveResourceKey uses the assembly-qualified name and falls back to a
+            // bare name when there is none. Requiring the key to actually be that name
+            // is what keeps out every shape whose name leaves something unqualified.
+            // Measured on .NET 8: a generic parameter, an array of one, and a generic
+            // type still holding one - List<T>, Dictionary<int,T> - all return null
+            // here, while a generic type definition and a fully closed generic return
+            // a real name. Without this, List<T> would be judged on the core library
+            // alone while its name carries a bare "T" that two different parameters
+            // share.
+            return type.AssemblyQualifiedName != null && IsFileBackedMetadata(type);
+        }
+        // A MemberInfo deliberately falls through to the last return. Its key is the
+        // assembly's full name plus a metadata token, and a token names a position in
+        // one build's member table rather than the member. Rebuilding an assembly at
+        // the same name and version moves them: measured on .NET 8, adding one method
+        // ahead of two others shifted both their tokens by one, so the saved token
+        // named a different method in the rebuilt assembly under an identical
+        // Assembly.FullName. Celeste itself is rebuilt at the same version, and Everest
+        // regenerates MMHOOK_Celeste.dll whenever the mod set changes.
+        //
+        // File backing proves the assembly came off disk. It does not prove it is the
+        // same build, and nothing in the key does. So a MemberInfo key is a label on
+        // this build rather than a name for the member, and the structural owner path
+        // that carries it today keeps carrying it.
+        if (resource is Assembly assembly) {
+            return IsFileBackedAssembly(assembly);
+        }
+        if (resource is EverestModule || resource is EverestModuleSettings) {
+            return IsFileBackedMetadata(resource.GetType());
+        }
+        if (resource is Atlas || resource is ModAsset) {
+            // Both keys read like content - a data path, a virtual path, a source
+            // name - and both are built from publicly writable properties that a mod
+            // is free to set per process for identical content. There is no
+            // reproduction of either being satisfied by the wrong object, and
+            // calling a label a name costs a slot that loads today, so these keep
+            // the owner path they have always had.
+            return false;
+        }
+        // A VirtualAsset deliberately falls through to the last return, both halves of
+        // it. A texture built from data is keyed on a name its creator passed in, which
+        // is regenerated per process for the same asset, and carrying that on the owner
+        // path is exactly what the structural override was written for.
+        //
+        // A texture loaded from a file is keyed on its path and its dimensions, and
+        // that is the same defect MemberInfo has by a different route: half the key is
+        // a name and half is a measurement of the file's current contents. A mod that
+        // retextures a PNG at a new size leaves the asset present under the same path
+        // and changes the key, so a process that cannot produce the key can still hold
+        // the resource - which is the one thing "portable" is supposed to mean here.
+        // Reading a miss as absence would refuse a whole slot over a decal being
+        // redrawn, where the owner path hands the room the fresh texture today.
+        // ResolveDetachedLiveResource compares the whole key including the dimensions,
+        // so it is a miss, not a near match. AreEquivalentLiveResources already treats
+        // two VirtualTexture wrappers with one key as interchangeable, so this file
+        // already says a texture reference is about content rather than about one
+        // particular wrapper, and claiming the key names the content contradicts it.
+        return false;
+    }
+
+    // An assembly the runtime built or was handed as bytes has no file behind it,
+    // and nothing names it but the name whoever produced it chose. Everest emits
+    // assemblies while the game runs and numbers them in build order, and a mod that
+    // compiles a helper at startup and loads it with Assembly.Load(byte[]) gets a
+    // fresh name per process without ever being dynamic. Location is empty for both
+    // and non-empty for anything loaded off disk, which is the distinction that
+    // matters: a key naming a file-backed assembly means the same thing in the next
+    // process, and a key naming either of the others does not.
+    //
+    // This answers no for every mod assembly as well, and that is a known hole rather
+    // than a conservative margin. EverestModuleAssemblyContext.LoadRelinkedAssembly
+    // reads the relinked dll into memory and calls LoadFromStream so the file on disk
+    // is not locked, so a mod's assembly has an empty Location however ordinary it is.
+    // Its name is in fact reproducible, so every mod-owned Type, EverestModule and
+    // EverestModuleSettings keeps a key that does name its resource, and site A goes on
+    // waiving that key for the wildcarded owner path.
+    //
+    // The error that leaves open is a wrong restore, not a false refusal: a mod-owned
+    // reflection resource this process genuinely lacks is answered by whatever object
+    // sits at the saved structural position, silently. That is today's behaviour and it
+    // is not made worse here, but it is the direction that costs a room rather than a
+    // slot, and narrowing it needs Everest asked which load context an assembly came
+    // from - nothing on Assembly separates a relinked mod assembly from bytes a mod
+    // compiled itself at startup, which is the case this must go on answering no for.
+    private static bool IsFileBackedAssembly(Assembly assembly) {
+        return assembly != null && !assembly.IsDynamic && !string.IsNullOrEmpty(assembly.Location);
+    }
+
+    // A Type's key is its assembly-qualified name, which spells out the assembly of
+    // every type inside it as well as its own. List<T> over an emitted type lives in
+    // the core library and still carries the emitted assembly's made-up name in its
+    // key, so the whole shape has to be file-backed for the key to name anything.
+    private static bool IsFileBackedMetadata(Type type) {
+        if (type == null) {
+            return false;
+        }
+        if (type.IsFunctionPointer) {
+            // Measured: a function pointer type's assembly-qualified name says the
+            // core library and spells its signature types out inside the name without
+            // qualifying them, and GetElementType returns nothing, so the recursion
+            // below cannot see what it is built from. Nothing here names it.
+            return false;
+        }
+        if (type.HasElementType) {
+            return IsFileBackedMetadata(type.GetElementType());
+        }
+        if (type.IsGenericType &&
+            type.GetGenericArguments().Any(argument => !IsFileBackedMetadata(argument))) {
+            return false;
+        }
+        return IsFileBackedAssembly(type.Assembly);
+    }
+
+    // Every EntityID the map lays out in one room, however this run's session flags
+    // decided to build it. LoadLevel skips entities a flag has retired, so the room
+    // is a subset of this and the map data is the only session-independent record of
+    // what the room is meant to contain. Both the capture baseline and the room a
+    // restore rebuilds into resolve the same static AreaData, so a difference between
+    // the two answers is a difference in the map file itself.
+    //
+    // Triggers carry EntityIDs from the same per-room numbering as entities, so both
+    // lists belong here. Decals do not have ids and never reach this.
+    //
+    // Session.MapData resolves through the process-wide AreaData rather than through
+    // the room graph, so a capture reads it from the persistence worker rather than
+    // from the game thread. That is the same live process state the worker already
+    // reads through ResolveDetachedLiveResource - VirtualContent.Assets,
+    // Everest.Content.Map, the loaded assembly list - and map data is the least
+    // volatile of them: it is built once when the map is loaded and only rebuilt by
+    // an explicit map reload.
+    internal static IEnumerable<int> GetMapPlacedEntityIds(object roomRoot, string roomName) {
+        LevelData room = ResolveMapRoom((roomRoot as AkronPersistentRuntimeState)?.Level?.Session, roomName);
+        return room == null ? Array.Empty<int>() : GetMapPlacedEntityIds(room);
+    }
+
+    // Session.MapData is "AreaData.Areas[Area.ID].Mode[(int)Area.Mode].MapData" - two
+    // array indexes with no bounds check - so reading it through the property throws
+    // ArgumentOutOfRangeException for an Area.ID past the end of the loaded area list
+    // and IndexOutOfRangeException for a side the map has no ModeProperties for. Both
+    // were measured. Capture runs on the persistence worker against a deep-cloned
+    // Session while the game thread is free to rebuild AreaData.Areas for a map reload
+    // or a mod-set change, and a throw there fails the whole slot with an exception
+    // name at path "$" rather than with anything a player can act on.
+    //
+    // Answering with no room instead means no evidence: at capture no node is stamped,
+    // which is the behaviour of every build before the evidence existed, and at restore
+    // the node's evidence is only read for document.Room, which the game has just
+    // loaded - so its area and mode are in range by the time a restore can ask.
+    private static LevelData ResolveMapRoom(Session session, string roomName) {
+        List<AreaData> areas = AreaData.Areas;
+        int areaId = session?.Area.ID ?? -1;
+        if (areas == null || areaId < 0 || areaId >= areas.Count) {
+            return null;
+        }
+        ModeProperties[] modes = areas[areaId]?.Mode;
+        int modeIndex = (int) session.Area.Mode;
+        if (modes == null || modeIndex < 0 || modeIndex >= modes.Length) {
+            return null;
+        }
+        return modes[modeIndex]?.MapData?.Get(roomName ?? string.Empty);
+    }
+
+    internal static IEnumerable<int> GetMapPlacedEntityIds(LevelData room) {
+        return room.Entities
+            .Where(entityData => entityData != null)
+            .Select(entityData => entityData.ID)
+            .Concat(room.Triggers
+                .Where(entityData => entityData != null)
+                .Select(entityData => entityData.ID + TriggerEntityIdOffset));
+    }
+
+    // Everest numbers triggers in their own range. patch_Level.CreateEntityId is
+    // "new EntityID(levelData.Name, entityData.ID + (_isLoadingTriggers ? 10000000 : 0))",
+    // and the IL patch sets that flag around the LevelData.Triggers loop, so a
+    // trigger's live SourceId is its map id plus this and an entity's is its map id
+    // alone. Reading both lists as one range would leave every trigger unmatched -
+    // no protection for triggers - and worse, an entity whose id the map dropped
+    // would still be found through a trigger that happens to carry the same raw
+    // number, which is common because the two lists number independently.
+    private const int TriggerEntityIdOffset = 10000000;
 
     internal static bool AreEquivalentLiveResources(Type type) {
         // A VirtualTexture key includes its source path and dimensions. A
@@ -7758,7 +8166,7 @@ internal static class AkronStartPosReconstruction {
     // Tracks AkronReconstructionDocument.CurrentFormat. A snapshot written against a
     // different fresh-room baseline gets a different path, so no read can reach it and
     // no write can replace it in place.
-    private const string SnapshotFileNamePrefix = "v8-";
+    private const string SnapshotFileNamePrefix = "v9-";
     private const string SnapshotFileNameSuffix = ".json.gz";
 
     private static string BuildSnapshotFileName(string slotName) {
@@ -7768,73 +8176,6 @@ internal static class AkronStartPosReconstruction {
     private static string BuildSnapshotSlotDigest(string slotName) {
         byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(slotName ?? string.Empty));
         return Convert.ToHexString(digest).ToLowerInvariant();
-    }
-
-    // True when this slot has a snapshot on disk under a name an older Akron wrote. It
-    // says nothing about whether a current one also exists; every caller asks only after
-    // HasSnapshot has already said no.
-    //
-    // Without it the two cases are indistinguishable to a Load: a slot whose snapshot
-    // predates the current format and a slot that was never set both come back from
-    // HasSnapshot as false, and "no restart copy exists" sends a player looking for a
-    // disk problem they do not have. The file is counted, never opened - a document
-    // measured against a different fresh room must not reach the reconstruction path,
-    // and there is nothing in it worth reading to say what this already says.
-    internal static bool HasSupersededSnapshot(string slotName, string directory = null) {
-        return HasSupersededSnapshot(new[] { slotName ?? string.Empty }, directory);
-    }
-
-    // Takes a set because the caller that matters asks about a whole map at once: a
-    // format bump drops every slot on a map together, so Previous/Next finds an empty
-    // list and has to ask about all of them. One pass over the folder answers for the
-    // set; asking slot by slot would read the directory once per slot.
-    //
-    // A file is superseded when its name addresses one of these slots and is not the name
-    // this build would write. Names are "<format version>-<digest of the slot name>.json.gz",
-    // and the digest is the part that identifies the slot, so the trailing digest and
-    // extension are the key and the leading version is what differs. Matching on the key
-    // rather than on a list of retired prefixes means this needs no maintenance at the
-    // next bump.
-    //
-    // Ordinal on purpose. Every name Akron has ever written comes from ToLowerInvariant
-    // over the same digest, so two names for one slot can only differ in case if someone
-    // renamed a file by hand, and treating "V8-..." as a superseded copy of "v8-..." would
-    // be a worse answer than missing it.
-    internal static bool HasSupersededSnapshot(IReadOnlyCollection<string> slotNames, string directory = null) {
-        if (slotNames == null || slotNames.Count == 0) {
-            return false;
-        }
-        string root = Path.GetDirectoryName(GetSnapshotPath(string.Empty, directory));
-        if (string.IsNullOrEmpty(root)) {
-            return false;
-        }
-
-        Dictionary<string, string> currentNameBySlotKey = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (string slotName in slotNames) {
-            string digest = BuildSnapshotSlotDigest(slotName);
-            currentNameBySlotKey["-" + digest + SnapshotFileNameSuffix] =
-                SnapshotFileNamePrefix + digest + SnapshotFileNameSuffix;
-        }
-        int slotKeyLength = 1 + BuildSnapshotSlotDigest(string.Empty).Length + SnapshotFileNameSuffix.Length;
-
-        try {
-            foreach (string path in Directory.EnumerateFiles(root)) {
-                string fileName = Path.GetFileName(path);
-                if (fileName.Length < slotKeyLength) {
-                    continue;
-                }
-                string slotKey = fileName.Substring(fileName.Length - slotKeyLength);
-                if (currentNameBySlotKey.TryGetValue(slotKey, out string currentName) &&
-                    !string.Equals(fileName, currentName, StringComparison.Ordinal)) {
-                    return true;
-                }
-            }
-        } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
-            // Only ever asked on a path that has already failed, and only to choose which
-            // sentence to show. An unreadable directory keeps the plainer one.
-            return false;
-        }
-        return false;
     }
 
     internal sealed class PreparedSnapshotInstall : IDisposable {

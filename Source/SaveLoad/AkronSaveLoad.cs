@@ -1173,16 +1173,15 @@ public static partial class AkronSaveLoadService {
             return AkronSaveLoadResult.NoState;
         }
         if (!AkronStartPosReconstruction.HasSnapshot(normalizedSlotName)) {
-            // A slot set before the snapshot format was bumped still has its position
-            // metadata, so it looks set and its restart copy is on disk under the
-            // previous format's name. Saying only that no copy exists would send the
-            // player looking for a disk or permissions problem. Nothing is read from
-            // that file: it was measured against a fresh room Akron no longer builds,
-            // and the whole reason for the bump is that such a document must not reach
-            // the reconstruction path.
-            LastPersistentSnapshotError = AkronStartPosReconstruction.HasSupersededSnapshot(normalizedSlotName)
-                ? "its restart copy was written by an older Akron that built rooms differently; set this StartPos again"
-                : "no restart copy of this StartPos exists on disk";
+            // This says nothing about why, deliberately. A slot emptied by a snapshot
+            // format move never gets here: BuildRuntimeStartPositions keeps only slots
+            // HasRuntimeState answers for, which is memory or a snapshot under the
+            // current name, so such a slot is gone from the list before a load can be
+            // pressed and the player is told about the move by DescribeMissingStartPos,
+            // out of the catalog entry that records which format wrote it. Reaching
+            // here means a slot that had a readable copy when the room loaded and does
+            // not now, and nothing here knows what happened to it.
+            LastPersistentSnapshotError = "no restart copy of this StartPos exists on disk";
             return AkronSaveLoadResult.NoState;
         }
         usedSnapshot = true;

@@ -459,27 +459,50 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
-    public void ASlotWhoseSnapshotPredatesTheFormatBumpIsNotMistakenForASlotThatWasNeverSet() {
+    public void ASlotWhoseSnapshotPredatesTheFormatBumpIsNotVisibleToTheCurrentBuild() {
         string directory = Path.Combine(Path.GetTempPath(), "akron-format-" + Guid.NewGuid().ToString("N"));
         string slotName = "Akron StartPos superseded " + Guid.NewGuid().ToString("N");
-        string neverSetSlotName = "Akron StartPos unset " + Guid.NewGuid().ToString("N");
         try {
             WriteSnapshotWithFormat(SupersededSnapshotPath(slotName, directory), "akron-reconstruction-v7");
 
-            // The slot's position metadata survives the update, so it still looks set.
-            // Its restart copy is on disk under the previous format's name, which the
-            // current build never reads. Both of these have to be true at once or the
-            // player is told the wrong thing.
+            // The file is on disk under the previous format's name, and nothing this
+            // build does can see it: HasSnapshot builds the current name, so the slot
+            // is dropped from the list by BuildRuntimeStartPositions and the load path
+            // is never reached. What the player is told about the move comes from the
+            // catalog entry instead, which is DescribeMissingStartPos.
             Assert.False(AkronStartPosReconstruction.HasSnapshot(slotName, directory));
-            Assert.True(AkronStartPosReconstruction.HasSupersededSnapshot(slotName, directory));
-
-            // A slot that was genuinely never set keeps the plainer message.
-            Assert.False(AkronStartPosReconstruction.HasSupersededSnapshot(neverSetSlotName, directory));
         } finally {
             if (Directory.Exists(directory)) {
                 Directory.Delete(directory, recursive: true);
             }
         }
+    }
+
+    // The release note that tells a player to set their slots again names both contracts
+    // in prose, and nothing else in the tree ties that prose to the constants. A move
+    // that edits the constants and leaves the note alone has already happened once: the
+    // sentence said the saved-state contract had moved to akron-reconstruction-v8 and
+    // the pack contract to akron-setup-v5 while the build wrote v9 and v6, so the one
+    // instruction a player is given named a version this build never writes.
+    //
+    // Only the unreleased section is checked. The entries below it name the contracts
+    // their own release shipped, which is what a changelog is for.
+    [Fact]
+    public void TheUnreleasedChangelogNamesTheContractsThisBuildActuallyWrites() {
+        string changelog = File.ReadAllText(GetRepositoryFilePath("CHANGELOG.md"));
+        int unreleased = changelog.IndexOf("## Unreleased", StringComparison.Ordinal);
+        Assert.True(unreleased >= 0, "CHANGELOG.md has no Unreleased section.");
+        int nextRelease = changelog.IndexOf("\n## ", unreleased + 1, StringComparison.Ordinal);
+        string section = nextRelease < 0
+            ? SourceTail(changelog, unreleased)
+            : SourceSlice(changelog, unreleased, nextRelease - unreleased);
+
+        Assert.Contains(AkronReconstructionDocument.CurrentFormat, section);
+        Assert.Contains(AkronSetupPacks.SetupPackFormat, section);
+        // The two contracts the move passed through on this branch. Naming either of
+        // them as where the move ends is the failure this exists for.
+        Assert.DoesNotContain("akron-reconstruction-v8", section);
+        Assert.DoesNotContain("akron-setup-v5", section);
     }
 
     [Fact]
@@ -492,14 +515,11 @@ public sealed class StartPosPersistenceTests {
                 slotName, "Tests/FormatBump", "room", 3, MinimalDocument(), out string saveError, directory), saveError);
 
             Assert.True(AkronStartPosReconstruction.HasSnapshot(slotName, directory));
-            // Nothing about the current slot looks superseded, so the bump cannot make
-            // a working slot report itself as one written by an older Akron.
-            Assert.False(AkronStartPosReconstruction.HasSupersededSnapshot(slotName, directory));
 
             Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
                 slotName, out AkronReconstructionDocument document, out string loadError, directory), loadError);
             Assert.Equal(AkronReconstructionDocument.CurrentFormat, document.Format);
-            Assert.Equal("akron-reconstruction-v8", document.Format);
+            Assert.Equal("akron-reconstruction-v9", document.Format);
             Assert.Equal(slotName, document.SlotName);
             Assert.Equal("Tests/FormatBump", document.MapSid);
             Assert.Equal("room", document.Room);
@@ -647,34 +667,6 @@ public sealed class StartPosPersistenceTests {
         Assert.Equal(
             "No StartPos saved in slot 3.",
             AkronActions.DescribeMissingStartPos(3, new Dictionary<int, AkronPersistedStartPos>()));
-    }
-
-    [Fact]
-    public void AWholeMapOfSlotsTheFormatBumpLeftBehindIsAnsweredInOnePassOverTheFolder() {
-        string directory = Path.Combine(Path.GetTempPath(), "akron-format-" + Guid.NewGuid().ToString("N"));
-        string supersededSlot = "Akron StartPos map superseded " + Guid.NewGuid().ToString("N");
-        string currentSlot = "Akron StartPos map current " + Guid.NewGuid().ToString("N");
-        string neverSetSlot = "Akron StartPos map unset " + Guid.NewGuid().ToString("N");
-        try {
-            Directory.CreateDirectory(directory);
-            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
-                currentSlot, "Tests/FormatBump", "room", 0, MinimalDocument(), out string saveError, directory), saveError);
-            WriteSnapshotWithFormat(SupersededSnapshotPath(supersededSlot, directory), "akron-reconstruction-v7");
-
-            // Asking about a set of slots in one pass over the folder. One superseded
-            // slot among current ones has to be found, and a map with nothing left
-            // behind must not claim there is.
-            Assert.False(AkronStartPosReconstruction.HasSupersededSnapshot(
-                new[] { currentSlot, neverSetSlot }, directory));
-            Assert.True(AkronStartPosReconstruction.HasSupersededSnapshot(
-                new[] { currentSlot, supersededSlot, neverSetSlot }, directory));
-            Assert.False(AkronStartPosReconstruction.HasSupersededSnapshot(
-                Array.Empty<string>(), directory));
-        } finally {
-            if (Directory.Exists(directory)) {
-                Directory.Delete(directory, recursive: true);
-            }
-        }
     }
 
     // The name a build older than this one addressed the same slot by. Same derivation
@@ -930,23 +922,35 @@ public sealed class StartPosPersistenceTests {
         Assert.DoesNotContain(AkronReconstructionDocument.CurrentFormat, compareCode);
     }
 
+    // The load path is not allowed to name a cause for a missing restart copy, because
+    // it cannot know one. A slot emptied by a format move never reaches it: the slot
+    // list keeps only slots HasRuntimeState answers for, and HasRuntimeState builds the
+    // current file name, so the move drops the slot before a Load can be pressed and
+    // the sentence the player gets is DescribeMissingStartPos out of the catalog. That
+    // catalog entry records the format its state was written under and compares it as a
+    // number, which is the only place in the tree entitled to say "older".
+    //
+    // A disk probe here could only answer "a file for this slot exists under some other
+    // version", and after SweepSupersededSnapshots has run at Start the only such file
+    // left is a NEWER one, so the sentence would tell a player who downgraded that their
+    // copy is old. A Load cannot run without a game, so this is asserted in the source
+    // the way this file already asserts the fresh-room reload's ordering.
     [Fact]
-    public void ALoadOfASlotLeftBehindByTheFormatBumpSaysItsCopyIsFromAnOlderAkron() {
+    public void ALoadThatCannotFindARestartCopyDoesNotGuessWhyItIsGone() {
         string source = File.ReadAllText(GetSaveLoadSourcePath());
         int load = source.IndexOf("public static AkronSaveLoadResult LoadRuntimeState(", StringComparison.Ordinal);
         int loadEnd = source.IndexOf("internal static bool HasRuntimeStateInMemory(", load, StringComparison.Ordinal);
         string loadMethod = SourceSlice(source, load, loadEnd - load);
 
-        // A Load cannot run without a game, so the pairing is asserted in the source the
-        // way this file already asserts the fresh-room reload's ordering. Both halves
-        // matter: without the question the message is "no restart copy exists on disk",
-        // which is what a slot that was never set looks like and sends the player after
-        // a disk problem that is not there.
-        Assert.Contains("AkronStartPosReconstruction.HasSupersededSnapshot(normalizedSlotName)", loadMethod);
         Assert.Contains(
-            "its restart copy was written by an older Akron that built rooms differently; set this StartPos again",
+            "LastPersistentSnapshotError = \"no restart copy of this StartPos exists on disk\";",
             loadMethod);
-        Assert.Contains("no restart copy of this StartPos exists on disk", loadMethod);
+        Assert.DoesNotContain("written by an older Akron", loadMethod);
+        // And nothing anywhere reads the snapshot folder to decide it, so the sentence
+        // cannot come back by another name.
+        Assert.DoesNotContain(
+            "HasSupersededSnapshot",
+            File.ReadAllText(GetSourcePath("SaveLoad", "akron-reconstruction-graph.cs")));
     }
 
     // Installs one warm StartPos slot of a stated size, with a real snapshot on disk so
@@ -3960,6 +3964,13 @@ public sealed class StartPosPersistenceTests {
 
     private static string GetQaCommandsSourcePath() {
         return GetSourcePath("Commands", "akron-qa-commands.cs");
+    }
+
+    // Anchored on a file this suite already locates rather than on a bare upward walk,
+    // so a copy of the same name under bin/ cannot be picked up instead.
+    private static string GetRepositoryFilePath(string fileName) {
+        string sourceDirectory = Path.GetDirectoryName(Path.GetDirectoryName(GetSaveLoadSourcePath()))!;
+        return Path.Combine(Path.GetDirectoryName(sourceDirectory)!, fileName);
     }
 
     private static string GetSourcePath(string directoryName, string fileName) {

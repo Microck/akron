@@ -1818,6 +1818,34 @@ public sealed class StartPosReconstructionTests {
         Assert.Same(fresh.Level, fresh.Owner.Scene);
     }
 
+    // The map-edited half of the reproduction below, and what closes it. A ghost the
+    // reloaded room rebuilt under a different EntityID means one of two things, and
+    // this is the one where the room the document measured is gone: the map no longer
+    // lays entity 42 out at all. Rebuilding it there would hand it the live ghost's
+    // entity-list slot, the room's own PlayerSprite and the saved state, and report
+    // success.
+    [Fact]
+    public void AnUnpairedGhostIsRefusedWhenTheMapNoLongerPlacesIt() {
+        PlaybackGhostReloadRoom fresh = CreateReloadedGhostRoomWithRenumberedGhost();
+        PlayerPlayback liveGhost = fresh.Ghost;
+        Image freshSprite = fresh.Snapshot.Sprite;
+
+        AkronReconstructionRestore restore = RestoreTrailingGhostDocumentInto(
+            fresh,
+            mapIdsWhenSet: new[] { 42, 7 },
+            mapIdsAtReload: new[] { 43, 7 });
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved map entity is no longer placed by this map", restore.Error);
+        Assert.Contains("saved-entity-id=CANADIAN_00:42", restore.Error);
+        Assert.Equal(typeof(PlayerPlayback).AssemblyQualifiedName, restore.RefusedTypeName);
+        // Refused before any assignment, so the room is still the room the reload
+        // built: its own ghost, in its own list slot, holding its own sprite.
+        Assert.Same(liveGhost, freshSprite.Entity);
+        Assert.Contains(liveGhost, GetEntityListContents(fresh.Entities));
+        Assert.Equal(0f, liveGhost.Time);
+    }
+
     [Fact]
     public void AnUnpairedGhostStillTakesItsSceneEdgeOnStructuralBudgetAloneAndRestoresWrongly() {
         // THIS TEST PINS BEHAVIOUR THAT IS WRONG. It is here so that the day it is
@@ -1838,27 +1866,34 @@ public sealed class StartPosReconstructionTests {
         // reconstructed copy, the saved state lands on that copy, and the entity the
         // room actually holds keeps its clean-load state. In game the surviving trail
         // would render the room's sprite at the reconstructed copy's position.
-        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
-        EntityList entities = LinkSceneEntities(level, CreateDetachedEntityList());
-        PlayerPlayback liveGhost = CreatePlaybackGhost(level, sourceId: 43, depth: 9008, time: 0f);
-        Entity trailer = CreateGhostRoomTrailer(level);
-        TrailManager manager = CreateGhostRoomTrailManager(level, out TrailManager.Snapshot[] slots);
-        TrailManager.Snapshot snapshot = CreateTrailSnapshotFrom(level, manager, slots, 0, liveGhost, depth: 9009);
-        AddDetachedEntity(entities, snapshot);
-        AddDetachedEntity(entities, liveGhost);
-        AddDetachedEntity(entities, manager);
-        AddDetachedEntity(entities, trailer);
-        PlaybackGhostReloadRoom fresh = new PlaybackGhostReloadRoom {
-            Root = new PlaybackGhostReloadRoot { Level = level },
-            Level = level,
-            Entities = entities,
-            Ghost = liveGhost,
-            Snapshot = snapshot
-        };
+        //
+        // The map here is the same map it always was: it lays out both ghosts, and
+        // this reload's session state is why entity 42 was not built. The refusal
+        // above cannot reach that, and it should not - a room whose session no longer
+        // spawns one of its entities has to keep restoring.
+        //
+        // What that leaves is not "rebuilt beside the live ghost". The saved entity
+        // list holds four entities and so does the reloaded room, so the rebuilt ghost
+        // takes the live ghost's slot rather than being added next to it, and the
+        // ghost the reload built is dropped. That much is the saved population winning,
+        // which is what a restore is for. What is wrong is the trail: the surviving
+        // snapshot keeps the room's own PlayerSprite and is handed a reconstructed
+        // PlayerHair, so one trail ends up owned by two different ghosts, and the
+        // room's own sprite renders at the rebuilt ghost's position. That is a
+        // component taking an unrelated component's slot on occurrence budget alone,
+        // which no identity token in this document answers, and it is untouched here.
+        PlaybackGhostReloadRoom fresh = CreateReloadedGhostRoomWithRenumberedGhost();
+        Level level = fresh.Level;
+        EntityList entities = fresh.Entities;
+        PlayerPlayback liveGhost = fresh.Ghost;
+        TrailManager.Snapshot snapshot = fresh.Snapshot;
         Image freshSprite = snapshot.Sprite;
         PlayerHair freshHair = snapshot.Hair;
 
-        AkronReconstructionRestore restore = RestoreTrailingGhostDocumentInto(fresh);
+        AkronReconstructionRestore restore = RestoreTrailingGhostDocumentInto(
+            fresh,
+            mapIdsWhenSet: new[] { 42, 7 },
+            mapIdsAtReload: new[] { 42, 43, 7 });
 
         // Accepted, with no authenticator: the saved document asked for the fresh Level
         // at a path the fresh room does hold a Level at, and that was enough.
@@ -1883,6 +1918,45 @@ public sealed class StartPosReconstructionTests {
         // they belong to.
         Assert.Same(freshSprite, snapshot.Sprite);
         Assert.NotSame(freshHair, snapshot.Hair);
+    }
+
+    // The room that decides what the occurrence budget is allowed to do. The map here
+    // is unchanged - it lays both ghosts out on both sides - so the map rule is inert
+    // and the budget is the only thing between the saved frame and the corruption the
+    // test above pins.
+    //
+    // Two saved trails put two PlayerSprite.<Entity> back references on one wildcarded
+    // path, entities._items[*].Sprite.<Entity>, and the reload left one PlayerPlayback
+    // there. The paired ghost's edge is validated first and spends it, so the
+    // unpairable ghost's identical edge finds the budget gone and is refused.
+    //
+    // Measured, both ways, because this is the trade W33 wrote down as acceptable and
+    // did not build: stop a fresh-resolved target's edge from spending and this exact
+    // document accepts instead, drops the ghost the reload built out of the room, and
+    // reports success. That is why the budget keeps its order dependence and the map
+    // rule carries the saved entities that must not depend on document order.
+    [Fact]
+    public void APairedTrailAheadOfAnUnpairableGhostStillSpendsTheOccurrenceThatRefusesIt() {
+        PlaybackGhostReloadRoom fresh = CreateTwoTrailReloadedGhostRoomWithRenumberedGhost();
+        PlayerPlayback liveGhost = fresh.Ghost;
+        Image freshSprite = fresh.Snapshot.Sprite;
+        Entity? pairedGhost = freshSprite.Entity;
+
+        AkronReconstructionRestore restore = RestoreTwoTrailGhostDocumentInto(
+            fresh,
+            mapIdsWhenSet: new[] { 42, 7 },
+            mapIdsAtReload: new[] { 42, 7 });
+
+        Assert.False(restore.Success);
+        Assert.Contains("reconstructed reference edge is not authentic to the fresh room", restore.Error);
+        Assert.Contains("edge-field=<Entity>k__BackingField", restore.Error);
+        Assert.Equal(typeof(PlayerPlayback).AssemblyQualifiedName, restore.RefusedTypeName);
+        // Refused before any assignment, so the room is still the room the reload built:
+        // its own ghost, in the list, with its clean-load state, and the trail that
+        // survived still pointing at the ghost that owns it.
+        Assert.Contains(liveGhost, GetEntityListContents(fresh.Entities));
+        Assert.Equal(0f, liveGhost.Time);
+        Assert.Same(pairedGhost, freshSprite.Entity);
     }
 
     [Fact]
@@ -2405,6 +2479,33 @@ public sealed class StartPosReconstructionTests {
         Assert.Equal(38, Assert.IsType<TestNode>(restoredOuterTarget.OnUpdate.Target).Value);
     }
 
+    // A v8 document has the same shape as a v9 one and none of its evidence: no node
+    // in it says whether a resource key names its resource or whether the map placed
+    // an entity. Reading one would give two documents claiming one format two
+    // different guarantees, with nothing on screen to say which you got, so the
+    // format moved instead.
+    [Fact]
+    public void ASnapshotFromBeforeTheIdentityEvidenceIsRefusedRatherThanReadWithoutIt() {
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(
+            new TestRoot { Counter = 7 },
+            new TestRoot());
+        Assert.True(capture.Success, capture.Error);
+        string json = graph.Serialize(capture.Document).Replace(
+            AkronReconstructionDocument.CurrentFormat,
+            "akron-reconstruction-v8",
+            StringComparison.Ordinal);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            graph.Deserialize(json));
+
+        Assert.StartsWith(
+            "Reconstruction document format is unsupported: set this StartPos again.",
+            exception.Message);
+        Assert.Contains("akron-reconstruction-v8", exception.Message);
+        Assert.Contains("akron-reconstruction-v9", exception.Message);
+    }
+
     [Fact]
     public void DeserializeRejectsTooManyJsonContainersWhileStreaming() {
         AkronReconstructionGraph graph = new AkronReconstructionGraph(
@@ -2415,7 +2516,7 @@ public sealed class StartPosReconstructionTests {
             maxJsonBinaryBytes: 100);
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            graph.Deserialize("{\"Format\":\"akron-reconstruction-v8\",\"Nodes\":[]}"));
+            graph.Deserialize("{\"Format\":\"akron-reconstruction-v9\",\"Nodes\":[]}"));
 
         Assert.Contains("container count exceeds", exception.Message);
     }
@@ -3308,6 +3409,515 @@ public sealed class StartPosReconstructionTests {
         Assert.Equal(37, freshFirst.Value);
         Assert.Equal(81, freshSecond.Value);
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    // The map half of the same rule. A saved entity that failed to pair carries an
+    // EntityID the reloaded room does not contain, and the room holds a same-typed
+    // entity under a different one. Which of the two is true decides everything:
+    //
+    //   the map still lays the saved id out, and this run's session flags meant the
+    //   room did not build it. Rebuild it beside the ones the room did build.
+    //
+    //   the map does not lay it out any more. The room the document measured no
+    //   longer exists, and rebuilding hands the saved entity a live entity's list
+    //   slot and its saved state while the entity the room built is dropped - all of
+    //   it reported as success, because the only thing consulted was that the fresh
+    //   room holds SOME entity of this type at this wildcarded list path.
+    [Fact]
+    public void ASavedMapEntityTheMapNoLongerPlacesIsRefusedRatherThanTakingALiveEntitysPlace() {
+        SourceEntityListOwnerRoot saved = CreateSourceEntityListOwnerRoot(
+            CreateSourceIdentifiedEntity("a00", 10, 37));
+        SourceEntityListOwnerRoot baseline = CreateSourceEntityListOwnerRoot(
+            CreateSourceIdentifiedEntity("a00", 10, 0));
+        SourceIdentifiedEntity freshEntity = CreateSourceIdentifiedEntity("a00", 20, 0);
+        SourceEntityListOwnerRoot fresh = CreateSourceEntityListOwnerRoot(freshEntity);
+        // The map was edited between the two: entity 10 became entity 20.
+        AkronReconstructionGraph graph = CreateMapAwareGraph(new TestMapPlacement()
+            .Place(baseline, "a00", 10)
+            .Place(fresh, "a00", 20));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        Assert.Single(capture.Document.Nodes, node => node.MapPlacedEntity);
+        // SaveSnapshot stamps this on the way to disk; the map rule reads it to decide
+        // which room's ids it has any business refusing over.
+        capture.Document.Room = "a00";
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved map entity is no longer placed by this map", restore.Error);
+        Assert.Contains("saved-entity-id=a00:10", restore.Error);
+        Assert.Equal(typeof(SourceIdentifiedEntity).AssemblyQualifiedName, restore.RefusedTypeName);
+        // Refused before a single assignment ran, so the room is the room the reload
+        // built: its own entity, with its own state.
+        Assert.Same(freshEntity, Assert.Single(GetEntityListContents(fresh.Entities)));
+        Assert.Equal(0, freshEntity.Value);
+    }
+
+    // The control that decides the shape of the rule, and the reason it cannot be
+    // "refuse a saved map entity the reloaded room did not build". A room whose
+    // session no longer spawns one of its entities restores correctly today, and it
+    // has to keep doing so.
+    //
+    // Only the order that works is asserted, and that is deliberate. W30 5.1 measured
+    // that this same population is refused when the document lists the live entity
+    // first, because that entity's edge spends the one occurrence the rebuilt one then
+    // needs. That order dependence is still here and this pass does not close it: the
+    // two candidate fixes both loosen the occurrence budget, and
+    // APairedTrailAheadOfAnUnpairableGhostStillSpendsTheOccurrenceThatRefusesIt is the
+    // room that measures what loosening it costs. Closing this needs an authenticator
+    // for a saved entity the map still places, which is a design of its own.
+    [Fact]
+    public void ASavedMapEntityTheReloadDidNotBuildIsRebuiltBesideTheOnesItDid() {
+        SourceIdentifiedEntity savedAbsent = CreateSourceIdentifiedEntity("a00", 10, 37);
+        SourceIdentifiedEntity savedLive = CreateSourceIdentifiedEntity("a00", 20, 81);
+        SourceEntityListOwnerRoot saved = CreateSourceEntityListOwnerRoot(savedAbsent, savedLive);
+        SourceIdentifiedEntity baselineAbsent = CreateSourceIdentifiedEntity("a00", 10, 0);
+        SourceIdentifiedEntity baselineLive = CreateSourceIdentifiedEntity("a00", 20, 0);
+        SourceEntityListOwnerRoot baseline = CreateSourceEntityListOwnerRoot(baselineAbsent, baselineLive);
+        SourceIdentifiedEntity freshLive = CreateSourceIdentifiedEntity("a00", 20, 0);
+        SourceEntityListOwnerRoot fresh = CreateSourceEntityListOwnerRoot(freshLive);
+        // The map is the same on both sides. Only this run's session decided not to
+        // build entity 10.
+        AkronReconstructionGraph graph = CreateMapAwareGraph(new TestMapPlacement()
+            .Place(baseline, "a00", 10, 20)
+            .Place(fresh, "a00", 10, 20));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        capture.Document.Room = "a00";
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        List<Entity> restored = GetEntityListContents(fresh.Entities);
+        Assert.Equal(2, restored.Count);
+        // The entity the room built keeps its place and takes its saved state.
+        Assert.Contains(freshLive, restored);
+        Assert.Equal(81, freshLive.Value);
+        // The one the room did not build is rebuilt beside it rather than replacing it.
+        SourceIdentifiedEntity rebuilt = restored
+            .OfType<SourceIdentifiedEntity>()
+            .Single(entity => !ReferenceEquals(entity, freshLive));
+        Assert.Equal(37, rebuilt.Value);
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    // The crossed population, which is where "would this displace a live entity?"
+    // gives the wrong answer. The saved frame deleted entity 10 before the slot was
+    // set, and this reload did not build entity 20. The saved population is the
+    // truth, so entity 10 is not state to preserve - it is the entity the document
+    // deliberately does not have, and dropping it is the correct outcome.
+    [Fact]
+    public void AMapEntityTheSavedFrameDeletedIsStillDroppedWhenTheReloadBuiltOnlyIt() {
+        SourceEntityListOwnerRoot saved = CreateSourceEntityListOwnerRoot(
+            CreateSourceIdentifiedEntity("a00", 20, 81));
+        SourceEntityListOwnerRoot baseline = CreateSourceEntityListOwnerRoot(
+            CreateSourceIdentifiedEntity("a00", 10, 0),
+            CreateSourceIdentifiedEntity("a00", 20, 0));
+        SourceIdentifiedEntity freshDeleted = CreateSourceIdentifiedEntity("a00", 10, 0);
+        SourceEntityListOwnerRoot fresh = CreateSourceEntityListOwnerRoot(freshDeleted);
+        AkronReconstructionGraph graph = CreateMapAwareGraph(new TestMapPlacement()
+            .Place(baseline, "a00", 10, 20)
+            .Place(fresh, "a00", 10, 20));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        capture.Document.Room = "a00";
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        SourceIdentifiedEntity restored = Assert.IsType<SourceIdentifiedEntity>(
+            Assert.Single(GetEntityListContents(fresh.Entities)));
+        Assert.NotSame(freshDeleted, restored);
+        Assert.Equal(81, restored.Value);
+    }
+
+    // An EntityID the map never laid out - one a mod made up for an entity it spawns
+    // itself - says nothing about whether the map changed, so it is left alone. This
+    // is the same shape as the refusal above and differs only in what the map owned
+    // when the slot was set, which is why the evidence is recorded per node at
+    // capture rather than worked out from the reloaded map alone.
+    [Fact]
+    public void AnEntityIdTheMapNeverPlacedIsStillRebuiltWhenTheReloadedRoomLacksIt() {
+        SourceEntityListOwnerRoot saved = CreateSourceEntityListOwnerRoot(
+            CreateSourceIdentifiedEntity("a00", 10, 37));
+        SourceEntityListOwnerRoot baseline = CreateSourceEntityListOwnerRoot(
+            CreateSourceIdentifiedEntity("a00", 10, 0));
+        SourceIdentifiedEntity freshEntity = CreateSourceIdentifiedEntity("a00", 20, 0);
+        SourceEntityListOwnerRoot fresh = CreateSourceEntityListOwnerRoot(freshEntity);
+        AkronReconstructionGraph graph = CreateMapAwareGraph(new TestMapPlacement()
+            .Place(baseline, "a00", 20)
+            .Place(fresh, "a00", 20));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        Assert.DoesNotContain(capture.Document.Nodes, node => node.MapPlacedEntity);
+        capture.Document.Room = "a00";
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        // The saved population is one entity, so that is what the room ends with: the
+        // made-up id rebuilt carrying its saved state, and the entity the reload built
+        // dropped because the document does not contain it. That is the same outcome
+        // the refusal above stops, and it is allowed here for the one reason that
+        // matters - the map never owned this id, so its absence is not evidence of
+        // anything.
+        SourceIdentifiedEntity restored = Assert.IsType<SourceIdentifiedEntity>(
+            Assert.Single(GetEntityListContents(fresh.Entities)));
+        Assert.NotSame(freshEntity, restored);
+        Assert.Equal(37, restored.Value);
+    }
+
+    // The rule's jurisdiction, and the reason it cannot be "any saved map entity the
+    // reloaded room does not hold". A saved entity's EntityID names the room the map
+    // placed it in, and that is not always the room being restored: Leader.GainFollower
+    // leaves Tags.Persistent on a strawberry and Level.TransitionRoutine carries
+    // persistent entities between rooms, so a berry picked up in a01 is still a01:5
+    // while the player stands in a40. TryLoadFreshRoom's UnloadLevel keeps only
+    // Tags.Global, so that entity is never in the reloaded room and its node always
+    // reaches the rule.
+    //
+    // An edit to a01 says nothing about whether rebuilding it would displace one of
+    // a40's entities, which is the only harm the rule exists to stop. Without the room
+    // test a golden-berry run - which carries an entity named by the chapter's first
+    // room for the whole chapter - would make every slot in the chapter refuse over an
+    // edit to a room the player is not in.
+    [Fact]
+    public void AnEntityCarriedInFromAnotherRoomIsNotRefusedWhenThatRoomsMapChanges() {
+        SourceIdentifiedEntity savedCarried = CreateSourceIdentifiedEntity("a01", 5, 37);
+        SourceIdentifiedEntity savedLive = CreateSourceIdentifiedEntity("a40", 20, 81);
+        SourceEntityListOwnerRoot saved = CreateSourceEntityListOwnerRoot(savedCarried, savedLive);
+        SourceEntityListOwnerRoot baseline = CreateSourceEntityListOwnerRoot(
+            CreateSourceIdentifiedEntity("a01", 5, 0),
+            CreateSourceIdentifiedEntity("a40", 20, 0));
+        SourceIdentifiedEntity freshLive = CreateSourceIdentifiedEntity("a40", 20, 0);
+        SourceEntityListOwnerRoot fresh = CreateSourceEntityListOwnerRoot(freshLive);
+        // a01 was edited between the two: the berry's placement was deleted and a new
+        // one put down, which gets a new id. a40, the room being restored, is identical.
+        AkronReconstructionGraph graph = CreateMapAwareGraph(new TestMapPlacement()
+            .Place(baseline, "a01", 5, 6)
+            .Place(baseline, "a40", 20)
+            .Place(fresh, "a01", 6, 7)
+            .Place(fresh, "a40", 20));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        // The evidence is there and says the map did place a01:5, so the room test is
+        // what makes it inert rather than an absent bit.
+        Assert.Equal(2, capture.Document.Nodes.Count(node => node.MapPlacedEntity));
+        capture.Document.Room = "a40";
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        List<Entity> restored = GetEntityListContents(fresh.Entities);
+        Assert.Equal(2, restored.Count);
+        Assert.Contains(freshLive, restored);
+        Assert.Equal(81, freshLive.Value);
+        SourceIdentifiedEntity rebuiltCarried = restored
+            .OfType<SourceIdentifiedEntity>()
+            .Single(entity => !ReferenceEquals(entity, freshLive));
+        Assert.Equal(37, rebuiltCarried.Value);
+        Assert.Equal("a01", rebuiltCarried.SourceId.Level);
+    }
+
+    // The rule has to run before the resolvers, not only before the authenticators.
+    // TryResolveFreshFieldAlias binds a node to whatever object the fresh room keeps in
+    // the same field, and it has no SourceId check of its own - the SourceId gate above
+    // it only nulls a candidate out, and the alias resolver then puts one back. So a
+    // saved map entity also held in an ordinary field outside entity or component list
+    // storage used to bypass the rule entirely: measured, the saved state of entity 10
+    // landed on the entity the edited map calls 99, that entity's SourceId was
+    // overwritten to 10, its clean-load state was gone, and the load reported success.
+    // That is the exact outcome the rule exists to stop, arrived at by binding rather
+    // than by rebuilding.
+    [Fact]
+    public void ASavedMapEntityTheMapNoLongerPlacesIsRefusedBeforeAFieldAliasCanBindIt() {
+        SourceIdentifiedEntity savedTarget = CreateSourceIdentifiedEntity("a00", 10, 37);
+        SourceIdentifiedEntity savedOther = CreateSourceIdentifiedEntity("a00", 20, 81);
+        EntityAliasFirstOwnerRoot saved = new EntityAliasFirstOwnerRoot {
+            Holder = new PassiveEntityAliasHolder { Alias = savedTarget },
+            Entities = CreateSourceEntityListOwnerRoot(savedOther, savedTarget).Entities
+        };
+        SourceIdentifiedEntity baselineTarget = CreateSourceIdentifiedEntity("a00", 10, 0);
+        SourceIdentifiedEntity baselineOther = CreateSourceIdentifiedEntity("a00", 20, 0);
+        EntityAliasFirstOwnerRoot baseline = new EntityAliasFirstOwnerRoot {
+            Holder = new PassiveEntityAliasHolder { Alias = baselineTarget },
+            Entities = CreateSourceEntityListOwnerRoot(baselineOther, baselineTarget).Entities
+        };
+        // The map was edited: entity 10 is gone and the room now places 99 instead. The
+        // reload built 99 and wired it into the same field the saved frame reached 10
+        // through, which is the field that used to bind it.
+        SourceIdentifiedEntity freshOther = CreateSourceIdentifiedEntity("a00", 20, 0);
+        SourceIdentifiedEntity freshRenumbered = CreateSourceIdentifiedEntity("a00", 99, 0);
+        EntityAliasFirstOwnerRoot fresh = new EntityAliasFirstOwnerRoot {
+            Holder = new PassiveEntityAliasHolder { Alias = freshRenumbered },
+            Entities = CreateSourceEntityListOwnerRoot(freshRenumbered, freshOther).Entities
+        };
+        AkronReconstructionGraph graph = CreateMapAwareGraph(new TestMapPlacement()
+            .Place(baseline, "a00", 10, 20)
+            .Place(fresh, "a00", 99, 20));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        capture.Document.Room = "a00";
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved map entity is no longer placed by this map", restore.Error);
+        Assert.Contains("saved-entity-id=a00:10", restore.Error);
+        // The room is the room the reload built: the entity the edited map calls 99 is
+        // still called 99 and still holds its own state.
+        Assert.Same(freshRenumbered, fresh.Holder.Alias);
+        Assert.Equal(99, freshRenumbered.SourceId.ID);
+        Assert.Equal(0, freshRenumbered.Value);
+        Assert.Equal(0, freshOther.Value);
+    }
+
+    // The only overload the running game ever calls, against a real Session. Every map
+    // test above stands in for the map with a callback of its own, and the graphs that
+    // do wire the production reader feed it roots whose Level is null, so before this
+    // it had never returned a non-empty set under test.
+    //
+    // The last two rows are why the reader walks the area list by hand instead of
+    // reading Session.MapData. That property is "AreaData.Areas[Area.ID].Mode[(int)
+    // Area.Mode].MapData" - two unchecked array indexes - and it throws for both. A
+    // capture runs on the persistence worker while the game thread is free to rebuild
+    // AreaData.Areas, and a throw there fails the whole slot with an exception name at
+    // path "$" rather than with anything a player can act on.
+    [Fact]
+    public void TheProductionMapReaderReadsARealSessionAndAnswersNothingRatherThanThrowing() {
+        List<AreaData> installedAreas = AreaData.Areas;
+        try {
+            AkronPersistentRuntimeState state = InstallTestMapAndCreateRoot("a00", 0, AreaMode.Normal);
+
+            Assert.Equal(
+                new[] { 10, 11, 10000004 },
+                AkronStartPosReconstruction.GetMapPlacedEntityIds(state, "a00").ToArray());
+            Assert.Equal(
+                new[] { 20 },
+                AkronStartPosReconstruction.GetMapPlacedEntityIds(state, "a01").ToArray());
+            Assert.Empty(AkronStartPosReconstruction.GetMapPlacedEntityIds(state, "no-such-room"));
+            Assert.Empty(AkronStartPosReconstruction.GetMapPlacedEntityIds(state, null));
+            // The two roots that are not a loaded room: an action-state document's
+            // Dictionary, and a room state whose level has no session.
+            Assert.Empty(AkronStartPosReconstruction.GetMapPlacedEntityIds(
+                new Dictionary<string, object>(), "a00"));
+            Assert.Empty(AkronStartPosReconstruction.GetMapPlacedEntityIds(
+                new AkronPersistentRuntimeState {
+                    Level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level))
+                },
+                "a00"));
+
+            Assert.Empty(AkronStartPosReconstruction.GetMapPlacedEntityIds(
+                CreateMapRoomState("a00", 7, AreaMode.Normal), "a00"));
+            Assert.Empty(AkronStartPosReconstruction.GetMapPlacedEntityIds(
+                CreateMapRoomState("a00", 0, AreaMode.BSide), "a00"));
+        } finally {
+            AreaData.Areas = installedAreas;
+        }
+    }
+
+    // Site B end to end through the production map reader rather than through a test
+    // stand-in, on the root type the game uses, with the map edited between the two
+    // reads by deleting an entity from the LevelData the map holds.
+    [Fact]
+    public void AMapEditIsRefusedThroughTheProductionMapReader() {
+        List<AreaData> installedAreas = AreaData.Areas;
+        try {
+            AkronPersistentRuntimeState unusedRoot = InstallTestMapAndCreateRoot("a00", 0, AreaMode.Normal);
+            Assert.NotNull(unusedRoot);
+            LevelData room = AreaData.Areas[0].Mode[0].MapData.Get("a00");
+            room.Entities = new List<EntityData> { new EntityData { ID = 10 }, new EntityData { ID = 20 } };
+            room.Triggers = new List<EntityData>();
+
+            // The map is the same on both sides: the entity the reload did not build is
+            // rebuilt beside the one it did.
+            AkronReconstructionGraph graph = CreateStartPosGraph();
+            AkronReconstructionCapture capture = CaptureMapRoom(graph, savedValue: 37);
+            capture.Document.Room = "a00";
+            AkronPersistentRuntimeState unchangedFresh = CreateMapRoomState(
+                "a00", 0, AreaMode.Normal, CreateSourceIdentifiedEntity("a00", 20, 0));
+
+            AkronReconstructionRestore unchanged = graph.Restore(capture.Document, unchangedFresh);
+
+            Assert.True(unchanged.Success, unchanged.Error);
+
+            // Now the map drops entity 10, which is the only difference.
+            room.Entities = new List<EntityData> { new EntityData { ID = 20 } };
+            AkronPersistentRuntimeState editedFresh = CreateMapRoomState(
+                "a00", 0, AreaMode.Normal, CreateSourceIdentifiedEntity("a00", 20, 0));
+
+            AkronReconstructionRestore edited = graph.Restore(capture.Document, editedFresh);
+
+            Assert.False(edited.Success);
+            Assert.Contains("saved map entity is no longer placed by this map", edited.Error);
+            Assert.Contains("saved-entity-id=a00:10", edited.Error);
+        } finally {
+            AreaData.Areas = installedAreas;
+        }
+    }
+
+    // The map half of the evidence covers the room document only, and this is what says
+    // so. CaptureActionState and RestoreActionState walk Dictionary roots, which hold no
+    // Level, so the production reader has no map to read there and every Entity a
+    // registered action's state reaches is stamped false whatever the map says. It is
+    // symmetric - the restore reads the same false and refuses nothing - so it fails to
+    // the behaviour of a document written before the evidence existed rather than to a
+    // wrong restore. The key half has no such limit: it is read off the saved object and
+    // applies to every node in both documents.
+    [Fact]
+    public void TheMapHalfOfTheIdentityEvidenceCoversTheRoomDocumentOnly() {
+        List<AreaData> installedAreas = AreaData.Areas;
+        try {
+            AkronPersistentRuntimeState roomRoot = InstallTestMapAndCreateRoot("a00", 0, AreaMode.Normal);
+            // The same map, read the way the room document reads it.
+            Assert.Contains(10, AkronStartPosReconstruction.GetMapPlacedEntityIds(roomRoot, "a00"));
+
+            Dictionary<string, Dictionary<Type, Dictionary<string, object>>> savedActionState =
+                CreateActionStateHolding(CreateSourceIdentifiedEntity("a00", 10, 37));
+            Dictionary<string, Dictionary<Type, Dictionary<string, object>>> baselineActionState =
+                CreateActionStateHolding(CreateSourceIdentifiedEntity("a00", 10, 0));
+
+            AkronReconstructionCapture capture = AkronStartPosReconstruction.CaptureActionState(
+                savedActionState,
+                baselineActionState);
+
+            Assert.True(capture.Success, capture.Error);
+            Assert.Contains(capture.Document.Nodes, node =>
+                node.TypeName == typeof(SourceIdentifiedEntity).AssemblyQualifiedName);
+            Assert.DoesNotContain(capture.Document.Nodes, node => node.MapPlacedEntity);
+        } finally {
+            AreaData.Areas = installedAreas;
+        }
+    }
+
+    // Captures one saved map entity, a00:10, against a baseline holding the same entity
+    // with no state on it, both under a root the production map reader can walk.
+    private static AkronReconstructionCapture CaptureMapRoom(AkronReconstructionGraph graph, int savedValue) {
+        AkronPersistentRuntimeState saved = CreateMapRoomState(
+            "a00", 0, AreaMode.Normal, CreateSourceIdentifiedEntity("a00", 10, savedValue));
+        AkronPersistentRuntimeState baseline = CreateMapRoomState(
+            "a00", 0, AreaMode.Normal, CreateSourceIdentifiedEntity("a00", 10, 0));
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        Assert.Single(capture.Document.Nodes, node => node.MapPlacedEntity);
+        return capture;
+    }
+
+    private static Dictionary<string, Dictionary<Type, Dictionary<string, object>>> CreateActionStateHolding(
+        Entity entity
+    ) {
+        return new Dictionary<string, Dictionary<Type, Dictionary<string, object>>> {
+            ["helper"] = new Dictionary<Type, Dictionary<string, object>> {
+                [typeof(SourceIdentifiedEntity)] = new Dictionary<string, object> { ["held"] = entity }
+            }
+        };
+    }
+
+    // A real map chain, the way a loaded map holds it: AreaData.Areas -> ModeProperties
+    // -> MapData -> LevelData. Replaces AreaData.Areas for the length of one test, which
+    // is the only way to reach Session.MapData at all - it resolves through that static
+    // rather than through the room graph. The caller restores it.
+    private static AkronPersistentRuntimeState InstallTestMapAndCreateRoot(
+        string room,
+        int areaId,
+        AreaMode mode
+    ) {
+        LevelData first = (LevelData) RuntimeHelpers.GetUninitializedObject(typeof(LevelData));
+        first.Name = "a00";
+        first.Entities = new List<EntityData> { new EntityData { ID = 10 }, new EntityData { ID = 11 } };
+        first.Triggers = new List<EntityData> { new EntityData { ID = 4 } };
+        LevelData second = (LevelData) RuntimeHelpers.GetUninitializedObject(typeof(LevelData));
+        second.Name = "a01";
+        second.Entities = new List<EntityData> { new EntityData { ID = 20 } };
+        second.Triggers = new List<EntityData>();
+
+        MapData mapData = (MapData) RuntimeHelpers.GetUninitializedObject(typeof(MapData));
+        mapData.Levels = new List<LevelData> { first, second };
+        ModeProperties modeProperties = (ModeProperties) RuntimeHelpers.GetUninitializedObject(typeof(ModeProperties));
+        modeProperties.MapData = mapData;
+        AreaData area = (AreaData) RuntimeHelpers.GetUninitializedObject(typeof(AreaData));
+        area.Mode = new[] { modeProperties };
+        AreaData.Areas = new List<AreaData> { area };
+
+        return CreateMapRoomState(room, areaId, mode);
+    }
+
+    // The root shape the game hands the graph: a runtime state whose Level carries the
+    // Session the map is read through, with the room's entities in a mod session beside
+    // it. AreaKey is built field by field because its constructor indexes
+    // AreaData.Areas, and the point of two of these is to name an area that is not there.
+    private static AkronPersistentRuntimeState CreateMapRoomState(
+        string room,
+        int areaId,
+        AreaMode mode,
+        params Entity[] entities
+    ) {
+        AreaKey area = default;
+        area.ID = areaId;
+        area.Mode = mode;
+        Session session = (Session) RuntimeHelpers.GetUninitializedObject(typeof(Session));
+        session.Area = area;
+        session.Level = room;
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        level.Session = session;
+        AkronPersistentRuntimeState state = new AkronPersistentRuntimeState { Level = level };
+        state.ModuleSessions["helper"] = new TestEntityListSession {
+            Entities = CreateSourceEntityListOwnerRoot(entities).Entities
+        };
+        return state;
+    }
+
+    // Triggers are numbered in their own range. Everest's patch_Level.CreateEntityId
+    // adds 10,000,000 to a trigger's map id while it loads the trigger list, so the
+    // EntityID a trigger carries at runtime is not the number its map data holds.
+    // Reading both map lists as one range leaves every trigger unmatched, and an
+    // entity whose id the map dropped can still be found through a trigger that
+    // happens to carry the same raw number - which is common, because the two lists
+    // number independently from 1.
+    [Fact]
+    public void TriggersAreCountedInTheEntityIdRangeTheyActuallyCarry() {
+        LevelData room = (LevelData) RuntimeHelpers.GetUninitializedObject(typeof(LevelData));
+        room.Entities = new List<EntityData> { new EntityData { ID = 4 }, new EntityData { ID = 9 } };
+        room.Triggers = new List<EntityData> { new EntityData { ID = 4 } };
+
+        List<int> placed = AkronStartPosReconstruction.GetMapPlacedEntityIds(room).ToList();
+
+        Assert.Equal(new[] { 4, 9, 10000004 }, placed);
+        // The trigger's raw 4 must not stand in for an entity 4 the map still has, and
+        // must not stand in for one it no longer has either.
+        Assert.DoesNotContain(10000009, placed);
+    }
+
+    // Stands in for Session.MapData: which EntityIDs a map lays out in a room,
+    // answered per graph root, so one test can give the capture baseline and the
+    // reloaded room two different maps and model a map edited between them.
+    private sealed class TestMapPlacement {
+        private readonly Dictionary<object, Dictionary<string, int[]>> placements =
+            new Dictionary<object, Dictionary<string, int[]>>(ReferenceEqualityComparer.Instance);
+
+        public TestMapPlacement Place(object root, string room, params int[] ids) {
+            if (!placements.TryGetValue(root, out Dictionary<string, int[]>? rooms)) {
+                rooms = new Dictionary<string, int[]>(StringComparer.Ordinal);
+                placements[root] = rooms;
+            }
+            rooms[room] = ids;
+            return this;
+        }
+
+        public IEnumerable<int> Ids(object root, string room) {
+            return placements.TryGetValue(root, out Dictionary<string, int[]>? rooms) &&
+                   rooms.TryGetValue(room, out int[]? ids)
+                ? ids
+                : Array.Empty<int>();
+        }
+    }
+
+    private static AkronReconstructionGraph CreateMapAwareGraph(TestMapPlacement placement) {
+        return new AkronReconstructionGraph(
+            IsLiveResource,
+            _ => string.Empty,
+            getMapPlacedEntityIds: placement.Ids);
     }
 
     [Fact]
@@ -4588,6 +5198,226 @@ public sealed class StartPosReconstructionTests {
         Assert.DoesNotContain("Exception", restore.Error);
     }
 
+    // The three tests below are the live-resource half of the same rule: a key that
+    // names its resource is not waived by a wildcarded owner path, and a key that
+    // merely labels this process's copy still is.
+    //
+    // A resource held under a List<T> slot reaches the owner-path fallback when its
+    // key resolves to nothing, and that fallback used to skip the key comparison for
+    // every keyed resource alike. It exists for a real case - a runtime-named asset
+    // gets a new name and a new list index on every reload, so the owner field is
+    // the only stable identity it has - and for a sort name or a file path it is
+    // simply wrong: those name the resource, and a process that cannot find one does
+    // not have it.
+    [Fact]
+    public void ARebuildRefusesAListHeldCompareInfoKeyThisProcessCannotOpen() {
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestListHeldResourceSession {
+            Holders = new List<TestListHeldResourceHolder> {
+                new TestListHeldResourceHolder {
+                    Collation = CultureInfo.GetCultureInfo("de-DE").CompareInfo
+                }
+            }
+        };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestListHeldResourceSession {
+            Holders = new List<TestListHeldResourceHolder> { new TestListHeldResourceHolder() }
+        };
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode collation = capture.Document.Nodes
+            .Single(node => node.ResourceKey.Contains("sort-name=", StringComparison.Ordinal));
+        // Capture classified the saved object, so the node already says the key names
+        // a collation rather than labelling one wrapper.
+        Assert.True(collation.PortableResourceKey);
+        // A sort name no install can open. "not-a-culture-at-all" is not one of them:
+        // GetCompareInfo parses it down to the language "not" and hands back a real
+        // collation, which the caller then refuses by name. This has to resolve to
+        // nothing so the owner path is what would carry it.
+        collation.ResourceKey = collation.ResourceKey.Replace(
+            "sort-name=de-DE",
+            "sort-name=" + new string('z', 200),
+            StringComparison.Ordinal);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        AkronPersistentRuntimeState fresh = new AkronPersistentRuntimeState();
+        fresh.ModuleSessions["helper"] = new TestListHeldResourceSession {
+            Holders = new List<TestListHeldResourceHolder> {
+                new TestListHeldResourceHolder {
+                    Collation = CultureInfo.GetCultureInfo("en-US").CompareInfo
+                }
+            }
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("fresh resource identity differs", restore.Error);
+        Assert.EndsWith(".Collation", restore.ErrorPath);
+        // The room keeps the collation it loaded with rather than being handed the
+        // saved frame's node bound to a different sort.
+        TestListHeldResourceSession freshSession =
+            Assert.IsType<TestListHeldResourceSession>(fresh.ModuleSessions["helper"]);
+        Assert.Equal("en-US", freshSession.Holders[0].Collation!.Name);
+    }
+
+    [Fact]
+    public void ARebuildRefusesAListHeldTypeKeyThisProcessCannotResolve() {
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestListHeldResourceSession {
+            Holders = new List<TestListHeldResourceHolder> {
+                new TestListHeldResourceHolder { Kind = typeof(int) }
+            }
+        };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestListHeldResourceSession {
+            Holders = new List<TestListHeldResourceHolder> { new TestListHeldResourceHolder() }
+        };
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode kind = capture.Document.Nodes
+            .Single(node => node.ResourceKey.Contains(typeof(int).AssemblyQualifiedName!, StringComparison.Ordinal));
+        Assert.True(kind.PortableResourceKey);
+        kind.ResourceKey = kind.ResourceKey.Replace(
+            typeof(int).AssemblyQualifiedName!,
+            "Celeste.NoSuchTypeAnywhere",
+            StringComparison.Ordinal);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        AkronPersistentRuntimeState fresh = new AkronPersistentRuntimeState();
+        fresh.ModuleSessions["helper"] = new TestListHeldResourceSession {
+            Holders = new List<TestListHeldResourceHolder> {
+                new TestListHeldResourceHolder { Kind = typeof(string) }
+            }
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("fresh resource identity differs", restore.Error);
+        Assert.EndsWith(".Kind", restore.ErrorPath);
+        TestListHeldResourceSession freshSession =
+            Assert.IsType<TestListHeldResourceSession>(fresh.ModuleSessions["helper"]);
+        Assert.Same(typeof(string), freshSession.Holders[0].Kind);
+    }
+
+    // The control, and the reason the classification is per resource rather than per
+    // type. Everest emits assemblies while the game runs and numbers them in the
+    // order that process happened to build them, so the same logical type is
+    // "LuaDynAsm0" in one run and "LuaDynAsm1" in the next and every reflection key
+    // under it changes. Nothing names it across processes, the owner path is all
+    // there is, and refusing here would cost a slot that loads today. A policy that
+    // answered from the type - every Type is portable - fails this test.
+    [Fact]
+    public void AListHeldTypeFromAnEmittedAssemblyIsStillFoundByItsOwnerPath() {
+        Type savedEmitted = EmitProbeType("AkronEmittedProbe0");
+        Type freshEmitted = EmitProbeType("AkronEmittedProbe1");
+        Assert.NotEqual(savedEmitted.AssemblyQualifiedName, freshEmitted.AssemblyQualifiedName);
+        AkronPersistentRuntimeState saved = new AkronPersistentRuntimeState();
+        saved.ModuleSessions["helper"] = new TestListHeldResourceSession {
+            Holders = new List<TestListHeldResourceHolder> {
+                new TestListHeldResourceHolder { Kind = savedEmitted }
+            }
+        };
+        AkronPersistentRuntimeState baseline = new AkronPersistentRuntimeState();
+        baseline.ModuleSessions["helper"] = new TestListHeldResourceSession {
+            Holders = new List<TestListHeldResourceHolder> {
+                new TestListHeldResourceHolder { Kind = savedEmitted }
+            }
+        };
+        AkronReconstructionGraph graph = CreateStartPosGraph();
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode kind = capture.Document.Nodes
+            .Single(node => node.ResourceKey.Contains("AkronEmittedProbe0", StringComparison.Ordinal));
+        Assert.False(kind.PortableResourceKey);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        AkronPersistentRuntimeState fresh = new AkronPersistentRuntimeState();
+        fresh.ModuleSessions["helper"] = new TestListHeldResourceSession {
+            Holders = new List<TestListHeldResourceHolder> {
+                new TestListHeldResourceHolder { Kind = freshEmitted }
+            }
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        TestListHeldResourceSession freshSession =
+            Assert.IsType<TestListHeldResourceSession>(fresh.ModuleSessions["helper"]);
+        Assert.Same(freshEmitted, freshSession.Holders[0].Kind);
+    }
+
+    // What the classification actually answers, resource by resource. The reflection
+    // rows are the ones that matter: dynamic is not the only way to get an assembly
+    // whose name a process makes up, because bytes compiled at startup and handed to
+    // Assembly.Load report IsDynamic false and carry no file behind them either.
+    [Fact]
+    public void APortableResourceKeyIsOneASecondProcessCanDeriveAgain() {
+        Type emitted = EmitProbeType("AkronEmittedProbe2");
+        // Compiled ahead of time, loaded from bytes: exactly what a mod that builds a
+        // helper at startup produces. The core library cannot be loaded this way, so
+        // this borrows a data-only dependency off disk rather than emitting one.
+        Assembly byteLoaded = Assembly.Load(File.ReadAllBytes(typeof(JObject).Assembly.Location));
+
+        Assert.True(AkronStartPosReconstruction.HasPortableLiveResourceKey(
+            CultureInfo.GetCultureInfo("de-DE").CompareInfo));
+        Assert.True(AkronStartPosReconstruction.HasPortableLiveResourceKey(typeof(int)));
+        Assert.True(AkronStartPosReconstruction.HasPortableLiveResourceKey(typeof(int).Assembly));
+        // A MemberInfo key is a metadata token, and a rebuild of the same assembly at
+        // the same version moves tokens. File backing says the assembly came off disk,
+        // not that it is the same build, so nothing here names the member.
+        Assert.False(AkronStartPosReconstruction.HasPortableLiveResourceKey(
+            typeof(int).GetMethod(nameof(int.ToString), Type.EmptyTypes)!));
+        Assert.True(AkronStartPosReconstruction.HasPortableLiveResourceKey(typeof(List<int>)));
+
+        Assert.False(AkronStartPosReconstruction.HasPortableLiveResourceKey(emitted));
+        Assert.False(AkronStartPosReconstruction.HasPortableLiveResourceKey(emitted.Assembly));
+        Assert.False(AkronStartPosReconstruction.HasPortableLiveResourceKey(byteLoaded));
+        // The assembly-qualified name of a constructed generic spells out the
+        // assembly of every type argument, so one emitted argument makes the whole
+        // key unrepeatable even though List<> itself came off disk.
+        Assert.False(AkronStartPosReconstruction.HasPortableLiveResourceKey(
+            typeof(List<>).MakeGenericType(emitted)));
+        // An array of an emitted type belongs to the emitted assembly outright.
+        Assert.False(AkronStartPosReconstruction.HasPortableLiveResourceKey(emitted.MakeArrayType()));
+
+        // A texture built from data carries whatever name its creator passed in, which
+        // the next process makes up again.
+        VirtualTexture dataBacked = (VirtualTexture) RuntimeHelpers.GetUninitializedObject(typeof(VirtualTexture));
+        SetRuntimeField(dataBacked, "<Path>k__BackingField", string.Empty);
+        SetRuntimeField(dataBacked, "<Name>k__BackingField", "runtime-target-17");
+        Assert.False(AkronStartPosReconstruction.HasPortableLiveResourceKey(dataBacked));
+
+        // A texture loaded from a file is keyed on the file AND on its dimensions, and
+        // dimensions are a measurement of what is in the file rather than a name for
+        // it. A mod that redraws one PNG at another size leaves the asset present under
+        // the same path and gives it a different key, so the process holds the resource
+        // and cannot produce the key - which is the one thing this classification is
+        // allowed to rule out. Same defect as the MemberInfo token above by another
+        // route, and it collapses the same way: the owner path goes on carrying it.
+        VirtualTexture fileBacked = (VirtualTexture) RuntimeHelpers.GetUninitializedObject(typeof(VirtualTexture));
+        SetRuntimeField(fileBacked, "<Path>k__BackingField", "Graphics/Atlases/Gameplay.png");
+        SetRuntimeField(fileBacked, "<Width>k__BackingField", 4096);
+        SetRuntimeField(fileBacked, "<Height>k__BackingField", 4096);
+        VirtualTexture retextured = (VirtualTexture) RuntimeHelpers.GetUninitializedObject(typeof(VirtualTexture));
+        SetRuntimeField(retextured, "<Path>k__BackingField", "Graphics/Atlases/Gameplay.png");
+        SetRuntimeField(retextured, "<Width>k__BackingField", 2048);
+        SetRuntimeField(retextured, "<Height>k__BackingField", 2048);
+        Assert.NotEqual(
+            AkronStartPosReconstruction.GetLiveResourceKey(fileBacked),
+            AkronStartPosReconstruction.GetLiveResourceKey(retextured));
+        Assert.False(AkronStartPosReconstruction.HasPortableLiveResourceKey(fileBacked));
+    }
+
+    private static Type EmitProbeType(string assemblyName) {
+        AssemblyBuilder assembly = AssemblyBuilder.DefineDynamicAssembly(
+            new AssemblyName(assemblyName),
+            AssemblyBuilderAccess.Run);
+        return assembly.DefineDynamicModule("m")
+            .DefineType("AkronProbe.Emitted", TypeAttributes.Public)
+            .CreateType();
+    }
+
     // A pointer that is not a collation handle still has to be refused: the
     // fix names one BCL type whose native handle carries no room state, it
     // does not open the scalar gate.
@@ -4799,7 +5629,9 @@ public sealed class StartPosReconstructionTests {
             AkronStartPosReconstruction.GetLiveResourceKey,
             null,
             AkronStartPosReconstruction.ResolveDetachedLiveResource,
-            areEquivalentLiveResources: AkronStartPosReconstruction.AreEquivalentLiveResources);
+            areEquivalentLiveResources: AkronStartPosReconstruction.AreEquivalentLiveResources,
+            hasPortableLiveResourceKey: AkronStartPosReconstruction.HasPortableLiveResourceKey,
+            getMapPlacedEntityIds: AkronStartPosReconstruction.GetMapPlacedEntityIds);
     }
 
     [Fact]
@@ -4925,10 +5757,10 @@ public sealed class StartPosReconstructionTests {
             Assert.Equal("Celeste/1-ForsakenCity", document.MapSid);
             Assert.Equal("1", document.Room);
             Assert.Equal(0, document.FileSlot);
-            Assert.Equal("akron-reconstruction-v8", document.Format);
+            Assert.Equal("akron-reconstruction-v9", document.Format);
             Assert.Equal("LightBuffer", Assert.Single(document.GameplayBuffers).FieldName);
             Assert.Equal(new byte[] { 1, 2, 3, 4 }, document.GameplayBuffers[0].Payload.Bytes);
-            Assert.Contains("v8-", Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
+            Assert.Contains("v9-", Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
             Assert.True(File.Exists(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
         } finally {
             if (Directory.Exists(directory)) {
@@ -5155,6 +5987,21 @@ public sealed class StartPosReconstructionTests {
 
     private sealed class TestNativeHandleSession : EverestModuleSession {
         public IntPtr Handle;
+    }
+
+    // A keyed live resource reached through a List<T> slot, which is the shape whose
+    // owner path the restore is allowed to fall back on.
+    private sealed class TestEntityListSession : EverestModuleSession {
+        public EntityList Entities = null!;
+    }
+
+    private sealed class TestListHeldResourceSession : EverestModuleSession {
+        public List<TestListHeldResourceHolder> Holders = new List<TestListHeldResourceHolder>();
+    }
+
+    private sealed class TestListHeldResourceHolder {
+        public CompareInfo? Collation;
+        public Type? Kind;
     }
 
     // Stands in for the Textbox field the in-game refusal walked through:
@@ -5772,15 +6619,138 @@ public sealed class StartPosReconstructionTests {
         };
     }
 
+    // The reloaded room from the two tests about a ghost the room rebuilt under a
+    // different EntityID. Everything else about it matches CreateReloadedGhostRoom;
+    // only the ghost's id moved, which is what makes the saved ghost unpairable.
+    private static PlaybackGhostReloadRoom CreateReloadedGhostRoomWithRenumberedGhost() {
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        EntityList entities = LinkSceneEntities(level, CreateDetachedEntityList());
+        PlayerPlayback liveGhost = CreatePlaybackGhost(level, sourceId: 43, depth: 9008, time: 0f);
+        Entity trailer = CreateGhostRoomTrailer(level);
+        TrailManager manager = CreateGhostRoomTrailManager(level, out TrailManager.Snapshot[] slots);
+        TrailManager.Snapshot snapshot = CreateTrailSnapshotFrom(level, manager, slots, 0, liveGhost, depth: 9009);
+        AddDetachedEntity(entities, snapshot);
+        AddDetachedEntity(entities, liveGhost);
+        AddDetachedEntity(entities, manager);
+        AddDetachedEntity(entities, trailer);
+        return new PlaybackGhostReloadRoom {
+            Root = new PlaybackGhostReloadRoot { Level = level },
+            Level = level,
+            Entities = entities,
+            Ghost = liveGhost,
+            Snapshot = snapshot
+        };
+    }
+
+    // The same ghost room with a second trail, owned by a ghost that does pair, sorted
+    // ahead of the unpairable one. Both trails put their owner's <Scene> edge at the
+    // same wildcarded path - entities._items[*].Sprite.<Entity>.<Scene> - so the two
+    // edges draw on one occurrence budget, and the paired owner's edge is validated
+    // first. That is the only thing this room adds over CreateTrailingGhostRoom.
+    private static PlaybackGhostReloadRoom CreateTwoTrailGhostRoom(float ghostTime) {
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        EntityList entities = LinkSceneEntities(level, CreateDetachedEntityList());
+        // Above the unpairable ghost, so its trail heads the list and it is the paired
+        // entity the document reaches first.
+        PlayerPlayback pairedGhost = CreatePlaybackGhost(level, sourceId: 7, depth: 9011, time: 0f);
+        PlayerPlayback ghost = CreatePlaybackGhost(level, sourceId: 42, depth: 9008, time: ghostTime);
+        TrailManager manager = CreateGhostRoomTrailManager(level, out TrailManager.Snapshot[] slots);
+        TrailManager.Snapshot pairedTrail = CreateTrailSnapshotFrom(
+            level, manager, slots, index: 0, owner: pairedGhost, depth: 9012);
+        // Not written back into manager.snapshots. TrailManager recycles a slot by
+        // overwriting it while the snapshot it replaced is still in the scene, so a
+        // trail the room holds and the array no longer points at is a real state - and
+        // it is what keeps this snapshot's document path in the entity list beside the
+        // paired one rather than underneath the array.
+        TrailManager.Snapshot ghostTrail = CreateTrailSnapshotFrom(
+            level, manager, new TrailManager.Snapshot[64], index: 1, owner: ghost, depth: 9009);
+        AddDetachedEntity(entities, pairedTrail);
+        AddDetachedEntity(entities, pairedGhost);
+        AddDetachedEntity(entities, ghostTrail);
+        AddDetachedEntity(entities, ghost);
+        AddDetachedEntity(entities, manager);
+        return new PlaybackGhostReloadRoom {
+            Root = new PlaybackGhostReloadRoot { Level = level },
+            Level = level,
+            Entities = entities,
+            Ghost = ghost,
+            Snapshot = ghostTrail
+        };
+    }
+
+    // What that room's reload leaves: the ghost rebuilt under a different EntityID, so
+    // the saved one cannot pair, and both surviving trails belonging to the ghost that
+    // did - it dashed twice and the rebuilt one has not trailed yet.
+    //
+    // Both trails hold that one ghost's PlayerSprite, so the reload's walk reaches the
+    // Level through a trail exactly once however many trails point at it, while the
+    // second trail still records that a PlayerPlayback sits at the end of that path.
+    // One occurrence against the saved document's two edges is what makes them compete.
+    private static PlaybackGhostReloadRoom CreateTwoTrailReloadedGhostRoomWithRenumberedGhost() {
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        EntityList entities = LinkSceneEntities(level, CreateDetachedEntityList());
+        PlayerPlayback pairedGhost = CreatePlaybackGhost(level, sourceId: 7, depth: 9011, time: 0f);
+        PlayerPlayback liveGhost = CreatePlaybackGhost(level, sourceId: 43, depth: 9008, time: 0f);
+        TrailManager manager = CreateGhostRoomTrailManager(level, out TrailManager.Snapshot[] slots);
+        TrailManager.Snapshot pairedTrail = CreateTrailSnapshotFrom(
+            level, manager, slots, index: 0, owner: pairedGhost, depth: 9012);
+        TrailManager.Snapshot secondTrail = CreateTrailSnapshotFrom(
+            level, manager, new TrailManager.Snapshot[64], index: 1, owner: pairedGhost, depth: 9009);
+        AddDetachedEntity(entities, pairedTrail);
+        AddDetachedEntity(entities, pairedGhost);
+        AddDetachedEntity(entities, secondTrail);
+        AddDetachedEntity(entities, liveGhost);
+        AddDetachedEntity(entities, manager);
+        return new PlaybackGhostReloadRoom {
+            Root = new PlaybackGhostReloadRoot { Level = level },
+            Level = level,
+            Entities = entities,
+            Ghost = liveGhost,
+            Snapshot = secondTrail
+        };
+    }
+
+    private static AkronReconstructionRestore RestoreTwoTrailGhostDocumentInto(
+        PlaybackGhostReloadRoom fresh,
+        int[] mapIdsWhenSet,
+        int[] mapIdsAtReload
+    ) {
+        PlaybackGhostReloadRoom saved = CreateTwoTrailGhostRoom(ghostTime: 2.5f);
+        PlaybackGhostReloadRoom baseline = CreateTwoTrailGhostRoom(ghostTime: 0f);
+        TestMapPlacement placement = new TestMapPlacement()
+            .Place(baseline.Root, "CANADIAN_00", mapIdsWhenSet)
+            .Place(fresh.Root, "CANADIAN_00", mapIdsAtReload);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            getMapPlacedEntityIds: placement.Ids);
+        AkronReconstructionCapture capture = graph.Capture(saved.Root, baseline.Root);
+        Assert.True(capture.Success, capture.Error);
+        capture.Document.Room = "CANADIAN_00";
+        return graph.Restore(capture.Document, fresh.Root);
+    }
+
+    // mapIdsWhenSet is what the map laid out in CANADIAN_00 when the slot was set,
+    // and mapIdsAtReload what it lays out now. Leaving both out gives a graph with no
+    // map at all, which is what every test here wanted before the map became evidence.
     private static AkronReconstructionRestore RestoreTrailingGhostDocumentInto(
         PlaybackGhostReloadRoom fresh,
-        bool savedGhostIsTrailing = true
+        bool savedGhostIsTrailing = true,
+        int[]? mapIdsWhenSet = null,
+        int[]? mapIdsAtReload = null
     ) {
         PlaybackGhostReloadRoom saved = CreateTrailingGhostRoom(savedGhostIsTrailing, ghostTime: 2.5f);
         PlaybackGhostReloadRoom baseline = CreateTrailingGhostRoom(savedGhostIsTrailing, ghostTime: 0f);
-        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        TestMapPlacement? placement = mapIdsWhenSet == null
+            ? null
+            : new TestMapPlacement()
+                .Place(baseline.Root, "CANADIAN_00", mapIdsWhenSet)
+                .Place(fresh.Root, "CANADIAN_00", mapIdsAtReload ?? mapIdsWhenSet);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            getMapPlacedEntityIds: placement == null ? null : placement.Ids);
         AkronReconstructionCapture capture = graph.Capture(saved.Root, baseline.Root);
         Assert.True(capture.Success, capture.Error);
+        capture.Document.Room = "CANADIAN_00";
         return graph.Restore(capture.Document, fresh.Root);
     }
 

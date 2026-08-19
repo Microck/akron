@@ -908,7 +908,7 @@ public sealed class SetupPackTests {
             // it was measured against, so it tracks the document format rather than the
             // pack format. A stale name here would let a v7 attachment ride inside a
             // pack that claims to be current.
-            Assert.Equal("startpos/6.v8.json.gz", Assert.Single(written.StartPositions).Value.SnapshotEntry);
+            Assert.Equal("startpos/6.v9.json.gz", Assert.Single(written.StartPositions).Value.SnapshotEntry);
             Assert.Equal(AkronSetupPacks.SetupPackFormat, written.Format);
         } finally {
             AkronStartPosReconstruction.DeleteSnapshot(stateSlotName);
@@ -1155,7 +1155,7 @@ public sealed class SetupPackTests {
             pack.StartPositions[snapshot.Key] = new AkronStartPosPackEntry {
                 AreaSid = pack.ArchiveMapSid,
                 Room = "room-" + snapshot.Key,
-                SnapshotEntry = "startpos/" + snapshot.Key + ".v8.json.gz",
+                SnapshotEntry = "startpos/" + snapshot.Key + ".v9.json.gz",
                 SnapshotSha256 = new string('0', 64)
             };
             pack.SnapshotSourcePaths[snapshot.Key] = snapshot.Value;
