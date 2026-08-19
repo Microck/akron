@@ -667,15 +667,67 @@ public static partial class AkronActions {
     // this build intends to delete. The catalog also survives the next bump, and every
     // one after it, for free.
     //
-    // It is deliberately not asserted that an update is what emptied the slot. A slot in
-    // the catalog with nothing left to load is overwhelmingly a format bump, but a
-    // backup restored over a save file that has cleared slots since reaches this too,
-    // and the action is the same for both.
+    // The catalog carries the reason as well as the fact, because the entry records the
+    // format its state was written under. That is what separates the two sentences
+    // below. A slot emptied by a format move is named as one, which is the sentence
+    // worth showing: it says what happened and what to do. A slot whose state went
+    // missing with the format unchanged - a file deleted by hand, a backup restored
+    // over the folder, a write that never landed - gets a sentence that claims nothing
+    // about the cause, because there is nothing here that knows it.
     internal static string DescribeMissingStartPos(Level level, int slot) {
-        return GetPersistedStartPositions(GetAreaSid(level)).ContainsKey(NormalizePositionSlot(slot))
+        return DescribeMissingStartPos(slot, GetPersistedStartPositions(GetAreaSid(level)));
+    }
+
+    internal static string DescribeMissingStartPos(
+        int slot,
+        IReadOnlyDictionary<int, AkronPersistedStartPos> persisted
+    ) {
+        if (persisted == null ||
+            !persisted.TryGetValue(NormalizePositionSlot(slot), out AkronPersistedStartPos entry)) {
+            return "No StartPos saved in slot " + slot.ToString(CultureInfo.InvariantCulture) + ".";
+        }
+
+        return WasSavedByAnOlderAkron(entry)
             ? "StartPos " + slot.ToString(CultureInfo.InvariantCulture) +
-              " was set on this map, but the state it saved is gone - an Akron update can do this. Set it again."
-            : "No StartPos saved in slot " + slot.ToString(CultureInfo.InvariantCulture) + ".";
+              " was saved by an older Akron that built rooms differently, so it cannot be loaded. Set it again."
+            : "StartPos " + slot.ToString(CultureInfo.InvariantCulture) +
+              " was set, but the state behind it is missing. Set it again.";
+    }
+
+    // True when the slot's room state was written under a saved-state format older than
+    // the one this build reads, which is the one cause of an emptied slot this build can
+    // name with certainty: such a state sits under a file name this build never builds,
+    // and would be refused at the header even if it did.
+    //
+    // Compared as a number rather than for equality on purpose. A slot written by a
+    // newer build the player has since downgraded from is unreadable here too, and the
+    // sweep deliberately leaves its file alone; calling that slot older would be wrong
+    // in the one direction this message must never be wrong in.
+    private static bool WasSavedByAnOlderAkron(AkronPersistedStartPos entry) {
+        return entry != null &&
+               ReadSnapshotFormatVersion(entry.SnapshotFormat) <
+               ReadSnapshotFormatVersion(AkronReconstructionDocument.CurrentFormat);
+    }
+
+    // The trailing number in a saved-state format name: "akron-reconstruction-v9" is 9.
+    // Read out of the name rather than written down so a format move needs no edit here.
+    //
+    // A name with no trailing number reads as 0, which is where an entry written before
+    // the format was recorded lands. That is the right answer for it: the field arrived
+    // in the release that moved the format, so anything without one is older.
+    private static int ReadSnapshotFormatVersion(string format) {
+        int end = format?.Length ?? 0;
+        int start = end;
+        while (start > 0 && format[start - 1] >= '0' && format[start - 1] <= '9') {
+            start--;
+        }
+
+        // Bounded so a hand-edited name carrying a long run of digits cannot overflow
+        // the comparison into reading as some other version.
+        int digits = end - start;
+        return digits > 0 && digits <= 9
+            ? int.Parse(format.AsSpan(start, digits), NumberStyles.None, CultureInfo.InvariantCulture)
+            : 0;
     }
 
     public static void LoadStartPos(Level level) {
@@ -770,10 +822,24 @@ public static partial class AkronActions {
     // entries at all, and "No StartPos entries in this chapter." is what a player with a
     // map full of slots is told. The persisted metadata is what the bump does not touch,
     // so it is what can tell an emptied map apart from one that never had a slot.
+    //
+    // The format move is named only when every slot on the map was written under an
+    // older format, which is what a move actually does: it takes the whole map at once.
+    // One slot on the map that lost its state some other way makes the sentence false
+    // for that slot, and this sentence covers them together, so a mixed map gets the one
+    // that claims nothing about the cause.
     internal static string DescribeEmptyStartPosList(Level level) {
-        return GetPersistedStartPositions(GetAreaSid(level)).Count > 0
-            ? "This chapter's StartPos slots were set, but the state they saved is gone - an Akron update can do this. Set them again."
-            : "No StartPos entries in this chapter.";
+        return DescribeEmptyStartPosList(GetPersistedStartPositions(GetAreaSid(level)));
+    }
+
+    internal static string DescribeEmptyStartPosList(IReadOnlyDictionary<int, AkronPersistedStartPos> persisted) {
+        if (persisted == null || persisted.Count == 0) {
+            return "No StartPos entries in this chapter.";
+        }
+
+        return persisted.Values.All(WasSavedByAnOlderAkron)
+            ? "This chapter's StartPos slots were saved by an older Akron that built rooms differently. Set them again."
+            : "This chapter's StartPos slots were set, but the states behind them are missing. Set them again.";
     }
 
     public static void ShiftStartPos(Level level, int delta) {
@@ -1826,8 +1892,14 @@ public static partial class AkronActions {
         return startPositions;
     }
 
+    // Every persisted entry is built here, and every one of them is built at the point
+    // a slot's room state is written by this build: a Set writes the snapshot right
+    // after this, and an import is refused unless its pack carries the current
+    // contract. So stamping the current format is a statement about the file that is
+    // about to exist, not a guess about one already on disk.
     private static AkronPersistedStartPos ToPersistedStartPos(AkronStartPos startPos) {
         return new AkronPersistedStartPos {
+            SnapshotFormat = AkronReconstructionDocument.CurrentFormat,
             X = startPos.Position.X,
             Y = startPos.Position.Y,
             Room = startPos.Room ?? string.Empty,

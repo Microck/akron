@@ -541,21 +541,112 @@ public sealed class StartPosPersistenceTests {
             }
         }
 
-        // The other branch needs a loaded save file, so it is pinned in the source the
-        // way this file already pins Previous and Next.
+        // Finding the catalog needs a loaded save file; reading one does not. The
+        // sentence is chosen from the catalog alone, so it is exercised against a real
+        // catalog here and only the lookup is pinned in the source.
         string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-actions.cs"));
         int describe = source.IndexOf(
             "internal static string DescribeMissingStartPos(Level level, int slot)", StringComparison.Ordinal);
-        int describeEnd = source.IndexOf("public static void LoadStartPos(", describe, StringComparison.Ordinal);
+        int describeEnd = source.IndexOf(
+            "internal static string DescribeMissingStartPos(", describe + 1, StringComparison.Ordinal);
         string describeMethod = SourceSlice(source, describe, describeEnd - describe);
 
         Assert.Contains(
-            "GetPersistedStartPositions(GetAreaSid(level)).ContainsKey(NormalizePositionSlot(slot))",
-            describeMethod);
-        Assert.Contains(
-            "was set on this map, but the state it saved is gone - an Akron update can do this. Set it again.",
+            "DescribeMissingStartPos(slot, GetPersistedStartPositions(GetAreaSid(level)))",
             describeMethod);
         Assert.DoesNotContain("HasSupersededSnapshot", describeMethod);
+
+        // And the direct load is what asks for it. A sentence no path reaches has
+        // shipped here before, so both callers are pinned rather than assumed: this
+        // one, and Previous and Next below.
+        int load = source.IndexOf("public static void LoadStartPos(Level level)", StringComparison.Ordinal);
+        int loadEnd = source.IndexOf("public static void LoadStartPosSlot(", load, StringComparison.Ordinal);
+
+        Assert.Contains(
+            "new AkronToast(DescribeMissingStartPos(level, slot))",
+            SourceSlice(source, load, loadEnd - load));
+    }
+
+    // The catalog a save file would hold for one map, with each slot's state recorded
+    // under the format named for it. A real AkronPersistedStartPos in a real dictionary,
+    // which is what the message reads in game.
+    private static Dictionary<int, AkronPersistedStartPos> CatalogWithFormats(
+        params (int Slot, string SnapshotFormat)[] slots
+    ) {
+        Dictionary<int, AkronPersistedStartPos> catalog = new Dictionary<int, AkronPersistedStartPos>();
+        foreach ((int slot, string snapshotFormat) in slots) {
+            catalog[slot] = new AkronPersistedStartPos {
+                AreaSid = "Tests/Catalog",
+                Room = "room",
+                SnapshotFormat = snapshotFormat
+            };
+        }
+        return catalog;
+    }
+
+    // The format one move below the one this build writes, derived rather than written
+    // down so this keeps meaning "the previous format" after the next move.
+    private static string PreviousSnapshotFormat() {
+        string current = AkronReconstructionDocument.CurrentFormat;
+        int digits = current.Length;
+        while (digits > 0 && current[digits - 1] >= '0' && current[digits - 1] <= '9') {
+            digits--;
+        }
+        int version = int.Parse(current.Substring(digits), CultureInfo.InvariantCulture);
+        Assert.True(version > 1, "the current saved-state format has no predecessor to name");
+        return current.Substring(0, digits) + (version - 1).ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string NextSnapshotFormat() {
+        string current = AkronReconstructionDocument.CurrentFormat;
+        int digits = current.Length;
+        while (digits > 0 && current[digits - 1] >= '0' && current[digits - 1] <= '9') {
+            digits--;
+        }
+        return current.Substring(0, digits) +
+               (int.Parse(current.Substring(digits), CultureInfo.InvariantCulture) + 1)
+                   .ToString(CultureInfo.InvariantCulture);
+    }
+
+    [Fact]
+    public void ASlotEmptiedByAFormatMoveNamesTheMoveAndASlotEmptiedAnyOtherWayDoesNot() {
+        // The sentence a format move earns. It says what happened and what to do, and
+        // the catalog is what still knows it once the sweep has taken the file.
+        Assert.Equal(
+            "StartPos 3 was saved by an older Akron that built rooms differently, so it cannot be loaded. Set it again.",
+            AkronActions.DescribeMissingStartPos(3, CatalogWithFormats((3, PreviousSnapshotFormat()))));
+
+        // Every slot set before the format was recorded at all. This is what an install
+        // that upgrades into this build actually holds, and it is the whole population
+        // the sentence exists for, so it has to reach the same answer.
+        Assert.Equal(
+            "StartPos 3 was saved by an older Akron that built rooms differently, so it cannot be loaded. Set it again.",
+            AkronActions.DescribeMissingStartPos(3, CatalogWithFormats((3, string.Empty))));
+
+        // The format has not moved under this slot, so whatever took its state was not
+        // an update: a file deleted by hand, a backup restored over the folder, a write
+        // that never landed. Claiming an update here would be a lie, which is the one
+        // thing this message may not be.
+        Assert.Equal(
+            "StartPos 3 was set, but the state behind it is missing. Set it again.",
+            AkronActions.DescribeMissingStartPos(
+                3, CatalogWithFormats((3, AkronReconstructionDocument.CurrentFormat))));
+
+        // A slot written by a newer build the player has downgraded away from is
+        // unreadable here too, and the sweep leaves its file alone. Older is the wrong
+        // word for it.
+        Assert.Equal(
+            "StartPos 3 was set, but the state behind it is missing. Set it again.",
+            AkronActions.DescribeMissingStartPos(3, CatalogWithFormats((3, NextSnapshotFormat()))));
+
+        // A slot the player never set keeps the plainer sentence, whatever the other
+        // slots on the map did.
+        Assert.Equal(
+            "No StartPos saved in slot 4.",
+            AkronActions.DescribeMissingStartPos(4, CatalogWithFormats((3, PreviousSnapshotFormat()))));
+        Assert.Equal(
+            "No StartPos saved in slot 3.",
+            AkronActions.DescribeMissingStartPos(3, new Dictionary<int, AkronPersistedStartPos>()));
     }
 
     [Fact]
@@ -761,23 +852,82 @@ public sealed class StartPosPersistenceTests {
         string shiftMethod = SourceSlice(source, shift, shiftEnd - shift);
 
         // Previous and Next are load actions too, and they hit the emptied list rather
-        // than a missing slot, so they need their own sentence. Asserted in the source
+        // than a missing slot, so they need their own sentence. Which sentence is
+        // exercised below; that Previous and Next are what ask for it is pinned here,
         // because reaching them needs a Level and a save file.
         Assert.Contains("DescribeEmptyStartPosList(level)", shiftMethod);
-        Assert.Contains(
-            "This chapter's StartPos slots were set, but the state they saved is gone - an Akron update can do this. Set them again.",
-            source);
-        Assert.Contains("No StartPos entries in this chapter.", source);
 
         // The map-level sentence is on the catalog for the same reason the slot-level
         // one is: the leftover file it used to read is swept once nothing can read it.
         int describeEmpty = source.IndexOf(
             "internal static string DescribeEmptyStartPosList(Level level)", StringComparison.Ordinal);
-        int describeEmptyEnd = source.IndexOf("public static void ShiftStartPos(", describeEmpty, StringComparison.Ordinal);
+        int describeEmptyEnd = source.IndexOf(
+            "internal static string DescribeEmptyStartPosList(IReadOnlyDictionary",
+            describeEmpty,
+            StringComparison.Ordinal);
         string describeEmptyMethod = SourceSlice(source, describeEmpty, describeEmptyEnd - describeEmpty);
 
-        Assert.Contains("GetPersistedStartPositions(GetAreaSid(level)).Count > 0", describeEmptyMethod);
+        Assert.Contains(
+            "DescribeEmptyStartPosList(GetPersistedStartPositions(GetAreaSid(level)))", describeEmptyMethod);
         Assert.DoesNotContain("HasSupersededSnapshot", describeEmptyMethod);
+
+        // A map whose every slot predates the current format. A move takes the whole
+        // map at once, so this is the shape the sentence is for.
+        Assert.Equal(
+            "This chapter's StartPos slots were saved by an older Akron that built rooms differently. Set them again.",
+            AkronActions.DescribeEmptyStartPosList(
+                CatalogWithFormats((1, PreviousSnapshotFormat()), (2, string.Empty))));
+
+        // Nothing on the map lost its state to a move, so nothing here may say one
+        // happened.
+        Assert.Equal(
+            "This chapter's StartPos slots were set, but the states behind them are missing. Set them again.",
+            AkronActions.DescribeEmptyStartPosList(
+                CatalogWithFormats(
+                    (1, AkronReconstructionDocument.CurrentFormat),
+                    (2, AkronReconstructionDocument.CurrentFormat))));
+
+        // One slot on the map lost its state some other way. This sentence covers the
+        // slots together, so naming a move would be false for that one.
+        Assert.Equal(
+            "This chapter's StartPos slots were set, but the states behind them are missing. Set them again.",
+            AkronActions.DescribeEmptyStartPosList(
+                CatalogWithFormats(
+                    (1, PreviousSnapshotFormat()),
+                    (2, AkronReconstructionDocument.CurrentFormat))));
+
+        // A chapter the player never set a slot in keeps the plainer sentence.
+        Assert.Equal(
+            "No StartPos entries in this chapter.",
+            AkronActions.DescribeEmptyStartPosList(new Dictionary<int, AkronPersistedStartPos>()));
+    }
+
+    [Fact]
+    public void SettingAStartPosRecordsTheFormatItsStateWasWrittenUnder() {
+        // The stamp is what the two sentences read, and it is only ever written here.
+        // A slot set by this build must carry this build's format, or every slot the
+        // player sets would be reported as one an update emptied.
+        string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-actions.cs"));
+        int convert = source.IndexOf(
+            "private static AkronPersistedStartPos ToPersistedStartPos(AkronStartPos startPos)",
+            StringComparison.Ordinal);
+        int convertEnd = source.IndexOf("internal static bool SaveAkronStartPosData(", convert, StringComparison.Ordinal);
+        string convertMethod = SourceSlice(source, convert, convertEnd - convert);
+
+        Assert.Contains("SnapshotFormat = AkronReconstructionDocument.CurrentFormat", convertMethod);
+
+        // And the format is read out of the writer rather than written down, here and
+        // in the comparison, so a move needs no edit in either place.
+        int compare = source.IndexOf(
+            "private static bool WasSavedByAnOlderAkron(AkronPersistedStartPos entry)", StringComparison.Ordinal);
+        int compareEnd = source.IndexOf("public static void LoadStartPos(", compare, StringComparison.Ordinal);
+        string compareCode = string.Join(
+            "\n",
+            SourceSlice(source, compare, compareEnd - compare)
+                .Split('\n')
+                .Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+
+        Assert.DoesNotContain(AkronReconstructionDocument.CurrentFormat, compareCode);
     }
 
     [Fact]
