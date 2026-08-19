@@ -979,11 +979,14 @@ public static partial class AkronActions {
             // A saved type that will not load is refused while the document is walked,
             // which happens outside the reconstruction graph's own handlers, so this is
             // where an uninstalled mod's refusal arrives. It carries the type it refused
-            // and the player message is built from it exactly as for a returned failure.
+            // and what the refusal is about, and the player message is built from both
+            // exactly as for a returned failure.
+            AkronReconstructionException refusal = exception as AkronReconstructionException;
             ReportStartPosLoadFailure(
                 loadedSlot,
                 exception.GetType().Name + ": " + exception.Message,
-                exception is AkronReconstructionException refusal ? refusal.RefusedTypeName : string.Empty);
+                refusal?.RefusedTypeName ?? string.Empty,
+                refusal?.RefusedKind ?? AkronReconstructionRefusalKind.SavedObject);
             return false;
         }
     }
@@ -991,19 +994,28 @@ public static partial class AkronActions {
     // Restore failures reach the player through a toast, and reconstruction errors carry
     // full graph paths. Keep the whole reason in the log and a readable head in the toast.
     //
-    // refusedTypeName is set only when the reconstruction graph refused a saved object.
-    // When it is, the toast says which mod that object came from and what to do about it,
-    // because the graph's own text - a path ten levels deep and thirty authenticity flags
-    // - is written for whoever reads the log, and the player cannot act on any of it. The
-    // log keeps both: the full reason, then the sentence that went on screen.
-    private static void ReportStartPosLoadFailure(int loadedSlot, string reason, string refusedTypeName = "") {
+    // refusedTypeName is set only when the reconstruction graph refused a saved object,
+    // and refusedKind says what that refusal was about. Between them the toast says which
+    // mod the object came from, or that the room's map has changed, and what to do about
+    // it - because the graph's own text, a path ten levels deep and thirty authenticity
+    // flags, is written for whoever reads the log and the player cannot act on any of it.
+    // The log keeps both: the full reason, then the sentence that went on screen.
+    //
+    // Neither parameter has a default. Both call sites hold a real kind, and a default
+    // would let a future one report a map change as a missing mod without saying so.
+    private static void ReportStartPosLoadFailure(
+        int loadedSlot,
+        string reason,
+        string refusedTypeName,
+        AkronReconstructionRefusalKind refusedKind
+    ) {
         string slotLabel = loadedSlot > 0
             ? "StartPos " + loadedSlot.ToString(CultureInfo.InvariantCulture)
             : "StartPos";
         string message = slotLabel + " could not be loaded: " + reason;
         AkronLog.Warn(nameof(AkronActions), message);
 
-        string refusal = AkronStartPosRefusal.Describe(slotLabel, refusedTypeName);
+        string refusal = AkronStartPosRefusal.Describe(slotLabel, refusedTypeName, refusedKind);
         if (refusal != null) {
             AkronLog.Warn(nameof(AkronActions), slotLabel + " load message shown: " + refusal);
         }
@@ -1140,7 +1152,8 @@ public static partial class AkronActions {
             ReportStartPosLoadFailure(
                 loadedSlot,
                 DescribeRestoreFailure(restored),
-                AkronSaveLoadService.LastPersistentSnapshotRefusedTypeName);
+                AkronSaveLoadService.LastPersistentSnapshotRefusedTypeName,
+                AkronSaveLoadService.LastPersistentSnapshotRefusedKind);
             return false;
         }
         ReportStartPosRestoreTiming(restoreTimer.Elapsed, usedSnapshot, prewarmHitsBeforeLoad);

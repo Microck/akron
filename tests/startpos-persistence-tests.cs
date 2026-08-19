@@ -3343,6 +3343,54 @@ public sealed class StartPosPersistenceTests {
         Assert.Contains("no restart copy of this StartPos exists on disk", saveLoadSource);
     }
 
+    // What the refusal is about decides the sentence, and it is carried from the graph to
+    // the toast through five hops. Every one of them can silently drop it and leave the
+    // unit tests on AkronStartPosRefusal.Describe passing while no load in the game ever
+    // reaches the map sentence again - which is the failure the message before this one
+    // shipped with. Each hop is pinned where it happens rather than anywhere in the file.
+    [Fact]
+    public void AMapChangeRefusalKeepsItsKindAllTheWayToTheToast() {
+        // 1. the rebuild's returned failure, and 2. a refusal thrown past the graph's own
+        // handlers, both reach the same two fields on the load.
+        string saveLoadSource = File.ReadAllText(GetSaveLoadSourcePath());
+        Assert.Contains(
+            "SetPersistentSnapshotFailure(\"rebuild \" + restore.Error, restore.RefusedTypeName, restore.RefusedKind);",
+            saveLoadSource);
+        Assert.Contains("refusal?.RefusedKind ?? AkronReconstructionRefusalKind.SavedObject", saveLoadSource);
+
+        // 3. the load hands both to the report rather than the type name alone.
+        string actionsSource = File.ReadAllText(GetActionsSourcePath());
+        int gate = actionsSource.IndexOf(
+            "private static bool RestoreStartPosUnderPacingGate(",
+            StringComparison.Ordinal);
+        string gatePath = SourceTail(actionsSource, gate);
+        Assert.Contains("AkronSaveLoadService.LastPersistentSnapshotRefusedKind", gatePath);
+
+        // 4. the deferred boundary's own catch does the same for a thrown refusal.
+        int restore = actionsSource.IndexOf(
+            "private static bool RestoreStartPos(Level level, AkronStartPos startPos",
+            StringComparison.Ordinal);
+        int restoreEnd = actionsSource.IndexOf(
+            "private static void ReportStartPosLoadFailure(",
+            restore,
+            StringComparison.Ordinal);
+        string restorePath = SourceSlice(actionsSource, restore, restoreEnd - restore);
+        Assert.Contains("refusal?.RefusedKind ?? AkronReconstructionRefusalKind.SavedObject", restorePath);
+
+        // 5. the report builds the sentence from both.
+        int report = actionsSource.IndexOf(
+            "private static void ReportStartPosLoadFailure(",
+            StringComparison.Ordinal);
+        int reportEnd = actionsSource.IndexOf(
+            "private static string DescribeRestoreFailure(",
+            report,
+            StringComparison.Ordinal);
+        string reportPath = SourceSlice(actionsSource, report, reportEnd - report);
+        Assert.Contains(
+            "AkronStartPosRefusal.Describe(slotLabel, refusedTypeName, refusedKind)",
+            reportPath);
+    }
+
     [Fact]
     public void AFailedSetKeepsTheStartPosTheSlotAlreadyHeld() {
         const int fileSlot = 6;

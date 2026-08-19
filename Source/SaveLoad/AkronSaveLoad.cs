@@ -261,10 +261,27 @@ public static partial class AkronSaveLoadService {
     // in game on Midnight Aquarium before it shipped.
     public static string LastPersistentSnapshotRefusedTypeName { get; private set; } = string.Empty;
 
-    // The two values always describe the same failure, so they are always written together.
-    private static void SetPersistentSnapshotFailure(string error, string refusedTypeName) {
+    // What the refusal above is about, which decides whether the type name explains it.
+    // A refusal that the room's map changed carries a type like any other and must not be
+    // attributed to the mod that ships it, so the kind travels with the name rather than
+    // being inferred from it.
+    //
+    // internal rather than public like the two above it because the kind is Akron's own
+    // vocabulary: the only reader is the load-failure report in this assembly.
+    internal static AkronReconstructionRefusalKind LastPersistentSnapshotRefusedKind { get; private set; } =
+        AkronReconstructionRefusalKind.SavedObject;
+
+    // The three values always describe the same failure, so they are always written
+    // together. The kind has no default here on purpose: every caller holds one, and a
+    // caller that silently took SavedObject would be guessing on the player's behalf.
+    private static void SetPersistentSnapshotFailure(
+        string error,
+        string refusedTypeName,
+        AkronReconstructionRefusalKind refusedKind
+    ) {
         LastPersistentSnapshotError = error;
         LastPersistentSnapshotRefusedTypeName = refusedTypeName;
+        LastPersistentSnapshotRefusedKind = refusedKind;
     }
 
     public static string CurrentSlotName { get; private set; } = GetSlotName(1);
@@ -1134,7 +1151,10 @@ public static partial class AkronSaveLoadService {
         out bool usedSnapshot
     ) {
         usedSnapshot = false;
-        SetPersistentSnapshotFailure(string.Empty, string.Empty);
+        SetPersistentSnapshotFailure(
+            string.Empty,
+            string.Empty,
+            AkronReconstructionRefusalKind.SavedObject);
         if (level == null) {
             return AkronSaveLoadResult.Failed;
         }
@@ -1215,7 +1235,12 @@ public static partial class AkronSaveLoadService {
             return AkronSaveLoadResult.Blocked;
         }
         if (!AkronStartPosReconstruction.TryLoadSnapshot(slotName, out AkronReconstructionDocument document, out string loadError, out string loadRefusedTypeName)) {
-            SetPersistentSnapshotFailure(loadError, loadRefusedTypeName);
+            // The reader refuses one thing: a saved type this process cannot load. That is
+            // a missing object every time, and the map rule does not run until the rebuild.
+            SetPersistentSnapshotFailure(
+                loadError,
+                loadRefusedTypeName,
+                AkronReconstructionRefusalKind.SavedObject);
             return AkronSaveLoadResult.Failed;
         }
         if (!string.Equals(level.Session.Area.GetSID(), document.MapSid, StringComparison.Ordinal)) {
@@ -1270,10 +1295,13 @@ public static partial class AkronSaveLoadService {
                 // A saved type that will not load is refused while the document is walked,
                 // which is outside the reconstruction graph's own handlers, so an
                 // uninstalled mod arrives here rather than as a returned failure. The
-                // refusal still names the type, and that is what names the missing mod.
+                // refusal still names the type and what it is about, and that is what
+                // names the missing mod or the map that stopped placing the entity.
+                AkronReconstructionException refusal = exception as AkronReconstructionException;
                 SetPersistentSnapshotFailure(
                     exception.GetType().Name + ": " + exception.Message,
-                    exception is AkronReconstructionException refusal ? refusal.RefusedTypeName : string.Empty);
+                    refusal?.RefusedTypeName ?? string.Empty,
+                    refusal?.RefusedKind ?? AkronReconstructionRefusalKind.SavedObject);
                 restoreResult = AkronSaveLoadResult.Failed;
             } finally {
                 AkronDeepClone.ClearSharedState();
@@ -1366,7 +1394,8 @@ public static partial class AkronSaveLoadService {
         if (!actionRestore.Success) {
             SetPersistentSnapshotFailure(
                 "registered action state " + actionRestore.Error,
-                actionRestore.RefusedTypeName);
+                actionRestore.RefusedTypeName,
+                actionRestore.RefusedKind);
             AkronDeepClone.ClearSharedState();
             return AkronSaveLoadResult.Failed;
         }
@@ -1411,7 +1440,8 @@ public static partial class AkronSaveLoadService {
         if (!actionVerification.Success) {
             SetPersistentSnapshotFailure(
                 "registered action state " + actionVerification.Error,
-                actionVerification.RefusedTypeName);
+                actionVerification.RefusedTypeName,
+                actionVerification.RefusedKind);
             AkronDeepClone.ClearSharedState();
             return AkronSaveLoadResult.Failed;
         }
@@ -1419,7 +1449,7 @@ public static partial class AkronSaveLoadService {
         AkronPersistentRuntimeState freshRuntimeState = AkronPersistentRuntimeState.CaptureCurrent(level);
         AkronReconstructionRestore restore = AkronStartPosReconstruction.Restore(document, freshRuntimeState);
         if (!restore.Success) {
-            SetPersistentSnapshotFailure("rebuild " + restore.Error, restore.RefusedTypeName);
+            SetPersistentSnapshotFailure("rebuild " + restore.Error, restore.RefusedTypeName, restore.RefusedKind);
             TryLoadFreshRoom(level, document.Room, out _);
             return AkronSaveLoadResult.Failed;
         }
@@ -1449,7 +1479,7 @@ public static partial class AkronSaveLoadService {
         // room state still belongs to the exact Set frame.
         AkronReconstructionVerification reapply = AkronStartPosReconstruction.Reapply(document, restore);
         if (!reapply.Success) {
-            SetPersistentSnapshotFailure("reapply " + reapply.Error, reapply.RefusedTypeName);
+            SetPersistentSnapshotFailure("reapply " + reapply.Error, reapply.RefusedTypeName, reapply.RefusedKind);
             AkronStartPosReconstruction.ReleaseEventInstances(restore);
             TryLoadFreshRoom(level, document.Room, out _);
             return AkronSaveLoadResult.Failed;
@@ -1469,7 +1499,10 @@ public static partial class AkronSaveLoadService {
             restore,
             AkronStartPosReconstruction.GetPostRestoreVerificationMasks(document));
         if (!verification.Success) {
-            SetPersistentSnapshotFailure("verify " + verification.Error, verification.RefusedTypeName);
+            SetPersistentSnapshotFailure(
+                "verify " + verification.Error,
+                verification.RefusedTypeName,
+                verification.RefusedKind);
             AkronStartPosReconstruction.ReleaseEventInstances(restore);
             TryLoadFreshRoom(level, document.Room, out _);
             return AkronSaveLoadResult.Failed;

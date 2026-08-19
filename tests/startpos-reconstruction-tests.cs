@@ -425,6 +425,7 @@ public sealed class StartPosReconstructionTests {
             AkronStartPosRefusal.Describe(
                 "StartPos 3",
                 restore.RefusedTypeName,
+                AkronReconstructionRefusalKind.SavedObject,
                 new[] { ("SampleHelper", typeof(ProbeHelperModA).Assembly.GetName().Name!) }));
     }
 
@@ -738,6 +739,7 @@ public sealed class StartPosReconstructionTests {
         string message = AkronStartPosRefusal.Describe(
             "StartPos 3",
             refusedTypeName,
+            AkronReconstructionRefusalKind.SavedObject,
             new[] { ("SampleVariantMode", typeof(SampleZoomLevel).Assembly.GetName().Name!) });
 
         Assert.Equal(
@@ -753,6 +755,7 @@ public sealed class StartPosReconstructionTests {
             "StartPos 3",
             "ExtendedVariants.Variants.ZoomLevel+<>c, ExtendedVariantMode, Version=0.50.3.0, " +
             "Culture=neutral, PublicKeyToken=null",
+            AkronReconstructionRefusalKind.SavedObject,
             new[] { ("CelesteTAS", "CelesteTAS") });
 
         Assert.Equal(
@@ -770,6 +773,7 @@ public sealed class StartPosReconstructionTests {
         string message = AkronStartPosRefusal.Describe(
             "StartPos 3",
             typeof(Sprite).AssemblyQualifiedName!,
+            AkronReconstructionRefusalKind.SavedObject,
             new[] { ("ExtendedVariantMode", "ExtendedVariantMode") });
 
         Assert.Equal(
@@ -777,6 +781,111 @@ public sealed class StartPosReconstructionTests {
             "it. If your mods have not changed, this is an Akron bug; report akron-current.log.",
             message);
         Assert.True(message!.Length <= AkronActions.MaxStartPosFailureToastLength);
+    }
+
+    // The map rule refuses because the map dropped an entity id it used to own, and the
+    // type of the entity that carried that id decides nothing about it. Run through the
+    // assembly split, a vanilla entity edited out of a collab room answers Celeste and
+    // the player is asked to file a bug report about a refusal working exactly as
+    // designed - with no mention of the one thing that fixes it. This is that room, and
+    // it is refused through the real restore rather than by handing Describe a string.
+    [Fact]
+    public void AMapEditIsReportedAsAChangedMapRatherThanAsAnAkronBug() {
+        PlaybackGhostReloadRoom fresh = CreateReloadedGhostRoomWithRenumberedGhost();
+
+        AkronReconstructionRestore restore = RestoreTrailingGhostDocumentInto(
+            fresh,
+            mapIdsWhenSet: new[] { 42, 7 },
+            mapIdsAtReload: new[] { 43, 7 });
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved map entity is no longer placed by this map", restore.Error);
+        // A vanilla Celeste entity, which is the case that produced the bug report.
+        Assert.Equal(typeof(PlayerPlayback).AssemblyQualifiedName, restore.RefusedTypeName);
+        Assert.Equal(AkronReconstructionRefusalKind.ChangedMap, restore.RefusedKind);
+
+        string message = AkronStartPosRefusal.Describe(
+            "StartPos 1",
+            restore.RefusedTypeName,
+            restore.RefusedKind,
+            new[] { ("ExtendedVariantMode", "ExtendedVariantMode") });
+
+        Assert.Equal(
+            "StartPos 1 could not be rebuilt: this map no longer places the PlayerPlayback the " +
+            "slot saved. Updating a map or a collab does this. Set the slot again.",
+            message);
+        Assert.True(message!.Length <= AkronActions.MaxStartPosFailureToastLength);
+    }
+
+    // The same refusal on an entity a helper ships. Attributing it would name that helper
+    // and send the player to its settings, which is just as wrong in the other direction:
+    // a mapper removing a custom spinner is not the spinner mod's doing and its settings
+    // cannot bring the id back. One loaded type, one mod list that claims its assembly,
+    // both kinds - so the only thing that can separate the two sentences is the kind, and
+    // this fails if the map branch ever consults attribution.
+    [Fact]
+    public void AMapEditOnAModsOwnEntityNamesTheMapRatherThanTheMod() {
+        string refusedTypeName = typeof(ModdedPlayerPlayback).AssemblyQualifiedName!;
+        (string, string)[] loadedMods =
+            new[] { ("SampleHelper", typeof(ModdedPlayerPlayback).Assembly.GetName().Name!) };
+
+        Assert.Equal(
+            "StartPos 2 could not be rebuilt: this map no longer places the ModdedPlayerPlayback " +
+            "the slot saved. Updating a map or a collab does this. Set the slot again.",
+            AkronStartPosRefusal.Describe(
+                "StartPos 2",
+                refusedTypeName,
+                AkronReconstructionRefusalKind.ChangedMap,
+                loadedMods));
+
+        // The control: this really is a type the assembly split can attribute, so the
+        // sentence above is the kind's doing and not a mod list that failed to match.
+        Assert.Equal(
+            "StartPos 2 needs ModdedPlayerPlayback from SampleHelper, and this room does not have " +
+            "it. Check that mod's settings, or set the slot again.",
+            AkronStartPosRefusal.Describe(
+                "StartPos 2",
+                refusedTypeName,
+                AkronReconstructionRefusalKind.SavedObject,
+                loadedMods));
+    }
+
+    // The other side of the split, through a real refusal, and the proof that the
+    // bug-report branch is still reachable after the map refusal stopped taking it. This
+    // room's map lays out every id in play; what it cannot do is rebuild the saved ghost
+    // without dropping a live object the document keeps. Nothing the player owns explains
+    // that, so it keeps the bug-report sentence.
+    [Fact]
+    public void ARefusalTheMapCannotExplainStillAsksForABugReport() {
+        PlaybackGhostReloadRoom fresh =
+            CreateTwoTrailReloadedGhostRoomTheSessionBuiltDifferently(unpairableFirst: true);
+
+        AkronReconstructionRestore restore = RestoreTwoTrailGhostDocumentInto(
+            fresh,
+            unpairableFirst: true,
+            mapIdsWhenSet: new[] { 42, 7, 8 },
+            mapIdsAtReload: new[] { 42, 7, 8 });
+
+        Assert.False(restore.Success);
+        Assert.Contains(
+            "reconstructed reference edge would drop a fresh object this document keeps",
+            restore.Error);
+        // A vanilla Celeste type, same as the map refusal above, and it gets the other
+        // sentence. The kind is what separates them, not the assembly.
+        Assert.Equal(typeof(PlayerHair).AssemblyQualifiedName, restore.RefusedTypeName);
+        Assert.Equal(AkronReconstructionRefusalKind.SavedObject, restore.RefusedKind);
+
+        string message = AkronStartPosRefusal.Describe(
+            "StartPos 1",
+            restore.RefusedTypeName,
+            restore.RefusedKind,
+            new[] { ("ExtendedVariantMode", "ExtendedVariantMode") });
+
+        Assert.Equal(
+            "StartPos 1 could not be rebuilt: this room has no PlayerHair to match, and no mod " +
+            "owns it. If your mods have not changed, this is an Akron bug; report " +
+            "akron-current.log.",
+            message);
     }
 
     // Everest's own CoreModule is a real EverestModule named "Everest" and it lives in
@@ -788,6 +897,7 @@ public sealed class StartPosReconstructionTests {
         string message = AkronStartPosRefusal.Describe(
             "StartPos 3",
             typeof(Sprite).AssemblyQualifiedName!,
+            AkronReconstructionRefusalKind.SavedObject,
             new[] { ("Everest", typeof(EverestModule).Assembly.GetName().Name!) });
 
         Assert.Equal(
@@ -806,6 +916,7 @@ public sealed class StartPosReconstructionTests {
             "StartPos 3",
             "System.Collections.Generic.List`1[[Sample.Thing, SampleMod, Version=1.0.0.0, " +
             "Culture=neutral, PublicKeyToken=null]], " + typeof(List<int>).Assembly.FullName,
+            AkronReconstructionRefusalKind.SavedObject,
             Array.Empty<(string, string)>()));
     }
 
@@ -864,7 +975,11 @@ public sealed class StartPosReconstructionTests {
             Assert.Equal(
                 "StartPos 1 needs SampleController from SampleVariantMode, which Akron cannot load " +
                 "now. Turn that mod back on if you removed it, or set the slot again.",
-                AkronStartPosRefusal.Describe("StartPos 1", refusedTypeName, Array.Empty<(string, string)>()));
+                AkronStartPosRefusal.Describe(
+                    "StartPos 1",
+                    refusedTypeName,
+                    AkronReconstructionRefusalKind.SavedObject,
+                    Array.Empty<(string, string)>()));
         } finally {
             if (Directory.Exists(directory)) {
                 Directory.Delete(directory, recursive: true);
@@ -881,6 +996,7 @@ public sealed class StartPosReconstructionTests {
         Assert.Null(AkronStartPosRefusal.Describe(
             "StartPos 3",
             typeof(JObject).AssemblyQualifiedName!,
+            AkronReconstructionRefusalKind.SavedObject,
             new[] { ("ExtendedVariantMode", "ExtendedVariantMode") }));
     }
 
@@ -906,6 +1022,7 @@ public sealed class StartPosReconstructionTests {
         Assert.Null(AkronStartPosRefusal.Describe(
             "StartPos 3",
             refusedTypeName,
+            AkronReconstructionRefusalKind.SavedObject,
             new[] { ("ExtendedVariantMode", "ExtendedVariantMode") }));
     }
 
@@ -919,6 +1036,7 @@ public sealed class StartPosReconstructionTests {
             "SampleHelper.Containers.Holder`1[[Sample.Thing, SampleOtherMod, Version=1.0.0.0, " +
             "Culture=neutral, PublicKeyToken=null]], SampleHelper, Version=1.0.0.0, " +
             "Culture=neutral, PublicKeyToken=null",
+            AkronReconstructionRefusalKind.SavedObject,
             new[] { ("SampleHelper", "SampleHelper") }));
     }
 
@@ -930,6 +1048,7 @@ public sealed class StartPosReconstructionTests {
             "StartPos 3",
             "Sample." + new string('x', 4096) + ", SampleVariantMode, Version=1.0.0.0, " +
             "Culture=neutral, PublicKeyToken=null",
+            AkronReconstructionRefusalKind.SavedObject,
             Array.Empty<(string, string)>());
 
         Assert.Null(message);
@@ -950,6 +1069,7 @@ public sealed class StartPosReconstructionTests {
         string message = AkronStartPosRefusal.Describe(
             "StartPos",
             typeof(SampleUnderwaterSwitchController).AssemblyQualifiedName!,
+            AkronReconstructionRefusalKind.SavedObject,
             new[] { ("SampleVariantMode", typeof(SampleZoomLevel).Assembly.GetName().Name!) });
 
         Assert.Equal(

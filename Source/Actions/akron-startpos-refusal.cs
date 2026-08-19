@@ -16,8 +16,9 @@ namespace Celeste.Mod.Akron;
 // genuinely cannot load with it off. The refusal is correct and the correct action -
 // turn the mod back on, or set the slot again - is nowhere in the message.
 //
-// The one fact that makes the message useful is the assembly the refused object came
-// from, which splits the refusals we understand into three:
+// For a refusal about an object the fresh room could not supply, the one fact that makes
+// the message useful is the assembly the refused object came from, which splits the
+// refusals we understand into three:
 //
 //   1. a mod the player installed owns that assembly  -> their setup, they can fix it
 //   2. Akron cannot load that code at all             -> the mod is gone, turn it back on
@@ -28,6 +29,13 @@ namespace Celeste.Mod.Akron;
 // the diagnostic text. Saying nothing new is not worse than today; saying the wrong
 // thing sends the player through their mod list for an Akron bug, or files a bug report
 // for a switch they turned off themselves.
+//
+// Not every refusal is about an object, and that is what AkronReconstructionRefusalKind
+// carries. A refusal that this room's map no longer places a saved entity is about the
+// map, so none of the three above applies to it: the entity's type is whatever the
+// mapper placed, and running it through the split above answers Celeste for a vanilla
+// entity and files a bug report for a map edit. The kind picks the family of sentence
+// first, and the assembly split only runs for the family it was built for.
 internal static class AkronStartPosRefusal {
     private const int MaxNameChars = 64;
 
@@ -106,18 +114,23 @@ internal static class AkronStartPosRefusal {
     }
 
     // Returns null when the refusal names no object, or names one this cannot attribute.
-    internal static string Describe(string slotLabel, string refusedTypeName) {
+    internal static string Describe(
+        string slotLabel,
+        string refusedTypeName,
+        AkronReconstructionRefusalKind refusedKind
+    ) {
         // Checked before the module list is built so a refusal that names nothing - an
         // array whose length differs, a field that no longer exists - costs nothing.
         if (string.IsNullOrWhiteSpace(refusedTypeName)) {
             return null;
         }
-        return Describe(slotLabel, refusedTypeName, GetLoadedMods());
+        return Describe(slotLabel, refusedTypeName, refusedKind, GetLoadedMods());
     }
 
     internal static string Describe(
         string slotLabel,
         string refusedTypeName,
+        AkronReconstructionRefusalKind refusedKind,
         IReadOnlyList<(string ModName, string AssemblyName)> loadedMods
     ) {
         string assemblyName = GetAssemblyName(refusedTypeName);
@@ -125,10 +138,23 @@ internal static class AkronStartPosRefusal {
         // Both come out of a snapshot file, and the reader allows a string into the
         // megabytes. The longest real name either of these has produced is 28 characters,
         // so anything past this is a corrupt or hostile document rather than a name worth
-        // putting in a sentence.
+        // putting in a sentence. Applied to every kind: a name this shape is evidence
+        // about the document, not about which refusal produced it.
         if (assemblyName.Length == 0 || assemblyName.Length > MaxNameChars ||
             displayTypeName.Length == 0 || displayTypeName.Length > MaxNameChars) {
             return null;
+        }
+
+        // The map dropped an entity id it used to own, which is the one refusal whose
+        // cause is not the object at all. Nothing about the entity's assembly can be
+        // acted on - a Refill edited out of a collab room belongs to Celeste, and a
+        // custom spinner belongs to a helper whose settings have nothing to do with it -
+        // so the type is named only to say which entity is gone, and the fix is the one
+        // that always works: measure the slot against the map as it stands now.
+        if (refusedKind == AkronReconstructionRefusalKind.ChangedMap) {
+            return slotLabel + " could not be rebuilt: this map no longer places the " +
+                   displayTypeName + " the slot saved. Updating a map or a collab does this. " +
+                   "Set the slot again.";
         }
 
         // Asking the runtime rather than trusting a list of loaded assembly names: Everest

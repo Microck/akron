@@ -490,12 +490,14 @@ internal sealed class AkronReconstructionRestore {
         string errorPath,
         string error,
         string refusedTypeName,
+        AkronReconstructionRefusalKind refusedKind,
         Dictionary<int, object> objects
     ) {
         Success = success;
         ErrorPath = errorPath ?? string.Empty;
         Error = error ?? string.Empty;
         RefusedTypeName = refusedTypeName ?? string.Empty;
+        RefusedKind = refusedKind;
         Objects = objects;
     }
 
@@ -506,47 +508,80 @@ internal sealed class AkronReconstructionRestore {
     // the refusal names no object. Error carries the same name inside its flag text for
     // the log; this is the copy the player-facing message is built from.
     public string RefusedTypeName { get; }
+    // What the refusal is about, which decides which sentence the name above goes into.
+    public AkronReconstructionRefusalKind RefusedKind { get; }
     internal Dictionary<int, object> Objects { get; }
 
     public static AkronReconstructionRestore Succeeded(Dictionary<int, object> objects) {
-        return new AkronReconstructionRestore(true, string.Empty, string.Empty, string.Empty, objects);
+        return new AkronReconstructionRestore(
+            true,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            AkronReconstructionRefusalKind.SavedObject,
+            objects);
     }
 
-    public static AkronReconstructionRestore Failed(string path, string error, string refusedTypeName = "") {
+    public static AkronReconstructionRestore Failed(
+        string path,
+        string error,
+        string refusedTypeName = "",
+        AkronReconstructionRefusalKind refusedKind = AkronReconstructionRefusalKind.SavedObject
+    ) {
         string normalizedPath = string.IsNullOrWhiteSpace(path) ? "$" : path;
         return new AkronReconstructionRestore(
             false,
             normalizedPath,
             normalizedPath + ": " + error,
             refusedTypeName,
+            refusedKind,
             null);
     }
 }
 
 internal sealed class AkronReconstructionVerification {
-    private AkronReconstructionVerification(bool success, string errorPath, string error, string refusedTypeName) {
+    private AkronReconstructionVerification(
+        bool success,
+        string errorPath,
+        string error,
+        string refusedTypeName,
+        AkronReconstructionRefusalKind refusedKind
+    ) {
         Success = success;
         ErrorPath = errorPath ?? string.Empty;
         Error = error ?? string.Empty;
         RefusedTypeName = refusedTypeName ?? string.Empty;
+        RefusedKind = refusedKind;
     }
 
     public bool Success { get; }
     public string ErrorPath { get; }
     public string Error { get; }
     public string RefusedTypeName { get; }
+    public AkronReconstructionRefusalKind RefusedKind { get; }
 
     public static AkronReconstructionVerification Succeeded() {
-        return new AkronReconstructionVerification(true, string.Empty, string.Empty, string.Empty);
+        return new AkronReconstructionVerification(
+            true,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            AkronReconstructionRefusalKind.SavedObject);
     }
 
-    public static AkronReconstructionVerification Failed(string path, string error, string refusedTypeName = "") {
+    public static AkronReconstructionVerification Failed(
+        string path,
+        string error,
+        string refusedTypeName = "",
+        AkronReconstructionRefusalKind refusedKind = AkronReconstructionRefusalKind.SavedObject
+    ) {
         string normalizedPath = string.IsNullOrWhiteSpace(path) ? "$" : path;
         return new AkronReconstructionVerification(
             false,
             normalizedPath,
             normalizedPath + ": " + error,
-            refusedTypeName);
+            refusedTypeName,
+            refusedKind);
     }
 }
 
@@ -1015,7 +1050,11 @@ internal sealed class AkronReconstructionGraph {
         } catch (AkronReconstructionException exception) {
             context?.ReleaseCreatedPersistentResources();
             AkronEventInstanceUtils.ReleaseDormantEventInstances(context?.Objects.Values.OfType<EventInstance>());
-            return AkronReconstructionRestore.Failed(exception.Path, exception.Message, exception.RefusedTypeName);
+            return AkronReconstructionRestore.Failed(
+                exception.Path,
+                exception.Message,
+                exception.RefusedTypeName,
+                exception.RefusedKind);
         } catch (Exception exception) {
             context?.ReleaseCreatedPersistentResources();
             AkronEventInstanceUtils.ReleaseDormantEventInstances(context?.Objects.Values.OfType<EventInstance>());
@@ -1054,7 +1093,11 @@ internal sealed class AkronReconstructionGraph {
             context.ReleaseDisplacedEventInstances();
             return AkronReconstructionVerification.Succeeded();
         } catch (AkronReconstructionException exception) {
-            return AkronReconstructionVerification.Failed(exception.Path, exception.Message, exception.RefusedTypeName);
+            return AkronReconstructionVerification.Failed(
+                exception.Path,
+                exception.Message,
+                exception.RefusedTypeName,
+                exception.RefusedKind);
         } catch (Exception exception) {
             return AkronReconstructionVerification.Failed("$", exception.GetType().Name + ": " + exception.Message);
         }
@@ -1076,7 +1119,11 @@ internal sealed class AkronReconstructionGraph {
             context.Verify();
             return AkronReconstructionVerification.Succeeded();
         } catch (AkronReconstructionException exception) {
-            return AkronReconstructionVerification.Failed(exception.Path, exception.Message, exception.RefusedTypeName);
+            return AkronReconstructionVerification.Failed(
+                exception.Path,
+                exception.Message,
+                exception.RefusedTypeName,
+                exception.RefusedKind);
         } catch (Exception exception) {
             return AkronReconstructionVerification.Failed("$", exception.GetType().Name + ": " + exception.Message);
         }
@@ -3246,12 +3293,18 @@ internal sealed class AkronReconstructionGraph {
                 owner.IsMapPlacedEntityId(freshRoot, savedEntityId, mapPlacedEntityIdsByRoom)) {
                 return;
             }
+            // ChangedMap, not the default: the only thing this rule has proved is that the
+            // map dropped an id it used to own. Which mod ships the entity's type is not
+            // evidence of anything here, so the message must not be built from it - a
+            // vanilla entity edited out of a collab room would otherwise be attributed to
+            // Celeste and reported to the player as an Akron bug.
             throw new AkronReconstructionException(
                 node.Path,
                 "saved map entity is no longer placed by this map;type=" + type.FullName +
                 ";saved-entity-id=" + (savedEntityId.Level ?? string.Empty) + ":" +
                 savedEntityId.ID.ToString(CultureInfo.InvariantCulture),
-                node.TypeName);
+                node.TypeName,
+                AkronReconstructionRefusalKind.ChangedMap);
         }
 
         private bool IsAuthenticatedCompilerIteratorState(AkronReconstructionNode node, Type type) {
@@ -7289,6 +7342,30 @@ internal sealed class AkronReconstructionGraph {
 
 }
 
+// Which question a refusal answers, which is what decides the sentence the player gets.
+//
+// AkronStartPosRefusal resolves the refused type to the mod that owns it. That is the
+// right axis for a refusal about an object the fresh room cannot supply, because the mod
+// that ships the object is the mod whose setup changed. It is the wrong axis for a
+// refusal about the room itself: an entity the map has stopped placing says nothing
+// about who wrote that entity's type, so attribution lands on Celeste for a vanilla
+// entity and asks for a bug report about a refusal working exactly as designed.
+//
+// The kind travels beside the refused type from the throw all the way to the message,
+// rather than being read back out of the reason text, for the same reason the type does:
+// the reason text is written for whoever reads the log and its wording is free to change.
+internal enum AkronReconstructionRefusalKind {
+    // The fresh room cannot supply an object the saved state names. The refused type is
+    // that object's, and the mod that owns the type is the one the player has to look at.
+    SavedObject = 0,
+
+    // This room's map data no longer places an entity the saved state names. The refused
+    // type is that entity's and it is not what is wrong - the map is, and a map is not
+    // something a player checks a settings menu for. Setting the slot again against the
+    // map as it stands now is the whole fix, and it always works.
+    ChangedMap
+}
+
 // Top-level rather than nested and private because it can escape the graph: a type that
 // will not load is refused while the document is being walked outside Restore's own
 // catch, and the StartPos load reports that through its outermost handler. That handler
@@ -7302,14 +7379,25 @@ internal sealed class AkronReconstructionException : Exception {
     // is about. It is carried as data rather than parsed back out of the message
     // text: the load-failure sentence a player reads is built from it, while the
     // message keeps the graph path and the authenticity flags for the log.
-    public AkronReconstructionException(string path, string message, string refusedTypeName)
+    //
+    // refusedKind defaults to SavedObject because that is what a refusal is unless it
+    // says otherwise: the fresh room did not supply what the document asked for. A
+    // refusal that is about the room rather than about the object has to say so.
+    public AkronReconstructionException(
+        string path,
+        string message,
+        string refusedTypeName,
+        AkronReconstructionRefusalKind refusedKind = AkronReconstructionRefusalKind.SavedObject
+    )
         : base(message) {
         Path = string.IsNullOrWhiteSpace(path) ? "$" : path;
         RefusedTypeName = refusedTypeName ?? string.Empty;
+        RefusedKind = refusedKind;
     }
 
     public string Path { get; }
     public string RefusedTypeName { get; }
+    public AkronReconstructionRefusalKind RefusedKind { get; }
 }
 
 // What one prewarm read did with its slot. A bool could not tell a slot that was
