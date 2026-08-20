@@ -3305,6 +3305,80 @@ public sealed class StartPosReconstructionTests {
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
 
+    // The same separation one level in, where the aliased slot belongs to an entity and
+    // the edge that takes it is proved by the owned-nested-state licence rather than by
+    // the fresh room's occupancy of that slot.
+    //
+    // The entity keeps the state it built and the state it ran last. A clean load builds
+    // Running and has not built Pending, so Last still holds the Running one; the saved
+    // frame had built Pending and run it, so its Last holds that. Restoring separates
+    // them: Running keeps the live object, and Pending and Last both take a rebuilt one.
+    //
+    // The Last edge is the interesting one. It displaces the live state object, which the
+    // document keeps at Running, and the only thing that proves it is freshOwnedNestedState -
+    // the state's type is declared inside its owner and its canonical slot is a field of
+    // that same fresh entity. It is not proved by the fresh room holding an object of that
+    // type in the slot the edge writes, because the node this edge carries lives at Pending,
+    // which a clean load leaves empty.
+    //
+    // That last fact is what the two document assertions below pin. Without them the room
+    // still loads if the fields are reordered, and reordering changes which proof the edge
+    // has: with Last declared before Pending the Last edge becomes that node's own slot and
+    // savedOwnerEdge with exactParentSlot proves it instead, so the room would stop being
+    // about the licence this test is named for. Declaring Pending first fails outright:
+    // the alias reservation hands the live object to that node instead, and its own slot
+    // is then the empty one, so the room is refused at $.Owner.Pending for a reference
+    // edge that is not authentic to the fresh room.
+    [Fact]
+    public void AnEntityKeepsTheStateItRanLastWhenTheDocumentSeparatesTwoOfThem() {
+        OwnedStateRoot saved = new OwnedStateRoot {
+            Owner = CreateOwnedStateEntity(runningValue: 37, pendingValue: 91)
+        };
+        OwnedStateRoot baseline = new OwnedStateRoot {
+            Owner = CreateOwnedStateEntity(runningValue: 0, pendingValue: null)
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        // The node the Last edge carries is the one whose own slot is Pending, so the edge
+        // is not that node's own document path.
+        AkronReconstructionNode rootNode = capture.Document.Nodes
+            .Single(node => node.Id == capture.Document.RootNodeId);
+        AkronReconstructionValue ownerValue = rootNode.Fields
+            .Single(field => field.Name == nameof(OwnedStateRoot.Owner))
+            .Value;
+        AkronReconstructionValue lastValue = capture.Document.Nodes
+            .Single(node => node.Id == ownerValue.NodeId)
+            .Fields
+            .Single(field => field.Name == nameof(OwnedStateEntity.Last))
+            .Value;
+        AkronReconstructionNode lastTarget = capture.Document.Nodes
+            .Single(node => node.Id == lastValue.NodeId);
+        Assert.Equal(nameof(OwnedStateEntity.Pending), lastTarget.ParentFieldName);
+        OwnedStateEntity freshOwner = CreateOwnedStateEntity(runningValue: 0, pendingValue: null);
+        OwnedStateEntity.OwnedState liveState = freshOwner.Running;
+        // And a clean load leaves that slot empty, so the fresh room says nothing about the
+        // type the edge writes into Last.
+        Assert.Null(freshOwner.Pending);
+
+        AkronReconstructionRestore restore = graph.Restore(
+            capture.Document,
+            new OwnedStateRoot { Owner = freshOwner });
+
+        Assert.True(restore.Success, restore.Error);
+        // The slot the reload did build keeps its own object, with the saved value on it.
+        Assert.Same(liveState, freshOwner.Running);
+        Assert.Equal(37, freshOwner.Running.Value);
+        // The one it had not built is rebuilt, and the slot that aliased the live object
+        // follows the document onto the rebuilt one.
+        OwnedStateEntity.OwnedState rebuilt =
+            Assert.IsType<OwnedStateEntity.OwnedState>(freshOwner.Pending);
+        Assert.NotSame(liveState, rebuilt);
+        Assert.Equal(91, rebuilt.Value);
+        Assert.Same(rebuilt, freshOwner.Last);
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
     [Fact]
     public void MissingFreshResourceFailsAtItsExactPathBeforeChangingTheRoom() {
         TestResource savedResource = new TestResource("saved-process");
@@ -5000,6 +5074,20 @@ public sealed class StartPosReconstructionTests {
             .SetValue(components, orderedComponents);
         typeof(ComponentList).GetField("current", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(components, new HashSet<Component>(orderedComponents));
+        return entity;
+    }
+
+    // pendingValue null is what a clean load leaves: the entity built the state it
+    // starts with and has not needed the other one yet, so the slot that records what
+    // ran last still holds the first.
+    private static OwnedStateEntity CreateOwnedStateEntity(int runningValue, int? pendingValue) {
+        OwnedStateEntity entity = CreateUninitializedEntity<OwnedStateEntity>();
+        InitializeEmptyComponentList(entity);
+        entity.Running = new OwnedStateEntity.OwnedState { Value = runningValue };
+        entity.Pending = pendingValue == null
+            ? null!
+            : new OwnedStateEntity.OwnedState { Value = pendingValue.Value };
+        entity.Last = entity.Pending ?? entity.Running;
         return entity;
     }
 
@@ -7913,6 +8001,32 @@ public sealed class StartPosReconstructionTests {
 
         public void SetValue(int value) {
             Value = value;
+        }
+    }
+
+    private sealed class OwnedStateRoot {
+        public OwnedStateEntity Owner = null!;
+    }
+
+    // The declaration order is load-bearing and the test that uses these fields pins it:
+    // the capture walk reaches an entity's fields in declaration order, so Running first
+    // makes the state the reload does build the node that pairs with it, and Last after
+    // Pending keeps the Last edge an edge into another node's slot.
+    private sealed class OwnedStateEntity : Entity {
+        public OwnedState Running = null!;
+        public OwnedState Pending = null!;
+        public OwnedState Last = null!;
+
+        // Nested inside its owner, which is what the owned-nested-state licence asks
+        // for, and declares a method so it is not read as a passive data record - one
+        // of those reconstructs with no fresh-room evidence at all and would never
+        // reach the displacement question.
+        internal sealed class OwnedState {
+            public int Value;
+
+            public void Advance() {
+                Value++;
+            }
         }
     }
 

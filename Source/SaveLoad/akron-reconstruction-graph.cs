@@ -4281,6 +4281,60 @@ internal sealed class AkronReconstructionGraph {
         // different object into one displaces nothing. Without that exclusion the
         // membership set of a room's own EntityList refuses every rebuilt entity.
         //
+        // The exemption on the first clause is the one thing this rule does not prove
+        // for itself, so here is what it rests on and what was tried instead.
+        //
+        // Measured over the suite: two rooms reach the displacement this rule looks for
+        // with an ownership-proved edge, and both load correctly.
+        // RestoreSeparatesOrdinaryObjectsThatTheFreshRoomAliases is the fresh room
+        // holding one object in two named fields where the document holds two, proved by
+        // savedOwnerEdge with exactParentSlot.
+        // AnEntityKeepsTheStateItRanLastWhenTheDocumentSeparatesTwoOfThem is the same
+        // separation on an entity's own nested state, and there the only proof is
+        // freshOwnedNestedState - exactParentSlot is false, because the node's own slot
+        // is the one a clean load leaves empty. So narrowing the exemption to the proof
+        // the first room uses refuses the second, and an allowlist of the two is a list
+        // of the rooms that happen to have been built rather than a reason.
+        //
+        // Replacing the exemption with a proof that the displaced object is retained
+        // elsewhere cannot be stated, because in a document this capture produces there
+        // is nothing to prove it against. ValidateAssignments writes every field of every
+        // ordinary node and every item of every array node, and every node this capture
+        // produces reaches the root through those two containers or through a delegate
+        // call, whose target CreateDelegate binds into the delegate it rebuilds. Nothing
+        // hangs anywhere else: CaptureValue returns as soon as it has made a live anchor,
+        // and stores only a payload for a persistent resource or an FMOD event. The
+        // restore therefore always puts a displaced object back into the slot the
+        // document gives it, so retention holds for every incumbent, and a test narrow
+        // enough to refuse anything either refuses a room that loads - which is what
+        // narrowing to the first room's proof does to the second - or refuses only rooms
+        // the structural tests above already refuse, which is what asking for the
+        // incumbent at its own canonical slot does, since a paired object whose canonical
+        // slot the reload left empty loses its own edge there first.
+        //
+        // One shape breaks that, and it is a document this capture cannot produce.
+        // ValidateNodeKindContracts does not require a node to carry only the container
+        // its kind is read from, while assignment reads only that one: an anchor, a
+        // persistent resource and an FMOD event are skipped whole, an array node's fields
+        // are never read, an object node's items are never read, and a delegate node has
+        // only its calls read. ValidateNodeReachability walks all three containers, so a
+        // crafted or corrupt snapshot can park a kept object in one of the ignored ones
+        // and it counts as reachable while the restore never attaches it. The ignored
+        // containers are not the only ignored slots either: ValidateAssignments skips a
+        // derived collection's version field by name, and a skipped field is never even
+        // type-checked. That is a hole in the document contract and belongs there rather
+        // than here, and closing it means refusing every slot the restore never reads
+        // rather than any one of them.
+        //
+        // What is left is the same shape as the two call sites above: this is a third
+        // authenticity test, for edges the structural tests admitted on weak evidence -
+        // a count that wildcards list indices, or a path shared with the very object
+        // being displaced. An edge carrying its own ownership proof needed neither
+        // structural test, which is why it does not need this one either. If a future
+        // change ever leaves an assigned document edge unwritten, or puts an object's
+        // canonical home somewhere the restore cannot reach, the retention question
+        // becomes real and this exemption has to be reopened.
+        //
         // Order-independent by construction: freshOwners is complete before
         // ValidateReferenceAuthenticity runs, so the verdict cannot depend on which
         // edge is validated first, which is the whole point of the rule.
