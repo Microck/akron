@@ -2053,12 +2053,27 @@ public sealed class StartPosReconstructionTests {
         // list holds four entities and so does the reloaded room, so the rebuilt ghost
         // takes the live ghost's slot rather than being added next to it, and the
         // ghost the reload built is dropped. That much is the saved population winning,
-        // which is what a restore is for. What is wrong is the trail: the surviving
-        // snapshot keeps the room's own PlayerSprite and is handed a reconstructed
-        // PlayerHair, so one trail ends up owned by two different ghosts, and the
-        // room's own sprite renders at the rebuilt ghost's position. That is a
-        // component taking an unrelated component's slot on occurrence budget alone,
-        // which no identity token in this document answers, and it is untouched here.
+        // which is what a restore is for.
+        //
+        // What is wrong is what happens to that dropped ghost, and it is measured
+        // below rather than described. Several edges here carry no authenticator and
+        // ride the occurrence budget, the <Scene> edge above among them; Snapshot.Hair
+        // is the only one of them whose target is a component, and it is the one the
+        // "component aliases on occurrence budget alone" question is about. That write
+        // is not what makes the room wrong: the rebuilt hair lands in the rebuilt
+        // ghost's own Hair field and both halves of the trail end up pointing at that
+        // same rebuilt ghost, so the trail is not split between two owners.
+        //
+        // The harm is on the other side of the same room. The room's own PlayerSprite
+        // is fresh-resolved and relabelled, so the object the reload built for ghost 43
+        // now belongs to the rebuilt ghost 42 while ghost 43's own component list still
+        // lists it, and ghost 43 is left out of the entity list with its Scene still
+        // pointing at the Level. That write is a pairing rather than a budget
+        // admission - the snapshot's Sprite field is a fresh path and the resolver
+        // takes what is in it, with no identity check - so no rule about which
+        // component edges the budget admits reaches it. A stricter budget would still
+        // refuse this document as a whole, because the restore only gets far enough to
+        // make that write while its count-only edges are admitted.
         PlaybackGhostReloadRoom fresh = CreateReloadedGhostRoomWithRenumberedGhost();
         Level level = fresh.Level;
         EntityList entities = fresh.Entities;
@@ -2090,11 +2105,23 @@ public sealed class StartPosReconstructionTests {
         // room actually holds kept its clean-load state.
         Assert.Equal(2.5f, reconstructedGhost.Time);
         Assert.Equal(0f, liveGhost.Time);
-        // WRONG: the surviving snapshot keeps the room's PlayerSprite but is handed a
-        // reconstructed PlayerHair, so the two halves of one trail disagree about who
-        // they belong to.
+        // The surviving snapshot keeps the room's PlayerSprite and is handed a
+        // reconstructed PlayerHair on the occurrence budget alone.
         Assert.Same(freshSprite, snapshot.Sprite);
         Assert.NotSame(freshHair, snapshot.Hair);
+        // NOT wrong, and pinned because the comment above used to claim it was: both
+        // halves of the trail point at the same ghost afterwards, and it is the rebuilt
+        // one. The rebuilt hair goes where the document says it goes.
+        Assert.Same(reconstructedGhost, snapshot.Hair!.Entity);
+        Assert.Same(reconstructedGhost, snapshot.Sprite!.Entity);
+        Assert.Contains(snapshot.Hair, GetComponentListContents(reconstructedGhost));
+        // WRONG, and this is the part no rule about component edges reaches: the ghost
+        // the reload built is out of the entity list while its Scene still points at
+        // the Level, and its own component list still holds the PlayerSprite that now
+        // belongs to the rebuilt ghost.
+        Assert.Same(level, liveGhost.Scene);
+        Assert.Contains(freshSprite, GetComponentListContents(liveGhost));
+        Assert.Contains(freshHair, GetComponentListContents(liveGhost));
     }
 
     // The room the occurrence budget decided by document order alone, and the one this
@@ -2152,6 +2179,132 @@ public sealed class StartPosReconstructionTests {
         Assert.Contains(liveGhost, GetEntityListContents(fresh.Entities));
         Assert.Equal(0f, liveGhost.Time);
         Assert.Same(pairedGhost, freshSprite.Entity);
+    }
+
+    // The other half of the same order dependence, and the one that was still open.
+    // An edge ownership proves needs no occurrence - the exhausted branch lets it
+    // through - and it used to spend one anyway whenever one was left, so the two
+    // edges below were decided by which of them the document reached first.
+    //
+    // Two instances of one mod entity, each carrying a component that holds a runtime
+    // state object, and the reload built one of the two: the fresh room records one
+    // occurrence of that state type at
+    // entities._items[*].<Components>k__BackingField.components._items[*].State and
+    // the document has two edges there. The paired component's edge is proved twice
+    // over and independently - by savedOwnerEdge with exactParentSlot, because the
+    // fresh field holds an object of the same type, and by
+    // freshComponentCapturedFreshEdge, because a fresh component holds a fresh object
+    // in an exactly typed field - so the room does not turn on which of the two.
+    // The rebuilt one has nothing but the count.
+    //
+    // Measured before this was closed, same room, only the two entities swapped in the
+    // saved list:
+    //
+    //   paired first  - the proved edge spent the occurrence and the rebuilt one was
+    //                   refused, on 010f660 as well as here.
+    //   rebuilt first - it took the occurrence, the proved edge fell through the
+    //                   exhausted branch's escape, and the room was right in both
+    //                   halves.
+    //
+    // So the refusal was the wrong answer of the two, which is why this test asserts
+    // the same load in both orders rather than the same refusal.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ARoomIsNotRefusedBecauseAnOwnershipProvedEdgeWasReachedFirst(bool pairedFirst) {
+        OwnershipProvedEdgeRoot saved = CreateRuntimeStateHolderRoom(cleanReload: false, pairedFirst);
+        OwnershipProvedEdgeRoot baseline = CreateRuntimeStateHolderRoom(cleanReload: true, pairedFirst);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        OwnershipProvedEdgeRoot fresh = CreateRuntimeStateHolderRoom(cleanReload: true, pairedFirst);
+        List<Entity> freshEntities = GetEntityListContents(fresh.Entities);
+        RuntimeStateHolderComponent paired = HolderComponentOf(freshEntities[pairedFirst ? 0 : 1]);
+        RuntimeStateHolderComponent rebuilt = HolderComponentOf(freshEntities[pairedFirst ? 1 : 0]);
+        HeldRuntimeState liveState = paired.State!;
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        // The component the reload wired keeps its own live object, with the saved
+        // value written onto it.
+        Assert.Same(liveState, paired.State);
+        Assert.Equal(7, paired.State!.Value);
+        // The other one had nothing to keep, so it gets a rebuilt object of its own.
+        Assert.NotNull(rebuilt.State);
+        Assert.NotSame(paired.State, rebuilt.State);
+        Assert.Equal(9, rebuilt.State!.Value);
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    // cleanReload false is the Set frame, where both components hold their state.
+    // cleanReload true is what a clean load of the same room leaves: entity 31's
+    // component has its state and entity 32's has not built one yet, which is the
+    // ordinary shape for an object a component creates the first time it needs it.
+    //
+    // The Scene is a room slice rather than a constructed Scene, which is how every
+    // room fixture in this file is built. A real Scene's constructor also leaves a
+    // Tracker, TagLists, a RendererList, an actualDepthLookup and a HelperEntity in
+    // the entity list, and none of those is read by the two State edges this room
+    // turns on: the occurrence this test is about is counted only where a
+    // HeldRuntimeState sits at
+    // entities._items[*].<Components>k__BackingField.components._items[*].State, and
+    // nothing else in the room puts one there.
+    private static OwnershipProvedEdgeRoot CreateRuntimeStateHolderRoom(bool cleanReload, bool pairedFirst) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        (int Id, int? Value) paired = (31, 7);
+        (int Id, int? Value) rebuilt = (32, cleanReload ? null : 9);
+        int spawnOrder = 0;
+        foreach ((int Id, int? Value) holder in pairedFirst
+                     ? new[] { paired, rebuilt }
+                     : new[] { rebuilt, paired }) {
+            AddRuntimeStateHolderEntity(scene, entities, holder.Id, holder.Value, spawnOrder++);
+        }
+        return new OwnershipProvedEdgeRoot { Scene = scene, Entities = entities };
+    }
+
+    private static void AddRuntimeStateHolderEntity(
+        Scene scene,
+        EntityList entities,
+        int sourceId,
+        int? stateValue,
+        int spawnOrder
+    ) {
+        RuntimeStateHolderEntity owner = CreateUninitializedEntity<RuntimeStateHolderEntity>();
+        ComponentList components = CreateDetachedComponentList(owner);
+        SetRuntimeField(owner, "Active", true);
+        SetRuntimeField(owner, "Visible", true);
+        SetRuntimeField(owner, "Collidable", true);
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", sourceId));
+        // Two instances of one entity type share a Depth, and Monocle.Scene hands out
+        // a strictly decreasing actualDepth within one depth, so EntityList.CompareDepth
+        // leaves them in spawn order. That is what makes the list order this room turns
+        // on a real order rather than an artefact of the fixture. The magnitude of the
+        // step is immaterial here rather than unread: capture records actualDepth like
+        // every other instance field and Verify compares it, and all three rooms are
+        // built by this method, so only the order it produces reaches the verdict.
+        SetRuntimeField(owner, "depth", 0);
+        SetRuntimeField(owner, "actualDepth", -0.000001d * spawnOrder);
+
+        RuntimeStateHolderComponent holder =
+            (RuntimeStateHolderComponent) RuntimeHelpers.GetUninitializedObject(
+                typeof(RuntimeStateHolderComponent));
+        SetRuntimeField(holder, "<Entity>k__BackingField", owner);
+        SetRuntimeField(holder, "Active", true);
+        if (stateValue != null) {
+            holder.State = new HeldRuntimeState { Value = stateValue.Value };
+        }
+
+        List<Component> ordered = new List<Component> { holder };
+        SetRuntimeField(components, "components", ordered);
+        SetRuntimeField(components, "current", new HashSet<Component>(ordered));
+        AddDetachedEntity(entities, owner);
+    }
+
+    private static RuntimeStateHolderComponent HolderComponentOf(Entity entity) {
+        return GetComponentListContents(entity).OfType<RuntimeStateHolderComponent>().Single();
     }
 
     [Fact]
@@ -7760,6 +7913,32 @@ public sealed class StartPosReconstructionTests {
 
         public void SetValue(int value) {
             Value = value;
+        }
+    }
+
+    private sealed class OwnershipProvedEdgeRoot {
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+    }
+
+    private sealed class RuntimeStateHolderEntity : Entity {
+    }
+
+    private sealed class RuntimeStateHolderComponent : Component {
+        public RuntimeStateHolderComponent() : base(true, false) {
+        }
+
+        public HeldRuntimeState? State;
+    }
+
+    // Declares a method so it is not read as a passive data record. One of those
+    // reconstructs with no fresh-room evidence at all, so it would never reach the
+    // occurrence count these two edges compete for.
+    private sealed class HeldRuntimeState {
+        public int Value;
+
+        public void Advance() {
+            Value++;
         }
     }
 

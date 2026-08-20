@@ -3465,12 +3465,13 @@ internal sealed class AkronReconstructionGraph {
                 // Keeping the membership here was measured and it opens a wrong
                 // restore. IsAuthenticatedCoroutineStackIteratorAlias would license
                 // the node's Flattened.current alias, that becomes exactOwnerEdge,
-                // and RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps returns on
-                // its first clause - writing the reconstruction over a live
-                // iterator the document still keeps through another field, and
-                // reporting success. w50 and w51 have that room and its measurement
-                // on both builds; the room in the suite that fails without this line
-                // is ADeferredCompilerIteratorWhoseOwnerIsOnlyAnOwnedComponentIsRefusedBesideThatSibling,
+                // and an exactOwnerEdge is exempt from the displacement question -
+                // ValidateReferenceEdge returns before asking it - so the
+                // reconstruction is written over a live iterator the document still
+                // keeps through another field, and the restore reports success. w50
+                // and w51 have that room and its measurement on both builds; the room
+                // in the suite that fails without this line is
+                // ADeferredCompilerIteratorWhoseOwnerIsOnlyAnOwnedComponentIsRefusedBesideThatSibling,
                 // which loads on the membership alone.
                 authenticatedRuntimeStateNodes.Remove(node.Id);
             }
@@ -4055,14 +4056,44 @@ internal sealed class AkronReconstructionGraph {
                                   authenticatedDelegateCapturedFreshEdge ||
                                   authenticatedIteratorClosureOwnerEdge;
             if (HasListStorageIndex(structuralPath)) {
+                // An edge ownership has already proved does not draw on the occurrence
+                // count, so it may not spend from it either. This escape used to sit
+                // inside the exhausted branch below, which made an ownership-proved
+                // edge exempt from needing an occurrence but not from paying for one -
+                // and which of the two it did depended on whether an occurrence
+                // happened to be left when the document reached it.
+                //
+                // That decided the same room by document order alone. Two instances of
+                // one mod entity, each carrying a component that holds a runtime state
+                // object, where the reload built one of the two: one occurrence of that
+                // state type at
+                // entities._items[*].<Components>k__BackingField.components._items[*].State
+                // against the document's two edges. With the paired component first its
+                // edge spent the occurrence and the rebuilt one was refused; with the
+                // rebuilt one first it took the occurrence, the paired edge fell through
+                // this escape, and the room that came out was right in both halves -
+                // the paired component keeping its own live object and the other
+                // getting a rebuilt one. So the refusal was the wrong answer of the two.
+                // 010f660 refuses that room the same way, so this is not a defect of
+                // this branch.
+                //
+                // The other repair, charging the edge and refusing it when there is
+                // nothing to charge, was built and measured: it fails 32 rooms, because
+                // the alias rules exist precisely to admit edges the fresh room's count
+                // says nothing about. An edge that needs no occurrence cannot owe one.
+                //
+                // Nothing else moves. RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps
+                // already returned on its first clause for an ownership-proved edge, so
+                // no edge loses a check it used to get, and the exact-path branch below
+                // spends nothing and so was never order dependent.
+                if (exactOwnerEdge) {
+                    return;
+                }
                 string listPathKey = StructuralResourcePathKey(
                     targetType,
                     structuralPath,
                     wildcardListStorageIndices: true);
                 if (!freshListStructuralTypeCounts.TryGetValue(listPathKey, out int remaining) || remaining <= 0) {
-                    if (exactOwnerEdge) {
-                        return;
-                    }
                     throw new AkronReconstructionException(
                         target.Path,
                         "reconstructed reference edge is not authentic to the fresh room;type=" + targetType.FullName +
@@ -4118,10 +4149,22 @@ internal sealed class AkronReconstructionGraph {
                     edgeParentType,
                     edgeField,
                     exactOwnerEdge);
-                // Every edge spends, including one whose target the fresh room already
-                // holds. Exempting those was tried and reverted twice: it leaves the
-                // budget standing longer for everything, and the thing that then gets
-                // in is whatever carries no identity at all.
+                // Every edge the count admits spends, including one whose target the
+                // fresh room already holds. Exempting those was tried and reverted
+                // twice: it leaves the budget standing longer for everything, and the
+                // thing that then gets in is whatever carries no identity at all.
+                //
+                // The escape above is a different exemption, and it is not the smaller
+                // of the two - measured over the 749 list-path edges this suite's rooms
+                // produce, 613 are both ownership-proved and already in the room, 82 are
+                // ownership-proved reconstructions that the reverted exemption would
+                // still have charged, and 9 are already in the room with nothing proving
+                // the edge, which the escape above still charges. So the two overlap
+                // heavily and neither contains the other. What separates them is the
+                // fact each rests on. The reverted one said the target is already in the
+                // room, which is a fact about the object and says nothing about this
+                // edge. The escape above says this edge was admitted without consulting
+                // the count, so it has nothing to pay from.
                 //
                 // No test fails when this line is reverted any more, and that is worth
                 // saying rather than leaving to be discovered. The room that used to
