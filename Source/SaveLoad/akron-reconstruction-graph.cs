@@ -3181,8 +3181,42 @@ internal sealed class AkronReconstructionGraph {
                 // owner is a component of an entity further down the room -
                 // would otherwise be refused for a reason that says nothing
                 // about the saved state. Take it on trust here and re-run the
-                // identical predicate once every node is resolved: this defers
-                // the verdict, it does not weaken it.
+                // identical predicate once every node is resolved.
+                //
+                // This is NOT a pure deferral, and the older claim that it was
+                // has been measured false. Setting the flag here skips the
+                // structural block below, so a deferred node loses its other
+                // proof - that the fresh room supplies an object of its type at
+                // its structural path - and the owner question becomes the only
+                // one asked. Those are different tests and the owner test does
+                // not contain the structural one.
+                //
+                // For an iterator on a coroutine stack that costs nothing:
+                // Everest's Flattened holds one mid-flight frame three times, the
+                // build before this deferral charged each reference its own fresh
+                // occurrence, and no such document ever had three to give, so it
+                // was refused a step later at ValidateReferenceEdge anyway.
+                //
+                // For an iterator held ONCE it is a live regression. Monocle's
+                // Coroutine stores its constructor argument raw and only
+                // Coroutine.Update wraps it, so a coroutine that has not updated
+                // holds its iterator once and a single unspent occurrence admits
+                // it. Measured: three instances of one entity doing
+                // `Add(new Coroutine(tween.Wait())); Add(tween);`, two finished
+                // during play and one added during play, loads on 010f660 and is
+                // refused here. See
+                // ARawCoroutineIteratorSpareEvidenceIsRefusedHereAndLoadsOn010f660.
+                //
+                // Do not close that by letting the recorded structural verdict
+                // clear the deferred node. It was tried and measured: the node
+                // keeps authenticatedRuntimeStateNodes membership, so
+                // IsAuthenticatedCoroutineStackIteratorAlias licenses its
+                // Flattened.current alias, that becomes exactOwnerEdge, and
+                // RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps returns on its
+                // first clause - writing the reconstruction over a live iterator
+                // the document still keeps through another field, and reporting
+                // success. Neither 010f660 nor this build does that. w50 has the
+                // room and the three-way measurement.
                 authenticatedIteratorState = true;
                 deferredIteratorStateNodes.Add(node);
             }

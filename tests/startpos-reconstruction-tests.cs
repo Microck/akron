@@ -7892,6 +7892,231 @@ public sealed class StartPosReconstructionTests {
         Assert.Contains("Monocle.Sprite+<PlayUtil>d__40", restore.Error);
     }
 
+    // A deferred iterator whose owner resolves late and IS the sprite the reload
+    // built, with a sibling of the same entity type also mid-routine so the fresh
+    // occurrence at that path is already spoken for by the sibling's own paired
+    // nodes. Entity 31's animation runs on room entry, entity 32's is
+    // player-triggered, so the reload catches 31 mid-routine and never 32.
+    //
+    // This is here as a guard, not as evidence about the structural leg: the
+    // one-entity version of the same room already loads
+    // (RestoreAllowsACompilerIteratorReachedBeforeItsCapturedOwner), and what the
+    // sibling adds is that the occurrence is spent, so the rebuilt iterator's second
+    // and third references have nothing to draw on and coroutine-stack-iterator-alias
+    // is the only thing carrying them. That rule needs the node in
+    // authenticatedRuntimeStateNodes, which the deferral is what puts it in. A fix
+    // that handed a structurally-provable node to the structural route instead of
+    // deferring it would drop that membership and refuse this room; measured, that is
+    // what happens.
+    //
+    // 010f660 refuses this room, because it charges each of those three references
+    // its own fresh occurrence.
+    [Fact]
+    public void ADeferredCompilerIteratorLoadsBesideASiblingRunningTheSameRoutine() {
+        SpriteRoutineSceneRoot fresh = CreateSiblingSpriteRoutineScene(
+            cleanReload: true,
+            firstStillRunning: true,
+            secondSpriteIsMapPlaced: true);
+        Sprite freshSprite = (Sprite) GetComponentListContents(GetEntityListContents(fresh.Entities)[1])
+            .Single(component => component is Sprite);
+
+        AkronReconstructionRestore restore = RestoreSiblingSpriteRoutineScene(
+            firstStillRunning: true,
+            secondSpriteIsMapPlaced: true,
+            fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Coroutine coroutine = GetRuntimeField<Coroutine>(
+            (StateMachine) GetComponentListContents(GetEntityListContents(fresh.Entities)[1])
+                .Single(component => component is StateMachine),
+            "currentCoroutine");
+        IEnumerator[] frames = GetRuntimeField<Stack<IEnumerator>>(coroutine, "enumerators").ToArray();
+        Assert.Equal(2, frames.Length);
+        IEnumerator routine = GetRuntimeField<Stack<IEnumerator>>(frames[1], "enums").Single();
+        object current = GetRuntimeFieldInfo(routine.GetType(), "<>2__current").GetValue(routine)!;
+        Assert.Equal("Monocle.Sprite+<PlayUtil>d__40", current.GetType().FullName);
+        // The owner is the sprite the reload built, and all three references are one
+        // object - which is why one occurrence is enough for the room to be safe.
+        Assert.Same(freshSprite, GetRuntimeFieldInfo(current.GetType(), "<>4__this").GetValue(current));
+        Assert.Same(current, GetRuntimeFieldInfo(frames[1].GetType(), "current").GetValue(frames[1]));
+        Assert.Same(current, GetRuntimeField<Stack<IEnumerator>>(frames[0], "enums").Single());
+    }
+
+    // The same rooms with entity 32's sprite added by mod code during play, so a
+    // clean reload does not carry it and the rebuilt iterator's captured owner is a
+    // reconstruction - authentic as an owned component of the fresh entity, which is
+    // neither of the two things IsAuthenticatedCompilerIteratorOwner accepts.
+    //
+    // These two are the coroutine-stack half of the picture, and unlike the raw
+    // coroutine above they are NOT a regression: 010f660 refuses them too, on the
+    // reference edge rather than on the owner, because it charges each of the three
+    // references Everest's Flattened leaves for one mid-flight iterator and the room
+    // has at most one occurrence to give. They are here so the two halves sit next to
+    // each other, and so a future change that flips one of them has to say which.
+    //
+    // Both of the sibling's own states are covered because that is what decides
+    // whether the fresh occurrence is spent, and neither answer changes the verdict.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ADeferredCompilerIteratorWhoseOwnerIsOnlyAnOwnedComponentIsRefusedBesideThatSibling(
+        bool firstStillRunning
+    ) {
+        SpriteRoutineSceneRoot fresh = CreateSiblingSpriteRoutineScene(
+            cleanReload: true,
+            firstStillRunning,
+            secondSpriteIsMapPlaced: false);
+
+        AkronReconstructionRestore restore = RestoreSiblingSpriteRoutineScene(
+            firstStillRunning,
+            secondSpriteIsMapPlaced: false,
+            fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains(
+            "reconstructed compiler iterator owner is not authentic to the fresh room",
+            restore.Error);
+        Assert.Contains("Monocle.Sprite+<PlayUtil>d__40", restore.Error);
+        // Refused before any assignment, so entity 32 still carries only the
+        // component the map placed.
+        Assert.IsType<StateMachine>(
+            Assert.Single(GetComponentListContents(GetEntityListContents(fresh.Entities)[1])));
+    }
+
+    // A measured regression against 010f660, pinned here as it behaves today rather
+    // than as it should behave, because the fix for it is blocked. Read w50 before
+    // changing this test.
+    //
+    // Every other room in this file runs an iterator that Everest's Flattened holds
+    // three times, and three references need three unspent fresh occurrences, which
+    // is why 010f660 refuses those rooms whatever their structural path says. This
+    // room does not: Monocle.Coroutine stores its constructor argument raw and only
+    // Coroutine.Update ever wraps it, so a coroutine that has not updated holds its
+    // iterator exactly ONCE and a single occurrence admits it.
+    //
+    // Three instances of one entity doing
+    // `Add(new Coroutine(tween.Wait())); Add(tween);` - the Coroutine ahead of the
+    // Tween, so the document reaches the iterator before the owner it captured. Two
+    // finished during play and dropped the pair, so the reload supplies two
+    // occurrences of Monocle.Tween+<Wait>d__45 at that path that the saved frame does
+    // not spend. The third's pair was added during play, so it is a reconstruction
+    // whose owner is authentic only as an owned component of the fresh entity.
+    //
+    // 010f660 loads this room. This build refuses it, because taking the deferral in
+    // CreateAuthenticatedObject discards the structural proof that admitted it there.
+    // Letting the deferred verdict read that proof fixes this room and opens a wrong
+    // restore in another - measured, see w50 - so the refusal stands for now and this
+    // test says so out loud rather than leaving it to be rediscovered.
+    [Fact]
+    public void ARawCoroutineIteratorSpareEvidenceIsRefusedHereAndLoadsOn010f660() {
+        AkronReconstructionRestore restore = RestoreRawCoroutineIteratorScene(
+            siblingsThatFinished: 2,
+            out RawCoroutineSceneRoot fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains(
+            "reconstructed compiler iterator owner is not authentic to the fresh room",
+            restore.Error);
+        Assert.Contains("Monocle.Tween+<Wait>d__45", restore.Error);
+        // Refused before any assignment, so the entity the pair would have been
+        // rebuilt onto is still the empty one the reload built.
+        Assert.Empty(GetComponentListContents(GetEntityListContents(fresh.Entities)[2]));
+    }
+
+    // The same room with no sibling to supply the evidence, so the structural leg has
+    // nothing to read either. Recorded because it is the room the current refusal is
+    // right about, and because it is what stops the room above being read as "the
+    // graph refuses every raw coroutine iterator": the two differ only in whether the
+    // reload holds an unspent occurrence of that iterator at that path, and 010f660
+    // answers them differently while this build answers them the same.
+    [Fact]
+    public void ARawCoroutineIteratorWithNoFreshEvidenceIsStillRefused() {
+        AkronReconstructionRestore restore = RestoreRawCoroutineIteratorScene(
+            siblingsThatFinished: 0,
+            out RawCoroutineSceneRoot fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains(
+            "reconstructed compiler iterator owner is not authentic to the fresh room",
+            restore.Error);
+        Assert.Contains("Monocle.Tween+<Wait>d__45", restore.Error);
+        Assert.Empty(GetComponentListContents(Assert.Single(GetEntityListContents(fresh.Entities))));
+    }
+
+    private sealed class RawCoroutineSceneRoot {
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+    }
+
+    private sealed class TweenHolderEntity : Entity {
+    }
+
+    private static AkronReconstructionRestore RestoreRawCoroutineIteratorScene(
+        int siblingsThatFinished,
+        out RawCoroutineSceneRoot fresh
+    ) {
+        RawCoroutineSceneRoot saved = CreateRawCoroutineIteratorScene(siblingsThatFinished, cleanReload: false);
+        RawCoroutineSceneRoot baseline = CreateRawCoroutineIteratorScene(siblingsThatFinished, cleanReload: true);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        fresh = CreateRawCoroutineIteratorScene(siblingsThatFinished, cleanReload: true);
+        return graph.Restore(capture.Document, fresh);
+    }
+
+    // siblingsThatFinished instances whose Tween ran to completion during play and
+    // removed itself along with the Coroutine waiting on it, so the reload rebuilds
+    // the pair and the saved frame has none - which is what leaves their fresh
+    // occurrences unspent. Then one instance whose pair was added during play, so the
+    // reload has none and the saved frame has one.
+    private static RawCoroutineSceneRoot CreateRawCoroutineIteratorScene(
+        int siblingsThatFinished,
+        bool cleanReload
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        for (int sibling = 0; sibling < siblingsThatFinished; sibling++) {
+            AddTweenHolderEntity(scene, entityList, 31 + sibling, withPair: cleanReload);
+        }
+        AddTweenHolderEntity(scene, entityList, 31 + siblingsThatFinished, withPair: !cleanReload);
+        return new RawCoroutineSceneRoot { Scene = scene, Entities = entityList };
+    }
+
+    private static void AddTweenHolderEntity(
+        Scene scene,
+        EntityList entityList,
+        int sourceId,
+        bool withPair
+    ) {
+        TweenHolderEntity owner = CreateUninitializedEntity<TweenHolderEntity>();
+        ComponentList components = CreateDetachedComponentList(owner);
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", sourceId));
+
+        List<Component> ordered = new List<Component>();
+        if (withPair) {
+            Tween tween = (Tween) RuntimeHelpers.GetUninitializedObject(typeof(Tween));
+            SetRuntimeField(tween, "<Entity>k__BackingField", owner);
+            Coroutine coroutine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+            // Unlike a StateMachine's own coroutine this one was added with Add, so
+            // the game does give it an Entity.
+            SetRuntimeField(coroutine, "<Entity>k__BackingField", owner);
+            Stack<IEnumerator> frames = new Stack<IEnumerator>();
+            // What Coroutine(IEnumerator, bool) does, and all it does: push the
+            // argument raw. Nothing here updates the coroutine, which is the state
+            // every component of an inactive entity is in and the state every
+            // component installed by a bare UpdateLists is in, so the iterator is
+            // never wrapped in Flattened and the room holds it once.
+            frames.Push(tween.Wait());
+            SetRuntimeField(coroutine, "enumerators", frames);
+            ordered.Add(coroutine);
+            ordered.Add(tween);
+        }
+        SetRuntimeField(components, "components", ordered);
+        SetRuntimeField(components, "current", new HashSet<Component>(ordered));
+        AddDetachedEntity(entityList, owner);
+    }
+
     private static AkronReconstructionRestore RestoreRuntimeAddedSpriteRoutineScene(
         bool cleanReloadCarriesTheSprite,
         bool spriteFirst
@@ -7993,6 +8218,27 @@ public sealed class StartPosReconstructionTests {
         public EntityList Entities = null!;
     }
 
+    // How many Coroutine.Update calls a room has behind it, and it is not a detail.
+    // One update leaves the top stack frame the raw iterator the routine yielded;
+    // the second wraps that frame in Everest's Flattened, and every update after
+    // that leaves the shape alone. Measured against the real Coroutine and
+    // Flattened, not read off their source.
+    //
+    // A freshly loaded room gets one Level.Update before its baseline is captured
+    // (AkronModule.LevelOnUpdate holds every later update until the capture runs) and
+    // one from AkronModule.RunFreshRoomInitializationUpdate when a load rebuilds a
+    // room. One Level.Update is not the same as one update of every coroutine -
+    // Celeste skips ordinary entities while paused, frozen or transitioning, and
+    // neither call site clears those - so one is the ordinary unpaused case and zero
+    // is reachable. A saved frame can be at any count including zero and one, because
+    // the hotkey capture runs before the frame's own Level.Update.
+    //
+    // These two are the counts the sibling rooms below use: the reload at the
+    // ordinary one, and a saved frame whose animation has been running long enough to
+    // have settled.
+    private const int FreshRoomCoroutineUpdates = 1;
+    private const int SteadyCoroutineUpdates = 2;
+
     private sealed class SpriteStateMachineEntity : Entity {
         public Sprite Animation = null!;
 
@@ -8016,10 +8262,34 @@ public sealed class StartPosReconstructionTests {
     ) {
         Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
         EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        AddSpriteRoutineEntity(
+            scene,
+            entityList,
+            sourceId: 31,
+            includeIterator,
+            spriteFirst,
+            spriteType,
+            extra,
+            includeSprite);
+        return new SpriteRoutineSceneRoot { Scene = scene, Entities = entityList };
+    }
+
+    private static void AddSpriteRoutineEntity(
+        Scene scene,
+        EntityList entityList,
+        int sourceId,
+        bool includeIterator,
+        bool spriteFirst,
+        Type spriteType,
+        ExtraCoroutine extra = ExtraCoroutine.None,
+        bool includeSprite = true,
+        bool spriteIsAnimating = true,
+        int coroutineUpdates = SteadyCoroutineUpdates
+    ) {
         SpriteStateMachineEntity owner = CreateUninitializedEntity<SpriteStateMachineEntity>();
         ComponentList components = CreateDetachedComponentList(owner);
         SetRuntimeField(owner, "<Scene>k__BackingField", scene);
-        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 31));
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", sourceId));
 
         // includeSprite: false is the room whose sprite mod code added after the
         // level loaded, so a clean reload of that room does not carry it. The
@@ -8031,7 +8301,12 @@ public sealed class StartPosReconstructionTests {
             SetRuntimeField(sprite, "<Entity>k__BackingField", owner);
             // Sprite.PlayUtil is `while (Animating) yield return null`, so the
             // routine only stays mid-flight while the sprite reports it is playing.
-            SetRuntimeField(sprite, "<Animating>k__BackingField", true);
+            // spriteIsAnimating: false is a frame after that animation ended, once
+            // PlayUtil has returned and the state routine has run off its end and
+            // left the coroutine empty. That takes more than one update to unwind,
+            // which is why this only ever pairs with includeIterator: false rather
+            // than naming a particular frame.
+            SetRuntimeField(sprite, "<Animating>k__BackingField", spriteIsAnimating);
             owner.Animation = sprite;
         }
 
@@ -8046,21 +8321,26 @@ public sealed class StartPosReconstructionTests {
         Stack<IEnumerator> iterators = new Stack<IEnumerator>();
         SetRuntimeField(coroutine, "enumerators", iterators);
         SetRuntimeField(machine, "currentCoroutine", coroutine);
+        // An empty stack only ever gets there through Coroutine.Cancel or by
+        // draining, and both set Finished. A state machine whose state has no
+        // coroutine is cancelled by StateMachine, so this is the state every empty
+        // coroutine in these rooms is really in.
+        SetRuntimeField(coroutine, "<Finished>k__BackingField", !includeIterator);
         if (includeIterator) {
             // Build the stack the way the game does rather than by hand.
-            // StateMachine.State pushes the bare state routine through
-            // Coroutine.Replace, and Coroutine.Update is then the only thing
-            // that ever advances it: it wraps the bare iterator in Everest's
-            // Flattened, calls MoveNext on the Flattened, and pushes whatever
-            // the routine yielded. Two frames is the first moment the shape is
-            // steady, and it is the shape a StartPos set during the wake-up
-            // intro captures. Advancing the inner routine by hand instead
-            // leaves Flattened.current null, which is a shape the game never
-            // produces and which hides the alias edge this room exists to
-            // exercise.
-            iterators.Push(owner.StateRoutine());
-            coroutine.Update();
-            coroutine.Update();
+            // StateMachine.State installs the bare state routine through
+            // Coroutine.Replace, which is also what makes the coroutine Active -
+            // StateMachine.Update only advances an active one, so pushing onto
+            // the stack directly leaves a shape Monocle cannot reach. Update is
+            // then the only thing that advances it: it wraps the bare iterator in
+            // Everest's Flattened, calls MoveNext on the Flattened, and pushes
+            // whatever the routine yielded. Advancing the inner routine by hand
+            // instead leaves Flattened.current null, which is a shape the game
+            // never produces and which hides the alias edge these rooms exercise.
+            coroutine.Replace(owner.StateRoutine());
+            for (int update = 0; update < coroutineUpdates; update++) {
+                coroutine.Update();
+            }
         }
 
         List<Component> ordered = !includeSprite
@@ -8084,7 +8364,81 @@ public sealed class StartPosReconstructionTests {
         SetRuntimeField(components, "components", ordered);
         SetRuntimeField(components, "current", new HashSet<Component>(ordered));
         AddDetachedEntity(entityList, owner);
+    }
+
+    // Two instances of the same custom entity in one room, which is what makes the
+    // structural evidence below possible at all: the fresh occurrence index keys on
+    // the iterator's type and its path shape with list indices wildcarded, so one
+    // sibling running the routine is a record of that routine's iterator living at
+    // that path, whichever entity and component slot it sits in.
+    //
+    // Entity 31 is the ordinary one: the map places its sprite and its animation
+    // runs on room entry, so a clean reload always catches it mid-routine.
+    // firstStillRunning says whether it was still running when the player set the
+    // slot, which is the whole of what decides whether the fresh occurrence at that
+    // path is already spoken for by the saved frame.
+    //
+    // Entity 32 is the one being rebuilt. Its animation is player-triggered, so it
+    // runs in the saved frame and never in a clean reload, and its machine sits
+    // ahead of it in the component list so the document reaches the iterator before
+    // its captured owner. secondSpriteIsMapPlaced decides whether the reload still
+    // supplies that owner.
+    private static SpriteRoutineSceneRoot CreateSiblingSpriteRoutineScene(
+        bool cleanReload,
+        bool firstStillRunning,
+        bool secondSpriteIsMapPlaced
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        // A clean reload restarts entity 31's animation whatever the saved frame
+        // caught it doing, because LoadLevel plus the one initialization update is
+        // the whole of its history there. Both stacks are two frames deep, but the
+        // reload's top frame is the raw iterator the routine yielded while the
+        // saved one has it wrapped in Flattened. See FreshRoomCoroutineUpdates.
+        int firstUpdates = cleanReload
+            ? FreshRoomCoroutineUpdates
+            : firstStillRunning ? SteadyCoroutineUpdates : 0;
+        AddSpriteRoutineEntity(
+            scene,
+            entityList,
+            sourceId: 31,
+            includeIterator: firstUpdates > 0,
+            spriteFirst: true,
+            spriteType: typeof(Sprite),
+            spriteIsAnimating: firstUpdates > 0,
+            coroutineUpdates: firstUpdates);
+        AddSpriteRoutineEntity(
+            scene,
+            entityList,
+            sourceId: 32,
+            includeIterator: !cleanReload,
+            spriteFirst: false,
+            spriteType: typeof(Sprite),
+            includeSprite: !cleanReload || secondSpriteIsMapPlaced,
+            spriteIsAnimating: !cleanReload,
+            coroutineUpdates: cleanReload ? 0 : SteadyCoroutineUpdates);
         return new SpriteRoutineSceneRoot { Scene = scene, Entities = entityList };
+    }
+
+    // The fresh room is built by the caller so a test can record what the reload
+    // produced before the restore writes into it.
+    private static AkronReconstructionRestore RestoreSiblingSpriteRoutineScene(
+        bool firstStillRunning,
+        bool secondSpriteIsMapPlaced,
+        SpriteRoutineSceneRoot fresh
+    ) {
+        SpriteRoutineSceneRoot saved = CreateSiblingSpriteRoutineScene(
+            cleanReload: false,
+            firstStillRunning,
+            secondSpriteIsMapPlaced);
+        SpriteRoutineSceneRoot baseline = CreateSiblingSpriteRoutineScene(
+            cleanReload: true,
+            firstStillRunning,
+            secondSpriteIsMapPlaced);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        return graph.Restore(capture.Document, fresh);
     }
 
     // One callback object standing in two slots of the freshly loaded room.
