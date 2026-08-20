@@ -132,12 +132,17 @@ public static partial class AkronActions {
 
     // Puts the slot back the way it was before the Set that owns this record. A null reason
     // means the caller already reported the failure itself.
+    //
+    // previousSnapshotLost is only read when a reason is being reported: it says the move
+    // that would have put the slot's snapshot file back failed, so nothing restored below
+    // can be counted on to survive this session - everything it puts back is memory.
     private static void RestoreStartPosRollback(
         int fileSlot,
         int slot,
         AkronStartPos startPos,
         string stateSlotName,
-        string reason
+        string reason,
+        bool previousSnapshotLost = false
     ) {
         if (string.IsNullOrWhiteSpace(stateSlotName) ||
             !StartPosRollbacks.Remove(stateSlotName, out StartPosRollback rollback)) {
@@ -170,11 +175,29 @@ public static partial class AkronActions {
         if (reason == null) {
             return;
         }
-        string slotText = normalizedSlot.ToString(CultureInfo.InvariantCulture);
-        string message = "StartPos " + slotText + " was not replaced because " + reason +
-                         ". The previous StartPos " + slotText + " was kept.";
+        string message = DescribeFailedStartPosReplacement(normalizedSlot, reason, previousSnapshotLost);
         AkronLog.Warn(nameof(AkronActions), message);
         Engine.Scene?.Add(new AkronToast(message));
+    }
+
+    // What a failed Set over an occupied slot leaves on screen.
+    //
+    // The second sentence is the one the player acts on, so it has to describe the slot
+    // they are left with rather than the outcome this path was written for. The previous
+    // position, its warm clone and its metadata are back either way; what the lost case
+    // cannot promise is the saved room state behind them, which is the only part that
+    // survives leaving the map. It says so plainly rather than hedging: a re-set the
+    // player did not need costs one Set, and a slot they trusted costs the run.
+    //
+    // Split out from the toast because the toast needs a scene: the completion path that
+    // reaches it cannot run outside the game, and both sentences can be read back here.
+    internal static string DescribeFailedStartPosReplacement(int slot, string reason, bool previousSnapshotLost) {
+        string slotText = slot.ToString(CultureInfo.InvariantCulture);
+        return "StartPos " + slotText + " was not replaced because " + reason +
+               (previousSnapshotLost
+                   ? ". The previous StartPos " + slotText + " could not be put back either, so it works " +
+                     "until you leave this map and then has to be set again."
+                   : ". The previous StartPos " + slotText + " was kept.");
     }
 
     // Cancel invalidates the generation whose completion would otherwise run the rollback,
@@ -465,16 +488,21 @@ public static partial class AkronActions {
                 // without this method having to depend on that.
                 installedSnapshot?.Dispose();
             } finally {
-                // Every exit except the committed one leaves this slot without a restart
-                // copy. Rolling back from the finally rather than from each exit is what
-                // keeps a future exit path from reintroducing an unloadable pending
+                // Every exit except the committed one leaves this slot without the restart
+                // copy this Set was making; what it keeps is whatever it had before, put
+                // back above. Rolling back from the finally rather than from each exit is
+                // what keeps a future exit path from reintroducing an unloadable pending
                 // entry.
                 if (!committed) {
+                    // Read after Dispose, because Dispose is where the rollback of a
+                    // staged install that did land runs, and a rollback that could not
+                    // put the previous snapshot back changes what this slot is left with.
                     RollBackFailedStartPos(
                         fileSlot,
                         slot,
                         startPos,
-                        failureReason ?? "the restart copy did not finish");
+                        failureReason ?? "the restart copy did not finish",
+                        installedSnapshot?.PreviousSnapshotLost == true);
                 }
             }
         }
@@ -488,17 +516,23 @@ public static partial class AkronActions {
     //  - the slot held a StartPos: it keeps its previous metadata, warm clone, fresh-room
     //    baseline and snapshot, and stays loadable. The failed Set is the no-op.
     //  - the slot was empty: it ends up empty again, reported with the reason.
+    //
+    // previousSnapshotLost is the one exception to the first outcome, and it defaults to
+    // false because only a failure that staged a snapshot install can cause it: the
+    // install rolled back and its move to put the slot's snapshot file back failed, so
+    // the slot keeps everything but what it needs to load after this session.
     private static void RollBackFailedStartPos(
         int fileSlot,
         int slot,
         AkronStartPos startPos,
-        string reason
+        string reason,
+        bool previousSnapshotLost = false
     ) {
         string stateSlotName = startPos?.StateSlotName;
         if (!string.IsNullOrWhiteSpace(stateSlotName) &&
             StartPosRollbacks.TryGetValue(stateSlotName, out StartPosRollback rollback) &&
             rollback.HadCommittedState) {
-            RestoreStartPosRollback(fileSlot, slot, startPos, stateSlotName, reason);
+            RestoreStartPosRollback(fileSlot, slot, startPos, stateSlotName, reason, previousSnapshotLost);
             return;
         }
 

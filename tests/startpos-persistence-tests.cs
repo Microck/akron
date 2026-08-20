@@ -1737,6 +1737,153 @@ public sealed class StartPosPersistenceTests {
         }
     }
 
+    // An install that fails before it has moved the slot's previous snapshot aside must
+    // leave that snapshot where a load can still find it.
+    //
+    // The move that banks the previous file is the one most likely to fail: staging is
+    // under the system temp path and the destination is under Saves, so on any install
+    // where those are different volumes it is a copy of the whole snapshot and fails on
+    // a full temp volume with the source untouched. Forced here with a read-only staging
+    // directory, which is the same failure with no volume to fill - the move cannot
+    // create the backup, and the previous snapshot never leaves the destination.
+    //
+    // Off Windows only: making a directory unwritable there needs an ACL edit, and the
+    // branch under test is platform-neutral.
+    [Fact]
+    public void AFailedSnapshotInstallKeepsTheSnapshotTheSlotAlreadyHad() {
+        if (OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        string slotName = "Akron failed install " + Guid.NewGuid().ToString("N");
+        string stagingDirectory = Path.Combine(Path.GetTempPath(), "akron-failed-install-" + Guid.NewGuid().ToString("N"));
+        try {
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                slotName, "Map/A", "old-room", 1, MinimalDocument(), out string oldError), oldError);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                slotName, "Map/A", "new-room", 1, MinimalDocument(), out string newError, stagingDirectory), newError);
+            File.SetUnixFileMode(stagingDirectory, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+
+            using (AkronStartPosReconstruction.PreparedSnapshotInstall prepared =
+                   AkronStartPosReconstruction.PrepareSnapshotInstall(slotName, stagingDirectory)) {
+                Assert.False(prepared.Install(out string installError));
+                Assert.NotEmpty(installError);
+                // Nothing was banked, so there was nothing a rollback could fail to put
+                // back and the Set reports the slot as kept, which it is.
+                Assert.False(prepared.PreviousSnapshotLost);
+            }
+
+            Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
+                slotName, out AkronReconstructionDocument kept, out string keptError), keptError);
+            Assert.Equal("old-room", kept.Room);
+        } finally {
+            if (Directory.Exists(stagingDirectory)) {
+                File.SetUnixFileMode(
+                    stagingDirectory,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                Directory.Delete(stagingDirectory, recursive: true);
+            }
+            AkronStartPosReconstruction.DeleteSnapshot(slotName);
+        }
+    }
+
+    // A prepared install is one attempt, and a second one must be refused rather than
+    // run on the first attempt's record.
+    //
+    // The sequence this closes: a first attempt claims a free slot, its move-in fails, and
+    // its rollback deletes the claim. The record still says this object claimed the
+    // destination. A snapshot then arrives at that slot, a second attempt fails before it
+    // can bank it, and its rollback reads the stale claim and deletes a snapshot the
+    // object never created.
+    //
+    // Forced with a read-only staging directory, which fails the move-in of the first
+    // attempt (the staged file cannot be removed from a directory that cannot be written)
+    // and the banking move of the second. Off Windows only, where making a directory
+    // unwritable needs an ACL edit.
+    [Fact]
+    public void ASecondInstallAttemptIsRefusedRatherThanRunOnTheFirstOnesRecord() {
+        if (OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        string slotName = "Akron second attempt " + Guid.NewGuid().ToString("N");
+        string stagingDirectory = Path.Combine(Path.GetTempPath(), "akron-second-attempt-" + Guid.NewGuid().ToString("N"));
+        try {
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                slotName, "Map/A", "new-room", 1, MinimalDocument(), out string newError, stagingDirectory), newError);
+            File.SetUnixFileMode(stagingDirectory, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+
+            using (AkronStartPosReconstruction.PreparedSnapshotInstall prepared =
+                   AkronStartPosReconstruction.PrepareSnapshotInstall(slotName, stagingDirectory)) {
+                // The slot is empty, so this attempt claims the destination and then
+                // cannot move the staged file in. Its rollback removes the claim.
+                Assert.False(prepared.Install(out string firstError));
+                Assert.NotEmpty(firstError);
+                Assert.False(AkronStartPosReconstruction.HasSnapshot(slotName));
+
+                // A snapshot arrives in the slot between the two attempts.
+                Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                    slotName, "Map/A", "old-room", 1, MinimalDocument(), out string oldError), oldError);
+
+                Assert.False(prepared.Install(out string secondError));
+                Assert.Contains("already been attempted", secondError);
+            }
+
+            // The snapshot that arrived in between is still loadable: the second attempt
+            // never ran, so its rollback never acted on the first attempt's claim.
+            Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
+                slotName, out AkronReconstructionDocument kept, out string keptError), keptError);
+            Assert.Equal("old-room", kept.Room);
+        } finally {
+            if (Directory.Exists(stagingDirectory)) {
+                File.SetUnixFileMode(
+                    stagingDirectory,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                Directory.Delete(stagingDirectory, recursive: true);
+            }
+            AkronStartPosReconstruction.DeleteSnapshot(slotName);
+        }
+    }
+
+    // An install may only remove a destination it can prove it created.
+    //
+    // The install asks whether the slot already holds a snapshot by moving it aside and
+    // reading the failure, and "missing" is also what comes back for a query the
+    // filesystem could not complete: a folder in the path that has lost its search
+    // permission, an IO error, a Windows attribute read a scanner is holding off.
+    // Measured outside the suite, with the snapshot folder made unsearchable and then
+    // searchable again mid-install: taking that answer at face value ends with
+    // File.Delete removing a snapshot the install never touched, which is the loss this
+    // whole path exists to prevent. So the emptiness answer is proved with an exclusive
+    // create, and the rollback's delete is reached only through that proof.
+    //
+    // Asserted on the source because the divergence needs the filesystem to change
+    // between two statements inside Install, which no test can arrange from outside;
+    // what a test can hold is that the delete has no other route to it.
+    [Fact]
+    public void AnInstallOnlyRemovesADestinationItProvedItCreated() {
+        string source = File.ReadAllText(GetSourcePath("SaveLoad", "akron-reconstruction-graph.cs"));
+        int install = source.IndexOf("internal sealed class PreparedSnapshotInstall", StringComparison.Ordinal);
+        int end = source.IndexOf("private const string CompareInfoSortNameKeyPrefix", install, StringComparison.Ordinal);
+        Assert.True(install >= 0 && end > install);
+        string transaction = SourceSlice(source, install, end - install);
+
+        // The proof, and the only branch that may delete, gated on it.
+        Assert.Contains("new FileStream(destinationPath, FileMode.CreateNew", transaction);
+        Assert.Contains("destinationClaimed = true;", transaction);
+        Assert.Contains("} else if (destinationClaimed) {\n", transaction);
+        Assert.Equal(1, CountOccurrences(transaction, "File.Delete("));
+
+        // Neither the install nor the rollback may ask the filesystem what it did: those
+        // answers are the ones that cannot tell "nothing there" from "cannot say".
+        Assert.DoesNotContain("File.Exists(destinationPath)", transaction);
+        Assert.DoesNotContain("File.Exists(backupPath)", transaction);
+        // The one existence question left is about the staged file the caller wrote, and
+        // a wrong answer there refuses the install rather than removing anything.
+        Assert.Equal(1, CountOccurrences(transaction, "File.Exists("));
+        Assert.Contains("File.Exists(sourcePath)", transaction);
+    }
+
     // A rollback that cannot do its job says so and stops; it does not throw.
     //
     // Both of its callers are already carrying a failure. Install's catch block calls it
@@ -1759,19 +1906,22 @@ public sealed class StartPosPersistenceTests {
             Assert.True(AkronStartPosReconstruction.SaveSnapshot(
                 slotName, "Map/A", "new-room", 1, MinimalDocument(), out string newError, stagingDirectory), newError);
 
-            using (AkronStartPosReconstruction.PreparedSnapshotInstall prepared =
-                   AkronStartPosReconstruction.PrepareSnapshotInstall(slotName, stagingDirectory)) {
+            AkronStartPosReconstruction.PreparedSnapshotInstall prepared =
+                AkronStartPosReconstruction.PrepareSnapshotInstall(slotName, stagingDirectory);
+            using (prepared) {
                 Assert.True(prepared.Install(out string stagedError), stagedError);
                 File.Delete(installedPath);
                 Directory.CreateDirectory(installedPath);
             }
 
-            // Reaching here at all is the assertion: leaving the using un-committed runs
-            // the rollback, and its move onto a directory cannot succeed.
+            // Reaching here at all is the first assertion: leaving the using un-committed
+            // runs the rollback, and its move onto a directory cannot succeed.
             Assert.True(Directory.Exists(installedPath));
-            // The previous snapshot is still where the rollback left it rather than
-            // deleted on the way to a move that could not happen.
-            Assert.NotEmpty(Directory.GetFiles(stagingDirectory));
+            // The previous snapshot is in the staging directory, which the caller deletes
+            // as soon as the completion returns, so this rollback has cost the slot its
+            // restart copy. Saying so is what stops the failed Set from reporting that
+            // the previous StartPos was kept.
+            Assert.True(prepared.PreviousSnapshotLost);
         } finally {
             if (Directory.Exists(installedPath)) {
                 Directory.Delete(installedPath, recursive: true);
@@ -1781,6 +1931,37 @@ public sealed class StartPosPersistenceTests {
                 Directory.Delete(stagingDirectory, recursive: true);
             }
         }
+    }
+
+    // The other half of the rollback above: what the player is told. A Set whose install
+    // rolled back without putting the slot's snapshot file back leaves a slot that works
+    // from memory for the rest of the session and has nothing to load afterwards, so the
+    // sentence that says the previous StartPos was kept is the one thing it must not say.
+    [Fact]
+    public void AFailedSetSaysWhenThePreviousSnapshotCouldNotBePutBack() {
+        string kept = AkronActions.DescribeFailedStartPosReplacement(
+            2, "the restart copy failed", previousSnapshotLost: false);
+        string lost = AkronActions.DescribeFailedStartPosReplacement(
+            2, "the restart copy failed", previousSnapshotLost: true);
+
+        Assert.Equal(
+            "StartPos 2 was not replaced because the restart copy failed. " +
+            "The previous StartPos 2 was kept.",
+            kept);
+        Assert.Equal(
+            "StartPos 2 was not replaced because the restart copy failed. " +
+            "The previous StartPos 2 could not be put back either, so it works until you " +
+            "leave this map and then has to be set again.",
+            lost);
+
+        // Read from the install after its rollback has run, which is the only place the
+        // answer exists.
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int dispose = source.IndexOf("installedSnapshot?.Dispose();", StringComparison.Ordinal);
+        int read = source.IndexOf(
+            "installedSnapshot?.PreviousSnapshotLost == true", dispose, StringComparison.Ordinal);
+        Assert.True(dispose >= 0);
+        Assert.True(read > dispose);
     }
 
     [Fact]
@@ -3747,7 +3928,7 @@ public sealed class StartPosPersistenceTests {
         Assert.Contains("RestoreParkedRuntimeState", restorePath);
         Assert.Contains("RestoreParkedRuntimeFreshBaseline", restorePath);
         Assert.Contains("MarkStartPosCatalogChanged();", restorePath);
-        Assert.Contains("was not replaced because", restorePath);
+        Assert.Contains("DescribeFailedStartPosReplacement(normalizedSlot, reason, previousSnapshotLost)", restorePath);
 
         // Which outcome applies is read from what the slot held when the Set began.
         int begin = source.IndexOf("private static StartPosRollback BeginStartPosRollback", StringComparison.Ordinal);

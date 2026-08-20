@@ -8719,6 +8719,15 @@ internal static class AkronStartPosReconstruction {
         private readonly string sourcePath;
         private readonly string destinationPath;
         private readonly string backupPath;
+        // What this install did to the slot, recorded as it happens, because the rollback
+        // cannot read it back off the filesystem: a file at the destination with no backup
+        // beside it is both "this install put it there" and "this install never took the
+        // destination at all", and those two want opposite actions - remove it, or leave
+        // the player's snapshot exactly where it is.
+        private bool previousSnapshotBanked;
+        private bool destinationClaimed;
+
+        private bool attempted;
         private bool installed;
         private bool committed;
 
@@ -8728,22 +8737,80 @@ internal static class AkronStartPosReconstruction {
             backupPath = Path.Combine(stagingDirectory, "replaced-" + Guid.NewGuid().ToString("N"));
         }
 
+        // True once the move that puts the slot's previous snapshot back has failed. What
+        // that leaves cannot be assumed to be a loadable slot: the copy of the snapshot is
+        // in the staging directory, which AkronStartPosPersistence.Update deletes as soon
+        // as the completion returns, so the failed Set says the slot has to be set again
+        // rather than reporting that the previous StartPos was kept.
+        //
+        // One outcome reports here and is not a loss: a cross-volume move is a copy
+        // followed by a delete of its source, so a copy that landed and a delete that then
+        // failed throws with the slot's snapshot back in place. That direction is the one
+        // to err in - a re-set the player did not need costs a Set, while silence about a
+        // slot that is gone costs the slot.
+        public bool PreviousSnapshotLost { get; private set; }
+
+        // One attempt per prepared install, refused rather than retried. The two facts
+        // recorded above describe one attempt, and the rollback of that attempt has already
+        // acted on them: a claim this object made and then removed would otherwise license
+        // a second attempt's rollback to delete whatever had arrived at the destination
+        // since. A caller that wants another go prepares another install.
         public bool Install(out string error) {
             error = string.Empty;
-            if (installed) {
-                error = "staged snapshot is already installed";
+            if (attempted) {
+                error = "staged snapshot install has already been attempted";
                 return false;
             }
+            attempted = true;
             try {
                 if (!File.Exists(sourcePath)) {
                     error = "staged snapshot file is missing";
                     return false;
                 }
                 Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
-                if (File.Exists(destinationPath)) {
+                try {
                     File.Move(destinationPath, backupPath);
+                    previousSnapshotBanked = true;
+                } catch (FileNotFoundException) {
+                    // "Nothing to bank" is not something to take on trust. This exception
+                    // and File.Exists come from the same query, which answers "missing"
+                    // for a directory in the way and for a query it could not complete -
+                    // a folder in the path that has lost its search permission, an IO
+                    // error, a Windows attribute read something is holding off - so a
+                    // slot that does hold a snapshot can land here. Measured: with the
+                    // snapshot folder made unsearchable, this move reports
+                    // FileNotFoundException for a file that is there.
+                    //
+                    // The exclusive create is the proof, and the only airtight one on
+                    // offer: it can only succeed on a free name, so the slot really was
+                    // empty and the file the rollback may delete is the one this install
+                    // created. A slot that turns out to be occupied fails it, and the
+                    // install is refused with nothing moved and nothing removed.
+                    //
+                    // The cost is a zero-byte file at the slot's path until the move below
+                    // replaces it, and two things can see it. The prewarm reader, if it
+                    // opens the path in that window, reads nothing usable and counts the
+                    // slot as one it could not read in a Diagnostic log line; it caches
+                    // nothing, because a zero-byte file fails its size check, and it cannot
+                    // wedge the move or the delete either, because it opens snapshots with
+                    // FileShare.Delete for that reason (see PrewarmSnapshot). A program
+                    // outside this process can wedge both, on Windows, and leave the slot
+                    // reporting a snapshot it cannot read. Neither is created by the claim:
+                    // a cross-volume install with no claim in it publishes a growing
+                    // partial file at the same path for as long as the copy takes, which
+                    // reads as unreadable and wedges the same delete. What the claim buys
+                    // is that the delete below can never take a file this install did not
+                    // create, short of an outside writer replacing it inside those two
+                    // statements.
+                    using (new FileStream(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+                    destinationClaimed = true;
                 }
-                File.Move(sourcePath, destinationPath);
+                // The overwrite has this install's own claim to overwrite and nothing
+                // else: the other way here banked what the slot held and left the name
+                // free. Nothing outside this process is expected at that path, and a
+                // writer that does appear there is not something a move could refuse
+                // usefully.
+                File.Move(sourcePath, destinationPath, overwrite: true);
                 installed = true;
                 // The destination just gained a file. Drop any cached "missing" answer
                 // so the slot becomes visible in the StartPos list on the next query.
@@ -8770,29 +8837,44 @@ internal static class AkronStartPosReconstruction {
         // propagating one. A throw from here would replace that failure with this one or
         // lose it entirely, so the catch is total by design rather than filtered.
         //
-        // The move overwrites instead of being preceded by a delete. Deleting first left
-        // a window with no snapshot in the slot at all, and the copy that was going to
-        // fill it lives in the staging directory AkronStartPosPersistence.Update deletes
-        // unconditionally - so a move that failed after the delete lost the slot's last
-        // good snapshot rather than keeping it.
+        // Which branch runs is decided by what Install recorded doing, never by what is
+        // on disk now, because the two states that matter look identical from outside.
+        //
+        // The move back overwrites instead of being preceded by a delete. Deleting first
+        // left a window with no snapshot in the slot at all, and the copy that was going
+        // to fill it lives in the staging directory AkronStartPosPersistence.Update
+        // deletes unconditionally - so a move that failed after the delete lost the
+        // slot's last good snapshot rather than keeping it.
         private void RollBack() {
             try {
-                if (File.Exists(backupPath)) {
+                if (previousSnapshotBanked) {
+                    // Overwrites whatever this install left at the destination: the staged
+                    // file it moved in, or a part-copied one from a cross-volume move that
+                    // failed on the way there.
                     File.Move(backupPath, destinationPath, overwrite: true);
-                } else if (File.Exists(destinationPath)) {
-                    // No backup means the destination held nothing before this install, so
-                    // whatever is there now is what this install moved in.
+                } else if (destinationClaimed) {
+                    // The slot was proved free and this install is what put a file at
+                    // the destination, whole, half-copied or still the zero-byte claim,
+                    // so removing it takes nothing of the player's.
                     File.Delete(destinationPath);
                 }
+                // Neither flag: the install never took the destination, and a failed move
+                // leaves its source alone, so the slot still holds the file it held
+                // before this install started. Nothing to put back, and nothing here
+                // that this install can prove it created.
             } catch (Exception exception) {
+                if (previousSnapshotBanked) {
+                    PreviousSnapshotLost = true;
+                }
                 Logger.Log(LogLevel.Warn, nameof(AkronStartPosReconstruction),
                     "Could not roll back the StartPos snapshot install for " + destinationPath + ": " + exception.Message);
             } finally {
                 // Cleared even when the rollback failed, so Dispose does not retry a move
                 // that has already been reported.
                 installed = false;
-                // Rollback can leave the destination present or absent depending on whether
-                // a backup existed, so re-stat on the next query rather than guessing.
+                // Rollback can leave the destination present or absent depending on which
+                // branch ran and whether it worked, so re-stat on the next query rather
+                // than guessing.
                 InvalidateSnapshotExistence(destinationPath);
             }
         }
