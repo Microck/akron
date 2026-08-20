@@ -2718,8 +2718,12 @@ internal sealed class AkronReconstructionGraph {
         private readonly HashSet<int> authenticatedDelegateTargetNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedIteratorClosureNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedScreenWipeNodes = new HashSet<int>();
-        private readonly List<AkronReconstructionNode> deferredIteratorStateNodes =
-            new List<AkronReconstructionNode>();
+        // Iterator nodes whose captured owner had not resolved yet, with what the
+        // rest of CreateAuthenticatedObject was able to prove about each one
+        // without that owner. VerifyDeferredIteratorStates needs both.
+        private readonly List<(AkronReconstructionNode Node, bool AuthenticWithoutTheOwnerProof)>
+            deferredIteratorStateNodes =
+                new List<(AkronReconstructionNode Node, bool AuthenticWithoutTheOwnerProof)>();
         private readonly List<object> createdPersistentResources = new List<object>();
         private readonly List<object> replacedPersistentResources = new List<object>();
         private readonly HashSet<EventInstance> displacedEventInstances = new HashSet<EventInstance>();
@@ -3172,54 +3176,42 @@ internal sealed class AkronReconstructionGraph {
         }
 
         private object CreateAuthenticatedObject(AkronReconstructionNode node, Type type) {
-            bool authenticatedIteratorState = IsAuthenticatedCompilerIteratorState(node, type);
-            if (!authenticatedIteratorState && HasUnresolvedCompilerIteratorOwner(node, type)) {
-                // A compiler iterator proves itself through its captured
-                // <>4__this owner, and nodes resolve in document order. An
-                // iterator whose owner is reached later in the document - the
-                // owner's own first path runs through this iterator, or the
-                // owner is a component of an entity further down the room -
-                // would otherwise be refused for a reason that says nothing
-                // about the saved state. Take it on trust here and re-run the
-                // identical predicate once every node is resolved.
-                //
-                // This is NOT a pure deferral, and the older claim that it was
-                // has been measured false. Setting the flag here skips the
-                // structural block below, so a deferred node loses its other
-                // proof - that the fresh room supplies an object of its type at
-                // its structural path - and the owner question becomes the only
-                // one asked. Those are different tests and the owner test does
-                // not contain the structural one.
-                //
-                // For an iterator on a coroutine stack that costs nothing:
-                // Everest's Flattened holds one mid-flight frame three times, the
-                // build before this deferral charged each reference its own fresh
-                // occurrence, and no such document ever had three to give, so it
-                // was refused a step later at ValidateReferenceEdge anyway.
-                //
-                // For an iterator held ONCE it is a live regression. Monocle's
-                // Coroutine stores its constructor argument raw and only
-                // Coroutine.Update wraps it, so a coroutine that has not updated
-                // holds its iterator once and a single unspent occurrence admits
-                // it. Measured: three instances of one entity doing
-                // `Add(new Coroutine(tween.Wait())); Add(tween);`, two finished
-                // during play and one added during play, loads on 010f660 and is
-                // refused here. See
-                // ARawCoroutineIteratorSpareEvidenceIsRefusedHereAndLoadsOn010f660.
-                //
-                // Do not close that by letting the recorded structural verdict
-                // clear the deferred node. It was tried and measured: the node
-                // keeps authenticatedRuntimeStateNodes membership, so
-                // IsAuthenticatedCoroutineStackIteratorAlias licenses its
-                // Flattened.current alias, that becomes exactOwnerEdge, and
-                // RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps returns on its
-                // first clause - writing the reconstruction over a live iterator
-                // the document still keeps through another field, and reporting
-                // success. Neither 010f660 nor this build does that. w50 has the
-                // room and the three-way measurement.
-                authenticatedIteratorState = true;
-                deferredIteratorStateNodes.Add(node);
-            }
+            // A compiler iterator proves itself through its captured <>4__this
+            // owner, and nodes resolve in document order. An iterator whose owner
+            // is reached later in the document - the owner's own first path runs
+            // through this iterator, or the owner is a component of an entity
+            // further down the room - cannot be asked that question yet, so it
+            // carries the question to the end of the run instead of being refused
+            // for a reason that says nothing about the saved state.
+            //
+            // Two independent proofs, and keeping them apart is what this method
+            // is careful about. The owner proof is the identity-bearing one: it
+            // says this iterator is the routine of an object the fresh room
+            // supplied, and it is the only thing that may put a node in
+            // authenticatedRuntimeStateNodes, because every rule that reads that
+            // set rests on it and on nothing else - the coroutine-stack alias,
+            // the iterator-owned-component alias, the <>4__this owner edge, the
+            // closure-local rule below, and reconstructedSafeParentEdge on either
+            // side of an edge. The structural proof below is the ordinary licence
+            // every reconstruction gets - the fresh room supplies an object of
+            // this type at this path - and it authenticates the object without
+            // saying whose routine it is.
+            //
+            // So a deferred node is still asked the structural question here, and
+            // its answer is carried to VerifyDeferredIteratorStates. Skipping it
+            // was a measured regression: a coroutine that has never updated holds
+            // its iterator exactly once, because Monocle.Coroutine stores its
+            // constructor argument raw and only Coroutine.Update wraps it in
+            // Everest's Flattened, so one unspent fresh occurrence admits the
+            // whole room and the deferral was throwing that proof away. Measured:
+            // three instances of one entity doing
+            // `Add(new Coroutine(tween.Wait())); Add(tween);`, two finished during
+            // play and one added during play, loaded on 010f660 and was refused
+            // when the deferral discarded the structural proof. See
+            // ARawCoroutineIteratorLoadsOnItsOwnStructuralEvidence.
+            bool provedIteratorState = IsAuthenticatedCompilerIteratorState(node, type);
+            bool deferredIteratorState =
+                !provedIteratorState && HasUnresolvedCompilerIteratorOwner(node, type);
             bool authenticatedRuntimeEntity =
                 IsAuthenticatedBuiltInRuntimeEntity(node, type) ||
                 IsAuthenticatedGeneratedRuntimeEntity(node, type);
@@ -3232,7 +3224,19 @@ internal sealed class AkronReconstructionGraph {
             bool authenticatedDelegateTarget = IsStructurallyAuthenticDelegateTarget(node, type);
             bool authenticatedIteratorClosure = IsAuthenticatedIteratorClosure(node, type);
             bool authenticatedScreenWipe = IsAuthenticatedBuiltInScreenWipe(node, type);
-            if (authenticatedIteratorState) {
+            // A deferred node's membership is provisional: the owner proof is the
+            // only thing that grants it and that proof is not in yet, so
+            // VerifyDeferredIteratorStates confirms it or withdraws it before
+            // ValidateReferenceAuthenticity, where every reader but one sits. The
+            // exception is the reader inside this same loop,
+            // IsAuthenticatedIteratorClosure, asked of the compiler closure this
+            // iterator hoisted - a <>8__ field of it, so a node reached later in
+            // the same document. Granting the membership here rather than at the
+            // verify keeps that verdict what it is today, and it cannot carry the
+            // withdrawal's weight: what closure-local membership licenses is one
+            // <>4__this edge whose edge parent is a reconstruction and never a
+            // fresh node, so it cannot reach the displacement guard.
+            if (provedIteratorState || deferredIteratorState) {
                 authenticatedRuntimeStateNodes.Add(node.Id);
             }
             if (authenticatedRuntimeEntity) {
@@ -3253,12 +3257,17 @@ internal sealed class AkronReconstructionGraph {
             if (authenticatedScreenWipe) {
                 authenticatedScreenWipeNodes.Add(node.Id);
             }
-            if (!IsExplicitlySafeReconstructionType(type) &&
-                !authenticatedIteratorState &&
-                !authenticatedRuntimeEntity &&
-                !authenticatedOwnedNestedState &&
-                !authenticatedOwnedComponent &&
-                !authenticatedScreenWipe) {
+            // Everything that authenticates this reconstruction without appealing
+            // to a compiler iterator's owner. A deferred node computes it too and
+            // hands it to VerifyDeferredIteratorStates, which is why the throw is
+            // guarded rather than the whole block.
+            bool authenticWithoutTheOwnerProof =
+                IsExplicitlySafeReconstructionType(type) ||
+                authenticatedRuntimeEntity ||
+                authenticatedOwnedNestedState ||
+                authenticatedOwnedComponent ||
+                authenticatedScreenWipe;
+            if (!authenticWithoutTheOwnerProof && !provedIteratorState) {
                 List<AkronReconstructionPathStep> structuralPath = GetDocumentStructuralPath(node);
                 string typePathKey = StructuralResourcePathKey(type, structuralPath);
                 string listTypePathKey = StructuralResourcePathKey(
@@ -3268,9 +3277,28 @@ internal sealed class AkronReconstructionGraph {
                 bool listTypeIsAvailable = HasListStorageIndex(structuralPath) &&
                                            freshListStructuralTypeCounts.ContainsKey(listTypePathKey);
                 bool exactTypeIsAvailable = freshStructuralTypes.Contains(typePathKey);
-                if ((structuralPath.Count == 0 || !exactTypeIsAvailable && !listTypeIsAvailable) &&
-                    !IsAuthenticatedByExactParentSlot(node, type) &&
-                    !authenticatedDelegateTarget) {
+                // IsAuthenticatedByExactParentSlot stays behind the path evidence,
+                // the way the negated form it replaces left it: it resolves the
+                // parent field and throws when the build no longer declares it, so
+                // asking it when the path already answers would turn a loadable
+                // room into a refusal about a field nothing needed.
+                //
+                // And a deferred node does not ask it at all. That throw is exactly
+                // the refusal the deferral exists to avoid - a mod update that drops
+                // the field an iterator was held in would answer "field is
+                // unavailable", with no type on it for the report to name the mod
+                // with, in place of the owner refusal that says what is actually
+                // wrong with the document. The owner question is the better question
+                // for this node and it is about to be asked. Nothing is lost by not
+                // asking: for an array parent this predicate reads the same fresh
+                // slot the exact path key already covers, and for a field parent it
+                // wants a field declared as the iterator's own compiler-generated
+                // type, which no source can write.
+                authenticWithoutTheOwnerProof =
+                    (structuralPath.Count > 0 && (exactTypeIsAvailable || listTypeIsAvailable)) ||
+                    (!deferredIteratorState && IsAuthenticatedByExactParentSlot(node, type)) ||
+                    authenticatedDelegateTarget;
+                if (!authenticWithoutTheOwnerProof && !deferredIteratorState) {
                     throw new AkronReconstructionException(
                         node.Path,
                         "reconstructed type is not authentic to the fresh room;type=" + type.FullName +
@@ -3280,6 +3308,9 @@ internal sealed class AkronReconstructionGraph {
                         ";list-match=" + listTypeIsAvailable.ToString().ToLowerInvariant(),
                         node.TypeName);
                 }
+            }
+            if (deferredIteratorState) {
+                deferredIteratorStateNodes.Add((node, authenticWithoutTheOwnerProof));
             }
             if (node.Kind == ArrayKind) {
                 return CreateArray(type, node, node.Path);
@@ -3401,17 +3432,47 @@ internal sealed class AkronReconstructionGraph {
                    type.DeclaringType != null;
         }
 
+        // The deferred owner question, asked once every node is resolved. Runs
+        // before ValidateReferenceAuthenticity, so every rule that reads
+        // authenticatedRuntimeStateNodes there sees the settled answer.
         private void VerifyDeferredIteratorStates() {
-            foreach (AkronReconstructionNode node in deferredIteratorStateNodes) {
+            foreach ((AkronReconstructionNode node, bool authenticWithoutTheOwnerProof)
+                     in deferredIteratorStateNodes) {
                 Type type = ResolveType(node.TypeName, node.Path);
                 if (IsAuthenticatedCompilerIteratorState(node, type)) {
                     continue;
                 }
-                throw new AkronReconstructionException(
-                    node.Path,
-                    "reconstructed compiler iterator owner is not authentic to the fresh room;type=" +
-                    type.FullName,
-                    node.TypeName);
+                if (!authenticWithoutTheOwnerProof) {
+                    throw new AkronReconstructionException(
+                        node.Path,
+                        "reconstructed compiler iterator owner is not authentic to the fresh room;type=" +
+                        type.FullName,
+                        node.TypeName);
+                }
+                // The owner is not authentic and something else admits the object
+                // anyway, which is the licence every other reconstruction in the
+                // room is holding. So the object stands and the iterator licence
+                // goes: withdraw the provisional membership, and every reference to
+                // this node has to earn its own edge the way an ordinary
+                // reconstruction's references do.
+                //
+                // For a compiler iterator that something else is always the
+                // structural evidence. The owned-nested-state and owned-component
+                // licences cannot reach one: both reject IDisposable types, and
+                // every C# iterator state machine implements IDisposable - measured
+                // against the real assemblies, Monocle.Tween+<Wait>d__45 included.
+                //
+                // Keeping the membership here was measured and it opens a wrong
+                // restore. IsAuthenticatedCoroutineStackIteratorAlias would license
+                // the node's Flattened.current alias, that becomes exactOwnerEdge,
+                // and RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps returns on
+                // its first clause - writing the reconstruction over a live
+                // iterator the document still keeps through another field, and
+                // reporting success. w50 and w51 have that room and its measurement
+                // on both builds; the room in the suite that fails without this line
+                // is ADeferredCompilerIteratorWhoseOwnerIsOnlyAnOwnedComponentIsRefusedBesideThatSibling,
+                // which loads on the membership alone.
+                authenticatedRuntimeStateNodes.Remove(node.Id);
             }
         }
 

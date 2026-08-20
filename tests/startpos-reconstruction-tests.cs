@@ -7904,10 +7904,16 @@ public sealed class StartPosReconstructionTests {
     // sibling adds is that the occurrence is spent, so the rebuilt iterator's second
     // and third references have nothing to draw on and coroutine-stack-iterator-alias
     // is the only thing carrying them. That rule needs the node in
-    // authenticatedRuntimeStateNodes, which the deferral is what puts it in. A fix
-    // that handed a structurally-provable node to the structural route instead of
-    // deferring it would drop that membership and refuse this room; measured, that is
-    // what happens.
+    // authenticatedRuntimeStateNodes, and here the owner proof is what earns it: the
+    // owner resolves late and is the sprite the reload built, so
+    // VerifyDeferredIteratorStates confirms the provisional membership rather than
+    // withdrawing it.
+    //
+    // This room is also the price of the other shape considered for the raw-coroutine
+    // regression - not deferring a node the structural test already cleared. That
+    // shape closes the regression too, but this room's structural test does clear the
+    // node, so the node would never be deferred, would never earn the membership, and
+    // the room would refuse. Measured with both shapes; w51 has the table.
     //
     // 010f660 refuses this room, because it charges each of those three references
     // its own fresh occurrence.
@@ -7948,14 +7954,24 @@ public sealed class StartPosReconstructionTests {
     // neither of the two things IsAuthenticatedCompilerIteratorOwner accepts.
     //
     // These two are the coroutine-stack half of the picture, and unlike the raw
-    // coroutine above they are NOT a regression: 010f660 refuses them too, on the
-    // reference edge rather than on the owner, because it charges each of the three
+    // coroutine above they are NOT a regression: 010f660 refuses them too, and for
+    // the same reason this build now does, because it charges each of the three
     // references Everest's Flattened leaves for one mid-flight iterator and the room
-    // has at most one occurrence to give. They are here so the two halves sit next to
-    // each other, and so a future change that flips one of them has to say which.
+    // has at most one occurrence to give.
+    //
+    // What these two pin is the withdrawal in VerifyDeferredIteratorStates. The
+    // iterator's own structural licence is there - the sibling supplies an occurrence
+    // at that path - so the node is admitted and only the iterator licence is
+    // refused. coroutine-stack-iterator-alias=false in the message is that
+    // withdrawal: keep the membership instead and this room loads, because the alias
+    // rule carries the second and third references and nothing else is asked. That is
+    // the widening w50 measured into a wrong restore, so the assertion is on the
+    // reason and not only on the refusal.
     //
     // Both of the sibling's own states are covered because that is what decides
-    // whether the fresh occurrence is spent, and neither answer changes the verdict.
+    // whether the fresh occurrence is spent, and neither answer changes the verdict -
+    // only which of the three references runs out first, which is why the edge in the
+    // message is not asserted.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -7974,18 +7990,20 @@ public sealed class StartPosReconstructionTests {
 
         Assert.False(restore.Success);
         Assert.Contains(
-            "reconstructed compiler iterator owner is not authentic to the fresh room",
+            "reconstructed reference edge is not authentic to the fresh room",
             restore.Error);
         Assert.Contains("Monocle.Sprite+<PlayUtil>d__40", restore.Error);
+        Assert.Contains("coroutine-stack-iterator-alias=false", restore.Error);
         // Refused before any assignment, so entity 32 still carries only the
         // component the map placed.
         Assert.IsType<StateMachine>(
             Assert.Single(GetComponentListContents(GetEntityListContents(fresh.Entities)[1])));
     }
 
-    // A measured regression against 010f660, pinned here as it behaves today rather
-    // than as it should behave, because the fix for it is blocked. Read w50 before
-    // changing this test.
+    // The room the deferral used to refuse and 010f660 loads, and the reason
+    // CreateAuthenticatedObject asks a deferred node the structural question
+    // instead of skipping it. Both verdicts were measured with this fixture text
+    // compiled against both builds; w51 has the table.
     //
     // Every other room in this file runs an iterator that Everest's Flattened holds
     // three times, and three references need three unspent fresh occurrences, which
@@ -8000,35 +8018,43 @@ public sealed class StartPosReconstructionTests {
     // finished during play and dropped the pair, so the reload supplies two
     // occurrences of Monocle.Tween+<Wait>d__45 at that path that the saved frame does
     // not spend. The third's pair was added during play, so it is a reconstruction
-    // whose owner is authentic only as an owned component of the fresh entity.
-    //
-    // 010f660 loads this room. This build refuses it, because taking the deferral in
-    // CreateAuthenticatedObject discards the structural proof that admitted it there.
-    // Letting the deferred verdict read that proof fixes this room and opens a wrong
-    // restore in another - measured, see w50 - so the refusal stands for now and this
-    // test says so out loud rather than leaving it to be rediscovered.
+    // whose owner is authentic only as an owned component of the fresh entity - which
+    // is neither of the two things IsAuthenticatedCompilerIteratorOwner accepts, so
+    // the owner proof answers no and the structural proof is the whole licence.
     [Fact]
-    public void ARawCoroutineIteratorSpareEvidenceIsRefusedHereAndLoadsOn010f660() {
+    public void ARawCoroutineIteratorLoadsOnItsOwnStructuralEvidence() {
         AkronReconstructionRestore restore = RestoreRawCoroutineIteratorScene(
             siblingsThatFinished: 2,
             out RawCoroutineSceneRoot fresh);
 
-        Assert.False(restore.Success);
-        Assert.Contains(
-            "reconstructed compiler iterator owner is not authentic to the fresh room",
-            restore.Error);
-        Assert.Contains("Monocle.Tween+<Wait>d__45", restore.Error);
-        // Refused before any assignment, so the entity the pair would have been
-        // rebuilt onto is still the empty one the reload built.
-        Assert.Empty(GetComponentListContents(GetEntityListContents(fresh.Entities)[2]));
+        Assert.True(restore.Success, restore.Error);
+        List<Entity> entities = GetEntityListContents(fresh.Entities);
+        List<Component> rebuilt = GetComponentListContents(entities[2]);
+        Coroutine coroutine = (Coroutine) rebuilt.Single(component => component is Coroutine);
+        Tween tween = (Tween) rebuilt.Single(component => component is Tween);
+        // One frame, because nothing has updated this coroutine - the shape the whole
+        // room turns on. Its owner has to be this entity's own rebuilt Tween rather
+        // than a sibling's, or the room would be running one entity's wait on
+        // another's timer.
+        IEnumerator[] frames = GetRuntimeField<Stack<IEnumerator>>(coroutine, "enumerators").ToArray();
+        IEnumerator wait = Assert.Single(frames);
+        Assert.Equal("Monocle.Tween+<Wait>d__45", wait.GetType().FullName);
+        Assert.Same(tween, GetRuntimeFieldInfo(wait.GetType(), "<>4__this").GetValue(wait));
+        Assert.Same(entities[2], tween.Entity);
+        // The siblings' pairs finished during play, so the saved frame holds no node
+        // for them and emptying those two entities is the correct outcome rather than
+        // a dropped object. Their occurrences are what admitted the rebuild above.
+        Assert.Empty(GetComponentListContents(entities[0]));
+        Assert.Empty(GetComponentListContents(entities[1]));
     }
 
     // The same room with no sibling to supply the evidence, so the structural leg has
-    // nothing to read either. Recorded because it is the room the current refusal is
-    // right about, and because it is what stops the room above being read as "the
-    // graph refuses every raw coroutine iterator": the two differ only in whether the
-    // reload holds an unspent occurrence of that iterator at that path, and 010f660
-    // answers them differently while this build answers them the same.
+    // nothing to read either and the owner question is the only one left. Recorded
+    // because it is what stops the room above being read as "the graph loads every raw
+    // coroutine iterator": the two differ only in whether the reload holds an unspent
+    // occurrence of that iterator at that path, and both this build and 010f660 answer
+    // them differently on exactly that. Only the sentence differs between the builds -
+    // 010f660 refuses this one on the structural rule, because it never defers.
     [Fact]
     public void ARawCoroutineIteratorWithNoFreshEvidenceIsStillRefused() {
         AkronReconstructionRestore restore = RestoreRawCoroutineIteratorScene(
@@ -8069,6 +8095,12 @@ public sealed class StartPosReconstructionTests {
     // the pair and the saved frame has none - which is what leaves their fresh
     // occurrences unspent. Then one instance whose pair was added during play, so the
     // reload has none and the saved frame has one.
+    //
+    // What makes those two populations one room rather than two: which instance holds
+    // a pair is per-instance session state, the same mechanism the changed-map rule's
+    // comment describes - a mod arms this one and not that one from the flag its
+    // entity reads, and the saved frame is later in the session than the reload's
+    // starting state.
     private static RawCoroutineSceneRoot CreateRawCoroutineIteratorScene(
         int siblingsThatFinished,
         bool cleanReload
@@ -8082,6 +8114,22 @@ public sealed class StartPosReconstructionTests {
         return new RawCoroutineSceneRoot { Scene = scene, Entities = entityList };
     }
 
+    // The pair is `Add(new Coroutine(tween.Wait())); Add(tween);` with the tween made
+    // by Tween.Create(Oneshot, easer: null, duration: 1f, start: true), which is what
+    // makes it remove itself and its waiter when it completes. Every field below that
+    // a constructor would have set is set, read out of the real Monocle in
+    // lib-stripped rather than assumed: Coroutine's `Coroutine(IEnumerator, bool)`
+    // does `base(active: true, visible: false)` and leaves RemoveOnComplete true, and
+    // Tween's Init plus Start leave Mode, Duration, TimeLeft and Active as below while
+    // Tween's own constructor is `base(active: false, visible: false)`.
+    //
+    // None of those is read by anything that decides a verdict - the graph's
+    // authenticators read types, document paths, occurrence counts and reference
+    // ownership, and Active, Finished, RemoveOnComplete, Mode, Duration and TimeLeft
+    // travel as ordinary scalars. They are set because the room is only evidence
+    // about the game if its objects are ones the game could have made: an inactive
+    // Persist tween of zero duration could never have run to completion and removed
+    // itself, which is the history the siblings here are supposed to have.
     private static void AddTweenHolderEntity(
         Scene scene,
         EntityList entityList,
@@ -8090,6 +8138,9 @@ public sealed class StartPosReconstructionTests {
     ) {
         TweenHolderEntity owner = CreateUninitializedEntity<TweenHolderEntity>();
         ComponentList components = CreateDetachedComponentList(owner);
+        SetRuntimeField(owner, "Active", true);
+        SetRuntimeField(owner, "Visible", true);
+        SetRuntimeField(owner, "Collidable", true);
         SetRuntimeField(owner, "<Scene>k__BackingField", scene);
         SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", sourceId));
 
@@ -8097,16 +8148,25 @@ public sealed class StartPosReconstructionTests {
         if (withPair) {
             Tween tween = (Tween) RuntimeHelpers.GetUninitializedObject(typeof(Tween));
             SetRuntimeField(tween, "<Entity>k__BackingField", owner);
+            SetRuntimeField(tween, "Active", true);
+            SetRuntimeField(tween, "<Mode>k__BackingField", Tween.TweenMode.Oneshot);
+            SetRuntimeField(tween, "<Duration>k__BackingField", 1f);
+            SetRuntimeField(tween, "<TimeLeft>k__BackingField", 1f);
             Coroutine coroutine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
             // Unlike a StateMachine's own coroutine this one was added with Add, so
             // the game does give it an Entity.
             SetRuntimeField(coroutine, "<Entity>k__BackingField", owner);
+            SetRuntimeField(coroutine, "Active", true);
+            SetRuntimeField(coroutine, "RemoveOnComplete", true);
             Stack<IEnumerator> frames = new Stack<IEnumerator>();
             // What Coroutine(IEnumerator, bool) does, and all it does: push the
-            // argument raw. Nothing here updates the coroutine, which is the state
-            // every component of an inactive entity is in and the state every
-            // component installed by a bare UpdateLists is in, so the iterator is
-            // never wrapped in Flattened and the room holds it once.
+            // argument raw. Only Coroutine.Update ever wraps a frame in Everest's
+            // Flattened, so a pair installed after its own entity updated this frame -
+            // which is what another entity's update adding it does, and what the
+            // fresh room's single initialization update leaves - still holds the
+            // iterator raw, and holds it exactly once. That is the whole of what this
+            // room is about; an active coroutine that HAS updated holds it three
+            // times and every other room in this file is that shape.
             frames.Push(tween.Wait());
             SetRuntimeField(coroutine, "enumerators", frames);
             ordered.Add(coroutine);
