@@ -1211,7 +1211,116 @@ internal sealed class AkronReconstructionGraph {
                 throw new InvalidOperationException(
                     "Reconstruction " + kind + " type is invalid: " + (type.FullName ?? type.Name));
             }
+            // After the type check, so a node relabelled to a kind its type cannot
+            // be still fails on the type - which is the more useful thing to say,
+            // and what RestoreRejectsAnOrdinaryObjectRelabeledAsAnAnchor reads.
+            RefuseAReferenceInASlotTheRestoreNeverReads(node, type);
         }
+    }
+
+    // A document names objects by where they sit, and the restore attaches each
+    // one by writing the slot its parent holds it in. Which slot that is depends
+    // on the parent's kind, and each kind is read from exactly one container: an
+    // object's fields, an array's items, a delegate's calls. An anchor, a
+    // persistent resource and an FMOD event are read from no container at all -
+    // the first is the fresh room's own object and the other two carry a payload.
+    // Two slots inside a container that is read are skipped as well: a packed
+    // primitive array is restored from its bytes rather than its items, and a
+    // detour-next delegate call binds no target.
+    //
+    // A reference in any other slot claims two things that are not true.
+    // ValidateNodeReachability walks fields, items and calls without asking what
+    // kind the parent is, so the node it points at counts as reached and the
+    // document passes as complete, while nothing ever writes that slot: the
+    // object is created, its own state is applied, it joins Objects, and Verify
+    // walks Objects rather than the room, so the restore reports success with
+    // that object attached to nothing. And IndexSavedFieldAliases indexes every
+    // node's fields whatever its kind, while IndexSavedArrayAliases reads a packed
+    // array's items, so the same dead edge is also read as evidence that the saved
+    // graph held one object in two places, which is what licenses handing a
+    // reconstruction a live object from the fresh room.
+    //
+    // Capture cannot write one. CaptureValue returns as soon as it has made a
+    // live anchor, stores only a payload for a persistent resource or an FMOD
+    // event, and otherwise hands the node to exactly one of CaptureObject,
+    // CaptureArray or CaptureDelegate; CaptureArray returns after packing a
+    // primitive grid without adding an item; CaptureDelegate writes a null target
+    // for the one detour-next call it ever emits; and CaptureObject skips a
+    // derived collection's version counter, which is the third slot inside a read
+    // container that the restore skips - and a field skipped by name is never
+    // type-checked either, so a reference parked there is not even required to fit
+    // the slot.
+    //
+    // Scalars in those slots are left alone rather than refused. A scalar
+    // attaches nothing and aliases nothing, since both index builders skip a value
+    // that is not a reference, and every lie a scalar could tell fits just as well
+    // in a slot the restore does read, so refusing it would buy nothing;
+    // CollectionVersionChangesDoNotInvalidateEquivalentContents pins one
+    // deliberately, a version counter the document may carry and the restore must
+    // ignore. Only a reference is refused, because a reference in a slot nothing
+    // reads is the one claim a document cannot make anywhere else.
+    private static void RefuseAReferenceInASlotTheRestoreNeverReads(
+        AkronReconstructionNode node,
+        Type type
+    ) {
+        // The kind is one of the six the switch above admits, so these are exact.
+        bool readsFields = node.Kind == ObjectKind;
+        bool readsItems = node.Kind == ArrayKind && node.PackedPrimitiveArrayBytes == null;
+        bool readsCalls = node.Kind == DelegateKind;
+
+        foreach (AkronReconstructionField field in node.Fields ?? new List<AkronReconstructionField>()) {
+            if (field?.Value?.Kind != ReferenceValueKind) {
+                continue;
+            }
+            if (!readsFields) {
+                throw UnreadSlot(node, field.Value.NodeId, "a field");
+            }
+            if (IsDerivedCollectionVersionField(type, field.Name)) {
+                throw UnreadSlot(node, field.Value.NodeId, "a derived collection version field");
+            }
+        }
+        if (!readsItems) {
+            foreach (AkronReconstructionValue item in node.Items ?? new List<AkronReconstructionValue>()) {
+                if (item?.Kind == ReferenceValueKind) {
+                    throw UnreadSlot(
+                        node,
+                        item.NodeId,
+                        node.PackedPrimitiveArrayBytes != null ? "a packed primitive array item" : "an item");
+                }
+            }
+        }
+        foreach (AkronReconstructionDelegateCall call in node.DelegateCalls ?? new List<AkronReconstructionDelegateCall>()) {
+            if (call?.Target?.Kind != ReferenceValueKind) {
+                continue;
+            }
+            if (!readsCalls) {
+                throw UnreadSlot(node, call.Target.NodeId, "a delegate call target");
+            }
+            // Of a delegate node's calls, only a method call's target is bound.
+            // CreateDelegate rebuilds a detour-next call from its position in the
+            // live detour chain and binds no target, so it never reads the saved
+            // one, and CaptureDelegate writes a null there for that reason. Any
+            // other kind CreateDelegate refuses outright; keying on the one kind
+            // that is read says what is true rather than listing what is not.
+            if (!string.Equals(call.Kind, MethodDelegateCallKind, StringComparison.Ordinal)) {
+                throw UnreadSlot(node, call.Target.NodeId, "the target of a delegate call that binds none");
+            }
+        }
+    }
+
+    // Node ids and the kind rather than the field name or the type: everything
+    // here comes out of a snapshot file, and the reader lets a name run into the
+    // megabytes, so only bounded values go into a message that can reach a toast.
+    private static InvalidOperationException UnreadSlot(
+        AkronReconstructionNode node,
+        int referencedNodeId,
+        string slot
+    ) {
+        return new InvalidOperationException(
+            "Reconstruction " + node.Kind + " node " +
+            node.Id.ToString(CultureInfo.InvariantCulture) +
+            " holds node " + referencedNodeId.ToString(CultureInfo.InvariantCulture) +
+            " in " + slot + ", which the restore never reads.");
     }
 
     private static void ValidateNodeParentEdges(AkronReconstructionDocument document) {
@@ -4312,19 +4421,16 @@ internal sealed class AkronReconstructionGraph {
         // incumbent at its own canonical slot does, since a paired object whose canonical
         // slot the reload left empty loses its own edge there first.
         //
-        // One shape breaks that, and it is a document this capture cannot produce.
-        // ValidateNodeKindContracts does not require a node to carry only the container
-        // its kind is read from, while assignment reads only that one: an anchor, a
-        // persistent resource and an FMOD event are skipped whole, an array node's fields
-        // are never read, an object node's items are never read, and a delegate node has
-        // only its calls read. ValidateNodeReachability walks all three containers, so a
-        // crafted or corrupt snapshot can park a kept object in one of the ignored ones
-        // and it counts as reachable while the restore never attaches it. The ignored
-        // containers are not the only ignored slots either: ValidateAssignments skips a
-        // derived collection's version field by name, and a skipped field is never even
-        // type-checked. That is a hole in the document contract and belongs there rather
-        // than here, and closing it means refusing every slot the restore never reads
-        // rather than any one of them.
+        // One shape used to break that, and it is a document this capture cannot
+        // produce: a reference parked in a slot the restore never reads, which
+        // reachability counted as reach while nothing ever wrote it. That is a hole in
+        // the document contract rather than a question about this rule, and it is now
+        // refused where the contract is stated, by
+        // RefuseAReferenceInASlotTheRestoreNeverReads. Every slot a node can be reached
+        // through is therefore one the restore writes - assignment for a field or an
+        // item, CreateDelegate for a call target - which is what makes the paragraph
+        // above true of every document this build will read rather than only of the ones
+        // capture writes.
         //
         // What is left is the same shape as the two call sites above: this is a third
         // authenticity test, for edges the structural tests admitted on weak evidence -

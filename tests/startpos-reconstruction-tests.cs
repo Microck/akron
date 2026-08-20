@@ -3681,6 +3681,242 @@ public sealed class StartPosReconstructionTests {
         Assert.Contains("anchor type is invalid", restore.Error);
     }
 
+    // A live anchor is the fresh room's own object, so assignment skips the node
+    // whole and never writes a field of it. Reachability walks those fields
+    // anyway, so this document passed as complete. Measured before the refusal
+    // existed: the restore and Verify both reported success, the room's Numbers
+    // slot was left null, and the saved int[] { 4, 5, 6 } was built, filled and
+    // attached to nothing. The crafted field also enters savedFieldAliases, which
+    // is read whatever the parent's kind is, so the dead edge is evidence for
+    // pairing decisions as well.
+    //
+    // The reference sits in a string field, and that is the point rather than an
+    // accident. No slot the restore reads would take it - ValidateAssignable
+    // refuses an int[] in a string field - and it got through because a slot that
+    // is never read is never type-checked either.
+    [Fact]
+    public void RestoreRefusesAnObjectKeptOnlyByALiveAnchorsField() {
+        TestRoot saved = new TestRoot {
+            Resource = new TestResource("saved-process"),
+            Numbers = new[] { 4, 5, 6 }
+        };
+        TestRoot baseline = new TestRoot {
+            Resource = new TestResource("baseline-process"),
+            Numbers = new[] { 0, 0, 0 }
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode anchorNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(TestRoot.Resource));
+        Assert.Equal("anchor", anchorNode.Kind);
+        Assert.Empty(anchorNode.Fields);
+        AkronReconstructionNode keptNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(TestRoot.Numbers));
+
+        ParkNodeInAField(
+            capture.Document,
+            keptNode,
+            anchorNode,
+            typeof(TestResource),
+            "<StableKey>k__BackingField");
+        TestRoot fresh = new TestRoot {
+            Resource = new TestResource("fresh-process"),
+            Numbers = new[] { 0, 0, 0 }
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("in a field, which the restore never reads", restore.Error);
+        Assert.Equal(new[] { 0, 0, 0 }, fresh.Numbers);
+    }
+
+    // The sharper half of the same hole. The container here is one the restore
+    // does read, but ValidateAssignments skips this one field by name, because a
+    // BCL collection's version counter is derived bookkeeping that capture never
+    // writes. A field skipped by name is never written and never type-checked, so
+    // it parks an object exactly as a whole unread container does: measured before
+    // the refusal existed, this document restored and verified while the room's
+    // Numbers slot was left null.
+    //
+    // A scalar in that field stays allowed, which
+    // CollectionVersionChangesDoNotInvalidateEquivalentContents pins.
+    [Fact]
+    public void RestoreRefusesAnObjectKeptOnlyByACollectionVersionField() {
+        TestRoot saved = new TestRoot {
+            Values = new Dictionary<string, int> { ["a"] = 1 },
+            Numbers = new[] { 4, 5, 6 }
+        };
+        TestRoot baseline = new TestRoot {
+            Values = new Dictionary<string, int> { ["a"] = 1 },
+            Numbers = new[] { 0, 0, 0 }
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode valuesNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(TestRoot.Values));
+        Assert.DoesNotContain(valuesNode.Fields, field => field.Name == "_version");
+        AkronReconstructionNode keptNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(TestRoot.Numbers));
+
+        ParkNodeInAField(
+            capture.Document,
+            keptNode,
+            valuesNode,
+            typeof(Dictionary<string, int>),
+            "_version");
+        TestRoot fresh = new TestRoot {
+            Values = new Dictionary<string, int> { ["a"] = 1 },
+            Numbers = new[] { 0, 0, 0 }
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("in a derived collection version field", restore.Error);
+        Assert.Equal(new[] { 0, 0, 0 }, fresh.Numbers);
+    }
+
+    // An array is the one kind whose unread container depends on the node rather
+    // than only on its kind: a packed primitive grid is restored from its bytes,
+    // and ValidateArrayAssignments returns before it looks at an item. So does
+    // ValidateReferenceAuthenticity, which skips a packed parent outright, while
+    // IndexSavedArrayAliases does not - it reads every array node's items, so a
+    // reference parked in one is also counted as evidence that the saved graph
+    // held that object in a second place. Measured before the refusal existed:
+    // restore and Verify both reported success with the room's Numbers slot null.
+    [Fact]
+    public void RestoreRefusesAnObjectKeptOnlyByAPackedPrimitiveArrayItem() {
+        TestRoot saved = new TestRoot {
+            Values = new Dictionary<string, int> { ["a"] = 1 },
+            Numbers = new[] { 4, 5, 6 }
+        };
+        TestRoot baseline = new TestRoot {
+            Values = new Dictionary<string, int> { ["a"] = 1 },
+            Numbers = new[] { 0, 0, 0 }
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode valuesNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(TestRoot.Values));
+        // The dictionary's bucket grid: its only child the capture packs, because
+        // its entry array holds string keys and so keeps one item per slot.
+        AkronReconstructionNode packedNode = capture.Document.Nodes.Single(node =>
+            node.ParentNodeId == valuesNode.Id && node.PackedPrimitiveArrayBytes != null);
+        Assert.Empty(packedNode.Items);
+        AkronReconstructionNode keptNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(TestRoot.Numbers));
+
+        // TEMPORARY REVIEW MUTATION: leave the ordinary owning slot intact.
+        packedNode.Items.Add(new AkronReconstructionValue {
+            Kind = "reference",
+            NodeId = keptNode.Id
+        });
+        keptNode.ParentNodeId = packedNode.Id;
+        keptNode.ParentKind = "array";
+        keptNode.ParentDeclaringTypeName = string.Empty;
+        keptNode.ParentFieldName = string.Empty;
+        keptNode.ParentArrayIndices = new List<int> { 0 };
+        TestRoot fresh = new TestRoot {
+            Values = new Dictionary<string, int> { ["a"] = 1 },
+            Numbers = new[] { 0, 0, 0 }
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("in a packed primitive array item", restore.Error);
+        Assert.Equal(new[] { 0, 0, 0 }, fresh.Numbers);
+    }
+
+    // Only a delegate node's calls are read, by CreateDelegate. A call list on any
+    // other node is walked by reachability and by nothing else - not even
+    // ValidateReferenceAuthenticity, which never looks at a call target - so this
+    // is the plainest form of the hole: no alias is fabricated, the object is
+    // simply built and left out of the room. Measured before the refusal existed:
+    // restore and Verify both reported success with the room's Numbers slot null.
+    //
+    // The crafted call is deliberately a method call, the one kind whose target
+    // CreateDelegate does bind, so the only thing that can refuse this document is
+    // the parent's kind. A detour-next call would be refused by the second clause
+    // instead and this room would stop being about the first.
+    [Fact]
+    public void RestoreRefusesAnObjectKeptOnlyByANonDelegateNodesCallTarget() {
+        TestRoot saved = new TestRoot { Numbers = new[] { 4, 5, 6 } };
+        TestRoot baseline = new TestRoot { Numbers = new[] { 0, 0, 0 } };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode rootNode = capture.Document.Nodes.Single(node =>
+            node.Id == capture.Document.RootNodeId);
+        Assert.Equal("object", rootNode.Kind);
+        AkronReconstructionNode keptNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == nameof(TestRoot.Numbers));
+
+        // TEMPORARY REVIEW MUTATION: leave the ordinary owning slot intact.
+        rootNode.DelegateCalls.Add(new AkronReconstructionDelegateCall {
+            Kind = "method",
+            Target = new AkronReconstructionValue { Kind = "reference", NodeId = keptNode.Id },
+            DeclaringTypeName = typeof(TestNode).AssemblyQualifiedName!,
+            MethodName = nameof(TestNode.Increment),
+            ReturnTypeName = typeof(void).AssemblyQualifiedName!
+        });
+        keptNode.ParentNodeId = rootNode.Id;
+        keptNode.ParentKind = "delegate";
+        keptNode.ParentDeclaringTypeName = string.Empty;
+        keptNode.ParentFieldName = string.Empty;
+        keptNode.ParentArrayIndices = new List<int>();
+        keptNode.ParentDelegateIndex = 0;
+        TestRoot fresh = new TestRoot { Numbers = new[] { 0, 0, 0 } };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("in a delegate call target", restore.Error);
+        Assert.Equal(new[] { 0, 0, 0 }, fresh.Numbers);
+    }
+
+    // Makes another node the only thing that holds keptNode, by emptying the slot
+    // the room keeps it in and adding a named field on the new holder. Both halves
+    // matter: adding the holder alone leaves the node attached where it was, and
+    // emptying the room's slot alone leaves the document with no parent edge for
+    // it, which ValidateNodeParentEdges refuses on its own.
+    private static void ParkNodeInAField(
+        AkronReconstructionDocument document,
+        AkronReconstructionNode keptNode,
+        AkronReconstructionNode holder,
+        Type declaringType,
+        string fieldName
+    ) {
+        // TEMPORARY REVIEW MUTATION: leave the ordinary owning slot intact.
+        holder.Fields.Add(new AkronReconstructionField {
+            DeclaringTypeName = declaringType.AssemblyQualifiedName!,
+            Name = fieldName,
+            Path = holder.Path + "." + fieldName,
+            Value = new AkronReconstructionValue { Kind = "reference", NodeId = keptNode.Id }
+        });
+        keptNode.ParentNodeId = holder.Id;
+        keptNode.ParentKind = "field";
+        keptNode.ParentDeclaringTypeName = declaringType.AssemblyQualifiedName!;
+        keptNode.ParentFieldName = fieldName;
+        keptNode.ParentArrayIndices = new List<int>();
+    }
+
+    private static void EmptyTheSlotTheRoomKeepsItIn(
+        AkronReconstructionDocument document,
+        AkronReconstructionNode keptNode
+    ) {
+        AkronReconstructionNode parent = document.Nodes.Single(node => node.Id == keptNode.ParentNodeId);
+        parent.Fields.Single(field =>
+                field.Name == keptNode.ParentFieldName &&
+                field.Value?.Kind == "reference" &&
+                field.Value.NodeId == keptNode.Id)
+            .Value = new AkronReconstructionValue();
+    }
+
     [Fact]
     public void RestoreDoesNotAuthenticateAReferenceAtItsClaimedFreshPath() {
         UniqueTestEntity savedEntity = CreateUninitializedEntity<UniqueTestEntity>();
