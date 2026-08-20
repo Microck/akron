@@ -848,6 +848,11 @@ internal sealed class AkronReconstructionGraph {
     // The EntityIDs the map lays out in one room, asked of the room a clean load
     // produced. Called once per room name per capture or restore, so the map is
     // walked once however many entities ask about it.
+    //
+    // Returning null means there is no map data to read, and it is a different answer
+    // from an empty set: an empty room places nothing, while no map data proves
+    // nothing. IsMapPlacedEntityId keeps the two apart because the refusal built on
+    // this rule accuses the player's map of having changed.
     private readonly Func<object, string, IEnumerable<int>> getMapPlacedEntityIds;
     private readonly long maxJsonTokenCount;
     private readonly long maxJsonContainerCount;
@@ -967,6 +972,14 @@ internal sealed class AkronReconstructionGraph {
             return AkronReconstructionCapture.Succeeded(context.Document);
         } catch (AkronReconstructionException exception) {
             return AkronReconstructionCapture.Failed(exception.Path, exception.Message);
+        } catch (OperationCanceledException) {
+            // Not a capture failure and must not be described as one. Quitting cancels
+            // through AkronSnapshotPacing.Pace, which this walk calls once per node, so
+            // the common cancellation lands right here - and the only handler that knows
+            // how to say it in a sentence a player can read is in
+            // AkronStartPosPersistence.RunWorker. Reporting it below instead put
+            // "$: OperationCanceledException: ..." on screen.
+            throw;
         } catch (Exception exception) {
             return AkronReconstructionCapture.Failed("$", exception.GetType().Name + ": " + exception.Message);
         }
@@ -1936,24 +1949,35 @@ internal sealed class AkronReconstructionGraph {
     // map changed under a saved entity, which is the only thing that tells a map
     // edit apart from session state deciding not to build an entity this time.
     //
-    // The per-room set is built once and reused, because a room's map data is a flat
-    // list and a room with several hundred entities would otherwise be scanned once
-    // per entity. A graph with no map callback answers false for everything, which
-    // leaves both sides of the comparison silent rather than guessing.
-    private bool IsMapPlacedEntityId(
+    // Three answers, not two, and the third is the point. True is "the map places
+    // this id", false is "the map does not place it", and null is "there is no map
+    // data to ask" - no callback, no id worth asking about, or a map the callback
+    // could not read. At capture the last two are the same thing and nothing is
+    // stamped either way. At restore they are not: false is a refusal that tells the
+    // player their map or their collab changed, and saying that because the map could
+    // not be read would be a false story about their install. Only an explicit false
+    // may refuse.
+    //
+    // The per-room answer is built once and reused, because a room's map data is a
+    // flat list and a room with several hundred entities would otherwise be scanned
+    // once per entity. A null entry caches "no map data for this room" so a second
+    // ask does not repeat a read that already failed.
+    private bool? IsMapPlacedEntityId(
         object roomRoot,
         EntityID entityId,
         Dictionary<string, HashSet<int>> placedIdsByRoom
     ) {
         if (getMapPlacedEntityIds == null || !HasStableSourceId(entityId)) {
-            return false;
+            return null;
         }
         if (!placedIdsByRoom.TryGetValue(entityId.Level, out HashSet<int> placedIds)) {
-            placedIds = new HashSet<int>(
-                getMapPlacedEntityIds(roomRoot, entityId.Level) ?? Enumerable.Empty<int>());
+            IEnumerable<int> placed = getMapPlacedEntityIds(roomRoot, entityId.Level);
+            // An empty set is map data that places nothing, which an empty room is.
+            // Only null is the absence of map data.
+            placedIds = placed == null ? null : new HashSet<int>(placed);
             placedIdsByRoom[entityId.Level] = placedIds;
         }
-        return placedIds.Contains(entityId.ID);
+        return placedIds?.Contains(entityId.ID);
     }
 
     private static bool EntityIdsMatch(EntityID left, EntityID right) {
@@ -2322,11 +2346,13 @@ internal sealed class AkronReconstructionGraph {
                 PortableResourceKey = liveAnchor &&
                                       !string.IsNullOrWhiteSpace(savedLiveResourceKey) &&
                                       owner.hasPortableLiveResourceKey?.Invoke(savedValue) == true,
+                // == true, so "there was no map data to ask" stamps nothing rather than
+                // stamping the answer a map that dropped the id would have given.
                 MapPlacedEntity = savedValue is Entity mapEntity &&
                                   owner.IsMapPlacedEntityId(
                                       freshBaselineRoot,
                                       GetEntitySourceId(mapEntity),
-                                      mapPlacedEntityIdsByRoom),
+                                      mapPlacedEntityIdsByRoom) == true,
                 FreshPath = matchedFreshPath ?? new List<AkronReconstructionPathStep>()
             };
             Document.Nodes.Add(node);
@@ -3102,9 +3128,15 @@ internal sealed class AkronReconstructionGraph {
         // ordinary case.
         private static string FreshStateSlotDriver(StateMachine machine, int slot) {
             StringBuilder driver = new StringBuilder();
-            foreach (FieldInfo driverField in StateMachineDriverFields) {
-                driver.Append(driverField.Name).Append('=');
-                if (driverField.GetValue(machine) is Array callbacks &&
+            // Walked by name rather than by FieldInfo, the same way SavedStateSlotDriver
+            // walks it, because the two strings are compared: a field Monocle no longer
+            // has must leave the same empty "<name>=;" on both sides rather than an NRE
+            // on one of them. StateMachineDriverFields is built from these names in this
+            // order, so the index addresses the same field the name does, and a lookup
+            // that found nothing is a null entry there.
+            for (int index = 0; index < StateMachineDriverFieldNames.Length; index++) {
+                driver.Append(StateMachineDriverFieldNames[index]).Append('=');
+                if (StateMachineDriverFields[index]?.GetValue(machine) is Array callbacks &&
                     slot < callbacks.Length &&
                     callbacks.GetValue(slot) is Delegate callback) {
                     foreach (Delegate call in callback.GetInvocationList()) {
@@ -3286,11 +3318,18 @@ internal sealed class AkronReconstructionGraph {
         // carrying a stable SourceId the current map does not place got it from mod code
         // setting the field itself - and the document is still measured against a room
         // this map no longer produces.
+        //
+        // The last clause is "!= false" rather than a plain truth test, and that is the
+        // whole of what keeps this rule from lying. Its message says the map changed, so
+        // it may only fire on evidence that the map changed: a map this process could
+        // not read answers null, which is no evidence at all, and refusing on it would
+        // tell a player their collab was updated because a map reload happened to be in
+        // flight. Null falls through here exactly as a placed id does.
         private void RefuseMapEntityTheMapNoLongerPlaces(AkronReconstructionNode node, Type type) {
             if (!node.MapPlacedEntity || !typeof(Entity).IsAssignableFrom(type) ||
                 !TryGetSavedEntityId(node, out EntityID savedEntityId) ||
                 !string.Equals(savedEntityId.Level, document.Room, StringComparison.Ordinal) ||
-                owner.IsMapPlacedEntityId(freshRoot, savedEntityId, mapPlacedEntityIdsByRoom)) {
+                owner.IsMapPlacedEntityId(freshRoot, savedEntityId, mapPlacedEntityIdsByRoom) != false) {
                 return;
             }
             // ChangedMap, not the default: the only thing this rule has proved is that the
@@ -7411,12 +7450,14 @@ internal enum AkronPrewarmOutcome {
 }
 
 internal static class AkronStartPosReconstruction {
-    // The hard limit on one snapshot, hostile or not. Raised from 256 MiB, which was
-    // 11% above the largest snapshot a real install has produced: 231,081,666 bytes
-    // decompressed, one of 17 measured off the test box. Eleven percent is not
-    // headroom against a modded map that grows a little, and the failure it buys is
-    // a slot that cannot be loaded at all. 384 MiB is 1.74x that largest real
-    // snapshot. It is also the ceiling on what one cold load can cost: at the 3.8x
+    // The hard limit on one snapshot, hostile or not. Raised from 192 MiB, which was
+    // 13% below the largest snapshot a real install has produced: 231,081,666 bytes
+    // decompressed, one of 17 measured off the test box. A limit under the largest
+    // real measurement is not a limit on hostile input at all, it is a slot that
+    // cannot be loaded, which is what the released build did with that file.
+    // 384 MiB is 1.74x that largest real snapshot, so the headroom is against a
+    // modded map that grows rather than against the measurement itself.
+    // It is also the ceiling on what one cold load can cost: at the 3.8x
     // of process RSS per decompressed byte measured in game, a document at this
     // limit is about 1.4 GiB of RSS, which is below what the whole prewarm cache is
     // allowed to hold (MaxPrewarmedSnapshotBytes, 512 MiB, ~1.9 GiB of RSS).
@@ -7625,25 +7666,64 @@ internal static class AkronStartPosReconstruction {
     // Everest.Content.Map, the loaded assembly list - and map data is the least
     // volatile of them: it is built once when the map is loaded and only rebuilt by
     // an explicit map reload.
+    //
+    // Three answers, and the third is the one this exists for. A set of ids is map data
+    // that places them. An empty set is map data that places nothing in that room, which
+    // covers both an empty room and a room the map does not have at all. Null is no map
+    // data to read: a root that is not a loaded room, a session whose area or side is not
+    // in the loaded area list, or a map that was being rebuilt while this read it.
+    //
+    // Only the second may lead to a refusal. The refusal built on this rule tells the
+    // player their map or their collab changed, so it may only fire where the map has
+    // actually been read and has actually dropped the id. Folding the third case into the
+    // second - which returning an empty set for it would do - would tell a player their
+    // collab was updated because a map reload happened to overlap a load.
+    //
+    // The ids are materialised inside the guard rather than handed back lazily. The
+    // caller enumerates them to build its per-room set, and LevelData.Entities is a
+    // List the game thread owns: an enumeration that ran outside this try would put
+    // the "Collection was modified" throw back where nothing catches it.
     internal static IEnumerable<int> GetMapPlacedEntityIds(object roomRoot, string roomName) {
-        LevelData room = ResolveMapRoom((roomRoot as AkronPersistentRuntimeState)?.Level?.Session, roomName);
-        return room == null ? Array.Empty<int>() : GetMapPlacedEntityIds(room);
+        try {
+            MapData map = ResolveMapData((roomRoot as AkronPersistentRuntimeState)?.Level?.Session);
+            if (map == null) {
+                return null;
+            }
+            LevelData room = map.Get(roomName ?? string.Empty);
+            return room == null ? Array.Empty<int>() : GetMapPlacedEntityIds(room).ToList();
+        } catch (Exception exception) when (exception is ArgumentOutOfRangeException ||
+                                           exception is IndexOutOfRangeException ||
+                                           exception is InvalidOperationException) {
+            // The three shapes a rebuild of AreaData.Areas under a reader takes, and the
+            // reason the bounds checks in ResolveMapData are not on their own a mitigation:
+            // they are check-then-act on a list another thread owns. ArgumentOutOfRange is
+            // the List indexer after the list shrank past the checked Count,
+            // IndexOutOfRange is the ModeProperties array indexer, and InvalidOperation is
+            // "Collection was modified" out of MapData.Levels or LevelData.Entities. Any
+            // other exception is a defect here rather than a race and is left to travel.
+            return null;
+        }
     }
 
+    // The map this session is playing, or null when there is none to read.
+    //
     // Session.MapData is "AreaData.Areas[Area.ID].Mode[(int)Area.Mode].MapData" - two
     // array indexes with no bounds check - so reading it through the property throws
     // ArgumentOutOfRangeException for an Area.ID past the end of the loaded area list
     // and IndexOutOfRangeException for a side the map has no ModeProperties for. Both
-    // were measured. Capture runs on the persistence worker against a deep-cloned
-    // Session while the game thread is free to rebuild AreaData.Areas for a map reload
-    // or a mod-set change, and a throw there fails the whole slot with an exception
-    // name at path "$" rather than with anything a player can act on.
+    // were measured, and both are what these bounds checks are for.
     //
-    // Answering with no room instead means no evidence: at capture no node is stamped,
-    // which is the behaviour of every build before the evidence existed, and at restore
-    // the node's evidence is only read for document.Room, which the game has just
-    // loaded - so its area and mode are in range by the time a restore can ask.
-    private static LevelData ResolveMapRoom(Session session, string roomName) {
+    // What the bounds checks are not for is the race. Capture runs on the persistence
+    // worker against a deep-cloned Session while the game thread is free to rebuild
+    // AreaData.Areas for a map reload or a mod-set change, and no amount of checking a
+    // shared list before indexing it makes the pair atomic. The caller's catch is what
+    // covers that, and it turns the race into the same "no map data" answer these
+    // checks produce.
+    //
+    // Deliberately stops at the MapData rather than resolving the room. A map that has
+    // no such room is still map data, and its answer for that room is "nothing", not
+    // "I could not look".
+    private static MapData ResolveMapData(Session session) {
         List<AreaData> areas = AreaData.Areas;
         int areaId = session?.Area.ID ?? -1;
         if (areas == null || areaId < 0 || areaId >= areas.Count) {
@@ -7654,7 +7734,7 @@ internal static class AkronStartPosReconstruction {
         if (modes == null || modeIndex < 0 || modeIndex >= modes.Length) {
             return null;
         }
-        return modes[modeIndex]?.MapData?.Get(roomName ?? string.Empty);
+        return modes[modeIndex]?.MapData;
     }
 
     internal static IEnumerable<int> GetMapPlacedEntityIds(LevelData room) {
@@ -7832,6 +7912,13 @@ internal static class AkronStartPosReconstruction {
             }
             File.Move(temporaryPath, path, overwrite: true);
             return true;
+        } catch (OperationCanceledException) {
+            // Same reason Capture rethrows it: the paced writer cancels through
+            // AkronSnapshotPacing.Pace once per buffer flush, and quitting is not a
+            // snapshot failure to describe with an exception name. Only the persistence
+            // worker paces, so this can only be thrown on the thread whose caller has the
+            // handler for it. The finally below still removes the partial temp file.
+            throw;
         } catch (Exception exception) {
             error = exception.GetType().Name + ": " + exception.Message;
             return false;
@@ -8538,17 +8625,38 @@ internal static class AkronStartPosReconstruction {
             committed = true;
         }
 
+        // Puts the slot back the way it was, and never throws doing it.
+        //
+        // Both callers are already carrying a failure: Install's catch block is about to
+        // report an IOException, and Dispose runs inside a using whose body may be
+        // propagating one. A throw from here would replace that failure with this one or
+        // lose it entirely, so the catch is total by design rather than filtered.
+        //
+        // The move overwrites instead of being preceded by a delete. Deleting first left
+        // a window with no snapshot in the slot at all, and the copy that was going to
+        // fill it lives in the staging directory AkronStartPosPersistence.Update deletes
+        // unconditionally - so a move that failed after the delete lost the slot's last
+        // good snapshot rather than keeping it.
         private void RollBack() {
-            if (File.Exists(destinationPath)) {
-                File.Delete(destinationPath);
+            try {
+                if (File.Exists(backupPath)) {
+                    File.Move(backupPath, destinationPath, overwrite: true);
+                } else if (File.Exists(destinationPath)) {
+                    // No backup means the destination held nothing before this install, so
+                    // whatever is there now is what this install moved in.
+                    File.Delete(destinationPath);
+                }
+            } catch (Exception exception) {
+                Logger.Log(LogLevel.Warn, nameof(AkronStartPosReconstruction),
+                    "Could not roll back the StartPos snapshot install for " + destinationPath + ": " + exception.Message);
+            } finally {
+                // Cleared even when the rollback failed, so Dispose does not retry a move
+                // that has already been reported.
+                installed = false;
+                // Rollback can leave the destination present or absent depending on whether
+                // a backup existed, so re-stat on the next query rather than guessing.
+                InvalidateSnapshotExistence(destinationPath);
             }
-            if (File.Exists(backupPath)) {
-                File.Move(backupPath, destinationPath, overwrite: true);
-            }
-            installed = false;
-            // Rollback can leave the destination present or absent depending on whether
-            // a backup existed, so re-stat on the next query rather than guessing.
-            InvalidateSnapshotExistence(destinationPath);
         }
 
         public void Dispose() {

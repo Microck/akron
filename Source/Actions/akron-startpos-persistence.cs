@@ -61,6 +61,14 @@ internal static class AkronStartPosPersistence {
     // an unbounded second wait would put the hang straight back.
     private static readonly TimeSpan ShutdownCancelBudget = TimeSpan.FromSeconds(2);
 
+    // How long quitting will wait for the read-ahead. It should return at once - it
+    // tests shuttingDown at its loop head and its abandon predicate reads the same
+    // flag, with the gate forced open above so a parked read is awake within a sleep
+    // slice - but "should return at once" is not a bound, and quitting cannot hang on
+    // one. Shorter than the queue drain because there is nothing to save here: a read
+    // this gives up on costs a slower load in the next process and nothing else.
+    private static readonly TimeSpan ShutdownPrewarmBudget = TimeSpan.FromSeconds(2);
+
     private const int DrainPollMilliseconds = 5;
 
     private static long workerAllocatedBytes;
@@ -103,7 +111,19 @@ internal static class AkronStartPosPersistence {
         // left on disk at every bump. Sweeping them is a directory listing plus a
         // delete each, and nothing waits on the result, so it runs off the game
         // thread once per Start rather than on any player-facing path.
-        Task.Run(() => SweepSupersededSnapshots());
+        //
+        // Nothing awaits this task, so nothing would ever observe a throw out of it. The
+        // filters inside the sweep name the filesystem failures it expects; this catch is
+        // total because the alternative for anything else is an unobserved Task, and the
+        // whole method only ever reclaims disk space. The next launch tries again.
+        Task.Run(static () => {
+            try {
+                SweepSupersededSnapshots();
+            } catch (Exception exception) {
+                AkronLog.Warn(nameof(AkronStartPosPersistence),
+                    "Could not sweep superseded StartPos snapshots: " + exception);
+            }
+        });
     }
 
     // Removes StartPos snapshots whose file name carries a format version older than
@@ -141,7 +161,13 @@ internal static class AkronStartPosPersistence {
                     FileInfo info = new FileInfo(path);
                     size = info.Exists ? info.Length : 0;
                     File.Delete(path);
-                } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
+                } catch (Exception exception) when (exception is IOException ||
+                                                   exception is UnauthorizedAccessException ||
+                                                   exception is ArgumentException ||
+                                                   exception is NotSupportedException) {
+                    // The last two are a name in the folder that File.Delete will not take at
+                    // all. One of those must skip that file rather than end the sweep, the same
+                    // as a file another process has open.
                     AkronLog.Warn(nameof(AkronStartPosPersistence),
                         "Could not remove the superseded StartPos snapshot " + path + ": " + exception.Message);
                     continue;
@@ -374,18 +400,28 @@ internal static class AkronStartPosPersistence {
             return 0;
         }
 
-        PersistenceJob job = new PersistenceJob {
-            FileSlot = fileSlot,
-            Slot = slot,
-            StartPos = startPos,
-            StateSlotName = stateSlotName,
-            Generation = ++nextGeneration,
-            SavedState = savedState,
-            RegisteredActionIds = AkronSaveLoadService.GetRegisteredActionIdsForPersistence()
-        };
         string baselineKey = BuildBaselineKey(savedState.Slot);
+        // Read before the lock: it walks the registered-action list, which the game
+        // thread owns, and holding Sync across that buys nothing.
+        IReadOnlyList<string> registeredActionIds = AkronSaveLoadService.GetRegisteredActionIdsForPersistence();
 
+        PersistenceJob job;
         lock (Sync) {
+            // nextGeneration is handed out here and in Cancel, and both do it under Sync.
+            // The number is the only thing that tells a completion worth applying from one
+            // a newer Set or a Cancel has superseded, so two callers that read the same
+            // value would let a cancelled Set be applied to the slot. Every caller is on
+            // the game thread today; this is the state where being wrong about that later
+            // would be silent.
+            job = new PersistenceJob {
+                FileSlot = fileSlot,
+                Slot = slot,
+                StartPos = startPos,
+                StateSlotName = stateSlotName,
+                Generation = ++nextGeneration,
+                SavedState = savedState,
+                RegisteredActionIds = registeredActionIds
+            };
             LatestGenerations[stateSlotName] = job.Generation;
             if (FreshBaselines.TryGetValue(baselineKey, out AkronSaveLoadSlotLease baseline)) {
                 job.FreshBaseline = baseline.Retain();
@@ -873,10 +909,16 @@ internal static class AkronStartPosPersistence {
     //
     // Nesting is fine and happens on every cold load: the inner hold restores the
     // outer hold's value, not the pre-load value.
+    // Under Sync, because the matching Dispose is: reading the old value and writing the
+    // new one has to be one step against a Shutdown that forces the gate open and against
+    // another holder, or a hold can save a value that was already stale and put it back.
+    // Neither caller holds Sync when it gets here.
     internal static PacingGateHold HoldPacingGateOpen() {
-        bool previousForcedOpen = AkronSnapshotPacing.ForcedOpen;
-        AkronSnapshotPacing.ForcedOpen = true;
-        return new PacingGateHold(previousForcedOpen);
+        lock (Sync) {
+            bool previousForcedOpen = AkronSnapshotPacing.ForcedOpen;
+            AkronSnapshotPacing.ForcedOpen = true;
+            return new PacingGateHold(previousForcedOpen);
+        }
     }
 
     internal readonly struct PacingGateHold : IDisposable {
@@ -1008,7 +1050,13 @@ internal static class AkronStartPosPersistence {
             outstanding = Ready.Count + (runningWorker == null ? 0 : 1);
         }
 
-        runningPrewarm?.GetAwaiter().GetResult();
+        bool prewarmStopped = runningPrewarm == null || runningPrewarm.Wait(ShutdownPrewarmBudget);
+        if (!prewarmStopped) {
+            AkronLog.Warn(nameof(AkronStartPosPersistence),
+                "The StartPos read-ahead did not stop within " +
+                ShutdownPrewarmBudget.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) +
+                " s of closing. Closing without it; it holds nothing the next launch needs.");
+        }
         AkronStartPosReconstruction.ResetPrewarmedSnapshots();
         DrainWorkerForShutdown(runningWorker, outstanding);
         Update();
@@ -1016,6 +1064,24 @@ internal static class AkronStartPosPersistence {
         On.Celeste.Level.LoadLevel -= LevelOnLoadLevel;
 
         lock (Sync) {
+            // A drain that ran out of budget leaves jobs queued, and every one of them
+            // holds a retained lease on a saved state and on a fresh baseline. Everest can
+            // unload and reload a mod inside one process - Start above is written for
+            // exactly that - so a lease left here does not die with the process: it
+            // survives into the next run, where the job holding it is queued behind a
+            // worker that will never be told what it was for. Dropping them here is what
+            // makes Start's "this is a fresh run" true.
+            //
+            // Safe to do under Sync: the worker takes its job out of Ready under this same
+            // lock, so nothing in this queue is in flight, and a worker still alive finds
+            // the queue empty and stops.
+            while (Ready.TryDequeue(out PersistenceJob abandoned)) {
+                abandoned.Dispose();
+            }
+            // Read by a Load to tell "still coming" from "nothing will finish this". A
+            // name left behind would answer "still coming" for a slot the next run has no
+            // worker for.
+            runningStateSlotName = null;
             foreach (AkronSaveLoadSlotLease baseline in FreshBaselines.Values) {
                 baseline.Dispose();
             }
@@ -1030,7 +1096,15 @@ internal static class AkronStartPosPersistence {
             started = false;
             shuttingDown = false;
             workerTask = null;
-            prewarmTask = null;
+            // Only when it really stopped. A read-ahead that outlived its budget is still in
+            // its loop and still owns this handle: it clears the handle itself on the way
+            // out. Clearing it here would let an Everest reload in the same process start a
+            // second reader alongside the first, and then let the first one null out the
+            // second one's handle when it finally exits. Its queue has been cleared and its
+            // generation moved, so it finds nothing to do and returns.
+            if (prewarmStopped) {
+                prewarmTask = null;
+            }
         }
     }
 

@@ -168,13 +168,22 @@ public class AkronStartPosHashIndexTests {
         Assert.Equal(2, restored.VisitedRooms.Count);
         Assert.True(restored.VisitedRooms.Contains("summit-a"), "culture-aware HashSet lost summit-a");
         Assert.True(restored.VisitedRooms.Contains("summit-b"), "culture-aware HashSet lost summit-b");
-        Assert.False(restored.VisitedRooms.Contains("summit-c"));
+        Assert.DoesNotContain("summit-c", restored.VisitedRooms);
         Assert.True(restored.BerriesByRoom.ContainsKey("summit-a"), "culture-aware Dictionary lost summit-a");
         Assert.Equal(2, restored.BerriesByRoom["summit-b"]);
         Assert.True(restored.DeathsByRoom.ContainsKey("summit-a"), "ConcurrentDictionary lost summit-a");
         Assert.Equal(4, restored.DeathsByRoom["summit-b"]);
         Assert.True(restored.ModHashedRooms.Contains("summit-a"), "mod-comparer HashSet lost summit-a");
         Assert.True(restored.ModHashedRooms.Contains("summit-b"), "mod-comparer HashSet lost summit-b");
+    }
+
+    // Rebuild says it is safe to call for every node in a graph, and a graph node's
+    // value is allowed to be null. It used to dereference the argument to look up a
+    // rebuilder, so the sentence was true only because the single caller happened to
+    // filter nulls before it got there.
+    [Fact]
+    public void RebuildingTheIndexOfNothingIsAllowedBecauseTheDocumentationSaysItIs() {
+        AkronHashIndex.Rebuild(null);
     }
 
     // Re-deriving the index is allowed to move the index and nothing else. A

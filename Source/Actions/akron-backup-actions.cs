@@ -7,6 +7,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using Celeste;
 using Monocle;
 
@@ -20,6 +21,15 @@ public sealed class AkronBackupEntry {
     public string Reason { get; set; }
     public string SaveSlot { get; set; }
     public bool Pinned { get; set; }
+    // The files this archive says it could not read, as the archive itself recorded
+    // them. Read back out of the metadata rather than remembered from the backup that
+    // wrote it: by the time anyone restores, the process that made the archive is
+    // several launches gone, and this is what a restore is refused on.
+    public IReadOnlyList<string> SkippedFileNames { get; set; } = Array.Empty<string>();
+    // The archive carries a metadata entry and it could not be read. Kept apart from an
+    // empty SkippedFileNames because they are opposite answers: one says the archive
+    // holds every file, the other says nobody knows. A restore refuses on both.
+    public bool MetadataUnreadable { get; set; }
 }
 
 // One file the backup could not read. Both the status line and the archive metadata name these, because a
@@ -351,17 +361,68 @@ public static class AkronBackupActions {
             : new DateTimeOffset(value);
     }
 
-    // Kept short enough for a toast. The archive metadata carries the full list with reasons.
     private static string DescribeSkippedFiles(IReadOnlyList<AkronBackupSkippedFile> skipped) {
-        if (skipped.Count == 0) {
+        return DescribeSkippedFileNames(skipped.Select(entry => entry.RelativePath).ToList());
+    }
+
+    // Kept short enough for a toast, which is a hard constraint rather than a taste: a
+    // toast is drawn as one unwrapped line of ActiveFont, so a message naming every file
+    // and its reason runs off the side of the screen. Names and a count here; the archive
+    // metadata carries the full list with reasons, and the log line at backup time
+    // carries them too.
+    private static string DescribeSkippedFileNames(IReadOnlyList<string> names) {
+        if (names.Count == 0) {
             return string.Empty;
         }
 
-        string names = string.Join(", ", skipped.Take(MaxSkippedFilesNamedInStatus).Select(entry => entry.RelativePath));
-        string more = skipped.Count > MaxSkippedFilesNamedInStatus
-            ? ", +" + (skipped.Count - MaxSkippedFilesNamedInStatus).ToString(CultureInfo.InvariantCulture) + " more"
+        string named = string.Join(", ", names.Take(MaxSkippedFilesNamedInStatus));
+        string more = names.Count > MaxSkippedFilesNamedInStatus
+            ? ", +" + (names.Count - MaxSkippedFilesNamedInStatus).ToString(CultureInfo.InvariantCulture) + " more"
             : string.Empty;
-        return " (could not read " + skipped.Count.ToString(CultureInfo.InvariantCulture) + ": " + names + more + ")";
+        return " (could not read " + names.Count.ToString(CultureInfo.InvariantCulture) + ": " + named + more + ")";
+    }
+
+    // Why the selected backup must not be restored, or an empty string when it may be.
+    //
+    // The rule is the same one the pre-restore backup is held to, and it has to be,
+    // because a restore applies an archive the same way whichever end it came from. Phase
+    // one moves the live 0.celeste into `previous`, phase two finds no 0.celeste in the
+    // archive to move back, and DiscardRestoreWorkFolder then removes `previous`. So
+    // restoring a backup that could not read 0.celeste takes the player's 0.celeste away,
+    // and before this refusal existed nothing said so - the file was recoverable only from
+    // the pre-restore archive, by a player who worked out for themselves what had happened.
+    //
+    // This refuses rather than warning because there is nowhere to put a warning.
+    // RestoreBackup only raises a confirmation prompt when the scene is a Level; at the
+    // main menu, which is where a player with no save open restores from and which the
+    // feature guide describes as the ordinary case, RestoreBackupConfirmed is called
+    // directly and no prompt is shown at all. Refusing also leaves the live files where
+    // they are, which is the safe direction, and costs nothing that cannot be had another
+    // way: the archive is an ordinary ZIP in a folder the Backups tab opens, so a player
+    // who wants what it does hold can take it out by hand.
+    //
+    // Read out of the archive here rather than off the entry the browser is holding. That
+    // entry was built when the backup list was last scanned, and this decides whether the
+    // player's save files are replaced, so the record it reads has to be the one inside
+    // the file that is about to be unpacked. It is one small entry out of a ZIP that is
+    // about to be unpacked whole, so the second read costs nothing worth counting.
+    //
+    // Separated from RestoreBackupConfirmed so the decision can be exercised without a
+    // game. Everything around it needs Everest.PathGame, a scene and an open save.
+    internal static string DescribeRestoreRefusal(string backupPath) {
+        AkronBackupEntry archive = ReadBackupEntry(backupPath);
+        if (archive.MetadataUnreadable) {
+            // Fail closed. An archive whose own record of what it skipped cannot be read is
+            // not an archive that skipped nothing, and only one of those is safe to unpack
+            // over the player's save files. Reachable for a backup written by a build whose
+            // metadata writer could still put a raw control character inside a reason, which
+            // is not valid JSON and therefore not readable now.
+            return "Restore stopped: the backup you picked does not say which files it holds.";
+        }
+
+        return archive.SkippedFileNames.Count == 0
+            ? string.Empty
+            : "Restore stopped: the backup you picked" + DescribeSkippedFileNames(archive.SkippedFileNames);
     }
 
     public static void OpenBackupFolder() {
@@ -545,6 +606,15 @@ public static class AkronBackupActions {
 
                 if (!VerifyZipReadable(backup.Path)) {
                     Fail("Restore failed: backup ZIP is not readable.", true);
+                    return;
+                }
+
+                // Before the pre-restore backup rather than after it: a restore that is going
+                // to be refused should not leave a backup behind to explain.
+                string refusal = DescribeRestoreRefusal(backup.Path);
+                if (!string.IsNullOrEmpty(refusal)) {
+                    LastStatus = refusal;
+                    Toast(LastStatus);
                     return;
                 }
 
@@ -851,17 +921,27 @@ public static class AkronBackupActions {
         FileInfo file = new FileInfo(path);
         string reason = string.Empty;
         string saveSlot = string.Empty;
+        IReadOnlyList<string> skippedFileNames = Array.Empty<string>();
+        bool metadataUnreadable = false;
         try {
             using ZipArchive archive = ZipFile.OpenRead(path);
             ZipArchiveEntry metadata = archive.GetEntry(MetadataEntryName);
             if (metadata != null) {
+                // Through a StreamReader rather than straight off the entry stream, because
+                // BuildMetadataJson is written with Encoding.UTF8 and that emits a byte-order
+                // mark. StreamReader detects and drops it; a raw byte parse would not.
                 using StreamReader reader = new StreamReader(metadata.Open(), Encoding.UTF8);
-                string json = reader.ReadToEnd();
-                reason = ExtractJsonString(json, "reason");
-                saveSlot = ExtractJsonString(json, "saveSlot");
+                using JsonDocument document = JsonDocument.Parse(reader.ReadToEnd());
+                reason = ReadMetadataString(document.RootElement, "reason");
+                saveSlot = ReadMetadataString(document.RootElement, "saveSlot");
+                skippedFileNames = ReadSkippedFileNames(document.RootElement);
             }
         } catch {
+            // Either the ZIP would not open or its metadata entry would not parse. Both
+            // leave this process unable to say what the archive holds, and a restore has to
+            // treat that as a reason to stop rather than as silence.
             reason = "unreadable";
+            metadataUnreadable = true;
         }
 
         return new AkronBackupEntry {
@@ -871,8 +951,46 @@ public static class AkronBackupActions {
             SizeBytes = file.Length,
             Reason = reason,
             SaveSlot = saveSlot,
+            SkippedFileNames = skippedFileNames,
+            MetadataUnreadable = metadataUnreadable,
             Pinned = File.Exists(GetPinPath(path))
         };
+    }
+
+    private static string ReadMetadataString(JsonElement root, string key) {
+        return root.ValueKind == JsonValueKind.Object &&
+               root.TryGetProperty(key, out JsonElement value) &&
+               value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
+    }
+
+    // The names of the files a backup could not read, out of its own record of them.
+    //
+    // BuildMetadataJson writes each element as "<relative path>: <reason>", and only the
+    // name is wanted here, because the message this feeds has to fit on one line. The
+    // split is at the first ": ", so a save file whose own name contains that sequence is
+    // named short in the message. That costs a few characters of text and nothing else:
+    // the refusal is decided by how many entries there are, which no split can change.
+    //
+    // An element that is not a string still counts. It is a record of a file the archive
+    // does not hold, however badly written, and the safe reading of a record nobody can
+    // parse is not "nothing was skipped".
+    private static IReadOnlyList<string> ReadSkippedFileNames(JsonElement root) {
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty("skippedFiles", out JsonElement skipped) ||
+            skipped.ValueKind != JsonValueKind.Array) {
+            return Array.Empty<string>();
+        }
+
+        List<string> names = new List<string>();
+        foreach (JsonElement element in skipped.EnumerateArray()) {
+            string record = element.ValueKind == JsonValueKind.String ? element.GetString() ?? string.Empty : string.Empty;
+            int separator = record.IndexOf(": ", StringComparison.Ordinal);
+            names.Add(separator < 0 ? record : record.Substring(0, separator));
+        }
+
+        return names;
     }
 
     // Only an open save can be stale: Celeste writes SaveData.Instance back over its file on the next save,
@@ -1083,32 +1201,45 @@ public static class AkronBackupActions {
         return backupPath + ".pin";
     }
 
-    private static string JsonEscape(string value) {
+    // The metadata's only free-form text is a skipped file's reason, which is an exception
+    // message, so this has to cover what one of those can hold. Every control character
+    // has to go, not just the two line endings: JSON forbids a raw character below 0x20
+    // inside a string, and one tab in a reason would make the whole file unparseable -
+    // which is exactly the file a restore now reads to decide whether it may run.
+    internal static string JsonEscape(string value) {
         if (string.IsNullOrEmpty(value)) {
             return string.Empty;
         }
 
-        return value
-            .Replace("\\", "\\\\")
-            .Replace("\"", "\\\"")
-            .Replace("\r", "\\r")
-            .Replace("\n", "\\n");
-    }
-
-    private static string ExtractJsonString(string json, string key) {
-        string marker = "\"" + key + "\":";
-        int index = json.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        if (index < 0) {
-            return string.Empty;
+        StringBuilder escaped = new StringBuilder(value.Length);
+        foreach (char character in value) {
+            switch (character) {
+                case '\\':
+                    escaped.Append("\\\\");
+                    break;
+                case '"':
+                    escaped.Append("\\\"");
+                    break;
+                case '\r':
+                    escaped.Append("\\r");
+                    break;
+                case '\n':
+                    escaped.Append("\\n");
+                    break;
+                case '\t':
+                    escaped.Append("\\t");
+                    break;
+                default:
+                    if (character < ' ') {
+                        escaped.Append("\\u").Append(((int) character).ToString("x4", CultureInfo.InvariantCulture));
+                    } else {
+                        escaped.Append(character);
+                    }
+                    break;
+            }
         }
 
-        int start = json.IndexOf('"', index + marker.Length);
-        if (start < 0) {
-            return string.Empty;
-        }
-
-        int end = json.IndexOf('"', start + 1);
-        return end < 0 ? string.Empty : json.Substring(start + 1, end - start - 1);
+        return escaped.ToString();
     }
 
     private static void StartShellOpen(string path) {

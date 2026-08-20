@@ -10,7 +10,7 @@ A backup holds your save files. It leaves out the folders Akron itself runs out 
 | Folder | Why it is left out |
 |---|---|
 | `Saves/AkronBackups` | The backups themselves. |
-| `Saves/AkronStartPos` | One saved room state per StartPos slot, hundreds of megabytes each. You rebuild one by setting the slot again, and setup packs already carry them between installs. |
+| `Saves/AkronStartPos` | One saved room state per StartPos slot, and hundreds of megabytes of them in total. You rebuild one by setting the slot again, and setup packs already carry them between installs. |
 | `Saves/AkronNative` | The graphics library Akron loads when it starts. Windows will not let anything replace a library that is loaded, and Akron writes this one again on the next launch anyway. |
 | `Saves/AkronRecordings` | Video, which FFmpeg is still writing while you record. |
 | `Saves/AkronTools` | An FFmpeg build you put there yourself. |
@@ -25,7 +25,7 @@ Use it before risky mod changes, save-file edits, testing sessions, or any run w
 
 Restore is intentionally conservative. Akron verifies the selected ZIP, creates a `pre-restore` backup of the current save files, unpacks the selected backup, puts it in place, reloads the save file you have open so Celeste does not keep using stale save data, and returns to the main menu. If you had no save file open, which is the case at the main menu, there is nothing to reload and Akron just rebuilds the menu so the file list shows the restored files. That safety backup stays in the browser like any other backup, so you can recover the state you had immediately before the restore.
 
-Restore stops before it changes anything if the `pre-restore` backup could not read every file, and names what it missed. It also closes the Akron log and stops any performance recording, because both write into the Saves folder it is about to replace.
+Restore stops before it changes anything if either backup could not read every file, and names what it missed. That covers the `pre-restore` backup it takes for you, and the backup you picked: a backup records the files it could not read inside the archive, and putting one of those over your save files would move the missing ones aside and have nothing to put back. The browser says so next to any backup this applies to, so you can pick a different one. It also closes the Akron log and stops any performance recording, because both write into the Saves folder it is about to replace.
 
 **A restore that fails leaves your save files exactly as they were.** It unpacks the backup into `Saves/AkronRestore` first, so a bad ZIP or a full disk is found before anything is touched. Only then does it move your current files aside and the unpacked ones into place, and if any of that will not go through, everything it has already moved goes back and the restore stops with a message saying so. Your old files are discarded last, after the restore has already succeeded.
 

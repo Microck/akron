@@ -15,6 +15,7 @@ using System.Net.Http;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -367,11 +368,24 @@ public sealed class ModuleSettingsTests
         Assert.DoesNotContain("TryUse", handler);
         Assert.DoesNotContain("AkronLog", handler);
 
-        // CanUse is required in this per-entity hook, so its decision must stay a value type.
-        string policySource = File.ReadAllText(GetSourcePath("Core", "AkronPolicy.cs"));
-        Assert.Contains("public readonly struct AkronPolicyDecision", policySource);
-        string registrySource = File.ReadAllText(GetSourcePath("Core", "AkronFeatureRegistry.cs"));
-        Assert.Contains("return DefinitionByKind[index].Value;", registrySource);
+        // CanUse is required in this per-entity hook, so nothing on its path may allocate: the decision and
+        // the definition behind it both have to stay value types, and Get has to answer from its by-kind
+        // array rather than from the dictionary behind it. Read off the compiled types and the real array,
+        // which also catches an array that is present but has no entry for this kind - a state the old
+        // source-text assertion passed on, because Get falls back to the dictionary and still answers
+        // correctly while doing a hash lookup per playback ghost per frame.
+        Assert.True(typeof(AkronPolicyDecision).IsValueType);
+        Assert.True(typeof(FeatureDefinition).IsValueType);
+        FieldInfo? definitionsByKind = typeof(AkronFeatureRegistry).GetField(
+            "DefinitionByKind",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(definitionsByKind);
+        Array byKind = Assert.IsAssignableFrom<Array>(definitionsByKind!.GetValue(null));
+        Assert.True(byKind.Length > (int)AkronFeatureKind.DisablePlayback);
+        Assert.NotNull(byKind.GetValue((int)AkronFeatureKind.DisablePlayback));
+        Assert.Equal(
+            AkronFeatureKind.DisablePlayback,
+            AkronFeatureRegistry.Get(AkronFeatureKind.DisablePlayback).Kind);
 
         string moduleSource = File.ReadAllText(GetSourcePath("Module", "AkronModule.cs"));
         Assert.Contains("On.Celeste.PlayerPlayback.Update += PlayerPlaybackOnUpdate;", moduleSource);
@@ -568,7 +582,7 @@ public sealed class ModuleSettingsTests
         // The overlay is often killed while still open, so an in-memory-only level change is silently lost.
         // The radio button holds no logic of its own: it hands the chosen level to the single applier, which
         // is what makes the akron_log_level command able to stand in for a click nobody can automate.
-        string overlay = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-popup-controls.cs"));
+        string overlay = File.ReadAllText(GetSourcePath("Overlay", "akron-overlay-popup-controls.cs"));
         int start = overlay.IndexOf("private static void DrawLoggingLevelChoice(", StringComparison.Ordinal);
         Assert.True(start >= 0);
         int end = overlay.IndexOf("private static void DrawSetupSectionChoice(", start, StringComparison.Ordinal);
@@ -582,7 +596,7 @@ public sealed class ModuleSettingsTests
         // The persistence the radio button depends on now lives in the applier, in this order: flush the
         // counts collected under the old level, move the level, log it, write the file before anything can
         // kill the process.
-        string log = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Core/akron-log.cs"));
+        string log = File.ReadAllText(GetSourcePath("Core", "akron-log.cs"));
         int applierStart = log.IndexOf("public static bool ApplyLoggingLevel(", StringComparison.Ordinal);
         Assert.True(applierStart >= 0);
         int flush = log.IndexOf("FlushDiagnosticSummaries();", applierStart, StringComparison.Ordinal);
@@ -602,7 +616,7 @@ public sealed class ModuleSettingsTests
         // unreachable and the fix that made a chosen level survive a kill had never been run in a game. This
         // command is that click. It only earns that claim by calling the same applier and holding no copy of
         // its behavior, so a command that set the level some other way would prove nothing.
-        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Commands/akron-feature-commands.cs"));
+        string source = File.ReadAllText(GetSourcePath("Commands", "akron-feature-commands.cs"));
         int start = source.IndexOf("public static void LogLevel(", StringComparison.Ordinal);
         Assert.True(start >= 0);
         int end = source.IndexOf("public static void Feature(", start, StringComparison.Ordinal);
@@ -707,7 +721,7 @@ public sealed class ModuleSettingsTests
         // the game thread stops the game loop and spins on a flag that an exception anywhere in any
         // installed mod's SaveSettings prevents from ever flipping, which froze the game on an
         // overlay toggle. The settings write has to stay synchronous and single threaded.
-        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/AkronModule.cs"));
+        string source = File.ReadAllText(GetSourcePath("Module", "AkronModule.cs"));
         int start = source.IndexOf("internal static bool SaveAkronSettingsNow(", StringComparison.Ordinal);
         Assert.True(start >= 0);
         int end = source.IndexOf('}', source.IndexOf("catch (Exception exception)", start, StringComparison.Ordinal));
@@ -4811,9 +4825,14 @@ public sealed class ModuleSettingsTests
         int restore = source.IndexOf("private static void RestoreBackupConfirmed(", StringComparison.Ordinal);
         Assert.True(restore > 0, "RestoreBackupConfirmed is unavailable.");
 
+        int selectedGate = source.IndexOf("DescribeRestoreRefusal(backup.Path)", restore, StringComparison.Ordinal);
         int preRestore = source.IndexOf("TryCreateBackup(\"pre-restore\", false, out", restore, StringComparison.Ordinal);
         int replaceSaves = source.IndexOf("RestoreSavesFolder(", restore, StringComparison.Ordinal);
-        Assert.True(preRestore > restore);
+        // The selected backup is gated before the pre-restore one, so a restore that is going to be refused
+        // does not leave a backup behind to explain. What the gate decides is asserted on the decision itself
+        // in RestoreRefusesTheBackupItWasGivenWhenThatBackupIsMissingFiles; this is only where it sits.
+        Assert.True(selectedGate > restore, "The selected backup is not checked for completeness.");
+        Assert.True(preRestore > selectedGate);
         Assert.True(replaceSaves > preRestore);
 
         // The release is handed to RestoreSavesFolder rather than run before it, so it happens after the
@@ -4836,6 +4855,165 @@ public sealed class ModuleSettingsTests
         int closeLog = source.IndexOf("AkronLog.CloseLogFile();", releaseBody, StringComparison.Ordinal);
         Assert.True(stopRecording > releaseBody);
         Assert.True(closeLog > stopRecording);
+    }
+
+    // The selected backup gets the same completeness gate as the pre-restore one, and it has to, because a
+    // restore applies an archive the same way whichever end it came from: phase one moves the live 0.celeste
+    // into `previous`, phase two finds no 0.celeste in the archive to move back, and the work folder is
+    // discarded afterwards. Restoring a backup that could not read 0.celeste therefore takes the player's
+    // 0.celeste away, and before this refusal existed nothing said so.
+    //
+    // A backup records what it could not read inside the archive precisely so that a later process can find
+    // out. Nothing read the field back until now, so the record existed and did nothing.
+    [Fact]
+    public void RestoreRefusesTheBackupItWasGivenWhenThatBackupIsMissingFiles()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            File.WriteAllText(Path.Combine(savesFolder, "1.celeste"), "the slot the backup did read");
+            string backupPath = Path.Combine(backupFolder, "incomplete.zip");
+            WriteTestArchive(backupPath, new Dictionary<string, string>
+            {
+                ["1.celeste"] = "the slot the backup did read",
+                ["_akron-backup.json"] =
+                    "{\n  \"schema\": 2,\n  \"reason\": \"startup\",\n  \"saveSlot\": \"1\",\n" +
+                    "  \"excludedFolders\": [\"AkronBackups\"],\n" +
+                    "  \"skippedFiles\": [\"0.celeste: The process cannot access the file because it is " +
+                    "being used by another process.\"]\n}",
+            });
+
+            AkronBackupEntry incomplete = Assert.Single(AkronBackupActions.RefreshBackups());
+
+            // Read out of the archive's own record, with the reason split off: the message this feeds is one
+            // unwrapped line of toast text and a reason runs to a sentence.
+            Assert.Equal(new[] { "0.celeste" }, incomplete.SkippedFileNames);
+            Assert.False(incomplete.MetadataUnreadable);
+            Assert.Equal(
+                "Restore stopped: the backup you picked (could not read 1: 0.celeste)",
+                AkronBackupActions.DescribeRestoreRefusal(backupPath));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // Fail closed. An archive whose own record of what it skipped cannot be read is not an archive that
+    // skipped nothing, and only one of those is safe to unpack over the player's save files. This is
+    // reachable rather than theoretical: a build whose metadata writer could put a raw control character
+    // inside a skipped file's reason wrote metadata that is not valid JSON, and those are exactly the
+    // archives that recorded a skip.
+    [Fact]
+    public void RestoreRefusesABackupWhoseRecordOfWhatItSkippedCannotBeRead()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            string backupPath = Path.Combine(backupFolder, "unparseable.zip");
+            WriteTestArchive(backupPath, new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the archived save file",
+                // A raw tab inside a string, which is what the old escaping let through.
+                ["_akron-backup.json"] = "{\n  \"skippedFiles\": [\"1.celeste: cannot open\tthe file\"]\n}",
+            });
+
+            AkronBackupEntry unparseable = Assert.Single(AkronBackupActions.RefreshBackups());
+
+            Assert.True(unparseable.MetadataUnreadable);
+            Assert.Equal(
+                "Restore stopped: the backup you picked does not say which files it holds.",
+                AkronBackupActions.DescribeRestoreRefusal(backupPath));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // The gate reads the archive rather than the entry the browser is holding. That entry was built when
+    // the list was last scanned, and this decides whether the save files are replaced, so a file that has
+    // changed under the browser must be judged as it is now rather than as it was listed.
+    [Fact]
+    public void RestoreJudgesTheArchiveOnDiskRatherThanTheEntryTheBrowserIsHolding()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            string backupPath = Path.Combine(backupFolder, "swapped.zip");
+            WriteTestArchive(backupPath, new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the archived save file",
+                ["_akron-backup.json"] = "{\n  \"reason\": \"manual\",\n  \"skippedFiles\": []\n}",
+            });
+
+            AkronBackupEntry listed = Assert.Single(AkronBackupActions.RefreshBackups());
+            Assert.Empty(listed.SkippedFileNames);
+
+            File.Delete(backupPath);
+            WriteTestArchive(backupPath, new Dictionary<string, string>
+            {
+                ["_akron-backup.json"] = "{\n  \"reason\": \"manual\",\n  \"skippedFiles\": [\"0.celeste: gone\"]\n}",
+            });
+
+            Assert.Equal(
+                "Restore stopped: the backup you picked (could not read 1: 0.celeste)",
+                AkronBackupActions.DescribeRestoreRefusal(listed.Path));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // The other side of the gate. A backup that read everything restores, and so does one whose metadata
+    // never mentions the field, which is every archive written before backups recorded it.
+    [Fact]
+    public void RestoreAcceptsABackupThatRecordsNothingItCouldNotRead()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            WriteTestArchive(Path.Combine(backupFolder, "complete.zip"), new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the archived save file",
+                ["_akron-backup.json"] = "{\n  \"schema\": 2,\n  \"reason\": \"manual\",\n  \"skippedFiles\": []\n}",
+            });
+            WriteTestArchive(Path.Combine(backupFolder, "silent.zip"), new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the archived save file",
+                ["_akron-backup.json"] = "{\n  \"schema\": 2,\n  \"reason\": \"manual\"\n}",
+            });
+
+            foreach (AkronBackupEntry backup in AkronBackupActions.RefreshBackups())
+            {
+                Assert.Empty(backup.SkippedFileNames);
+                Assert.False(backup.MetadataUnreadable);
+                Assert.Equal(string.Empty, AkronBackupActions.DescribeRestoreRefusal(backup.Path));
+                Assert.Equal("manual", backup.Reason);
+            }
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    // The record a restore is refused on is only as good as the file it survives in, and the only free-form
+    // text in that file is a skipped file's reason, which is an exception message. JSON forbids a raw
+    // character below 0x20 inside a string, so one tab in a reason used to make the whole metadata
+    // unparseable - and an unparseable record of what a backup skipped reads as a backup that skipped
+    // nothing, which is the case this gate exists to catch.
+    [Fact]
+    public void TheBackupMetadataSurvivesAnyExceptionMessageAReasonCanHold()
+    {
+        string reason = "0.celeste: cannot open\t\"C:\\Saves\"\r\nlocked\u0001.";
+
+        using JsonDocument parsed = JsonDocument.Parse(
+            "{\"skippedFiles\": [\"" + AkronBackupActions.JsonEscape(reason) + "\"]}");
+
+        JsonElement skipped = Assert.Single(parsed.RootElement.GetProperty("skippedFiles").EnumerateArray());
+        Assert.Equal(reason, skipped.GetString());
     }
 
     // The overworld rebuild is what makes OuiFileSelect read the restored files from disk, so a failed

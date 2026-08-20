@@ -73,8 +73,14 @@ internal static class AkronHashIndex {
         new ConcurrentDictionary<Type, IndexRole>();
 
     // Re-derive the hash index of one restored object, if it has one. Anything
-    // else is left alone, so this is safe to call for every node in a graph.
+    // else is left alone, so this is safe to call for every node in a graph -
+    // including a null one, which a graph node's value is allowed to be. The one
+    // caller filters nulls for its own reasons; the guard is here so the sentence
+    // above stays true for the next caller.
     public static void Rebuild(object value) {
+        if (value == null) {
+            return;
+        }
         MethodInfo rebuilder = Rebuilders.GetOrAdd(value.GetType(), FindRebuilder);
         if (rebuilder == null) {
             return;

@@ -31,6 +31,15 @@ public sealed partial class AkronOverlay {
             }
 
             ImGui.TextDisabled(details);
+            // A backup that could not read every file cannot be restored, because putting it
+            // over the live files would take the ones it is missing away. Said here, next to
+            // the button, rather than only in the refusal it would otherwise produce.
+            if (backup.MetadataUnreadable) {
+                ImGui.TextWrapped("Cannot be restored: this backup does not say which files it holds.");
+            } else if (backup.SkippedFileNames.Count > 0) {
+                ImGui.TextWrapped("Cannot be restored: this backup is missing " +
+                    string.Join(", ", backup.SkippedFileNames) + ". Restoring it would remove those files.");
+            }
             if (ImGui.Button("Restore##restore-backup-" + backup.FileName + popupId)) {
                 AkronBackupActions.RestoreBackup(backup);
                 CloseOptionsPopup();

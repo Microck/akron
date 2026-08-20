@@ -3879,6 +3879,12 @@ public sealed class StartPosReconstructionTests {
     // do wire the production reader feed it roots whose Level is null, so before this
     // it had never returned a non-empty set under test.
     //
+    // The rows split three ways, and the split is the contract. A set of ids is map data
+    // that places them. An empty set is map data that places nothing in that room, which
+    // a room the map does not have also is. Null is no map data at all, and it is the
+    // only answer that must never reach the refusal: the refusal says the player's map
+    // changed, and a map nobody could read is not evidence of that.
+    //
     // The last two rows are why the reader walks the area list by hand instead of
     // reading Session.MapData. That property is "AreaData.Areas[Area.ID].Mode[(int)
     // Area.Mode].MapData" - two unchecked array indexes - and it throws for both. A
@@ -3897,25 +3903,72 @@ public sealed class StartPosReconstructionTests {
             Assert.Equal(
                 new[] { 20 },
                 AkronStartPosReconstruction.GetMapPlacedEntityIds(state, "a01").ToArray());
+            // Map data that has been read and has no such room: it places nothing there,
+            // which is an answer rather than an absence of one.
             Assert.Empty(AkronStartPosReconstruction.GetMapPlacedEntityIds(state, "no-such-room"));
             Assert.Empty(AkronStartPosReconstruction.GetMapPlacedEntityIds(state, null));
             // The two roots that are not a loaded room: an action-state document's
-            // Dictionary, and a room state whose level has no session.
-            Assert.Empty(AkronStartPosReconstruction.GetMapPlacedEntityIds(
+            // Dictionary, and a room state whose level has no session. Neither has a map
+            // behind it, so neither may make a saved id look dropped.
+            Assert.Null(AkronStartPosReconstruction.GetMapPlacedEntityIds(
                 new Dictionary<string, object>(), "a00"));
-            Assert.Empty(AkronStartPosReconstruction.GetMapPlacedEntityIds(
+            Assert.Null(AkronStartPosReconstruction.GetMapPlacedEntityIds(
                 new AkronPersistentRuntimeState {
                     Level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level))
                 },
                 "a00"));
 
-            Assert.Empty(AkronStartPosReconstruction.GetMapPlacedEntityIds(
+            Assert.Null(AkronStartPosReconstruction.GetMapPlacedEntityIds(
                 CreateMapRoomState("a00", 7, AreaMode.Normal), "a00"));
-            Assert.Empty(AkronStartPosReconstruction.GetMapPlacedEntityIds(
+            Assert.Null(AkronStartPosReconstruction.GetMapPlacedEntityIds(
                 CreateMapRoomState("a00", 0, AreaMode.BSide), "a00"));
         } finally {
             AreaData.Areas = installedAreas;
         }
+    }
+
+    // The unsafe direction of the map rule, and the reason the reader distinguishes "no
+    // map data" from "map data without this id" at all.
+    //
+    // A stamped node plus a fresh room whose map cannot be read used to produce the map
+    // refusal, which tells the player "this map no longer places the <Type> the slot
+    // saved. Updating a map or a collab does this." That sentence is a false story about
+    // their install when nothing about the map changed and the read simply failed - a map
+    // reload in flight on the game thread, or a session whose area is not in the loaded
+    // area list. It has to fall through silently instead, and it has to keep refusing for
+    // a map that was read and really did drop the id.
+    [Fact]
+    public void AMapThatCannotBeReadDoesNotAccuseThePlayersMapOfHavingChanged() {
+        // The same population as the refusal test above: a saved entity 10 the fresh room
+        // does not build, and a live entity 20 of the same type in the same list slot.
+        SourceEntityListOwnerRoot saved = CreateSourceEntityListOwnerRoot(
+            CreateSourceIdentifiedEntity("a00", 10, 37));
+        SourceEntityListOwnerRoot baseline = CreateSourceEntityListOwnerRoot(
+            CreateSourceIdentifiedEntity("a00", 10, 0));
+        SourceIdentifiedEntity freshEntity = CreateSourceIdentifiedEntity("a00", 20, 0);
+        SourceEntityListOwnerRoot fresh = CreateSourceEntityListOwnerRoot(freshEntity);
+        // The one difference: the map places 10 when the slot is set and cannot be read at
+        // all when it is loaded. Null, not an empty set - which is what the production
+        // reader answers for a map rebuild in flight, or a session whose area is not in
+        // the loaded area list.
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            _ => string.Empty,
+            getMapPlacedEntityIds: (root, _) => ReferenceEquals(root, baseline) ? new[] { 10 } : null);
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        Assert.Single(capture.Document.Nodes, node => node.MapPlacedEntity);
+        capture.Document.Room = "a00";
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        // Whether this document restores is decided by everything else in it, exactly as
+        // it was in every build before the map evidence existed. What must not happen is
+        // this one refusal, because its message names the player's map as the thing that
+        // changed and nothing here says it did.
+        Assert.DoesNotContain("saved map entity is no longer placed by this map", restore.Error);
+        Assert.NotEqual(AkronReconstructionRefusalKind.ChangedMap, restore.RefusedKind);
     }
 
     // Site B end to end through the production map reader rather than through a test

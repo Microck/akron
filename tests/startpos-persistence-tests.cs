@@ -829,11 +829,19 @@ public sealed class StartPosPersistenceTests {
         Assert.DoesNotContain(currentFileName.Substring(currentFileName.IndexOf('.')), sweepCode);
         Assert.DoesNotContain(AkronReconstructionDocument.CurrentFormat, sweepCode);
 
-        // And it runs once per Start, off the game thread.
+        // And it runs once per Start, off the game thread, inside a catch. Nothing awaits
+        // that task, so a throw out of it would be an unobserved Task rather than anything
+        // anyone sees, and the sweep only ever reclaims disk space.
         int start = source.IndexOf("public static void Start()", StringComparison.Ordinal);
         int startEnd = source.IndexOf(
             "internal static (int Files, long Bytes) SweepSupersededSnapshots(", start, StringComparison.Ordinal);
-        Assert.Contains("Task.Run(() => SweepSupersededSnapshots());", SourceSlice(source, start, startEnd - start));
+        string startBody = SourceSlice(source, start, startEnd - start);
+        int task = startBody.IndexOf("Task.Run(static () => {", StringComparison.Ordinal);
+        int swept = startBody.IndexOf("SweepSupersededSnapshots();", task + 1, StringComparison.Ordinal);
+        int guard = startBody.IndexOf("} catch (Exception exception) {", swept, StringComparison.Ordinal);
+        Assert.True(task >= 0, "The sweep does not run off the game thread.");
+        Assert.True(swept > task);
+        Assert.True(guard > swept, "The sweep is not guarded inside its own task.");
     }
 
     [Fact]
@@ -1678,6 +1686,52 @@ public sealed class StartPosPersistenceTests {
                 slotName, out AkronReconstructionDocument afterCommit, out string afterError), afterError);
             Assert.Equal("new-room", afterCommit.Room);
         } finally {
+            AkronStartPosReconstruction.DeleteSnapshot(slotName);
+            if (Directory.Exists(stagingDirectory)) {
+                Directory.Delete(stagingDirectory, recursive: true);
+            }
+        }
+    }
+
+    // A rollback that cannot do its job says so and stops; it does not throw.
+    //
+    // Both of its callers are already carrying a failure. Install's catch block calls it
+    // on the way to reporting an IOException, so a throw there replaces the failure the
+    // caller was about to see with a different one raised from inside a catch. Dispose
+    // calls it at the end of a using, so a throw there discards whatever the using body
+    // was propagating - which on the setup-pack import path is the only account of what
+    // went wrong.
+    //
+    // Forced by putting a directory where the snapshot file belongs, which is a path no
+    // file move can overwrite on any platform.
+    [Fact]
+    public void AFailedSnapshotRollbackIsReportedRatherThanThrownOutOfDispose() {
+        string slotName = "Akron rollback failure " + Guid.NewGuid().ToString("N");
+        string stagingDirectory = Path.Combine(Path.GetTempPath(), "akron-rollback-" + Guid.NewGuid().ToString("N"));
+        string installedPath = AkronStartPosReconstruction.GetSnapshotPath(slotName);
+        try {
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                slotName, "Map/A", "old-room", 1, MinimalDocument(), out string oldError), oldError);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                slotName, "Map/A", "new-room", 1, MinimalDocument(), out string newError, stagingDirectory), newError);
+
+            using (AkronStartPosReconstruction.PreparedSnapshotInstall prepared =
+                   AkronStartPosReconstruction.PrepareSnapshotInstall(slotName, stagingDirectory)) {
+                Assert.True(prepared.Install(out string stagedError), stagedError);
+                File.Delete(installedPath);
+                Directory.CreateDirectory(installedPath);
+            }
+
+            // Reaching here at all is the assertion: leaving the using un-committed runs
+            // the rollback, and its move onto a directory cannot succeed.
+            Assert.True(Directory.Exists(installedPath));
+            // The previous snapshot is still where the rollback left it rather than
+            // deleted on the way to a move that could not happen.
+            Assert.NotEmpty(Directory.GetFiles(stagingDirectory));
+        } finally {
+            if (Directory.Exists(installedPath)) {
+                Directory.Delete(installedPath, recursive: true);
+            }
             AkronStartPosReconstruction.DeleteSnapshot(slotName);
             if (Directory.Exists(stagingDirectory)) {
                 Directory.Delete(stagingDirectory, recursive: true);
@@ -3787,6 +3841,68 @@ public sealed class StartPosPersistenceTests {
         } finally {
             AkronSnapshotPacing.GameplayActive = previousActive;
             AkronSnapshotPacing.ForcedOpen = previousForcedOpen;
+        }
+    }
+
+    // Quitting cancels the job in flight, and the one place that knows how to say that in
+    // a sentence a player can read is RunWorker's catch (OperationCanceledException). Both
+    // stages of a job have to let the cancellation reach it.
+    //
+    // The capture walk paces once per document node, so the common cancellation lands
+    // there - inside a catch that turned every exception into Failed("$", "<type>:
+    // <message>"). The rollback message the player then read was "$:
+    // OperationCanceledException: Celeste closed before its restart copy finished" rather
+    // than the sentence on its own, and RunWorker's dedicated handler was close to dead
+    // for the case it exists for. The snapshot write is the same story one stage later: it
+    // paces once per buffer and reported through its own out-parameter.
+    [Fact]
+    public void QuittingMidJobReachesTheHandlerThatKnowsHowToWordIt() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-cancelled-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        bool previousCancelled = AkronSnapshotPacing.Cancelled;
+        try {
+            AkronReconstructionGraph graph = new AkronReconstructionGraph(_ => false);
+            PacingChainNode saved = BuildPacingChain(600, valueOffset: 10);
+            PacingChainNode baseline = BuildPacingChain(600, valueOffset: 0);
+
+            AkronSnapshotPacing.BeginPacedWork();
+            try {
+                AkronSnapshotPacing.Cancelled = true;
+                OperationCanceledException cancelledCapture = Assert.Throws<OperationCanceledException>(
+                    () => graph.Capture(saved, baseline));
+                Assert.Equal(AkronSnapshotPacing.CancelledMessage, cancelledCapture.Message);
+            } finally {
+                AkronSnapshotPacing.Cancelled = false;
+                AkronSnapshotPacing.EndPacedWork();
+            }
+
+            AkronReconstructionDocument document;
+            AkronSnapshotPacing.BeginPacedWork();
+            try {
+                AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+                Assert.True(capture.Success, capture.Error);
+                document = capture.Document;
+            } finally {
+                AkronSnapshotPacing.EndPacedWork();
+            }
+
+            AkronSnapshotPacing.BeginPacedWork();
+            try {
+                AkronSnapshotPacing.Cancelled = true;
+                OperationCanceledException cancelledWrite = Assert.Throws<OperationCanceledException>(
+                    () => AkronStartPosReconstruction.SaveSnapshot(
+                        "cancelled", "Map/A", "room", 0, document, out _, directory));
+                Assert.Equal(AkronSnapshotPacing.CancelledMessage, cancelledWrite.Message);
+            } finally {
+                AkronSnapshotPacing.Cancelled = false;
+                AkronSnapshotPacing.EndPacedWork();
+            }
+
+            // And the write took its half-finished file with it, cancelled or not.
+            Assert.Empty(Directory.GetFiles(directory));
+        } finally {
+            AkronSnapshotPacing.Cancelled = previousCancelled;
+            Directory.Delete(directory, recursive: true);
         }
     }
 
