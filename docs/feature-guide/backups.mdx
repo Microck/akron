@@ -66,6 +66,8 @@ Every ZIP includes `_akron-backup.json`. This file records why the backup was cr
 
 A file that cannot be read is left out of the ZIP and named in `skippedFiles` with the reason, and the backup finishes with the rest of the folder. The result line names the missing files too. A backup that lists nothing under `skippedFiles` holds everything in your Saves folder apart from the folders named under `excludedFolders`.
 
+Akron writes `_akron-backup.json` into the archive last, so a ZIP without one is either a backup that was interrupted part way through or a ZIP that was never one of Akron's. Neither can be restored: nothing in it says what it holds, and restoring it would take away every save file it does not happen to carry. It is still an ordinary ZIP you can open and take files out of by hand.
+
 ## Retention
 
 Retention runs only after a successful backup. A failed new ZIP is deleted and does not cause older archives to be cleaned up.

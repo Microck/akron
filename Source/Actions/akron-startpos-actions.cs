@@ -459,8 +459,10 @@ public static partial class AkronActions {
         } finally {
             try {
                 // Dispose rolls the staged install back, so it has to run before the
-                // slot state is deleted. Its file moves can throw, hence the nested
-                // finally: a failed rollback must not skip the cleanup below.
+                // slot state is deleted. The rollback reports its own file-move
+                // failures rather than throwing them, so nothing here throws today;
+                // the nested finally is what keeps the cleanup below reachable
+                // without this method having to depend on that.
                 installedSnapshot?.Dispose();
             } finally {
                 // Every exit except the committed one leaves this slot without a restart

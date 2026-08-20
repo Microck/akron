@@ -4966,6 +4966,58 @@ public sealed class ModuleSettingsTests
         }
     }
 
+    // The third answer the gate used to have. An archive carrying no metadata entry at all set neither
+    // MetadataUnreadable nor SkippedFileNames, so it read as "holds every file" - and a restore then moved
+    // every live save file aside, moved back only what that archive happened to hold, and discarded the rest.
+    //
+    // Reachable two ways. The metadata entry is written last, inside the same archive handle as the file
+    // entries, so a backup that fails part way through is closed as a readable ZIP missing that entry and
+    // every file after the failure; it is deleted on the way out, but that delete is allowed to fail and a
+    // kill between the two skips it. And the backup folder is an ordinary folder the Backups tab opens, so
+    // any other ZIP left in it is listed and offered for restore just the same.
+    //
+    // The other half of the same test: an archive the writer finished has to stay restorable, because the
+    // absence of that entry is now what "nobody knows" means.
+    [Fact]
+    public void RestoreRefusesAnArchiveWithNoRecordAndAcceptsOneTheWriterFinished()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            WriteTestArchive(Path.Combine(backupFolder, "no-record.zip"), new Dictionary<string, string>
+            {
+                ["1.celeste"] = "the one slot this archive happens to hold",
+            });
+
+            File.WriteAllText(Path.Combine(savesFolder, "0.celeste"), "the live save file");
+            Assert.Empty(AkronBackupActions.WriteSavesArchive(
+                savesFolder,
+                Path.Combine(backupFolder, "finished.zip"),
+                _ => "{}"));
+
+            Dictionary<string, AkronBackupEntry> listed = AkronBackupActions.RefreshBackups()
+                .ToDictionary(entry => entry.FileName, StringComparer.Ordinal);
+
+            Assert.True(listed["no-record.zip"].MetadataUnreadable);
+            Assert.Empty(listed["no-record.zip"].SkippedFileNames);
+            Assert.Equal(
+                "Restore stopped: the backup you picked does not say which files it holds.",
+                AkronBackupActions.DescribeRestoreRefusal(listed["no-record.zip"].Path));
+            // The browser still calls this one nothing. "unreadable" is the reason a ZIP that would
+            // not open is shown under, and this one opened; what it has is nothing to say.
+            Assert.Equal(string.Empty, listed["no-record.zip"].Reason);
+
+            Assert.False(listed["finished.zip"].MetadataUnreadable);
+            Assert.Equal(
+                string.Empty,
+                AkronBackupActions.DescribeRestoreRefusal(listed["finished.zip"].Path));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
     // The other side of the gate. A backup that read everything restores, and so does one whose metadata
     // never mentions the field, which is every archive written before backups recorded it.
     [Fact]

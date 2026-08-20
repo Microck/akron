@@ -1610,7 +1610,7 @@ public sealed class StartPosPersistenceTests {
         // is what keeps the staging directory from being leaked and the real snapshot
         // directory from being touched by a job nobody joins, and the second budget is
         // there because a cancel is only seen at the next pace point.
-        int drain = persistenceSource.IndexOf("private static void DrainWorkerForShutdown", StringComparison.Ordinal);
+        int drain = persistenceSource.IndexOf("private static bool DrainWorkerForShutdown", StringComparison.Ordinal);
         int drainEnd = persistenceSource.IndexOf("private static void PromoteReadyJobLocked", drain, StringComparison.Ordinal);
         string drainBody = SourceSlice(persistenceSource, drain, drainEnd - drain);
         int budget = drainBody.IndexOf("runningWorker.Wait(ShutdownDrainBudget)", StringComparison.Ordinal);
@@ -1621,6 +1621,50 @@ public sealed class StartPosPersistenceTests {
         Assert.True(join > cancel);
         // No unbounded wait anywhere on the shutdown path.
         Assert.DoesNotContain("runningWorker.GetAwaiter().GetResult();", persistenceSource);
+    }
+
+    // A drain that ran out of both budgets leaves the worker alive, and the worker owns its
+    // own handle: it nulls it when it finds the queue empty. Clearing it from Shutdown as
+    // well let the next Start in the same process create a second worker beside the
+    // survivor, and two workers dequeue from one Ready queue into the one static
+    // CaptureGraph, which is written for a single thread at a time. Everest reloads a mod
+    // in-process, which is what makes that next Start real.
+    //
+    // Asserted on the source, which is weaker than a behavioural test and is what is
+    // available: reproducing it needs a capture that outlives a 5 s drain and a 2 s cancel
+    // and then an in-process reload, and nothing in this project can drive either - the
+    // whole class is unreachable at runtime from here, which is why every other shutdown
+    // test in this file reads the source too.
+    [Fact]
+    public void ATimedOutShutdownLeavesTheWorkerHandleToTheWorker() {
+        string persistenceSource = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"))
+            .Replace("\r\n", "\n");
+
+        // The drain says whether it joined the worker: true from either budget, false only
+        // after the warning that it is being left behind.
+        int drain = persistenceSource.IndexOf("private static bool DrainWorkerForShutdown", StringComparison.Ordinal);
+        Assert.True(drain > 0, "DrainWorkerForShutdown does not report whether the worker stopped.");
+        int drainEnd = persistenceSource.IndexOf("private static void PromoteReadyJobLocked", drain, StringComparison.Ordinal);
+        string drainBody = SourceSlice(persistenceSource, drain, drainEnd - drain);
+        Assert.Equal(3, CountOccurrences(drainBody, "return true;"));
+        Assert.Equal(1, CountOccurrences(drainBody, "return false;"));
+        Assert.True(
+            drainBody.IndexOf("return false;", StringComparison.Ordinal) >
+            drainBody.IndexOf("did not stop when asked", StringComparison.Ordinal));
+
+        // Shutdown clears the handle only on that answer, and nowhere else.
+        Assert.Contains(
+            "bool workerStopped = DrainWorkerForShutdown(runningWorker, outstanding);",
+            persistenceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (workerStopped) {\n                workerTask = null;\n            }",
+            persistenceSource,
+            StringComparison.Ordinal);
+        // The remaining assignment is the worker's own, inside RunWorker's lock. Shutdown's
+        // was one nesting level shallower, so the indentation is what tells them apart.
+        Assert.DoesNotContain("\n            workerTask = null;", persistenceSource, StringComparison.Ordinal);
+        Assert.Equal(2, CountOccurrences(persistenceSource, "workerTask = null;"));
     }
 
     [Fact]

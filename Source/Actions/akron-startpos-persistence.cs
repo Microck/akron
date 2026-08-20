@@ -955,9 +955,12 @@ internal static class AkronStartPosPersistence {
     //
     // What a quit costs a slot whose copy did not finish is the copy, and that is
     // reported per slot through the normal rollback message.
-    private static void DrainWorkerForShutdown(Task runningWorker, int outstanding) {
+    //
+    // True when the worker really stopped, which is what decides whether Shutdown may
+    // clear the handle to it.
+    private static bool DrainWorkerForShutdown(Task runningWorker, int outstanding) {
         if (runningWorker == null) {
-            return;
+            return true;
         }
 
         if (outstanding > 0) {
@@ -966,7 +969,7 @@ internal static class AkronStartPosPersistence {
                 outstanding.ToString(CultureInfo.InvariantCulture) + " left). This can take a few seconds.");
         }
         if (runningWorker.Wait(ShutdownDrainBudget)) {
-            return;
+            return true;
         }
 
         AkronLog.Warn(nameof(AkronStartPosPersistence),
@@ -976,7 +979,7 @@ internal static class AkronStartPosPersistence {
             "have to be set again; the game is not held open any longer.");
         AkronSnapshotPacing.Cancelled = true;
         if (runningWorker.Wait(ShutdownCancelBudget)) {
-            return;
+            return true;
         }
 
         // Cancellation is cooperative: it is only seen when the job reaches its next
@@ -988,6 +991,7 @@ internal static class AkronStartPosPersistence {
         AkronLog.Warn(nameof(AkronStartPosPersistence),
             "A StartPos restart copy did not stop when asked. Closing without it; it may " +
             "leave one akron-startpos-* directory behind under the system temp path.");
+        return false;
     }
 
     // Moves the requested slot's job to the head of the queue. A Load is a direct
@@ -1058,7 +1062,7 @@ internal static class AkronStartPosPersistence {
                 " s of closing. Closing without it; it holds nothing the next launch needs.");
         }
         AkronStartPosReconstruction.ResetPrewarmedSnapshots();
-        DrainWorkerForShutdown(runningWorker, outstanding);
+        bool workerStopped = DrainWorkerForShutdown(runningWorker, outstanding);
         Update();
         AkronActions.SaveAkronStartPosData();
         On.Celeste.Level.LoadLevel -= LevelOnLoadLevel;
@@ -1095,13 +1099,24 @@ internal static class AkronStartPosPersistence {
             LatestGenerations.Clear();
             started = false;
             shuttingDown = false;
-            workerTask = null;
-            // Only when it really stopped. A read-ahead that outlived its budget is still in
-            // its loop and still owns this handle: it clears the handle itself on the way
-            // out. Clearing it here would let an Everest reload in the same process start a
-            // second reader alongside the first, and then let the first one null out the
-            // second one's handle when it finally exits. Its queue has been cleared and its
-            // generation moved, so it finds nothing to do and returns.
+            // Each handle is cleared only when the task behind it really stopped. A worker
+            // or a read-ahead that outlived its budget is still in its loop and still owns
+            // its handle: it clears the handle itself on the way out. Clearing it here
+            // would let an Everest reload in the same process start a second one alongside
+            // the survivor, and then let the survivor null out the newcomer's handle when
+            // it finally exits.
+            //
+            // For the capture worker the second one is worse than a duplicate handle. Both
+            // would dequeue from Ready, and both would then enter the one static
+            // CaptureGraph, which is written for a single thread at a time. Leaving the
+            // handle costs nothing instead: both queues are emptied above, so a survivor
+            // that reaches its loop head finds nothing to do and clears its own handle,
+            // and one still inside a job serves whatever the next run has queued by the
+            // time it comes back round. Either way one worker, which is what Ready is
+            // written for.
+            if (workerStopped) {
+                workerTask = null;
+            }
             if (prewarmStopped) {
                 prewarmTask = null;
             }

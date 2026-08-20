@@ -26,7 +26,8 @@ public sealed class AkronBackupEntry {
     // wrote it: by the time anyone restores, the process that made the archive is
     // several launches gone, and this is what a restore is refused on.
     public IReadOnlyList<string> SkippedFileNames { get; set; } = Array.Empty<string>();
-    // The archive carries a metadata entry and it could not be read. Kept apart from an
+    // Nothing here can say what the archive holds: the ZIP would not open, its metadata
+    // entry would not parse, or it carries no metadata entry at all. Kept apart from an
     // empty SkippedFileNames because they are opposite answers: one says the archive
     // holds every file, the other says nobody knows. A restore refuses on both.
     public bool MetadataUnreadable { get; set; }
@@ -416,7 +417,10 @@ public static class AkronBackupActions {
             // not an archive that skipped nothing, and only one of those is safe to unpack
             // over the player's save files. Reachable for a backup written by a build whose
             // metadata writer could still put a raw control character inside a reason, which
-            // is not valid JSON and therefore not readable now.
+            // is not valid JSON and therefore not readable now, and for an archive with no
+            // metadata entry at all - a backup that failed part way through and could not be
+            // cleaned up, or a ZIP that was never one of Akron's. ReadBackupEntry says which
+            // routes reach this and why the missing entry is not silence.
             return "Restore stopped: the backup you picked does not say which files it holds.";
         }
 
@@ -806,6 +810,14 @@ public static class AkronBackupActions {
     // The entries are read into an array before any of them moves. Renaming entries out of a directory that
     // is still being enumerated can skip the ones that have not been reached yet, and a save file skipped
     // here is a save file that would silently survive a restore.
+    //
+    // The two lists are not compared once the swap is done, and comparing them would be wrong rather than
+    // merely redundant: a name moved aside with no counterpart moved in is the ordinary case of restoring a
+    // backup older than a save file the player has created since, which is what restoring an older backup
+    // means. Whether the archive holds what it should is decided before any of this runs, by
+    // DescribeRestoreRefusal, out of the archive's own record. And there is nothing here for a comparison to
+    // catch: every move either goes through or throws, and the only thing deliberately dropped is an
+    // extracted copy of a folder Akron owns, whose live copy was never moved aside.
     private static void SwapSavesFolderContents(string savesFolder, string extracted, string previous) {
         string[] ownedFolders = BuildAkronOwnedFolders(savesFolder);
         List<string> movedAside = new List<string>();
@@ -922,7 +934,21 @@ public static class AkronBackupActions {
         string reason = string.Empty;
         string saveSlot = string.Empty;
         IReadOnlyList<string> skippedFileNames = Array.Empty<string>();
-        bool metadataUnreadable = false;
+        // Starts at "nobody knows what this archive holds", so every route to that answer
+        // lands on it rather than each route having to remember to: a ZIP that will not open,
+        // a metadata entry that will not parse, and an archive carrying no metadata entry at
+        // all. Only a parse that ran to the end clears it.
+        //
+        // That last route is the one that used to fall through. With no entry, neither this
+        // nor a skipped name was set, so the archive read as "holds every file", which is the
+        // one answer that lets a restore unpack it over the player's save files. It is
+        // reachable two ways. WriteSavesArchiveCore writes the metadata entry last and inside
+        // the same using as the file entries, so a failure part way leaves ZipArchive.Dispose
+        // to close a readable archive missing both that entry and every file after the
+        // failure; WriteSavesArchive deletes it on the way out, but that delete is allowed to
+        // fail and a kill between the two skips it. And the backup folder is an ordinary
+        // folder the Backups tab opens, so any ZIP a player leaves in it is listed too.
+        bool metadataUnreadable = true;
         try {
             using ZipArchive archive = ZipFile.OpenRead(path);
             ZipArchiveEntry metadata = archive.GetEntry(MetadataEntryName);
@@ -935,13 +961,16 @@ public static class AkronBackupActions {
                 reason = ReadMetadataString(document.RootElement, "reason");
                 saveSlot = ReadMetadataString(document.RootElement, "saveSlot");
                 skippedFileNames = ReadSkippedFileNames(document.RootElement);
+                metadataUnreadable = false;
             }
         } catch {
-            // Either the ZIP would not open or its metadata entry would not parse. Both
-            // leave this process unable to say what the archive holds, and a restore has to
-            // treat that as a reason to stop rather than as silence.
+            // The ZIP would not open or its metadata entry would not parse. Both leave this
+            // process unable to say what the archive holds, which is where the flag above
+            // already stands, and a restore has to treat that as a reason to stop rather
+            // than as silence. The displayed reason is set only here: an archive that opened
+            // and simply carries no record has nothing to say, and labelling it unreadable
+            // in the browser would be a false account of a file that read perfectly well.
             reason = "unreadable";
-            metadataUnreadable = true;
         }
 
         return new AkronBackupEntry {
