@@ -645,6 +645,34 @@ public static partial class AkronActions {
                 string.Equals(startPos?.StateSlotName, stateSlotName, StringComparison.Ordinal)));
     }
 
+    // How many Sets are still waiting for a restart copy, across every save file and map
+    // this run has touched.
+    //
+    // A Set publishes its slot and returns as soon as the warm clone exists. The restart
+    // copy behind it runs on a worker that parks at its next pace point once the player is
+    // in control of the game, so on a session with no pause, no chapter change and no input
+    // wait, a slot reads as set and works for hours with nothing on disk - measured at
+    // twenty-five minutes of play on the Windows test machine, with three copies landing
+    // the moment the game was paused.
+    //
+    // Quitting is bounded rather than complete: it opens the gate, spends a few seconds on
+    // the queue at full speed, and reports per slot the copies it then cancels. A worker
+    // that outlives the cancel budget as well leaves its remaining slots unreported. A
+    // crash or a kill runs none of that.
+    //
+    // One slot waiting is ordinary. A number that only grows while the player keeps
+    // playing is the pacing gate holding the whole queue, which is what the per-slot
+    // answer cannot show.
+    internal static int PendingStartPosStateCount {
+        get {
+            int pendingCount = 0;
+            foreach (Dictionary<int, AkronStartPos> pending in PendingStartPositionsByFileAndMap.Values) {
+                pendingCount += pending.Count;
+            }
+            return pendingCount;
+        }
+    }
+
     internal static void ClearPendingStartPosState() {
         PendingStartPositionsByFileAndMap.Clear();
         // Shutdown and module unload abandon every in-flight Set, so nothing will ever run

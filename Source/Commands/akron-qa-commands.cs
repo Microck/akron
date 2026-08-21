@@ -95,6 +95,35 @@ public static partial class AkronCommands {
         Log("prompt: " + AkronPromptMenu.DescribeState());
     }
 
+    // What this can and cannot be used to prove, recorded here because it has been read
+    // as a restore oracle and it is not one, in either direction.
+    //
+    // It arms a capture of whichever room buffer is rendered next. The room composite
+    // advances every update, so two captures of one static room with no load between them
+    // differ almost everywhere - 88-98% of pixels on the Windows test machine. A hash is
+    // only comparable against another hash taken at the same point of the same kind of
+    // frame.
+    //
+    // And on the frame a StartPos load presents, the buffer normally holds bytes the
+    // restore wrote back out of the snapshot rather than pixels rendered from the rebuilt
+    // room: the restore puts the saved gameplay buffers back where the live targets still
+    // take them and arms the Level one, and Level.Render writes those bytes into the target
+    // before this capture reads it. Equality between two such frames is the saved frame
+    // round-tripping through the file, and it holds whether or not the room behind it is
+    // right. That presentation is best effort: a resized target or a missing saved Level
+    // buffer skips it with a warning in the log, and a scene change between the load and
+    // the render skips it silently. So a capture on a load frame is either the presented
+    // bytes or an ordinary rendered frame, and the hash does not say which.
+    //
+    // Comparing two frames rendered from the rebuilt room, rather than presented, would say
+    // something about the room. Nothing here pins the frame that would need: the capture
+    // lands on the next render, and how many updates separate that from the restore is not
+    // fixed, so the backdrops have moved on by different amounts in any two runs.
+    //
+    // What is deterministic about a load is akron_qa_startpos_load_probe's state output,
+    // which reports the player and session fields it names. That is the thing to assert.
+    // scripts/akron-verify/run.sh prints it in its first check without asserting any of
+    // it, and not at all in the other two, which is recorded in that script's own header.
     [Command("akron_qa_pixel_checkpoint", "capture and hash Celeste's next rendered 320x180 room buffer: <tag>")]
     public static void QaPixelCheckpoint(string tag = "checkpoint") {
         if (RequireLevel() == null) {
@@ -892,6 +921,36 @@ public static partial class AkronCommands {
         Log("qa-toast-label-duration: " + Math.Max(0.1f, duration).ToString("0.###", CultureInfo.InvariantCulture));
         Log("qa-toast-labels-enabled: " + AkronModule.Settings.ToastLabels.ToString().ToLowerInvariant());
         Log("qa-labels-visible: " + AkronModule.Settings.LabelSystemVisible.ToString().ToLowerInvariant());
+    }
+
+    // Reads back the messages Akron raised for the player, most recently raised last.
+    //
+    // No command could report a message Akron raised by itself, which made the wording
+    // unassertable: an in-game gate could see that a load was refused but not what the
+    // refusal said, so the sentences this branch reworked twice were checked by reading the
+    // source instead of by reading the screen. akron_qa_toast_label echoes a message it was
+    // told to show, which answers a different question. This is the read-back, so a scripted check can assert the
+    // sentence. Some paths do write the sentence they show to the Akron log - a StartPos
+    // load refusal, a failed replacement, a removed slot - but most do not, and a log is
+    // not something an automation run can query.
+    //
+    // The count is reported as well as the lines. It counts every message Akron raises,
+    // not only the ones an action asked for, so a gate that reads it before and after an
+    // action learns how many messages appeared in between - which is what tells "the
+    // refusal I expected" from "an older message still in the buffer".
+    [Command("akron_qa_messages", "report the most recent Akron messages raised for the player: [count]")]
+    public static void QaMessages(string countText = "5") {
+        if (!int.TryParse(countText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count) || count <= 0) {
+            Log("usage: akron_qa_messages [count]");
+            return;
+        }
+
+        IReadOnlyList<string> messages = AkronToast.GetRecentMessages(count);
+        Log("qa-messages-raised: " + AkronToast.RaisedMessageCount.ToString(CultureInfo.InvariantCulture));
+        Log("qa-messages-reported: " + messages.Count.ToString(CultureInfo.InvariantCulture));
+        foreach (string message in messages) {
+            Log("qa-message: " + message);
+        }
     }
 
     [Command("akron_qa_enter_debug_map", "enter Celeste's debug map scene from the active level for QA")]

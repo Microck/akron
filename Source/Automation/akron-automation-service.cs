@@ -131,6 +131,7 @@ public static class AkronAutomationService {
         "akron_qa_label_number",
         "akron_qa_label_row_order",
         "akron_qa_list_maps",
+        "akron_qa_messages",
         "akron_qa_pause",
         "akron_qa_pause_event",
         "akron_qa_pause_state",

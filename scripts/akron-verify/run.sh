@@ -12,11 +12,43 @@
 # Every check reports PASS or FAIL with the evidence it used. The exit code is
 # the number of failed checks, so this is usable as a gate.
 #
-# Exact-state equality is proved with akron_qa_pixel_checkpoint, which hashes
-# Celeste's own 320x180 gameplay render target. That is deterministic and
-# independent of the X session, window focus, compositing and scaling, so
-# "the reloaded frame is the same frame" is a sha256 comparison rather than an
-# opinion about a screenshot.
+# What akron_qa_pixel_checkpoint can and cannot answer, because this harness is
+# where the answer was got wrong once already.
+#
+# It hashes Celeste's own 320x180 gameplay render target, which is independent of
+# the X session, window focus, compositing and scaling. It is not a restore
+# oracle, in either direction:
+#
+#  - It samples whichever frame is rendered next, and the room composite advances
+#    every update. Two captures of one static room with no load between them
+#    differed in 88-98% of their pixels on the Windows machine, so a hash is only
+#    ever comparable against another hash taken at the same point of the same
+#    kind of frame.
+#  - On the frame a StartPos load presents, the gameplay buffer normally holds
+#    bytes Akron itself wrote back out of the snapshot: the restore puts the saved
+#    gameplay buffers back where the live targets still take them and arms the
+#    Level one, and Level.Render puts those bytes into the target before this
+#    capture reads it. So a match there is the saved frame round-tripping through
+#    the file, and says nothing about whether the room behind it was rebuilt
+#    correctly. That presentation is best effort, so a load frame is either the
+#    presented bytes or an ordinary rendered frame and the hash does not say
+#    which; a resized target or a missing saved buffer leaves a warning in
+#    akron-current.log, a scene change leaves nothing.
+#
+# The checks below therefore compare one load frame against another load frame,
+# which is what that second point makes meaningful, and they are worded for it. Do
+# not compare a capture-time frame against a restored one: the two are taken at
+# different points and legitimately differ.
+#
+# What can be asserted about a restore is the load probe's state output - position,
+# facing, dashes, state id, session flag, session counter - which is deterministic.
+# Those named fields, not the whole rebuilt room. Check 1 prints that output and
+# asserts none of it, and checks 2 and 3 do not print it at all, which is a hole worth
+# knowing about:
+# akron_qa_startpos_load_probe arms its capture whether or not the load succeeded, so
+# a refused load still produces a hash and check 1 can reach a PASS on it. None of
+# the PASS lines below claims the load succeeded, for that reason. Asserting those
+# fields is the next thing this harness needs.
 
 set -uo pipefail
 
@@ -172,6 +204,18 @@ fi
 
 say "Check 1: StartPos loads correctly from a different room"
 enter_level
+# Every capture that is compared here is compared against another capture from
+# this run, so a file left by an earlier run is not stale evidence but a false
+# PASS: two runs' leftovers match each other whatever happened this time. The tags
+# are fixed, so the files have to go before anything writes one.
+rsh "rm -f '${AUTO_DIR}'/qa-pixel-verify-*" >/dev/null 2>&1
+# And the deletion is checked rather than assumed. A delete that quietly failed would
+# leave the comparisons above reading last run's evidence while every message here
+# said this run's.
+STALE_PIXELS="$(rsh "ls -1 '${AUTO_DIR}'/qa-pixel-verify-* 2>/dev/null | wc -l" | tr -d '\r')"
+if [ "${STALE_PIXELS:-1}" != "0" ]; then
+    fail "setup: ${STALE_PIXELS:-?} pixel checkpoint file(s) from an earlier run could not be cleared, so every hash comparison below may match stale evidence"
+fi
 # The setup is sent one step at a time and each step is checked. A single
 # batched run hides which command failed, and a reference capture that silently
 # produced nothing turns every later comparison into a meaningless empty-string
@@ -213,16 +257,21 @@ XROOM_HASH="$(pixel_hash verify-xroom)"
 # compared with REF_HASH: the reference capture is rendered at capture time,
 # before the restore path runs, so the two legitimately differ (animated
 # backdrop particles alone guarantee it) and asserting equality there reports a
-# failure that is not one.
+# failure that is not one. What the later comparisons say is therefore bounded -
+# see the note at the top of this file - and what they are worded to claim.
 BASELINE_HASH="$XROOM_HASH"
 if [ "$AWAY_ROOM_ACTUAL" = "$REF_ROOM" ]; then
     fail "cross-room: the away warp did not leave the StartPos room (${REF_ROOM}), so this check proves nothing"
 elif [ -z "$XROOM_HASH" ]; then
-    fail "cross-room: no pixel checkpoint after the load, so the slot did not restore"
+    fail "cross-room: no pixel checkpoint after the load, so either the slot did not restore or the capture did not land"
 else
-    pass "cross-room: loaded from room ${AWAY_ROOM_ACTUAL} back into ${REF_ROOM}, frame ${XROOM_HASH:0:16}"
+    pass "cross-room: warped away to ${AWAY_ROOM_ACTUAL}, asked for slot 1 from there, and a frame was captured (${XROOM_HASH:0:16}); what restored is in the probe output below"
 fi
-printf '%s\n' "$LOAD_OUT" | grep -E '^(startpos-load|probe|player|session|flag|counter)' | sed 's/^/      /'
+# Anchored on the prefixes the probe really writes. The earlier pattern - startpos-load,
+# probe, player, session, flag, counter - matched none of them: every line the probe
+# records is qa-startpos-load-probe-* or qa-session-*, so this block printed nothing at
+# all, and the only correctness evidence in this check was invisible.
+printf '%s\n' "$LOAD_OUT" | grep -E '^qa-(startpos-load-probe|session)' | sed 's/^/      /'
 
 # ------------------------------------------------------------- 2. cross-map
 
@@ -237,8 +286,12 @@ XMAP_HASH="$(pixel_hash verify-xmap)"
 
 if [ -z "$OTHER_MAP" ] || [ "${OTHER_MAP%% *}" = "" ]; then
     fail "cross-map: never reached the second map, so this check proves nothing"
+elif [ -z "$XMAP_HASH" ] || [ -z "$BASELINE_HASH" ]; then
+    # Two missing captures compare equal to each other, which used to read as a PASS
+    # for a pair of frames that were never taken.
+    fail "cross-map: a pixel checkpoint is missing (cross-room='${BASELINE_HASH:0:16}' cross-map='${XMAP_HASH:0:16}'), so this check proves nothing"
 elif [ "$BASELINE_HASH" = "$XMAP_HASH" ]; then
-    pass "cross-map: went to ${OTHER_MAP}, came back, loaded, frame is byte-identical to the cross-room load"
+    pass "cross-map: went to ${OTHER_MAP} and came back, and the load frame hashed identically to the cross-room load"
 else
     fail "cross-map: a map round trip changed the restored frame (cross-room=${BASELINE_HASH:0:16} cross-map=${XMAP_HASH:0:16})"
 fi
@@ -256,9 +309,9 @@ COLD_MS=$(( ($(date +%s%N) - COLD_START) / 1000000 ))
 COLD_HASH="$(pixel_hash verify-cold)"
 
 if [ -z "$COLD_HASH" ]; then
-    fail "persistent slot: no pixel checkpoint after a cold load, the slot did not restore"
+    fail "persistent slot: no pixel checkpoint after a cold load, so either the slot did not restore or the capture did not land"
 elif [ "$BASELINE_HASH" = "$COLD_HASH" ]; then
-    pass "persistent slot: restored byte-identically from disk after a restart, same frame as the warm load (${SNAP_COUNT_BEFORE} snapshots on disk)"
+    pass "persistent slot: after a full restart the load frame hashed identically to the warm load (${SNAP_COUNT_BEFORE} snapshots on disk)"
 else
     fail "persistent slot: a cold load differs from the warm load (warm=${BASELINE_HASH:0:16} cold=${COLD_HASH:0:16})"
 fi

@@ -3719,6 +3719,103 @@ public sealed class StartPosPersistenceTests {
         }
     }
 
+    // startpos-set answers "is a StartPos active", which was read as "is it on disk".
+    // Those are minutes apart: a Set returns as soon as its warm clone exists, and the
+    // restart copy behind it parks while the player is in control. Measured on the Windows
+    // machine at twenty-five minutes of play with nothing on disk, while the automation
+    // query reported startpos-set: true throughout. The queue depth is what shows that
+    // from outside.
+    [Fact]
+    public void OutstandingRestartCopiesAreCounted() {
+        const int fileSlot = 7;
+        const int slot = 5;
+        AkronStartPos startPos = new AkronStartPos {
+            AreaSid = "Akron/RestartCopyCount",
+            Room = "c-01",
+            StateSlotName = "Akron StartPos File 7 akron-restart-copy-count 5 " + Guid.NewGuid().ToString("N")
+        };
+        int outstandingBefore = AkronActions.PendingStartPosStateCount;
+
+        // A Set publishes a pending entry for its slot and returns. Until that Set
+        // commits, its restart copy is outstanding and the slot is not on disk.
+        AddPendingStartPos(fileSlot, slot, startPos);
+        try {
+            Assert.True(AkronActions.HasPendingStartPosState(startPos.StateSlotName));
+            Assert.Equal(outstandingBefore + 1, AkronActions.PendingStartPosStateCount);
+            Assert.False(AkronStartPosReconstruction.HasSnapshot(startPos.StateSlotName));
+        } finally {
+            RemovePendingStartPosForTest(fileSlot, slot);
+        }
+
+        Assert.Equal(outstandingBefore, AkronActions.PendingStartPosStateCount);
+    }
+
+    [Fact]
+    public void DurabilityIsReportedSeparatelyFromWhetherAStartPosIsSet() {
+        string status = File.ReadAllText(GetSourcePath("Commands", "akron-startpos-commands.cs"));
+
+        // All three, and startpos-set still there: it keeps its own meaning rather than
+        // being redefined under an existing gate's feet.
+        Assert.Contains("Log(\"startpos-set: \"", status);
+        Assert.Contains("Log(\"startpos-snapshot-on-disk: \" +", status);
+        Assert.Contains("AkronStartPosReconstruction.HasSnapshot(stateSlotName)", status);
+        Assert.Contains("Log(\"startpos-restart-copy-outstanding: \" +", status);
+        Assert.Contains("AkronActions.HasPendingStartPosState(stateSlotName)", status);
+        Assert.Contains(
+            "Log(\"startpos-restart-copies-outstanding: \" +\n            AkronActions.PendingStartPosStateCount",
+            status.Replace("\r\n", "\n"));
+    }
+
+    // A refusal reaches the player as a toast, and no command could report the text of one
+    // Akron raised, so the wording this branch reworked twice could not be asserted in a
+    // scripted check. It is read back from the one place every toast passes through.
+    [Fact]
+    public void MessagesRaisedForThePlayerAreReadableAfterwards() {
+        string first = "Akron read-back first " + Guid.NewGuid().ToString("N");
+        string second = "Akron read-back second " + Guid.NewGuid().ToString("N");
+        long raisedBefore = AkronToast.RaisedMessageCount;
+
+        // The recording call the constructor makes. Constructing the entity itself needs a
+        // live FNA, which a headless run does not have.
+        AkronToast.RecordRaisedMessage(first);
+        AkronToast.RecordRaisedMessage(second);
+
+        Assert.Equal(raisedBefore + 2, AkronToast.RaisedMessageCount);
+        Assert.Equal(new[] { first, second }, AkronToast.GetRecentMessages(2));
+
+        // Bounded, and it drops the oldest rather than the newest: a gate reads the tail.
+        for (int index = 0; index < 40; index++) {
+            AkronToast.RecordRaisedMessage(
+                "Akron read-back filler " + index.ToString(CultureInfo.InvariantCulture));
+        }
+        Assert.DoesNotContain(first, AkronToast.GetRecentMessages(128));
+        Assert.Equal("Akron read-back filler 39", Assert.Single(AkronToast.GetRecentMessages(1)));
+
+        // The constructor is what calls it, which is the half this headless run cannot
+        // reach: without this line a real message is shown and recorded nowhere.
+        Assert.Contains(
+            "sequence = RecordRaisedMessage(message);",
+            File.ReadAllText(GetSourcePath("Core", "AkronToast.cs")),
+            StringComparison.Ordinal);
+    }
+
+    // The read-back is only usable by an in-game gate if the file queue will run it, and
+    // the queue refuses anything not on its allowlist. This asserts the pair: the command
+    // exists, and a command file naming it parses.
+    [Fact]
+    public void TheMessageReadBackCommandIsAllowlistedForAutomation() {
+        Assert.Contains(
+            "[Command(\"akron_qa_messages\"",
+            File.ReadAllText(GetQaCommandsSourcePath()),
+            StringComparison.Ordinal);
+        Assert.True(AkronAutomationService.TryParseCommandFileForTesting(
+            "token: akron-message-read-back-token-0123456789\nakron_qa_messages 3\n",
+            "akron-message-read-back-token-0123456789",
+            out IReadOnlyList<string> commands,
+            out string error), error);
+        Assert.Equal("akron_qa_messages 3", Assert.Single(commands));
+    }
+
     [Fact]
     public void AnOutstandingRestartCopyFailingKeepsTheCommittedStartPosLoadable() {
         const int fileSlot = 9;
