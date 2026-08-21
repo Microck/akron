@@ -14,8 +14,9 @@ namespace Celeste.Mod.Akron.Tests;
 // Celeste forces a blocking GC.Collect plus GC.WaitForPendingFinalizers inside
 // Level.Reload, which runs on every death. AkronEngineGarbageCollection rewrites
 // that method so the collection is owed rather than run, and pays the debt at the
-// next StartPos load. These tests drive the real manipulator against the real
-// Celeste.Level.Reload body from the Celeste.dll the build references.
+// next StartPos load. CI's Celeste assembly is reference-only, so these tests
+// verify the real target's metadata and drive the real manipulator against a
+// test-owned copy of Celeste's adjacent collection pair.
 [Collection(AkronSharedStateCollection.Name)]
 public sealed class EngineGarbageCollectionTests {
     private const BindingFlags Internals = BindingFlags.Static | BindingFlags.NonPublic;
@@ -25,8 +26,12 @@ public sealed class EngineGarbageCollectionTests {
         ?? throw new InvalidOperationException("AkronEngineGarbageCollection.collectionOwed is unavailable.");
 
     [Fact]
-    public void TheGuardInstallsInCelestesRealLevelReload() {
-        using ILContext context = OpenCelesteMethod("Celeste.Level", nameof(Level.Reload));
+    public void TheGuardTargetsLevelReloadAndWrapsCelestesCollectionPair() {
+        using ILContext target = OpenCelesteMethod("Celeste.Level", nameof(Level.Reload));
+        Assert.False(target.Method.IsStatic);
+        Assert.Empty(target.Method.Parameters);
+
+        using ILContext context = OpenCollectionPairFixture();
         context.Invoke(AkronEngineGarbageCollection.DeferForcedCollection);
 
         List<Instruction> instructions = context.Instrs.ToList();
@@ -57,7 +62,7 @@ public sealed class EngineGarbageCollectionTests {
         // over the same method still matches. Running Akron's twice is the same
         // shape as Akron plus CelesteTAS, and proves the second one still finds
         // its pattern and still branches past the same two calls.
-        using ILContext context = OpenCelesteMethod("Celeste.Level", nameof(Level.Reload));
+        using ILContext context = OpenCollectionPairFixture();
         context.Invoke(AkronEngineGarbageCollection.DeferForcedCollection);
         context.Invoke(AkronEngineGarbageCollection.DeferForcedCollection);
 
@@ -67,10 +72,35 @@ public sealed class EngineGarbageCollectionTests {
         Assert.Equal(1, CountCalls(instructions, nameof(GC.Collect)));
         Assert.Equal(1, CountCalls(instructions, nameof(GC.WaitForPendingFinalizers)));
         Assert.Equal(2, CountCalls(instructions, nameof(AkronEngineGarbageCollection.TryDeferForcedCollection)));
+        Assert.Equal(0, CountCalls(instructions, nameof(AkronEngineGarbageCollection.MarkDeferredCollectionPaid)));
 
         Instruction afterPair = instructions[collect + 2];
         AssertBranchesIfTrue(instructions[collect - 1], afterPair);
         AssertBranchesIfTrue(instructions[collect - 3], afterPair);
+    }
+
+    [Fact]
+    public void RetainedFullCollectionsReconcileDebtOnlyAfterTheyRun() {
+        string source = ReadSource("Source/Runtime/akron-engine-gc.cs");
+        Assert.Contains("instruction.OpCode == OpCodes.Call || instruction.OpCode == OpCodes.Callvirt", source);
+
+        using ILContext sceneTransition = OpenCollectionPairFixture();
+        sceneTransition.Invoke(AkronEngineGarbageCollection.ReconcileSceneTransitionCollection);
+        List<Instruction> sceneInstructions = sceneTransition.Instrs.ToList();
+        int sceneWait = IndexOfCall(sceneInstructions, nameof(GC.WaitForPendingFinalizers));
+        int sceneReconcile = IndexOfCall(
+            sceneInstructions,
+            nameof(AkronEngineGarbageCollection.MarkDeferredCollectionPaid));
+        Assert.Equal(sceneWait + 1, sceneReconcile);
+
+        using ILContext roomTransition = OpenSingleCollectionFixture();
+        roomTransition.Invoke(AkronEngineGarbageCollection.ReconcileRoomTransitionCollection);
+        List<Instruction> roomInstructions = roomTransition.Instrs.ToList();
+        int roomCollect = IndexOfCall(roomInstructions, nameof(GC.Collect));
+        int roomReconcile = IndexOfCall(
+            roomInstructions,
+            nameof(AkronEngineGarbageCollection.MarkDeferredCollectionPaid));
+        Assert.Equal(roomCollect + 1, roomReconcile);
     }
 
     [Fact]
@@ -150,6 +180,26 @@ public sealed class EngineGarbageCollectionTests {
     }
 
     [Fact]
+    public void AnotherFullCollectionPaysTheDebtWithoutASecondCollection() {
+        int owedBefore = ClearDebt();
+        try {
+            Assert.True(AkronEngineGarbageCollection.TryDeferForcedCollection(new AkronModuleSettings()));
+            long paidBefore = AkronEngineGarbageCollection.PaidCollections;
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            AkronEngineGarbageCollection.MarkDeferredCollectionPaid();
+
+            Assert.False(AkronEngineGarbageCollection.CollectionOwed);
+            Assert.Equal(paidBefore + 1, AkronEngineGarbageCollection.PaidCollections);
+            Assert.False(AkronEngineGarbageCollection.CollectDeferred());
+            Assert.Equal(paidBefore + 1, AkronEngineGarbageCollection.PaidCollections);
+        } finally {
+            RestoreDebt(owedBefore);
+        }
+    }
+
+    [Fact]
     public void TheStartPosLoadPathIsWhereTheDebtIsPaid() {
         // The debt is only worth taking on because there is a beat that settles
         // it. That beat is the StartPos restore, and it must not run while the
@@ -183,9 +233,13 @@ public sealed class EngineGarbageCollectionTests {
         Assert.Contains("AkronEngineGarbageCollection.Load();", module, StringComparison.Ordinal);
         Assert.Contains("AkronEngineGarbageCollection.Unload();", module, StringComparison.Ordinal);
 
+        string engineGc = ReadSource("Source/Runtime/akron-engine-gc.cs");
+        Assert.Contains("IL.Celeste.Level.Reload += DeferForcedCollection;", engineGc, StringComparison.Ordinal);
+        Assert.Contains("IL.Celeste.Level.Reload -= DeferForcedCollection;", engineGc, StringComparison.Ordinal);
+        Assert.DoesNotContain("GC.CollectionCount(2)", engineGc, StringComparison.Ordinal);
+
         // Unloading the module is the last chance to keep the promise a deferral
         // makes, so it settles the debt instead of discarding it.
-        string engineGc = ReadSource("Source/Runtime/akron-engine-gc.cs");
         int unload = engineGc.IndexOf("internal static void Unload()", StringComparison.Ordinal);
         int settled = engineGc.IndexOf("CollectDeferred();", unload, StringComparison.Ordinal);
         int nextMember = engineGc.IndexOf("    // Level.Reload contains", unload, StringComparison.Ordinal);
@@ -204,10 +258,64 @@ public sealed class EngineGarbageCollectionTests {
     private static ILContext OpenCelesteMethod(string typeName, string methodName) {
         // The Celeste.dll the tests load is the one the mod is compiled against,
         // so the IL under test is the IL that ships.
-        ModuleDefinition module = ModuleDefinition.ReadModule(typeof(Level).Assembly.Location);
-        MethodDefinition method = module.GetType(typeName).Methods
-            .Single(candidate => candidate.Name == methodName && candidate.Parameters.Count == 0);
-        return new ILContext(method);
+        return OpenMethod(
+            typeof(Level).Assembly.Location,
+            module => module.GetType(typeName).Methods
+                .Single(candidate => candidate.Name == methodName && candidate.Parameters.Count == 0));
+    }
+
+    private static ILContext OpenCollectionPairFixture() {
+        return OpenFixture(nameof(CollectionPairFixture));
+    }
+
+    private static ILContext OpenSingleCollectionFixture() {
+        return OpenFixture(nameof(SingleCollectionFixture));
+    }
+
+    private static ILContext OpenFixture(string methodName) {
+        return OpenMethod(
+            typeof(EngineGarbageCollectionTests).Assembly.Location,
+            module => {
+                MethodDefinition method = module.GetType(typeof(EngineGarbageCollectionTests).FullName).Methods
+                    .Single(candidate => candidate.Name == methodName);
+                // Debug builds put sequence-point nops between source statements.
+                // Celeste's target release IL has the calls adjacent, so normalize
+                // the test-owned fixture to the shape the manipulator receives.
+                ILProcessor processor = method.Body.GetILProcessor();
+                foreach (Instruction instruction in method.Body.Instructions
+                             .Where(instruction => instruction.OpCode == OpCodes.Nop)
+                             .ToArray()) {
+                    processor.Remove(instruction);
+                }
+                return method;
+            });
+    }
+
+    // ILContext owns its instruction processor but not the Cecil module that owns
+    // the method. Tie both lifetimes together so every using declaration above also
+    // releases the assembly reader, including when a test fails inside manipulation.
+    private static ILContext OpenMethod(
+        string assemblyPath,
+        Func<ModuleDefinition, MethodDefinition> selectMethod
+    ) {
+        ModuleDefinition module = ModuleDefinition.ReadModule(assemblyPath);
+        try {
+            ILContext context = new ILContext(selectMethod(module));
+            context.OnDispose += module.Dispose;
+            return context;
+        } catch {
+            module.Dispose();
+            throw;
+        }
+    }
+
+    private static void CollectionPairFixture() {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+    }
+
+    private static void SingleCollectionFixture() {
+        GC.Collect();
     }
 
     private static int IndexOfCall(List<Instruction> instructions, string name) {

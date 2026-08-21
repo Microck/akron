@@ -3,7 +3,7 @@ title: .akr archive format
 description: Technical specification for the Akron archive format, including manifests, payloads, and import safety rules.
 ---
 
-Akron uses `.akr` files to store and share setup sections, overlay themes, HUD labels, and control-display presets. An `.akr` file is a ZIP archive containing one manifest and one main payload. StartPos setup packs also contain the exact compressed snapshot named by each StartPos entry. The reader accepts only `manifest.json`, the main payload required by the archive kind, and StartPos attachments declared by `setup.json`.
+Akron uses `.akr` files to store and share setup sections, overlay themes, HUD labels, and control-display presets. An `.akr` file is a ZIP archive containing one manifest and one main payload. StartPos and Whole setup packs also contain the exact compressed snapshot named by each StartPos entry. The reader accepts only `manifest.json`, the main payload required by the archive kind, and StartPos attachments declared by `setup.json`.
 
 ## Archive shape
 
@@ -245,7 +245,7 @@ flowchart TD
   payloadCheck -->|Yes| apply["Apply section"]
 ```
 
-Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats. A pack whose payload contract predates this build is refused with a message naming both contract versions, before any StartPos attachment is opened.
+Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats. Setup packs created before `akron-setup-v6` cannot be imported. Recreate the setup and its StartPos slots in the current build, then export a new pack.
 
 For each StartPos attachment, Akron verifies the declared checksum, map, and
 room before applying the setup. It then binds the snapshot to the recipient's

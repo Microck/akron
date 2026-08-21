@@ -222,8 +222,9 @@ public sealed class LogTests {
     public void ClosingTheLogDisposesAStreamThatNeverGotAWriter() {
         string directory = Path.Combine(Path.GetTempPath(), "akron-log-orphan-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
+        FileStream? orphan = null;
         try {
-            FileStream orphan = new FileStream(
+            orphan = new FileStream(
                 Path.Combine(directory, "akron-current.log"),
                 FileMode.Append,
                 FileAccess.Write,
@@ -239,6 +240,7 @@ public sealed class LogTests {
         } finally {
             FileStreamField.SetValue(null, null);
             StreamWriterField.SetValue(null, null);
+            orphan?.Dispose();
             Directory.Delete(directory, recursive: true);
         }
     }
@@ -253,7 +255,7 @@ public sealed class LogTests {
             string current = Path.Combine(directory, "akron-current.log");
             File.WriteAllText(current, "rotated line");
 
-            using (FileStream backupRead = new FileStream(current, FileMode.Open, FileAccess.Read, AkronBackupActions.BackupSourceShare)) {
+            using (FileStream backupRead = new FileStream(current, FileMode.Open, FileAccess.Read, AkronBackupActions.AppendOnlyBackupSourceShare)) {
                 AkronLog.RotateLogFiles(directory, retainedFiles: 3);
 
                 Assert.False(File.Exists(current));

@@ -85,7 +85,7 @@ public static partial class AkronCommands {
 
     // Command-only diagnostic output. This is intentionally not an overlay
     // option because it reports renderer timing for development and QA.
-    [Command("akron_perf", "Akron performance telemetry: status|reset|record <label>|stop|gcevents on|off")]
+    [Command("akron_perf", "Akron performance telemetry: status|reset|record [label]|stop|gcevents <on|off>")]
     public static void Performance(string action = "status", string label = "") {
         switch ((action ?? string.Empty).Trim().ToLowerInvariant()) {
             case "":
@@ -105,8 +105,11 @@ public static partial class AkronCommands {
             case "record":
                 // Opens the JSONL perf record under Saves/.tmp-perf. The harness
                 // in scripts/akron-perf drives this around a scripted TAS run.
-                AkronPerformanceTelemetry.StartRecording(label, out string path);
-                Log("perf-record-started: " + path);
+                if (AkronPerformanceTelemetry.StartRecording(label, out string path)) {
+                    Log("perf-record-started: " + path);
+                } else {
+                    Log("perf-record-failed");
+                }
                 break;
             case "stop":
                 AkronPerformanceTelemetry.StopRecording();
@@ -114,7 +117,7 @@ public static partial class AkronCommands {
                 break;
             default:
                 Log("unknown performance action: " + action);
-                Log("usage: akron_perf status|reset|record <label>|stop|gcevents on|off");
+                Log("usage: akron_perf status|reset|record [label]|stop|gcevents <on|off>");
                 return;
         }
 

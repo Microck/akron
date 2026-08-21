@@ -6,6 +6,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Celeste;
@@ -31,6 +32,10 @@ public sealed class AkronBackupEntry {
     // empty SkippedFileNames because they are opposite answers: one says the archive
     // holds every file, the other says nobody knows. A restore refuses on both.
     public bool MetadataUnreadable { get; set; }
+    // A parsed Akron metadata record makes this archive part of Akron's retention pool,
+    // even when its older schema is no longer safe to restore. ZIPs without that record
+    // may be unrelated recovery material and are never pruned by Akron.
+    public bool HasAkronMetadata { get; set; }
 }
 
 // One file the backup could not read. Both the status line and the archive metadata name these, because a
@@ -43,6 +48,7 @@ internal sealed class AkronBackupSkippedFile {
 public static class AkronBackupActions {
     private const string BackupFolderName = "AkronBackups";
     private const string MetadataEntryName = "_akron-backup.json";
+    internal const int CurrentMetadataSchema = 2;
 
     // Where a restore unpacks the archive and holds the folder's previous contents while it swaps them.
     internal const string RestoreWorkFolderName = "AkronRestore";
@@ -105,7 +111,10 @@ public static class AkronBackupActions {
         RestoreWorkFolderName
     };
 
-    // The share mode every file in Saves is read with while it is archived.
+    // Save data must not be copied while a writer is changing it. Refusing write
+    // sharing turns an overlapping save into a skipped file instead of a readable
+    // but torn backup. Akron's log and performance recorder are the only exceptions:
+    // both are append-only diagnostics, and both remain open for the whole operation.
     //
     // This is about Windows, and it is invisible on Linux because Linux does not enforce share modes at all.
     // Windows refuses to open a file for reading when another handle holds it for writing, unless the reader
@@ -117,7 +126,11 @@ public static class AkronBackupActions {
     //
     // FileShare.Delete is the other half: without it, holding a file open here would block log rotation from
     // renaming akron-current.log and block retention from deleting files, for as long as the backup runs.
-    internal const FileShare BackupSourceShare = FileShare.ReadWrite | FileShare.Delete;
+    internal const FileShare BackupSourceShare = FileShare.Read | FileShare.Delete;
+    internal const FileShare AppendOnlyBackupSourceShare = FileShare.ReadWrite | FileShare.Delete;
+    // GetRelativePath normalizes archive entry names to '/', including on Windows.
+    private const string AkronLogBackupPrefix = AkronLog.DirectoryName + "/";
+    private const string PerformanceBackupPrefix = AkronPerformanceTelemetry.PerfDirectoryName + "/";
 
     // The ZIP format stores MS-DOS timestamps and cannot represent anything outside this range.
     private const int MinimumZipYear = 1980;
@@ -131,6 +144,7 @@ public static class AkronBackupActions {
     private static IReadOnlyList<AkronBackupEntry> cachedBackups;
     private static bool backupListDirty = true;
     private static string backupFolderOverrideForQa;
+    private static AkronModuleSettings backupSettingsOverrideForQa;
     private static bool startupBackupAttempted;
     private static double intervalSecondsUntilNextCheck = 5.0;
     private static double levelBeginSecondsUntilNextAllowed;
@@ -206,7 +220,11 @@ public static class AkronBackupActions {
 
     // Reports the files the archive could not include as well as whether it was written at all. Restore needs
     // both: it is about to delete every save file, so a safety backup that is merely "created" is not enough.
-    internal static bool TryCreateBackup(string reason, bool showToast, out IReadOnlyList<AkronBackupSkippedFile> skipped) {
+    internal static bool TryCreateBackup(
+        string reason,
+        bool showToast,
+        out IReadOnlyList<AkronBackupSkippedFile> skipped,
+        string protectedBackupPath = null) {
         skipped = Array.Empty<AkronBackupSkippedFile>();
         lock (Sync) {
             try {
@@ -227,9 +245,7 @@ public static class AkronBackupActions {
                     return Fail("Backup failed: created ZIP could not be read.", showToast);
                 }
 
-                InvalidateBackupList();
-                AkronModule.Settings.BackupsLastBackupUtcTicks = DateTime.UtcNow.Ticks;
-                ApplyRetention();
+                FinalizeBackupRetention(backupPath, skipped, protectedBackupPath);
                 LastStatus = "Backup created: " + Path.GetFileName(backupPath) + DescribeSkippedFiles(skipped);
                 if (skipped.Count > 0) {
                     Logger.Log(LogLevel.Warn, nameof(AkronModule), "Backup could not read " + skipped.Count +
@@ -282,12 +298,25 @@ public static class AkronBackupActions {
         string backupPath,
         Func<IReadOnlyList<AkronBackupSkippedFile>, string> buildMetadataJson) {
         List<AkronBackupSkippedFile> skipped = new List<AkronBackupSkippedFile>();
+        string[] filesToArchive = EnumerateFilesToArchive(savesFolder).ToArray();
+        string[] relativePaths = filesToArchive
+            .Select(file => GetRelativePath(savesFolder, file))
+            .ToArray();
+        string[] initialManifest = relativePaths
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
         using (ZipArchive archive = ZipFile.Open(backupPath, ZipArchiveMode.Create)) {
-            foreach (string file in EnumerateFilesToArchive(savesFolder)) {
-                string relativePath = GetRelativePath(savesFolder, file);
+            for (int fileIndex = 0; fileIndex < filesToArchive.Length; fileIndex++) {
+                string file = filesToArchive[fileIndex];
+                string relativePath = relativePaths[fileIndex];
+                FileShare sourceShare = GetBackupSourceShare(relativePath);
                 FileStream source;
                 try {
-                    source = new FileStream(file, FileMode.Open, FileAccess.Read, BackupSourceShare);
+                    source = new FileStream(
+                        file,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        sourceShare);
                 } catch (Exception exception) {
                     // Only the open is tolerated per file. A sharing violation, a missing file, a file deleted
                     // while we walked the folder and a permission error all land here, and none of them may
@@ -306,16 +335,51 @@ public static class AkronBackupActions {
                 }
 
                 using (source) {
-                    AddFileEntry(archive, source, file, relativePath);
+                    bool appendOnly = sourceShare == AppendOnlyBackupSourceShare;
+                    long sourceLength = source.Length;
+                    DateTime sourceLastWriteUtc = appendOnly ? default : File.GetLastWriteTimeUtc(file);
+                    byte[] sourceHash = ReadBackupSource(source, sourceLength);
+                    byte[] archivedHash = AddFileEntry(archive, source, file, relativePath, sourceLength);
+                    if (!sourceHash.SequenceEqual(archivedHash) ||
+                        (!appendOnly &&
+                         (source.Length != sourceLength || File.GetLastWriteTimeUtc(file) != sourceLastWriteUtc))) {
+                        throw new IOException("Backup source changed while it was being copied: " + relativePath);
+                    }
                 }
+            }
+
+            string metadataJson = buildMetadataJson(skipped);
+            string[] finalManifest = BuildBackupManifest(
+                savesFolder,
+                EnumerateFilesToArchive(savesFolder));
+            bool manifestChanged;
+            if (skipped.Count == 0) {
+                manifestChanged = !initialManifest.SequenceEqual(finalManifest, StringComparer.Ordinal);
+            } else {
+                HashSet<string> skippedPaths = skipped
+                    .Select(entry => entry.RelativePath)
+                    .ToHashSet(StringComparer.Ordinal);
+                manifestChanged = !initialManifest.Where(path => !skippedPaths.Contains(path)).SequenceEqual(
+                    finalManifest.Where(path => !skippedPaths.Contains(path)),
+                    StringComparer.Ordinal);
+            }
+            if (manifestChanged) {
+                throw new IOException("Save files changed while the backup was being created.");
             }
 
             ZipArchiveEntry metadataEntry = archive.CreateEntry(MetadataEntryName, CompressionLevel.Optimal);
             using StreamWriter writer = new StreamWriter(metadataEntry.Open(), Encoding.UTF8);
-            writer.Write(buildMetadataJson(skipped));
+            writer.Write(metadataJson);
         }
 
         return skipped;
+    }
+
+    internal static FileShare GetBackupSourceShare(string relativePath) {
+        return relativePath.StartsWith(AkronLogBackupPrefix, StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith(PerformanceBackupPrefix, StringComparison.OrdinalIgnoreCase)
+            ? AppendOnlyBackupSourceShare
+            : BackupSourceShare;
     }
 
     // Every file under Saves that belongs to the player, with the folders Akron runs out of pruned at the
@@ -340,7 +404,20 @@ public static class AkronBackupActions {
         }
     }
 
-    private static void AddFileEntry(ZipArchive archive, FileStream source, string path, string entryName) {
+    private static string[] BuildBackupManifest(string savesFolder, IEnumerable<string> files) {
+        return files
+            .Select(file => GetRelativePath(savesFolder, file))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static byte[] AddFileEntry(
+        ZipArchive archive,
+        FileStream source,
+        string path,
+        string entryName,
+        long sourceLength
+    ) {
         ZipArchiveEntry entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
         entry.LastWriteTime = ClampToZipTimestampRange(File.GetLastWriteTime(path));
         // ZipFile.CreateEntryFromFile stored the Unix mode here and ExtractToDirectory puts it back, so
@@ -353,7 +430,29 @@ public static class AkronBackupActions {
         }
 
         using Stream destination = entry.Open();
-        source.CopyTo(destination);
+        return ReadBackupSource(source, sourceLength, destination);
+    }
+
+    // Reads the exact prefix measured when the source was opened. Stable save files must keep both
+    // this content and their metadata unchanged across two passes. Append-only diagnostics may grow,
+    // but the prefix placed in the archive must still match the prefix verified immediately before it.
+    private static byte[] ReadBackupSource(FileStream source, long length, Stream destination = null) {
+        source.Position = 0;
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        byte[] buffer = new byte[81920];
+        long remaining = length;
+        while (remaining > 0) {
+            int read = source.Read(buffer, 0, (int) Math.Min(buffer.Length, remaining));
+            if (read == 0) {
+                throw new EndOfStreamException("Backup source became shorter while it was being copied.");
+            }
+
+            hash.AppendData(buffer, 0, read);
+            destination?.Write(buffer, 0, read);
+            remaining -= read;
+        }
+
+        return hash.GetHashAndReset();
     }
 
     private static DateTimeOffset ClampToZipTimestampRange(DateTime value) {
@@ -488,9 +587,10 @@ public static class AkronBackupActions {
         }
     }
 
-    internal static void SetBackupFolderForQa(string backupFolder) {
+    internal static void SetBackupFolderForQa(string backupFolder, AkronModuleSettings settings = null) {
         lock (Sync) {
             backupFolderOverrideForQa = backupFolder;
+            backupSettingsOverrideForQa = settings;
             InvalidateBackupList();
         }
     }
@@ -627,7 +727,11 @@ public static class AkronBackupActions {
                 // that is about to be replaced with no copy of it anywhere. RestoreSavesFolder is written so
                 // that a failure leaves the save files untouched, and this is what covers the case it cannot
                 // - a restore that succeeds and turns out to have been the wrong backup.
-                if (!TryCreateBackup("pre-restore", false, out IReadOnlyList<AkronBackupSkippedFile> preRestoreSkipped)) {
+                if (!TryCreateBackup(
+                    "pre-restore",
+                    false,
+                    out IReadOnlyList<AkronBackupSkippedFile> preRestoreSkipped,
+                    protectedBackupPath: backup.Path)) {
                     LastStatus = "Restore stopped: pre-restore backup failed.";
                     Toast(LastStatus);
                     return;
@@ -661,41 +765,59 @@ public static class AkronBackupActions {
         }
     }
 
-    private static void ApplyRetention() {
+    private static void ApplyRetention(string newestBackupPath = null, string additionalProtectedPath = null) {
         IReadOnlyList<AkronBackupEntry> backups = ListBackups();
         if (backups.Count == 0) {
             return;
         }
 
-        int keepAtLeast = Math.Min(ClampBackupKeepAtLeast(AkronModule.Settings.BackupsKeepAtLeast), backups.Count);
-        HashSet<string> protectedPaths = backups
+        // A ZIP without readable Akron metadata may be unrelated recovery material that the player put in
+        // this folder. It is visible in the restore browser, but it is not part of Akron's retention pool.
+        IReadOnlyList<AkronBackupEntry> retentionBackups = backups
+            .Where(entry => entry.HasAkronMetadata)
+            .ToList();
+        if (retentionBackups.Count == 0) {
+            return;
+        }
+
+        AkronModuleSettings settings = backupSettingsOverrideForQa ?? AkronModule.Settings;
+        IReadOnlyList<AkronBackupEntry> restorableBackups = retentionBackups.Where(IsRestorableBackup).ToList();
+        int keepAtLeast = Math.Min(ClampBackupKeepAtLeast(settings.BackupsKeepAtLeast), restorableBackups.Count);
+        HashSet<string> protectedPaths = retentionBackups
             .Where(entry => entry.Pinned)
-            .Concat(backups.Take(keepAtLeast))
+            .Concat(restorableBackups.Take(keepAtLeast))
             .Select(entry => entry.Path)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // A successful backup must still exist when its caller continues. During restore, the archive the
+        // player selected must also survive until RestoreSavesFolder has opened it.
+        if (newestBackupPath != null) {
+            protectedPaths.Add(newestBackupPath);
+        }
+        if (additionalProtectedPath != null) {
+            protectedPaths.Add(additionalProtectedPath);
+        }
+        // Incomplete archives are recovery material, not backups Akron can restore. When a limit requires
+        // deletion, remove them before a complete backup regardless of their relative age.
+        IReadOnlyList<AkronBackupEntry> evictionOrder = OrderRetentionCandidates(retentionBackups, protectedPaths);
         List<AkronBackupEntry> delete = new List<AkronBackupEntry>();
 
-        int maxCount = ClampBackupMaxCount(AkronModule.Settings.BackupsMaxCount);
-        if (backups.Count > maxCount) {
-            delete.AddRange(backups.Skip(maxCount).Where(entry => !protectedPaths.Contains(entry.Path)));
+        int maxCount = ClampBackupMaxCount(settings.BackupsMaxCount);
+        if (retentionBackups.Count > maxCount) {
+            delete.AddRange(evictionOrder.Take(retentionBackups.Count - maxCount));
         }
 
-        int maxAgeDays = ClampBackupRetentionDays(AkronModule.Settings.BackupsDeleteOlderThanDays);
+        int maxAgeDays = ClampBackupRetentionDays(settings.BackupsDeleteOlderThanDays);
         if (maxAgeDays > 0) {
             DateTime cutoff = DateTime.UtcNow - TimeSpan.FromDays(maxAgeDays);
-            delete.AddRange(backups.Where(entry => entry.CreatedUtc < cutoff && !protectedPaths.Contains(entry.Path)));
+            delete.AddRange(retentionBackups.Where(entry => entry.CreatedUtc < cutoff && !protectedPaths.Contains(entry.Path)));
         }
 
-        long maxSizeBytes = ClampBackupMaxSizeMb(AkronModule.Settings.BackupsMaxTotalSizeMb) * 1024L * 1024L;
+        long maxSizeBytes = ClampBackupMaxSizeMb(settings.BackupsMaxTotalSizeMb) * 1024L * 1024L;
         if (maxSizeBytes > 0) {
-            long totalSize = backups.Sum(entry => entry.SizeBytes);
-            foreach (AkronBackupEntry entry in backups.OrderBy(entry => entry.CreatedUtc)) {
+            long totalSize = retentionBackups.Sum(entry => entry.SizeBytes);
+            foreach (AkronBackupEntry entry in evictionOrder) {
                 if (totalSize <= maxSizeBytes) {
                     break;
-                }
-
-                if (protectedPaths.Contains(entry.Path)) {
-                    continue;
                 }
 
                 delete.Add(entry);
@@ -703,7 +825,62 @@ public static class AkronBackupActions {
             }
         }
 
-        foreach (AkronBackupEntry entry in delete.DistinctBy(entry => entry.Path)) {
+        DeleteBackups(delete.DistinctBy(entry => entry.Path));
+    }
+
+    // Kept as one operation so tests can exercise the same success-clock and retention decision after
+    // writing a real archive, without constructing Everest's process-wide module registry.
+    internal static void FinalizeBackupRetention(
+        string backupPath,
+        IReadOnlyList<AkronBackupSkippedFile> skipped,
+        string protectedBackupPath = null) {
+        lock (Sync) {
+            InvalidateBackupList();
+            if (skipped.Count == 0) {
+                AkronModuleSettings settings = backupSettingsOverrideForQa ?? AkronModule.Settings;
+                settings.BackupsLastBackupUtcTicks = DateTime.UtcNow.Ticks;
+                ApplyRetention(backupPath, protectedBackupPath);
+                return;
+            }
+
+            // A partial archive is useful for manual recovery, but it cannot be restored and is not a
+            // successful backup. Keep the newest one without letting it run retention against the complete
+            // archive a pre-restore operation is about to use.
+            ApplyIncompleteRetention(backupPath);
+        }
+    }
+
+    private static void ApplyIncompleteRetention(string newestIncompletePath) {
+        IEnumerable<AkronBackupEntry> delete = ListBackups().Where(entry =>
+            IsAkronIncompleteBackup(entry) &&
+            !entry.Pinned &&
+            !string.Equals(entry.Path, newestIncompletePath, StringComparison.OrdinalIgnoreCase));
+        DeleteBackups(delete);
+    }
+
+    // Only Akron archives with readable metadata and an explicit skipped-file record are
+    // incomplete backups. An unreadable or metadata-free ZIP may be unrelated recovery
+    // material that a player put in the folder, so incomplete retention must leave it alone.
+    private static bool IsAkronIncompleteBackup(AkronBackupEntry entry) {
+        return !entry.MetadataUnreadable && entry.SkippedFileNames.Count > 0;
+    }
+
+    internal static IReadOnlyList<AkronBackupEntry> OrderRetentionCandidates(
+        IEnumerable<AkronBackupEntry> backups,
+        IReadOnlySet<string> protectedPaths) {
+        return backups
+            .Where(entry => !protectedPaths.Contains(entry.Path))
+            .OrderBy(entry => IsRestorableBackup(entry) ? 1 : 0)
+            .ThenBy(entry => entry.CreatedUtc)
+            .ToList();
+    }
+
+    private static bool IsRestorableBackup(AkronBackupEntry entry) {
+        return !entry.MetadataUnreadable && entry.SkippedFileNames.Count == 0;
+    }
+
+    private static void DeleteBackups(IEnumerable<AkronBackupEntry> backups) {
+        foreach (AkronBackupEntry entry in backups) {
             try {
                 File.Delete(entry.Path);
                 string pinPath = GetPinPath(entry.Path);
@@ -949,6 +1126,7 @@ public static class AkronBackupActions {
         // fail and a kill between the two skips it. And the backup folder is an ordinary
         // folder the Backups tab opens, so any ZIP a player leaves in it is listed too.
         bool metadataUnreadable = true;
+        bool hasAkronMetadata = false;
         try {
             using ZipArchive archive = ZipFile.OpenRead(path);
             ZipArchiveEntry metadata = archive.GetEntry(MetadataEntryName);
@@ -958,10 +1136,13 @@ public static class AkronBackupActions {
                 // mark. StreamReader detects and drops it; a raw byte parse would not.
                 using StreamReader reader = new StreamReader(metadata.Open(), Encoding.UTF8);
                 using JsonDocument document = JsonDocument.Parse(reader.ReadToEnd());
+                hasAkronMetadata = TryReadAkronMetadataSchema(document.RootElement, out _);
                 reason = ReadMetadataString(document.RootElement, "reason");
                 saveSlot = ReadMetadataString(document.RootElement, "saveSlot");
-                skippedFileNames = ReadSkippedFileNames(document.RootElement);
-                metadataUnreadable = false;
+                // Unknown schemas and missing or wrong-shaped skipped-file metadata still make the archive
+                // unsafe to restore, but the ZIP and JSON did parse, so keep the reason the archive recorded
+                // for its browser row.
+                metadataUnreadable = !TryReadCompletenessMetadata(document.RootElement, out skippedFileNames);
             }
         } catch {
             // The ZIP would not open or its metadata entry would not parse. Both leave this
@@ -982,8 +1163,17 @@ public static class AkronBackupActions {
             SaveSlot = saveSlot,
             SkippedFileNames = skippedFileNames,
             MetadataUnreadable = metadataUnreadable,
+            HasAkronMetadata = hasAkronMetadata,
             Pinned = File.Exists(GetPinPath(path))
         };
+    }
+
+    private static bool TryReadAkronMetadataSchema(JsonElement root, out int schemaNumber) {
+        schemaNumber = 0;
+        return root.ValueKind == JsonValueKind.Object &&
+               root.TryGetProperty("schema", out JsonElement schema) &&
+               schema.ValueKind == JsonValueKind.Number &&
+               schema.TryGetInt32(out schemaNumber);
     }
 
     private static string ReadMetadataString(JsonElement root, string key) {
@@ -994,7 +1184,7 @@ public static class AkronBackupActions {
             : string.Empty;
     }
 
-    // The names of the files a backup could not read, out of its own record of them.
+    // The names of the files a backup could not read, out of its own current-schema record of them.
     //
     // BuildMetadataJson writes each element as "<relative path>: <reason>", and only the
     // name is wanted here, because the message this feeds has to fit on one line. The
@@ -1005,21 +1195,29 @@ public static class AkronBackupActions {
     // An element that is not a string still counts. It is a record of a file the archive
     // does not hold, however badly written, and the safe reading of a record nobody can
     // parse is not "nothing was skipped".
-    private static IReadOnlyList<string> ReadSkippedFileNames(JsonElement root) {
-        if (root.ValueKind != JsonValueKind.Object ||
+    private static bool TryReadCompletenessMetadata(JsonElement root, out IReadOnlyList<string> names) {
+        names = Array.Empty<string>();
+        if (!TryReadAkronMetadataSchema(root, out int schemaNumber) ||
+            schemaNumber != CurrentMetadataSchema ||
             !root.TryGetProperty("skippedFiles", out JsonElement skipped) ||
             skipped.ValueKind != JsonValueKind.Array) {
-            return Array.Empty<string>();
+            return false;
         }
 
-        List<string> names = new List<string>();
+        int skippedCount = skipped.GetArrayLength();
+        if (skippedCount == 0) {
+            return true;
+        }
+
+        List<string> parsedNames = new List<string>(skippedCount);
         foreach (JsonElement element in skipped.EnumerateArray()) {
             string record = element.ValueKind == JsonValueKind.String ? element.GetString() ?? string.Empty : string.Empty;
             int separator = record.IndexOf(": ", StringComparison.Ordinal);
-            names.Add(separator < 0 ? record : record.Substring(0, separator));
+            parsedNames.Add(separator < 0 ? record : record.Substring(0, separator));
         }
 
-        return names;
+        names = parsedNames;
+        return true;
     }
 
     // Only an open save can be stale: Celeste writes SaveData.Instance back over its file on the next save,
@@ -1035,10 +1233,10 @@ public static class AkronBackupActions {
             return true;
         }
 
-        // Neither of these can throw. FileSlot is a field, and SaveData.GetFilename either returns the slot
-        // number or the literal "debug". Everything below them can, which is what the catch is for.
+        // Neither of these can throw. FileSlot is a field, and the filename is either the slot number or
+        // Celeste's literal "debug" name. Everything below them can, which is what the catch is for.
         int slot = open.FileSlot;
-        string filename = SaveData.GetFilename(slot);
+        string filename = slot < 0 ? "debug" : slot.ToString(CultureInfo.InvariantCulture);
 
         try {
             SaveData restored = UserIO.Load<SaveData>(filename);
@@ -1108,7 +1306,7 @@ public static class AkronBackupActions {
         builder.AppendLine("{");
         // Schema 2 because the archive contract changed: a schema 1 archive carried
         // Saves/AkronStartPos and a schema 2 one does not.
-        builder.AppendLine("  \"schema\": 2,");
+        builder.AppendLine("  \"schema\": " + CurrentMetadataSchema.ToString(CultureInfo.InvariantCulture) + ",");
         builder.AppendLine("  \"reason\": \"" + JsonEscape(reason) + "\",");
         builder.AppendLine("  \"createdUtc\": \"" + DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture) + "\",");
         builder.AppendLine("  \"gameVersion\": \"" + JsonEscape(Celeste.Instance?.Version?.ToString() ?? string.Empty) + "\",");

@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Text;
 using Celeste.Mod.Akron;
 using Xunit;
@@ -146,6 +147,34 @@ public sealed class PerformanceTelemetryTests {
         AkronPerformanceTelemetry.Reset();
         Assert.Equal(0, AkronPerformanceTelemetry.CompletedWindowCount);
         Assert.Equal(0, AkronPerformanceTelemetry.FrameSampleCount);
+    }
+
+    [Fact]
+    public void ResetClearsRecordingScopedMovementAndDroppedGcEvents() {
+        FieldInfo hasLastPlayerPosition = typeof(AkronPerformanceTelemetry).GetField(
+            "hasLastPlayerPosition",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        FieldInfo gcEventDropped = typeof(AkronPerformanceTelemetry).GetField(
+            "gcEventDropped",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        FieldInfo gcSuspendBeginTicks = typeof(AkronPerformanceTelemetry).GetField(
+            "gcSuspendBeginTicks",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        try {
+            hasLastPlayerPosition.SetValue(null, true);
+            gcEventDropped.SetValue(null, 17L);
+            gcSuspendBeginTicks.SetValue(null, 1234L);
+
+            AkronPerformanceTelemetry.Reset();
+
+            Assert.False((bool) hasLastPlayerPosition.GetValue(null)!);
+            Assert.Equal(0L, (long) gcEventDropped.GetValue(null)!);
+            Assert.Equal(0L, (long) gcSuspendBeginTicks.GetValue(null)!);
+        } finally {
+            hasLastPlayerPosition.SetValue(null, false);
+            gcEventDropped.SetValue(null, 0L);
+            gcSuspendBeginTicks.SetValue(null, 0L);
+        }
     }
 
     [Fact]

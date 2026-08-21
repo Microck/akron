@@ -4799,21 +4799,39 @@ public sealed class ModuleSettingsTests
     [Fact]
     public void BackupReadsSourceFilesWithASharedModeWindowsAccepts()
     {
-        Assert.Equal(FileShare.ReadWrite | FileShare.Delete, AkronBackupActions.BackupSourceShare);
+        Assert.Equal(FileShare.Read | FileShare.Delete, AkronBackupActions.BackupSourceShare);
+        Assert.Equal(FileShare.ReadWrite | FileShare.Delete, AkronBackupActions.AppendOnlyBackupSourceShare);
+        Assert.Equal(AkronBackupActions.BackupSourceShare, AkronBackupActions.GetBackupSourceShare("0.celeste"));
+        Assert.Equal(
+            AkronBackupActions.AppendOnlyBackupSourceShare,
+            AkronBackupActions.GetBackupSourceShare(AkronLog.DirectoryName + "/akron-current.log"));
+        Assert.Equal(
+            AkronBackupActions.AppendOnlyBackupSourceShare,
+            AkronBackupActions.GetBackupSourceShare(AkronPerformanceTelemetry.PerfDirectoryName + "/run.jsonl"));
 
         string source = File.ReadAllText(GetSourcePath("Actions", "akron-backup-actions.cs"));
         int archiveWriter = source.IndexOf("internal static IReadOnlyList<AkronBackupSkippedFile> WriteSavesArchive", StringComparison.Ordinal);
         Assert.True(archiveWriter >= 0, "WriteSavesArchive is unavailable.");
         Assert.DoesNotContain("CreateEntryFromFile(", source, StringComparison.Ordinal);
-        Assert.Contains("FileAccess.Read, BackupSourceShare", source, StringComparison.Ordinal);
+        Assert.Contains("GetBackupSourceShare(relativePath)", source, StringComparison.Ordinal);
+        Assert.Contains("AkronLog.DirectoryName", source, StringComparison.Ordinal);
+        Assert.Contains("AkronPerformanceTelemetry.PerfDirectoryName", source, StringComparison.Ordinal);
 
         // Only the open is inside the per-file catch. Once the entry exists it cannot be taken back out of a
         // ZipArchiveMode.Create archive, so a later failure has to fail the whole backup rather than leave a
         // truncated member that a restore would write over a good save.
         int perFileCatch = source.IndexOf("skipped.Add(new AkronBackupSkippedFile {", archiveWriter, StringComparison.Ordinal);
-        int addEntry = source.IndexOf("AddFileEntry(archive, source, file, relativePath);", archiveWriter, StringComparison.Ordinal);
+        int addEntry = source.IndexOf("byte[] archivedHash = AddFileEntry", archiveWriter, StringComparison.Ordinal);
         Assert.True(perFileCatch > 0, "The per-file catch is unavailable.");
         Assert.True(addEntry > perFileCatch, "The entry is written inside the per-file catch.");
+
+        // Unix does not enforce FileShare, so stable save data is read twice and compared before the
+        // archive can be accepted as complete. Append-only logs and telemetry copy a verified prefix
+        // and may grow after it is measured.
+        int firstHash = source.IndexOf("byte[] sourceHash = ReadBackupSource(source, sourceLength);", archiveWriter, StringComparison.Ordinal);
+        int compare = source.IndexOf("!sourceHash.SequenceEqual(archivedHash)", addEntry, StringComparison.Ordinal);
+        int metadataCheck = source.IndexOf("File.GetLastWriteTimeUtc(file) != sourceLastWriteUtc", compare, StringComparison.Ordinal);
+        Assert.True(firstHash > perFileCatch && addEntry > firstHash && compare > addEntry && metadataCheck > compare);
     }
 
     // A restore deletes every save file, so it has to hold a complete copy first and has to have let go of the
@@ -4826,7 +4844,11 @@ public sealed class ModuleSettingsTests
         Assert.True(restore > 0, "RestoreBackupConfirmed is unavailable.");
 
         int selectedGate = source.IndexOf("DescribeRestoreRefusal(backup.Path)", restore, StringComparison.Ordinal);
-        int preRestore = source.IndexOf("TryCreateBackup(\"pre-restore\", false, out", restore, StringComparison.Ordinal);
+        int preRestore = source.IndexOf("\"pre-restore\"", restore, StringComparison.Ordinal);
+        int selectedArchiveProtection = source.IndexOf(
+            "protectedBackupPath: backup.Path",
+            preRestore,
+            StringComparison.Ordinal);
         int replaceSaves = source.IndexOf("RestoreSavesFolder(", restore, StringComparison.Ordinal);
         // The selected backup is gated before the pre-restore one, so a restore that is going to be refused
         // does not leave a backup behind to explain. What the gate decides is asserted on the decision itself
@@ -4834,6 +4856,7 @@ public sealed class ModuleSettingsTests
         Assert.True(selectedGate > restore, "The selected backup is not checked for completeness.");
         Assert.True(preRestore > selectedGate);
         Assert.True(replaceSaves > preRestore);
+        Assert.True(selectedArchiveProtection > preRestore && selectedArchiveProtection < replaceSaves);
 
         // The release is handed to RestoreSavesFolder rather than run before it, so it happens after the
         // backup has been unpacked. A restore that stops while unpacking then costs the player nothing, not
@@ -4944,7 +4967,7 @@ public sealed class ModuleSettingsTests
             WriteTestArchive(backupPath, new Dictionary<string, string>
             {
                 ["0.celeste"] = "the archived save file",
-                ["_akron-backup.json"] = "{\n  \"reason\": \"manual\",\n  \"skippedFiles\": []\n}",
+                ["_akron-backup.json"] = "{\n  \"schema\": 2,\n  \"reason\": \"manual\",\n  \"skippedFiles\": []\n}",
             });
 
             AkronBackupEntry listed = Assert.Single(AkronBackupActions.RefreshBackups());
@@ -4953,7 +4976,7 @@ public sealed class ModuleSettingsTests
             File.Delete(backupPath);
             WriteTestArchive(backupPath, new Dictionary<string, string>
             {
-                ["_akron-backup.json"] = "{\n  \"reason\": \"manual\",\n  \"skippedFiles\": [\"0.celeste: gone\"]\n}",
+                ["_akron-backup.json"] = "{\n  \"schema\": 2,\n  \"reason\": \"manual\",\n  \"skippedFiles\": [\"0.celeste: gone\"]\n}",
             });
 
             Assert.Equal(
@@ -4993,7 +5016,7 @@ public sealed class ModuleSettingsTests
             Assert.Empty(AkronBackupActions.WriteSavesArchive(
                 savesFolder,
                 Path.Combine(backupFolder, "finished.zip"),
-                _ => "{}"));
+                _ => "{\"schema\": 2, \"skippedFiles\": []}"));
 
             Dictionary<string, AkronBackupEntry> listed = AkronBackupActions.RefreshBackups()
                 .ToDictionary(entry => entry.FileName, StringComparer.Ordinal);
@@ -5018,10 +5041,11 @@ public sealed class ModuleSettingsTests
         }
     }
 
-    // The other side of the gate. A backup that read everything restores, and so does one whose metadata
-    // never mentions the field, which is every archive written before backups recorded it.
+    // The other side of the gate. A backup that explicitly records no skipped files restores. Missing or
+    // wrong-shaped skipped-file metadata is not an older state to guess through: the current writer always
+    // emits the array, and restore cannot prove that an archive is complete without it.
     [Fact]
-    public void RestoreAcceptsABackupThatRecordsNothingItCouldNotRead()
+    public void RestoreAcceptsACompleteRecordAndRefusesMalformedSkippedFileMetadata()
     {
         string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
         try
@@ -5036,14 +5060,61 @@ public sealed class ModuleSettingsTests
                 ["0.celeste"] = "the archived save file",
                 ["_akron-backup.json"] = "{\n  \"schema\": 2,\n  \"reason\": \"manual\"\n}",
             });
-
-            foreach (AkronBackupEntry backup in AkronBackupActions.RefreshBackups())
+            WriteTestArchive(Path.Combine(backupFolder, "wrong-shape.zip"), new Dictionary<string, string>
             {
-                Assert.Empty(backup.SkippedFileNames);
-                Assert.False(backup.MetadataUnreadable);
-                Assert.Equal(string.Empty, AkronBackupActions.DescribeRestoreRefusal(backup.Path));
-                Assert.Equal("manual", backup.Reason);
+                ["0.celeste"] = "the archived save file",
+                ["_akron-backup.json"] =
+                    "{\n  \"schema\": 2,\n  \"reason\": \"manual\",\n  \"skippedFiles\": null\n}",
+            });
+
+            Dictionary<string, AkronBackupEntry> listed = AkronBackupActions.RefreshBackups()
+                .ToDictionary(entry => entry.FileName, StringComparer.Ordinal);
+            AkronBackupEntry complete = listed["complete.zip"];
+            Assert.Empty(complete.SkippedFileNames);
+            Assert.False(complete.MetadataUnreadable);
+            Assert.Equal(string.Empty, AkronBackupActions.DescribeRestoreRefusal(complete.Path));
+            Assert.Equal("manual", complete.Reason);
+
+            foreach (string malformedName in new[] { "silent.zip", "wrong-shape.zip" })
+            {
+                AkronBackupEntry malformed = listed[malformedName];
+                Assert.Empty(malformed.SkippedFileNames);
+                Assert.True(malformed.MetadataUnreadable);
+                Assert.Equal("manual", malformed.Reason);
+                Assert.Equal(
+                    "Restore stopped: the backup you picked does not say which files it holds.",
+                    AkronBackupActions.DescribeRestoreRefusal(malformed.Path));
             }
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    [Theory]
+    [InlineData("{\"skippedFiles\": []}")]
+    [InlineData("{\"schema\": \"2\", \"skippedFiles\": []}")]
+    [InlineData("{\"schema\": 1, \"skippedFiles\": []}")]
+    [InlineData("{\"schema\": 3, \"skippedFiles\": []}")]
+    public void RestoreRefusesMetadataOutsideTheCurrentBackupSchema(string metadata)
+    {
+        string root = CreateBackupTestRoot(out _, out string backupFolder);
+        try
+        {
+            string backupPath = Path.Combine(backupFolder, "unknown-schema.zip");
+            WriteTestArchive(backupPath, new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the archived save file",
+                ["_akron-backup.json"] = metadata,
+            });
+
+            AkronBackupEntry listed = Assert.Single(AkronBackupActions.RefreshBackups());
+
+            Assert.True(listed.MetadataUnreadable);
+            Assert.Equal(
+                "Restore stopped: the backup you picked does not say which files it holds.",
+                AkronBackupActions.DescribeRestoreRefusal(backupPath));
         }
         finally
         {
@@ -5077,7 +5148,7 @@ public sealed class ModuleSettingsTests
         Assert.DoesNotContain("no save slot could be determined", source, StringComparison.Ordinal);
 
         int restore = source.IndexOf("private static void RestoreBackupConfirmed(", StringComparison.Ordinal);
-        int nextMethod = source.IndexOf("\n    private static void ApplyRetention()", restore, StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("\n    private static void ApplyRetention(", restore, StringComparison.Ordinal);
         Assert.True(restore > 0, "RestoreBackupConfirmed is unavailable.");
         Assert.True(nextMethod > restore, "RestoreBackupConfirmed has no detectable end.");
 
@@ -5117,6 +5188,63 @@ public sealed class ModuleSettingsTests
 
             // A truncated ZIP left in the backup folder would be listed as a backup and offered for restore.
             Assert.False(File.Exists(backupPath));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    [Fact]
+    public void BackupRefusesAChangedSaveFileManifest()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            File.WriteAllText(Path.Combine(savesFolder, "0.celeste"), "save data");
+            string backupPath = Path.Combine(backupFolder, "manifest-changed.zip");
+
+            IOException failure = Assert.Throws<IOException>(() => AkronBackupActions.WriteSavesArchive(
+                savesFolder,
+                backupPath,
+                _ =>
+                {
+                    File.WriteAllText(Path.Combine(savesFolder, "1.celeste"), "new save data");
+                    return "{}";
+                }));
+
+            Assert.Contains("Save files changed", failure.Message, StringComparison.Ordinal);
+            Assert.False(File.Exists(backupPath));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    [Fact]
+    public void BackupKeepsAFileThatDisappearsAfterItWasRecordedAsSkipped()
+    {
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder);
+        try
+        {
+            string vanishedPath = Path.Combine(savesFolder, "vanished.celeste");
+            File.CreateSymbolicLink(vanishedPath, Path.Combine(savesFolder, "no-such-target"));
+            string backupPath = Path.Combine(backupFolder, "vanished.zip");
+
+            IReadOnlyList<AkronBackupSkippedFile> skipped = AkronBackupActions.WriteSavesArchive(
+                savesFolder,
+                backupPath,
+                skippedFiles =>
+                {
+                    File.Delete(vanishedPath);
+                    return BuildSkippedFileMetadata(skippedFiles);
+                });
+
+            Assert.Equal("vanished.celeste", Assert.Single(skipped).RelativePath);
+            Assert.True(File.Exists(backupPath));
+            using ZipArchive archive = ZipFile.OpenRead(backupPath);
+            Assert.Contains(archive.Entries, entry => entry.FullName == "_akron-backup.json");
         }
         finally
         {
@@ -5193,6 +5321,179 @@ public sealed class ModuleSettingsTests
             ZipArchiveEntry metadata = Assert.Single(archive.Entries, entry => entry.FullName == "_akron-backup.json");
             using StreamReader reader = new StreamReader(metadata.Open(), Encoding.UTF8);
             Assert.Equal("skipped:unreadable.celeste", reader.ReadToEnd());
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    [Fact]
+    public void IncompleteBackupDoesNotAdvanceSuccessOrEvictACompleteBackup()
+    {
+        const long lastSuccessfulBackup = 637000000000000000L;
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
+            BackupsLastBackupUtcTicks = lastSuccessfulBackup,
+            BackupsMaxCount = 1,
+            BackupsKeepAtLeast = 0,
+        };
+        string root = CreateBackupTestRoot(out string savesFolder, out string backupFolder, settings);
+        try
+        {
+            string completePath = Path.Combine(backupFolder, "complete.zip");
+            WriteTestArchive(completePath, new Dictionary<string, string>
+            {
+                ["0.celeste"] = "the complete archived save",
+                ["_akron-backup.json"] = "{\n  \"schema\": 2,\n  \"reason\": \"manual\",\n  \"skippedFiles\": []\n}",
+            });
+            File.WriteAllText(Path.Combine(savesFolder, "0.celeste"), "the live save");
+            File.CreateSymbolicLink(
+                Path.Combine(savesFolder, "unreadable.celeste"),
+                Path.Combine(savesFolder, "no-such-target"));
+
+            string firstPartialPath = Path.Combine(backupFolder, "partial-1.zip");
+            IReadOnlyList<AkronBackupSkippedFile> firstSkipped = AkronBackupActions.WriteSavesArchive(
+                savesFolder,
+                firstPartialPath,
+                BuildSkippedFileMetadata);
+            Assert.Equal("unreadable.celeste", Assert.Single(firstSkipped).RelativePath);
+            AkronBackupActions.FinalizeBackupRetention(firstPartialPath, firstSkipped);
+
+            string secondPartialPath = Path.Combine(backupFolder, "partial-2.zip");
+            IReadOnlyList<AkronBackupSkippedFile> secondSkipped = AkronBackupActions.WriteSavesArchive(
+                savesFolder,
+                secondPartialPath,
+                BuildSkippedFileMetadata);
+            Assert.Equal("unreadable.celeste", Assert.Single(secondSkipped).RelativePath);
+            AkronBackupActions.FinalizeBackupRetention(secondPartialPath, secondSkipped);
+
+            Assert.Equal(lastSuccessfulBackup, settings.BackupsLastBackupUtcTicks);
+            Assert.True(File.Exists(completePath));
+            IReadOnlyList<AkronBackupEntry> backups = AkronBackupActions.RefreshBackups();
+            Assert.Equal(2, backups.Count);
+            AkronBackupEntry incomplete = Assert.Single(backups, entry => entry.SkippedFileNames.Count > 0);
+            Assert.Equal(new[] { "unreadable.celeste" }, incomplete.SkippedFileNames);
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    [Fact]
+    public void PreRestoreRetentionKeepsTheSelectedAndFreshSafetyBackups()
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
+            BackupsMaxCount = 2,
+            BackupsKeepAtLeast = 0,
+        };
+        string root = CreateBackupTestRoot(out _, out string backupFolder, settings);
+        try
+        {
+            string selectedPath = Path.Combine(backupFolder, "selected.zip");
+            string unrelatedPath = Path.Combine(backupFolder, "unrelated.zip");
+            string preRestorePath = Path.Combine(backupFolder, "pre-restore.zip");
+            foreach (string backupPath in new[] { selectedPath, unrelatedPath, preRestorePath })
+            {
+                WriteTestArchive(backupPath, new Dictionary<string, string>
+                {
+                    ["0.celeste"] = backupPath,
+                    ["_akron-backup.json"] = "{\n  \"schema\": 2,\n  \"reason\": \"manual\",\n  \"skippedFiles\": []\n}",
+                });
+            }
+
+            AkronBackupActions.FinalizeBackupRetention(
+                preRestorePath,
+                Array.Empty<AkronBackupSkippedFile>(),
+                selectedPath);
+
+            Assert.True(File.Exists(selectedPath));
+            Assert.True(File.Exists(preRestorePath));
+            Assert.False(File.Exists(unrelatedPath));
+        }
+        finally
+        {
+            CleanUpBackupTestRoot(root);
+        }
+    }
+
+    [Fact]
+    public void RetentionRanksAnIncompleteBackupBeforeACompleteBackup()
+    {
+        AkronBackupEntry complete = new AkronBackupEntry
+        {
+            Path = "complete.zip",
+            CreatedUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+        };
+        AkronBackupEntry newerIncomplete = new AkronBackupEntry
+        {
+            Path = "incomplete.zip",
+            CreatedUtc = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc),
+            SkippedFileNames = new[] { "0.celeste" },
+        };
+
+        IReadOnlyList<AkronBackupEntry> order = AkronBackupActions.OrderRetentionCandidates(
+            new[] { newerIncomplete, complete },
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+        Assert.Equal(new[] { newerIncomplete, complete }, order);
+    }
+
+    [Theory]
+    [InlineData("count")]
+    [InlineData("size")]
+    [InlineData("age")]
+    public void RetentionPrunesOldAkronSchemasButIgnoresForeignZips(string limit)
+    {
+        AkronModuleSettings settings = new AkronModuleSettings
+        {
+            BackupsMaxCount = limit == "count" ? 1 : 100,
+            BackupsKeepAtLeast = 0,
+            BackupsMaxTotalSizeMb = limit == "size" ? 1 : 0,
+            BackupsDeleteOlderThanDays = limit == "age" ? 1 : 0,
+        };
+        string root = CreateBackupTestRoot(out _, out string backupFolder, settings);
+        try
+        {
+            string completePath = Path.Combine(backupFolder, "complete.zip");
+            WriteTestArchive(completePath, new Dictionary<string, string>
+            {
+                ["0.celeste"] = "save data",
+                ["_akron-backup.json"] = "{\n  \"schema\": 2,\n  \"reason\": \"manual\",\n  \"skippedFiles\": []\n}",
+            });
+
+            string legacyPath = Path.Combine(backupFolder, "legacy.zip");
+            using (ZipArchive legacy = ZipFile.Open(legacyPath, ZipArchiveMode.Create))
+            {
+                using (StreamWriter metadata = new StreamWriter(
+                           legacy.CreateEntry("_akron-backup.json", CompressionLevel.Optimal).Open(),
+                           Encoding.UTF8))
+                {
+                    metadata.Write("{\n  \"schema\": 1,\n  \"reason\": \"startup\",\n  \"skippedFiles\": []\n}");
+                }
+                using Stream payload = legacy.CreateEntry("0.celeste", CompressionLevel.NoCompression).Open();
+                payload.Write(new byte[2 * 1024 * 1024]);
+            }
+
+            string externalPath = Path.Combine(backupFolder, "external.zip");
+            using (ZipArchive external = ZipFile.Open(externalPath, ZipArchiveMode.Create))
+            using (Stream payload = external.CreateEntry("payload.bin", CompressionLevel.NoCompression).Open())
+            {
+                payload.Write(new byte[2 * 1024 * 1024]);
+            }
+            DateTime oldTimestamp = DateTime.UtcNow - TimeSpan.FromDays(10);
+            File.SetCreationTimeUtc(legacyPath, oldTimestamp);
+            File.SetLastWriteTimeUtc(legacyPath, oldTimestamp);
+            File.SetCreationTimeUtc(externalPath, oldTimestamp);
+            File.SetLastWriteTimeUtc(externalPath, oldTimestamp);
+
+            AkronBackupActions.ApplyRetentionForQa();
+
+            Assert.True(File.Exists(completePath));
+            Assert.False(File.Exists(legacyPath));
+            Assert.True(File.Exists(externalPath));
         }
         finally
         {
@@ -5666,14 +5967,26 @@ public sealed class ModuleSettingsTests
         }
     }
 
-    private static string CreateBackupTestRoot(out string savesFolder, out string backupFolder)
+    private static string CreateBackupTestRoot(
+        out string savesFolder,
+        out string backupFolder,
+        AkronModuleSettings? settings = null)
     {
         string root = Path.Combine(Path.GetTempPath(), "akron-backup-archive-" + Guid.NewGuid().ToString("N"));
         savesFolder = Path.Combine(root, "Saves");
         backupFolder = Path.Combine(savesFolder, "AkronBackups");
         Directory.CreateDirectory(backupFolder);
-        AkronBackupActions.SetBackupFolderForQa(backupFolder);
+        AkronBackupActions.SetBackupFolderForQa(backupFolder, settings);
         return root;
+    }
+
+    private static string BuildSkippedFileMetadata(IReadOnlyList<AkronBackupSkippedFile> skippedFiles)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            schema = AkronBackupActions.CurrentMetadataSchema,
+            skippedFiles = skippedFiles.Select(entry => entry.RelativePath + ": " + entry.Reason).ToArray(),
+        });
     }
 
     private static void CleanUpBackupTestRoot(string root)

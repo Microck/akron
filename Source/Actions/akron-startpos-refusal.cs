@@ -38,6 +38,7 @@ namespace Celeste.Mod.Akron;
 // first, and the assembly split only runs for the family it was built for.
 internal static class AkronStartPosRefusal {
     private const int MaxNameChars = 64;
+    private const int MaxQualifiedTypeNameChars = 4096;
 
     // The assemblies the game itself ships. A refused object from one of these cannot be
     // explained by anything the player installed. Anchored on types rather than on a
@@ -133,6 +134,13 @@ internal static class AkronStartPosRefusal {
         AkronReconstructionRefusalKind refusedKind,
         IReadOnlyList<(string ModName, string AssemblyName)> loadedMods
     ) {
+        // Type.GetType parses the entire assembly-qualified name, including nested
+        // generic arguments. Refuse a document-sized value before asking the runtime
+        // to parse it; legitimate names stay far below this bound.
+        if (string.IsNullOrWhiteSpace(refusedTypeName) || refusedTypeName.Length > MaxQualifiedTypeNameChars) {
+            return null;
+        }
+
         string assemblyName = GetAssemblyName(refusedTypeName);
         string displayTypeName = GetDisplayTypeName(refusedTypeName);
         // Both come out of a snapshot file, and the reader allows a string into the

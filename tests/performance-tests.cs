@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Reflection;
 using Celeste.Mod.Akron;
 using Xunit;
 
@@ -26,10 +29,9 @@ public sealed class PerformanceTests {
     // budgets allowed a seven to eighteen times regression before failing, and
     // the ratios below allow three to five.
     //
-    // Each guard measures the two loops back to back several times and keeps
-    // the best ratio. Contention inflates one sample at random, so the best of
-    // several removes the noise; a real regression is in every sample, so the
-    // best one still carries it.
+    // Each guard measures the two loops back to back several times and uses the
+    // median ratio. That rejects one noisy sample without letting one unusually
+    // favorable sample hide a consistent regression.
     private const int MeasurementRepetitions = 5;
 
     // Classifying a UI label is one dictionary probe over 237 entries. It
@@ -115,9 +117,8 @@ public sealed class PerformanceTests {
             }
         }
 
-        double bestRatio = double.MaxValue;
-        double bestClassificationMs = 0;
-        double bestReferenceMs = 0;
+        List<(double Ratio, double ClassificationMs, double ReferenceMs)> samples =
+            new List<(double Ratio, double ClassificationMs, double ReferenceMs)>();
         for (int repetition = 0; repetition < MeasurementRepetitions; repetition++) {
             // Back to back, so both loops meet the same machine and the ratio
             // is of one moment rather than of two.
@@ -146,19 +147,20 @@ public sealed class PerformanceTests {
                 Assert.True(found > labels.Length);
             });
 
-            double ratio = classificationSample.TotalMilliseconds / referenceSample.TotalMilliseconds;
-            if (ratio < bestRatio) {
-                bestRatio = ratio;
-                bestClassificationMs = classificationSample.TotalMilliseconds;
-                bestReferenceMs = referenceSample.TotalMilliseconds;
-            }
+            samples.Add((
+                classificationSample.TotalMilliseconds / referenceSample.TotalMilliseconds,
+                classificationSample.TotalMilliseconds,
+                referenceSample.TotalMilliseconds));
         }
 
+        (double ratio, double classificationMs, double referenceMs) =
+            samples.OrderBy(sample => sample.Ratio).ElementAt(samples.Count / 2);
+
         Assert.True(
-            bestRatio <= UiLabelClassificationBudgetRatio,
+            ratio <= UiLabelClassificationBudgetRatio,
             $"Classifying overlay labels {UiLabelClassificationIterations} times took " +
-            $"{bestClassificationMs:0.0}ms against {bestReferenceMs:0.0}ms for the same number of plain " +
-            $"dictionary lookups, a ratio of {bestRatio:0.00}.");
+            $"{classificationMs:0.0}ms against {referenceMs:0.0}ms for the same number of plain " +
+            $"dictionary lookups, a median ratio of {ratio:0.00}.");
     }
 
     [Fact]
@@ -216,9 +218,8 @@ public sealed class PerformanceTests {
             AkronPolicy.GetActiveCheatContributors(settings, session);
         }
 
-        double bestRatio = double.MaxValue;
-        double bestScanMs = 0;
-        double bestReferenceMs = 0;
+        List<(double Ratio, double ScanMs, double ReferenceMs)> samples =
+            new List<(double Ratio, double ScanMs, double ReferenceMs)>();
         for (int repetition = 0; repetition < MeasurementRepetitions; repetition++) {
             TimeSpan scanSample = Measure(() => {
                 int contributorCount = 0;
@@ -246,19 +247,102 @@ public sealed class PerformanceTests {
                 Assert.True(contributorCount > ContributorScanIterations);
             });
 
-            double ratio = scanSample.TotalMilliseconds / referenceSample.TotalMilliseconds;
-            if (ratio < bestRatio) {
-                bestRatio = ratio;
-                bestScanMs = scanSample.TotalMilliseconds;
-                bestReferenceMs = referenceSample.TotalMilliseconds;
-            }
+            samples.Add((
+                scanSample.TotalMilliseconds / referenceSample.TotalMilliseconds,
+                scanSample.TotalMilliseconds,
+                referenceSample.TotalMilliseconds));
         }
 
+        (double ratio, double scanMs, double referenceMs) =
+            samples.OrderBy(sample => sample.Ratio).ElementAt(samples.Count / 2);
+
         Assert.True(
-            bestRatio <= ContributorScanBudgetRatio,
+            ratio <= ContributorScanBudgetRatio,
             $"Scanning active cheat contributors {ContributorScanIterations} times took " +
-            $"{bestScanMs:0.0}ms against {bestReferenceMs:0.0}ms for building the same answer list as many " +
-            $"times, a ratio of {bestRatio:0.00}.");
+            $"{scanMs:0.0}ms against {referenceMs:0.0}ms for building the same answer list as many " +
+            $"times, a median ratio of {ratio:0.00}.");
+    }
+
+    [Fact]
+    public void PerfRecordingCollisionKeepsTheExistingFile() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-perf-collision-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string preferredPath = Path.Combine(directory, "akron-perf-20260821-210000-run.jsonl");
+        try {
+            File.WriteAllText(preferredPath, "existing recording");
+
+            using (StreamWriter writer = AkronPerformanceTelemetry.OpenRecordWriter(preferredPath, out string actualPath)) {
+                writer.Write("new recording");
+                writer.Flush();
+
+                Assert.NotEqual(preferredPath, actualPath);
+                Assert.StartsWith(
+                    Path.Combine(directory, "akron-perf-20260821-210000-run-"),
+                    actualPath,
+                    StringComparison.Ordinal);
+                Assert.EndsWith(".jsonl", actualPath, StringComparison.Ordinal);
+                Assert.Equal("new recording", File.ReadAllText(actualPath));
+            }
+
+            Assert.Equal("existing recording", File.ReadAllText(preferredPath));
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RecordingWindowStartsCleanAndFlushesBeforeTheWriterIsDetached() {
+        string source = File.ReadAllText(GetPerformanceTelemetrySourcePath());
+        int start = source.IndexOf("public static bool StartRecording", StringComparison.Ordinal);
+        int startEnd = source.IndexOf("internal static StreamWriter OpenRecordWriter", start, StringComparison.Ordinal);
+        string startBody = source.Substring(start, startEnd - start);
+        int stopPrevious = startBody.IndexOf("StopRecording();", StringComparison.Ordinal);
+        int reset = startBody.IndexOf("Reset();", stopPrevious, StringComparison.Ordinal);
+        int open = startBody.IndexOf("recordWriter = OpenRecordWriter", reset, StringComparison.Ordinal);
+
+        int stop = source.IndexOf("public static void StopRecording", StringComparison.Ordinal);
+        int stopEnd = source.IndexOf("public static bool GcEventsEnabled", stop, StringComparison.Ordinal);
+        string stopBody = source.Substring(stop, stopEnd - stop);
+        int partialWindow = stopBody.IndexOf("recordWriter != null && windowFrames > 0", StringComparison.Ordinal);
+        int flush = stopBody.IndexOf("FlushWindow();", partialWindow, StringComparison.Ordinal);
+        int detach = stopBody.IndexOf("StreamWriter writer = recordWriter;", flush, StringComparison.Ordinal);
+
+        Assert.True(stopPrevious >= 0 && reset > stopPrevious && open > reset);
+        Assert.True(partialWindow >= 0 && flush > partialWindow && detach > flush);
+    }
+
+    [Fact]
+    public void StopRecordingContainsAWriterFailureAndDisarmsTheRecorder() {
+        FieldInfo writerField = typeof(AkronPerformanceTelemetry).GetField(
+            "recordWriter",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        StreamWriter failedWriter = new StreamWriter(new MemoryStream());
+        failedWriter.Dispose();
+        AkronPerformanceTelemetry.Reset();
+        writerField.SetValue(null, failedWriter);
+        try {
+            Exception exception = Record.Exception(AkronPerformanceTelemetry.StopRecording);
+
+            Assert.Null(exception);
+            Assert.False(AkronPerformanceTelemetry.IsRecording);
+        } finally {
+            writerField.SetValue(null, null);
+            AkronPerformanceTelemetry.StopRecording();
+        }
+    }
+
+    private static string GetPerformanceTelemetrySourcePath() {
+        string? directory = AppContext.BaseDirectory;
+        while (!string.IsNullOrWhiteSpace(directory)) {
+            string candidate = Path.Combine(directory, "Source", "Core", "akron-performance-telemetry.cs");
+            if (File.Exists(candidate)) {
+                return candidate;
+            }
+
+            directory = Directory.GetParent(directory)?.FullName;
+        }
+
+        throw new FileNotFoundException("Could not locate Source/Core/akron-performance-telemetry.cs.");
     }
 
     private static TimeSpan Measure(Action action) {

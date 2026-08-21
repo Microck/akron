@@ -1,4 +1,5 @@
 using Celeste.Mod;
+using System;
 using System.Collections.Generic;
 namespace Celeste.Mod.Akron;
 
@@ -46,6 +47,10 @@ public sealed class AkronPersistedStartPosMap {
 }
 
 public class AkronModuleSaveData : EverestModuleSaveData {
+    // Celeste reuses numbered file slots after deletion. This identity follows the
+    // profile through ordinary save and savestate cloning, while a newly created
+    // profile receives a different value even when it occupies the same slot.
+    public string ProfileId { get; set; } = Guid.NewGuid().ToString("N");
     public Dictionary<string, long> BestRoomTimes { get; set; } = new Dictionary<string, long>();
     public Dictionary<string, long> BestSegmentTimes { get; set; } = new Dictionary<string, long>();
     public Dictionary<string, AkronRoomStatRecord> RoomStats { get; set; } = new Dictionary<string, AkronRoomStatRecord>();

@@ -164,15 +164,19 @@ internal static class AkronSnapshotPacing {
 public static partial class AkronSaveLoadService {
     private const int MaxFreshRoomEntityListDrainPasses = 64;
 
-    private readonly struct DetachedScreenWipe {
-        public ScreenWipe Wipe { get; }
+    private readonly struct DetachedScreenWipes {
+        public ScreenWipe LevelWipe { get; }
         public List<Renderer> Renderers { get; }
-        public int RendererIndex { get; }
+        public Stack<(ScreenWipe Wipe, int Index)> RendererWipes { get; }
 
-        public DetachedScreenWipe(ScreenWipe wipe, List<Renderer> renderers, int rendererIndex) {
-            Wipe = wipe;
+        public DetachedScreenWipes(
+            ScreenWipe levelWipe,
+            List<Renderer> renderers,
+            Stack<(ScreenWipe Wipe, int Index)> rendererWipes
+        ) {
+            LevelWipe = levelWipe;
             Renderers = renderers;
-            RendererIndex = rendererIndex;
+            RendererWipes = rendererWipes;
         }
     }
 
@@ -196,6 +200,10 @@ public static partial class AkronSaveLoadService {
         "<Components>k__BackingField",
         BindingFlags.Instance | BindingFlags.NonPublic
     ) ?? throw new MissingMemberException(typeof(Entity).FullName, "<Components>k__BackingField");
+    private static readonly FieldInfo LevelWipeField = typeof(Level).GetField(
+        nameof(Level.Wipe),
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+    ) ?? throw new MissingMemberException(typeof(Level).FullName, nameof(Level.Wipe));
     private static readonly Dictionary<int, AkronSaveLoadSlot> Slots = new Dictionary<int, AkronSaveLoadSlot>();
     private static readonly Dictionary<string, AkronSaveLoadSlotOwner> RuntimeSlots = new Dictionary<string, AkronSaveLoadSlotOwner>(StringComparer.Ordinal);
     private static readonly List<AkronRegisteredSaveLoadAction> RegisteredActions = new List<AkronRegisteredSaveLoadAction>();
@@ -226,6 +234,10 @@ public static partial class AkronSaveLoadService {
     // population under MaxPrewarmedSnapshotBytes, and prewarm already skips any slot
     // that will restore from memory, so a slot is in one population or the other.
     internal const long MaxWarmStartPosBytes = 1024L * 1024L * 1024L;
+    // A capture needs room before its allocation can be measured. Reserve at least
+    // 128 MiB, which clears the largest measured 77 MiB clone with room for variance,
+    // then raise the projection to the largest warm clone this map still holds.
+    internal const long MinWarmStartPosCaptureReserveBytes = 128L * 1024L * 1024L;
 
     private readonly struct WarmStartPosCost {
         internal WarmStartPosCost(long bytes, long useStamp) {
@@ -324,6 +336,7 @@ public static partial class AkronSaveLoadService {
         Slots.Clear();
         RuntimeSlots.Clear();
         MarkRuntimeSlotsChanged();
+        WarmStartPosCosts.Clear();
         CurrentSlotName = GetSlotName(1);
     }
 
@@ -702,9 +715,9 @@ public static partial class AkronSaveLoadService {
         int virtualAssetMarker = AkronVirtualAssetReloadTracker.Mark();
         bool retainsTrackedVirtualAssets = false;
         AkronSaveLoadSlot saveSlot = null;
-        DetachedScreenWipe entryWipe = isStartPosCapture
-            ? DetachTransientScreenWipe(level)
-            : default;
+        DetachedScreenWipes? entryWipes = isStartPosCapture
+            ? DetachTransientScreenWipes(level)
+            : null;
         try {
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 action.BeforeSaveState?.Invoke(level);
@@ -751,7 +764,7 @@ public static partial class AkronSaveLoadService {
             }
             AkronDeepClone.ClearSharedState();
             renderState.Restore(level);
-            RestoreTransientScreenWipe(level, entryWipe);
+            RestoreTransientScreenWipes(level, entryWipes);
         }
     }
 
@@ -866,16 +879,19 @@ public static partial class AkronSaveLoadService {
     // destroy the slot. That is also what keeps the slot just set: its own copy is
     // pending at this point, so it is never the one evicted.
     internal static int TrimWarmStartPosSlots(out long droppedBytes) {
+        return TrimWarmStartPosSlotsTo(MaxWarmStartPosBytes, out droppedBytes);
+    }
+
+    private static int TrimWarmStartPosSlotsTo(long targetBytes, out long droppedBytes) {
         droppedBytes = 0;
         int dropped = 0;
         long total = WarmStartPosBytes;
-        while (total > MaxWarmStartPosBytes) {
+        while (total > targetBytes) {
             string coldest = null;
             long coldestStamp = long.MaxValue;
             foreach (KeyValuePair<string, WarmStartPosCost> pair in WarmStartPosCosts) {
                 if (pair.Value.UseStamp >= coldestStamp ||
-                    AkronActions.HasPendingStartPosState(pair.Key) ||
-                    !AkronStartPosReconstruction.HasSnapshot(pair.Key)) {
+                    !CanDropWarmStartPosSlot(pair.Key)) {
                     continue;
                 }
                 coldest = pair.Key;
@@ -894,13 +910,21 @@ public static partial class AkronSaveLoadService {
                 " MB warm budget; it holds " +
                 (coldestBytes / (1024d * 1024d)).ToString("F1", CultureInfo.InvariantCulture) +
                 " MB and still loads from its restart copy.");
-            DiscardRuntimeStateMemory(coldest);
+            // Eviction releases only resources owned by this clone. Registered
+            // ClearState callbacks describe live global helper-mod state, so a
+            // cold StartPos clone must not fire them.
+            ReleaseRuntimeStateMemory(coldest);
             WarmStartPosCosts.Remove(coldest);
             total -= coldestBytes;
             droppedBytes += coldestBytes;
             dropped++;
         }
         return dropped;
+    }
+
+    private static bool CanDropWarmStartPosSlot(string slotName) {
+        return !AkronActions.HasPendingStartPosState(slotName) &&
+               AkronStartPosReconstruction.HasSnapshot(slotName);
     }
 
     // Test seam, called from nowhere in the mod. The budget only becomes interesting at
@@ -910,34 +934,59 @@ public static partial class AkronSaveLoadService {
     // RuntimeSlots entry a capture stores, so the reconcile, the eviction order and the
     // blocked case all run against the real code rather than a stand-in for it. Each
     // call takes the next use stamp, so the call order is the least-recently-used order.
-    internal static void AddWarmStartPosSlotForTests(string slotName, long bytes) {
+    internal static void AddWarmStartPosSlotForTests(string slotName, string mapSid, long bytes) {
         string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
         StoreRuntimeSlot(
             normalizedSlotName,
-            new AkronSaveLoadSlot(normalizedSlotName, "test-room", "test-map", saveTimeAndDeaths: false));
+            new AkronSaveLoadSlot(normalizedSlotName, "test-room", mapSid, saveTimeAndDeaths: false));
         WarmStartPosCosts[normalizedSlotName] = new WarmStartPosCost(bytes, ++nextWarmStartPosUseStamp);
     }
 
-    // True when the warm clones are over budget and dropping every one that can be
-    // dropped would still leave them over it. That is the one state where another Set
-    // cannot be paid for, so it is asked before the capture and the clone is never made.
-    //
-    // It answers the same question the trim does, from the same two safety guards and the
-    // same numbers, rather than the weaker "is anything droppable at all" - which would
-    // wave a Set through on the strength of one small clone that does not cover the
-    // overrun, and then have no way to pay for the one it just let in.
-    internal static bool WarmStartPosBudgetIsBlocked() {
+    // Makes room for the next clone before CaptureRuntimeState allocates it. The exact
+    // cost is only known afterward, so the largest resident clone is the best local
+    // projection, with a conservative floor for the first capture. A pending slot has
+    // no disk copy and cannot be spent; if those slots alone occupy the target, refuse
+    // without dropping anything.
+    internal static bool PrepareWarmStartPosCapture(
+        string mapSid,
+        out int droppedSlots,
+        out long droppedBytes
+    ) {
         long total = WarmStartPosBytes;
-        if (total <= MaxWarmStartPosBytes) {
-            return false;
-        }
+        long projectedCaptureBytes = MinWarmStartPosCaptureReserveBytes;
         foreach (KeyValuePair<string, WarmStartPosCost> pair in WarmStartPosCosts) {
-            if (!AkronActions.HasPendingStartPosState(pair.Key) &&
-                AkronStartPosReconstruction.HasSnapshot(pair.Key)) {
-                total -= pair.Value.Bytes;
+            if (RuntimeSlots.TryGetValue(pair.Key, out AkronSaveLoadSlotOwner owner) &&
+                string.Equals(owner.Slot.MapSid, mapSid, StringComparison.Ordinal)) {
+                projectedCaptureBytes = Math.Max(projectedCaptureBytes, pair.Value.Bytes);
             }
         }
-        return total > MaxWarmStartPosBytes;
+        if (projectedCaptureBytes > MaxWarmStartPosBytes) {
+            droppedSlots = 0;
+            droppedBytes = 0;
+            return false;
+        }
+
+        long targetBytes = MaxWarmStartPosBytes - projectedCaptureBytes;
+        if (total <= targetBytes) {
+            droppedSlots = 0;
+            droppedBytes = 0;
+            return true;
+        }
+
+        long bytesThatCannotBeDropped = total;
+        foreach (KeyValuePair<string, WarmStartPosCost> pair in WarmStartPosCosts) {
+            if (CanDropWarmStartPosSlot(pair.Key)) {
+                bytesThatCannotBeDropped -= pair.Value.Bytes;
+            }
+        }
+        if (bytesThatCannotBeDropped > targetBytes) {
+            droppedSlots = 0;
+            droppedBytes = 0;
+            return false;
+        }
+
+        droppedSlots = TrimWarmStartPosSlotsTo(targetBytes, out droppedBytes);
+        return true;
     }
 
     private static void StoreRuntimeSlot(string slotName, AkronSaveLoadSlot saveSlot) {
@@ -958,7 +1007,7 @@ public static partial class AkronSaveLoadService {
         CurrentSlotName = string.IsNullOrWhiteSpace(slotName) ? "fresh baseline" : slotName;
         AkronLevelRenderState renderState = AkronLevelRenderState.Capture(level);
         int virtualAssetMarker = AkronVirtualAssetReloadTracker.Mark();
-        DetachedScreenWipe entryWipe = DetachTransientScreenWipe(level);
+        DetachedScreenWipes entryWipes = DetachTransientScreenWipes(level);
         AkronSaveLoadSlot saveSlot = null;
         try {
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
@@ -977,7 +1026,7 @@ public static partial class AkronSaveLoadService {
             AkronVirtualAssetReloadTracker.DiscardSince(virtualAssetMarker);
             AkronDeepClone.ClearSharedState();
             renderState.Restore(level);
-            RestoreTransientScreenWipe(level, entryWipe);
+            RestoreTransientScreenWipes(level, entryWipes);
         }
 
         AkronSaveLoadSlotOwner owner = new AkronSaveLoadSlotOwner(saveSlot, ReleaseDormantEventInstances);
@@ -986,30 +1035,40 @@ public static partial class AkronSaveLoadService {
         return lease;
     }
 
-    private static DetachedScreenWipe DetachTransientScreenWipe(Level level) {
-        ScreenWipe wipe = level.Wipe;
-        List<Renderer> renderers = level.RendererList?.Renderers;
-        int rendererIndex = wipe == null || renderers == null ? -1 : renderers.IndexOf(wipe);
-        if (wipe != null) {
-            // A wipe is a transition owned by the current process, not stable
-            // room state. Saved and fresh StartPos graphs need the same boundary.
-            level.Wipe = null;
-            if (rendererIndex >= 0) {
-                renderers.RemoveAt(rendererIndex);
+    private static DetachedScreenWipes DetachTransientScreenWipes(Level level) {
+        ScreenWipe levelWipe = (ScreenWipe) LevelWipeField.GetValue(level);
+        RendererList rendererList = AkronLevelRenderState.RendererListField?.GetValue(level) as RendererList;
+        List<Renderer> renderers = rendererList?.Renderers;
+        Stack<(ScreenWipe Wipe, int Index)> rendererWipes = new Stack<(ScreenWipe, int)>();
+        if (renderers != null) {
+            for (int index = renderers.Count - 1; index >= 0; index--) {
+                if (renderers[index] is ScreenWipe wipe) {
+                    rendererWipes.Push((wipe, index));
+                    renderers.RemoveAt(index);
+                }
             }
         }
-        return new DetachedScreenWipe(wipe, renderers, rendererIndex);
+        // Wipes are process-owned transitions, not stable room state. Level.Wipe
+        // can clear before its renderer leaves the list, so exclude both forms.
+        LevelWipeField.SetValue(level, null);
+        return new DetachedScreenWipes(levelWipe, renderers, rendererWipes);
     }
 
-    private static void RestoreTransientScreenWipe(Level level, DetachedScreenWipe entryWipe) {
-        if (entryWipe.Wipe == null) {
+    private static void RestoreTransientScreenWipes(Level level, DetachedScreenWipes? boundary) {
+        if (!boundary.HasValue) {
             return;
         }
-        level.Wipe = entryWipe.Wipe;
-        if (entryWipe.RendererIndex >= 0 && !entryWipe.Renderers.Contains(entryWipe.Wipe)) {
-            entryWipe.Renderers.Insert(
-                Math.Min(entryWipe.RendererIndex, entryWipe.Renderers.Count),
-                entryWipe.Wipe);
+        DetachedScreenWipes entryWipes = boundary.Value;
+        LevelWipeField.SetValue(level, entryWipes.LevelWipe);
+        if (entryWipes.Renderers == null) {
+            return;
+        }
+        foreach ((ScreenWipe wipe, int index) in entryWipes.RendererWipes) {
+            if (!entryWipes.Renderers.Contains(wipe)) {
+                entryWipes.Renderers.Insert(
+                    Math.Min(index, entryWipes.Renderers.Count),
+                    wipe);
+            }
         }
     }
 
@@ -1339,6 +1398,13 @@ public static partial class AkronSaveLoadService {
         AkronSaveLoadSlotLease freshBaseline
     ) {
         try {
+            // A cold Load can make an evicted slot warm again. Reserve its projected clone cost just like Set
+            // does, or repeatedly loading cold slots can rebuild an unbounded in-memory population.
+            if (!PrepareWarmStartPosCapture(level.Session.Area.GetSID(), out _, out _)) {
+                LastPersistentSnapshotError = "restored StartPos could not be cached inside the warm memory limit";
+                return AkronSaveLoadResult.Failed;
+            }
+
             long allocatedBeforeCapture = GC.GetAllocatedBytesForCurrentThread();
             AkronSaveLoadSlot cachedSlot = CaptureRuntimeState(
                 level,
@@ -1353,6 +1419,9 @@ public static partial class AkronSaveLoadService {
             RecordWarmStartPosCost(slotName, allocatedBeforeCapture);
             AkronStartPosPersistence.AttachRuntimeFreshBaseline(slotName, freshBaseline);
             AkronStartPosPersistence.UseRuntimeFreshBaseline(slotName);
+            // The measured clone can exceed the projection used above. Reconcile against the exact cost before
+            // returning; this slot has a restart copy, so it remains loadable even if it is the one dropped.
+            TrimWarmStartPosSlots(out _);
             return AkronSaveLoadResult.Success;
         } catch (Exception exception) {
             LastPersistentSnapshotError = "restored StartPos cache failed: " +
@@ -1773,12 +1842,19 @@ public static partial class AkronSaveLoadService {
 
     internal static void DiscardRuntimeStateMemory(string slotName) {
         string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
+        if (ReleaseRuntimeStateMemory(normalizedSlotName)) {
+            RunClearStateActions();
+        }
+    }
+
+    private static bool ReleaseRuntimeStateMemory(string normalizedSlotName) {
         AkronStartPosPersistence.RemoveRuntimeFreshBaseline(normalizedSlotName);
         if (RuntimeSlots.Remove(normalizedSlotName, out AkronSaveLoadSlotOwner removedSlot)) {
             removedSlot.ReleaseOwnership();
             MarkRuntimeSlotsChanged();
-            RunClearStateActions();
+            return true;
         }
+        return false;
     }
 
     // A StartPos Set has to be atomic with respect to the state its slot already held: if

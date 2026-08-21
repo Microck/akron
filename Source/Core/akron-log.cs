@@ -16,7 +16,7 @@ public enum AkronLoggingRecordMode {
 }
 
 public static class AkronLog {
-    private const string DirectoryName = "AkronLogs";
+    internal const string DirectoryName = "AkronLogs";
     private const string CurrentFileName = "akron-current.log";
     // Opening and closing the file per line costs about six blocking syscalls on the render thread.
     // The stream is held open and auto-flushes once per line, which is one write syscall.

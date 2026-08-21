@@ -13,6 +13,7 @@ public sealed class AkronStartPos {
     public AkronStartPosFacing Facing { get; set; } = AkronStartPosFacing.Current;
     public bool Idle { get; set; }
     public bool Grab { get; set; }
+    internal string ProfileId { get; set; } = string.Empty;
     internal string StateSlotName { get; set; } = string.Empty;
 }
 

@@ -12,6 +12,7 @@ using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
+using System.Runtime.Loader;
 using Celeste;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -78,7 +79,12 @@ public sealed class StartPosReconstructionTests {
         SetRuntimeField(texture, "<Path>k__BackingField", "Graphics/Atlases/Gameplay/decals/randomized");
         SetRuntimeField(texture, "<Width>k__BackingField", 32);
         SetRuntimeField(texture, "<Height>k__BackingField", 32);
-        VirtualContent.Assets.Add(texture);
+        List<VirtualAsset>? assets = GetRuntimeStaticField<List<VirtualAsset>?>(typeof(VirtualContent), "assets");
+        if (assets == null) {
+            assets = new List<VirtualAsset>();
+            SetRuntimeStaticField(typeof(VirtualContent), "assets", assets);
+        }
+        assets.Add(texture);
         try {
             string key = typeof(VirtualTexture).AssemblyQualifiedName + "|" +
                          AkronStartPosReconstruction.GetLiveResourceKey(texture);
@@ -89,7 +95,7 @@ public sealed class StartPosReconstructionTests {
 
             Assert.Same(texture, resolved);
         } finally {
-            VirtualContent.Assets.Remove(texture);
+            assets.Remove(texture);
         }
     }
 
@@ -1749,29 +1755,19 @@ public sealed class StartPosReconstructionTests {
         // Vanilla hides a ghost when its timeline runs out and shows it again when
         // the loop restarts, so mid-timeline plus invisible is a state only the
         // Disable Playback hook produces.
-        PlayerPlayback playback = CreateUninitializedEntity<PlayerPlayback>();
-        playback.Timeline = new List<Player.ChaserState> {
-            new Player.ChaserState(), new Player.ChaserState(), new Player.ChaserState()
-        };
-        playback.TrimEnd = 5f;
-        SetRuntimeField(playback, "index", 1);
-        SetRuntimeField(playback, "time", 2f);
+        Assert.True(AkronModule.WasPlaybackHiddenByAkron(
+            visible: false, frameIndex: 1, frameCount: 3, time: 2f, trimEnd: 5f));
 
-        playback.Visible = false;
-        Assert.True(AkronModule.WasPlaybackHiddenByAkron(playback));
-
-        playback.Visible = true;
-        Assert.False(AkronModule.WasPlaybackHiddenByAkron(playback));
+        Assert.False(AkronModule.WasPlaybackHiddenByAkron(
+            visible: true, frameIndex: 1, frameCount: 3, time: 2f, trimEnd: 5f));
 
         // The just-constructed state is invisible with the index past the end, and
         // the end-of-loop state is invisible at TrimEnd. Neither is Akron's doing.
-        playback.Visible = false;
-        SetRuntimeField(playback, "index", playback.Timeline.Count);
-        Assert.False(AkronModule.WasPlaybackHiddenByAkron(playback));
+        Assert.False(AkronModule.WasPlaybackHiddenByAkron(
+            visible: false, frameIndex: 3, frameCount: 3, time: 2f, trimEnd: 5f));
 
-        SetRuntimeField(playback, "index", 1);
-        SetRuntimeField(playback, "time", 5f);
-        Assert.False(AkronModule.WasPlaybackHiddenByAkron(playback));
+        Assert.False(AkronModule.WasPlaybackHiddenByAkron(
+            visible: false, frameIndex: 1, frameCount: 3, time: 5f, trimEnd: 5f));
     }
 
     [Fact]
@@ -1834,9 +1830,12 @@ public sealed class StartPosReconstructionTests {
         Assert.Equal(0.625f, fresh.Snapshot.Percent);
         Assert.Same(freshHair, fresh.Snapshot.Hair);
         Assert.Same(freshSprite, fresh.Snapshot.Sprite);
-        Assert.IsType<PlayerPlayback>(freshHair.Entity);
-        Assert.Null(freshHair.Entity.Scene);
-        Assert.DoesNotContain(freshHair.Entity, GetEntityListContents(fresh.Entities));
+        Entity freshOwner = GetRuntimeField<Entity>(freshHair, "<Entity>k__BackingField");
+        Assert.IsType<PlayerPlayback>(freshOwner);
+        Assert.Null(GetRuntimeField<Scene?>(freshOwner, "<Scene>k__BackingField"));
+        Assert.DoesNotContain(
+            GetEntityListContents(fresh.Entities),
+            entity => ReferenceEquals(entity, freshOwner));
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
 
@@ -1879,10 +1878,10 @@ public sealed class StartPosReconstructionTests {
         // The saved ghost has to land on the ghost the room actually holds, not on a
         // reconstructed copy: a reconstructed one would leave the room's own trail
         // rendering a corpse.
-        Assert.Same(liveGhost, fresh.Snapshot.Sprite.Entity);
-        Assert.Same(fresh.Level, liveGhost.Scene);
-        Assert.Contains(liveGhost, GetEntityListContents(fresh.Entities));
-        Assert.Equal(2.5f, liveGhost.Time);
+        Assert.Same(liveGhost, GetRuntimeField<Entity>(fresh.Snapshot.Sprite, "<Entity>k__BackingField"));
+        Assert.Same(fresh.Level, GetRuntimeField<Scene>(liveGhost, "<Scene>k__BackingField"));
+        Assert.Contains(GetEntityListContents(fresh.Entities), entity => ReferenceEquals(entity, liveGhost));
+        Assert.Equal(2.5f, GetRuntimeField<float>(liveGhost, "time"));
     }
 
     private sealed class DestroyedTrailOwnerRoom {
@@ -1991,8 +1990,8 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionRestore restored = RestoreTrailingOwnerDocumentInto(fresh);
 
         Assert.True(restored.Success, restored.Error);
-        Assert.Same(fresh.Owner, freshSprite.Entity);
-        Assert.Same(fresh.Level, fresh.Owner.Scene);
+        Assert.Same(fresh.Owner, GetRuntimeField<Entity>(freshSprite, "<Entity>k__BackingField"));
+        Assert.Same(fresh.Level, GetRuntimeField<Scene>(fresh.Owner, "<Scene>k__BackingField"));
     }
 
     // The map-edited half of the reproduction below, and what closes it. A ghost the
@@ -2018,9 +2017,9 @@ public sealed class StartPosReconstructionTests {
         Assert.Equal(typeof(PlayerPlayback).AssemblyQualifiedName, restore.RefusedTypeName);
         // Refused before any assignment, so the room is still the room the reload
         // built: its own ghost, in its own list slot, holding its own sprite.
-        Assert.Same(liveGhost, freshSprite.Entity);
-        Assert.Contains(liveGhost, GetEntityListContents(fresh.Entities));
-        Assert.Equal(0f, liveGhost.Time);
+        Assert.Same(liveGhost, GetRuntimeField<Entity>(freshSprite, "<Entity>k__BackingField"));
+        Assert.Contains(GetEntityListContents(fresh.Entities), entity => ReferenceEquals(entity, liveGhost));
+        Assert.Equal(0f, GetRuntimeField<float>(liveGhost, "time"));
     }
 
     [Fact]
@@ -2092,19 +2091,19 @@ public sealed class StartPosReconstructionTests {
         Assert.True(restore.Success, restore.Error);
 
         // WRONG: the room's own sprite no longer points at the ghost the room holds.
-        Entity? spriteOwner = freshSprite.Entity;
+        Entity? spriteOwner = GetRuntimeField<Entity>(freshSprite, "<Entity>k__BackingField");
         Assert.NotSame(liveGhost, spriteOwner);
         PlayerPlayback reconstructedGhost = Assert.IsType<PlayerPlayback>(spriteOwner);
         // WRONG: the reconstructed copy takes the entity-list slot of the ghost the room
         // load built, and gets the live Level in its Scene on the occurrence budget
         // alone. The ghost LoadLevel produced is dropped from the room entirely.
-        Assert.Same(level, reconstructedGhost.Scene);
-        Assert.Contains(reconstructedGhost, GetEntityListContents(entities));
-        Assert.DoesNotContain(liveGhost, GetEntityListContents(entities));
+        Assert.Same(level, GetRuntimeField<Scene>(reconstructedGhost, "<Scene>k__BackingField"));
+        Assert.Contains(GetEntityListContents(entities), entity => ReferenceEquals(entity, reconstructedGhost));
+        Assert.DoesNotContain(GetEntityListContents(entities), entity => ReferenceEquals(entity, liveGhost));
         // WRONG: the saved state landed on the reconstructed copy, and the ghost the
         // room actually holds kept its clean-load state.
-        Assert.Equal(2.5f, reconstructedGhost.Time);
-        Assert.Equal(0f, liveGhost.Time);
+        Assert.Equal(2.5f, GetRuntimeField<float>(reconstructedGhost, "time"));
+        Assert.Equal(0f, GetRuntimeField<float>(liveGhost, "time"));
         // The surviving snapshot keeps the room's PlayerSprite and is handed a
         // reconstructed PlayerHair on the occurrence budget alone.
         Assert.Same(freshSprite, snapshot.Sprite);
@@ -2112,14 +2111,14 @@ public sealed class StartPosReconstructionTests {
         // NOT wrong, and pinned because the comment above used to claim it was: both
         // halves of the trail point at the same ghost afterwards, and it is the rebuilt
         // one. The rebuilt hair goes where the document says it goes.
-        Assert.Same(reconstructedGhost, snapshot.Hair!.Entity);
-        Assert.Same(reconstructedGhost, snapshot.Sprite!.Entity);
+        Assert.Same(reconstructedGhost, GetRuntimeField<Entity>(snapshot.Hair!, "<Entity>k__BackingField"));
+        Assert.Same(reconstructedGhost, GetRuntimeField<Entity>(snapshot.Sprite!, "<Entity>k__BackingField"));
         Assert.Contains(snapshot.Hair, GetComponentListContents(reconstructedGhost));
         // WRONG, and this is the part no rule about component edges reaches: the ghost
         // the reload built is out of the entity list while its Scene still points at
         // the Level, and its own component list still holds the PlayerSprite that now
         // belongs to the rebuilt ghost.
-        Assert.Same(level, liveGhost.Scene);
+        Assert.Same(level, GetRuntimeField<Scene>(liveGhost, "<Scene>k__BackingField"));
         Assert.Contains(freshSprite, GetComponentListContents(liveGhost));
         Assert.Contains(freshHair, GetComponentListContents(liveGhost));
     }
@@ -2158,7 +2157,7 @@ public sealed class StartPosReconstructionTests {
             CreateTwoTrailReloadedGhostRoomTheSessionBuiltDifferently(unpairableFirst);
         PlayerPlayback liveGhost = fresh.Ghost;
         Image freshSprite = fresh.Snapshot.Sprite;
-        Entity? pairedGhost = freshSprite.Entity;
+        Entity? pairedGhost = GetRuntimeField<Entity>(freshSprite, "<Entity>k__BackingField");
 
         AkronReconstructionRestore restore = RestoreTwoTrailGhostDocumentInto(
             fresh,
@@ -2176,9 +2175,9 @@ public sealed class StartPosReconstructionTests {
         // Refused before any assignment, so the room is still the room the reload built:
         // its own ghost, in the list, with its clean-load state, and the trail that
         // survived still pointing at the ghost that owns it.
-        Assert.Contains(liveGhost, GetEntityListContents(fresh.Entities));
-        Assert.Equal(0f, liveGhost.Time);
-        Assert.Same(pairedGhost, freshSprite.Entity);
+        Assert.Contains(GetEntityListContents(fresh.Entities), entity => ReferenceEquals(entity, liveGhost));
+        Assert.Equal(0f, GetRuntimeField<float>(liveGhost, "time"));
+        Assert.Same(pairedGhost, GetRuntimeField<Entity>(freshSprite, "<Entity>k__BackingField"));
     }
 
     // The other half of the same order dependence, and the one that was still open.
@@ -2323,7 +2322,7 @@ public sealed class StartPosReconstructionTests {
 
         Assert.True(restore.Success, restore.Error);
         Assert.Same(liveGhost, fresh.Ghost);
-        Assert.Same(fresh.Level, liveGhost.Scene);
+        Assert.Same(fresh.Level, GetRuntimeField<Scene>(liveGhost, "<Scene>k__BackingField"));
     }
 
     [Theory]
@@ -3810,7 +3809,7 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionNode keptNode = capture.Document.Nodes.Single(node =>
             node.ParentFieldName == nameof(TestRoot.Numbers));
 
-        // TEMPORARY REVIEW MUTATION: leave the ordinary owning slot intact.
+        RemoveOriginalOwningField(capture.Document, keptNode);
         packedNode.Items.Add(new AkronReconstructionValue {
             Kind = "reference",
             NodeId = keptNode.Id
@@ -3856,7 +3855,7 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionNode keptNode = capture.Document.Nodes.Single(node =>
             node.ParentFieldName == nameof(TestRoot.Numbers));
 
-        // TEMPORARY REVIEW MUTATION: leave the ordinary owning slot intact.
+        RemoveOriginalOwningField(capture.Document, keptNode);
         rootNode.DelegateCalls.Add(new AkronReconstructionDelegateCall {
             Kind = "method",
             Target = new AkronReconstructionValue { Kind = "reference", NodeId = keptNode.Id },
@@ -3891,7 +3890,7 @@ public sealed class StartPosReconstructionTests {
         Type declaringType,
         string fieldName
     ) {
-        // TEMPORARY REVIEW MUTATION: leave the ordinary owning slot intact.
+        RemoveOriginalOwningField(document, keptNode);
         holder.Fields.Add(new AkronReconstructionField {
             DeclaringTypeName = declaringType.AssemblyQualifiedName!,
             Name = fieldName,
@@ -3903,6 +3902,18 @@ public sealed class StartPosReconstructionTests {
         keptNode.ParentDeclaringTypeName = declaringType.AssemblyQualifiedName!;
         keptNode.ParentFieldName = fieldName;
         keptNode.ParentArrayIndices = new List<int>();
+    }
+
+    private static void RemoveOriginalOwningField(
+        AkronReconstructionDocument document,
+        AkronReconstructionNode keptNode
+    ) {
+        AkronReconstructionNode originalOwner = document.Nodes.Single(node => node.Id == keptNode.ParentNodeId);
+        AkronReconstructionField originalEdge = originalOwner.Fields.Single(field =>
+            field.Name == keptNode.ParentFieldName &&
+            field.Value.Kind == "reference" &&
+            field.Value.NodeId == keptNode.Id);
+        Assert.True(originalOwner.Fields.Remove(originalEdge));
     }
 
     private static void EmptyTheSlotTheRoomKeepsItIn(
@@ -4156,7 +4167,7 @@ public sealed class StartPosReconstructionTests {
         List<Entity> restored = GetEntityListContents(fresh.Entities);
         Assert.Equal(2, restored.Count);
         // The entity the room built keeps its place and takes its saved state.
-        Assert.Contains(freshLive, restored);
+        Assert.Contains(restored, entity => ReferenceEquals(entity, freshLive));
         Assert.Equal(81, freshLive.Value);
         // The one the room did not build is rebuilt beside it rather than replacing it.
         SourceIdentifiedEntity rebuilt = restored
@@ -4275,13 +4286,13 @@ public sealed class StartPosReconstructionTests {
         Assert.True(restore.Success, restore.Error);
         List<Entity> restored = GetEntityListContents(fresh.Entities);
         Assert.Equal(2, restored.Count);
-        Assert.Contains(freshLive, restored);
+        Assert.Contains(restored, entity => ReferenceEquals(entity, freshLive));
         Assert.Equal(81, freshLive.Value);
         SourceIdentifiedEntity rebuiltCarried = restored
             .OfType<SourceIdentifiedEntity>()
             .Single(entity => !ReferenceEquals(entity, freshLive));
         Assert.Equal(37, rebuiltCarried.Value);
-        Assert.Equal("a01", rebuiltCarried.SourceId.Level);
+        Assert.Equal("a01", GetRuntimeField<EntityID>(rebuiltCarried, "<SourceId>k__BackingField").Level);
     }
 
     // The rule has to run before the resolvers, not only before the authenticators.
@@ -4332,7 +4343,7 @@ public sealed class StartPosReconstructionTests {
         // The room is the room the reload built: the entity the edited map calls 99 is
         // still called 99 and still holds its own state.
         Assert.Same(freshRenumbered, fresh.Holder.Alias);
-        Assert.Equal(99, freshRenumbered.SourceId.ID);
+        Assert.Equal(99, GetRuntimeField<EntityID>(freshRenumbered, "<SourceId>k__BackingField").ID);
         Assert.Equal(0, freshRenumbered.Value);
         Assert.Equal(0, freshOther.Value);
     }
@@ -4443,7 +4454,7 @@ public sealed class StartPosReconstructionTests {
         try {
             AkronPersistentRuntimeState unusedRoot = InstallTestMapAndCreateRoot("a00", 0, AreaMode.Normal);
             Assert.NotNull(unusedRoot);
-            LevelData room = AreaData.Areas[0].Mode[0].MapData.Get("a00");
+            LevelData room = GetMapRoom(AreaData.Areas[0].Mode[0].MapData, "a00");
             room.Entities = new List<EntityData> { new EntityData { ID = 10 }, new EntityData { ID = 20 } };
             room.Triggers = new List<EntityData>();
 
@@ -5020,7 +5031,7 @@ public sealed class StartPosReconstructionTests {
         Assert.Same(freshKeptPeer, freshKeptOwner.Peer);
         // The other one is rebuilt and takes the slot the reload had filled with 22.
         PeerTargetEntity rebuiltPeer = Assert.IsType<PeerTargetEntity>(freshCrossedOwner.Peer);
-        Assert.Equal(21, rebuiltPeer.SourceId.ID);
+        Assert.Equal(21, GetRuntimeField<EntityID>(rebuiltPeer, "<SourceId>k__BackingField").ID);
         // Monocle.Entity is IEnumerable<Component>, so xUnit compares two entities by
         // their components rather than by reference. Ask for the reference directly.
         Assert.DoesNotContain(
@@ -5121,8 +5132,9 @@ public sealed class StartPosReconstructionTests {
             .Cast<ClutterLinkedEntity>()
             .ToArray();
         Assert.Equal(new[] { 11, 22, 33 }, restored.Select(entity => entity.Value));
-        Assert.Equal(new[] { 11f, 22f, 33f }, restored.Select(entity =>
-            Assert.IsType<Hitbox>(entity.Collider).Width));
+        Assert.Equal(new[] { 11f, 22f, 33f }, restored.Select(entity => GetRuntimeField<float>(
+            Assert.IsType<Hitbox>(GetRuntimeField<Collider>(entity, "collider")),
+            "<Width>k__BackingField")));
         Assert.Contains(restored, entity => freshEntities.All(freshEntity =>
             !ReferenceEquals(entity, freshEntity)));
         Assert.Same(restored[1], Assert.Single(restored[0].HasBelow).Key);
@@ -5452,7 +5464,12 @@ public sealed class StartPosReconstructionTests {
         entity.HasBelow = new Dictionary<ClutterLinkedEntity, bool>();
         entity.Above = new List<ClutterLinkedEntity>();
         entity.Value = value;
-        entity.Collider = new Hitbox(Math.Max(1, value), 8f);
+        Hitbox collider = (Hitbox) RuntimeHelpers.GetUninitializedObject(typeof(Hitbox));
+        SetRuntimeField(collider, "width", (float) Math.Max(1, value));
+        SetRuntimeField(collider, "height", 8f);
+        SetRuntimeField(collider, "<Width>k__BackingField", (float) Math.Max(1, value));
+        SetRuntimeField(collider, "<Height>k__BackingField", 8f);
+        SetRuntimeField(entity, "collider", collider);
         return entity;
     }
 
@@ -6105,7 +6122,7 @@ public sealed class StartPosReconstructionTests {
     // own Type is what the wildcarded owner path would hand over in its place.
     [Fact]
     public void ARebuildRefusesAListHeldModOwnedTypeThisInstallNoLongerHas() {
-        Type modOwned = LoadThroughEverestModuleContext(
+        Type modOwned = LoadThroughProbeModContext(
                 "AkronProbeUninstalledMod",
                 BuildProbeModAssembly("AkronProbeUninstalledModAsm"))
             .GetTypes()
@@ -6129,7 +6146,7 @@ public sealed class StartPosReconstructionTests {
                 new TestListHeldResourceHolder { Kind = modOwned }
             }
         };
-        AkronReconstructionGraph graph = CreateStartPosGraph();
+        AkronReconstructionGraph graph = CreateStartPosGraph(acceptProbeModContext: true);
         AkronReconstructionCapture capture = graph.Capture(saved, baseline);
         Assert.True(capture.Success, capture.Error);
         AkronReconstructionNode kind = capture.Document.Nodes
@@ -6234,18 +6251,18 @@ public sealed class StartPosReconstructionTests {
         // them. Everest's context means the bytes came off the mod's own dll, so
         // the name is the mod's; Assembly.Load(byte[]) builds a context of its
         // own, so the name is whatever this process chose.
-        Assembly modAssembly = LoadThroughEverestModuleContext(
+        Assembly modAssembly = LoadThroughProbeModContext(
             "AkronProbeNamedMod",
             BuildProbeModAssembly("AkronProbeNamedModAsm"));
         Type modOwned = modAssembly.GetTypes().Single(candidate => candidate.Name == "HelperState");
         Assert.Empty(modAssembly.Location);
         Assert.False(modAssembly.IsDynamic);
-        Assert.True(AkronStartPosReconstruction.HasPortableLiveResourceKey(modAssembly));
-        Assert.True(AkronStartPosReconstruction.HasPortableLiveResourceKey(modOwned));
+        Assert.True(HasPortableProbeModResourceKey(modAssembly));
+        Assert.True(HasPortableProbeModResourceKey(modOwned));
         // What "portable" is claiming, shown rather than asserted about: a second
         // load of the same mod at the same version derives the same key, so a
         // process that cannot produce the key does not have the type.
-        Type reloaded = LoadThroughEverestModuleContext(
+        Type reloaded = LoadThroughProbeModContext(
                 "AkronProbeNamedModAgain",
                 BuildProbeModAssembly("AkronProbeNamedModAsm"))
             .GetTypes()
@@ -6356,29 +6373,24 @@ public sealed class StartPosReconstructionTests {
         return image.ToArray();
     }
 
-    // The load Everest performs for every installed mod. Its
-    // EverestModuleAssemblyContext reads the relinked dll into memory and calls
-    // LoadFromStream so the file on disk is never locked, which is why a mod's
-    // assembly reports no Location. The constructor is Everest-internal, so it is
-    // reached the only way a test can reach it; everything after that is the real
-    // context doing the real load. The context is kept alive rather than disposed:
-    // it is what resolves the loaded assembly's own references, so a disposed one
-    // leaves the assembly unable to bind even System.Object. Each context
-    // registers itself under its mod name for as long as it lives, so every call
-    // passes a mod name of its own.
-    private static Assembly LoadThroughEverestModuleContext(string modName, byte[] image) {
-        EverestModuleMetadata metadata = new EverestModuleMetadata {
-            Name = modName,
-            VersionString = "1.0.0",
-            PathDirectory = Path.GetTempPath(),
-            DLL = modName + ".dll"
-        };
-        EverestModuleAssemblyContext context = (EverestModuleAssemblyContext)
-            typeof(EverestModuleAssemblyContext)
-                .GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                .Single()
-                .Invoke(new object[] { metadata });
+    // Everest loads each relinked mod from a stream into its own AssemblyLoadContext.
+    // CI's Everest constructor is reference-only, so this test-owned context performs
+    // the same runtime operation and the injected policy marks that context as the
+    // reproducibly named mod source.
+    private static Assembly LoadThroughProbeModContext(string modName, byte[] image) {
+        ProbeModAssemblyContext context = new ProbeModAssemblyContext(modName);
         return context.LoadFromStream(new MemoryStream(image));
+    }
+
+    private static bool HasPortableProbeModResourceKey(object resource) {
+        return AkronStartPosReconstruction.HasPortableLiveResourceKey(
+            resource,
+            assembly => AssemblyLoadContext.GetLoadContext(assembly) is ProbeModAssemblyContext);
+    }
+
+    private sealed class ProbeModAssemblyContext : AssemblyLoadContext {
+        public ProbeModAssemblyContext(string name) : base(name, isCollectible: false) {
+        }
     }
 
     // A pointer that is not a collation handle still has to be refused: the
@@ -6586,14 +6598,16 @@ public sealed class StartPosReconstructionTests {
             .GetValue(texture)!;
     }
 
-    private static AkronReconstructionGraph CreateStartPosGraph() {
+    private static AkronReconstructionGraph CreateStartPosGraph(bool acceptProbeModContext = false) {
         return new AkronReconstructionGraph(
             AkronStartPosReconstruction.IsLiveResourceType,
             AkronStartPosReconstruction.GetLiveResourceKey,
             null,
             AkronStartPosReconstruction.ResolveDetachedLiveResource,
             areEquivalentLiveResources: AkronStartPosReconstruction.AreEquivalentLiveResources,
-            hasPortableLiveResourceKey: AkronStartPosReconstruction.HasPortableLiveResourceKey,
+            hasPortableLiveResourceKey: acceptProbeModContext
+                ? HasPortableProbeModResourceKey
+                : AkronStartPosReconstruction.HasPortableLiveResourceKey,
             getMapPlacedEntityIds: AkronStartPosReconstruction.GetMapPlacedEntityIds);
     }
 
@@ -7519,7 +7533,7 @@ public sealed class StartPosReconstructionTests {
             slots,
             index: 0,
             owner: trailOwner,
-            depth: trailOwner.Depth + 1);
+            depth: GetEntityDepth(trailOwner) + 1);
 
         if (ghostIsTrailing) {
             AddDetachedEntity(entities, snapshot);
@@ -7987,8 +8001,28 @@ public sealed class StartPosReconstructionTests {
         GetRuntimeFieldInfo(owner.GetType(), name).SetValue(owner, value);
     }
 
-    private static T GetRuntimeField<T>(object owner, string name) where T : class {
+    private static T GetRuntimeField<T>(object owner, string name) {
         return (T) GetRuntimeFieldInfo(owner.GetType(), name).GetValue(owner)!;
+    }
+
+    private static T GetRuntimeStaticField<T>(Type type, string name) {
+        FieldInfo field = type.GetField(name, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(type.FullName + "." + name + " is unavailable.");
+        return (T) field.GetValue(null)!;
+    }
+
+    private static void SetRuntimeStaticField(Type type, string name, object? value) {
+        FieldInfo field = type.GetField(name, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(type.FullName + "." + name + " is unavailable.");
+        field.SetValue(null, value);
+    }
+
+    private static int GetEntityDepth(Entity entity) {
+        return GetRuntimeField<int>(entity, "depth");
+    }
+
+    private static LevelData GetMapRoom(MapData map, string roomName) {
+        return map.Levels.Single(room => string.Equals(room.Name, roomName, StringComparison.Ordinal));
     }
 
     private static List<Entity> GetEntityListContents(EntityList entities) {
@@ -8569,7 +8603,7 @@ public sealed class StartPosReconstructionTests {
         IEnumerator wait = Assert.Single(frames);
         Assert.Equal("Monocle.Tween+<Wait>d__45", wait.GetType().FullName);
         Assert.Same(tween, GetRuntimeFieldInfo(wait.GetType(), "<>4__this").GetValue(wait));
-        Assert.Same(entities[2], tween.Entity);
+        Assert.Same(entities[2], GetRuntimeField<Entity>(tween, "<Entity>k__BackingField"));
         // The siblings' pairs finished during play, so the saved frame holds no node
         // for them and emptying those two entities is the correct outcome rather than
         // a dropped object. Their occurrences are what admitted the rebuild above.
@@ -8696,7 +8730,7 @@ public sealed class StartPosReconstructionTests {
             // iterator raw, and holds it exactly once. That is the whole of what this
             // room is about; an active coroutine that HAS updated holds it three
             // times and every other room in this file is that shape.
-            frames.Push(tween.Wait());
+            frames.Push(CreateCompilerIterator(tween, "<Wait>d__45"));
             SetRuntimeField(coroutine, "enumerators", frames);
             ordered.Add(coroutine);
             ordered.Add(tween);
@@ -8837,9 +8871,7 @@ public sealed class StartPosReconstructionTests {
     }
 
     private static IEnumerator InvokeSpritePlayUtil(Sprite sprite) {
-        return (IEnumerator) typeof(Sprite)
-            .GetMethod("PlayUtil", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(sprite, null)!;
+        return CreateCompilerIterator(sprite, "<PlayUtil>d__40");
     }
 
     private static SpriteRoutineSceneRoot CreateSpriteRoutineScene(
@@ -8901,6 +8933,7 @@ public sealed class StartPosReconstructionTests {
 
         StateMachine machine = (StateMachine) RuntimeHelpers.GetUninitializedObject(typeof(StateMachine));
         SetRuntimeField(machine, "<Entity>k__BackingField", owner);
+        SetRuntimeField(machine, "Active", true);
 
         // StateMachine's constructor does `currentCoroutine = new Coroutine()`
         // and never adds it to the entity's ComponentList, so the live
@@ -8916,20 +8949,22 @@ public sealed class StartPosReconstructionTests {
         // coroutine in these rooms is really in.
         SetRuntimeField(coroutine, "<Finished>k__BackingField", !includeIterator);
         if (includeIterator) {
-            // Build the stack the way the game does rather than by hand.
-            // StateMachine.State installs the bare state routine through
-            // Coroutine.Replace, which is also what makes the coroutine Active -
-            // StateMachine.Update only advances an active one, so pushing onto
-            // the stack directly leaves a shape Monocle cannot reach. Update is
-            // then the only thing that advances it: it wraps the bare iterator in
-            // Everest's Flattened, calls MoveNext on the Flattened, and pushes
-            // whatever the routine yielded. Advancing the inner routine by hand
-            // instead leaves Flattened.current null, which is a shape the game
-            // never produces and which hides the alias edge these rooms exercise.
-            coroutine.Replace(owner.StateRoutine());
-            for (int update = 0; update < coroutineUpdates; update++) {
-                coroutine.Update();
+            // CI's Celeste assembly has no executable Coroutine or Sprite method
+            // bodies. Build the exact stack those updates leave behind: the state
+            // routine's Flattened frame holds the yielded PlayUtil iterator, and a
+            // second update wraps that iterator in another Flattened frame.
+            IEnumerator playIterator = InvokeSpritePlayUtil(sprite);
+            IEnumerator stateRoutine = owner.StateRoutine();
+            SetRuntimeField(stateRoutine, "<>1__state", 1);
+            SetRuntimeField(stateRoutine, "<>2__current", playIterator);
+            IEnumerator stateFrame = CreateFlattened(stateRoutine, playIterator);
+            iterators.Push(stateFrame);
+            if (coroutineUpdates == FreshRoomCoroutineUpdates) {
+                iterators.Push(playIterator);
+            } else {
+                iterators.Push(CreateFlattened(playIterator, null));
             }
+            SetRuntimeField(coroutine, "Active", true);
         }
 
         List<Component> ordered = !includeSprite
@@ -8945,7 +8980,8 @@ public sealed class StartPosReconstructionTests {
             Stack<IEnumerator> secondFrames = new Stack<IEnumerator>();
             if (extra == ExtraCoroutine.HoldingTheRunningIterator && includeIterator) {
                 IEnumerator running = GetRuntimeField<Stack<IEnumerator>>(coroutine, "enumerators").ToArray()[0];
-                secondFrames.Push(GetRuntimeField<Stack<IEnumerator>>(running, "enums").Single().SafeEnumerate());
+                IEnumerator aliased = GetRuntimeField<Stack<IEnumerator>>(running, "enums").Single();
+                secondFrames.Push(CreateFlattened(aliased, null));
             }
             SetRuntimeField(second, "enumerators", secondFrames);
             ordered.Add(second);
@@ -8953,6 +8989,26 @@ public sealed class StartPosReconstructionTests {
         SetRuntimeField(components, "components", ordered);
         SetRuntimeField(components, "current", new HashSet<Component>(ordered));
         AddDetachedEntity(entityList, owner);
+    }
+
+    private static IEnumerator CreateCompilerIterator(object owner, string nestedTypeName) {
+        Type iteratorType = owner.GetType().GetNestedType(nestedTypeName, BindingFlags.NonPublic)
+            ?? owner.GetType().BaseType?.GetNestedType(nestedTypeName, BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(owner.GetType().FullName + "+" + nestedTypeName + " is unavailable.");
+        IEnumerator iterator = (IEnumerator) RuntimeHelpers.GetUninitializedObject(iteratorType);
+        SetRuntimeField(iterator, "<>1__state", 1);
+        SetRuntimeField(iterator, "<>4__this", owner);
+        return iterator;
+    }
+
+    private static IEnumerator CreateFlattened(IEnumerator iterator, object? current) {
+        Type flattenedType = typeof(Sprite).Assembly.GetType(
+            "Celeste.Mod.SwapImmediatelyExtension+Flattened",
+            throwOnError: true)!;
+        IEnumerator flattened = (IEnumerator) RuntimeHelpers.GetUninitializedObject(flattenedType);
+        SetRuntimeField(flattened, "enums", new Stack<IEnumerator>(new[] { iterator }));
+        SetRuntimeField(flattened, "current", current);
+        return flattened;
     }
 
     // Two instances of the same custom entity in one room, which is what makes the
@@ -9200,9 +9256,15 @@ public sealed class StartPosReconstructionTests {
         SetRuntimeField(timerOwner, "<SourceId>k__BackingField", CreateEntityId("a00", 11));
         List<Component> timerOrdered = new List<Component>();
         if (includeAlarm) {
-            // Built through Monocle's own factory rather than by hand, so the
-            // component is armed the way Alarm.Set arms one.
-            Alarm alarm = Alarm.Create(Alarm.AlarmMode.Oneshot, SampleTimerMod.Callback, 0.25f, start: true);
+            // The private fields are the state Alarm.Create leaves behind. CI's
+            // Celeste assembly is reference-only, so the fixture writes that state
+            // directly instead of invoking a method body the assembly omits.
+            Alarm alarm = (Alarm) RuntimeHelpers.GetUninitializedObject(typeof(Alarm));
+            SetRuntimeField(alarm, "OnComplete", SampleTimerMod.Callback);
+            SetRuntimeField(alarm, "<Mode>k__BackingField", Alarm.AlarmMode.Oneshot);
+            SetRuntimeField(alarm, "<Duration>k__BackingField", 0.25f);
+            SetRuntimeField(alarm, "<TimeLeft>k__BackingField", 0.25f);
+            SetRuntimeField(alarm, "Active", true);
             SetRuntimeField(alarm, "<Entity>k__BackingField", timerOwner);
             timerOrdered.Add(alarm);
         }
@@ -9215,25 +9277,20 @@ public sealed class StartPosReconstructionTests {
         SetRuntimeField(stateOwner, "<Scene>k__BackingField", scene);
         SetRuntimeField(stateOwner, "<SourceId>k__BackingField", CreateEntityId("a00", 12));
 
-        // Monocle's own constructor and callback plumbing. The update callback
-        // is a method group on the entity, the way Celeste's Player wires its
-        // own states, so its target is the entity rather than a closure.
-        StateMachine machine = new StateMachine(4);
-        SetRuntimeField(machine, "<Entity>k__BackingField", stateOwner);
-        machine.SetCallbacks(
+        // The update callback is a method group on the entity, the way Celeste's
+        // Player wires its own states, so its target is the entity rather than a
+        // closure. The fixture arrays are the state a four-slot constructor and
+        // SetCallbacks produce.
+        StateMachine machine = CreateDetachedStateMachine(stateOwner, 4);
+        SetStateCallbacks(
+            machine,
             1,
             stateOwner.RunState,
-            null,
-            null,
             includeEndCallback ? SampleTimerMod.Callback : null);
         if (includeExtraState) {
-            // AddState is what resizes the five callback arrays.
-            machine.AddState("mod-state", stateOwner.RunModState);
+            AddNamedState(machine, "mod-state", stateOwner.RunModState, null);
         }
-        // Monocle's own state setter, so the machine is actually running the
-        // state whose end callback this room is about rather than sitting on
-        // the -1 no entity has ever driven it out of.
-        machine.State = 1;
+        SetRuntimeField(machine, "state", 1);
         List<Component> stateOrdered = new List<Component> { machine };
         SetRuntimeField(stateComponents, "components", stateOrdered);
         SetRuntimeField(stateComponents, "current", new HashSet<Component>(stateOrdered));
@@ -9478,10 +9535,11 @@ public sealed class StartPosReconstructionTests {
             ("second-mod-state", !movedDuringPlay));
         if (movedDuringPlay) {
             StateMachine savedMachine = GetStateSlotMachine(saved);
-            StateSlotEntity savedOwner = (StateSlotEntity) savedMachine.Entity;
+            StateSlotEntity savedOwner =
+                (StateSlotEntity) GetRuntimeField<Entity>(savedMachine, "<Entity>k__BackingField");
             Action endCallback = sharedModClosure ? SampleTimerMod.Callback : savedOwner.EndState;
-            savedMachine.SetCallbacks(1, savedOwner.RunState, null, null, null);
-            savedMachine.SetCallbacks(2, savedOwner.RunState, null, null, endCallback);
+            SetStateCallbacks(savedMachine, 1, savedOwner.RunState, null);
+            SetStateCallbacks(savedMachine, 2, savedOwner.RunState, endCallback);
         }
         AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
         AkronReconstructionCapture capture = graph.Capture(saved, baseline);
@@ -9634,12 +9692,7 @@ public sealed class StartPosReconstructionTests {
         return CreateStateSlotScene((machine, stateOwner) => {
             Action endCallback = sharedModClosure ? SampleTimerMod.Callback : stateOwner.EndState;
             foreach ((string name, bool endCallback_) in modStates) {
-                machine.AddState(
-                    name,
-                    stateOwner.RunState,
-                    null,
-                    null,
-                    endCallback_ ? endCallback : null);
+                AddNamedState(machine, name, stateOwner.RunState, endCallback_ ? endCallback : null);
             }
         });
     }
@@ -9654,13 +9707,11 @@ public sealed class StartPosReconstructionTests {
         SetRuntimeField(stateOwner, "<SourceId>k__BackingField", CreateEntityId("a00", 12));
 
         // One base state, so the mod states start at id 1 the way they do on a
-        // machine the game built.
-        StateMachine machine = new StateMachine(1);
-        SetRuntimeField(machine, "<Entity>k__BackingField", stateOwner);
+        // machine the game built. CI supplies Celeste as a reference assembly,
+        // so this test-owned fixture writes the constructor state directly.
+        StateMachine machine = CreateDetachedStateMachine(stateOwner, 1);
         addModStates(machine, stateOwner);
-        // Monocle's own state setter, so the machine is actually running a state
-        // rather than sitting on the -1 no entity has ever driven it out of.
-        machine.State = 1;
+        SetRuntimeField(machine, "state", 1);
         List<Component> stateOrdered = new List<Component> { machine };
         SetRuntimeField(stateComponents, "components", stateOrdered);
         SetRuntimeField(stateComponents, "current", new HashSet<Component>(stateOrdered));
@@ -9669,9 +9720,8 @@ public sealed class StartPosReconstructionTests {
         return new StateSlotSceneRoot { Scene = scene, Entities = entityList };
     }
 
-    // The pre-2023 reflection idiom, performed rather than imitated: resize the
-    // four callback arrays, leave names alone, then wire the new slot through
-    // Monocle's own public SetCallbacks. This is what XaphanHelper,
+    // The pre-2023 reflection idiom: resize the four callback arrays, leave names
+    // alone, then write the new slot. This is what XaphanHelper,
     // BrokemiaHelper, JackalHelper, IsaGrabBag and PrismaticHelper still ship,
     // and the slot it produces is unnamed on both sides of a restore.
     private static int AddUnnamedState(StateMachine machine, Func<int> update, Action end) {
@@ -9684,11 +9734,70 @@ public sealed class StartPosReconstructionTests {
         Array.Resize(ref updates, slot + 1);
         Array.Resize(ref ends, slot + 1);
         Array.Resize(ref coroutines, slot + 1);
+        updates[slot] = update;
+        ends[slot] = end;
         SetRuntimeField(machine, "begins", begins);
         SetRuntimeField(machine, "updates", updates);
         SetRuntimeField(machine, "ends", ends);
         SetRuntimeField(machine, "coroutines", coroutines);
-        machine.SetCallbacks(slot, update, null, null, end);
+        return slot;
+    }
+
+    private static StateMachine CreateDetachedStateMachine(Entity owner, int stateCount) {
+        StateMachine machine = (StateMachine) RuntimeHelpers.GetUninitializedObject(typeof(StateMachine));
+        SetRuntimeField(machine, "<Entity>k__BackingField", owner);
+        SetRuntimeField(machine, "Active", true);
+        SetRuntimeField(machine, "state", -1);
+        SetRuntimeField(machine, "<PreviousState>k__BackingField", -1);
+        SetRuntimeField(machine, "begins", new Action[stateCount]);
+        SetRuntimeField(machine, "updates", new Func<int>[stateCount]);
+        SetRuntimeField(machine, "ends", new Action[stateCount]);
+        SetRuntimeField(machine, "coroutines", new Func<IEnumerator>[stateCount]);
+        SetRuntimeField(machine, "names", new string[stateCount]);
+
+        // StateMachine owns this coroutine without adding it to an Entity. Match
+        // `new Coroutine(false)`: inactive, not removable, and with an empty stack.
+        Coroutine currentCoroutine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+        SetRuntimeField(currentCoroutine, "enumerators", new Stack<IEnumerator>());
+        SetRuntimeField(machine, "currentCoroutine", currentCoroutine);
+        return machine;
+    }
+
+    private static void SetStateCallbacks(
+        StateMachine machine,
+        int slot,
+        Func<int> update,
+        Action? end
+    ) {
+        GetRuntimeField<Func<int>[]>(machine, "updates")[slot] = update;
+        GetRuntimeField<Action[]>(machine, "ends")[slot] = end!;
+    }
+
+    private static int AddNamedState(
+        StateMachine machine,
+        string name,
+        Func<int> update,
+        Action? end
+    ) {
+        Action[] begins = GetRuntimeField<Action[]>(machine, "begins");
+        Func<int>[] updates = GetRuntimeField<Func<int>[]>(machine, "updates");
+        Action[] ends = GetRuntimeField<Action[]>(machine, "ends");
+        Func<IEnumerator>[] coroutines = GetRuntimeField<Func<IEnumerator>[]>(machine, "coroutines");
+        string[] names = GetRuntimeField<string[]>(machine, "names");
+        int slot = begins.Length;
+        Array.Resize(ref begins, slot + 1);
+        Array.Resize(ref updates, slot + 1);
+        Array.Resize(ref ends, slot + 1);
+        Array.Resize(ref coroutines, slot + 1);
+        Array.Resize(ref names, slot + 1);
+        updates[slot] = update;
+        ends[slot] = end!;
+        names[slot] = name;
+        SetRuntimeField(machine, "begins", begins);
+        SetRuntimeField(machine, "updates", updates);
+        SetRuntimeField(machine, "ends", ends);
+        SetRuntimeField(machine, "coroutines", coroutines);
+        SetRuntimeField(machine, "names", names);
         return slot;
     }
 

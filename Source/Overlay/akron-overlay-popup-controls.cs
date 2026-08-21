@@ -282,13 +282,11 @@ public sealed partial class AkronOverlay {
             AkronLog.FlushDiagnosticSummaries();
             AkronModule.Settings.LoggingMaxFileSizeMb = AkronModuleSettings.ClampLoggingMaxFileSizeMb(value);
             AkronLog.LogSettingsChanged("max-file-size-mb=" + AkronModule.Settings.LoggingMaxFileSizeMb.ToString(CultureInfo.InvariantCulture));
-            AkronModule.SaveAkronSettingsNow("overlay-logging-max-file-size-mb");
         }, -1, 1, 1, 100, popupId, "Rotate the current Akron log when it reaches this many megabytes.");
         DrawIntStepperRow("Retained", () => AkronModule.Settings.LoggingRetainedFiles, value => {
             AkronLog.FlushDiagnosticSummaries();
             AkronModule.Settings.LoggingRetainedFiles = AkronModuleSettings.ClampLoggingRetainedFiles(value);
             AkronLog.LogSettingsChanged("retained-files=" + AkronModule.Settings.LoggingRetainedFiles.ToString(CultureInfo.InvariantCulture));
-            AkronModule.SaveAkronSettingsNow("overlay-logging-retained-files");
         }, -1, 1, 0, 20, popupId, "Keep this many rotated Akron log files.");
         ImGui.Separator();
         if (ImGui.Button("Write test entry##" + popupId)) {

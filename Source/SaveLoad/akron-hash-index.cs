@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 
 namespace Celeste.Mod.Akron;
 
@@ -88,7 +89,7 @@ internal static class AkronHashIndex {
         try {
             rebuilder.Invoke(null, new[] { value });
         } catch (TargetInvocationException exception) when (exception.InnerException != null) {
-            throw exception.InnerException;
+            ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
         }
     }
 

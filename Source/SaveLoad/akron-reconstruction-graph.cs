@@ -7748,6 +7748,26 @@ internal enum AkronPrewarmOutcome {
 }
 
 internal static class AkronStartPosReconstruction {
+    private static readonly FieldInfo VirtualContentAssetsField = typeof(VirtualContent).GetField(
+        "assets",
+        BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(VirtualContent).FullName, "assets");
+    private static readonly FieldInfo VirtualTexturePathField = typeof(VirtualTexture).GetField(
+        "<Path>k__BackingField",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(VirtualTexture).FullName, "<Path>k__BackingField");
+    private static readonly FieldInfo VirtualAssetNameField = typeof(VirtualAsset).GetField(
+        "<Name>k__BackingField",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(VirtualAsset).FullName, "<Name>k__BackingField");
+    private static readonly FieldInfo VirtualAssetWidthField = typeof(VirtualAsset).GetField(
+        "<Width>k__BackingField",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(VirtualAsset).FullName, "<Width>k__BackingField");
+    private static readonly FieldInfo VirtualAssetHeightField = typeof(VirtualAsset).GetField(
+        "<Height>k__BackingField",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(VirtualAsset).FullName, "<Height>k__BackingField");
     // The hard limit on one snapshot, hostile or not. Raised from 192 MiB, which was
     // 13% below the largest snapshot a real install has produced: 231,081,666 bytes
     // decompressed, one of 17 measured off the test box. A limit under the largest
@@ -7809,6 +7829,13 @@ internal static class AkronStartPosReconstruction {
     // last return for the reason spelled out there. Anything with no key never reaches
     // here at all, because capture only asks when the key is non-empty.
     internal static bool HasPortableLiveResourceKey(object resource) {
+        return HasPortableLiveResourceKey(resource, HasReproducibleAssemblyName);
+    }
+
+    internal static bool HasPortableLiveResourceKey(
+        object resource,
+        Func<Assembly, bool> hasReproducibleAssemblyName
+    ) {
         if (resource is CompareInfo) {
             // A sort name. Every install derives the same one for the same
             // collation, and one it cannot open is a collation it does not have.
@@ -7824,7 +7851,8 @@ internal static class AkronStartPosReconstruction {
             // a real name. Without this, List<T> would be judged on the core library
             // alone while its name carries a bare "T" that two different parameters
             // share.
-            return type.AssemblyQualifiedName != null && HasReproducibleMetadataName(type);
+            return type.AssemblyQualifiedName != null &&
+                   HasReproducibleMetadataName(type, hasReproducibleAssemblyName);
         }
         // A MemberInfo deliberately falls through to the last return. Its key is the
         // assembly's full name plus a metadata token, and a token names a position in
@@ -7841,10 +7869,10 @@ internal static class AkronStartPosReconstruction {
         // for the member, and the structural owner path that carries it today keeps
         // carrying it.
         if (resource is Assembly assembly) {
-            return HasReproducibleAssemblyName(assembly);
+            return hasReproducibleAssemblyName(assembly);
         }
         if (resource is EverestModule || resource is EverestModuleSettings) {
-            return HasReproducibleMetadataName(resource.GetType());
+            return HasReproducibleMetadataName(resource.GetType(), hasReproducibleAssemblyName);
         }
         if (resource is Atlas || resource is ModAsset) {
             // Both keys read like content - a data path, a virtual path, a source
@@ -7926,7 +7954,10 @@ internal static class AkronStartPosReconstruction {
     // the core library and still carries the emitted assembly's made-up name in its
     // key, so every assembly the shape names has to be reproducibly named for the key
     // to name anything.
-    private static bool HasReproducibleMetadataName(Type type) {
+    private static bool HasReproducibleMetadataName(
+        Type type,
+        Func<Assembly, bool> hasReproducibleAssemblyName
+    ) {
         if (type == null) {
             return false;
         }
@@ -7938,13 +7969,14 @@ internal static class AkronStartPosReconstruction {
             return false;
         }
         if (type.HasElementType) {
-            return HasReproducibleMetadataName(type.GetElementType());
+            return HasReproducibleMetadataName(type.GetElementType(), hasReproducibleAssemblyName);
         }
         if (type.IsGenericType &&
-            type.GetGenericArguments().Any(argument => !HasReproducibleMetadataName(argument))) {
+            type.GetGenericArguments().Any(argument =>
+                !HasReproducibleMetadataName(argument, hasReproducibleAssemblyName))) {
             return false;
         }
-        return HasReproducibleAssemblyName(type.Assembly);
+        return hasReproducibleAssemblyName(type.Assembly);
     }
 
     // Every EntityID the map lays out in one room, however this run's session flags
@@ -7987,7 +8019,8 @@ internal static class AkronStartPosReconstruction {
             if (map == null) {
                 return null;
             }
-            LevelData room = map.Get(roomName ?? string.Empty);
+            LevelData room = map.Levels.FirstOrDefault(level =>
+                string.Equals(level.Name, roomName ?? string.Empty, StringComparison.Ordinal));
             return room == null ? Array.Empty<int>() : GetMapPlacedEntityIds(room).ToList();
         } catch (Exception exception) when (exception is ArgumentOutOfRangeException ||
                                            exception is IndexOutOfRangeException ||
@@ -8692,6 +8725,12 @@ internal static class AkronStartPosReconstruction {
         }
 
         lock (PrewarmedSnapshotsLock) {
+            // CancelPrewarm changes the generation before resetting this cache. Check
+            // while holding the cache lock so cancellation either prevents this store
+            // or the following reset waits for it and removes it.
+            if (isCancelled()) {
+                return AkronPrewarmOutcome.NotStored;
+            }
             if (PrewarmedSnapshots.ContainsKey(path)) {
                 return AkronPrewarmOutcome.AlreadyCached;
             }
@@ -9119,7 +9158,9 @@ internal static class AkronStartPosReconstruction {
             // time their room loads. VirtualContent retains every wrapper by
             // asset identity, so the saved texture can still be authenticated
             // even when the fresh entity graph did not select it.
-            return VirtualContent.Assets.FirstOrDefault(asset =>
+            IEnumerable<VirtualAsset> assets =
+                (IEnumerable<VirtualAsset>) VirtualContentAssetsField.GetValue(null);
+            return assets.FirstOrDefault(asset =>
                 asset?.GetType() == resourceType &&
                 string.Equals(GetLiveResourceKey(asset), resourceKey, StringComparison.Ordinal));
         }
@@ -9289,13 +9330,19 @@ internal static class AkronStartPosReconstruction {
                    (modAsset.Type?.AssemblyQualifiedName ?? string.Empty) + "|" +
                    (modAsset.Format ?? string.Empty);
         }
-        if (resource is VirtualTexture texture && !string.IsNullOrWhiteSpace(texture.Path)) {
-            return texture.Path + "|" + texture.Width.ToString(CultureInfo.InvariantCulture) + "x" +
-                   texture.Height.ToString(CultureInfo.InvariantCulture);
+        if (resource is VirtualTexture texture &&
+            VirtualTexturePathField.GetValue(texture) is string texturePath &&
+            !string.IsNullOrWhiteSpace(texturePath)) {
+            return texturePath + "|" +
+                   ((int) VirtualAssetWidthField.GetValue(texture)).ToString(CultureInfo.InvariantCulture) + "x" +
+                   ((int) VirtualAssetHeightField.GetValue(texture)).ToString(CultureInfo.InvariantCulture);
         }
-        if (resource is VirtualAsset asset && !string.IsNullOrWhiteSpace(asset.Name)) {
-            return asset.Name + "|" + asset.Width.ToString(CultureInfo.InvariantCulture) + "x" +
-                   asset.Height.ToString(CultureInfo.InvariantCulture);
+        if (resource is VirtualAsset asset &&
+            VirtualAssetNameField.GetValue(asset) is string assetName &&
+            !string.IsNullOrWhiteSpace(assetName)) {
+            return assetName + "|" +
+                   ((int) VirtualAssetWidthField.GetValue(asset)).ToString(CultureInfo.InvariantCulture) + "x" +
+                   ((int) VirtualAssetHeightField.GetValue(asset)).ToString(CultureInfo.InvariantCulture);
         }
         return string.Empty;
     }

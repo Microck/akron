@@ -40,7 +40,7 @@ internal static class AkronStartPosPersistence {
     // Slots queued for background snapshot deserialization, in the order they should
     // be read. Loading one slot on a map usually means the next slot is wanted soon,
     // and the expensive half of that next load is pure data that can be read early.
-    private static readonly List<string> PrewarmQueue = new List<string>();
+    private static readonly Queue<string> PrewarmQueue = new Queue<string>();
 
     // How long a Load will hold the game thread waiting for the restart copy it
     // needs. The realistic wait is the job already running plus the one being
@@ -105,6 +105,7 @@ internal static class AkronStartPosPersistence {
             AkronSnapshotPacing.Cancelled = false;
         }
         On.Celeste.Level.LoadLevel += LevelOnLoadLevel;
+        On.Celeste.SaveData.TryDeleteModSaveData += SaveDataOnTryDeleteModSaveData;
 
         // Snapshots written under a previous format version are dead the moment the
         // format moves, and nothing else ever removes them, so one file per slot is
@@ -415,6 +416,7 @@ internal static class AkronStartPosPersistence {
             // would be silent.
             job = new PersistenceJob {
                 FileSlot = fileSlot,
+                ProfileId = startPos.ProfileId,
                 Slot = slot,
                 StartPos = startPos,
                 StateSlotName = stateSlotName,
@@ -558,7 +560,7 @@ internal static class AkronStartPosPersistence {
             if (!shuttingDown && stateSlotNames != null) {
                 foreach (string stateSlotName in stateSlotNames) {
                     if (!string.IsNullOrWhiteSpace(stateSlotName)) {
-                        PrewarmQueue.Add(stateSlotName);
+                        PrewarmQueue.Enqueue(stateSlotName);
                     }
                 }
                 prewarmQueued = PrewarmQueue.Count;
@@ -661,8 +663,7 @@ internal static class AkronStartPosPersistence {
                     stateSlotName = null;
                     generation = 0;
                 } else {
-                    stateSlotName = PrewarmQueue[0];
-                    PrewarmQueue.RemoveAt(0);
+                    stateSlotName = PrewarmQueue.Dequeue();
                     generation = prewarmGeneration;
                 }
             }
@@ -808,7 +809,8 @@ internal static class AkronStartPosPersistence {
         // transitions are deliberately not on this list - both still animate on
         // a clock the player is watching, and the death wipe in particular is
         // the exact frame the deferred-collection work exists to keep clear.
-        AkronSnapshotPacing.GameplayActive = Engine.Scene is Level level &&
+        AkronSnapshotPacing.GameplayActive = AkronModule.Instance != null &&
+                                             Engine.Scene is Level level &&
                                              !level.Paused &&
                                              !AkronActions.IsStartPosInputWaitActive(level);
         while (Completed.TryDequeue(out PersistenceCompletion completion)) {
@@ -816,6 +818,7 @@ internal static class AkronStartPosPersistence {
                 if (IsCurrent(completion.Job.StateSlotName, completion.Job.Generation)) {
                     AkronActions.CompletePersistentStartPosCapture(
                         completion.Job.FileSlot,
+                        completion.Job.ProfileId,
                         completion.Job.Slot,
                         completion.Job.StartPos,
                         completion.Job.StateSlotName,
@@ -1066,6 +1069,7 @@ internal static class AkronStartPosPersistence {
         Update();
         AkronActions.SaveAkronStartPosData();
         On.Celeste.Level.LoadLevel -= LevelOnLoadLevel;
+        On.Celeste.SaveData.TryDeleteModSaveData -= SaveDataOnTryDeleteModSaveData;
 
         lock (Sync) {
             // A drain that ran out of budget leaves jobs queued, and every one of them
@@ -1131,6 +1135,52 @@ internal static class AkronStartPosPersistence {
     ) {
         orig(self, playerIntro, isFromLoader);
         NotifyLevelReady(self, refreshBaseline: true);
+    }
+
+    private static bool SaveDataOnTryDeleteModSaveData(
+        On.Celeste.SaveData.orig_TryDeleteModSaveData orig,
+        int fileSlot
+    ) {
+        AkronModuleSaveData deletedProfile = null;
+        try {
+            deletedProfile = ReadProfileSaveData(fileSlot);
+        } catch (Exception exception) {
+            // Profile deletion must not depend on optional StartPos cleanup. Without
+            // readable ownership metadata, leaving files alone is the safe direction.
+            AkronLog.Warn(nameof(AkronStartPosPersistence),
+                "Could not read StartPos metadata before deleting save slot " +
+                fileSlot.ToString(CultureInfo.InvariantCulture) + ": " + exception.Message);
+        }
+
+        bool deleted = orig(fileSlot);
+        if (deletedProfile == null) {
+            return deleted;
+        }
+
+        try {
+            // TryDeleteModSaveData can report another module's failure after Akron's
+            // file was removed. Check Akron's file itself instead of trusting the
+            // aggregate result before taking its now-unowned snapshots away.
+            if (AkronModule.Instance != null && AkronModule.Instance.ReadSaveData(fileSlot) == null) {
+                AkronActions.DeleteStartPosSnapshotsForProfile(fileSlot, deletedProfile);
+            }
+        } catch (Exception exception) {
+            AkronLog.Warn(nameof(AkronStartPosPersistence),
+                "Could not remove StartPos snapshots for deleted save slot " +
+                fileSlot.ToString(CultureInfo.InvariantCulture) + ": " + exception.Message);
+        }
+        return deleted;
+    }
+
+    private static AkronModuleSaveData ReadProfileSaveData(int fileSlot) {
+        byte[] serialized = AkronModule.Instance?.ReadSaveData(fileSlot);
+        if (serialized == null) {
+            return null;
+        }
+
+        using MemoryStream stream = new MemoryStream(serialized, writable: false);
+        using StreamReader reader = new StreamReader(stream);
+        return YamlHelper.Deserializer.Deserialize<AkronModuleSaveData>(reader);
     }
 
     private static void CaptureFreshBaseline(
@@ -1504,6 +1554,7 @@ internal static class AkronStartPosPersistence {
 
     private sealed class PersistenceJob : IDisposable {
         public int FileSlot { get; init; }
+        public string ProfileId { get; init; } = string.Empty;
         public int Slot { get; init; }
         public AkronStartPos StartPos { get; init; }
         public string StateSlotName { get; init; } = string.Empty;

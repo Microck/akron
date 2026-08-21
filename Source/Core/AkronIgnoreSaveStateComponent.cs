@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -87,7 +88,17 @@ public sealed class AkronIgnoreSaveStateComponent : Component {
 // where it was when the slot was set.
 internal static class AkronSnapshotExclusion {
     private static readonly FieldInfo TrailManagerSnapshotsField =
-        typeof(TrailManager).GetField("snapshots", BindingFlags.Instance | BindingFlags.NonPublic);
+        typeof(TrailManager).GetField("snapshots", BindingFlags.Instance | BindingFlags.NonPublic) ??
+        throw new MissingFieldException(typeof(TrailManager).FullName, "snapshots");
+    private static readonly FieldInfo ComponentEntityField = typeof(Component).GetField(
+        "<Entity>k__BackingField",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+    private static readonly FieldInfo SceneEntitiesField = typeof(Scene).GetField(
+        "<Entities>k__BackingField",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+    private static readonly FieldInfo EntityListEntitiesField = typeof(EntityList).GetField(
+        "entities",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
     internal static bool IsExcludedFromSnapshot(Entity entity) {
         // One named type, not a category, and the exact type rather than anything
@@ -113,8 +124,12 @@ internal static class AkronSnapshotExclusion {
         // trail every 0.1s for as long as it is visible, so this is the ordinary
         // case rather than an edge case, and the trail has to go with it.
         return entity is TrailManager.Snapshot snapshot &&
-               (IsExcludedGhost(snapshot.Sprite?.Entity) ||
-                IsExcludedGhost(snapshot.Hair?.Entity));
+               (IsExcludedGhost(GetComponentOwner(snapshot.Sprite)) ||
+                IsExcludedGhost(GetComponentOwner(snapshot.Hair)));
+    }
+
+    private static Entity GetComponentOwner(Component component) {
+        return component == null ? null : ComponentEntityField?.GetValue(component) as Entity;
     }
 
     private static bool IsExcludedGhost(Entity owner) {
@@ -149,9 +164,14 @@ internal static class AkronSnapshotExclusion {
         foreach (Entity entity in AkronEntityListInternals.GetAll(level.Entities)
                      .Concat(level.Entities)
                      .Where(candidate => candidate != null && IsExcludedFromSnapshot(candidate))
-                     .Distinct()
-                     .ToList()) {
+            .Distinct()
+            .ToList()) {
             if (level.RemoveImmediately(entity)) {
+                // Snapshot.Removed is not the ownership boundary for every
+                // TrailManager implementation. Release explicitly so the fresh
+                // room graph cannot still reach an excluded trail through the
+                // manager's fixed slot array.
+                ReleaseTrailManagerSlot(entity);
                 detached.Add(entity);
             }
         }
@@ -166,8 +186,12 @@ internal static class AkronSnapshotExclusion {
     // room had, so a ghost already in the list means these are stale and belong to a
     // room that no longer exists.
     internal static void ReattachToLevel(Level level, IReadOnlyList<Entity> detached) {
+        EntityList entities = level == null ? null : SceneEntitiesField?.GetValue(level) as EntityList;
+        List<Entity> installed = entities == null
+            ? null
+            : EntityListEntitiesField?.GetValue(entities) as List<Entity>;
         if (level == null || detached == null || detached.Count == 0 ||
-            level.Entities.Any(IsExcludedGhost)) {
+            installed == null || installed.Any(IsExcludedGhost)) {
             return;
         }
 

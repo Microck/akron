@@ -116,9 +116,22 @@ public partial class AkronModule {
     }
 
     internal static bool WasPlaybackHiddenByAkron(PlayerPlayback playback) {
-        return playback != null && !playback.Visible &&
-               playback.FrameIndex < playback.FrameCount - 1 &&
-               playback.Time < playback.TrimEnd;
+        return playback != null && WasPlaybackHiddenByAkron(
+            playback.Visible,
+            playback.FrameIndex,
+            playback.FrameCount,
+            playback.Time,
+            playback.TrimEnd);
+    }
+
+    internal static bool WasPlaybackHiddenByAkron(
+        bool visible,
+        int frameIndex,
+        int frameCount,
+        float time,
+        float trimEnd
+    ) {
+        return !visible && frameIndex < frameCount - 1 && time < trimEnd;
     }
 
     private static void HeatWaveOnRenderDisplacement(On.Celeste.HeatWave.orig_RenderDisplacement orig, HeatWave self, Level level) {

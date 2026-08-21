@@ -6,6 +6,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using Celeste.Mod.Akron;
 using Xunit;
 
@@ -120,9 +121,11 @@ public class AkronStartPosHashIndexTests {
         start.ArgumentList.Add(path);
 
         using Process child = Process.Start(start) ?? throw new InvalidOperationException("no child process");
-        string output = child.StandardOutput.ReadToEnd();
-        string error = child.StandardError.ReadToEnd();
+        Task<string> outputRead = child.StandardOutput.ReadToEndAsync();
+        Task<string> errorRead = child.StandardError.ReadToEndAsync();
         Assert.True(child.WaitForExit(120000), "the capturing process did not finish");
+        string output = outputRead.GetAwaiter().GetResult();
+        string error = errorRead.GetAwaiter().GetResult();
         Assert.True(child.ExitCode == 0, "capture process failed: " + error + output);
         try {
             return File.ReadAllText(path);

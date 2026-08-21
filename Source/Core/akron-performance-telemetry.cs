@@ -27,7 +27,7 @@ namespace Celeste.Mod.Akron;
 // project spent the session memoizing off the render path, and putting an
 // unconditional counter increment back into them would add cost to the hot path
 // in order to measure that the hot path is cheap.
-public enum AkronPerfBucket {
+internal enum AkronPerfBucket {
     OverlayInput,
     OverlayLayout,
     OverlayImGui,
@@ -227,8 +227,9 @@ internal static class AkronPerformanceTelemetry {
         windowIndex = 0;
         windowWorstTicks = 0;
         hasFrameGcBaseline = false;
+        hasLastPlayerPosition = false;
         ClearWindowGcAttribution();
-        DrainGcEvents();
+        ResetGcEvents();
         CaptureGcBaseline();
     }
 
@@ -395,40 +396,89 @@ internal static class AkronPerformanceTelemetry {
 
     public static bool StartRecording(string label, out string path) {
         StopRecording();
+        Reset();
+        path = string.Empty;
+        try {
+            string sanitized = SanitizeLabel(label);
+            string directory = Path.Combine(Everest.PathGame, "Saves", PerfDirectoryName);
+            Directory.CreateDirectory(directory);
+            string preferredPath = Path.Combine(directory,
+                "akron-perf-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) +
+                "-" + sanitized + ".jsonl");
 
-        string sanitized = SanitizeLabel(label);
-        string directory = Path.Combine(Everest.PathGame, "Saves", PerfDirectoryName);
-        Directory.CreateDirectory(directory);
-        path = Path.Combine(directory,
-            "akron-perf-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) +
-            "-" + sanitized + ".jsonl");
+            recordWriter = OpenRecordWriter(preferredPath, out string candidatePath);
+            recordLabel = sanitized;
+            recordPath = candidatePath;
+            if (gcEventsEnabled) {
+                StartGcEventListener();
+            }
 
-        recordWriter = new StreamWriter(
-            new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, JsonWriterBufferBytes),
+            WriteHeaderRecord();
+            path = candidatePath;
+            return true;
+        } catch (Exception exception) {
+            try {
+                recordWriter?.Dispose();
+            } catch {
+                // The open or first write is already the failure being reported.
+            }
+
+            recordWriter = null;
+            recordLabel = string.Empty;
+            recordPath = string.Empty;
+            StopGcEventListener();
+            AkronLog.Warn(nameof(AkronPerformanceTelemetry),
+                "Could not start perf recording: " + exception.Message);
+            return false;
+        }
+    }
+
+    internal static StreamWriter OpenRecordWriter(string preferredPath, out string actualPath) {
+        actualPath = preferredPath;
+        try {
+            return CreateRecordWriter(actualPath);
+        } catch (IOException) when (File.Exists(actualPath)) {
+            // The timestamp only has second precision. Keep the readable filename in the normal case, then
+            // add a collision-resistant suffix rather than replacing a recording started in the same second.
+            actualPath = Path.Combine(
+                Path.GetDirectoryName(preferredPath),
+                Path.GetFileNameWithoutExtension(preferredPath) + "-" + Guid.NewGuid().ToString("N") +
+                Path.GetExtension(preferredPath));
+            return CreateRecordWriter(actualPath);
+        }
+    }
+
+    private static StreamWriter CreateRecordWriter(string path) {
+        return new StreamWriter(
+            new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, JsonWriterBufferBytes),
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
             JsonWriterBufferBytes);
-        recordLabel = sanitized;
-        recordPath = path;
-        if (gcEventsEnabled) {
-            StartGcEventListener();
-        }
-
-        WriteHeaderRecord();
-        return true;
     }
 
     public static void StopRecording() {
-        if (recordWriter == null) {
-            StopGcEventListener();
-            return;
+        // A recording owns whole windows from its start through its stop. Emit
+        // the last short window before detaching the writer so short runs and
+        // terminal stalls are not silently lost.
+        if (recordWriter != null && windowFrames > 0) {
+            FlushWindow();
         }
 
-        recordWriter.Flush();
-        recordWriter.Dispose();
+        StreamWriter writer = recordWriter;
         recordWriter = null;
         recordLabel = string.Empty;
         recordPath = string.Empty;
+
+        Exception stopError = null;
+        try {
+            writer?.Dispose();
+        } catch (Exception exception) {
+            stopError = exception;
+        }
         StopGcEventListener();
+        if (stopError != null) {
+            AkronLog.Warn(nameof(AkronPerformanceTelemetry),
+                "Could not close the perf recording: " + stopError.Message);
+        }
     }
 
     // A/A control. The runtime event subscription is the one part of this
@@ -1030,6 +1080,7 @@ internal static class AkronPerformanceTelemetry {
 
     private static void AppendGcEvents() {
         json.Append(",\"gcEvents\":[");
+        long droppedEvents;
         lock (gcEventSync) {
             for (int i = 0; i < gcEventCount; i++) {
                 if (i > 0) {
@@ -1048,10 +1099,19 @@ internal static class AkronPerformanceTelemetry {
             }
 
             gcEventCount = 0;
+            droppedEvents = gcEventDropped;
         }
 
         json.Append(']');
-        json.Append(",\"gcEventsDropped\":").Append(gcEventDropped.ToString(CultureInfo.InvariantCulture));
+        json.Append(",\"gcEventsDropped\":").Append(droppedEvents.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private static void ResetGcEvents() {
+        lock (gcEventSync) {
+            gcEventCount = 0;
+            gcEventDropped = 0;
+            gcSuspendBeginTicks = 0;
+        }
     }
 
     private static void DrainGcEvents() {
@@ -1063,19 +1123,30 @@ internal static class AkronPerformanceTelemetry {
     // Called from the EventPipe dispatch thread, never from the game thread.
     private static void PushGcEvent(int kind, long index, int generation, int reason, int type, double pauseMs) {
         lock (gcEventSync) {
-            if (gcEventCount >= GcEventCapacity) {
-                gcEventDropped++;
-                return;
-            }
-
-            gcEventKind[gcEventCount] = kind;
-            gcEventIndex[gcEventCount] = index;
-            gcEventGeneration[gcEventCount] = generation;
-            gcEventReason[gcEventCount] = reason;
-            gcEventType[gcEventCount] = type;
-            gcEventPauseMs[gcEventCount] = pauseMs;
-            gcEventCount++;
+            PushGcEventLocked(kind, index, generation, reason, type, pauseMs);
         }
+    }
+
+    private static void PushGcEventLocked(
+        int kind,
+        long index,
+        int generation,
+        int reason,
+        int type,
+        double pauseMs
+    ) {
+        if (gcEventCount >= GcEventCapacity) {
+            gcEventDropped++;
+            return;
+        }
+
+        gcEventKind[gcEventCount] = kind;
+        gcEventIndex[gcEventCount] = index;
+        gcEventGeneration[gcEventCount] = generation;
+        gcEventReason[gcEventCount] = reason;
+        gcEventType[gcEventCount] = type;
+        gcEventPauseMs[gcEventCount] = pauseMs;
+        gcEventCount++;
     }
 
     private static void StartGcEventListener() {
@@ -1084,9 +1155,7 @@ internal static class AkronPerformanceTelemetry {
         }
 
         try {
-            gcEventDropped = 0;
-            gcSuspendBeginTicks = 0;
-            DrainGcEvents();
+            ResetGcEvents();
             gcEventListener = new AkronGcEventListener();
             gcEventListener.ArmExistingSources();
             gcEventStatus = gcEventListener.Armed ? "enabled" : "runtime-source-not-found";
@@ -1200,17 +1269,22 @@ internal static class AkronPerformanceTelemetry {
         protected override void OnEventWritten(EventWrittenEventArgs eventData) {
             switch (eventData.EventId) {
                 case GcSuspendEEBeginEventId:
-                    gcSuspendBeginTicks = eventData.TimeStamp.Ticks;
+                    lock (gcEventSync) {
+                        gcSuspendBeginTicks = eventData.TimeStamp.Ticks;
+                    }
                     break;
                 case GcRestartEEEndEventId: {
                     // Suspend-begin to restart-end is the stop-the-world window,
                     // which is what a player feels. A background gen2 produces
                     // two short ones; a blocking gen2 produces one long one.
-                    long begin = gcSuspendBeginTicks;
-                    gcSuspendBeginTicks = 0;
-                    if (begin > 0) {
-                        double pauseMs = (eventData.TimeStamp.Ticks - begin) / (double) TimeSpan.TicksPerMillisecond;
-                        PushGcEvent(GcEventKindPause, 0, 0, 0, 0, pauseMs);
+                    lock (gcEventSync) {
+                        long begin = gcSuspendBeginTicks;
+                        gcSuspendBeginTicks = 0;
+                        if (begin > 0) {
+                            double pauseMs =
+                                (eventData.TimeStamp.Ticks - begin) / (double) TimeSpan.TicksPerMillisecond;
+                            PushGcEventLocked(GcEventKindPause, 0, 0, 0, 0, pauseMs);
+                        }
                     }
 
                     break;

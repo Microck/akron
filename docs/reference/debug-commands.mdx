@@ -25,7 +25,7 @@ Akron exposes developer-facing console commands through Everest's debug console 
 | `akron_overlay <toggle\|show\|hide\|status>` | Control the overlay without a hotkey. |
 | `akron_room_capture <start\|stop\|status\|format <png\|jpg>\|markers <on\|off>\|startpos <on\|off>\|autokill <on\|off>\|autodeafen <on\|off>\|downscale <on\|off>\|removebg <on\|off>\|removefg <on\|off>\|wait <frames>\|horizontal <tiles>\|vertical <tiles>>` | Drive Room Capture. The overlay Room Capture row is the normal player-facing path. |
 | `akron_map_capture <start\|stop\|status\|format <png\|jpg>\|markers <on\|off>\|startpos <on\|off>\|autokill <on\|off>\|autodeafen <on\|off>\|onlymarked <on\|off>\|downscale <on\|off>\|removebg <on\|off>\|removefg <on\|off>\|wait <frames>\|horizontal <tiles>\|vertical <tiles>>` | Drive Map Capture. The overlay Map Capture row is the normal player-facing path. |
-| `akron_startpos <status\|slot <n>\|set [n]\|load [n]\|clear [n]\|prev\|next\|place <on\|off>\|dashes <n>\|stamina <n>\|slots <n>\|facing <current\|left\|right>\|idle <on\|off>\|grab <on\|off>\|label <on\|off>\|respawn <on\|off\|toggle\|status>\|wait <on\|off\|status>\|smart <on\|off>>` | Full StartPos control. StartPos selectors expose at least 15 slots, and `slots <n>` raises the selectable count when more are needed. |
+| `akron_startpos <status\|slot <n>\|set [n]\|load [n]\|clear [n]\|prev\|next\|place <on\|off>\|dashes <n>\|stamina <n>\|slots <n>\|facing <current\|left\|right>\|idle <on\|off>\|grab <on\|off>\|label <on\|off>\|respawn <on\|off\|toggle\|status>\|wait <on\|off\|status>\|smart <on\|off>>` | Full StartPos control. `slots <n>` accepts 1-50, and selectors expose at least 15 slots. |
 | `akron_slot [n]` | Set or show the active Akron savestate slot (1-9). |
 | `akron_save [slot]` | Capture the current room into the current or specified numbered Akron savestate slot. This is separate from persistent StartPos slots. |
 | `akron_load [slot]` | Restore the current or specified numbered Akron savestate slot. This is separate from persistent StartPos slots. |
@@ -34,6 +34,7 @@ Akron exposes developer-facing console commands through Everest's debug console 
 | `akron_hitboxes <toggle\|on\|off\|status\|sync>` | Control the hitbox overlay. |
 | `akron_inspector <toggle\|on\|off\|status>` | Control the entity inspector. |
 | `akron_timescale [value\|reset]` | Show or set absolute timescale using invariant-culture parsing (range 0.1-2.0). |
+| `akron_log_level <normal\|diagnostic\|verbose\|trace\|status>` | Show or set the Akron log level. Changes use the same setting as the Interface Logging popup and are saved immediately. |
 | `akron_proof` | Export a proof sidecar JSON file. |
 | `akron_community_packs <status\|url <catalog-url>\|refresh\|category <name>\|search <query>\|list\|import <index>>` | Configure and exercise the community `.akr` catalog. |
 
@@ -43,9 +44,10 @@ Akron exposes developer-facing console commands through Everest's debug console 
 |---|---|
 | `akron_overlay_move`, `akron_overlay_select`, `akron_overlay_options`, `akron_overlay_exec`, `akron_overlay_search`, `akron_overlay_state`, `akron_overlay_collapse` | Automation controls for driving the overlay without synthetic input. |
 | `akron_overlay_select_area <auto-kill\|auto-deafen>` | Start an overlay area-selection flow without synthetic input. |
-| `akron_perf <status\|reset\|record <label>\|stop\|gcevents on\|off>` | Developer performance telemetry: overlay/render diagnostics, frame-time and GC attribution, and the JSONL perf record the `scripts/akron-perf` harness drives. `gcevents` controls the runtime GC event subscription used while recording. |
+| `akron_perf <status\|reset\|record [label]\|stop\|gcevents <on\|off>>` | Developer performance telemetry: overlay/render diagnostics, frame-time and GC attribution, and the JSONL perf record the `scripts/akron-perf` harness drives. `gcevents` controls the runtime GC event subscription used while recording. |
 | `akron_feature <name> [on\|off\|toggle\|status]` | Low-level wrapper over many toggles. Document the concrete overlay row first. |
 | `akron_qa_*`, `akron_player_state`, `akron_input_state` | QA state setup and telemetry for live verification. |
+| `akron_qa_messages [count]` | Report the most recent Akron messages raised for the player, newest last. `count` defaults to 5 and must be positive. Output includes `qa-messages-raised`, `qa-messages-reported`, and one `qa-message` line per returned message. |
 | `akron_position <x> <y>` | Command-only position setter for controlled map debugging. StartPos and room-warp UI flows are the player-facing paths. |
 | `akron_debug_snapshot [tag]` | Diagnostic JSON artifact for bug reports and automation. |
 | `akron_showcase_mark <sync <label>\|note <label>\|status>` | Write hidden synchronization or note markers when showcase marker logging is enabled. |

@@ -19,18 +19,19 @@ namespace Celeste.Mod.Akron;
 // practice mod, so that is a quarter-second freeze on the most repeated action
 // the game has. This is the one Akron takes over.
 //
-// The other two are left exactly as they are, and that is a decision, not an
-// omission:
+// The other two collections are left exactly as they are. Akron only observes
+// when they finish so an existing death debt is not paid twice:
 //
 //  * Engine.OnSceneTransition only runs between scenes, behind a loading screen,
 //    which is already a moment the player tolerates. Leaving it also means
 //    changing chapter still reclaims everything Celeste intended to reclaim
-//    there, with no help from Akron.
+//    there. When it does, that full collection also settles any death debt.
 //  * Level._GCCollect, on room transitions, was rewritten by Everest to queue
 //    GC.Collect(1, Forced, blocking: false) on a background task. Its remaining
 //    blocking branch runs only when the player has explicitly set Everest's own
 //    MultithreadedGC option to false, and overriding a choice somebody made in
-//    another mod's menu is worse than the pause it would save.
+//    another mod's menu is worse than the pause it would save. If that branch
+//    runs, its full collection also settles the debt.
 //
 // What replaces the Level.Reload collection is a debt, not a deletion. The two
 // calls date from XNA, where forcing a collection after unloading a level was
@@ -53,10 +54,14 @@ internal static class AkronEngineGarbageCollection {
 
     internal static void Load() {
         IL.Celeste.Level.Reload += DeferForcedCollection;
+        IL.Monocle.Engine.OnSceneTransition += ReconcileSceneTransitionCollection;
+        IL.Celeste.Level._GCCollect += ReconcileRoomTransitionCollection;
     }
 
     internal static void Unload() {
         IL.Celeste.Level.Reload -= DeferForcedCollection;
+        IL.Monocle.Engine.OnSceneTransition -= ReconcileSceneTransitionCollection;
+        IL.Celeste.Level._GCCollect -= ReconcileRoomTransitionCollection;
         // Every deferral is a promise that the collection still happens. Unload
         // is the last chance to keep it, and it never runs during play, so pay
         // the debt here rather than throwing it away.
@@ -96,8 +101,12 @@ internal static class AkronEngineGarbageCollection {
         ILLabel afterCollection = cursor.DefineLabel();
         cursor.EmitDelegate<Func<bool>>(TryDeferForcedCollection);
         cursor.Emit(OpCodes.Brtrue, afterCollection);
-        // Step over the two calls the guard skips and land the label on whatever
-        // follows them.
+        // Step over the two calls the guard skips and land on the original next
+        // instruction. Reload deliberately has no debt-reconciliation hook. A
+        // post-pair hook cannot tell fallthrough from a later mod branching to it,
+        // while GC.CollectionCount can move for an unrelated background collection.
+        // Keeping the debt can pay one extra collection after deferral is disabled;
+        // clearing debt without this pair running would break the promise entirely.
         cursor.Index += 2;
         cursor.MarkLabel(afterCollection);
     }
@@ -123,6 +132,56 @@ internal static class AkronEngineGarbageCollection {
 
     internal static bool ShouldDeferForcedCollection(AkronModuleSettings settings) {
         return settings?.DeferEngineGarbageCollection == true;
+    }
+
+    // The scene-transition pair remains vanilla. This call is inserted after
+    // both operations, so a branch from another mod that skips the pair also
+    // skips the reconciliation and cannot erase a debt it did not pay.
+    internal static void ReconcileSceneTransitionCollection(ILContext context) {
+        ILCursor cursor = new ILCursor(context);
+        if (!cursor.TryGotoNext(
+                MoveType.After,
+                IsParameterlessGcCollect,
+                instruction => instruction.MatchCall(typeof(GC), nameof(GC.WaitForPendingFinalizers)))) {
+            AkronLog.Warn(nameof(AkronEngineGarbageCollection),
+                "Could not observe the retained full collection in " + context.Method.FullName +
+                "; a deferred collection may be paid twice after a scene transition.");
+            return;
+        }
+
+        cursor.EmitDelegate<Action>(MarkDeferredCollectionPaid);
+    }
+
+    // Everest normally replaces this with a non-blocking generation-1 collection.
+    // The parameterless call is the retained full-collection branch used when the
+    // player turns that behavior off, and only that branch can settle the debt.
+    internal static void ReconcileRoomTransitionCollection(ILContext context) {
+        ILCursor cursor = new ILCursor(context);
+        if (!cursor.TryGotoNext(MoveType.After, IsParameterlessGcCollect)) {
+            AkronLog.Warn(nameof(AkronEngineGarbageCollection),
+                "Could not observe the retained full collection in " + context.Method.FullName +
+                "; a deferred collection may be paid twice after a room transition.");
+            return;
+        }
+
+        cursor.EmitDelegate<Action>(MarkDeferredCollectionPaid);
+    }
+
+    private static bool IsParameterlessGcCollect(Instruction instruction) {
+        return (instruction.OpCode == OpCodes.Call || instruction.OpCode == OpCodes.Callvirt) &&
+               instruction.Operand is Mono.Cecil.MethodReference method &&
+               method.DeclaringType.FullName == typeof(GC).FullName &&
+               method.Name == nameof(GC.Collect) &&
+               method.Parameters.Count == 0;
+    }
+
+    internal static void MarkDeferredCollectionPaid() {
+        if (Volatile.Read(ref collectionOwed) == 0) {
+            return;
+        }
+        if (Interlocked.Exchange(ref collectionOwed, 0) != 0) {
+            Interlocked.Increment(ref paidCollections);
+        }
     }
 
     // Called at the end of a StartPos load, which is the beat the player already

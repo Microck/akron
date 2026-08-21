@@ -93,7 +93,7 @@ public static partial class AkronSetupPacks {
     //
     // Bumped for every pack rather than only for the ones carrying StartPos slots. The
     // payload has one format string covering the whole pack, a Whole pack always carries
-    // StartPos, and one story - packs from an older Akron have to be exported again - is
+    // StartPos, and one story - older setups must be recreated in the current build - is
     // easier to act on than a rule about which sections survive.
     //
     // v4 -> v5: fresh-room baseline changed, so the v7 snapshots inside a v4 pack cannot
@@ -793,7 +793,7 @@ public static partial class AkronSetupPacks {
 
         throw new AkronSetupPackFormatException(
             "This setup pack is " + DescribePackFormat(pack) + " and Akron now reads " + SetupPackFormat +
-            ". Packs from an older Akron built rooms differently; export it again from this build.");
+            ". Packs from an older Akron built rooms differently. Recreate the setup and its StartPos slots in this build, then export a new pack.");
     }
 
     // The format string comes out of a pack payload, which is allowed to be 2 MiB, so it

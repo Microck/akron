@@ -26,8 +26,8 @@ internal static class AkronDeepClone {
 
     private static readonly DynamicDataMapAccessor DynamicDataMap =
         DynamicDataMapAccessor.Create(typeof(DynamicData)) ?? DynamicDataMapAccessor.Empty;
-    private static readonly ConcurrentDictionary<Type, DynamicDataMapAccessor> GenericDynamicDataMaps =
-        new ConcurrentDictionary<Type, DynamicDataMapAccessor>();
+    private static readonly ConcurrentDictionary<Type, DynamicDataMapAccessor[]> GenericDynamicDataMaps =
+        new ConcurrentDictionary<Type, DynamicDataMapAccessor[]>();
     private static DeepCloneState sharedDeepCloneState = new DeepCloneState();
     private static bool configured;
 
@@ -249,18 +249,37 @@ internal static class AkronDeepClone {
         // separate conditional-weak-table sidecars. DeepCloner cannot discover those
         // references by walking the object, so copy both maps with the same clone state.
         DynamicDataMap.CloneEntry(source, clone, state);
-        GetGenericDynamicDataMap(source.GetType()).CloneEntry(source, clone, state);
+        foreach (DynamicDataMapAccessor map in GetGenericDynamicDataMaps(source.GetType())) {
+            map.CloneEntry(source, clone, state);
+        }
     }
 
-    private static DynamicDataMapAccessor GetGenericDynamicDataMap(Type targetType) {
+    private static DynamicDataMapAccessor[] GetGenericDynamicDataMaps(Type targetType) {
         if (targetType.IsValueType) {
-            return DynamicDataMapAccessor.Empty;
+            return Array.Empty<DynamicDataMapAccessor>();
         }
 
-        return GenericDynamicDataMaps.GetOrAdd(
-            targetType,
-            type => DynamicDataMapAccessor.Create(typeof(DynData<>).MakeGenericType(type)) ??
-                    DynamicDataMapAccessor.Empty);
+        return GenericDynamicDataMaps.GetOrAdd(targetType, CreateGenericDynamicDataMaps);
+    }
+
+    private static DynamicDataMapAccessor[] CreateGenericDynamicDataMaps(Type targetType) {
+        List<DynamicDataMapAccessor> maps = new List<DynamicDataMapAccessor>();
+        HashSet<Type> mappedTypes = new HashSet<Type>();
+        for (Type current = targetType; current != null; current = current.BaseType) {
+            mappedTypes.Add(current);
+        }
+        foreach (Type interfaceType in targetType.GetInterfaces()) {
+            mappedTypes.Add(interfaceType);
+        }
+
+        foreach (Type mappedType in mappedTypes) {
+            DynamicDataMapAccessor map = DynamicDataMapAccessor.Create(
+                typeof(DynData<>).MakeGenericType(mappedType));
+            if (map != null) {
+                maps.Add(map);
+            }
+        }
+        return maps.ToArray();
     }
 
     private sealed class DynamicDataMapAccessor {

@@ -52,8 +52,8 @@
 
 set -uo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$REPO_ROOT"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || exit 1
+cd "$REPO_ROOT" || exit 1
 
 # The test box is somebody's machine, so nothing about it is hardcoded here.
 # Every one of these must come from the environment and the script stops with a
@@ -61,6 +61,8 @@ cd "$REPO_ROOT"
 HOST="${AKRON_PERF_HOST:?set AKRON_PERF_HOST to the test box address}"
 USER_NAME="${AKRON_PERF_USER:?set AKRON_PERF_USER to the account on that box}"
 export SSHPASS="${AKRON_PERF_PASSWORD:?set AKRON_PERF_PASSWORD, or use an ssh key and drop sshpass}"
+KNOWN_HOSTS="${AKRON_PERF_KNOWN_HOSTS:?set AKRON_PERF_KNOWN_HOSTS to a known_hosts file containing the test host key}"
+[ -f "$KNOWN_HOSTS" ] || { echo "known_hosts file does not exist: ${KNOWN_HOSTS}" >&2; exit 1; }
 LAUNCH_DIR="${AKRON_PERF_LAUNCH_DIR:?set AKRON_PERF_LAUNCH_DIR to the Celeste install on that box}"
 GAME_ROOT="${AKRON_PERF_GAME_ROOT:-${LAUNCH_DIR}/files/game-root}"
 WINE_PREFIX="${AKRON_PERF_WINE_PREFIX:-${LAUNCH_DIR}/wine-prefix}"
@@ -91,8 +93,9 @@ FAILURES=0
 say() { printf '\n== %s %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 pass() { printf 'PASS  %s\n' "$*"; }
 fail() { printf 'FAIL  %s\n' "$*"; FAILURES=$((FAILURES + 1)); }
-rsh() { sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 "${USER_NAME}@${HOST}" "$@"; }
-rcp() { sshpass -e scp -o StrictHostKeyChecking=no "$@"; }
+SSH_HOST_KEY_OPTIONS=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${KNOWN_HOSTS}" -o ConnectTimeout=20)
+rsh() { sshpass -e ssh "${SSH_HOST_KEY_OPTIONS[@]}" "${USER_NAME}@${HOST}" "$@"; }
+rcp() { sshpass -e scp "${SSH_HOST_KEY_OPTIONS[@]}" "$@"; }
 
 # send <body> [timeout] - one automation run, waits for its result, echoes it.
 # last-result.txt is removed first so the poll cannot see the previous run's
@@ -154,7 +157,7 @@ kill_game_hard() {
 
 launch_game() {
     rsh "touch /tmp/akron-verify.marker" >/dev/null
-    timeout 45 sshpass -e ssh -o StrictHostKeyChecking=no "${USER_NAME}@${HOST}" \
+    timeout 45 sshpass -e ssh "${SSH_HOST_KEY_OPTIONS[@]}" "${USER_NAME}@${HOST}" \
       "cd ${LAUNCH_DIR} && setsid env \
       AKRON_AUTOMATION_ENABLED=1 AKRON_AUTOMATION_SESSION_TOKEN='${TOKEN}' \
       DISPLAY=:0 XAUTHORITY=/home/${USER_NAME}/.Xauthority \

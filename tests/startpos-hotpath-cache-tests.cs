@@ -278,9 +278,7 @@ public sealed class StartPosHotPathCacheTests {
     [Fact]
     public void HasRuntimeStateStillShortCircuitsOnTheWarmSlotBeforeTouchingDisk() {
         string source = SaveLoadSource;
-        int start = source.IndexOf("public static bool HasRuntimeState(string slotName)", StringComparison.Ordinal);
-        Assert.True(start >= 0);
-        string body = source.Substring(start, 400);
+        string body = SliceMember(source, "public static bool HasRuntimeState(string slotName)");
 
         int warm = body.IndexOf("RuntimeSlots.ContainsKey(normalizedSlotName)", StringComparison.Ordinal);
         int snapshot = body.IndexOf("AkronStartPosReconstruction.HasSnapshot(normalizedSlotName)", StringComparison.Ordinal);
@@ -442,6 +440,14 @@ public sealed class StartPosHotPathCacheTests {
             Assert.Equal(0, AkronStartPosReconstruction.PrewarmedSnapshotBytes);
             // The slot still loads normally; a cancelled prewarm is not a load failure.
             Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(slotName, out _, out string error), error);
+
+            string body = SliceMember(
+                ReconstructionSource,
+                "internal static AkronPrewarmOutcome PrewarmSnapshot(string slotName, Func<bool> isCancelled)");
+            int publish = body.IndexOf("PrewarmedSnapshots[path] = new PrewarmedSnapshot", StringComparison.Ordinal);
+            int finalCancellation = body.LastIndexOf("if (isCancelled())", publish, StringComparison.Ordinal);
+            int finalLock = body.LastIndexOf("lock (PrewarmedSnapshotsLock)", publish, StringComparison.Ordinal);
+            Assert.True(finalLock >= 0 && finalCancellation > finalLock && publish > finalCancellation);
         } finally {
             AkronStartPosReconstruction.ResetPrewarmedSnapshots();
             AkronStartPosReconstruction.DeleteSnapshot(slotName);
@@ -717,7 +723,7 @@ public sealed class StartPosHotPathCacheTests {
         string oversizedSlotName = "Akron StartPos prewarm " + Guid.NewGuid().ToString("N");
         AkronStartPosReconstruction.ResetPrewarmedSnapshots();
         try {
-            WriteGzipFileExpandingTo(
+            WriteGzipFileWithExpandedSizeTrailer(
                 AkronStartPosReconstruction.GetSnapshotPath(oversizedSlotName),
                 AkronStartPosReconstruction.MaxDecompressedSnapshotBytes + 1);
 
@@ -754,19 +760,17 @@ public sealed class StartPosHotPathCacheTests {
         return total;
     }
 
-    // A real single-member gzip file whose contents expand to exactly the requested
-    // size. Zeros, because what this file has to carry is a size, not a document.
-    private static void WriteGzipFileExpandingTo(string path, long expandedBytes) {
+    // Prewarm reads the gzip ISIZE trailer before it decompresses anything. A valid
+    // empty member with an oversized trailer exercises that boundary without writing
+    // and compressing hundreds of megabytes in a unit test.
+    private static void WriteGzipFileWithExpandedSizeTrailer(string path, long expandedBytes) {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        byte[] buffer = new byte[64 * 1024];
-        using FileStream file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
-        using GZipStream compressed = new GZipStream(file, CompressionLevel.Fastest, leaveOpen: false);
-        long written = 0;
-        while (written < expandedBytes) {
-            int chunk = (int) Math.Min(buffer.Length, expandedBytes - written);
-            compressed.Write(buffer, 0, chunk);
-            written += chunk;
+        byte[] gzip = Convert.FromHexString("1f8b080000000000000303000000000000000000");
+        uint isize = checked((uint) expandedBytes);
+        for (int index = 0; index < sizeof(uint); index++) {
+            gzip[gzip.Length - sizeof(uint) + index] = (byte) (isize >> (index * 8));
         }
+        File.WriteAllBytes(path, gzip);
     }
 
     [Fact]
@@ -949,9 +953,7 @@ public sealed class StartPosHotPathCacheTests {
         Assert.Contains("startpos-prewarm-hits: ", status);
 
         string actions = ActionsSource;
-        int start = actions.IndexOf("private static void ReportStartPosRestoreTiming(", StringComparison.Ordinal);
-        Assert.True(start >= 0);
-        string body = actions.Substring(start, 1600);
+        string body = SliceMember(actions, "private static void ReportStartPosRestoreTiming(");
 
         // Once per load, at Diagnostic, which is the default logging level.
         Assert.Contains("AkronLog.Diagnostic(nameof(AkronActions),", body);
@@ -1044,7 +1046,9 @@ public sealed class StartPosHotPathCacheTests {
             Path.Combine(AppContext.BaseDirectory, "../../../../Source/Setups/akron-setup-packs.cs"));
         int start = source.IndexOf("private void InvalidateTouchedSnapshots()", StringComparison.Ordinal);
         Assert.True(start >= 0, "the import no longer names the paths it touched");
-        string body = source.Substring(start, 900);
+        int nextMember = source.IndexOf("private void BackUpDestination(", start, StringComparison.Ordinal);
+        Assert.True(nextMember > start, "the import invalidation member boundary is unavailable");
+        string body = source.Substring(start, nextMember - start);
 
         Assert.Contains("AkronStartPosReconstruction.InvalidateSnapshotExistence(installedPath);", body);
         Assert.Contains("AkronStartPosReconstruction.InvalidateSnapshotExistence(replacedPath);", body);
@@ -1061,9 +1065,7 @@ public sealed class StartPosHotPathCacheTests {
     [Fact]
     public void EveryPrewarmedDocumentIsDroppedWhenItsPathIsInvalidated() {
         string source = ReconstructionSource;
-        int start = source.IndexOf("internal static void InvalidateSnapshotExistence(string path)", StringComparison.Ordinal);
-        Assert.True(start >= 0);
-        string body = source.Substring(start, 320);
+        string body = SliceMember(source, "internal static void InvalidateSnapshotExistence(string path)");
 
         // Every Akron writer of the snapshot directory already funnels through this, so
         // the prewarm cache inherits the audited writer set rather than adding its own.
@@ -1148,9 +1150,7 @@ public sealed class StartPosHotPathCacheTests {
         // The pace point for a read is the bounded stream, which is where decompressed
         // bytes are counted, so it bounds allocation rather than compressed input.
         string reconstruction = ReconstructionSource;
-        int stream = reconstruction.IndexOf("private sealed class AkronBoundedReadStream", StringComparison.Ordinal);
-        Assert.True(stream >= 0);
-        string streamBody = reconstruction.Substring(stream, 2400);
+        string streamBody = SliceMember(reconstruction, "private sealed class AkronBoundedReadStream");
         Assert.Equal(2, CountOccurrences(streamBody, "AkronSnapshotPacing.Pace();"));
     }
 
@@ -1171,9 +1171,7 @@ public sealed class StartPosHotPathCacheTests {
     [Fact]
     public void WarmAndPendingSlotsAreNeverQueuedForPrewarm() {
         string source = ActionsSource;
-        int start = source.IndexOf("private static void PrewarmOtherStartPosSnapshots(", StringComparison.Ordinal);
-        Assert.True(start >= 0);
-        string body = source.Substring(start, 1600);
+        string body = SliceMember(source, "private static void PrewarmOtherStartPosSnapshots(");
 
         Assert.Contains("pair.Key != loadedSlot", body);
         // Session-aware on purpose. A slot still in memory from before a chapter
@@ -1186,9 +1184,7 @@ public sealed class StartPosHotPathCacheTests {
     [Fact]
     public void ChangingMapOrSaveFileReleasesEveryPrewarmedDocument() {
         string source = ActionsSource;
-        int start = source.IndexOf("internal static void LoadStartPositionsForLevel(Level level)", StringComparison.Ordinal);
-        Assert.True(start >= 0);
-        string body = source.Substring(start, 1400);
+        string body = SliceMember(source, "internal static void LoadStartPositionsForLevel(Level level)");
 
         Assert.Contains("prewarmedSnapshotScope", body);
         Assert.Contains("AkronStartPosReconstruction.ResetPrewarmedSnapshots();", body);
@@ -1202,10 +1198,7 @@ public sealed class StartPosHotPathCacheTests {
         Assert.DoesNotContain("Logger.Log(", ActionsSource);
         Assert.DoesNotContain("Logger.Log(", PersistenceSource);
 
-        int start = ActionsSource.IndexOf(
-            "private static void ReportStartPosRestoreTiming(", StringComparison.Ordinal);
-        Assert.True(start >= 0);
-        string body = ActionsSource.Substring(start, 1600);
+        string body = SliceMember(ActionsSource, "private static void ReportStartPosRestoreTiming(");
 
         // The warm/cold selection is the one line that decides which pipeline ran. It is
         // once per load, so Diagnostic, which is written at the default logging level.

@@ -847,7 +847,8 @@ public sealed class SetupPackTests {
         Assert.Contains("akron-setup-v4", refusal.Message);
         Assert.Contains(AkronSetupPacks.SetupPackFormat, refusal.Message);
         Assert.Contains("built rooms differently", refusal.Message);
-        Assert.Contains("export it again from this build", refusal.Message);
+        Assert.Contains("Recreate the setup and its StartPos slots in this build", refusal.Message);
+        Assert.Contains("then export a new pack", refusal.Message);
     }
 
     [Fact]
