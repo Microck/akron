@@ -73,7 +73,7 @@ public static class AkronCapture {
             byte[] rgba = new byte[checked(texture.Width * texture.Height * 4)];
             texture.GetData(rgba);
             string hash = ComputePixelHash(rgba);
-            string directory = Path.Combine(Everest.PathGame, "Saves", "AkronAutomation");
+            string directory = Path.Combine(Everest.PathGame, "Saves", AkronAutomationService.DirectoryName);
             string imagePath = Path.Combine(directory, "qa-pixel-" + tag + ".png");
             string metadataPath = Path.Combine(directory, "qa-pixel-" + tag + ".txt");
             Directory.CreateDirectory(directory);

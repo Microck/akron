@@ -1,9 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text;
+using System.Threading;
 using Celeste;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -22,6 +27,14 @@ public sealed class StartPosPersistenceTests {
         "randomStack",
         BindingFlags.Static | BindingFlags.NonPublic
     ) ?? throw new InvalidOperationException("Monocle.Calc.randomStack is unavailable.");
+    private static readonly FieldInfo LevelWipeField = typeof(Level).GetField(
+        nameof(Level.Wipe),
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+    ) ?? throw new InvalidOperationException("Celeste.Level.Wipe field is unavailable.");
+    private static readonly FieldInfo SceneRendererListBackingField = typeof(Scene).GetField(
+        "<RendererList>k__BackingField",
+        BindingFlags.Instance | BindingFlags.NonPublic
+    ) ?? throw new InvalidOperationException("Monocle.Scene.RendererList backing field is unavailable.");
 
     [Fact]
     public void FreshRoomDrainFinishesEntitiesAddedDuringAwake() {
@@ -343,6 +356,884 @@ public sealed class StartPosPersistenceTests {
             AkronStartPosReconstruction.GetSnapshotPath(secondFile));
     }
 
+    // Snapshot files are addressed by the slot's identity, never by the state they
+    // hold, so two slots carrying the same room in the same frame own two files and
+    // clearing one cannot take the other's away. W9 saw four snapshot files vanish
+    // when it cleared its own slots and read that as slots sharing one file; what it
+    // actually did was re-set the same (file slot, map, slot index) triples an earlier
+    // pass had left orphaned on disk, which overwrote those files before deleting them.
+    // Hashing the content instead would make that reading true, so this guards the
+    // addressing rule end to end rather than only comparing two paths.
+    [Fact]
+    public void SnapshotFilesAreAddressedBySlotIdentityRatherThanByTheStateTheyHold() {
+        string sharedMap = "Tests/SharedSnapshot" + Guid.NewGuid().ToString("N");
+        string firstSlot = AkronActions.GetStartPosStateSlotName(sharedMap, 1, 0);
+        string secondSlot = AkronActions.GetStartPosStateSlotName(sharedMap, 2, 0);
+        string firstPath = AkronStartPosReconstruction.GetSnapshotPath(firstSlot);
+        string secondPath = AkronStartPosReconstruction.GetSnapshotPath(secondSlot);
+
+        Assert.NotEqual(firstPath, secondPath);
+        try {
+            // Same map, same room, same file slot, same document shape: two slots set on
+            // one frame in one room, which is exactly the case W9 believed would share.
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                firstSlot, sharedMap, "same-room", 0, MinimalDocument(), out string firstError), firstError);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                secondSlot, sharedMap, "same-room", 0, MinimalDocument(), out string secondError), secondError);
+            Assert.True(File.Exists(firstPath));
+            Assert.True(File.Exists(secondPath));
+
+            // Clearing slot 1 is the operation that was suspected of destroying slot 2.
+            AkronSaveLoadService.ClearRuntimeState(firstSlot);
+
+            Assert.False(File.Exists(firstPath));
+            Assert.True(File.Exists(secondPath));
+            Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
+                secondSlot, out AkronReconstructionDocument survivor, out string loadError), loadError);
+            Assert.Equal("same-room", survivor.Room);
+            Assert.Equal(secondSlot, survivor.SlotName);
+        } finally {
+            AkronStartPosReconstruction.DeleteSnapshot(firstSlot);
+            AkronStartPosReconstruction.DeleteSnapshot(secondSlot);
+        }
+    }
+
+    // The three tests below are the snapshot half of the v7 -> v8 format bump.
+    //
+    // Structural paths in a document are measured against a clean reload of the room,
+    // and two changes altered what that reload produces: the trail clear in
+    // TryLoadFreshRoom and the PlayerPlayback capture exclusion. A pre-bump document
+    // therefore counts objects the current fresh room no longer contains, and the shift
+    // can hand one entity another same-typed entity's saved state instead of refusing.
+    // So old and new documents are not interchangeable and an old one must be stopped
+    // before it reaches the reconstruction path at all.
+
+    // Writes what an older Akron left on disk. The document shape did not change across
+    // this bump - the fresh room it is measured against did - so the faithful way to
+    // build one is to write a current document and stamp the older format on it.
+    private static void WriteSnapshotWithFormat(string path, string format) {
+        string json = AkronStartPosReconstruction.Serialize(MinimalDocument())
+            .Replace(AkronReconstructionDocument.CurrentFormat, format, StringComparison.Ordinal);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using FileStream file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        using GZipStream compressed = new GZipStream(file, CompressionLevel.Optimal, leaveOpen: false);
+        using StreamWriter writer = new StreamWriter(compressed, new UTF8Encoding(false));
+        writer.Write(json);
+    }
+
+    // The path an older Akron addressed this slot by. Derived from the current name so
+    // it cannot drift from the real naming rule: the prefix is the format version and
+    // the rest is the digest of the slot name, which this bump did not change.
+    private static string SupersededSnapshotPath(string slotName, string? directory) {
+        string currentPath = AkronStartPosReconstruction.GetSnapshotPath(slotName, directory);
+        string currentFileName = Path.GetFileName(currentPath);
+        return Path.Combine(
+            Path.GetDirectoryName(currentPath)!,
+            "v7-" + currentFileName.Substring(currentFileName.IndexOf('-') + 1));
+    }
+
+    [Fact]
+    public void ASnapshotFromAnOlderAkronIsRefusedAndSaysWhatToDoAboutIt() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-format-" + Guid.NewGuid().ToString("N"));
+        string slotName = "Akron StartPos format " + Guid.NewGuid().ToString("N");
+        try {
+            // Written at the name the current build reads, which is the case the file
+            // name alone cannot stop: a restored backup, a hand-placed file, or a
+            // snapshot inside a pack. The document header has to be the thing that
+            // refuses, and it has to refuse before Restore sees the document.
+            WriteSnapshotWithFormat(
+                AkronStartPosReconstruction.GetSnapshotPath(slotName, directory),
+                "akron-reconstruction-v7");
+
+            bool loaded = AkronStartPosReconstruction.TryLoadSnapshot(
+                slotName, out AkronReconstructionDocument document, out string error, directory);
+
+            Assert.False(loaded);
+            Assert.Null(document);
+            Assert.Contains("akron-reconstruction-v7", error);
+            Assert.Contains(AkronReconstructionDocument.CurrentFormat, error);
+            Assert.Contains("set this StartPos again", error);
+            Assert.Contains("fresh room this build no longer loads", error);
+            // ReportStartPosLoadFailure cuts the toast at 180 characters, so the action
+            // has to survive the cut rather than sit behind the two format names.
+            Assert.True(
+                error.IndexOf("set this StartPos again", StringComparison.Ordinal) <
+                error.IndexOf(AkronReconstructionDocument.CurrentFormat, StringComparison.Ordinal));
+        } finally {
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ASlotWhoseSnapshotPredatesTheFormatBumpIsNotVisibleToTheCurrentBuild() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-format-" + Guid.NewGuid().ToString("N"));
+        string slotName = "Akron StartPos superseded " + Guid.NewGuid().ToString("N");
+        try {
+            WriteSnapshotWithFormat(SupersededSnapshotPath(slotName, directory), "akron-reconstruction-v7");
+
+            // The file is on disk under the previous format's name, and nothing this
+            // build does can see it: HasSnapshot builds the current name, so the slot
+            // is dropped from the list by BuildRuntimeStartPositions and the load path
+            // is never reached. What the player is told about the move comes from the
+            // catalog entry instead, which is DescribeMissingStartPos.
+            Assert.False(AkronStartPosReconstruction.HasSnapshot(slotName, directory));
+        } finally {
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    // The release note that tells a player to set their slots again names both contracts
+    // in prose, and nothing else in the tree ties that prose to the constants. A move
+    // that edits the constants and leaves the note alone has already happened once: the
+    // sentence said the saved-state contract had moved to akron-reconstruction-v8 and
+    // the pack contract to akron-setup-v5 while the build wrote v9 and v6, so the one
+    // instruction a player is given named a version this build never writes.
+    //
+    // Only the unreleased section is checked. The entries below it name the contracts
+    // their own release shipped, which is what a changelog is for.
+    [Fact]
+    public void TheUnreleasedChangelogNamesTheContractsThisBuildActuallyWrites() {
+        string changelog = File.ReadAllText(GetRepositoryFilePath("CHANGELOG.md"));
+        int unreleased = changelog.IndexOf("## Unreleased", StringComparison.Ordinal);
+        Assert.True(unreleased >= 0, "CHANGELOG.md has no Unreleased section.");
+        int nextRelease = changelog.IndexOf("\n## ", unreleased + 1, StringComparison.Ordinal);
+        string section = nextRelease < 0
+            ? SourceTail(changelog, unreleased)
+            : SourceSlice(changelog, unreleased, nextRelease - unreleased);
+
+        Assert.Contains(AkronReconstructionDocument.CurrentFormat, section);
+        Assert.Contains(AkronSetupPacks.SetupPackFormat, section);
+        // The two contracts the move passed through on this branch. Naming either of
+        // them as where the move ends is the failure this exists for.
+        Assert.DoesNotContain("akron-reconstruction-v8", section);
+        Assert.DoesNotContain("akron-setup-v5", section);
+    }
+
+    [Fact]
+    public void ACurrentSnapshotStillRoundTripsAfterTheFormatBump() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-format-" + Guid.NewGuid().ToString("N"));
+        string slotName = "Akron StartPos current " + Guid.NewGuid().ToString("N");
+        try {
+            Directory.CreateDirectory(directory);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                slotName, "Tests/FormatBump", "room", 3, MinimalDocument(), out string saveError, directory), saveError);
+
+            Assert.True(AkronStartPosReconstruction.HasSnapshot(slotName, directory));
+
+            Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
+                slotName, out AkronReconstructionDocument document, out string loadError, directory), loadError);
+            Assert.Equal(AkronReconstructionDocument.CurrentFormat, document.Format);
+            Assert.Equal("akron-reconstruction-v9", document.Format);
+            Assert.Equal(slotName, document.SlotName);
+            Assert.Equal("Tests/FormatBump", document.MapSid);
+            Assert.Equal("room", document.Room);
+            Assert.Equal(3, document.FileSlot);
+        } finally {
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ASlotTheFormatBumpLeftBehindIsNotReportedAsASlotThatWasNeverSaved() {
+        // The slot list keeps only slots HasRuntimeState answers for, so every slot set
+        // before the bump vanishes from it rather than failing to load. This sentence is
+        // the one the player actually gets after an update, which makes it the one that
+        // has to name the fix.
+        //
+        // A headless test has no loaded save file, so the catalog is empty and only the
+        // never-set branch can run here. Leaving a superseded file on disk must not move
+        // it: the file is swept, the catalog is not, and reading the file back would put
+        // the message on evidence that is about to be deleted.
+        const int slot = 9998;
+        string stateSlotName = AkronActions.GetStartPosStateSlotName(string.Empty, slot);
+        string supersededPath = SupersededSnapshotPath(stateSlotName, null);
+        try {
+            Assert.Equal(
+                "No StartPos saved in slot 9998.",
+                AkronActions.DescribeMissingStartPos(null, slot));
+
+            WriteSnapshotWithFormat(supersededPath, "akron-reconstruction-v7");
+
+            Assert.Equal(
+                "No StartPos saved in slot 9998.",
+                AkronActions.DescribeMissingStartPos(null, slot));
+        } finally {
+            if (File.Exists(supersededPath)) {
+                File.Delete(supersededPath);
+            }
+        }
+
+        // Finding the catalog needs a loaded save file; reading one does not. The
+        // sentence is chosen from the catalog alone, so it is exercised against a real
+        // catalog here and only the lookup is pinned in the source.
+        string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-actions.cs"));
+        int describe = source.IndexOf(
+            "internal static string DescribeMissingStartPos(Level level, int slot)", StringComparison.Ordinal);
+        int describeEnd = source.IndexOf(
+            "internal static string DescribeMissingStartPos(", describe + 1, StringComparison.Ordinal);
+        string describeMethod = SourceSlice(source, describe, describeEnd - describe);
+
+        Assert.Contains(
+            "DescribeMissingStartPos(slot, GetPersistedStartPositions(GetAreaSid(level)))",
+            describeMethod);
+        Assert.DoesNotContain("HasSupersededSnapshot", describeMethod);
+
+        // And the direct load is what asks for it. A sentence no path reaches has
+        // shipped here before, so both callers are pinned rather than assumed: this
+        // one, and Previous and Next below.
+        int load = source.IndexOf("public static void LoadStartPos(Level level)", StringComparison.Ordinal);
+        int loadEnd = source.IndexOf("public static void LoadStartPosSlot(", load, StringComparison.Ordinal);
+
+        Assert.Contains(
+            "new AkronToast(DescribeMissingStartPos(level, slot))",
+            SourceSlice(source, load, loadEnd - load));
+    }
+
+    // The catalog a save file would hold for one map, with each slot's state recorded
+    // under the format named for it. A real AkronPersistedStartPos in a real dictionary,
+    // which is what the message reads in game.
+    private static Dictionary<int, AkronPersistedStartPos> CatalogWithFormats(
+        params (int Slot, string SnapshotFormat)[] slots
+    ) {
+        Dictionary<int, AkronPersistedStartPos> catalog = new Dictionary<int, AkronPersistedStartPos>();
+        foreach ((int slot, string snapshotFormat) in slots) {
+            catalog[slot] = new AkronPersistedStartPos {
+                AreaSid = "Tests/Catalog",
+                Room = "room",
+                SnapshotFormat = snapshotFormat
+            };
+        }
+        return catalog;
+    }
+
+    // The format one move below the one this build writes, derived rather than written
+    // down so this keeps meaning "the previous format" after the next move.
+    private static string PreviousSnapshotFormat() {
+        string current = AkronReconstructionDocument.CurrentFormat;
+        int digits = current.Length;
+        while (digits > 0 && current[digits - 1] >= '0' && current[digits - 1] <= '9') {
+            digits--;
+        }
+        int version = int.Parse(current.Substring(digits), CultureInfo.InvariantCulture);
+        Assert.True(version > 1, "the current saved-state format has no predecessor to name");
+        return current.Substring(0, digits) + (version - 1).ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string NextSnapshotFormat() {
+        string current = AkronReconstructionDocument.CurrentFormat;
+        int digits = current.Length;
+        while (digits > 0 && current[digits - 1] >= '0' && current[digits - 1] <= '9') {
+            digits--;
+        }
+        return current.Substring(0, digits) +
+               (int.Parse(current.Substring(digits), CultureInfo.InvariantCulture) + 1)
+                   .ToString(CultureInfo.InvariantCulture);
+    }
+
+    [Fact]
+    public void ASlotEmptiedByAFormatMoveNamesTheMoveAndASlotEmptiedAnyOtherWayDoesNot() {
+        // The sentence a format move earns. It says what happened and what to do, and
+        // the catalog is what still knows it once the sweep has taken the file.
+        Assert.Equal(
+            "StartPos 3 was saved by an older Akron that built rooms differently, so it cannot be loaded. Set it again.",
+            AkronActions.DescribeMissingStartPos(3, CatalogWithFormats((3, PreviousSnapshotFormat()))));
+
+        // Every slot set before the format was recorded at all. This is what an install
+        // that upgrades into this build actually holds, and it is the whole population
+        // the sentence exists for, so it has to reach the same answer.
+        Assert.Equal(
+            "StartPos 3 was saved by an older Akron that built rooms differently, so it cannot be loaded. Set it again.",
+            AkronActions.DescribeMissingStartPos(3, CatalogWithFormats((3, string.Empty))));
+
+        // The format has not moved under this slot, so whatever took its state was not
+        // an update: a file deleted by hand, a backup restored over the folder, a write
+        // that never landed. Claiming an update here would be a lie, which is the one
+        // thing this message may not be.
+        Assert.Equal(
+            "StartPos 3 was set, but the state behind it is missing. Set it again.",
+            AkronActions.DescribeMissingStartPos(
+                3, CatalogWithFormats((3, AkronReconstructionDocument.CurrentFormat))));
+
+        // A slot written by a newer build the player has downgraded away from is
+        // unreadable here too, and the sweep leaves its file alone. Older is the wrong
+        // word for it.
+        Assert.Equal(
+            "StartPos 3 was set, but the state behind it is missing. Set it again.",
+            AkronActions.DescribeMissingStartPos(3, CatalogWithFormats((3, NextSnapshotFormat()))));
+
+        // A slot the player never set keeps the plainer sentence, whatever the other
+        // slots on the map did.
+        Assert.Equal(
+            "No StartPos saved in slot 4.",
+            AkronActions.DescribeMissingStartPos(4, CatalogWithFormats((3, PreviousSnapshotFormat()))));
+        Assert.Equal(
+            "No StartPos saved in slot 3.",
+            AkronActions.DescribeMissingStartPos(3, new Dictionary<int, AkronPersistedStartPos>()));
+    }
+
+    // The name a build older than this one addressed the same slot by. Same derivation
+    // as SupersededSnapshotPath, with the version chosen by the caller so the sweep can
+    // be shown to answer for every version below the current one rather than for v7
+    // alone.
+    private static string SnapshotPathWithVersion(string slotName, string? directory, string version) {
+        string currentPath = AkronStartPosReconstruction.GetSnapshotPath(slotName, directory);
+        string currentFileName = Path.GetFileName(currentPath);
+        return Path.Combine(
+            Path.GetDirectoryName(currentPath)!,
+            version + currentFileName.Substring(currentFileName.IndexOf('-')));
+    }
+
+    // The version prefix one above the one this build writes, read out of a current
+    // file name so the fixture follows the format instead of pinning a number that a
+    // bump would turn into the current one.
+    private static string NextSnapshotVersion(string currentFileName) {
+        string prefix = currentFileName.Substring(0, currentFileName.IndexOf('-'));
+        int digits = 0;
+        while (digits < prefix.Length && (prefix[digits] < '0' || prefix[digits] > '9')) {
+            digits++;
+        }
+        return prefix.Substring(0, digits) +
+               (int.Parse(prefix.Substring(digits), CultureInfo.InvariantCulture) + 1)
+                   .ToString(CultureInfo.InvariantCulture);
+    }
+
+    [Fact]
+    public void SnapshotsFromAnOlderFormatAreSweptAndTheCurrentOneIsLeftLoadable() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-sweep-" + Guid.NewGuid().ToString("N"));
+        string liveSlot = "Akron StartPos live " + Guid.NewGuid().ToString("N");
+        string deadSlot = "Akron StartPos dead " + Guid.NewGuid().ToString("N");
+        try {
+            Directory.CreateDirectory(directory);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                liveSlot, "Tests/Sweep", "room", 0, MinimalDocument(), out string saveError, directory), saveError);
+            // Three versions below the current one, so the sweep is shown to answer for
+            // the scheme rather than for the single version this bump moved off.
+            string v5 = SnapshotPathWithVersion(deadSlot, directory, "v5");
+            string v6 = SnapshotPathWithVersion(deadSlot, directory, "v6");
+            string v7 = SnapshotPathWithVersion(liveSlot, directory, "v7");
+            WriteSnapshotWithFormat(v5, "akron-reconstruction-v5");
+            WriteSnapshotWithFormat(v6, "akron-reconstruction-v6");
+            WriteSnapshotWithFormat(v7, "akron-reconstruction-v7");
+
+            (int files, long bytes) = AkronStartPosPersistence.SweepSupersededSnapshots(directory);
+
+            Assert.Equal(3, files);
+            Assert.True(bytes > 0);
+            Assert.False(File.Exists(v5));
+            Assert.False(File.Exists(v6));
+            // The superseded copy of a slot that also has a current one goes too, and
+            // the current one it sits next to has to survive its removal.
+            Assert.False(File.Exists(v7));
+            Assert.True(AkronStartPosReconstruction.HasSnapshot(liveSlot, directory));
+            Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
+                liveSlot, out AkronReconstructionDocument document, out string loadError, directory), loadError);
+            Assert.Equal(AkronReconstructionDocument.CurrentFormat, document.Format);
+
+            // Idempotent: a second launch finds nothing left to do.
+            Assert.Equal((0, 0L), AkronStartPosPersistence.SweepSupersededSnapshots(directory));
+        } finally {
+            AkronStartPosReconstruction.ResetSnapshotExistenceCache();
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void TheSweepRemovesNothingThatIsNotAnOlderSnapshotOfThisExactScheme() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-sweep-" + Guid.NewGuid().ToString("N"));
+        string slotName = "Akron StartPos shapes " + Guid.NewGuid().ToString("N");
+        try {
+            Directory.CreateDirectory(directory);
+            string currentPath = AkronStartPosReconstruction.GetSnapshotPath(slotName, directory);
+            string currentFileName = Path.GetFileName(currentPath);
+            string digestAndSuffix = currentFileName.Substring(currentFileName.IndexOf('-') + 1);
+            int digestLength = digestAndSuffix.IndexOf('.');
+            string suffix = digestAndSuffix.Substring(digestLength);
+
+            // Every one of these is a near miss the sweep must not take.
+            string[] keep = {
+                // The name this build writes.
+                currentPath,
+                // The temporary file a write lands through, which a prefix-only test
+                // would match and a copy in flight would then lose.
+                currentPath + "." + Guid.NewGuid().ToString("N") + ".tmp",
+                // A newer build's snapshot, seen by an older build after a downgrade.
+                // Derived from the current version so it stays one above it.
+                Path.Combine(directory, NextSnapshotVersion(currentFileName) + "-" + digestAndSuffix),
+                // Renamed by hand: nothing Akron writes carries an upper-case version.
+                Path.Combine(directory, "V7-" + digestAndSuffix),
+                // Right length, wrong alphabet where the digest belongs.
+                Path.Combine(directory, "v7-" + new string('z', digestLength) + suffix),
+                // The scheme without a version number at all.
+                Path.Combine(directory, "backup-" + digestAndSuffix),
+                // Not this scheme.
+                Path.Combine(directory, "notes.txt")
+            };
+            foreach (string path in keep) {
+                File.WriteAllText(path, "keep");
+            }
+            // A staging directory under the snapshot folder. EnumerateFiles is top level
+            // only, and an import in flight owns what is inside one.
+            string staging = Path.Combine(directory, ".import-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(staging);
+            string stagedOldFormat = Path.Combine(staging, "v7-" + digestAndSuffix);
+            File.WriteAllText(stagedOldFormat, "keep");
+
+            Assert.Equal((0, 0L), AkronStartPosPersistence.SweepSupersededSnapshots(directory));
+
+            foreach (string path in keep) {
+                Assert.True(File.Exists(path), path);
+            }
+            Assert.True(File.Exists(stagedOldFormat));
+        } finally {
+            AkronStartPosReconstruction.ResetSnapshotExistenceCache();
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void TheSweepIsANoOpWhenThereIsNoSnapshotFolderToRead() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-sweep-missing-" + Guid.NewGuid().ToString("N"));
+        Assert.False(Directory.Exists(directory));
+
+        // A first launch has no snapshot folder. The sweep only ever reclaims disk, so
+        // there is nothing here to report as a failure.
+        Assert.Equal((0, 0L), AkronStartPosPersistence.SweepSupersededSnapshots(directory));
+    }
+
+    [Fact]
+    public void TheSweepReadsTheCurrentFormatVersionFromTheWriterRatherThanFromALiteral() {
+        string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
+        int sweep = source.IndexOf(
+            "internal static (int Files, long Bytes) SweepSupersededSnapshots(", StringComparison.Ordinal);
+        int sweepEnd = source.IndexOf("private static bool TryReadSnapshotNaming(", sweep, StringComparison.Ordinal);
+        string sweepSource = SourceSlice(source, sweep, sweepEnd - sweep);
+
+        // A version literal here would keep matching after the format moved off it,
+        // which is a live snapshot deleted on the first launch of the next build. The
+        // shape comes from GetSnapshotPath, so it moves when the writer moves. The
+        // comments name the current version to explain that, so only the code is
+        // asserted on.
+        Assert.Contains("AkronStartPosReconstruction.GetSnapshotPath(string.Empty, directory)", sweepSource);
+        string sweepCode = string.Join(
+            "\n",
+            sweepSource.Split('\n').Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+
+        // The version prefix and the extension are read out of the writer at run time,
+        // so this fails on whatever the current version happens to be rather than on a
+        // number this test would have to be edited to keep up with.
+        string currentFileName = Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("probe"));
+        Assert.DoesNotContain(
+            currentFileName.Substring(0, currentFileName.IndexOf('-') + 1), sweepCode);
+        Assert.DoesNotContain(currentFileName.Substring(currentFileName.IndexOf('.')), sweepCode);
+        Assert.DoesNotContain(AkronReconstructionDocument.CurrentFormat, sweepCode);
+
+        // And it runs once per Start, off the game thread, inside a catch. Nothing awaits
+        // that task, so a throw out of it would be an unobserved Task rather than anything
+        // anyone sees, and the sweep only ever reclaims disk space.
+        int start = source.IndexOf("public static void Start()", StringComparison.Ordinal);
+        int startEnd = source.IndexOf(
+            "internal static (int Files, long Bytes) SweepSupersededSnapshots(", start, StringComparison.Ordinal);
+        string startBody = SourceSlice(source, start, startEnd - start);
+        int task = startBody.IndexOf("Task.Run(static () => {", StringComparison.Ordinal);
+        int swept = startBody.IndexOf("SweepSupersededSnapshots();", task + 1, StringComparison.Ordinal);
+        int guard = startBody.IndexOf("} catch (Exception exception) {", swept, StringComparison.Ordinal);
+        Assert.True(task >= 0, "The sweep does not run off the game thread.");
+        Assert.True(swept > task);
+        Assert.True(guard > swept, "The sweep is not guarded inside its own task.");
+    }
+
+    [Fact]
+    public void PreviousAndNextStartPosSayWhenTheFormatBumpEmptiedTheChapter() {
+        string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-actions.cs"));
+        int shift = source.IndexOf("public static void ShiftStartPos(Level level, int delta)", StringComparison.Ordinal);
+        int shiftEnd = source.IndexOf("public static IReadOnlyList<AkronStartPosEntry> GetStartPositions(", shift, StringComparison.Ordinal);
+        string shiftMethod = SourceSlice(source, shift, shiftEnd - shift);
+
+        // Previous and Next are load actions too, and they hit the emptied list rather
+        // than a missing slot, so they need their own sentence. Which sentence is
+        // exercised below; that Previous and Next are what ask for it is pinned here,
+        // because reaching them needs a Level and a save file.
+        Assert.Contains("DescribeEmptyStartPosList(level)", shiftMethod);
+
+        // The map-level sentence is on the catalog for the same reason the slot-level
+        // one is: the leftover file it used to read is swept once nothing can read it.
+        int describeEmpty = source.IndexOf(
+            "internal static string DescribeEmptyStartPosList(Level level)", StringComparison.Ordinal);
+        int describeEmptyEnd = source.IndexOf(
+            "internal static string DescribeEmptyStartPosList(IReadOnlyDictionary",
+            describeEmpty,
+            StringComparison.Ordinal);
+        string describeEmptyMethod = SourceSlice(source, describeEmpty, describeEmptyEnd - describeEmpty);
+
+        Assert.Contains(
+            "DescribeEmptyStartPosList(GetPersistedStartPositions(GetAreaSid(level)))", describeEmptyMethod);
+        Assert.DoesNotContain("HasSupersededSnapshot", describeEmptyMethod);
+
+        // A map whose every slot predates the current format. A move takes the whole
+        // map at once, so this is the shape the sentence is for.
+        Assert.Equal(
+            "This chapter's StartPos slots were saved by an older Akron that built rooms differently. Set them again.",
+            AkronActions.DescribeEmptyStartPosList(
+                CatalogWithFormats((1, PreviousSnapshotFormat()), (2, string.Empty))));
+
+        // Nothing on the map lost its state to a move, so nothing here may say one
+        // happened.
+        Assert.Equal(
+            "This chapter's StartPos slots were set, but the states behind them are missing. Set them again.",
+            AkronActions.DescribeEmptyStartPosList(
+                CatalogWithFormats(
+                    (1, AkronReconstructionDocument.CurrentFormat),
+                    (2, AkronReconstructionDocument.CurrentFormat))));
+
+        // One slot on the map lost its state some other way. This sentence covers the
+        // slots together, so naming a move would be false for that one.
+        Assert.Equal(
+            "This chapter's StartPos slots were set, but the states behind them are missing. Set them again.",
+            AkronActions.DescribeEmptyStartPosList(
+                CatalogWithFormats(
+                    (1, PreviousSnapshotFormat()),
+                    (2, AkronReconstructionDocument.CurrentFormat))));
+
+        // A chapter the player never set a slot in keeps the plainer sentence.
+        Assert.Equal(
+            "No StartPos entries in this chapter.",
+            AkronActions.DescribeEmptyStartPosList(new Dictionary<int, AkronPersistedStartPos>()));
+    }
+
+    [Fact]
+    public void SettingAStartPosRecordsTheFormatItsStateWasWrittenUnder() {
+        // The stamp is what the two sentences read, and it is only ever written here.
+        // A slot set by this build must carry this build's format, or every slot the
+        // player sets would be reported as one an update emptied.
+        string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-actions.cs"));
+        int convert = source.IndexOf(
+            "private static AkronPersistedStartPos ToPersistedStartPos(AkronStartPos startPos)",
+            StringComparison.Ordinal);
+        int convertEnd = source.IndexOf("internal static bool SaveAkronStartPosData(", convert, StringComparison.Ordinal);
+        string convertMethod = SourceSlice(source, convert, convertEnd - convert);
+
+        Assert.Contains("SnapshotFormat = AkronReconstructionDocument.CurrentFormat", convertMethod);
+
+        // And the format is read out of the writer rather than written down, here and
+        // in the comparison, so a move needs no edit in either place.
+        int compare = source.IndexOf(
+            "private static bool WasSavedByAnOlderAkron(AkronPersistedStartPos entry)", StringComparison.Ordinal);
+        int compareEnd = source.IndexOf("public static void LoadStartPos(", compare, StringComparison.Ordinal);
+        string compareCode = string.Join(
+            "\n",
+            SourceSlice(source, compare, compareEnd - compare)
+                .Split('\n')
+                .Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+
+        Assert.DoesNotContain(AkronReconstructionDocument.CurrentFormat, compareCode);
+    }
+
+    // The load path is not allowed to name a cause for a missing restart copy, because
+    // it cannot know one. A slot emptied by a format move never reaches it: the slot
+    // list keeps only slots HasRuntimeState answers for, and HasRuntimeState builds the
+    // current file name, so the move drops the slot before a Load can be pressed and
+    // the sentence the player gets is DescribeMissingStartPos out of the catalog. That
+    // catalog entry records the format its state was written under and compares it as a
+    // number, which is the only place in the tree entitled to say "older".
+    //
+    // A disk probe here could only answer "a file for this slot exists under some other
+    // version", and after SweepSupersededSnapshots has run at Start the only such file
+    // left is a NEWER one, so the sentence would tell a player who downgraded that their
+    // copy is old. A Load cannot run without a game, so this is asserted in the source
+    // the way this file already asserts the fresh-room reload's ordering.
+    [Fact]
+    public void ALoadThatCannotFindARestartCopyDoesNotGuessWhyItIsGone() {
+        string source = File.ReadAllText(GetSaveLoadSourcePath());
+        int load = source.IndexOf("public static AkronSaveLoadResult LoadRuntimeState(", StringComparison.Ordinal);
+        int loadEnd = source.IndexOf("internal static bool HasRuntimeStateInMemory(", load, StringComparison.Ordinal);
+        string loadMethod = SourceSlice(source, load, loadEnd - load);
+
+        Assert.Contains(
+            "LastPersistentSnapshotError = \"no restart copy of this StartPos exists on disk\";",
+            loadMethod);
+        Assert.DoesNotContain("written by an older Akron", loadMethod);
+        // And nothing anywhere reads the snapshot folder to decide it, so the sentence
+        // cannot come back by another name.
+        Assert.DoesNotContain(
+            "HasSupersededSnapshot",
+            File.ReadAllText(GetSourcePath("SaveLoad", "akron-reconstruction-graph.cs")));
+    }
+
+    // Installs one warm StartPos slot of a stated size, with a real snapshot on disk so
+    // it is droppable, and returns its state slot name. The caller clears it.
+    private static string AddWarmStartPosSlotWithSnapshot(string mapSid, int slot, long bytes) {
+        string stateSlotName = AkronActions.GetStartPosStateSlotName(mapSid, slot, 0);
+        Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+            stateSlotName, mapSid, "room", 0, MinimalDocument(), out string error), error);
+        AkronSaveLoadService.AddWarmStartPosSlotForTests(stateSlotName, mapSid, bytes);
+        return stateSlotName;
+    }
+
+    [Fact]
+    public void ARepeatedSetIsRefusedBeforeWarmSlotsAreEvicted() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int capture = source.IndexOf("private static void CaptureStartPos", StringComparison.Ordinal);
+        int captureEnd = source.IndexOf("private static void TrimWarmStartPosSlotsAndReport", capture, StringComparison.Ordinal);
+        string body = SourceSlice(source, capture, captureEnd - capture);
+
+        int rollbackRefusal = body.IndexOf("StartPosRollbacks.ContainsKey(stateSlotName)", StringComparison.Ordinal);
+        int refusalReturn = body.IndexOf("return;", rollbackRefusal, StringComparison.Ordinal);
+        int prepareBudget = body.IndexOf("PrepareWarmStartPosCapture", StringComparison.Ordinal);
+        int beginRollback = body.IndexOf("BeginStartPosRollback", StringComparison.Ordinal);
+
+        Assert.True(
+            rollbackRefusal >= 0 &&
+            refusalReturn > rollbackRefusal &&
+            refusalReturn < prepareBudget &&
+            beginRollback > prepareBudget);
+    }
+
+    // The ceiling on warm StartPos clones has to be denominated in bytes, not in slots.
+    // Four slots the size of a Heart of the Storm clone overrun the budget, and one of
+    // them gives up its clone. The companion test below runs fifty slots of a vanilla
+    // clone - more slots, less memory - through the same code and drops none. A
+    // count-based ceiling cannot tell those two apart; this is the half it gets wrong.
+    [Fact]
+    public void WarmStartPosSlotsAreBoundedByBytesRatherThanBySlotCount() {
+        string heavyMap = "Tests/HeavyWarm" + Guid.NewGuid().ToString("N");
+        List<string> installed = new List<string>();
+        try {
+            long heavySlotBytes = AkronSaveLoadService.MaxWarmStartPosBytes / 3;
+            for (int slot = 1; slot <= 4; slot++) {
+                installed.Add(AddWarmStartPosSlotWithSnapshot(heavyMap, slot, heavySlotBytes));
+            }
+            Assert.True(AkronSaveLoadService.WarmStartPosBytes > AkronSaveLoadService.MaxWarmStartPosBytes);
+
+            int dropped = AkronSaveLoadService.TrimWarmStartPosSlots(out long droppedBytes);
+
+            Assert.Equal(1, dropped);
+            Assert.Equal(heavySlotBytes, droppedBytes);
+            Assert.True(AkronSaveLoadService.WarmStartPosBytes <= AkronSaveLoadService.MaxWarmStartPosBytes);
+            // The coldest went and the rest stayed: eviction is least-recently-used, so
+            // the slot the player set first is the one that gives up its clone.
+            Assert.False(AkronSaveLoadService.HasRuntimeStateInMemory(installed[0]));
+            Assert.True(AkronSaveLoadService.HasRuntimeStateInMemory(installed[1]));
+            Assert.True(AkronSaveLoadService.HasRuntimeStateInMemory(installed[3]));
+        } finally {
+            foreach (string stateSlotName in installed) {
+                AkronSaveLoadService.ClearRuntimeState(stateSlotName);
+            }
+        }
+    }
+
+    [Fact]
+    public void WarmStartPosEvictionDoesNotClearLiveRegisteredState() {
+        string mapSid = "Tests/WarmEvictionCallbacks" + Guid.NewGuid().ToString("N");
+        List<string> stateSlotNames = new List<string>();
+        int clearCallbacks = 0;
+        object registration = AkronSaveLoadService.RegisterSaveLoadAction(
+            null,
+            null,
+            () => clearCallbacks++,
+            null,
+            null,
+            null);
+        try {
+            long heavySlotBytes = AkronSaveLoadService.MaxWarmStartPosBytes / 3;
+            for (int slot = 1; slot <= 4; slot++) {
+                stateSlotNames.Add(AddWarmStartPosSlotWithSnapshot(mapSid, slot, heavySlotBytes));
+            }
+
+            Assert.Equal(1, AkronSaveLoadService.TrimWarmStartPosSlots(out _));
+
+            Assert.Equal(0, clearCallbacks);
+            Assert.False(AkronSaveLoadService.HasRuntimeStateInMemory(stateSlotNames[0]));
+        } finally {
+            AkronSaveLoadService.Unregister(registration);
+            foreach (string stateSlotName in stateSlotNames) {
+                AkronSaveLoadService.ClearRuntimeState(stateSlotName);
+            }
+        }
+    }
+
+    [Fact]
+    public void FiftyWarmStartPosSlotsOfAVanillaSizedCloneKeepAllOfTheirMemory() {
+        string lightMap = "Tests/LightWarm" + Guid.NewGuid().ToString("N");
+        List<string> installed = new List<string>();
+        try {
+            // 13 MB each is the measured vanilla Forsaken City figure, so fifty of them
+            // is the full slot ceiling on the map the ceiling was chosen against.
+            for (int slot = 1; slot <= 50; slot++) {
+                installed.Add(AddWarmStartPosSlotWithSnapshot(lightMap, slot, 13L * 1024L * 1024L));
+            }
+            Assert.True(AkronSaveLoadService.WarmStartPosBytes <= AkronSaveLoadService.MaxWarmStartPosBytes);
+
+            Assert.Equal(0, AkronSaveLoadService.TrimWarmStartPosSlots(out long droppedBytes));
+
+            Assert.Equal(0L, droppedBytes);
+            Assert.True(AkronSaveLoadService.PrepareWarmStartPosCapture(
+                lightMap,
+                out int droppedForNextCapture,
+                out long bytesDroppedForNextCapture));
+            Assert.Equal(0, droppedForNextCapture);
+            Assert.Equal(0L, bytesDroppedForNextCapture);
+            foreach (string stateSlotName in installed) {
+                Assert.True(AkronSaveLoadService.HasRuntimeStateInMemory(stateSlotName));
+            }
+        } finally {
+            foreach (string stateSlotName in installed) {
+                AkronSaveLoadService.ClearRuntimeState(stateSlotName);
+            }
+        }
+    }
+
+    [Fact]
+    public void AnOversizedWarmCloneBlocksAnotherCaptureOnlyWhileItRemainsResident() {
+        string mapSid = "Tests/OversizedWarm" + Guid.NewGuid().ToString("N");
+        string stateSlotName = AkronActions.GetStartPosStateSlotName(
+            mapSid,
+            1,
+            0);
+        try {
+            AkronSaveLoadService.AddWarmStartPosSlotForTests(
+                stateSlotName,
+                mapSid,
+                AkronSaveLoadService.MaxWarmStartPosBytes + 1);
+
+            Assert.False(AkronSaveLoadService.PrepareWarmStartPosCapture(
+                mapSid,
+                out int droppedSlots,
+                out long droppedBytes));
+            Assert.Equal(0, droppedSlots);
+            Assert.Equal(0, droppedBytes);
+
+            AkronSaveLoadService.DiscardRuntimeStateMemory(stateSlotName);
+            Assert.Equal(0, AkronSaveLoadService.WarmStartPosBytes);
+            Assert.True(AkronSaveLoadService.PrepareWarmStartPosCapture(
+                mapSid,
+                out droppedSlots,
+                out droppedBytes));
+            Assert.Equal(0, droppedSlots);
+            Assert.Equal(0, droppedBytes);
+        } finally {
+            AkronSaveLoadService.ClearRuntimeState(stateSlotName);
+        }
+    }
+
+    // Dropping a warm clone is only safe once the slot's restart copy is on disk. A
+    // clone with no snapshot behind it is the only copy of that state, so the budget
+    // must refuse to spend it and the Set path must decline instead.
+    [Fact]
+    public void WarmStartPosSlotsWithNoRestartCopyAreNeverDroppedToFreeMemory() {
+        string mapSid = "Tests/NoCopyWarm" + Guid.NewGuid().ToString("N");
+        List<string> installed = new List<string>();
+        try {
+            for (int slot = 1; slot <= 4; slot++) {
+                // No SaveSnapshot call: these clones exist only in memory, which is what
+                // a slot looks like between being set and its restart copy landing.
+                string stateSlotName = AkronActions.GetStartPosStateSlotName(mapSid, slot, 0);
+                AkronSaveLoadService.AddWarmStartPosSlotForTests(
+                    stateSlotName,
+                    mapSid,
+                    AkronSaveLoadService.MaxWarmStartPosBytes / 3);
+                installed.Add(stateSlotName);
+            }
+            Assert.True(AkronSaveLoadService.WarmStartPosBytes > AkronSaveLoadService.MaxWarmStartPosBytes);
+
+            Assert.Equal(0, AkronSaveLoadService.TrimWarmStartPosSlots(out long droppedBytes));
+            Assert.Equal(0L, droppedBytes);
+            foreach (string stateSlotName in installed) {
+                Assert.True(AkronSaveLoadService.HasRuntimeStateInMemory(stateSlotName));
+            }
+            // Nothing can be dropped and the budget is full, so the next Set is refused
+            // rather than cloning a room the process cannot pay for.
+            Assert.False(AkronSaveLoadService.PrepareWarmStartPosCapture(mapSid, out _, out _));
+
+            // A droppable slot that does not cover the overrun must not unblock it.
+            // Answering "is anything droppable at all" instead would wave the next Set
+            // through on the strength of this one kilobyte and then have no way to pay
+            // for the clone it let in.
+            installed.Add(AddWarmStartPosSlotWithSnapshot(mapSid, 5, 1024L));
+            Assert.False(AkronSaveLoadService.PrepareWarmStartPosCapture(mapSid, out _, out _));
+
+            // Two heavy clones reaching disk cover both the current overrun and the
+            // largest observed clone reserved for the next capture. Preparation drops
+            // them before the clone is allocated, along with the extra kilobyte.
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                installed[0], mapSid, "room", 0, MinimalDocument(), out string snapshotError), snapshotError);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                installed[1], mapSid, "room", 0, MinimalDocument(), out snapshotError), snapshotError);
+            Assert.True(AkronSaveLoadService.PrepareWarmStartPosCapture(
+                mapSid,
+                out int droppedForCapture,
+                out long freedBytes));
+            Assert.Equal(3, droppedForCapture);
+            Assert.Equal((2 * (AkronSaveLoadService.MaxWarmStartPosBytes / 3)) + 1024L, freedBytes);
+            Assert.False(AkronSaveLoadService.HasRuntimeStateInMemory(installed[0]));
+            Assert.False(AkronSaveLoadService.HasRuntimeStateInMemory(installed[1]));
+            Assert.False(AkronSaveLoadService.HasRuntimeStateInMemory(installed[4]));
+            Assert.True(
+                AkronSaveLoadService.WarmStartPosBytes +
+                (AkronSaveLoadService.MaxWarmStartPosBytes / 3) <=
+                AkronSaveLoadService.MaxWarmStartPosBytes);
+        } finally {
+            foreach (string stateSlotName in installed) {
+                AkronSaveLoadService.ClearRuntimeState(stateSlotName);
+            }
+        }
+    }
+
+    // The ledger is recomputed from RuntimeSlots on every read instead of being kept in
+    // step by each of the eight places that mutate it. A slot cleared behind the ledger's
+    // back must stop counting against the budget; the alternative is a mod that refuses
+    // to keep slots warm because of clones it dropped an hour ago.
+    [Fact]
+    public void WarmStartPosBytesStopCountingSlotsThatAreNoLongerInMemory() {
+        string mapSid = "Tests/StaleWarm" + Guid.NewGuid().ToString("N");
+        string first = AddWarmStartPosSlotWithSnapshot(mapSid, 1, 64L * 1024L * 1024L);
+        string second = AddWarmStartPosSlotWithSnapshot(mapSid, 2, 32L * 1024L * 1024L);
+        try {
+            Assert.Equal(96L * 1024L * 1024L, AkronSaveLoadService.WarmStartPosBytes);
+
+            AkronSaveLoadService.ClearRuntimeState(first);
+
+            Assert.Equal(32L * 1024L * 1024L, AkronSaveLoadService.WarmStartPosBytes);
+        } finally {
+            AkronSaveLoadService.ClearRuntimeState(first);
+            AkronSaveLoadService.ClearRuntimeState(second);
+        }
+    }
+
+    // A Set parks the clone the slot already held rather than releasing it, so the
+    // previous state survives a Set that fails. Parking renames the entry, and a rename
+    // is the one move the reconcile cannot follow: the bytes are still resident under a
+    // key it no longer recognises. If the cost did not travel with the clone, a parked
+    // slot would read as free memory that is not free.
+    [Fact]
+    public void WarmStartPosCostFollowsACloneThroughAParkAndBack() {
+        string mapSid = "Tests/ParkedWarm" + Guid.NewGuid().ToString("N");
+        string stateSlotName = AddWarmStartPosSlotWithSnapshot(mapSid, 1, 64L * 1024L * 1024L);
+        try {
+            Assert.Equal(64L * 1024L * 1024L, AkronSaveLoadService.WarmStartPosBytes);
+
+            string parkedName = AkronSaveLoadService.ParkRuntimeState(stateSlotName);
+            Assert.False(string.IsNullOrWhiteSpace(parkedName));
+            Assert.Equal(64L * 1024L * 1024L, AkronSaveLoadService.WarmStartPosBytes);
+
+            AkronSaveLoadService.RestoreParkedRuntimeState(parkedName, stateSlotName);
+
+            Assert.True(AkronSaveLoadService.HasRuntimeStateInMemory(stateSlotName));
+            Assert.Equal(64L * 1024L * 1024L, AkronSaveLoadService.WarmStartPosBytes);
+        } finally {
+            AkronSaveLoadService.ClearRuntimeState(stateSlotName);
+        }
+    }
+
     [Fact]
     public void PendingStartPosEntriesAreIsolatedByCelesteFileSlot() {
         string source = File.ReadAllText(GetActionsSourcePath());
@@ -353,24 +1244,132 @@ public sealed class StartPosPersistenceTests {
         string publishPath = SourceSlice(source, publish, publishEnd - publish);
         string loadPath = SourceSlice(source, load, loadEnd - load);
 
-        Assert.Contains("BuildPendingStartPosKey(fileSlot, areaSid)", publishPath);
+        Assert.Contains("BuildPendingStartPosKey(fileSlot, areaSid, startPos.ProfileId)", publishPath);
         Assert.Contains("BuildPendingStartPosKey(GetCurrentFileSlot(), areaSid)", loadPath);
     }
 
     [Fact]
-    public void BackgroundStartPosCompletionRequiresTheOriginatingSaveFile() {
+    public void BackgroundStartPosCompletionRequiresTheOriginatingSaveFileIncarnation() {
         string actionsSource = File.ReadAllText(GetActionsSourcePath());
         string persistenceSource = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
         int completion = actionsSource.IndexOf("internal static void CompletePersistentStartPosCapture", StringComparison.Ordinal);
         int completionEnd = actionsSource.IndexOf("private static void ApplyPlacedStartPosBeforeCapture", completion, StringComparison.Ordinal);
         string completionPath = SourceSlice(actionsSource, completion, completionEnd - completion);
 
-        Assert.Contains("IsOriginatingSaveFileActive(fileSlot, saveData)", completionPath);
-        Assert.Contains("PersistStartPos(slot, startPos, fileSlot, saveData)", completionPath);
+        Assert.Contains("IsOriginatingSaveFileActive(fileSlot, profileId)", completionPath);
+        Assert.Contains("PersistStartPos(slot, startPos, fileSlot, out previousMetadataLost)", completionPath);
         Assert.Contains("FileSlot = fileSlot", persistenceSource);
-        Assert.Contains("SaveData = saveData", persistenceSource);
+        Assert.Contains("ProfileId = startPos.ProfileId", persistenceSource);
         Assert.Contains("completion.Job.FileSlot", persistenceSource);
-        Assert.Contains("completion.Job.SaveData", persistenceSource);
+        Assert.Contains("completion.Job.ProfileId", persistenceSource);
+        // The job carries a stable persisted identity, not a save data object.
+        // Object identity changes during an ordinary Akron savestate Load, while the
+        // incarnation changes when Celeste starts a replacement profile in the slot.
+        Assert.DoesNotContain("SaveData = saveData", persistenceSource);
+        Assert.DoesNotContain("completion.Job.SaveData", persistenceSource);
+    }
+
+    [Fact]
+    public void TheOriginatingSaveFileCheckComparesTheSlotAndIncarnationNotTheObject() {
+        string actionsSource = File.ReadAllText(GetActionsSourcePath());
+        int check = actionsSource.IndexOf(
+            "private static bool IsOriginatingSaveFileActive(int fileSlot, string profileId)",
+            StringComparison.Ordinal);
+        int checkEnd = actionsSource.IndexOf("internal static void RefreshStartPositionsAfterSnapshotImport", check, StringComparison.Ordinal);
+        string checkBody = SourceSlice(actionsSource, check, checkEnd - check);
+
+        Assert.True(check >= 0);
+        Assert.Contains("SaveData.Instance?.FileSlot == fileSlot", checkBody);
+        Assert.Contains("AkronModule.SaveData.ProfileId, profileId", checkBody);
+        // Object identity is not the question. Everest replaces the mod save data
+        // object whenever it reloads a file, and a savestate Load installs a clone
+        // of it for every module, neither of which means the player changed files.
+        Assert.DoesNotContain("ReferenceEquals", checkBody);
+    }
+
+    [Fact]
+    public void ProfileIdentitySurvivesSavestateCloningButChangesForANewProfile() {
+        AkronModuleSaveData original = new AkronModuleSaveData();
+        AkronModuleSaveData savestateClone = (AkronModuleSaveData) AkronSaveLoadService.DeepClone(original);
+        AkronModuleSaveData replacementProfile = new AkronModuleSaveData();
+
+        Assert.False(string.IsNullOrWhiteSpace(original.ProfileId));
+        Assert.Equal(original.ProfileId, savestateClone.ProfileId);
+        Assert.NotEqual(original.ProfileId, replacementProfile.ProfileId);
+    }
+
+    [Fact]
+    public void PrewarmScopeIncludesTheProfileIncarnation() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int load = source.IndexOf("internal static void LoadStartPositionsForLevel", StringComparison.Ordinal);
+        int loadEnd = source.IndexOf(
+            "internal static IEnumerable<KeyValuePair<int, AkronStartPos>>",
+            load,
+            StringComparison.Ordinal);
+        string loadPath = SourceSlice(source, load, loadEnd - load);
+
+        int profileAwareKey = loadPath.IndexOf(
+            "BuildPendingStartPosKey(GetCurrentFileSlot(), areaSid)",
+            StringComparison.Ordinal);
+        int scopeCheck = loadPath.IndexOf("prewarmedSnapshotScope", profileAwareKey, StringComparison.Ordinal);
+        Assert.True(profileAwareKey >= 0 && scopeCheck > profileAwareKey);
+    }
+
+    [Fact]
+    public void DeletingAProfileClearsOnlyItsOwnedStartPosSnapshots() {
+        int fileSlot = 2;
+        string mapSid = "Tests/ProfileDelete" + Guid.NewGuid().ToString("N");
+        AkronModuleSaveData deletedProfile = new AkronModuleSaveData {
+            StartPositionsByMap = new Dictionary<string, AkronPersistedStartPosMap> {
+                [mapSid] = new AkronPersistedStartPosMap {
+                    Slots = new Dictionary<int, AkronPersistedStartPos> {
+                        [1] = new AkronPersistedStartPos(),
+                        [2] = new AkronPersistedStartPos()
+                    }
+                }
+            }
+        };
+        AkronModuleSaveData survivingProfile = new AkronModuleSaveData();
+        string firstDeleted = AkronActions.GetStartPosStateSlotName(
+            mapSid, 1, fileSlot, deletedProfile.ProfileId);
+        string secondDeleted = AkronActions.GetStartPosStateSlotName(
+            mapSid, 2, fileSlot, deletedProfile.ProfileId);
+        string survivor = AkronActions.GetStartPosStateSlotName(
+            mapSid, 1, fileSlot, survivingProfile.ProfileId);
+
+        try {
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                firstDeleted, mapSid, "room", fileSlot, MinimalDocument(), out string firstError), firstError);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                secondDeleted, mapSid, "room", fileSlot, MinimalDocument(), out string secondError), secondError);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                survivor, mapSid, "room", fileSlot, MinimalDocument(), out string survivorError), survivorError);
+
+            Assert.Equal(2, AkronActions.DeleteStartPosSnapshotsForProfile(fileSlot, deletedProfile));
+            Assert.False(AkronStartPosReconstruction.HasSnapshot(firstDeleted));
+            Assert.False(AkronStartPosReconstruction.HasSnapshot(secondDeleted));
+            Assert.True(AkronStartPosReconstruction.HasSnapshot(survivor));
+        } finally {
+            AkronSaveLoadService.ClearRuntimeState(firstDeleted);
+            AkronSaveLoadService.ClearRuntimeState(secondDeleted);
+            AkronSaveLoadService.ClearRuntimeState(survivor);
+        }
+    }
+
+    [Fact]
+    public void ProfileSnapshotCleanupFollowsCelestesModSaveDeletion() {
+        string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
+        int handler = source.IndexOf("private static bool SaveDataOnTryDeleteModSaveData", StringComparison.Ordinal);
+        int handlerEnd = source.IndexOf("private static AkronModuleSaveData ReadProfileSaveData", handler, StringComparison.Ordinal);
+        string deletionPath = SourceSlice(source, handler, handlerEnd - handler);
+
+        Assert.Contains("On.Celeste.SaveData.TryDeleteModSaveData += SaveDataOnTryDeleteModSaveData;", source);
+        Assert.Contains("On.Celeste.SaveData.TryDeleteModSaveData -= SaveDataOnTryDeleteModSaveData;", source);
+        int readBefore = deletionPath.IndexOf("ReadProfileSaveData(fileSlot)", StringComparison.Ordinal);
+        int delete = deletionPath.IndexOf("orig(fileSlot)", StringComparison.Ordinal);
+        int readAfter = deletionPath.IndexOf("ReadSaveData(fileSlot) == null", StringComparison.Ordinal);
+        int cleanup = deletionPath.IndexOf("DeleteStartPosSnapshotsForProfile", StringComparison.Ordinal);
+        Assert.True(readBefore >= 0 && delete > readBefore && readAfter > delete && cleanup > readAfter);
     }
 
     [Fact]
@@ -448,6 +1447,12 @@ public sealed class StartPosPersistenceTests {
         Assert.DoesNotContain("restoreResult = cacheResult", restorePath);
         Assert.Contains("return AkronSaveLoadResult.Success;", restorePath);
         Assert.Contains("StoreRuntimeSlot", cachePath);
+        int prepare = cachePath.IndexOf("PrepareWarmStartPosCapture", StringComparison.Ordinal);
+        int capture = cachePath.IndexOf("CaptureRuntimeState", StringComparison.Ordinal);
+        int recordCost = cachePath.IndexOf("RecordWarmStartPosCost", StringComparison.Ordinal);
+        int trim = cachePath.IndexOf("TrimWarmStartPosSlots", StringComparison.Ordinal);
+        Assert.True(prepare >= 0 && capture > prepare);
+        Assert.True(recordCost > capture && trim > recordCost);
     }
 
     [Fact]
@@ -511,7 +1516,7 @@ public sealed class StartPosPersistenceTests {
         int replaceEnd = actionsSource.IndexOf("private static void EnsureStartPositionsLoaded", replace, StringComparison.Ordinal);
         string replacePath = SourceSlice(actionsSource, replace, replaceEnd - replace);
         int validation = replacePath.IndexOf("// Validate the complete import", StringComparison.Ordinal);
-        int cancel = replacePath.IndexOf("AkronStartPosPersistence.Cancel", validation, StringComparison.Ordinal);
+        int cancel = replacePath.IndexOf("CancelStartPosPersistence(", validation, StringComparison.Ordinal);
         int removePending = replacePath.IndexOf("PendingStartPositionsByFileAndMap.Remove(pendingKey);", cancel, StringComparison.Ordinal);
 
         Assert.True(validation >= 0);
@@ -585,8 +1590,12 @@ public sealed class StartPosPersistenceTests {
         Assert.Contains("expectedKey,", notifyPath);
     }
 
+    // Every room load rebuilds the room, so the retained baseline is stale and
+    // must be recaptured. The refresh is unconditional on purpose: StartPos
+    // promises exact restoration, and no in-process check can see every input
+    // room construction reads, so skipping a capture cannot be made sound.
     [Fact]
-    public void NormalRoomLoadsRefreshTheSameRoomFreshBaseline() {
+    public void RoomLoadsRefreshTheFreshBaselineUnconditionally() {
         string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
         int notify = source.IndexOf("public static void NotifyLevelReady", StringComparison.Ordinal);
         int notifyEnd = source.IndexOf("public static long Enqueue", notify, StringComparison.Ordinal);
@@ -596,7 +1605,9 @@ public sealed class StartPosPersistenceTests {
         string loadHookPath = SourceSlice(source, loadHook, capture - loadHook);
 
         Assert.Contains("bool refreshBaseline = false", notifyPath);
-        Assert.Contains("if (refreshBaseline)", notifyPath);
+        Assert.Contains("if (refreshBaseline) {", notifyPath);
+        // No freshness heuristic may creep back in front of the capture.
+        Assert.DoesNotContain("sessionUnchanged", notifyPath);
         Assert.Contains("FreshBaselines.Remove(expectedKey", notifyPath);
         Assert.Contains("FailWaitingJobsForBaselineLocked(", notifyPath);
         Assert.Contains("the room reloaded before its fresh-room baseline was ready", notifyPath);
@@ -739,16 +1750,16 @@ public sealed class StartPosPersistenceTests {
         ScreenWipe secondWipe = CreateUninitializedRenderer<SpotlightWipe>();
         Renderer after = CreateUninitializedRenderer<LightingRenderer>();
         renderers.AddRange(new[] { before, firstWipe, between, secondWipe, after });
-        level.Wipe = firstWipe;
+        SetLevelWipe(level, firstWipe);
 
         object detached = InvokeDetachTransientScreenWipes(level);
 
-        Assert.Null(level.Wipe);
+        Assert.Null(GetLevelWipe(level));
         Assert.Equal(new[] { before, between, after }, renderers);
 
         InvokeRestoreTransientScreenWipes(level, detached);
 
-        Assert.Same(firstWipe, level.Wipe);
+        Assert.Same(firstWipe, GetLevelWipe(level));
         Assert.Equal(new Renderer[] { before, firstWipe, between, secondWipe, after }, renderers);
     }
 
@@ -757,10 +1768,11 @@ public sealed class StartPosPersistenceTests {
         Level level = CreateLevelWithRendererList(out List<Renderer> renderers);
         ScreenWipe wipe = CreateUninitializedRenderer<SpotlightWipe>();
         renderers.Add(wipe);
-        level.Wipe = wipe;
+        SetLevelWipe(level, wipe);
+
         InvokeRestoreTransientScreenWipes(level, null);
 
-        Assert.Same(wipe, level.Wipe);
+        Assert.Same(wipe, GetLevelWipe(level));
         Assert.Same(wipe, Assert.Single(renderers));
     }
 
@@ -796,7 +1808,7 @@ public sealed class StartPosPersistenceTests {
     public void ShutdownDrainsQueuedDiskWorkAndCommitsItsCompletion() {
         string persistenceSource = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
         int shutdown = persistenceSource.IndexOf("public static void Shutdown", StringComparison.Ordinal);
-        int wait = persistenceSource.IndexOf("runningWorker?.GetAwaiter().GetResult();", shutdown, StringComparison.Ordinal);
+        int wait = persistenceSource.IndexOf("DrainWorkerForShutdown(runningWorker", shutdown, StringComparison.Ordinal);
         int update = persistenceSource.IndexOf("Update();", wait, StringComparison.Ordinal);
         int worker = persistenceSource.IndexOf("private static void RunWorker", update, StringComparison.Ordinal);
         int empty = persistenceSource.IndexOf("if (Ready.Count == 0)", worker, StringComparison.Ordinal);
@@ -806,6 +1818,67 @@ public sealed class StartPosPersistenceTests {
         Assert.True(update > wait);
         Assert.True(empty > worker && dequeue > empty);
         Assert.DoesNotContain("shutdown started before the restart copy finished", persistenceSource);
+
+        // The drain is bounded twice over: a budget for finishing normally, then a
+        // cooperative cancel with its own budget. Cancelling rather than walking away
+        // is what keeps the staging directory from being leaked and the real snapshot
+        // directory from being touched by a job nobody joins, and the second budget is
+        // there because a cancel is only seen at the next pace point.
+        int drain = persistenceSource.IndexOf("private static bool DrainWorkerForShutdown", StringComparison.Ordinal);
+        int drainEnd = persistenceSource.IndexOf("private static void PromoteReadyJobLocked", drain, StringComparison.Ordinal);
+        string drainBody = SourceSlice(persistenceSource, drain, drainEnd - drain);
+        int budget = drainBody.IndexOf("runningWorker.Wait(ShutdownDrainBudget)", StringComparison.Ordinal);
+        int cancel = drainBody.IndexOf("AkronSnapshotPacing.Cancelled = true;", budget, StringComparison.Ordinal);
+        int join = drainBody.IndexOf("runningWorker.Wait(ShutdownCancelBudget)", cancel, StringComparison.Ordinal);
+        Assert.True(budget > 0);
+        Assert.True(cancel > budget);
+        Assert.True(join > cancel);
+        // No unbounded wait anywhere on the shutdown path.
+        Assert.DoesNotContain("runningWorker.GetAwaiter().GetResult();", persistenceSource);
+    }
+
+    // A drain that ran out of both budgets leaves the worker alive, and the worker owns its
+    // own handle: it nulls it when it finds the queue empty. Clearing it from Shutdown as
+    // well let the next Start in the same process create a second worker beside the
+    // survivor, and two workers dequeue from one Ready queue into the one static
+    // CaptureGraph, which is written for a single thread at a time. Everest reloads a mod
+    // in-process, which is what makes that next Start real.
+    //
+    // Asserted on the source, which is weaker than a behavioural test and is what is
+    // available: reproducing it needs a capture that outlives a 5 s drain and a 2 s cancel
+    // and then an in-process reload, and nothing in this project can drive either - the
+    // whole class is unreachable at runtime from here, which is why every other shutdown
+    // test in this file reads the source too.
+    [Fact]
+    public void ATimedOutShutdownLeavesTheWorkerHandleToTheWorker() {
+        string persistenceSource = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"))
+            .Replace("\r\n", "\n");
+
+        // The drain says whether it joined the worker: true from either budget, false only
+        // after the warning that it is being left behind.
+        int drain = persistenceSource.IndexOf("private static bool DrainWorkerForShutdown", StringComparison.Ordinal);
+        Assert.True(drain > 0, "DrainWorkerForShutdown does not report whether the worker stopped.");
+        int drainEnd = persistenceSource.IndexOf("private static void PromoteReadyJobLocked", drain, StringComparison.Ordinal);
+        string drainBody = SourceSlice(persistenceSource, drain, drainEnd - drain);
+        Assert.Equal(3, CountOccurrences(drainBody, "return true;"));
+        Assert.Equal(1, CountOccurrences(drainBody, "return false;"));
+        Assert.True(
+            drainBody.IndexOf("return false;", StringComparison.Ordinal) >
+            drainBody.IndexOf("did not stop when asked", StringComparison.Ordinal));
+
+        // Shutdown clears the handle only on that answer, and nowhere else.
+        Assert.Contains(
+            "bool workerStopped = DrainWorkerForShutdown(runningWorker, outstanding);",
+            persistenceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (workerStopped) {\n                workerTask = null;\n            }",
+            persistenceSource,
+            StringComparison.Ordinal);
+        // The remaining assignment is the worker's own, inside RunWorker's lock. Shutdown's
+        // was one nesting level shallower, so the indentation is what tells them apart.
+        Assert.DoesNotContain("\n            workerTask = null;", persistenceSource, StringComparison.Ordinal);
+        Assert.Equal(2, CountOccurrences(persistenceSource, "workerTask = null;"));
     }
 
     [Fact]
@@ -878,6 +1951,233 @@ public sealed class StartPosPersistenceTests {
         }
     }
 
+    // An install that fails before it has moved the slot's previous snapshot aside must
+    // leave that snapshot where a load can still find it.
+    //
+    // The move that banks the previous file is the one most likely to fail: staging is
+    // under the system temp path and the destination is under Saves, so on any install
+    // where those are different volumes it is a copy of the whole snapshot and fails on
+    // a full temp volume with the source untouched. Forced here with a read-only staging
+    // directory, which is the same failure with no volume to fill - the move cannot
+    // create the backup, and the previous snapshot never leaves the destination.
+    //
+    // Off Windows only: making a directory unwritable there needs an ACL edit, and the
+    // branch under test is platform-neutral.
+    [Fact]
+    public void AFailedSnapshotInstallKeepsTheSnapshotTheSlotAlreadyHad() {
+        if (OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        string slotName = "Akron failed install " + Guid.NewGuid().ToString("N");
+        string stagingDirectory = Path.Combine(Path.GetTempPath(), "akron-failed-install-" + Guid.NewGuid().ToString("N"));
+        try {
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                slotName, "Map/A", "old-room", 1, MinimalDocument(), out string oldError), oldError);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                slotName, "Map/A", "new-room", 1, MinimalDocument(), out string newError, stagingDirectory), newError);
+            File.SetUnixFileMode(stagingDirectory, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+
+            using (AkronStartPosReconstruction.PreparedSnapshotInstall prepared =
+                   AkronStartPosReconstruction.PrepareSnapshotInstall(slotName, stagingDirectory)) {
+                Assert.False(prepared.Install(out string installError));
+                Assert.NotEmpty(installError);
+                // Nothing was banked, so there was nothing a rollback could fail to put
+                // back and the Set reports the slot as kept, which it is.
+                Assert.False(prepared.PreviousSnapshotLost);
+            }
+
+            Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
+                slotName, out AkronReconstructionDocument kept, out string keptError), keptError);
+            Assert.Equal("old-room", kept.Room);
+        } finally {
+            if (Directory.Exists(stagingDirectory)) {
+                File.SetUnixFileMode(
+                    stagingDirectory,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                Directory.Delete(stagingDirectory, recursive: true);
+            }
+            AkronStartPosReconstruction.DeleteSnapshot(slotName);
+        }
+    }
+
+    // A prepared install is one attempt, and a second one must be refused rather than
+    // run on the first attempt's record.
+    //
+    // The sequence this closes: a first attempt claims a free slot, its move-in fails, and
+    // its rollback deletes the claim. The record still says this object claimed the
+    // destination. A snapshot then arrives at that slot, a second attempt fails before it
+    // can bank it, and its rollback reads the stale claim and deletes a snapshot the
+    // object never created.
+    //
+    // Forced with a read-only staging directory, which fails the move-in of the first
+    // attempt (the staged file cannot be removed from a directory that cannot be written)
+    // and the banking move of the second. Off Windows only, where making a directory
+    // unwritable needs an ACL edit.
+    [Fact]
+    public void ASecondInstallAttemptIsRefusedRatherThanRunOnTheFirstOnesRecord() {
+        if (OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        string slotName = "Akron second attempt " + Guid.NewGuid().ToString("N");
+        string stagingDirectory = Path.Combine(Path.GetTempPath(), "akron-second-attempt-" + Guid.NewGuid().ToString("N"));
+        try {
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                slotName, "Map/A", "new-room", 1, MinimalDocument(), out string newError, stagingDirectory), newError);
+            File.SetUnixFileMode(stagingDirectory, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+
+            using (AkronStartPosReconstruction.PreparedSnapshotInstall prepared =
+                   AkronStartPosReconstruction.PrepareSnapshotInstall(slotName, stagingDirectory)) {
+                // The slot is empty, so this attempt claims the destination and then
+                // cannot move the staged file in. Its rollback removes the claim.
+                Assert.False(prepared.Install(out string firstError));
+                Assert.NotEmpty(firstError);
+                Assert.False(AkronStartPosReconstruction.HasSnapshot(slotName));
+
+                // A snapshot arrives in the slot between the two attempts.
+                Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                    slotName, "Map/A", "old-room", 1, MinimalDocument(), out string oldError), oldError);
+
+                Assert.False(prepared.Install(out string secondError));
+                Assert.Contains("already been attempted", secondError);
+            }
+
+            // The snapshot that arrived in between is still loadable: the second attempt
+            // never ran, so its rollback never acted on the first attempt's claim.
+            Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
+                slotName, out AkronReconstructionDocument kept, out string keptError), keptError);
+            Assert.Equal("old-room", kept.Room);
+        } finally {
+            if (Directory.Exists(stagingDirectory)) {
+                File.SetUnixFileMode(
+                    stagingDirectory,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                Directory.Delete(stagingDirectory, recursive: true);
+            }
+            AkronStartPosReconstruction.DeleteSnapshot(slotName);
+        }
+    }
+
+    // An install may only remove a destination it can prove it created.
+    //
+    // The install asks whether the slot already holds a snapshot by moving it aside and
+    // reading the failure, and "missing" is also what comes back for a query the
+    // filesystem could not complete: a folder in the path that has lost its search
+    // permission, an IO error, a Windows attribute read a scanner is holding off.
+    // Measured outside the suite, with the snapshot folder made unsearchable and then
+    // searchable again mid-install: taking that answer at face value ends with
+    // File.Delete removing a snapshot the install never touched, which is the loss this
+    // whole path exists to prevent. So the emptiness answer is proved with an exclusive
+    // create, and the rollback's delete is reached only through that proof.
+    //
+    // Asserted on the source because the divergence needs the filesystem to change
+    // between two statements inside Install, which no test can arrange from outside;
+    // what a test can hold is that the delete has no other route to it.
+    [Fact]
+    public void AnInstallOnlyRemovesADestinationItProvedItCreated() {
+        string source = File.ReadAllText(GetSourcePath("SaveLoad", "akron-reconstruction-graph.cs"));
+        int install = source.IndexOf("internal sealed class PreparedSnapshotInstall", StringComparison.Ordinal);
+        int end = source.IndexOf("private const string CompareInfoSortNameKeyPrefix", install, StringComparison.Ordinal);
+        Assert.True(install >= 0 && end > install);
+        string transaction = SourceSlice(source, install, end - install);
+
+        // The proof, and the only branch that may delete, gated on it.
+        Assert.Contains("new FileStream(destinationPath, FileMode.CreateNew", transaction);
+        Assert.Contains("destinationClaimed = true;", transaction);
+        Assert.Contains("} else if (destinationClaimed) {\n", transaction);
+        Assert.Equal(1, CountOccurrences(transaction, "File.Delete("));
+
+        // Neither the install nor the rollback may ask the filesystem what it did: those
+        // answers are the ones that cannot tell "nothing there" from "cannot say".
+        Assert.DoesNotContain("File.Exists(destinationPath)", transaction);
+        Assert.DoesNotContain("File.Exists(backupPath)", transaction);
+        // The one existence question left is about the staged file the caller wrote, and
+        // a wrong answer there refuses the install rather than removing anything.
+        Assert.Equal(1, CountOccurrences(transaction, "File.Exists("));
+        Assert.Contains("File.Exists(sourcePath)", transaction);
+    }
+
+    // A rollback that cannot do its job says so and stops; it does not throw.
+    //
+    // Both of its callers are already carrying a failure. Install's catch block calls it
+    // on the way to reporting an IOException, so a throw there replaces the failure the
+    // caller was about to see with a different one raised from inside a catch. Dispose
+    // calls it at the end of a using, so a throw there discards whatever the using body
+    // was propagating - which on the setup-pack import path is the only account of what
+    // went wrong.
+    //
+    // Forced by putting a directory where the snapshot file belongs, which is a path no
+    // file move can overwrite on any platform.
+    [Fact]
+    public void AFailedSnapshotRollbackIsReportedRatherThanThrownOutOfDispose() {
+        string slotName = "Akron rollback failure " + Guid.NewGuid().ToString("N");
+        string stagingDirectory = Path.Combine(Path.GetTempPath(), "akron-rollback-" + Guid.NewGuid().ToString("N"));
+        string installedPath = AkronStartPosReconstruction.GetSnapshotPath(slotName);
+        try {
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                slotName, "Map/A", "old-room", 1, MinimalDocument(), out string oldError), oldError);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                slotName, "Map/A", "new-room", 1, MinimalDocument(), out string newError, stagingDirectory), newError);
+
+            AkronStartPosReconstruction.PreparedSnapshotInstall prepared =
+                AkronStartPosReconstruction.PrepareSnapshotInstall(slotName, stagingDirectory);
+            using (prepared) {
+                Assert.True(prepared.Install(out string stagedError), stagedError);
+                File.Delete(installedPath);
+                Directory.CreateDirectory(installedPath);
+            }
+
+            // Reaching here at all is the first assertion: leaving the using un-committed
+            // runs the rollback, and its move onto a directory cannot succeed.
+            Assert.True(Directory.Exists(installedPath));
+            // The previous snapshot is in the staging directory, which the caller deletes
+            // as soon as the completion returns, so this rollback has cost the slot its
+            // restart copy. Saying so is what stops the failed Set from reporting that
+            // the previous StartPos was kept.
+            Assert.True(prepared.PreviousSnapshotLost);
+        } finally {
+            if (Directory.Exists(installedPath)) {
+                Directory.Delete(installedPath, recursive: true);
+            }
+            AkronStartPosReconstruction.DeleteSnapshot(slotName);
+            if (Directory.Exists(stagingDirectory)) {
+                Directory.Delete(stagingDirectory, recursive: true);
+            }
+        }
+    }
+
+    // The other half of the rollback above: what the player is told. A Set whose install
+    // rolled back without putting the slot's snapshot file back leaves a slot that works
+    // from memory for the rest of the session and has nothing to load afterwards, so the
+    // sentence that says the previous StartPos was kept is the one thing it must not say.
+    [Fact]
+    public void AFailedSetSaysWhenThePreviousSnapshotCouldNotBePutBack() {
+        string kept = AkronActions.DescribeFailedStartPosReplacement(
+            2, "the restart copy failed", previousDurableStateLost: false);
+        string lost = AkronActions.DescribeFailedStartPosReplacement(
+            2, "the restart copy failed", previousDurableStateLost: true);
+
+        Assert.Equal(
+            "StartPos 2 was not replaced because the restart copy failed. " +
+            "The previous StartPos 2 was kept.",
+            kept);
+        Assert.Equal(
+            "StartPos 2 was not replaced because the restart copy failed. " +
+            "The previous StartPos 2 could not be put back either, so it works until you " +
+            "leave this map and then has to be set again.",
+            lost);
+
+        // Read from the install after its rollback has run, which is the only place the
+        // answer exists.
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int dispose = source.IndexOf("installedSnapshot?.Dispose();", StringComparison.Ordinal);
+        int read = source.IndexOf(
+            "installedSnapshot?.PreviousSnapshotLost == true", dispose, StringComparison.Ordinal);
+        Assert.True(dispose >= 0);
+        Assert.True(read > dispose);
+    }
+
     [Fact]
     public void StartPosLoadsWaitForAStableEngineBoundary() {
         string source = File.ReadAllText(GetActionsSourcePath());
@@ -923,6 +2223,130 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
+    public void SnapshotFilteringDropsThePlaybackGhostAndHandsBackItsTrailSlots() {
+        string ignoreSource = File.ReadAllText(GetSourcePath("Core", "AkronIgnoreSaveStateComponent.cs"));
+        int filterStart = ignoreSource.IndexOf(
+            "internal static void RemoveAllFromSnapshot(Level level)",
+            StringComparison.Ordinal);
+        int filterEnd = ignoreSource.IndexOf("internal static class AkronSnapshotExclusion", filterStart, StringComparison.Ordinal);
+        string filterMethod = SourceSlice(ignoreSource, filterStart, filterEnd - filterStart);
+
+        // Removing the ghost from the entity list is only half of it. A trail
+        // snapshot renders the ghost's own PlayerSprite and PlayerHair, so a
+        // snapshot that keeps one keeps the ghost too, and the load then refuses
+        // on the ghost rather than on the trail that held it.
+        Assert.Contains("AkronSnapshotExclusion.IsExcludedFromSnapshot(entity)", filterMethod);
+        Assert.Contains("AkronSnapshotExclusion.ReleaseTrailManagerSlot(entity)", filterMethod);
+    }
+
+    [Fact]
+    public void PersistentRestoreDetachesThePlaybackGhostBeforeItReadsTheFreshRoomShape() {
+        string source = File.ReadAllText(GetSaveLoadSourcePath());
+        string ignoreSource = File.ReadAllText(GetSourcePath("Core", "AkronIgnoreSaveStateComponent.cs"));
+        int core = source.IndexOf(
+            "private static AkronSaveLoadResult RestorePersistentRuntimeStateCore",
+            StringComparison.Ordinal);
+        int afterActionState = source.IndexOf(
+            "private static AkronSaveLoadResult RestorePersistentRuntimeStateAfterActionState",
+            core,
+            StringComparison.Ordinal);
+        string coreMethod = SourceSlice(source, core, afterActionState - core);
+        int freshRoom = coreMethod.IndexOf("TryLoadFreshRoom(level, document.Room, out string freshRoomError)", StringComparison.Ordinal);
+        int detach = coreMethod.IndexOf("AkronSnapshotExclusion.DetachFromLevel(level)", StringComparison.Ordinal);
+        int reattach = coreMethod.IndexOf("AkronSnapshotExclusion.ReattachToLevel(level, detachedGhosts)", StringComparison.Ordinal);
+
+        int detachMethod = ignoreSource.IndexOf("internal static List<Entity> DetachFromLevel", StringComparison.Ordinal);
+        int reattachMethod = ignoreSource.IndexOf("internal static void ReattachToLevel", detachMethod, StringComparison.Ordinal);
+        string detachPath = SourceSlice(ignoreSource, detachMethod, reattachMethod - detachMethod);
+        Assert.Contains("ReleaseTrailManagerSlot(entity);", detachPath);
+
+        // The rebuild resolves saved objects by their path in the live fresh room,
+        // so the live room has to match the shape the snapshot was measured against
+        // before anything reads it. The reattach sits in the finally so an exception
+        // on its way to the rollback does not leave the room without its ghost.
+        Assert.True(freshRoom > 0);
+        Assert.True(detach > freshRoom);
+        Assert.True(reattach > detach);
+        Assert.Contains("} finally {", SourceSlice(coreMethod, detach, reattach - detach));
+
+        // The live room shape has to be settled before the rebuild reads it, so the
+        // detach must not sit inside the method that does the reading.
+        int afterActionStateEnd = source.IndexOf(
+            "private static bool ApplyPersistentRuntimeState",
+            afterActionState,
+            StringComparison.Ordinal);
+        string restoreMethod = SourceSlice(source, afterActionState, afterActionStateEnd - afterActionState);
+
+        Assert.DoesNotContain("AkronSnapshotExclusion.DetachFromLevel(level)", restoreMethod);
+
+        // The outer bracket runs around the fresh room load, so it cannot be the
+        // one that holds the playback ghost: the ghosts it would stash belong to
+        // the room about to be destroyed, and putting those back would leave the
+        // room with one more ghost after every Load.
+        int outerStart = source.IndexOf(
+            "private static AkronSaveLoadResult RestorePersistentRuntimeState(",
+            StringComparison.Ordinal);
+        int outerEnd = source.IndexOf(
+            "private static AkronSaveLoadResult CacheRestoredRuntimeState",
+            outerStart,
+            StringComparison.Ordinal);
+        string outerMethod = SourceSlice(source, outerStart, outerEnd - outerStart);
+
+        Assert.Contains("AkronIgnoreSaveStateComponent.RemoveAll(level);", outerMethod);
+        Assert.DoesNotContain("AkronSnapshotExclusion.DetachFromLevel(level)", outerMethod);
+    }
+
+    [Fact]
+    public void TheIgnoreComponentDoesNotAlsoStashThePlaybackGhostAcrossARoomReload() {
+        string ignoreSource = File.ReadAllText(GetSourcePath("Core", "AkronIgnoreSaveStateComponent.cs"));
+        int removeAll = ignoreSource.IndexOf("public static void RemoveAll(Level level)", StringComparison.Ordinal);
+        int reAddAll = ignoreSource.IndexOf("public static void ReAddAll(Level level)", removeAll, StringComparison.Ordinal);
+        string removeAllMethod = SourceSlice(ignoreSource, removeAll, reAddAll - removeAll);
+
+        // A mod can call the public IgnoreSaveState on anything, including a ghost.
+        // If this bracket stashed one it would re-add the destroyed room's ghost on
+        // top of the one the fresh room load built, once per Load.
+        Assert.Contains("AkronSnapshotExclusion.IsExcludedFromSnapshot(ignoreComponent.Entity)", removeAllMethod);
+    }
+
+    [Fact]
+    public void TheFreshRoomReloadClearsTheTrailsBeforeItUnloadsTheRoom() {
+        string source = File.ReadAllText(GetSaveLoadSourcePath());
+        int freshRoom = source.IndexOf(
+            "private static bool TryLoadFreshRoom(Level level, string roomName, out string error)",
+            StringComparison.Ordinal);
+        int freshRoomEnd = source.IndexOf(
+            "internal static void DrainFreshRoomEntityLists(EntityList entities)",
+            freshRoom,
+            StringComparison.Ordinal);
+        string freshRoomMethod = SourceSlice(source, freshRoom, freshRoomEnd - freshRoom);
+        int settle = freshRoomMethod.IndexOf("level.Entities.UpdateLists();", StringComparison.Ordinal);
+        int clear = freshRoomMethod.IndexOf("TrailManager.Clear();", StringComparison.Ordinal);
+        int unload = freshRoomMethod.IndexOf("level.UnloadLevel();", StringComparison.Ordinal);
+        int load = freshRoomMethod.IndexOf("level.LoadLevel(Player.IntroTypes.Respawn);", StringComparison.Ordinal);
+
+        // Celeste.Level.Reload is TrailManager.Clear(), UnloadLevel(),
+        // LoadLevel(Respawn), in that order, and this method is Akron's copy of
+        // that sequence. UnloadLevel keeps every Tags.Global entity, and a
+        // TrailManager.Snapshot is Tags.Global while holding the PlayerSprite and
+        // PlayerHair of the entity it was made from, so without the clear a
+        // snapshot outlives the entity this reload destroys and keeps it reachable
+        // with a null Scene while LoadLevel rebuilds the same map entity with the
+        // same EntityID. A saved node can then pair with the dead copy.
+        //
+        // The settle in front of the clear is Akron's own. The load runs at a render
+        // boundary, so a trail created during the update that just ran is still in
+        // EntityList.toAdd with a null Scene; RemoveSelf ignores it and UpdateLists
+        // installs toAdd before toRemove, so without settling first the newest trail
+        // is installed by UnloadLevel after the clear and survives.
+        Assert.True(clear >= 0, "TryLoadFreshRoom must clear the trails before it unloads the room.");
+        Assert.True(settle >= 0, "TryLoadFreshRoom must settle pending entity adds before it clears the trails.");
+        Assert.True(clear > settle);
+        Assert.True(unload > clear);
+        Assert.True(load > unload);
+    }
+
+    [Fact]
     public void StartPosCapturesRenderedProcessBuffersAtTheSetBoundary() {
         string source = File.ReadAllText(GetSaveLoadSourcePath());
         int captureStart = source.IndexOf("public static AkronSaveLoadSlot CaptureRuntimeState", StringComparison.Ordinal);
@@ -943,13 +2367,9 @@ public sealed class StartPosPersistenceTests {
     public void GameplayBufferChangesCannotAbortAnAppliedStartPosRestore() {
         string saveLoadSource = File.ReadAllText(GetSaveLoadSourcePath());
         string reconstructionSource = File.ReadAllText(GetSourcePath("SaveLoad", "akron-reconstruction-graph.cs"));
-        int pixelLayoutStart = reconstructionSource.IndexOf("private static bool PixelLayoutMatches", StringComparison.Ordinal);
-        int pixelLayoutEnd = reconstructionSource.IndexOf("private static void ValidateRenderTarget", pixelLayoutStart, StringComparison.Ordinal);
-        string pixelLayoutSource = reconstructionSource.Substring(pixelLayoutStart, pixelLayoutEnd - pixelLayoutStart);
 
         Assert.Contains("public static void RestoreBestEffort", reconstructionSource);
         Assert.Contains("if (!Adapter.RestoreExisting", reconstructionSource);
-        Assert.Contains("renderTarget.Target != null", pixelLayoutSource);
         Assert.Contains("Skipped StartPos gameplay buffer", reconstructionSource);
         Assert.Contains("AkronGameplayBufferState.RestoreBestEffort(saveSlot.GameplayBuffers);", saveLoadSource);
         Assert.Contains("AkronGameplayBufferState.RestoreBestEffort(document.GameplayBuffers);", saveLoadSource);
@@ -1006,15 +2426,13 @@ public sealed class StartPosPersistenceTests {
         int methodEnd = source.IndexOf("internal static void RelinkRuntimeRenderState", methodStart, StringComparison.Ordinal);
         string method = SourceSlice(source, methodStart, methodEnd - methodStart);
 
-        int preserveCatalog = method.IndexOf("Dictionary<string, AkronPersistedStartPosMap> startPosCatalogSnapshot", StringComparison.Ordinal);
-        int snapshotCatalog = method.IndexOf("SnapshotStartPosCatalog", preserveCatalog, StringComparison.Ordinal);
+        int preserveCatalog = method.IndexOf("Dictionary<string, AkronPersistedStartPosMap> currentStartPositionsByMap", StringComparison.Ordinal);
         int restore = method.IndexOf("AkronSaveLoadService.LoadRuntimeState", StringComparison.Ordinal);
         int restoreCatalog = method.IndexOf("RestoreStartPosCatalog", restore, StringComparison.Ordinal);
         int registryReload = method.IndexOf("LoadStartPositionsForLevel(currentLevel);", StringComparison.Ordinal);
         int loadedSlotUpdate = method.IndexOf("AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;", StringComparison.Ordinal);
 
-        Assert.True(preserveCatalog >= 0 && snapshotCatalog > preserveCatalog);
-        Assert.True(restore > snapshotCatalog);
+        Assert.True(preserveCatalog >= 0 && restore > preserveCatalog);
         Assert.True(restoreCatalog > restore);
         Assert.True(registryReload > restoreCatalog);
         Assert.True(loadedSlotUpdate > registryReload);
@@ -1028,31 +2446,22 @@ public sealed class StartPosPersistenceTests {
                     [1] = new AkronPersistedStartPos { AreaSid = "Map/A", Room = "room-a" },
                     [2] = new AkronPersistedStartPos { AreaSid = "Map/A", Room = "room-b" }
                 }
-            },
-            ["Map/B"] = new AkronPersistedStartPosMap {
-                Slots = new Dictionary<int, AkronPersistedStartPos> {
-                    [7] = new AkronPersistedStartPos { AreaSid = "Map/B", Room = "room-c" }
+            }
+        };
+        AkronModuleSaveData restoredSnapshotSaveData = new AkronModuleSaveData {
+            StartPositionsByMap = new Dictionary<string, AkronPersistedStartPosMap> {
+                ["Map/A"] = new AkronPersistedStartPosMap {
+                    Slots = new Dictionary<int, AkronPersistedStartPos> {
+                        [1] = new AkronPersistedStartPos { AreaSid = "Map/A", Room = "room-a" }
+                    }
                 }
             }
         };
-        Dictionary<string, AkronPersistedStartPosMap> protectedCatalog =
-            AkronActions.SnapshotStartPosCatalog(currentCatalog);
-        AkronModuleSaveData restoredSnapshotSaveData = new AkronModuleSaveData {
-            StartPositionsByMap = currentCatalog
-        };
 
-        // Persistent reconstruction can mutate existing dictionaries and entries in place.
-        // Model that exact failure mode rather than only replacing the top-level reference.
-        currentCatalog["Map/A"].Slots[1].Room = "rewound-room";
-        currentCatalog["Map/A"].Slots.Remove(2);
-        currentCatalog.Remove("Map/B");
-        AkronActions.RestoreStartPosCatalog(restoredSnapshotSaveData, protectedCatalog);
+        AkronActions.RestoreStartPosCatalog(restoredSnapshotSaveData, currentCatalog);
 
-        Assert.Same(protectedCatalog, restoredSnapshotSaveData.StartPositionsByMap);
-        Assert.Equal(new[] { "Map/A", "Map/B" }, restoredSnapshotSaveData.StartPositionsByMap.Keys.OrderBy(sid => sid));
+        Assert.Same(currentCatalog, restoredSnapshotSaveData.StartPositionsByMap);
         Assert.Equal(new[] { 1, 2 }, restoredSnapshotSaveData.StartPositionsByMap["Map/A"].Slots.Keys.OrderBy(slot => slot));
-        Assert.Equal("room-a", restoredSnapshotSaveData.StartPositionsByMap["Map/A"].Slots[1].Room);
-        Assert.Equal("room-c", restoredSnapshotSaveData.StartPositionsByMap["Map/B"].Slots[7].Room);
     }
 
     [Fact]
@@ -1176,7 +2585,39 @@ public sealed class StartPosPersistenceTests {
         Assert.Contains("if (HandleDeferredRun())", automationSource);
         Assert.Contains("DeferredRunFrameLimit", automationSource);
         Assert.Contains("FailDeferredRun", automationSource);
-        Assert.Contains("nextIdlePollFrame = Engine.FrameCounter;", automationSource);
+    }
+
+    [Fact]
+    public void IdlePollSurvivesTheFrameCounterThatAStartPosRestores() {
+        string source = File.ReadAllText(GetSourcePath("Automation", "akron-automation-service.cs"));
+        int process = source.IndexOf("public static void ProcessPendingCommands", StringComparison.Ordinal);
+        Assert.True(process >= 0);
+        int idleBranch = source.IndexOf("if (!hasActiveRun) {", process, StringComparison.Ordinal);
+        Assert.True(idleBranch > process);
+        int guard = source.IndexOf("if (Engine.FrameCounter < nextIdlePollFrame &&", idleBranch, StringComparison.Ordinal);
+        Assert.True(guard > idleBranch);
+        int rewind = source.IndexOf("nextIdlePollFrame - Engine.FrameCounter <= IdlePollFrames", guard, StringComparison.Ordinal);
+        Assert.True(rewind > guard);
+        int schedule = source.IndexOf("nextIdlePollFrame = Engine.FrameCounter + IdlePollFrames;", rewind, StringComparison.Ordinal);
+        Assert.True(schedule > rewind);
+
+        // FinalizeRun must not own this: LoadStartPos runs the restore on a later
+        // engine boundary, so the run has already finalized by the time the counter
+        // moves and a deadline written there is the pre-restore clock.
+        int finalizeStart = source.IndexOf("private static void FinalizeRun(", StringComparison.Ordinal);
+        int finalizeEnd = source.IndexOf("private static void WriteResult(", finalizeStart, StringComparison.Ordinal);
+        string finalizeRun = SourceSlice(source, finalizeStart, finalizeEnd - finalizeStart);
+
+        Assert.True(finalizeStart >= 0);
+        Assert.True(finalizeEnd > finalizeStart);
+        Assert.DoesNotContain("nextIdlePollFrame", finalizeRun);
+
+        string actionsSource = File.ReadAllText(GetActionsSourcePath());
+        int loadStartPos = actionsSource.IndexOf("public static void LoadStartPos(Level level)", StringComparison.Ordinal);
+        int deferredRestore = actionsSource.IndexOf("AkronModule.ScheduleAfterStableEngineUpdate(", loadStartPos, StringComparison.Ordinal);
+
+        Assert.True(loadStartPos >= 0);
+        Assert.True(deferredRestore > loadStartPos);
     }
 
     [Fact]
@@ -1478,12 +2919,12 @@ public sealed class StartPosPersistenceTests {
         int capture = source.IndexOf("internal static void CompletePersistentStartPosCapture", StringComparison.Ordinal);
         int prepare = source.IndexOf("PrepareSnapshotInstall", capture, StringComparison.Ordinal);
         int install = source.IndexOf("installedSnapshot.Install", prepare, StringComparison.Ordinal);
-        int persist = source.IndexOf("PersistStartPos(slot, startPos, fileSlot, saveData)", install, StringComparison.Ordinal);
+        int persist = source.IndexOf("PersistStartPos(slot, startPos, fileSlot, out previousMetadataLost)", install, StringComparison.Ordinal);
         int commit = source.IndexOf("installedSnapshot.Commit()", persist, StringComparison.Ordinal);
 
         Assert.True(capture >= 0 && prepare > capture);
         Assert.True(install > prepare && persist > install && commit > persist);
-        Assert.Contains("if (!PersistStartPos(slot, startPos, fileSlot, saveData))", SourceSlice(source, persist - 16, 128));
+        Assert.Contains("if (!PersistStartPos(slot, startPos, fileSlot, out previousMetadataLost))", SourceSlice(source, persist - 16, 160));
     }
 
     [Fact]
@@ -1530,7 +2971,9 @@ public sealed class StartPosPersistenceTests {
             ?? throw new MissingFieldException(typeof(AkronActions).FullName, "PendingStartPositionsByFileAndMap");
         Dictionary<string, Dictionary<int, AkronStartPos>> pendingByMap =
             Assert.IsType<Dictionary<string, Dictionary<int, AkronStartPos>>>(pendingField.GetValue(null));
-        string pendingKey = "-1|Map/A";
+        int fileSlot = SaveData.Instance?.FileSlot ?? -1;
+        string pendingKey = fileSlot.ToString(CultureInfo.InvariantCulture) + "|" +
+                            AkronActions.GetCurrentStartPosProfileId() + "|Map/A";
         Dictionary<int, AkronStartPos> originalPending = new Dictionary<int, AkronStartPos> {
             [1] = new AkronStartPos { AreaSid = "Map/A", Room = "room-a" }
         };
@@ -1590,7 +3033,7 @@ public sealed class StartPosPersistenceTests {
         const int fileSlot = -1;
         const int slot = 19;
         string areaSid = "Tests/PendingOnly-" + Guid.NewGuid().ToString("N");
-        string pendingKey = fileSlot.ToString() + "|" + areaSid;
+        string pendingKey = fileSlot.ToString() + "|" + AkronActions.GetCurrentStartPosProfileId() + "|" + areaSid;
         string stateSlotName = AkronActions.GetStartPosStateSlotName(areaSid, slot, fileSlot);
         FieldInfo pendingField = typeof(AkronActions).GetField(
             "PendingStartPositionsByFileAndMap",
@@ -1618,7 +3061,11 @@ public sealed class StartPosPersistenceTests {
             AkronVirtualAssetReloadTracker.Remove(releasedSlot.TrackedVirtualAssetRegistrations);
         });
         pendingByMap[pendingKey] = new Dictionary<int, AkronStartPos> {
-            [slot] = new AkronStartPos { AreaSid = areaSid, Room = "room" }
+            [slot] = new AkronStartPos {
+                AreaSid = areaSid,
+                Room = "room",
+                ProfileId = AkronActions.GetCurrentStartPosProfileId()
+            }
         };
         runtimeSlots[stateSlotName] = owner;
 
@@ -1644,10 +3091,11 @@ public sealed class StartPosPersistenceTests {
     public void SetupCaptureRejectsPendingStartPosSnapshot() {
         int fileSlot = SaveData.Instance?.FileSlot ?? -1;
         string areaSid = "Tests/PendingExport-" + Guid.NewGuid().ToString("N");
-        string pendingKey = fileSlot.ToString() + "|" + areaSid;
+        string pendingKey = fileSlot.ToString() + "|" + AkronActions.GetCurrentStartPosProfileId() + "|" + areaSid;
         AkronStartPos pendingStartPos = new AkronStartPos {
             AreaSid = areaSid,
             Room = "room",
+            ProfileId = AkronActions.GetCurrentStartPosProfileId(),
             StateSlotName = AkronActions.GetStartPosStateSlotName(areaSid, 1, fileSlot)
         };
         AkronModuleSession session = new AkronModuleSession {
@@ -1830,7 +3278,7 @@ public sealed class StartPosPersistenceTests {
         int successfulRestore = actionsSource.IndexOf("return true;", restoreNotification, StringComparison.Ordinal);
         Assert.True(successfulRestore > restoreNotification);
 
-        int persistedStartPos = actionsSource.IndexOf("PersistStartPos(slot, startPos, fileSlot, saveData)", StringComparison.Ordinal);
+        int persistedStartPos = actionsSource.IndexOf("PersistStartPos(slot, startPos, fileSlot, out previousMetadataLost)", StringComparison.Ordinal);
         Assert.True(persistedStartPos >= 0);
         int captureNotification = actionsSource.IndexOf("StartPosFrameGeneration++;", persistedStartPos, StringComparison.Ordinal);
         Assert.True(captureNotification > persistedStartPos);
@@ -2047,6 +3495,29 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
+    public void FailedStartPosMetadataVerificationRestoresThePreviousPersistedBytes() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int save = source.IndexOf("internal static bool SaveAkronStartPosData()", StringComparison.Ordinal);
+        int saveEnd = source.IndexOf("private static Dictionary<string, int> BuildRoomOrder", save, StringComparison.Ordinal);
+        string savePath = SourceSlice(source, save, saveEnd - save);
+
+        int preserve = savePath.IndexOf("previousPersisted = AkronModule.Instance.ReadSaveData(fileSlot);", StringComparison.Ordinal);
+        int write = savePath.IndexOf("AkronModule.Instance.WriteSaveData(fileSlot, serialized);", StringComparison.Ordinal);
+        int verify = savePath.IndexOf("!persisted.SequenceEqual(serialized)", StringComparison.Ordinal);
+        int restore = savePath.IndexOf("previousPersistedLost = !RestoreAkronStartPosData(fileSlot, previousPersisted);", verify, StringComparison.Ordinal);
+        int restoreWrite = savePath.IndexOf("AkronModule.Instance.WriteSaveData(fileSlot, previousPersisted);", StringComparison.Ordinal);
+        int restoreVerify = savePath.IndexOf("restored.SequenceEqual(previousPersisted)", StringComparison.Ordinal);
+
+        Assert.True(preserve >= 0 && write > preserve && verify > write && restore > verify);
+        Assert.True(restoreWrite > restore && restoreVerify > restoreWrite);
+        Assert.Contains("if (writeStarted)", savePath);
+        Assert.Contains("WriteSaveData(null)", savePath);
+        Assert.Contains("private static bool RestoreAkronStartPosData", savePath);
+        Assert.Contains("return matches;", savePath);
+        Assert.Contains("return false;", savePath);
+    }
+
+    [Fact]
     public void SetupPackStartPosImportDoesNotResetEveryPersistedMap() {
         string source = File.ReadAllText(GetActionsSourcePath());
 
@@ -2238,6 +3709,916 @@ public sealed class StartPosPersistenceTests {
         Assert.Equal("keep-b", Assert.Single(saveData.StartPositionsByMap["Map/B"].Slots).Value.Room);
     }
 
+    [Fact]
+    public void AFailedRestartCopyClearsThePendingStartPosEntry() {
+        const int fileSlot = 3;
+        const int slot = 4;
+        AkronStartPos startPos = new AkronStartPos {
+            AreaSid = "Akron/PendingCleanup",
+            Room = "a-01",
+            StateSlotName = "Akron StartPos File 3 akron-pending-cleanup 4"
+        };
+        AddPendingStartPos(fileSlot, slot, startPos);
+        Assert.True(AkronActions.HasPendingStartPosState(startPos.StateSlotName));
+
+        AkronStartPosPersistence.Cancel(startPos.StateSlotName);
+        long generation = (long) typeof(AkronStartPosPersistence)
+            .GetField("nextGeneration", BindingFlags.Static | BindingFlags.NonPublic)!
+            .GetValue(null)!;
+        Assert.True(AkronStartPosPersistence.IsCurrent(startPos.StateSlotName, generation));
+
+        // AkronModule.Instance is null in a headless test, so this completion takes
+        // the "originating save file is gone" exit. That is one of the four exits
+        // which used to leave the pending entry in place forever and make the slot
+        // unloadable after a map round trip.
+        AkronActions.CompletePersistentStartPosCapture(
+            fileSlot,
+            startPos.ProfileId,
+            slot,
+            startPos,
+            startPos.StateSlotName,
+            generation,
+            AkronSaveLoadResult.Failed,
+            "the disk worker failed",
+            string.Empty,
+            TimeSpan.Zero);
+
+        Assert.False(AkronActions.HasPendingStartPosState(startPos.StateSlotName));
+    }
+
+    [Fact]
+    public void EveryRestartCopyExitClearsThePendingEntryFromOneFinallyBlock() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int completion = source.IndexOf("internal static void CompletePersistentStartPosCapture", StringComparison.Ordinal);
+        int completionEnd = source.IndexOf("private static void RollBackFailedStartPos", completion, StringComparison.Ordinal);
+        string completionPath = SourceSlice(source, completion, completionEnd - completion);
+
+        // The cleanup lives in a finally guarded by a single success flag, so a new exit
+        // path cannot reintroduce the poison entry by forgetting its own cleanup call.
+        int finallyBlock = completionPath.IndexOf("} finally {", StringComparison.Ordinal);
+        int guard = completionPath.IndexOf("if (!committed) {", finallyBlock, StringComparison.Ordinal);
+        int rollBack = completionPath.IndexOf("RollBackFailedStartPos(", guard, StringComparison.Ordinal);
+        int rollBackStagedInstall = completionPath.IndexOf("installedSnapshot?.Dispose();", finallyBlock, StringComparison.Ordinal);
+
+        Assert.True(finallyBlock >= 0);
+        Assert.True(guard > finallyBlock);
+        Assert.True(rollBack > guard);
+        // The staged install must roll back before the slot state is restored or deleted.
+        Assert.True(rollBackStagedInstall > finallyBlock && rollBackStagedInstall < guard);
+        Assert.Equal(1, CountOccurrences(completionPath, "RollBackFailedStartPos("));
+        Assert.Equal(0, CountOccurrences(completionPath, "DiscardFailedStartPos("));
+        Assert.Equal(1, CountOccurrences(completionPath, "committed = true;"));
+
+        // The parked previous state is released only once the snapshot install has
+        // committed and its metadata is written, and before the success flag is set.
+        int commitInstall = completionPath.IndexOf("installedSnapshot.Commit();", StringComparison.Ordinal);
+        int releaseRollback = completionPath.IndexOf("ReleaseStartPosRollback(stateSlotName);", StringComparison.Ordinal);
+        int persistMetadata = completionPath.IndexOf("PersistStartPos(slot, startPos, fileSlot, out previousMetadataLost)", StringComparison.Ordinal);
+        int commitFlag = completionPath.IndexOf("committed = true;", StringComparison.Ordinal);
+        Assert.True(persistMetadata >= 0 && commitInstall > persistMetadata);
+        Assert.True(releaseRollback > commitInstall && releaseRollback < commitFlag);
+        Assert.Contains(
+            "installedSnapshot?.PreviousSnapshotLost == true || previousMetadataLost",
+            completionPath);
+    }
+
+    [Fact]
+    public void ADiscardedStartPosLeavesNoLoadableRemains() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int discard = source.IndexOf("private static void DiscardFailedStartPos", StringComparison.Ordinal);
+        int discardEnd = source.IndexOf("private static void PublishPendingStartPos", discard, StringComparison.Ordinal);
+        string discardPath = SourceSlice(source, discard, discardEnd - discard);
+
+        Assert.Contains("RemovePendingStartPos(fileSlot, slot, startPos);", discardPath);
+        Assert.Contains("CancelStartPosPersistence(startPos.StateSlotName);", discardPath);
+        Assert.Contains("AkronSaveLoadService.ClearRuntimeState(startPos.StateSlotName);", discardPath);
+        Assert.Contains("RemovePersistedStartPos(", discardPath);
+        Assert.Contains("session.StartPositions.Remove(normalizedSlot);", discardPath);
+        // The in-place catalog mutation has to invalidate the cached StartPos list.
+        Assert.Contains("MarkStartPosCatalogChanged();", discardPath);
+        Assert.Contains("was removed because", discardPath);
+    }
+
+    [Fact]
+    public void ARoomChangeCannotForceAStartPosLoadOntoTheColdPath() {
+        string moduleSource = File.ReadAllText(GetModuleSourcePath());
+        string saveLoadSource = File.ReadAllText(GetSaveLoadSourcePath());
+        string playerRuntimeSource = File.ReadAllText(GetPlayerRuntimeSourcePath());
+
+        // The warm slot is selected by map SID, save file and session nonce. The nonce is
+        // regenerated only from the Level.Begin hook, which Celeste runs when the chapter
+        // scene starts, not when the player walks into the next room - the repository
+        // itself splits those two events (DeathsSinceLevelLoad in Begin,
+        // DeathsSinceRoomTransition in Player.OnTransition). So a cross-room load in the
+        // same session stays on the warm path and never pays for reconstruction.
+        Assert.Equal(1, CountOccurrences(moduleSource, "Session.CurrentSessionNonce ="));
+        int begin = moduleSource.IndexOf("private static void LevelOnBegin(", StringComparison.Ordinal);
+        int beginEnd = moduleSource.IndexOf("private static void LevelOnEnd(", begin, StringComparison.Ordinal);
+        Assert.Contains("Session.CurrentSessionNonce =", SourceSlice(moduleSource, begin, beginEnd - begin));
+        Assert.Contains("On.Celeste.Level.Begin += LevelOnBegin;", moduleSource);
+        Assert.Contains("Session.DeathsSinceRoomTransition = 0;", playerRuntimeSource);
+
+        int matches = saveLoadSource.IndexOf(
+            "private static bool MatchesCurrentNativeSession(",
+            StringComparison.Ordinal);
+        int matchesEnd = saveLoadSource.IndexOf("private static void CaptureCuratedSessionState(", matches, StringComparison.Ordinal);
+        string matchesPath = SourceSlice(saveLoadSource, matches, matchesEnd - matches);
+        Assert.DoesNotContain("Session.Level", matchesPath);
+        Assert.DoesNotContain("LevelName", matchesPath);
+
+        // Nothing on the room-change path drops the warm clone either.
+        int transition = playerRuntimeSource.IndexOf("private static void PlayerOnTransition(", StringComparison.Ordinal);
+        int transitionEnd = playerRuntimeSource.IndexOf("private static void ApplyDashCountOverride(", transition, StringComparison.Ordinal);
+        string transitionPath = transitionEnd > transition
+            ? SourceSlice(playerRuntimeSource, transition, transitionEnd - transition)
+            : SourceTail(playerRuntimeSource, transition);
+        Assert.DoesNotContain("ClearRuntimeState", transitionPath);
+        Assert.DoesNotContain("DiscardRuntimeStateMemory", transitionPath);
+    }
+
+    [Fact]
+    public void EveryStartPosLoadOutcomeReachesThePlayer() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int load = source.IndexOf("public static void LoadStartPos(Level level)", StringComparison.Ordinal);
+        int loadEnd = source.IndexOf("public static void LoadStartPosSlot(", load, StringComparison.Ordinal);
+        string loadPath = SourceSlice(source, load, loadEnd - load);
+
+        // The two deferred-boundary guards used to return without a word, which looks
+        // exactly like a dead hotkey.
+        Assert.Contains("was not loaded: the scene changed.", loadPath);
+        Assert.Contains("was not loaded: a capture is still finishing.", loadPath);
+
+        // The deferred boundary swallows exceptions, so the restore reports its own.
+        int restore = source.IndexOf(
+            "private static bool RestoreStartPos(Level level, AkronStartPos startPos",
+            StringComparison.Ordinal);
+        int restoreEnd = source.IndexOf("private static void ReportStartPosLoadFailure(", restore, StringComparison.Ordinal);
+        string restorePath = SourceSlice(source, restore, restoreEnd - restore);
+        Assert.Contains("catch (Exception exception)", restorePath);
+        Assert.Contains("ReportStartPosLoadFailure(", restorePath);
+
+        // A rolled-back cold restore has to say that nothing changed, or it is
+        // indistinguishable from the load never having run.
+        string saveLoadSource = File.ReadAllText(GetSaveLoadSourcePath());
+        Assert.Contains("nothing was changed and you are still in ", saveLoadSource);
+        Assert.Contains("its restart copy is still finishing", saveLoadSource);
+        Assert.Contains("no restart copy of this StartPos exists on disk", saveLoadSource);
+    }
+
+    // What the refusal is about decides the sentence, and it is carried from the graph to
+    // the toast through five hops. Every one of them can silently drop it and leave the
+    // unit tests on AkronStartPosRefusal.Describe passing while no load in the game ever
+    // reaches the map sentence again - which is the failure the message before this one
+    // shipped with. Each hop is pinned where it happens rather than anywhere in the file.
+    [Fact]
+    public void AMapChangeRefusalKeepsItsKindAllTheWayToTheToast() {
+        // 1. the rebuild's returned failure, and 2. a refusal thrown past the graph's own
+        // handlers, both reach the same two fields on the load.
+        string saveLoadSource = File.ReadAllText(GetSaveLoadSourcePath());
+        Assert.Contains(
+            "SetPersistentSnapshotFailure(\"rebuild \" + restore.Error, restore.RefusedTypeName, restore.RefusedKind);",
+            saveLoadSource);
+        Assert.Contains("refusal?.RefusedKind ?? AkronReconstructionRefusalKind.SavedObject", saveLoadSource);
+
+        // 3. the load hands both to the report rather than the type name alone.
+        string actionsSource = File.ReadAllText(GetActionsSourcePath());
+        int gate = actionsSource.IndexOf(
+            "private static bool RestoreStartPosUnderPacingGate(",
+            StringComparison.Ordinal);
+        string gatePath = SourceTail(actionsSource, gate);
+        Assert.Contains("AkronSaveLoadService.LastPersistentSnapshotRefusedKind", gatePath);
+
+        // 4. the deferred boundary's own catch does the same for a thrown refusal.
+        int restore = actionsSource.IndexOf(
+            "private static bool RestoreStartPos(Level level, AkronStartPos startPos",
+            StringComparison.Ordinal);
+        int restoreEnd = actionsSource.IndexOf(
+            "private static void ReportStartPosLoadFailure(",
+            restore,
+            StringComparison.Ordinal);
+        string restorePath = SourceSlice(actionsSource, restore, restoreEnd - restore);
+        Assert.Contains("refusal?.RefusedKind ?? AkronReconstructionRefusalKind.SavedObject", restorePath);
+
+        // 5. the report builds the sentence from both.
+        int report = actionsSource.IndexOf(
+            "private static void ReportStartPosLoadFailure(",
+            StringComparison.Ordinal);
+        int reportEnd = actionsSource.IndexOf(
+            "private static string DescribeRestoreFailure(",
+            report,
+            StringComparison.Ordinal);
+        string reportPath = SourceSlice(actionsSource, report, reportEnd - report);
+        Assert.Contains(
+            "AkronStartPosRefusal.Describe(slotLabel, refusedTypeName, refusedKind)",
+            reportPath);
+    }
+
+    [Fact]
+    public void AFailedSetKeepsTheStartPosTheSlotAlreadyHeld() {
+        const int fileSlot = 6;
+        const int slot = 3;
+        AkronStartPos startPos = new AkronStartPos {
+            AreaSid = "Akron/AtomicSet",
+            Room = "b-02",
+            StateSlotName = "Akron StartPos File 6 akron-atomic-set 3 " + Guid.NewGuid().ToString("N")
+        };
+
+        try {
+            // The StartPos the slot already held: a real snapshot in the real snapshot
+            // directory, written through the same call the persistence worker uses.
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                startPos.StateSlotName,
+                "Akron/AtomicSet",
+                "b-01",
+                fileSlot,
+                MinimalReconstructionDocument(),
+                out string saveError), saveError);
+            Assert.True(AkronStartPosReconstruction.HasSnapshot(startPos.StateSlotName));
+
+            // Now a new Set on the same slot: it parks what the slot held, publishes its
+            // own pending entry, and its restart copy then fails.
+            BeginStartPosRollback(slot, startPos.StateSlotName);
+            AddPendingStartPos(fileSlot, slot, startPos);
+            AkronStartPosPersistence.Cancel(startPos.StateSlotName);
+            long generation = CurrentPersistenceGeneration();
+            Assert.True(AkronStartPosPersistence.IsCurrent(startPos.StateSlotName, generation));
+
+            CompleteWithFailure(fileSlot, slot, startPos, generation, "the disk worker failed");
+
+            // The failed Set is the no-op: the previous snapshot is still there and still
+            // loads. Before this change the failure deleted it along with its metadata.
+            Assert.True(AkronStartPosReconstruction.HasSnapshot(startPos.StateSlotName));
+            Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
+                startPos.StateSlotName,
+                out AkronReconstructionDocument document,
+                out string loadError), loadError);
+            Assert.Equal("b-01", document.Room);
+            Assert.Equal(startPos.StateSlotName, document.SlotName);
+            // The pending marker is gone, so the slot is loadable again rather than stuck
+            // reporting that its restart copy has not finished.
+            Assert.False(AkronActions.HasPendingStartPosState(startPos.StateSlotName));
+        } finally {
+            AkronStartPosReconstruction.DeleteSnapshot(startPos.StateSlotName);
+        }
+    }
+
+    // startpos-set answers "is a StartPos active", which was read as "is it on disk".
+    // Those are minutes apart: a Set returns as soon as its warm clone exists, and the
+    // restart copy behind it parks while the player is in control. Measured on the Windows
+    // machine at twenty-five minutes of play with nothing on disk, while the automation
+    // query reported startpos-set: true throughout. The queue depth is what shows that
+    // from outside.
+    [Fact]
+    public void OutstandingRestartCopiesAreCounted() {
+        const int fileSlot = 7;
+        const int slot = 5;
+        AkronStartPos startPos = new AkronStartPos {
+            AreaSid = "Akron/RestartCopyCount",
+            Room = "c-01",
+            StateSlotName = "Akron StartPos File 7 akron-restart-copy-count 5 " + Guid.NewGuid().ToString("N")
+        };
+        int outstandingBefore = AkronActions.PendingStartPosStateCount;
+
+        // A Set publishes a pending entry for its slot and returns. Until that Set
+        // commits, its restart copy is outstanding and the slot is not on disk.
+        AddPendingStartPos(fileSlot, slot, startPos);
+        try {
+            Assert.True(AkronActions.HasPendingStartPosState(startPos.StateSlotName));
+            Assert.Equal(outstandingBefore + 1, AkronActions.PendingStartPosStateCount);
+            Assert.False(AkronStartPosReconstruction.HasSnapshot(startPos.StateSlotName));
+        } finally {
+            RemovePendingStartPosForTest(fileSlot, slot);
+        }
+
+        Assert.Equal(outstandingBefore, AkronActions.PendingStartPosStateCount);
+    }
+
+    [Fact]
+    public void DurabilityIsReportedSeparatelyFromWhetherAStartPosIsSet() {
+        string status = File.ReadAllText(GetSourcePath("Commands", "akron-startpos-commands.cs"));
+
+        // All three, and startpos-set still there: it keeps its own meaning rather than
+        // being redefined under an existing gate's feet.
+        Assert.Contains("Log(\"startpos-set: \"", status);
+        Assert.Contains("Log(\"startpos-snapshot-on-disk: \" +", status);
+        Assert.Contains("AkronStartPosReconstruction.HasSnapshot(stateSlotName)", status);
+        Assert.Contains("Log(\"startpos-restart-copy-outstanding: \" +", status);
+        Assert.Contains("AkronActions.HasPendingStartPosState(stateSlotName)", status);
+        Assert.Contains(
+            "Log(\"startpos-restart-copies-outstanding: \" +\n            AkronActions.PendingStartPosStateCount",
+            status.Replace("\r\n", "\n"));
+    }
+
+    // A refusal reaches the player as a toast, and no command could report the text of one
+    // Akron raised, so the wording this branch reworked twice could not be asserted in a
+    // scripted check. It is read back from the one place every toast passes through.
+    [Fact]
+    public void MessagesRaisedForThePlayerAreReadableAfterwards() {
+        string first = "Akron read-back first " + Guid.NewGuid().ToString("N");
+        string second = "Akron read-back second " + Guid.NewGuid().ToString("N");
+        long raisedBefore = AkronToast.RaisedMessageCount;
+
+        // The recording call the constructor makes. Constructing the entity itself needs a
+        // live FNA, which a headless run does not have.
+        AkronToast.RecordRaisedMessage(first);
+        AkronToast.RecordRaisedMessage(second);
+
+        Assert.Equal(raisedBefore + 2, AkronToast.RaisedMessageCount);
+        Assert.Equal(new[] { first, second }, AkronToast.GetRecentMessages(2));
+
+        // Bounded, and it drops the oldest rather than the newest: a gate reads the tail.
+        for (int index = 0; index < 40; index++) {
+            AkronToast.RecordRaisedMessage(
+                "Akron read-back filler " + index.ToString(CultureInfo.InvariantCulture));
+        }
+        Assert.DoesNotContain(first, AkronToast.GetRecentMessages(128));
+        Assert.Equal("Akron read-back filler 39", Assert.Single(AkronToast.GetRecentMessages(1)));
+
+        // The constructor is what calls it, which is the half this headless run cannot
+        // reach: without this line a real message is shown and recorded nowhere.
+        Assert.Contains(
+            "sequence = RecordRaisedMessage(message);",
+            File.ReadAllText(GetSourcePath("Core", "AkronToast.cs")),
+            StringComparison.Ordinal);
+    }
+
+    // The read-back is only usable by an in-game gate if the file queue will run it, and
+    // the queue refuses anything not on its allowlist. This asserts the pair: the command
+    // exists, and a command file naming it parses.
+    [Fact]
+    public void TheMessageReadBackCommandIsAllowlistedForAutomation() {
+        Assert.Contains(
+            "[Command(\"akron_qa_messages\"",
+            File.ReadAllText(GetQaCommandsSourcePath()),
+            StringComparison.Ordinal);
+        Assert.True(AkronAutomationService.TryParseCommandFileForTesting(
+            "token: akron-message-read-back-token-0123456789\nakron_qa_messages 3\n",
+            "akron-message-read-back-token-0123456789",
+            out IReadOnlyList<string> commands,
+            out string error), error);
+        Assert.Equal("akron_qa_messages 3", Assert.Single(commands));
+    }
+
+    [Fact]
+    public void AnOutstandingRestartCopyFailingKeepsTheCommittedStartPosLoadable() {
+        const int fileSlot = 9;
+        const int slot = 2;
+        string stateSlotName = "Akron StartPos File 9 akron-outstanding-job 2 " + Guid.NewGuid().ToString("N");
+        AkronStartPos replacement = new AkronStartPos {
+            AreaSid = "Akron/OutstandingJob",
+            Room = "e-02",
+            StateSlotName = stateSlotName
+        };
+
+        try {
+            // A StartPos that is committed and loadable: a real snapshot on disk plus
+            // the warm clone that serves same-session loads.
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                stateSlotName,
+                "Akron/OutstandingJob",
+                "e-01",
+                fileSlot,
+                MinimalReconstructionDocument(),
+                out string saveError), saveError);
+            StoreRuntimeSlotForTest(stateSlotName, "e-01", "Akron/OutstandingJob");
+
+            // Set over it. The Set reports success and its restart copy is queued.
+            // That is the state a slot now spends a whole session in, because the
+            // worker does not run at all while the player is in control - so an
+            // outstanding job is alive long enough to meet anything that can fail it.
+            BeginStartPosRollback(slot, stateSlotName);
+            StoreRuntimeSlotForTest(stateSlotName, "e-02", "Akron/OutstandingJob");
+            AddPendingStartPos(fileSlot, slot, replacement);
+            AkronStartPosPersistence.Cancel(stateSlotName);
+
+            // The outstanding job fails, long after the Set said it had worked.
+            CompleteWithFailure(
+                fileSlot,
+                slot,
+                replacement,
+                CurrentPersistenceGeneration(),
+                "the save file it belongs to is no longer open");
+
+            // Nothing the slot already had may go with it. The snapshot is still on
+            // disk, still loads, and still describes its own room; the warm clone on
+            // the canonical name is the committed one again, not the abandoned Set.
+            Assert.True(AkronStartPosReconstruction.HasSnapshot(stateSlotName));
+            Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
+                stateSlotName,
+                out AkronReconstructionDocument document,
+                out string loadError), loadError);
+            Assert.Equal("e-01", document.Room);
+            AkronSaveLoadSlotLease? lease = AkronSaveLoadService.RetainRuntimeState(stateSlotName);
+            try {
+                Assert.NotNull(lease?.Slot);
+                Assert.Equal("e-01", lease!.Slot!.LevelName);
+            } finally {
+                lease?.Dispose();
+            }
+            // And the slot is loadable rather than stuck reporting a pending copy.
+            Assert.False(AkronActions.HasPendingStartPosState(stateSlotName));
+        } finally {
+            AkronStartPosReconstruction.DeleteSnapshot(stateSlotName);
+            AkronSaveLoadService.DiscardRuntimeStateMemory(stateSlotName);
+        }
+    }
+
+    [Fact]
+    public void APendingRestartCopyThatNothingWillFinishDoesNotStallTheLoad() {
+        const int fileSlot = 10;
+        const int slot = 7;
+        string stateSlotName = "Akron StartPos File 10 akron-load-wait 7 " + Guid.NewGuid().ToString("N");
+        AkronStartPos startPos = new AkronStartPos {
+            AreaSid = "Akron/LoadWait",
+            Room = "f-01",
+            StateSlotName = stateSlotName
+        };
+        AddPendingStartPos(fileSlot, slot, startPos);
+
+        try {
+            Stopwatch timer = Stopwatch.StartNew();
+            AkronStartPosPersistence.FinishPendingRestartCopy(stateSlotName);
+            timer.Stop();
+
+            // No job is queued or running for this slot, so nothing will ever clear
+            // the pending marker. The wait has to notice that on the first pump: it
+            // holds the game thread, and burning the whole budget here would turn a
+            // slot that cannot load into a freeze on top of it.
+            Assert.True(timer.Elapsed < TimeSpan.FromSeconds(2), timer.Elapsed.ToString());
+            Assert.True(AkronActions.HasPendingStartPosState(stateSlotName));
+        } finally {
+            RemovePendingStartPosForTest(fileSlot, slot);
+        }
+    }
+
+    [Fact]
+    public void ALoadThatCannotComeFromMemoryFinishesTheRestartCopyItNeeds() {
+        string actionsSource = File.ReadAllText(GetActionsSourcePath());
+        int restore = actionsSource.IndexOf(
+            "private static bool RestoreStartPosUnderPacingGate(",
+            StringComparison.Ordinal);
+        int restoreEnd = actionsSource.IndexOf("private static void ReportStartPosRestoreTiming(", restore, StringComparison.Ordinal);
+        string restorePath = SourceSlice(actionsSource, restore, restoreEnd - restore);
+
+        int memoryCheck = restorePath.IndexOf(
+            "AkronSaveLoadService.WillRestoreFromRuntimeMemory(level, startPos.StateSlotName)",
+            StringComparison.Ordinal);
+        int finish = restorePath.IndexOf(
+            "AkronStartPosPersistence.FinishPendingRestartCopy(startPos.StateSlotName)",
+            memoryCheck,
+            StringComparison.Ordinal);
+        int catalog = restorePath.IndexOf("currentStartPositionsByMap =", StringComparison.Ordinal);
+        int load = restorePath.IndexOf("AkronSaveLoadService.LoadRuntimeState(", StringComparison.Ordinal);
+
+        // A load that will be served from memory must never wait, and the wait has to
+        // run before the catalog is snapshotted: a completion applied during it writes
+        // the StartPos into save data, and the restore afterwards would put the old
+        // catalog back over it.
+        Assert.True(memoryCheck >= 0);
+        Assert.True(finish > memoryCheck);
+        Assert.True(catalog > finish);
+        Assert.True(load > catalog);
+    }
+
+    [Fact]
+    public void AFailedSetLeavesNoAbandonedWarmCloneOnASnapshotOnlySlot() {
+        const int fileSlot = 8;
+        const int slot = 5;
+        string stateSlotName = "Akron StartPos File 8 akron-atomic-set-cold 5 " + Guid.NewGuid().ToString("N");
+        AkronStartPos startPos = new AkronStartPos {
+            AreaSid = "Akron/AtomicSetCold",
+            Room = "d-02",
+            StateSlotName = stateSlotName
+        };
+
+        try {
+            // A slot whose warm clone is gone - after a restart, or after a session
+            // mismatch dropped it - still has its snapshot, and that snapshot is what the
+            // previous metadata pairs with.
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                stateSlotName,
+                "Akron/AtomicSetCold",
+                "d-01",
+                fileSlot,
+                MinimalReconstructionDocument(),
+                out string saveError), saveError);
+            BeginStartPosRollback(slot, stateSlotName);
+
+            // The new Set's capture, on the canonical name, exactly where SaveRuntimeState
+            // puts it. Nothing was parked, because there was no warm clone to park.
+            StoreRuntimeSlotForTest(stateSlotName, "d-02", "Akron/AtomicSetCold");
+            Assert.True(AkronSaveLoadService.HasRuntimeStateInMemory(stateSlotName));
+
+            AddPendingStartPos(fileSlot, slot, startPos);
+            AkronStartPosPersistence.Cancel(stateSlotName);
+            CompleteWithFailure(fileSlot, slot, startPos, CurrentPersistenceGeneration(), "the disk worker failed");
+
+            // The abandoned capture must not survive: leaving it on the canonical name
+            // would make the next load restore the new state under the previous metadata.
+            Assert.False(AkronSaveLoadService.HasRuntimeStateInMemory(stateSlotName));
+            Assert.True(AkronStartPosReconstruction.HasSnapshot(stateSlotName));
+        } finally {
+            AkronStartPosReconstruction.DeleteSnapshot(stateSlotName);
+            AkronSaveLoadService.DiscardRuntimeStateMemory(stateSlotName);
+        }
+    }
+
+    [Fact]
+    public void AFailedSetOnAnEmptySlotStillLeavesTheSlotEmpty() {
+        const int fileSlot = 7;
+        const int slot = 4;
+        AkronStartPos startPos = new AkronStartPos {
+            AreaSid = "Akron/AtomicSetEmpty",
+            Room = "c-01",
+            StateSlotName = "Akron StartPos File 7 akron-atomic-set-empty 4 " + Guid.NewGuid().ToString("N")
+        };
+
+        Assert.False(AkronStartPosReconstruction.HasSnapshot(startPos.StateSlotName));
+        BeginStartPosRollback(slot, startPos.StateSlotName);
+        AddPendingStartPos(fileSlot, slot, startPos);
+        AkronStartPosPersistence.Cancel(startPos.StateSlotName);
+        long generation = CurrentPersistenceGeneration();
+
+        CompleteWithFailure(fileSlot, slot, startPos, generation, "the disk worker failed");
+
+        Assert.False(AkronStartPosReconstruction.HasSnapshot(startPos.StateSlotName));
+        Assert.False(AkronActions.HasPendingStartPosState(startPos.StateSlotName));
+    }
+
+    [Fact]
+    public void RollingBackAFailedSetNeverTouchesTheSlotsDurableState() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int restore = source.IndexOf("private static void RestoreStartPosRollback", StringComparison.Ordinal);
+        int restoreEnd = source.IndexOf("private static void CancelStartPosPersistence", restore, StringComparison.Ordinal);
+        string restorePath = SourceSlice(source, restore, restoreEnd - restore);
+
+        // Keeping the previous StartPos means keeping every durable part of it. None of
+        // these may appear on the path that puts a slot back.
+        Assert.True(restore >= 0);
+        Assert.DoesNotContain("ClearRuntimeState", restorePath);
+        Assert.DoesNotContain("DeleteSnapshot", restorePath);
+        Assert.DoesNotContain("RemovePersistedStartPos", restorePath);
+        Assert.Contains("RestoreParkedRuntimeState", restorePath);
+        Assert.Contains("RestoreParkedRuntimeFreshBaseline", restorePath);
+        Assert.Contains("MarkStartPosCatalogChanged();", restorePath);
+        Assert.Contains("DescribeFailedStartPosReplacement(normalizedSlot, reason, previousDurableStateLost)", restorePath);
+
+        // Which outcome applies is read from what the slot held when the Set began.
+        int begin = source.IndexOf("private static StartPosRollback BeginStartPosRollback", StringComparison.Ordinal);
+        int beginEnd = source.IndexOf("private static void ReleaseStartPosRollback", begin, StringComparison.Ordinal);
+        string beginPath = SourceSlice(source, begin, beginEnd - begin);
+        Assert.Contains("HadCommittedState = previousEntry != null", beginPath);
+        Assert.Contains("AkronStartPosReconstruction.HasSnapshot(stateSlotName)", beginPath);
+        Assert.Contains("AkronSaveLoadService.ParkRuntimeState(stateSlotName)", beginPath);
+        Assert.Contains("AkronStartPosPersistence.ParkRuntimeFreshBaseline(stateSlotName)", beginPath);
+    }
+
+    private static AkronReconstructionDocument MinimalReconstructionDocument() {
+        return new AkronReconstructionDocument {
+            RootNodeId = 1,
+            Nodes = new List<AkronReconstructionNode> {
+                new AkronReconstructionNode {
+                    Id = 1,
+                    Kind = "object",
+                    TypeName = typeof(object).AssemblyQualifiedName!
+                }
+            }
+        };
+    }
+
+    private static void BeginStartPosRollback(int slot, string stateSlotName) {
+        typeof(AkronActions)
+            .GetMethod("BeginStartPosRollback", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, new object?[] { slot, stateSlotName, null });
+    }
+
+    // Puts a real runtime slot on the canonical name through the real StoreRuntimeSlot, the
+    // way a capture does. CaptureRuntimeState needs a live Level, which a headless test has
+    // no way to build, so the slot itself is constructed directly.
+    private static void StoreRuntimeSlotForTest(string slotName, string levelName, string mapSid) {
+        typeof(AkronSaveLoadService)
+            .GetMethod("StoreRuntimeSlot", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, new object[] {
+                slotName,
+                new AkronSaveLoadSlot(slotName, levelName, mapSid, saveTimeAndDeaths: false)
+            });
+    }
+
+    private static long CurrentPersistenceGeneration() {
+        return (long) typeof(AkronStartPosPersistence)
+            .GetField("nextGeneration", BindingFlags.Static | BindingFlags.NonPublic)!
+            .GetValue(null)!;
+    }
+
+    // AkronModule.Instance is null in a headless test, so the completion takes the
+    // "originating save file is gone" exit, one of the four failure exits.
+    private static void CompleteWithFailure(
+        int fileSlot,
+        int slot,
+        AkronStartPos startPos,
+        long generation,
+        string error
+    ) {
+        AkronActions.CompletePersistentStartPosCapture(
+            fileSlot,
+            startPos.ProfileId,
+            slot,
+            startPos,
+            startPos.StateSlotName,
+            generation,
+            AkronSaveLoadResult.Failed,
+            error,
+            string.Empty,
+            TimeSpan.Zero);
+    }
+
+    private static void AddPendingStartPos(int fileSlot, int slot, AkronStartPos startPos) {
+        Type actions = typeof(AkronActions);
+        startPos.ProfileId = AkronActions.GetCurrentStartPosProfileId();
+        string key = (string) actions
+            .GetMethod("BuildPendingStartPosKey", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, new object?[] { fileSlot, startPos.AreaSid, startPos.ProfileId })!;
+        Dictionary<string, Dictionary<int, AkronStartPos>> pendingByKey =
+            (Dictionary<string, Dictionary<int, AkronStartPos>>) actions
+                .GetField("PendingStartPositionsByFileAndMap", BindingFlags.Static | BindingFlags.NonPublic)!
+                .GetValue(null)!;
+        if (!pendingByKey.TryGetValue(key, out Dictionary<int, AkronStartPos>? pending)) {
+            pending = new Dictionary<int, AkronStartPos>();
+            pendingByKey[key] = pending;
+        }
+        pending[slot] = startPos;
+    }
+
+    private static void RemovePendingStartPosForTest(int fileSlot, int slot) {
+        Type actions = typeof(AkronActions);
+        Dictionary<string, Dictionary<int, AkronStartPos>> pendingByKey =
+            (Dictionary<string, Dictionary<int, AkronStartPos>>) actions
+                .GetField("PendingStartPositionsByFileAndMap", BindingFlags.Static | BindingFlags.NonPublic)!
+                .GetValue(null)!;
+        foreach (Dictionary<int, AkronStartPos> pending in pendingByKey.Values) {
+            pending.Remove(slot);
+        }
+        foreach (string key in pendingByKey
+                     .Where(entry => entry.Value.Count == 0)
+                     .Select(entry => entry.Key)
+                     .ToArray()) {
+            pendingByKey.Remove(key);
+        }
+    }
+
+    // --- Snapshot pacing -------------------------------------------------
+    // The worker allocates hundreds of megabytes per StartPos and every gen0
+    // collection that causes stops the game thread, so the worker does not run
+    // at all while the player is in control. It stops; it is not slowed down.
+
+    [Fact]
+    public void TheSnapshotWorkerStopsForExactlyAsLongAsThePlayerHasControl() {
+        bool previousActive = AkronSnapshotPacing.GameplayActive;
+        bool previousForcedOpen = AkronSnapshotPacing.ForcedOpen;
+        try {
+            AkronSnapshotPacing.ForcedOpen = false;
+
+            AkronSnapshotPacing.GameplayActive = false;
+            Assert.False(AkronSnapshotPacing.ShouldSuspend());
+
+            AkronSnapshotPacing.GameplayActive = true;
+            Assert.True(AkronSnapshotPacing.ShouldSuspend());
+
+            // Shutdown joins the worker. A job mid-sleep must finish rather than
+            // hold the join open until the player happens to pause.
+            AkronSnapshotPacing.ForcedOpen = true;
+            Assert.False(AkronSnapshotPacing.ShouldSuspend());
+        } finally {
+            AkronSnapshotPacing.GameplayActive = previousActive;
+            AkronSnapshotPacing.ForcedOpen = previousForcedOpen;
+        }
+    }
+
+    // Quitting cancels the job in flight, and the one place that knows how to say that in
+    // a sentence a player can read is RunWorker's catch (OperationCanceledException). Both
+    // stages of a job have to let the cancellation reach it.
+    //
+    // The capture walk paces once per document node, so the common cancellation lands
+    // there - inside a catch that turned every exception into Failed("$", "<type>:
+    // <message>"). The rollback message the player then read was "$:
+    // OperationCanceledException: Celeste closed before its restart copy finished" rather
+    // than the sentence on its own, and RunWorker's dedicated handler was close to dead
+    // for the case it exists for. The snapshot write is the same story one stage later: it
+    // paces once per buffer and reported through its own out-parameter.
+    [Fact]
+    public void QuittingMidJobReachesTheHandlerThatKnowsHowToWordIt() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-cancelled-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        bool previousCancelled = AkronSnapshotPacing.Cancelled;
+        try {
+            AkronReconstructionGraph graph = new AkronReconstructionGraph(_ => false);
+            PacingChainNode saved = BuildPacingChain(600, valueOffset: 10);
+            PacingChainNode baseline = BuildPacingChain(600, valueOffset: 0);
+
+            AkronSnapshotPacing.BeginPacedWork();
+            try {
+                AkronSnapshotPacing.Cancelled = true;
+                OperationCanceledException cancelledCapture = Assert.Throws<OperationCanceledException>(
+                    () => graph.Capture(saved, baseline));
+                Assert.Equal(AkronSnapshotPacing.CancelledMessage, cancelledCapture.Message);
+            } finally {
+                AkronSnapshotPacing.Cancelled = false;
+                AkronSnapshotPacing.EndPacedWork();
+            }
+
+            AkronReconstructionDocument document;
+            AkronSnapshotPacing.BeginPacedWork();
+            try {
+                AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+                Assert.True(capture.Success, capture.Error);
+                document = capture.Document;
+            } finally {
+                AkronSnapshotPacing.EndPacedWork();
+            }
+
+            AkronSnapshotPacing.BeginPacedWork();
+            try {
+                AkronSnapshotPacing.Cancelled = true;
+                OperationCanceledException cancelledWrite = Assert.Throws<OperationCanceledException>(
+                    () => AkronStartPosReconstruction.SaveSnapshot(
+                        "cancelled", "Map/A", "room", 0, document, out _, directory));
+                Assert.Equal(AkronSnapshotPacing.CancelledMessage, cancelledWrite.Message);
+            } finally {
+                AkronSnapshotPacing.Cancelled = false;
+                AkronSnapshotPacing.EndPacedWork();
+            }
+
+            // And the write took its half-finished file with it, cancelled or not.
+            Assert.Empty(Directory.GetFiles(directory));
+        } finally {
+            AkronSnapshotPacing.Cancelled = previousCancelled;
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PacingIsInertOnAnyThreadThatIsNotRunningAPacedJob() {
+        bool previousActive = AkronSnapshotPacing.GameplayActive;
+        bool previousForcedOpen = AkronSnapshotPacing.ForcedOpen;
+        try {
+            // The game thread also captures graphs. Pacing must never sleep it,
+            // which it cannot do because no paced job is in scope here.
+            AkronSnapshotPacing.GameplayActive = true;
+            AkronSnapshotPacing.ForcedOpen = false;
+            Stopwatch timer = Stopwatch.StartNew();
+            for (int call = 0; call < 100_000; call++) {
+                AkronSnapshotPacing.Pace();
+            }
+            timer.Stop();
+            Assert.True(timer.ElapsedMilliseconds < 1000, timer.ElapsedMilliseconds.ToString());
+        } finally {
+            AkronSnapshotPacing.GameplayActive = previousActive;
+            AkronSnapshotPacing.ForcedOpen = previousForcedOpen;
+        }
+    }
+
+    [Fact]
+    public void PacingRedistributesASnapshotsCostWithoutManufacturingAnyMore() {
+        // The whole justification for stopping the worker is that stopping is
+        // free: the same job, suspended and resumed repeatedly, must allocate
+        // the same number of bytes as one that runs straight through. An earlier
+        // in-game reading suggested throttling raised total allocation by 30%,
+        // which would have made pacing a net loss. This measures the worker
+        // thread itself, which is the only way to answer that without a run
+        // length confounding it.
+        string directory = Path.Combine(Path.GetTempPath(), "akron-pacing-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        bool previousActive = AkronSnapshotPacing.GameplayActive;
+        bool previousForcedOpen = AkronSnapshotPacing.ForcedOpen;
+        try {
+            AkronSnapshotPacing.ForcedOpen = false;
+            AkronSnapshotPacing.GameplayActive = false;
+            // Warm the reflection and type-name caches so the comparison covers
+            // the work, not one-time setup.
+            RunPacedSnapshot(directory, "warmup", out _);
+
+            RunPacedSnapshot(directory, "free", out long freeAllocated);
+
+            // Now hold the gate shut and open it in bursts, so the same job
+            // stops and restarts many times over.
+            AkronSnapshotPacing.GameplayActive = true;
+            long suspendedAllocated = 0;
+            Stopwatch suspendedTimer = Stopwatch.StartNew();
+            Thread worker = new Thread(() => RunPacedSnapshot(directory, "suspended", out suspendedAllocated));
+            worker.IsBackground = true;
+            worker.Start();
+            for (int cycle = 0; cycle < 6 && worker.IsAlive; cycle++) {
+                Thread.Sleep(30);
+                AkronSnapshotPacing.GameplayActive = false;
+                Thread.Sleep(15);
+                AkronSnapshotPacing.GameplayActive = true;
+            }
+            AkronSnapshotPacing.GameplayActive = false;
+            Assert.True(worker.Join(TimeSpan.FromSeconds(60)), "the suspended snapshot never finished");
+            suspendedTimer.Stop();
+
+            Assert.True(freeAllocated > 0);
+            // Five percent covers jitter in the shared reflection caches. A
+            // manufactured cost of the size that was reported would be six times
+            // this.
+            double ratio = suspendedAllocated / (double) freeAllocated;
+            Assert.True(ratio < 1.05,
+                "suspending the worker allocated " + suspendedAllocated + " bytes against " +
+                freeAllocated + " for an uninterrupted run");
+            // And it really did stop: the gate was shut for at least six 30 ms
+            // stretches, none of which can overlap the work.
+            Assert.True(suspendedTimer.ElapsedMilliseconds >= 180,
+                "the suspended run took " + suspendedTimer.ElapsedMilliseconds + " ms, so it never waited");
+        } finally {
+            AkronSnapshotPacing.GameplayActive = previousActive;
+            AkronSnapshotPacing.ForcedOpen = previousForcedOpen;
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // One whole paced job: the capture walk and the snapshot write, both of
+    // which call Pace, measured on the thread that runs them.
+    private static void RunPacedSnapshot(string directory, string slotName, out long allocatedBytes) {
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(_ => false);
+        PacingChainNode saved = BuildPacingChain(600, valueOffset: 10);
+        PacingChainNode baseline = BuildPacingChain(600, valueOffset: 0);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        AkronSnapshotPacing.BeginPacedWork();
+        try {
+            AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+            Assert.True(capture.Success, capture.Error);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                slotName, "map", "room", 0, capture.Document, out string error, directory), error);
+        } finally {
+            AkronSnapshotPacing.EndPacedWork();
+        }
+        allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+
+    private static PacingChainNode BuildPacingChain(int count, int valueOffset) {
+        PacingChainNode root = new PacingChainNode { Value = valueOffset };
+        PacingChainNode current = root;
+        for (int index = 1; index < count; index++) {
+            current.Next = new PacingChainNode { Value = valueOffset + index };
+            current = current.Next;
+        }
+        return root;
+    }
+
+    private sealed class PacingChainNode {
+        public int Value;
+        public string Label = new string('n', 64);
+        public int[] Payload = new int[32];
+        public PacingChainNode Next = null!;
+    }
+
+    [Fact]
+    public void ThePersistenceWorkerPacesExactlyTheWorkThatBuildsASnapshot() {
+        string persistenceSource = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
+        int worker = persistenceSource.IndexOf("private static void RunWorker()", StringComparison.Ordinal);
+        int workerEnd = persistenceSource.IndexOf("private static string BuildBaselineKey(Level level)", worker, StringComparison.Ordinal);
+        string workerBody = SourceSlice(persistenceSource, worker, workerEnd - worker);
+
+        // The scope opens before the persist call and closes in a finally, so a
+        // throw cannot leave the pacing scope attached to a pooled thread.
+        int begin = workerBody.IndexOf("AkronSnapshotPacing.BeginPacedWork();", StringComparison.Ordinal);
+        int persist = workerBody.IndexOf("AkronSaveLoadService.PersistRuntimeStateSnapshot(", begin, StringComparison.Ordinal);
+        int finallyBlock = workerBody.IndexOf("} finally {", persist, StringComparison.Ordinal);
+        int end = workerBody.IndexOf("AkronSnapshotPacing.EndPacedWork();", finallyBlock, StringComparison.Ordinal);
+        Assert.True(begin >= 0);
+        Assert.True(persist > begin);
+        Assert.True(end > finallyBlock);
+        Assert.Equal(1, CountOccurrences(workerBody, "AkronSnapshotPacing.BeginPacedWork();"));
+        Assert.Equal(1, CountOccurrences(workerBody, "AkronSnapshotPacing.EndPacedWork();"));
+
+        // Shutdown lifts the throttle before it drains the worker, and Start puts
+        // it back so an Everest reload does not run permanently unthrottled.
+        int shutdown = persistenceSource.IndexOf("public static void Shutdown()", StringComparison.Ordinal);
+        int shutdownForcedOpen = persistenceSource.IndexOf("AkronSnapshotPacing.ForcedOpen = true;", shutdown, StringComparison.Ordinal);
+        int shutdownDrain = persistenceSource.IndexOf("DrainWorkerForShutdown(runningWorker", shutdown, StringComparison.Ordinal);
+        Assert.True(shutdownForcedOpen > shutdown);
+        Assert.True(shutdownDrain > shutdownForcedOpen);
+        Assert.Contains("AkronSnapshotPacing.ForcedOpen = false;", persistenceSource, StringComparison.Ordinal);
+
+        // The gameplay signal is refreshed from the per-update pump, not from a
+        // level-only hook, so leaving a level cannot strand the throttle on.
+        int update = persistenceSource.IndexOf("public static void Update()", StringComparison.Ordinal);
+        int signal = persistenceSource.IndexOf("AkronSnapshotPacing.GameplayActive =", update, StringComparison.Ordinal);
+        int drain = persistenceSource.IndexOf("Completed.TryDequeue(", update, StringComparison.Ordinal);
+        Assert.True(signal > update && signal < drain);
+    }
+
+    private static int CountOccurrences(string source, string value) {
+        int count = 0;
+        for (int index = source.IndexOf(value, StringComparison.Ordinal);
+             index >= 0;
+             index = source.IndexOf(value, index + value.Length, StringComparison.Ordinal)) {
+            count++;
+        }
+        return count;
+    }
+
     private static string SourceSlice(string source, int start, int length) {
         Assert.InRange(start, 0, source.Length);
         Assert.InRange(length, 0, source.Length - start);
@@ -2251,23 +4632,23 @@ public sealed class StartPosPersistenceTests {
 
     private static Level CreateLevelWithRendererList(out List<Renderer> renderers) {
         Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
-        RendererList rendererList = (RendererList) Activator.CreateInstance(
-            typeof(RendererList),
-            BindingFlags.Instance | BindingFlags.NonPublic,
-            binder: null,
-            args: new object?[] { level },
-            culture: null
-        )!;
+        RendererList rendererList = (RendererList) RuntimeHelpers.GetUninitializedObject(typeof(RendererList));
         renderers = new List<Renderer>();
         rendererList.Renderers = renderers;
-        typeof(Scene).GetField(
-            "<RendererList>k__BackingField",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(level, rendererList);
+        SceneRendererListBackingField.SetValue(level, rendererList);
         return level;
     }
 
     private static TRenderer CreateUninitializedRenderer<TRenderer>() where TRenderer : Renderer {
         return (TRenderer) RuntimeHelpers.GetUninitializedObject(typeof(TRenderer));
+    }
+
+    private static ScreenWipe? GetLevelWipe(Level level) {
+        return LevelWipeField.GetValue(level) as ScreenWipe;
+    }
+
+    private static void SetLevelWipe(Level level, ScreenWipe wipe) {
+        LevelWipeField.SetValue(level, wipe);
     }
 
     private static object InvokeDetachTransientScreenWipes(Level level) {
@@ -2335,6 +4716,13 @@ public sealed class StartPosPersistenceTests {
 
     private static string GetQaCommandsSourcePath() {
         return GetSourcePath("Commands", "akron-qa-commands.cs");
+    }
+
+    // Anchored on a file this suite already locates rather than on a bare upward walk,
+    // so a copy of the same name under bin/ cannot be picked up instead.
+    private static string GetRepositoryFilePath(string fileName) {
+        string sourceDirectory = Path.GetDirectoryName(Path.GetDirectoryName(GetSaveLoadSourcePath()))!;
+        return Path.Combine(Path.GetDirectoryName(sourceDirectory)!, fileName);
     }
 
     private static string GetSourcePath(string directoryName, string fileName) {

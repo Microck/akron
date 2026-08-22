@@ -22,13 +22,13 @@ The overlay shows the current attempt status and tool state. It can export the w
 
 ## .akr files
 
-An `.akr` file is a strict ZIP archive with a manifest and one main payload. Current setup packs use a `setup.json` payload. StartPos and Whole packs also contain one compressed v7 snapshot entry per saved StartPos.
+An `.akr` file is a strict ZIP archive with a manifest and one main payload. Current setup packs use a `setup.json` payload. StartPos and Whole packs also contain one compressed v9 snapshot entry per saved StartPos.
 
 ```mermaid
 flowchart TD
   archive["example.akr"] --> manifest["manifest.json"]
   archive --> payload["setup.json"]
-  archive --> snapshots["startpos/*.v7.json.gz"]
+  archive --> snapshots["startpos/*.v9.json.gz"]
   manifest --> target["Format and target"]
   payload --> settings["Setup data"]
   snapshots --> roomState["Exact StartPos room state"]
@@ -53,6 +53,9 @@ Scoped imports replace only the selected portable settings. StartPos imports
 also replace every slot for the pack's target map while preserving slots for
 other maps. Setup packs keep machine-local paths, device choices, recording
 colorspace arguments, and the Auto Deafen hotkey unchanged.
+
+Setup packs created before `akron-setup-v6` cannot be imported. Recreate the
+setup and its StartPos slots in the current build, then export a new pack.
 
 ## Sharing guidance
 

@@ -122,6 +122,16 @@ public static partial class AkronActions {
         startPosInputWaitLevel = null;
     }
 
+    // The input wait holds the level completely still: the gameplay half of
+    // Level.Update is skipped and only the backdrops and the wipe advance. Nothing
+    // is simulating, the player is not in control, and the frame after it ends is
+    // the one the player times their first input against - so it is one of the very
+    // few in-level moments where the snapshot worker can run without putting a
+    // collection into a frame that is being played.
+    internal static bool IsStartPosInputWaitActive(Level level) {
+        return StartPosInputWait.Active && ReferenceEquals(level, startPosInputWaitLevel);
+    }
+
     private static void UpdateStartPosInputWaitPresentation(Level level) {
         // Keep backdrop-only presentation alive without advancing entities,
         // collision, coroutines, or any other gameplay-owned Level.Update work.

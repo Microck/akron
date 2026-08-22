@@ -32,6 +32,15 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public const int DeathParticleCanvasCells = DeathParticleCanvasSize * DeathParticleCanvasSize;
     public const int DefaultStartPosSlotCount = 15;
     public const int MinimumStartPosSelectableSlots = 15;
+
+    // Upper bound on configurable StartPos slots. This is a memory limit, not a
+    // UI preference. A slot that has been captured this session keeps a full
+    // deep-cloned Level graph alive: measured on the Linux test box, 15 warm
+    // slots take the managed heap from 424 MB to 631 MB, about 13.8 MB each,
+    // on top of a ~420 MB baseline. At 50 that is roughly 690 MB of retained
+    // clones. Slots that only exist on disk cost nothing until they are loaded.
+    // Raise this only with a fresh measurement, not by intuition.
+    public const int MaximumStartPosSlots = 50;
     private bool fpsBypass;
     private int fpsBypassTarget = 120;
     private bool tpsBypass;
@@ -63,6 +72,14 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int LagPauserRecoveryGraceMs { get; set; } = 750;
     public int LagPauserRepeatCooldownMs { get; set; } = 1000;
     public bool LagPauserIgnoreSpeedrunToolLoadStates { get; set; }
+    // Moves Celeste's forced blocking collection off death and room reload and
+    // onto the next StartPos load. On by default because the collection costs
+    // 222-265 ms of frozen process per death on the test box and nothing in
+    // Akron can make that cheaper; off is here because this changes engine
+    // behaviour for every mod in the process, so a player who hits memory
+    // behaviour it affects can put the engine back without uninstalling.
+    // See AkronEngineGarbageCollection.
+    public bool DeferEngineGarbageCollection { get; set; } = true;
     // Derived compatibility flag for exported/imported setup state. Runtime UI
     // should derive low-distraction from the visual-noise channel settings.
     public bool LowDistractionOverlay { get; set; }
@@ -272,6 +289,7 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool HideWindSnow { get; set; }
     public bool HideWaterfalls { get; set; }
     public bool HideTentacles { get; set; }
+    public bool DisablePlayback { get; set; }
     public bool HideHeatDistortion { get; set; }
     public bool NoStaminaFlash { get; set; }
     public bool RefillClarity { get; set; }

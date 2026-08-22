@@ -3,7 +3,7 @@ using Monocle;
 
 namespace Celeste.Mod.Akron;
 
-public sealed class AkronPolicyDecision
+public readonly struct AkronPolicyDecision
 {
     public AkronPolicyDecision(bool allowed, string message)
     {

@@ -7,7 +7,7 @@ Community Packs opens an in-game browser where you can find and import community
 
 ## Index URL
 
-The browser reads packs from a JSON catalog at the configured **Index URL** (shown at the top of the Community Packs window). The default catalog is hosted at `https://akron.micr.dev/catalog/index.json`. You can point this to a custom HTTPS URL or explicit local `file:///` path. Catalog entries can contain map-specific **StartPos**, **Auto Kill**, or **Auto Deafen** `.akr` packs.
+The browser reads packs from a JSON catalog at the configured **Index URL** (shown at the top of the Community Packs window). The default catalog is hosted at `https://akron.micr.dev/catalog/index.json`. You can point this to a custom URL or local `file:///` path. Catalog entries can contain map-specific **StartPos**, **Auto Kill**, or **Auto Deafen** `.akr` packs.
 
 ## Import a pack
 
@@ -35,10 +35,10 @@ Community packs use the same `.akr` import path as local exports.
 
 - Export your current setup before importing a community pack.
 - Confirm that the pack section is StartPos, Auto Kill, or Auto Deafen.
-- For StartPos packs, install the same map and object-providing mods used by the author. Each imported StartPos includes its v7 snapshot, coordinates, and spawn settings.
+- For StartPos packs, install the same map and object-providing mods used by the author. Each imported StartPos includes its v9 snapshot, coordinates, and spawn settings.
 - Imported settings can affect attempt status and proof metadata when used.
 - The Community Packs browser accepts StartPos, Auto Kill, and Auto Deafen setup archives.
-- A public pack contains `manifest.json`, `setup.json`, and one v7 snapshot entry per StartPos. Its manifest `kind` is `setup` and its payload format is `akron-setup-v4`.
+- A public pack contains `manifest.json`, `setup.json`, and one v9 snapshot entry per StartPos. Its manifest `kind` is `setup` and its payload format is `akron-setup-v6`.
 
 ## Size limits
 

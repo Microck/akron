@@ -5,13 +5,48 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronCommands {
+    // The Logging popup's level radio buttons are ImGui controls, so no automation surface can reach them.
+    // This is the same choice from the console: it calls AkronLog.ApplyLoggingLevel, which is the whole body
+    // of the radio button, so a run through this command proves the radio button's behavior rather than a
+    // parallel one. akron_feature logging on|off covers the enabled switch; this covers the level.
+    [Command("akron_log_level", "show or set the Akron log level: normal|diagnostic|verbose|trace|status")]
+    public static void LogLevel(string value = "") {
+        string action = NormalizeToken(value);
+        AkronLoggingLevel level;
+        switch (action) {
+            case "":
+            case "status":
+                Log("log-level: " + AkronLog.FormatLevel(AkronModule.Settings.LoggingLevel));
+                return;
+            case "normal":
+                level = AkronLoggingLevel.Normal;
+                break;
+            case "diagnostic":
+                level = AkronLoggingLevel.Diagnostic;
+                break;
+            case "verbose":
+                level = AkronLoggingLevel.Verbose;
+                break;
+            case "trace":
+                level = AkronLoggingLevel.Trace;
+                break;
+            default:
+                Log("usage: akron_log_level normal|diagnostic|verbose|trace|status");
+                return;
+        }
+
+        bool saved = AkronLog.ApplyLoggingLevel(level, "command-logging-level");
+        Log("log-level: " + AkronLog.FormatLevel(AkronModule.Settings.LoggingLevel) +
+            ";saved=" + saved.ToString().ToLowerInvariant());
+    }
+
     // Low-level command wrapper over many normal UI toggles. Prefer documenting
     // the concrete overlay row first; use this only for automation and debugging.
     [Command("akron_feature", "control Akron feature toggles: name [on|off|toggle|status]")]
     public static void Feature(string name = "", string action = "status") {
         string normalizedName = NormalizeToken(name);
         if (string.IsNullOrWhiteSpace(normalizedName)) {
-            Log("usage: akron_feature <infinite-stamina|infinite-dash|auto-kill|auto-deafen|click-teleport|cursor-zoom|cursor-tools|noclip|hazard-accuracy|free-camera|frame-stepper|fps-bypass|tps-bypass|invincibility|air-jumps|input-viewer|input-history|inputs-per-second|stamina-bar|dash-bar|speed-number|room-labels|room-timer|room-stat-tracker|freeze-timer-paused|fast-lookout|skip-postcards|skip-intro|death-pb-loss-prompt|dash-redirect|death-stats|total-attempts|status-labels|madeline-colors|madeline-hair-length|madeline-effect-sync|death-particles|hide-player|no-death-effect|no-death-wipe|fix-hitbox-pixels|no-freeze-frames|ground-refills|smart-startpos|reduced-visual-noise|screenshake|light-level|bloom-level|screen-tint|no-particles|no-trails|no-glitch|no-anxiety|no-distortion|hide-snow|hide-wind-snow|hide-waterfalls|hide-tentacles|hide-heat-distortion|streamer-mode|proof-mode|submission-mode|proof-recorder-guard|end-screen-helper|pause-tracker|map-version-stamp|golden-transparency|lag-pauser|logging> [on|off|toggle|status]");
+            Log("usage: akron_feature <infinite-stamina|infinite-dash|auto-kill|auto-deafen|click-teleport|cursor-zoom|cursor-tools|noclip|hazard-accuracy|free-camera|frame-stepper|fps-bypass|tps-bypass|invincibility|air-jumps|input-viewer|input-history|inputs-per-second|stamina-bar|dash-bar|speed-number|room-labels|room-timer|room-stat-tracker|freeze-timer-paused|fast-lookout|skip-postcards|skip-intro|death-pb-loss-prompt|dash-redirect|death-stats|total-attempts|status-labels|madeline-colors|madeline-hair-length|madeline-effect-sync|death-particles|hide-player|no-death-effect|no-death-wipe|fix-hitbox-pixels|no-freeze-frames|ground-refills|smart-startpos|reduced-visual-noise|screenshake|light-level|bloom-level|screen-tint|no-particles|no-trails|no-glitch|no-anxiety|no-distortion|hide-snow|hide-wind-snow|hide-waterfalls|hide-tentacles|disable-playback|hide-heat-distortion|streamer-mode|proof-mode|submission-mode|proof-recorder-guard|end-screen-helper|pause-tracker|map-version-stamp|golden-transparency|lag-pauser|logging> [on|off|toggle|status]");
             return;
         }
 
@@ -97,6 +132,7 @@ public static partial class AkronCommands {
             "hidewindsnow" => SetFeatureToggle(action, AkronFeatureKind.ReducedVisualNoise, () => AkronModule.Settings.HideWindSnow, value => AkronModule.Settings.HideWindSnow = value, "hide-wind-snow"),
             "hidewaterfalls" => SetFeatureToggle(action, AkronFeatureKind.ReducedVisualNoise, () => AkronModule.Settings.HideWaterfalls, value => AkronModule.Settings.HideWaterfalls = value, "hide-waterfalls"),
             "hidetentacles" => SetFeatureToggle(action, AkronFeatureKind.ReducedVisualNoise, () => AkronModule.Settings.HideTentacles, value => AkronModule.Settings.HideTentacles = value, "hide-tentacles"),
+            "disableplayback" => SetFeatureToggle(action, AkronFeatureKind.DisablePlayback, () => AkronModule.Settings.DisablePlayback, value => AkronModule.Settings.DisablePlayback = value, "disable-playback"),
             "hideheatdistortion" => SetFeatureToggle(action, AkronFeatureKind.ReducedVisualNoise, () => AkronModule.Settings.HideHeatDistortion, value => AkronModule.Settings.HideHeatDistortion = value, "hide-heat-distortion"),
             "streamermode" => SetPlainToggle(action, () => AkronModule.Settings.StreamerMode, value => AkronModule.Settings.StreamerMode = value, "streamer-mode"),
             "proofmode" => SetPlainToggle(action, () => AkronModule.Settings.ProofModeOverlay, value => AkronModule.Settings.ProofModeOverlay = value, "proof-mode"),

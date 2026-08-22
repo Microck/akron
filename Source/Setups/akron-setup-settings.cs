@@ -217,6 +217,7 @@ public partial class AkronModuleSettings {
             HideWindSnow = HideWindSnow,
             HideWaterfalls = HideWaterfalls,
             HideTentacles = HideTentacles,
+            DisablePlayback = DisablePlayback,
             HideHeatDistortion = HideHeatDistortion,
             NoStaminaFlash = NoStaminaFlash,
             RefillClarity = RefillClarity,
