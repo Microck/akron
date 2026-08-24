@@ -37,6 +37,70 @@ reviews:
     - "!tmp/**"
     - "!checklist/**"
   path_instructions:
+    - path: "**/*.cs"
+      instructions: |
+        Akron builds and tests against stripped Celeste and Monocle reference
+        assemblies. Property getter bodies can be absent even when their backing
+        fields remain available. Before recommending direct property access in
+        place of reflection, verify that the accessor works with the stripped
+        references used by CI. Flag new direct access when the same framework
+        state is already read through backing-field helpers for this reason.
+    - path: "Source/Actions/akron-backup-actions.cs"
+      instructions: |
+        Review backup ownership, restore eligibility, completeness, and retention
+        as separate states. An older Akron schema can be retention-owned without
+        being restorable; a foreign ZIP must not become retention-owned merely
+        because it opens; and an incomplete backup must not displace a restorable
+        backup.
+
+        Flag changed control flow that can delete the archive selected for
+        restore or the new pre-restore safety archive, classify a backup complete
+        before its source files and final path manifest are stable, or move live
+        Saves data before the selected archive is fully validated and staged.
+        Cite the exact file/archive sequence. Do not request restore compatibility
+        for obsolete metadata schemas; Akron intentionally hard-cuts old local
+        formats.
+    - path: "Source/Actions/akron-startpos-*.cs"
+      instructions: |
+        Flag an asynchronous capture, persistence write, pending restart copy, or
+        prewarm result that can publish after its captured save-file slot, profile
+        incarnation, map, or cancellation scope changes. Snapshot cleanup must use
+        exact persisted ownership rather than infer ownership from a reused file
+        slot. When replacement fails, verify that durable metadata and snapshot
+        bytes roll back together and that player messaging follows the verified
+        rollback outcome rather than an existence check.
+    - path: "Source/SaveLoad/AkronSaveLoad.cs"
+      instructions: |
+        Review warm StartPos memory as a bounded slot lifecycle. Flag clone
+        allocation or cold-slot recaching that can occur before projected capacity
+        is reserved, including a single known capture larger than the whole
+        budget. Eviction must release only resources owned by that slot and must
+        not run global clear callbacks. When changing ScreenWipe detachment,
+        account for every wipe still present in renderer lists, including the
+        boundary where Level.Wipe has already been cleared.
+    - path: "Source/SaveLoad/akron-reconstruction-graph.cs"
+      instructions: |
+        Treat imported .akr and persisted StartPos documents as untrusted input.
+        Do not treat type presence, file order, or an occurrence budget as
+        per-instance identity. Flag changed code only when weak evidence waives a
+        contradictory resource key or map entity ID, authenticates a generated
+        node without its documented ownership chain, or lets a container that the
+        node kind never reads establish reachability or an alias.
+
+        For Dictionary, HashSet, and paused enumerators, verify that restored
+        keys, comparers, buckets, cached hashes, and version fields remain
+        mutually consistent. Process-seeded derived state must be rebuilt from
+        the restored keys rather than trusted from the document. Cite a concrete
+        document or collection shape that demonstrates the failure.
+    - path: "Source/Runtime/akron-engine-gc.cs"
+      instructions: |
+        Review IL edits as composable with hooks from other mods. Deferred GC debt
+        may be cleared only on a path that definitely executed the retained
+        GC.Collect and WaitForPendingFinalizers pair. A later guard can branch past
+        that pair and land on the next instruction, so post-pair reconciliation
+        and process-wide collection counters do not prove this reload paid the
+        debt. Verify instruction opcodes and every branch target against that
+        rule.
     - path: "**/*.md*"
       instructions: |
         Treat changed documentation as a public contract. Compare claims about
