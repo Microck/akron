@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -9,6 +10,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Loader;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -23,7 +25,43 @@ using Newtonsoft.Json;
 namespace Celeste.Mod.Akron;
 
 internal sealed class AkronReconstructionDocument {
-    public const string CurrentFormat = "akron-reconstruction-v7";
+    // Bumped whenever the fresh room a document is measured against changes shape.
+    //
+    // Every node in a document is addressed by a structural path into a clean reload of
+    // the same room - "the third entity in the entity list", not "the entity with this
+    // id" - so a document is only meaningful against the baseline the build that wrote
+    // it produced. Two changes moved that baseline: TryLoadFreshRoom now clears the
+    // trails before it unloads the room (AkronSaveLoadService), and PlayerPlayback is
+    // now excluded from a capture (AkronSnapshotExclusion). Both remove objects the
+    // older baseline contained, so every index after them shifts by one.
+    //
+    // A shifted index does not always refuse. Two entities of the same type with no
+    // distinguishing SourceId pair by occurrence, so the shift can hand one entity's
+    // saved state to the other and report success - a silent wrong restore, which is
+    // worse than any refusal. That is why this is a version rather than a best effort:
+    // v7 and earlier documents are refused outright, never upgraded and never read.
+    //
+    // v7 -> v8: fresh-room baseline changed (trail parity fix, PlayerPlayback exclusion).
+    // v8 -> v9: nodes now carry the capture-side identity evidence the restore needs.
+    //   A saved live resource records whether its ResourceKey names the resource
+    //   (PortableResourceKey) and a saved map entity records whether the map placed
+    //   its EntityID (MapPlacedEntity). Without that evidence the restore cannot tell
+    //   a key or an id that a second process genuinely cannot produce from one that
+    //   merely got a new label, so it falls back to a wildcarded structural path and
+    //   can hand the rebuilt room a different object while reporting success. A v8
+    //   document carries none of it, and reading one anyway would give two documents
+    //   claiming the same format two different guarantees, so v8 is refused outright.
+    //
+    //   The map half covers the room document only. ActionStateDocument is captured
+    //   and restored from Dictionary roots (AkronSaveLoadService.PersistRuntimeStateSnapshot
+    //   and RestoreActionState), which hold no Level, so GetMapPlacedEntityIds has no
+    //   map to read there and every Entity a registered action's state reaches is
+    //   stamped false whatever the map says. That is symmetric - the restore reads the
+    //   same false and refuses nothing - so it fails to the behaviour of a v8 document
+    //   for those nodes rather than to a wrong restore. The key half has no such
+    //   limit: it is read off the saved object and applies to every node in both
+    //   documents.
+    public const string CurrentFormat = "akron-reconstruction-v9";
 
     public string Format { get; set; } = CurrentFormat;
     public string SlotName { get; set; } = string.Empty;
@@ -54,6 +92,25 @@ internal sealed class AkronReconstructionNode {
     public int ParentDelegateIndex { get; set; } = -1;
     public bool UseFreshObject { get; set; }
     public string ResourceKey { get; set; } = string.Empty;
+    // The two identity facts capture knows and restore cannot work out for itself,
+    // because working them out needs the saved object and the saved map, and a
+    // restore has neither. Both are written on the saved side and read on the fresh
+    // side, and both are absent from the JSON when false, which is every node that
+    // is not a keyed live resource or a map entity.
+    //
+    // PortableResourceKey: the ResourceKey above names this resource rather than
+    // labelling this instance, so a process that cannot find that key does not have
+    // the resource. Set for a content-addressed or registry-addressed key - a
+    // culture sort name, a file-backed texture path, a reflection key from an
+    // assembly loaded off disk. Not set for a key built from a name the running
+    // process made up, which a second process renames for the same resource.
+    [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+    public bool PortableResourceKey { get; set; }
+    // MapPlacedEntity: the map laid this entity's EntityID out in its room when the
+    // slot was set. An id the map owns going missing means the map changed; an id
+    // the map never owned going missing means nothing, because a mod made it up.
+    [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+    public bool MapPlacedEntity { get; set; }
     public List<AkronReconstructionPathStep> FreshPath { get; set; } = new List<AkronReconstructionPathStep>();
     public List<AkronReconstructionField> Fields { get; set; } = new List<AkronReconstructionField>();
     public List<AkronReconstructionValue> Items { get; set; } = new List<AkronReconstructionValue>();
@@ -109,51 +166,6 @@ internal interface IAkronReconstructionResourceAdapter {
     AkronReconstructionResourcePayload Capture(object resource);
     object Restore(AkronReconstructionResourcePayload payload, object freshResource);
     bool Verify(AkronReconstructionResourcePayload payload, object resource);
-}
-
-// A trusted installed mod can generate a different rectangle partition on each
-// room load. This contract identifies the generated type, its map-authored
-// source-area type, and the texture sizes that the generator may choose. The
-// restore graph still proves the complete saved partition against fresh source
-// areas before it constructs any missing generated entity.
-internal sealed class AkronGeneratedTilePartitionContract {
-    private const BindingFlags InstanceFields =
-        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-
-    public AkronGeneratedTilePartitionContract(
-        Type generatedEntityType,
-        Type sourceAreaEntityType,
-        string groupFieldName,
-        Func<string, IEnumerable<(int Width, int Height)>> getAllowedSizes
-    ) {
-        GeneratedEntityType = generatedEntityType ?? throw new ArgumentNullException(nameof(generatedEntityType));
-        SourceAreaEntityType = sourceAreaEntityType ?? throw new ArgumentNullException(nameof(sourceAreaEntityType));
-        if (!typeof(Entity).IsAssignableFrom(GeneratedEntityType) ||
-            !typeof(Entity).IsAssignableFrom(SourceAreaEntityType) ||
-            GeneratedEntityType.Assembly != SourceAreaEntityType.Assembly ||
-            GeneratedEntityType.Assembly == typeof(Entity).Assembly) {
-            throw new ArgumentException("Generated tile types must be entities from the same mod assembly.");
-        }
-        GeneratedGroupField = ResolveGroupField(GeneratedEntityType, groupFieldName);
-        SourceGroupField = ResolveGroupField(SourceAreaEntityType, groupFieldName);
-        GetAllowedSizes = getAllowedSizes ?? throw new ArgumentNullException(nameof(getAllowedSizes));
-    }
-
-    public Type GeneratedEntityType { get; }
-    public Type SourceAreaEntityType { get; }
-    public FieldInfo GeneratedGroupField { get; }
-    public FieldInfo SourceGroupField { get; }
-    public Func<string, IEnumerable<(int Width, int Height)>> GetAllowedSizes { get; }
-
-    private static FieldInfo ResolveGroupField(Type type, string fieldName) {
-        FieldInfo field = string.IsNullOrWhiteSpace(fieldName)
-            ? null
-            : type.GetField(fieldName, InstanceFields);
-        if (field == null || field.FieldType != typeof(string)) {
-            throw new ArgumentException(type.FullName + " must define string field " + fieldName + ".");
-        }
-        return field;
-    }
 }
 
 // VirtualRenderTarget is process-owned, but some room effects create targets
@@ -296,7 +308,7 @@ internal sealed class AkronVirtualRenderTargetResourceAdapter : IAkronReconstruc
         VirtualRenderTarget renderTarget
     ) {
         // Name is a debug label and does not affect the XNA resource layout.
-        return renderTarget != null && !renderTarget.IsDisposed && renderTarget.Target != null &&
+        return renderTarget != null && !renderTarget.IsDisposed &&
                renderTarget.Width == payload.Width &&
                renderTarget.Height == payload.Height &&
                renderTarget.MultiSampleCount == payload.MultiSampleCount &&
@@ -477,81 +489,99 @@ internal sealed class AkronReconstructionRestore {
         bool success,
         string errorPath,
         string error,
-        Dictionary<int, object> objects,
-        IReadOnlyList<AkronCollectionVersionAssignment> collectionVersionAssignments
+        string refusedTypeName,
+        AkronReconstructionRefusalKind refusedKind,
+        Dictionary<int, object> objects
     ) {
         Success = success;
         ErrorPath = errorPath ?? string.Empty;
         Error = error ?? string.Empty;
+        RefusedTypeName = refusedTypeName ?? string.Empty;
+        RefusedKind = refusedKind;
         Objects = objects;
-        CollectionVersionAssignments = collectionVersionAssignments;
     }
 
     public bool Success { get; }
     public string ErrorPath { get; }
     public string Error { get; }
+    // The assembly-qualified name of the saved object the refusal is about, empty when
+    // the refusal names no object. Error carries the same name inside its flag text for
+    // the log; this is the copy the player-facing message is built from.
+    public string RefusedTypeName { get; }
+    // What the refusal is about, which decides which sentence the name above goes into.
+    public AkronReconstructionRefusalKind RefusedKind { get; }
     internal Dictionary<int, object> Objects { get; }
-    internal IReadOnlyList<AkronCollectionVersionAssignment> CollectionVersionAssignments { get; }
 
-    public static AkronReconstructionRestore Succeeded(
-        Dictionary<int, object> objects,
-        IReadOnlyList<AkronCollectionVersionAssignment> collectionVersionAssignments
-    ) {
+    public static AkronReconstructionRestore Succeeded(Dictionary<int, object> objects) {
         return new AkronReconstructionRestore(
             true,
             string.Empty,
             string.Empty,
-            objects,
-            collectionVersionAssignments);
+            string.Empty,
+            AkronReconstructionRefusalKind.SavedObject,
+            objects);
     }
 
-    public static AkronReconstructionRestore Failed(string path, string error) {
+    public static AkronReconstructionRestore Failed(
+        string path,
+        string error,
+        string refusedTypeName = "",
+        AkronReconstructionRefusalKind refusedKind = AkronReconstructionRefusalKind.SavedObject
+    ) {
         string normalizedPath = string.IsNullOrWhiteSpace(path) ? "$" : path;
         return new AkronReconstructionRestore(
             false,
             normalizedPath,
             normalizedPath + ": " + error,
-            null,
+            refusedTypeName,
+            refusedKind,
             null);
     }
 }
 
-internal readonly struct AkronCollectionVersionAssignment {
-    public AkronCollectionVersionAssignment(FieldInfo field, object target, int value, string path) {
-        Field = field;
-        Target = target;
-        Value = value;
-        Path = path;
-    }
-
-    public FieldInfo Field { get; }
-    public object Target { get; }
-    public int Value { get; }
-    public string Path { get; }
-
-    public void Apply() {
-        Field.SetValue(Target, Value);
-    }
-}
-
 internal sealed class AkronReconstructionVerification {
-    private AkronReconstructionVerification(bool success, string errorPath, string error) {
+    private AkronReconstructionVerification(
+        bool success,
+        string errorPath,
+        string error,
+        string refusedTypeName,
+        AkronReconstructionRefusalKind refusedKind
+    ) {
         Success = success;
         ErrorPath = errorPath ?? string.Empty;
         Error = error ?? string.Empty;
+        RefusedTypeName = refusedTypeName ?? string.Empty;
+        RefusedKind = refusedKind;
     }
 
     public bool Success { get; }
     public string ErrorPath { get; }
     public string Error { get; }
+    public string RefusedTypeName { get; }
+    public AkronReconstructionRefusalKind RefusedKind { get; }
 
     public static AkronReconstructionVerification Succeeded() {
-        return new AkronReconstructionVerification(true, string.Empty, string.Empty);
+        return new AkronReconstructionVerification(
+            true,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            AkronReconstructionRefusalKind.SavedObject);
     }
 
-    public static AkronReconstructionVerification Failed(string path, string error) {
+    public static AkronReconstructionVerification Failed(
+        string path,
+        string error,
+        string refusedTypeName = "",
+        AkronReconstructionRefusalKind refusedKind = AkronReconstructionRefusalKind.SavedObject
+    ) {
         string normalizedPath = string.IsNullOrWhiteSpace(path) ? "$" : path;
-        return new AkronReconstructionVerification(false, normalizedPath, normalizedPath + ": " + error);
+        return new AkronReconstructionVerification(
+            false,
+            normalizedPath,
+            normalizedPath + ": " + error,
+            refusedTypeName,
+            refusedKind);
     }
 }
 
@@ -770,34 +800,60 @@ internal sealed class AkronReconstructionGraph {
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private static readonly FieldInfo EntitySourceIdField =
         typeof(Entity).GetField("<SourceId>k__BackingField", RuntimeInstanceFields);
-    private static readonly FieldInfo EntityPositionField =
-        typeof(Entity).GetField("Position", RuntimeInstanceFields);
-    private static readonly FieldInfo EntityColliderField =
-        typeof(Entity).GetField("collider", RuntimeInstanceFields);
     private static readonly FieldInfo EntityComponentsField =
         typeof(Entity).GetField("<Components>k__BackingField", RuntimeInstanceFields);
-    private static readonly FieldInfo ColliderPositionField =
-        typeof(Collider).GetField("Position", RuntimeInstanceFields);
-    private static readonly FieldInfo HitboxWidthField =
-        typeof(Hitbox).GetField("width", RuntimeInstanceFields);
-    private static readonly FieldInfo HitboxHeightField =
-        typeof(Hitbox).GetField("height", RuntimeInstanceFields);
     private static readonly FieldInfo ComponentEntityField =
         typeof(Component).GetField("<Entity>k__BackingField", RuntimeInstanceFields);
     private static readonly FieldInfo SceneEntitiesField =
         typeof(Scene).GetField("<Entities>k__BackingField", RuntimeInstanceFields);
     private static readonly FieldInfo EntityListEntitiesField =
         typeof(EntityList).GetField("entities", RuntimeInstanceFields);
-    private static readonly FieldInfo EntityStorageSizeField =
-        typeof(List<Entity>).GetField("_size", RuntimeInstanceFields);
     private static readonly FieldInfo ComponentListComponentsField =
         typeof(ComponentList).GetField("components", RuntimeInstanceFields);
+    // Monocle.StateMachine addresses its four callback arrays by state id and
+    // keeps a parallel names array saying which state each id is. Everest's
+    // AddState writes a name; the base SetCallbacks leaves the slot unnamed.
+    private static readonly string StateMachineTypeName = TypeName(typeof(StateMachine));
+    private static readonly string[] StateMachineCallbackFieldNames = { "begins", "updates", "ends", "coroutines" };
+    private static readonly FieldInfo[] StateMachineCallbackFields = StateMachineCallbackFieldNames
+        .Select(name => typeof(StateMachine).GetField(name, RuntimeInstanceFields))
+        .ToArray();
+    // The two of those four that say what a state IS rather than what happens at
+    // its edges: StateMachine.Update calls updates[state] and starts
+    // coroutines[state], so between them they are the code a state runs. begins
+    // and ends are deliberately left out - a mod is free to rewire the edges of a
+    // state it already owns while the room is played, and that is a move
+    // ValidateStateSlotAssignment must not refuse. The two sides of the
+    // comparison read this same list in this same order.
+    private static readonly string[] StateMachineDriverFieldNames = { "updates", "coroutines" };
+    private static readonly FieldInfo[] StateMachineDriverFields = StateMachineDriverFieldNames
+        .Select(name => typeof(StateMachine).GetField(name, RuntimeInstanceFields))
+        .ToArray();
+    private static readonly FieldInfo StateMachineNamesField =
+        typeof(StateMachine).GetField("names", RuntimeInstanceFields);
+
     private readonly Func<Type, bool> isLiveResource;
     private readonly Func<object, string> getLiveResourceKey;
     private readonly IAkronReconstructionResourceAdapter resourceAdapter;
     private readonly Func<Type, string, object> resolveDetachedLiveResource;
     private readonly Func<Type, bool> areEquivalentLiveResources;
-    private readonly Func<AkronGeneratedTilePartitionContract> generatedTilePartitionContractProvider;
+    // Asked of the saved object at capture, never of a fresh candidate. The question
+    // is whether the saved key names the resource, and only the saved object can
+    // answer it: a fresh candidate is a different object whose own key may be
+    // classified the other way, which would waive exactly the keys this exists to
+    // hold. Both callbacks below are optional, and a graph without them writes no
+    // evidence and reads none, which is what every graph that has no live-resource
+    // policy and no map wants.
+    private readonly Func<object, bool> hasPortableLiveResourceKey;
+    // The EntityIDs the map lays out in one room, asked of the room a clean load
+    // produced. Called once per room name per capture or restore, so the map is
+    // walked once however many entities ask about it.
+    //
+    // Returning null means there is no map data to read, and it is a different answer
+    // from an empty set: an empty room places nothing, while no map data proves
+    // nothing. IsMapPlacedEntityId keeps the two apart because the refusal built on
+    // this rule accuses the player's map of having changed.
+    private readonly Func<object, string, IEnumerable<int>> getMapPlacedEntityIds;
     private readonly long maxJsonTokenCount;
     private readonly long maxJsonContainerCount;
     private readonly int maxJsonStringChars;
@@ -808,21 +864,9 @@ internal sealed class AkronReconstructionGraph {
     private readonly HashSet<object> ownedPersistentResources =
         new HashSet<object>(ReferenceEqualityComparer.Instance);
 
-    private static readonly ConcurrentDictionary<Type, Action<object>> HashCollectionNormalizers =
-        new ConcurrentDictionary<Type, Action<object>>();
-    private static readonly ConcurrentDictionary<Type, HashStorageLayout> HashStorageLayouts =
-        new ConcurrentDictionary<Type, HashStorageLayout>();
-    private static readonly MethodInfo NormalizeDictionaryHashStorageMethod =
-        typeof(AkronReconstructionGraph).GetMethod(
-            nameof(NormalizeDictionaryHashStorage),
-            BindingFlags.Static | BindingFlags.NonPublic);
-    private static readonly MethodInfo NormalizeHashSetHashStorageMethod =
-        typeof(AkronReconstructionGraph).GetMethod(
-            nameof(NormalizeHashSetHashStorage),
-            BindingFlags.Static | BindingFlags.NonPublic);
-
-    private static void ValidateAndNormalizeDerivedCollectionState(IEnumerable<object> values) {
+    private static void ValidateAndNormalizeDerivedMembershipSets(IEnumerable<object> values) {
         foreach (object value in values.Where(value => value != null).Distinct(ReferenceEqualityComparer.Instance)) {
+            AkronHashIndex.Rebuild(value);
             if (value is EntityList entityList) {
                 ValidateAndNormalizeMembershipSet<Entity>(entityList, "entities", "current");
                 ValidateAndNormalizeMembershipSet<Entity>(entityList, "toAdd", "adding");
@@ -832,137 +876,8 @@ internal sealed class AkronReconstructionGraph {
                 ValidateAndNormalizeMembershipSet<Component>(componentList, "toAdd", "adding");
                 ValidateAndNormalizeMembershipSet<Component>(componentList, "toRemove", "removing");
             }
-
-            Type type = value.GetType();
-            if (IsHashCollectionType(type)) {
-                HashCollectionNormalizers.GetOrAdd(type, CreateHashCollectionNormalizer)(value);
-            }
         }
     }
-
-    private static bool IsHashCollectionType(Type type) {
-        if (!type.IsGenericType) {
-            return false;
-        }
-        Type genericType = type.GetGenericTypeDefinition();
-        return genericType == typeof(Dictionary<,>) || genericType == typeof(HashSet<>);
-    }
-
-    private static Action<object> CreateHashCollectionNormalizer(Type collectionType) {
-        Type genericType = collectionType.GetGenericTypeDefinition();
-        Type[] arguments = collectionType.GetGenericArguments();
-        MethodInfo method = genericType == typeof(Dictionary<,>)
-            ? NormalizeDictionaryHashStorageMethod.MakeGenericMethod(arguments)
-            : NormalizeHashSetHashStorageMethod.MakeGenericMethod(arguments);
-        return method.CreateDelegate<Action<object>>();
-    }
-
-    private static void NormalizeDictionaryHashStorage<TKey, TValue>(object value) {
-        Dictionary<TKey, TValue> dictionary = (Dictionary<TKey, TValue>) value;
-        NormalizeHashStorage<TKey>(
-            dictionary,
-            dictionary.Count);
-    }
-
-    private static void NormalizeHashSetHashStorage<T>(object value) {
-        HashSet<T> set = (HashSet<T>) value;
-        NormalizeHashStorage<T>(
-            set,
-            set.Count);
-    }
-
-    private static void NormalizeHashStorage<T>(
-        object collection,
-        int logicalCount
-    ) {
-        Type collectionType = collection.GetType();
-        HashStorageLayout layout = HashStorageLayouts.GetOrAdd(collectionType, CreateHashStorageLayout);
-        IEqualityComparer<T> comparer = layout.Comparer.GetValue(collection) as IEqualityComparer<T>
-                                        ?? EqualityComparer<T>.Default;
-        int[] buckets = (int[]) layout.Buckets.GetValue(collection);
-        Array entries = (Array) layout.Entries.GetValue(collection);
-        int allocatedCount = (int) layout.Count.GetValue(collection);
-        if (buckets == null || entries == null) {
-            if (buckets == null && entries == null && allocatedCount == 0 && logicalCount == 0) {
-                return;
-            }
-            throw new InvalidOperationException(collectionType.FullName + " hash storage is incomplete");
-        }
-        if (buckets.Length == 0 || allocatedCount < logicalCount || allocatedCount > entries.Length) {
-            throw new InvalidOperationException(collectionType.FullName + " hash storage is invalid");
-        }
-
-        HashSet<T> uniqueValues = new HashSet<T>(comparer);
-        Array.Clear(buckets);
-        int activeCount = 0;
-        for (int index = 0; index < allocatedCount; index++) {
-            object entry = entries.GetValue(index)
-                           ?? throw new InvalidOperationException(
-                               collectionType.FullName + " entry is unavailable");
-            int next = (int) layout.Next.GetValue(entry);
-            if (next < -1) {
-                continue;
-            }
-
-            T item = (T) layout.Value.GetValue(entry);
-            if (!uniqueValues.Add(item)) {
-                throw new InvalidOperationException(collectionType.FullName + " contains duplicate values");
-            }
-            int hashCode = item == null ? 0 : comparer.GetHashCode(item);
-            int bucketIndex = (int) ((uint) hashCode % (uint) buckets.Length);
-            layout.HashCode.SetValue(
-                entry,
-                layout.HashCode.FieldType == typeof(uint) ? (object) (uint) hashCode : hashCode);
-            layout.Next.SetValue(entry, buckets[bucketIndex] - 1);
-            entries.SetValue(entry, index);
-            buckets[bucketIndex] = index + 1;
-            activeCount++;
-        }
-        if (activeCount != logicalCount) {
-            throw new InvalidOperationException(collectionType.FullName + " logical count differs from its entries");
-        }
-    }
-
-    private static HashStorageLayout CreateHashStorageLayout(Type collectionType) {
-        FieldInfo buckets = collectionType.GetField("_buckets", RuntimeInstanceFields)
-                            ?? throw new InvalidOperationException(
-                                collectionType.FullName + "._buckets is unavailable");
-        FieldInfo entries = collectionType.GetField("_entries", RuntimeInstanceFields)
-                            ?? throw new InvalidOperationException(
-                                collectionType.FullName + "._entries is unavailable");
-        FieldInfo count = collectionType.GetField("_count", RuntimeInstanceFields)
-                          ?? throw new InvalidOperationException(
-                              collectionType.FullName + "._count is unavailable");
-        FieldInfo comparer = collectionType.GetField("_comparer", RuntimeInstanceFields)
-                             ?? throw new InvalidOperationException(
-                                 collectionType.FullName + "._comparer is unavailable");
-        Type entryType = entries.FieldType.GetElementType()
-                         ?? throw new InvalidOperationException(
-                             collectionType.FullName + " entry type is unavailable");
-        bool dictionary = collectionType.GetGenericTypeDefinition() == typeof(Dictionary<,>);
-        string hashCodeFieldName = dictionary ? "hashCode" : "HashCode";
-        string nextFieldName = dictionary ? "next" : "Next";
-        string valueFieldName = dictionary ? "key" : "Value";
-        FieldInfo hashCode = entryType.GetField(hashCodeFieldName, RuntimeInstanceFields)
-                             ?? throw new InvalidOperationException(
-                                 entryType.FullName + "." + hashCodeFieldName + " is unavailable");
-        FieldInfo next = entryType.GetField(nextFieldName, RuntimeInstanceFields)
-                         ?? throw new InvalidOperationException(
-                             entryType.FullName + "." + nextFieldName + " is unavailable");
-        FieldInfo value = entryType.GetField(valueFieldName, RuntimeInstanceFields)
-                          ?? throw new InvalidOperationException(
-                              entryType.FullName + "." + valueFieldName + " is unavailable");
-        return new HashStorageLayout(buckets, entries, count, comparer, hashCode, next, value);
-    }
-
-    private sealed record HashStorageLayout(
-        FieldInfo Buckets,
-        FieldInfo Entries,
-        FieldInfo Count,
-        FieldInfo Comparer,
-        FieldInfo HashCode,
-        FieldInfo Next,
-        FieldInfo Value);
 
     private static void ValidateAndNormalizeMembershipSet<T>(
         object owner,
@@ -971,36 +886,29 @@ internal sealed class AkronReconstructionGraph {
     ) where T : class {
         BindingFlags flags = RuntimeInstanceFields;
         Type ownerType = owner.GetType();
-        ICollection<T> ordered = ownerType.GetField(orderedFieldName, flags)?.GetValue(owner) as ICollection<T>
+        IEnumerable<T> ordered = ownerType.GetField(orderedFieldName, flags)?.GetValue(owner) as IEnumerable<T>
                                  ?? Array.Empty<T>();
         HashSet<T> membership = ownerType.GetField(membershipFieldName, flags)?.GetValue(owner) as HashSet<T>
                                 ?? throw new InvalidOperationException(
                                     ownerType.FullName + "." + membershipFieldName + " is unavailable");
-        if (ordered.Count == 0 && membership.Count == 0) {
-            return;
-        }
         HashSet<object> orderedReferences = new HashSet<object>(
             ordered.Where(item => item != null).Cast<object>(),
             ReferenceEqualityComparer.Instance);
-        int membershipReferenceCount = 0;
-        foreach (T item in membership) {
-            if (item == null) {
-                continue;
-            }
-            membershipReferenceCount++;
-            if (!orderedReferences.Contains(item)) {
-                throw new InvalidOperationException(
-                    ownerType.FullName + "." + membershipFieldName + " differs from " + orderedFieldName);
-            }
-        }
-        if (membershipReferenceCount != orderedReferences.Count) {
+        HashSet<object> membershipReferences = new HashSet<object>(
+            membership.Where(item => item != null).Cast<object>(),
+            ReferenceEqualityComparer.Instance);
+        if (!orderedReferences.SetEquals(membershipReferences)) {
             throw new InvalidOperationException(
                 ownerType.FullName + "." + membershipFieldName + " differs from " + orderedFieldName);
         }
 
-        // The generic hash-storage pass rebuilds process-local buckets in
-        // place after this validates the saved logical membership. Keeping
-        // entry indices stable also preserves paused membership enumerators.
+        // Object hash codes belong to this process, not the saved process.
+        // Re-add the exact saved references so HashSet rebuilds only its
+        // derived buckets and keeps the saved logical membership unchanged.
+        membership.Clear();
+        foreach (T item in ordered.Where(item => item != null)) {
+            membership.Add(item);
+        }
     }
 
     public AkronReconstructionGraph(
@@ -1016,15 +924,16 @@ internal sealed class AkronReconstructionGraph {
         long maxJsonRecordCount = DefaultMaxJsonRecordCount,
         long maxJsonExpensiveRecordCount = DefaultMaxJsonExpensiveRecordCount,
         Func<Type, bool> areEquivalentLiveResources = null,
-        Func<AkronGeneratedTilePartitionContract> generatedTilePartitionContractProvider = null
+        Func<object, bool> hasPortableLiveResourceKey = null,
+        Func<object, string, IEnumerable<int>> getMapPlacedEntityIds = null
     ) {
         this.isLiveResource = isLiveResource ?? throw new ArgumentNullException(nameof(isLiveResource));
         this.getLiveResourceKey = getLiveResourceKey;
         this.resourceAdapter = resourceAdapter;
         this.resolveDetachedLiveResource = resolveDetachedLiveResource;
         this.areEquivalentLiveResources = areEquivalentLiveResources;
-        this.generatedTilePartitionContractProvider =
-            generatedTilePartitionContractProvider ?? (() => null);
+        this.hasPortableLiveResourceKey = hasPortableLiveResourceKey;
+        this.getMapPlacedEntityIds = getMapPlacedEntityIds;
         this.maxJsonTokenCount = maxJsonTokenCount;
         this.maxJsonContainerCount = maxJsonContainerCount;
         this.maxJsonStringChars = maxJsonStringChars;
@@ -1054,11 +963,7 @@ internal sealed class AkronReconstructionGraph {
 
         CaptureContext context = new CaptureContext(this, freshBaselineRoot);
         try {
-            AkronReconstructionValue root = context.CaptureValue(
-                savedRoot,
-                freshBaselineRoot,
-                "$",
-                new List<AkronReconstructionPathStep>());
+            AkronReconstructionValue root = context.CaptureValue(savedRoot, freshBaselineRoot, "$");
             if (root.Kind != ReferenceValueKind) {
                 return AkronReconstructionCapture.Failed("$", "root must be a reference node");
             }
@@ -1067,6 +972,14 @@ internal sealed class AkronReconstructionGraph {
             return AkronReconstructionCapture.Succeeded(context.Document);
         } catch (AkronReconstructionException exception) {
             return AkronReconstructionCapture.Failed(exception.Path, exception.Message);
+        } catch (OperationCanceledException) {
+            // Not a capture failure and must not be described as one. Quitting cancels
+            // through AkronSnapshotPacing.Pace, which this walk calls once per node, so
+            // the common cancellation lands right here - and the only handler that knows
+            // how to say it in a sentence a player can read is in
+            // AkronStartPosPersistence.RunWorker. Reporting it below instead put
+            // "$: OperationCanceledException: ..." on screen.
+            throw;
         } catch (Exception exception) {
             return AkronReconstructionCapture.Failed("$", exception.GetType().Name + ": " + exception.Message);
         }
@@ -1146,13 +1059,15 @@ internal sealed class AkronReconstructionGraph {
             context.ApplyAssignments();
             context.ReleaseDisplacedEventInstances();
             context.CommitPersistentResources();
-            return AkronReconstructionRestore.Succeeded(
-                context.Objects,
-                context.CollectionVersionAssignments.ToArray());
+            return AkronReconstructionRestore.Succeeded(context.Objects);
         } catch (AkronReconstructionException exception) {
             context?.ReleaseCreatedPersistentResources();
             AkronEventInstanceUtils.ReleaseDormantEventInstances(context?.Objects.Values.OfType<EventInstance>());
-            return AkronReconstructionRestore.Failed(exception.Path, exception.Message);
+            return AkronReconstructionRestore.Failed(
+                exception.Path,
+                exception.Message,
+                exception.RefusedTypeName,
+                exception.RefusedKind);
         } catch (Exception exception) {
             context?.ReleaseCreatedPersistentResources();
             AkronEventInstanceUtils.ReleaseDormantEventInstances(context?.Objects.Values.OfType<EventInstance>());
@@ -1191,28 +1106,14 @@ internal sealed class AkronReconstructionGraph {
             context.ReleaseDisplacedEventInstances();
             return AkronReconstructionVerification.Succeeded();
         } catch (AkronReconstructionException exception) {
-            return AkronReconstructionVerification.Failed(exception.Path, exception.Message);
+            return AkronReconstructionVerification.Failed(
+                exception.Path,
+                exception.Message,
+                exception.RefusedTypeName,
+                exception.RefusedKind);
         } catch (Exception exception) {
             return AkronReconstructionVerification.Failed("$", exception.GetType().Name + ": " + exception.Message);
         }
-    }
-
-    public AkronReconstructionVerification ReapplyCollectionVersions(AkronReconstructionRestore restore) {
-        if (restore == null || !restore.Success || restore.CollectionVersionAssignments == null) {
-            return AkronReconstructionVerification.Failed("$", "a successful restore is required");
-        }
-
-        for (int index = restore.CollectionVersionAssignments.Count - 1; index >= 0; index--) {
-            AkronCollectionVersionAssignment assignment = restore.CollectionVersionAssignments[index];
-            try {
-                assignment.Apply();
-            } catch (Exception exception) {
-                return AkronReconstructionVerification.Failed(
-                    assignment.Path,
-                    exception.GetType().Name + ": " + exception.Message);
-            }
-        }
-        return AkronReconstructionVerification.Succeeded();
     }
 
     public AkronReconstructionVerification Verify(
@@ -1231,7 +1132,11 @@ internal sealed class AkronReconstructionGraph {
             context.Verify();
             return AkronReconstructionVerification.Succeeded();
         } catch (AkronReconstructionException exception) {
-            return AkronReconstructionVerification.Failed(exception.Path, exception.Message);
+            return AkronReconstructionVerification.Failed(
+                exception.Path,
+                exception.Message,
+                exception.RefusedTypeName,
+                exception.RefusedKind);
         } catch (Exception exception) {
             return AkronReconstructionVerification.Failed("$", exception.GetType().Name + ": " + exception.Message);
         }
@@ -1239,7 +1144,21 @@ internal sealed class AkronReconstructionGraph {
 
     private void ValidateDocumentHeader(AkronReconstructionDocument document) {
         if (document == null || !string.Equals(document.Format, AkronReconstructionDocument.CurrentFormat, StringComparison.Ordinal)) {
-            throw new InvalidOperationException("Reconstruction document format is unsupported.");
+            // The one gate that decides whether a document may be read at all, so it is
+            // also the one place that can say why. A document names the objects in a
+            // room by where they sit in a clean reload of it, and Akron now rebuilds
+            // that room differently, so an older document does not describe this room -
+            // it describes a room that had one more object in it. Reading it anyway can
+            // give one entity another entity's saved state without noticing, so it is
+            // refused here and never upgraded.
+            // The action comes first because this text reaches a toast through
+            // ReportStartPosLoadFailure, which cuts at 180 characters, and the two
+            // format names would otherwise push it off the end.
+            throw new InvalidOperationException(
+                "Reconstruction document format is unsupported: set this StartPos again. It is " +
+                DescribeDocumentFormat(document) + " and Akron now writes " +
+                AkronReconstructionDocument.CurrentFormat +
+                ", and a snapshot from an older Akron describes a fresh room this build no longer loads.");
         }
         if (document.RootNodeId <= 0 || document.Nodes == null || document.Nodes.Count == 0) {
             throw new InvalidOperationException("Reconstruction document has no root node.");
@@ -1259,6 +1178,21 @@ internal sealed class AkronReconstructionGraph {
         }
     }
 
+    // The format string comes out of a snapshot file and the reader allows a string into
+    // the megabytes, so a corrupt or hostile one must not end up in a message that
+    // reaches a toast. Real format names are under twenty characters.
+    private static string DescribeDocumentFormat(AkronReconstructionDocument document) {
+        string format = document?.Format;
+        if (string.IsNullOrWhiteSpace(format)) {
+            return "unnamed";
+        }
+        return format.Length <= MaxReportedDocumentFormatChars
+            ? format
+            : format.Substring(0, MaxReportedDocumentFormatChars) + "...";
+    }
+
+    private const int MaxReportedDocumentFormatChars = 32;
+
     private void ValidateNodeKindContracts(AkronReconstructionDocument document) {
         foreach (AkronReconstructionNode node in document.Nodes) {
             Type type = ResolveType(node.TypeName, "$");
@@ -1277,7 +1211,116 @@ internal sealed class AkronReconstructionGraph {
                 throw new InvalidOperationException(
                     "Reconstruction " + kind + " type is invalid: " + (type.FullName ?? type.Name));
             }
+            // After the type check, so a node relabelled to a kind its type cannot
+            // be still fails on the type - which is the more useful thing to say,
+            // and what RestoreRejectsAnOrdinaryObjectRelabeledAsAnAnchor reads.
+            RefuseAReferenceInASlotTheRestoreNeverReads(node, type);
         }
+    }
+
+    // A document names objects by where they sit, and the restore attaches each
+    // one by writing the slot its parent holds it in. Which slot that is depends
+    // on the parent's kind, and each kind is read from exactly one container: an
+    // object's fields, an array's items, a delegate's calls. An anchor, a
+    // persistent resource and an FMOD event are read from no container at all -
+    // the first is the fresh room's own object and the other two carry a payload.
+    // Two slots inside a container that is read are skipped as well: a packed
+    // primitive array is restored from its bytes rather than its items, and a
+    // detour-next delegate call binds no target.
+    //
+    // A reference in any other slot claims two things that are not true.
+    // ValidateNodeReachability walks fields, items and calls without asking what
+    // kind the parent is, so the node it points at counts as reached and the
+    // document passes as complete, while nothing ever writes that slot: the
+    // object is created, its own state is applied, it joins Objects, and Verify
+    // walks Objects rather than the room, so the restore reports success with
+    // that object attached to nothing. And IndexSavedFieldAliases indexes every
+    // node's fields whatever its kind, while IndexSavedArrayAliases reads a packed
+    // array's items, so the same dead edge is also read as evidence that the saved
+    // graph held one object in two places, which is what licenses handing a
+    // reconstruction a live object from the fresh room.
+    //
+    // Capture cannot write one. CaptureValue returns as soon as it has made a
+    // live anchor, stores only a payload for a persistent resource or an FMOD
+    // event, and otherwise hands the node to exactly one of CaptureObject,
+    // CaptureArray or CaptureDelegate; CaptureArray returns after packing a
+    // primitive grid without adding an item; CaptureDelegate writes a null target
+    // for the one detour-next call it ever emits; and CaptureObject skips a
+    // derived collection's version counter, which is the third slot inside a read
+    // container that the restore skips - and a field skipped by name is never
+    // type-checked either, so a reference parked there is not even required to fit
+    // the slot.
+    //
+    // Scalars in those slots are left alone rather than refused. A scalar
+    // attaches nothing and aliases nothing, since both index builders skip a value
+    // that is not a reference, and every lie a scalar could tell fits just as well
+    // in a slot the restore does read, so refusing it would buy nothing;
+    // CollectionVersionChangesDoNotInvalidateEquivalentContents pins one
+    // deliberately, a version counter the document may carry and the restore must
+    // ignore. Only a reference is refused, because a reference in a slot nothing
+    // reads is the one claim a document cannot make anywhere else.
+    private static void RefuseAReferenceInASlotTheRestoreNeverReads(
+        AkronReconstructionNode node,
+        Type type
+    ) {
+        // The kind is one of the six the switch above admits, so these are exact.
+        bool readsFields = node.Kind == ObjectKind;
+        bool readsItems = node.Kind == ArrayKind && node.PackedPrimitiveArrayBytes == null;
+        bool readsCalls = node.Kind == DelegateKind;
+
+        foreach (AkronReconstructionField field in node.Fields ?? new List<AkronReconstructionField>()) {
+            if (field?.Value?.Kind != ReferenceValueKind) {
+                continue;
+            }
+            if (!readsFields) {
+                throw UnreadSlot(node, field.Value.NodeId, "a field");
+            }
+            if (IsDerivedCollectionVersionField(type, field.Name)) {
+                throw UnreadSlot(node, field.Value.NodeId, "a derived collection version field");
+            }
+        }
+        if (!readsItems) {
+            foreach (AkronReconstructionValue item in node.Items ?? new List<AkronReconstructionValue>()) {
+                if (item?.Kind == ReferenceValueKind) {
+                    throw UnreadSlot(
+                        node,
+                        item.NodeId,
+                        node.PackedPrimitiveArrayBytes != null ? "a packed primitive array item" : "an item");
+                }
+            }
+        }
+        foreach (AkronReconstructionDelegateCall call in node.DelegateCalls ?? new List<AkronReconstructionDelegateCall>()) {
+            if (call?.Target?.Kind != ReferenceValueKind) {
+                continue;
+            }
+            if (!readsCalls) {
+                throw UnreadSlot(node, call.Target.NodeId, "a delegate call target");
+            }
+            // Of a delegate node's calls, only a method call's target is bound.
+            // CreateDelegate rebuilds a detour-next call from its position in the
+            // live detour chain and binds no target, so it never reads the saved
+            // one, and CaptureDelegate writes a null there for that reason. Any
+            // other kind CreateDelegate refuses outright; keying on the one kind
+            // that is read says what is true rather than listing what is not.
+            if (!string.Equals(call.Kind, MethodDelegateCallKind, StringComparison.Ordinal)) {
+                throw UnreadSlot(node, call.Target.NodeId, "the target of a delegate call that binds none");
+            }
+        }
+    }
+
+    // Node ids and the kind rather than the field name or the type: everything
+    // here comes out of a snapshot file, and the reader lets a name run into the
+    // megabytes, so only bounded values go into a message that can reach a toast.
+    private static InvalidOperationException UnreadSlot(
+        AkronReconstructionNode node,
+        int referencedNodeId,
+        string slot
+    ) {
+        return new InvalidOperationException(
+            "Reconstruction " + node.Kind + " node " +
+            node.Id.ToString(CultureInfo.InvariantCulture) +
+            " holds node " + referencedNodeId.ToString(CultureInfo.InvariantCulture) +
+            " in " + slot + ", which the restore never reads.");
     }
 
     private static void ValidateNodeParentEdges(AkronReconstructionDocument document) {
@@ -1521,7 +1564,9 @@ internal sealed class AkronReconstructionGraph {
         }
         Type type = Type.GetType(typeName, throwOnError: false);
         if (type == null) {
-            throw new AkronReconstructionException(path, "type is unavailable: " + typeName);
+            // The saved room referenced a type this process cannot load at all, which is
+            // what an uninstalled or disabled mod looks like from here.
+            throw new AkronReconstructionException(path, "type is unavailable: " + typeName, typeName);
         }
         ResolvedTypes.TryAdd(typeName, type);
         return type;
@@ -1626,9 +1671,22 @@ internal sealed class AkronReconstructionGraph {
         return parentPath + "[" + string.Join(",", indices) + "]";
     }
 
+    // IntPtr and UIntPtr report IsPrimitive, and neither is IConvertible, so a
+    // scalar written from one can never be read back: Convert.ChangeType throws
+    // InvalidCastException on the way in. They are also process pointers, which
+    // CaptureValue refuses on purpose. Keeping them out of every primitive gate
+    // is what lets that refusal run instead of writing a snapshot that no later
+    // process can rebuild. CanPackPrimitiveElementType already knew this; the
+    // scalar gate did not, which is the whole of this defect.
+    private static bool IsPersistablePrimitive(Type type) {
+        return type?.IsPrimitive == true &&
+               type != typeof(IntPtr) &&
+               type != typeof(UIntPtr);
+    }
+
     private static bool IsScalarType(Type type) {
         return type.IsEnum ||
-               type.IsPrimitive ||
+               IsPersistablePrimitive(type) ||
                type == typeof(string) ||
                type == typeof(decimal) ||
                type == typeof(DateTime) ||
@@ -1726,7 +1784,7 @@ internal sealed class AkronReconstructionGraph {
             Type underlying = Enum.GetUnderlyingType(type);
             return Convert.ChangeType(value, underlying, CultureInfo.InvariantCulture).ToString();
         }
-        if (type.IsPrimitive) {
+        if (IsPersistablePrimitive(type)) {
             return Convert.ToString(value, CultureInfo.InvariantCulture);
         }
 
@@ -1781,10 +1839,7 @@ internal sealed class AkronReconstructionGraph {
         }
         if (type == typeof(Vector2)) {
             string[] parts = SplitScalar(scalar, 2, path);
-            return new Vector2 {
-                X = DecodeFloat(parts[0]),
-                Y = DecodeFloat(parts[1])
-            };
+            return new Vector2(DecodeFloat(parts[0]), DecodeFloat(parts[1]));
         }
         if (type == typeof(Vector3)) {
             string[] parts = SplitScalar(scalar, 3, path);
@@ -1817,10 +1872,14 @@ internal sealed class AkronReconstructionGraph {
             object underlying = Convert.ChangeType(scalar, Enum.GetUnderlyingType(type), CultureInfo.InvariantCulture);
             return Enum.ToObject(type, underlying);
         }
-        if (type.IsPrimitive) {
+        if (IsPersistablePrimitive(type)) {
             return Convert.ChangeType(scalar, type, CultureInfo.InvariantCulture);
         }
 
+        // Reached by a snapshot written before the scalar gate excluded process
+        // pointers, and by any document that claims one. Refusing here names the
+        // field path and the type; Convert.ChangeType threw a bare
+        // InvalidCastException that the restore could only report against "$".
         throw new AkronReconstructionException(path, "unsupported scalar type: " + type.FullName);
     }
 
@@ -1862,39 +1921,11 @@ internal sealed class AkronReconstructionGraph {
               typeof(Image).IsAssignableFrom(targetType);
     }
 
-    internal static bool IsTrailSnapshotComponentOwnerType(string fieldName, Type ownerType) {
-        if (fieldName == nameof(TrailManager.Snapshot.Hair)) {
-            return ownerType == typeof(Player) || ownerType == typeof(PlayerPlayback);
-        }
-
-        // TrailManager accepts Image components from built-in entities, not
-        // only Player sprites. Heart of the Storm trails a BirdPath image and
-        // can keep that image after the source entity leaves the fresh scene.
-        return fieldName == nameof(TrailManager.Snapshot.Sprite) &&
-               ownerType != null &&
-               ownerType.Assembly == typeof(Entity).Assembly &&
-               typeof(Entity).IsAssignableFrom(ownerType);
-    }
-
-    internal static bool TryGetCompatibleFreshFieldValue(
-        FieldInfo field,
-        Type savedType,
-        object freshParent,
-        out object freshValue
-    ) {
-        freshValue = null;
-        if (field == null || savedType == null || freshParent == null ||
-            !field.DeclaringType.IsInstanceOfType(freshParent) ||
-            !field.FieldType.IsAssignableFrom(savedType)) {
-            return false;
-        }
-
-        freshValue = field.GetValue(freshParent);
-        if (freshValue?.GetType() == savedType) {
-            return true;
-        }
-        freshValue = null;
-        return false;
+    internal static bool IsTrailSnapshotComponentOwnerType(Type ownerType) {
+        // Vanilla dash trails point at Player components. Playback tutorials,
+        // including Heart of the Storm's, use the same built-in components on
+        // PlayerPlayback. No other entity owner is part of this alias contract.
+        return ownerType == typeof(Player) || ownerType == typeof(PlayerPlayback);
     }
 
     internal static bool IsPlayerRuntimeColliderAlias(
@@ -1943,7 +1974,27 @@ internal sealed class AkronReconstructionGraph {
                typeof(IEnumerator).IsAssignableFrom(iteratorType) &&
                iteratorType.GetCustomAttribute<CompilerGeneratedAttribute>() != null &&
                iteratorType.DeclaringType != null &&
-               owner?.GetType() == iteratorType.DeclaringType;
+               IsCapturedCompilerThisOwner(iteratorType, owner?.GetType());
+    }
+
+    internal static bool IsCapturedCompilerThisOwner(Type stateMachineType, Type ownerType) {
+        // A compiler-generated iterator or closure keeps the captured `this`
+        // in <>4__this, declared as the type that owns the method. The only
+        // value the CLR can ever store there is an instance of that type, so
+        // the owner has to BE one - it does not have to be exactly it.
+        // Requiring exact equality refuses every routine declared on a base
+        // class and run by a subclass, which is most of what modded maps do:
+        // Sprite.PlayUtil driven by a Sprite subclass, an NPC routine on a
+        // custom NPC, a Booster routine on a custom booster. Reading the
+        // field's own type rather than the nested type's DeclaringType also
+        // keeps generic owners exact, because the field carries the
+        // constructed type while DeclaringType carries the open one.
+        FieldInfo capturedThis = stateMachineType?.GetField(
+            "<>4__this",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        return capturedThis != null &&
+               ownerType != null &&
+               capturedThis.FieldType.IsAssignableFrom(ownerType);
     }
 
     private static string EncodeFloat(float value) {
@@ -2001,6 +2052,43 @@ internal sealed class AkronReconstructionGraph {
         return !string.IsNullOrEmpty(id.Level);
     }
 
+    // Does the map lay this EntityID out in its room? Capture asks it of the clean
+    // reload it measures against and writes the answer onto the node; restore asks
+    // it of the room it is rebuilding into. The two answers together say whether the
+    // map changed under a saved entity, which is the only thing that tells a map
+    // edit apart from session state deciding not to build an entity this time.
+    //
+    // Three answers, not two, and the third is the point. True is "the map places
+    // this id", false is "the map does not place it", and null is "there is no map
+    // data to ask" - no callback, no id worth asking about, or a map the callback
+    // could not read. At capture the last two are the same thing and nothing is
+    // stamped either way. At restore they are not: false is a refusal that tells the
+    // player their map or their collab changed, and saying that because the map could
+    // not be read would be a false story about their install. Only an explicit false
+    // may refuse.
+    //
+    // The per-room answer is built once and reused, because a room's map data is a
+    // flat list and a room with several hundred entities would otherwise be scanned
+    // once per entity. A null entry caches "no map data for this room" so a second
+    // ask does not repeat a read that already failed.
+    private bool? IsMapPlacedEntityId(
+        object roomRoot,
+        EntityID entityId,
+        Dictionary<string, HashSet<int>> placedIdsByRoom
+    ) {
+        if (getMapPlacedEntityIds == null || !HasStableSourceId(entityId)) {
+            return null;
+        }
+        if (!placedIdsByRoom.TryGetValue(entityId.Level, out HashSet<int> placedIds)) {
+            IEnumerable<int> placed = getMapPlacedEntityIds(roomRoot, entityId.Level);
+            // An empty set is map data that places nothing, which an empty room is.
+            // Only null is the absence of map data.
+            placedIds = placed == null ? null : new HashSet<int>(placed);
+            placedIdsByRoom[entityId.Level] = placedIds;
+        }
+        return placedIds?.Contains(entityId.ID);
+    }
+
     private static bool EntityIdsMatch(EntityID left, EntityID right) {
         return left.ID == right.ID && string.Equals(left.Level, right.Level, StringComparison.Ordinal);
     }
@@ -2029,6 +2117,14 @@ internal sealed class AkronReconstructionGraph {
         return ComponentListComponentsField?.GetValue(components) as IEnumerable<Component> ?? Array.Empty<Component>();
     }
 
+    internal static bool IsDerivedCollectionVersionField(Type ownerType, string fieldName) {
+        // BCL collections increment _version to invalidate enumerators. The
+        // contents own gameplay state; this counter is only derived bookkeeping.
+        return string.Equals(fieldName, "_version", StringComparison.Ordinal) &&
+               string.Equals(ownerType?.Namespace, "System.Collections.Generic", StringComparison.Ordinal) &&
+               typeof(IEnumerable).IsAssignableFrom(ownerType);
+    }
+
     private sealed class CaptureContext {
         private readonly AkronReconstructionGraph owner;
         private readonly Dictionary<object, int> savedNodeIds = new Dictionary<object, int>(ReferenceEqualityComparer.Instance);
@@ -2037,9 +2133,16 @@ internal sealed class AkronReconstructionGraph {
         private readonly Dictionary<Type, HashSet<FreshResource>> freshRoomObjects = new Dictionary<Type, HashSet<FreshResource>>();
         private readonly Dictionary<object, FreshResource> freshCandidates =
             new Dictionary<object, FreshResource>(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<string, HashSet<int>> mapPlacedEntityIdsByRoom =
+            new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
+        // The clean reload this capture is measured against. Its map is the map the
+        // slot was set on, so it is what decides whether an entity's id is one the
+        // map owns.
+        private readonly object freshBaselineRoot;
 
         public CaptureContext(AkronReconstructionGraph owner, object freshRoot) {
             this.owner = owner;
+            freshBaselineRoot = freshRoot;
             if (owner.getLiveResourceKey != null) {
                 IndexFreshResources(freshRoot);
             }
@@ -2088,28 +2191,37 @@ internal sealed class AkronReconstructionGraph {
                 return;
             }
 
+            // This index pass runs before a single document node exists and walks
+            // the whole fresh room, so without its own stop point the worker would
+            // spend the largest single burst of a job with the pacing gate shut
+            // and never look at it. Once per object about to have its children
+            // walked is the same granularity the capture walk uses.
+            AkronSnapshotPacing.Pace();
+
+            // One path list is pushed and popped across the whole walk instead of
+            // copying the ancestor chain at every step, which was quadratic in
+            // graph depth. The list is only ever read by GetFreshCandidate, which
+            // deep-copies it before storing, so no candidate can alias it.
             if (value is Array array) {
                 foreach (int[] indices in EnumerateArrayIndices(array)) {
-                    IndexFreshValue(
-                        array.GetValue(indices),
-                        AppendPath(path, new AkronReconstructionPathStep {
-                            Kind = "array",
-                            ArrayIndices = indices.ToList()
-                        }),
-                        visited);
+                    path.Add(new AkronReconstructionPathStep {
+                        Kind = "array",
+                        ArrayIndices = indices.ToList()
+                    });
+                    IndexFreshValue(array.GetValue(indices), path, visited);
+                    path.RemoveAt(path.Count - 1);
                 }
                 return;
             }
 
             foreach (FieldInfo field in GetInstanceFields(type)) {
-                IndexFreshValue(
-                    field.GetValue(value),
-                    AppendPath(path, new AkronReconstructionPathStep {
-                        Kind = "field",
-                        DeclaringTypeName = TypeName(field.DeclaringType),
-                        FieldName = field.Name
-                    }),
-                    visited);
+                path.Add(new AkronReconstructionPathStep {
+                    Kind = "field",
+                    DeclaringTypeName = TypeName(field.DeclaringType),
+                    FieldName = field.Name
+                });
+                IndexFreshValue(field.GetValue(value), path, visited);
+                path.RemoveAt(path.Count - 1);
             }
         }
 
@@ -2192,17 +2304,21 @@ internal sealed class AkronReconstructionGraph {
             public List<AkronReconstructionPathStep> Path { get; }
         }
 
+        // No fresh path descends into this walk. A node only records a fresh path
+        // when a saved object is re-paired with a fresh object it was not already
+        // sitting next to, and both re-pairing sites below carry the matched
+        // object's own recorded path. Threading the ancestor path down instead
+        // copied the whole path at every field, which is quadratic in graph depth
+        // and produced a value no node ever read.
         public AkronReconstructionValue CaptureValue(
             object savedValue,
             object freshValue,
             string path,
-            List<AkronReconstructionPathStep> freshPath,
             Type containingType = null,
             string knownEventPath = null,
             AkronReconstructionNode parentNode = null,
             AkronReconstructionPathStep parentStep = null,
-            int parentDelegateIndex = -1,
-            bool freshPathOverride = false
+            int parentDelegateIndex = -1
         ) {
             if (savedValue == null) {
                 return new AkronReconstructionValue { Kind = NullValueKind };
@@ -2217,12 +2333,25 @@ internal sealed class AkronReconstructionGraph {
                 };
             }
             if (savedType == typeof(IntPtr) || savedType == typeof(UIntPtr) || savedType.IsPointer || savedType.IsByRefLike) {
-                throw new AkronReconstructionException(path, "process pointer cannot be persisted");
+                // The graph path is field names only, so it cannot say which type
+                // holds the pointer, and that name is what identifies the mod a
+                // refused pointer came from. Carry both: a refusal nobody can act
+                // on costs the player the slot and tells them nothing.
+                throw new AkronReconstructionException(
+                    path,
+                    "process pointer cannot be persisted" +
+                    ";pointer-type=" + savedType.FullName +
+                    ";owner-type=" + (containingType?.FullName ?? "unknown"));
             }
             if (savedNodeIds.TryGetValue(savedValue, out int existingNodeId)) {
                 return new AkronReconstructionValue { Kind = ReferenceValueKind, NodeId = existingNodeId };
             }
 
+            // Set only when this value is re-paired with a fresh object found
+            // elsewhere in the fresh room, which is the only case a node needs a
+            // fresh path for. Last writer wins, exactly as the previous local
+            // reassignment of the descending path did.
+            List<AkronReconstructionPathStep> matchedFreshPath = null;
             bool persistentEventInstance = savedValue is EventInstance;
             bool persistentResource = owner.resourceAdapter?.CanPersist(savedType) == true;
             bool freshTypeMatches = freshValue != null && freshValue.GetType() == savedType;
@@ -2235,10 +2364,9 @@ internal sealed class AkronReconstructionGraph {
                 FreshResource matchedRoomObject = FindFreshRoomObject(savedValue);
                 if (matchedRoomObject != null) {
                     freshValue = matchedRoomObject.Value;
-                    freshPath = ClonePath(matchedRoomObject.Path);
+                    matchedFreshPath = ClonePath(matchedRoomObject.Path);
                     freshTypeMatches = true;
                     entityIdentityMatches = true;
-                    freshPathOverride = true;
                 } else if (!entityIdentityMatches) {
                     freshValue = null;
                     freshTypeMatches = false;
@@ -2257,9 +2385,8 @@ internal sealed class AkronReconstructionGraph {
                     (!freshTypeMatches || !string.Equals(savedResourceKey, freshResourceKey, StringComparison.Ordinal))) {
                     FreshResource matchedResource = FindFreshResource(savedType, savedResourceKey, path);
                     freshValue = matchedResource.Value;
-                    freshPath = ClonePath(matchedResource.Path);
+                    matchedFreshPath = ClonePath(matchedResource.Path);
                     freshTypeMatches = freshValue.GetType() == savedType;
-                    freshPathOverride = true;
                 }
                 if (!freshTypeMatches) {
                     throw new AkronReconstructionException(
@@ -2321,11 +2448,26 @@ internal sealed class AkronReconstructionGraph {
                 ParentDelegateIndex = parentDelegateIndex,
                 UseFreshObject = liveAnchor || useFreshObject,
                 ResourceKey = savedLiveResourceKey,
-                FreshPath = freshPathOverride
-                    ? ClonePath(freshPath)
-                    : new List<AkronReconstructionPathStep>()
+                // Both facts are read off the saved object, which is the only place
+                // they exist. A restore holds the fresh room and the document and
+                // neither of them can say what the saved key was derived from or
+                // what the map looked like when the slot was set.
+                PortableResourceKey = liveAnchor &&
+                                      !string.IsNullOrWhiteSpace(savedLiveResourceKey) &&
+                                      owner.hasPortableLiveResourceKey?.Invoke(savedValue) == true,
+                // == true, so "there was no map data to ask" stamps nothing rather than
+                // stamping the answer a map that dropped the id would have given.
+                MapPlacedEntity = savedValue is Entity mapEntity &&
+                                  owner.IsMapPlacedEntityId(
+                                      freshBaselineRoot,
+                                      GetEntitySourceId(mapEntity),
+                                      mapPlacedEntityIdsByRoom) == true,
+                FreshPath = matchedFreshPath ?? new List<AkronReconstructionPathStep>()
             };
             Document.Nodes.Add(node);
+            // The walk allocates in proportion to the nodes it produces, so this
+            // is where the background worker stops while the player has control.
+            AkronSnapshotPacing.Pace();
 
             if (liveAnchor) {
                 return new AkronReconstructionValue { Kind = ReferenceValueKind, NodeId = nodeId };
@@ -2347,11 +2489,11 @@ internal sealed class AkronReconstructionGraph {
                     throw new AkronReconstructionException(path, "FMOD event has no stable event path");
                 }
             } else if (savedValue is Delegate savedDelegate) {
-                CaptureDelegate(node, savedDelegate, freshValue as Delegate, path, freshPath, containingType);
+                CaptureDelegate(node, savedDelegate, freshValue as Delegate, path, containingType);
             } else if (savedValue is Array savedArray) {
-                CaptureArray(node, savedArray, freshValue as Array, path, freshPath);
+                CaptureArray(node, savedArray, freshValue as Array, path);
             } else {
-                CaptureObject(node, savedValue, useFreshObject ? freshValue : null, path, freshPath);
+                CaptureObject(node, savedValue, useFreshObject ? freshValue : null, path);
             }
 
             return new AkronReconstructionValue { Kind = ReferenceValueKind, NodeId = nodeId };
@@ -2361,17 +2503,18 @@ internal sealed class AkronReconstructionGraph {
             AkronReconstructionNode node,
             object savedObject,
             object freshObject,
-            string path,
-            List<AkronReconstructionPathStep> freshPath
+            string path
         ) {
             foreach (FieldInfo field in GetInstanceFields(savedObject.GetType())) {
+                if (IsDerivedCollectionVersionField(savedObject.GetType(), field.Name)) {
+                    continue;
+                }
                 string childPath = FieldPath(path, field.Name);
                 AkronReconstructionPathStep pathStep = new AkronReconstructionPathStep {
                     Kind = "field",
                     DeclaringTypeName = TypeName(field.DeclaringType),
                     FieldName = field.Name
                 };
-                List<AkronReconstructionPathStep> childFreshPath = AppendPath(freshPath, pathStep);
                 object freshFieldValue = freshObject == null ? null : field.GetValue(freshObject);
                 string knownEventPath = AkronEventInstanceUtils.GetOwnerEventPath(savedObject, field.Name);
                 node.Fields.Add(new AkronReconstructionField {
@@ -2382,7 +2525,6 @@ internal sealed class AkronReconstructionGraph {
                         field.GetValue(savedObject),
                         freshFieldValue,
                         childPath,
-                        childFreshPath,
                         savedObject.GetType(),
                         knownEventPath,
                         node,
@@ -2395,13 +2537,19 @@ internal sealed class AkronReconstructionGraph {
             AkronReconstructionNode node,
             Array savedArray,
             Array freshArray,
-            string path,
-            List<AkronReconstructionPathStep> freshPath
+            string path
         ) {
             for (int dimension = 0; dimension < savedArray.Rank; dimension++) {
                 node.ArrayLengths.Add(savedArray.GetLength(dimension));
                 node.ArrayLowerBounds.Add(savedArray.GetLowerBound(dimension));
             }
+
+            // A packed grid is one allocation of however many megabytes the map
+            // needs, with no node boundary inside it to stop at. Check the gate
+            // immediately before starting it rather than after, so the worker
+            // never begins a multi-megabyte copy just as the player takes
+            // control. This is the largest single allocation in the whole walk.
+            AkronSnapshotPacing.Pace();
 
             // Primitive grids contain millions of values in large custom maps.
             // Buffer.BlockCopy keeps their exact in-memory bits without adding
@@ -2427,7 +2575,6 @@ internal sealed class AkronReconstructionGraph {
                     savedArray.GetValue(indices),
                     freshItem,
                     childPath,
-                    AppendPath(freshPath, pathStep),
                     parentNode: node,
                     parentStep: pathStep));
             }
@@ -2438,7 +2585,6 @@ internal sealed class AkronReconstructionGraph {
             Delegate savedDelegate,
             Delegate freshDelegate,
             string path,
-            List<AkronReconstructionPathStep> freshPath,
             Type containingType
         ) {
             Delegate[] savedCalls = savedDelegate.GetInvocationList();
@@ -2508,7 +2654,6 @@ internal sealed class AkronReconstructionGraph {
                         savedCall.Target,
                         freshCall?.Target,
                         path + ".<target>[" + index.ToString(CultureInfo.InvariantCulture) + "]",
-                        freshPath,
                         parentNode: node,
                         parentDelegateIndex: index),
                     DeclaringTypeName = TypeName(method.DeclaringType),
@@ -2623,15 +2768,6 @@ internal sealed class AkronReconstructionGraph {
                 ArrayIndices = new List<int>(step.ArrayIndices ?? new List<int>())
             }).ToList();
         }
-
-        private static List<AkronReconstructionPathStep> AppendPath(
-            IEnumerable<AkronReconstructionPathStep> path,
-            AkronReconstructionPathStep next
-        ) {
-            List<AkronReconstructionPathStep> appended = ClonePath(path);
-            appended.Add(next);
-            return appended;
-        }
     }
 
     private sealed class RestoreContext {
@@ -2642,13 +2778,7 @@ internal sealed class AkronReconstructionGraph {
         private readonly Dictionary<int, List<(AkronReconstructionNode Parent, AkronReconstructionField Field)>> savedFieldAliases;
         private readonly Dictionary<int, List<AkronReconstructionNode>> savedArrayAliases;
         private readonly HashSet<int> savedDelegateTargetAliases;
-        private readonly Dictionary<int, int> savedTrailManagerNodesByOwnedComponent;
-        private readonly Dictionary<int, int> savedTrailManagerNodesByComponentOwnerEntity;
-        private readonly Dictionary<int, HashSet<int>> savedTrailOwnedComponentNodesByOwnerEntity;
-        private readonly HashSet<int> savedTrailAttachedOwnerEntityNodes;
         private readonly List<Action> assignments = new List<Action>();
-        private readonly List<AkronCollectionVersionAssignment> collectionVersionAssignments =
-            new List<AkronCollectionVersionAssignment>();
         private readonly Dictionary<object, int> freshOwners = new Dictionary<object, int>(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<string, List<object>> freshResources = new Dictionary<string, List<object>>(StringComparer.Ordinal);
         private readonly Dictionary<string, List<object>> freshResourcesByStructuralPath = new Dictionary<string, List<object>>(StringComparer.Ordinal);
@@ -2660,10 +2790,6 @@ internal sealed class AkronReconstructionGraph {
             new Dictionary<int, (int Ordinal, int Count)>();
         private readonly Dictionary<int, Dictionary<Type, List<Entity>>> freshEntityTypesByEntityList =
             new Dictionary<int, Dictionary<Type, List<Entity>>>();
-        private readonly Dictionary<int, HashSet<int>> authenticatedGeneratedTileNodesByEntityList =
-            new Dictionary<int, HashSet<int>>();
-        private readonly Dictionary<int, HashSet<object>> freshEntityMembershipByEntityList =
-            new Dictionary<int, HashSet<object>>();
         private readonly Dictionary<object, int> freshFieldAliasReservations =
             new Dictionary<object, int>(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<int, object> freshFieldAliasesByNode = new Dictionary<int, object>();
@@ -2673,75 +2799,53 @@ internal sealed class AkronReconstructionGraph {
         private readonly HashSet<string> freshStructuralTypes = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<string, int> freshListStructuralTypeCounts =
             new Dictionary<string, int>(StringComparer.Ordinal);
+        private readonly Dictionary<string, HashSet<int>> mapPlacedEntityIdsByRoom =
+            new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
         private readonly HashSet<string> freshStaticDelegateMethods = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> freshStructuralDelegateCalls = new HashSet<string>(StringComparer.Ordinal);
+        // What each state slot of every fresh Monocle.StateMachine means, keyed
+        // by the machine itself so two machines of one type in one room cannot
+        // lend each other a state name. Name is what the machine calls the slot
+        // and Driver is the code it runs there; see ValidateStateSlotAssignment
+        // for which of the two decides a write and why.
+        private readonly Dictionary<object, (string Name, string Driver)[]> freshStateSlots =
+            new Dictionary<object, (string Name, string Driver)[]>(ReferenceEqualityComparer.Instance);
+        private Dictionary<int, AkronReconstructionNode> savedStateSlotArrays;
         private readonly Dictionary<object, HashSet<string>> freshInstanceDelegateMethods =
             new Dictionary<object, HashSet<string>>(ReferenceEqualityComparer.Instance);
         private readonly HashSet<object> activeFreshSafeObjects = new HashSet<object>(ReferenceEqualityComparer.Instance);
         private readonly HashSet<int> resolvedFreshObjectNodes = new HashSet<int>();
+        // One nesting level of the coroutine stack costs seven steps and the
+        // deepest Celeste routine nests a handful of levels, so this bound only
+        // ever stops a document whose parent links do not terminate.
+        private const int MaxCoroutineStackWalkSteps = 64;
+
         private readonly HashSet<int> authenticatedRuntimeStateNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedRuntimeEntityNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedOwnedNestedStateNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedOwnedComponentNodes = new HashSet<int>();
-        private readonly HashSet<int> authenticatedMissingFreshTrailComponentNodes = new HashSet<int>();
-        private readonly HashSet<int> authenticatedMissingFreshMapTrailOwnerNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedDelegateTargetNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedIteratorClosureNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedScreenWipeNodes = new HashSet<int>();
+        // Iterator nodes whose captured owner had not resolved yet, with what the
+        // rest of CreateAuthenticatedObject was able to prove about each one
+        // without that owner. VerifyDeferredIteratorStates needs both.
+        private readonly List<(AkronReconstructionNode Node, bool AuthenticWithoutTheOwnerProof)>
+            deferredIteratorStateNodes =
+                new List<(AkronReconstructionNode Node, bool AuthenticWithoutTheOwnerProof)>();
         private readonly List<object> createdPersistentResources = new List<object>();
         private readonly List<object> replacedPersistentResources = new List<object>();
         private readonly HashSet<EventInstance> displacedEventInstances = new HashSet<EventInstance>();
-        private readonly AkronGeneratedTilePartitionContract generatedTilePartitionContract;
-
-        private readonly struct TileRectangle {
-            public TileRectangle(int x, int y, int width, int height) {
-                X = x;
-                Y = y;
-                Width = width;
-                Height = height;
-            }
-
-            public int X { get; }
-            public int Y { get; }
-            public int Width { get; }
-            public int Height { get; }
-        }
 
         public RestoreContext(AkronReconstructionGraph owner, AkronReconstructionDocument document, object freshRoot) {
             this.owner = owner;
             this.document = document;
             this.freshRoot = freshRoot;
-            generatedTilePartitionContract = ResolveOptionalGeneratedTilePartitionContract();
             nodes = document.Nodes.ToDictionary(node => node.Id);
             savedFieldAliases = IndexSavedFieldAliases(document);
             savedArrayAliases = IndexSavedArrayAliases(document);
             savedDelegateTargetAliases = IndexSavedDelegateTargetAliases(document, nodes);
-            (
-                savedTrailManagerNodesByOwnedComponent,
-                savedTrailManagerNodesByComponentOwnerEntity,
-                savedTrailOwnedComponentNodesByOwnerEntity,
-                savedTrailAttachedOwnerEntityNodes
-            ) =
-                IndexSavedTrailSnapshotOwnership();
             Objects = new Dictionary<int, object>();
-        }
-
-        private AkronGeneratedTilePartitionContract ResolveOptionalGeneratedTilePartitionContract() {
-            try {
-                return owner.generatedTilePartitionContractProvider();
-            } catch (Exception exception) when (
-                exception is ArgumentException ||
-                exception is AmbiguousMatchException ||
-                exception is TypeLoadException ||
-                exception is ReflectionTypeLoadException ||
-                exception is FileLoadException ||
-                exception is FileNotFoundException ||
-                exception is BadImageFormatException) {
-                // This contract adapts an optional mod. If that mod changes its
-                // reflected shape, leave the specialized authentication off.
-                // Any snapshot that needs it will still fail closed later.
-                return null;
-            }
         }
 
         public RestoreContext(
@@ -2752,24 +2856,14 @@ internal sealed class AkronReconstructionGraph {
             this.owner = owner;
             this.document = document;
             freshRoot = objects[document.RootNodeId];
-            generatedTilePartitionContract = null;
             nodes = document.Nodes.ToDictionary(node => node.Id);
             savedFieldAliases = IndexSavedFieldAliases(document);
             savedArrayAliases = IndexSavedArrayAliases(document);
             savedDelegateTargetAliases = IndexSavedDelegateTargetAliases(document, nodes);
-            (
-                savedTrailManagerNodesByOwnedComponent,
-                savedTrailManagerNodesByComponentOwnerEntity,
-                savedTrailOwnedComponentNodesByOwnerEntity,
-                savedTrailAttachedOwnerEntityNodes
-            ) =
-                IndexSavedTrailSnapshotOwnership();
             Objects = objects;
         }
 
         public Dictionary<int, object> Objects { get; }
-        public IReadOnlyList<AkronCollectionVersionAssignment> CollectionVersionAssignments =>
-            collectionVersionAssignments;
 
         public void ResolveObjects() {
             AkronReconstructionNode rootNode = nodes[document.RootNodeId];
@@ -2785,6 +2879,8 @@ internal sealed class AkronReconstructionGraph {
 
             foreach (AkronReconstructionNode node in document.Nodes.OrderBy(node => node.Id)) {
                 Type type = ResolveType(node.TypeName, node.Path);
+                // Before any resolver or authenticator sees this node. See the method.
+                RefuseMapEntityTheMapNoLongerPlaces(node, type);
                 object restoredObject;
                 if (node.Id == document.RootNodeId) {
                     restoredObject = freshRoot;
@@ -2917,7 +3013,7 @@ internal sealed class AkronReconstructionGraph {
                 Objects[node.Id] = restoredObject;
             }
 
-            IndexAuthenticatedMissingFreshAttachedTrailComponents();
+            VerifyDeferredIteratorStates();
             ValidateReferenceAuthenticity();
             foreach (AkronReconstructionNode node in document.Nodes.Where(node => node.Kind == DelegateKind).OrderBy(node => node.Id)) {
                 Objects[node.Id] = CreateDelegate(node);
@@ -2967,26 +3063,44 @@ internal sealed class AkronReconstructionGraph {
                 return;
             }
             if (value is Delegate freshDelegate) {
-                if (!visited.Add(value)) {
-                    return;
-                }
+                // A structural call key states that the fresh room runs this
+                // callback at this path - as loosely as StructuralDelegateCallKey
+                // reads a path, which already wildcards every array index - so it
+                // has to be recorded at every path the delegate is reachable
+                // from. Recording it at one path only makes the index disagree
+                // with the room depending on walk order. Ordinary objects below
+                // already work the other way: they record their structural type
+                // on every visit and only skip walking their fields again. A
+                // delegate used to skip the whole visit instead, so a callback
+                // object a room holds in two slots - which is what a cached
+                // non-capturing lambda or one shared handler is - left the
+                // second slot with no record, and a saved document whose own
+                // path was that second slot was refused for a callback the
+                // fresh room does have there. Object identity still ends the
+                // walk: the target below is indexed once.
+                bool firstDelegateVisit = visited.Add(value);
                 foreach (Delegate call in freshDelegate.GetInvocationList()) {
+                    if (call.Target != null) {
+                        freshStructuralDelegateCalls.Add(
+                            StructuralDelegateCallKey(path, call.Target.GetType(), call.Method));
+                    }
+                    if (!firstDelegateVisit) {
+                        continue;
+                    }
                     string methodKey = DelegateMethodKey(call.Method);
                     if (call.Target == null) {
                         freshStaticDelegateMethods.Add(methodKey);
-                    } else {
-                        freshStructuralDelegateCalls.Add(
-                            StructuralDelegateCallKey(path, call.Target.GetType(), call.Method));
-                        if (!freshInstanceDelegateMethods.TryGetValue(call.Target, out HashSet<string> methods)) {
-                            methods = new HashSet<string>(StringComparer.Ordinal);
-                            freshInstanceDelegateMethods[call.Target] = methods;
-                        }
-                        methods.Add(methodKey);
-                        // Capture serializes delegate targets at the owning
-                        // delegate path. Follow the same path here so nested
-                        // callbacks inside closure state can be authenticated.
-                        IndexFreshResources(call.Target, path, visited);
+                        continue;
                     }
+                    if (!freshInstanceDelegateMethods.TryGetValue(call.Target, out HashSet<string> methods)) {
+                        methods = new HashSet<string>(StringComparer.Ordinal);
+                        freshInstanceDelegateMethods[call.Target] = methods;
+                    }
+                    methods.Add(methodKey);
+                    // Capture serializes delegate targets at the owning
+                    // delegate path. Follow the same path here so nested
+                    // callbacks inside closure state can be authenticated.
+                    IndexFreshResources(call.Target, path, visited);
                 }
                 return;
             }
@@ -3047,6 +3161,13 @@ internal sealed class AkronReconstructionGraph {
                 }
             }
 
+            // Record what this machine's state slots mean. It is a fact about
+            // the machine rather than about a path, so once is enough however
+            // many places the room reaches it from.
+            if (value is StateMachine freshStateMachine) {
+                IndexFreshStateSlots(freshStateMachine);
+            }
+
             try {
                 if (value is Array array) {
                     int[] indices = GetInitialArrayIndices(array);
@@ -3085,6 +3206,64 @@ internal sealed class AkronReconstructionGraph {
             }
         }
 
+        // One entry per state slot the fresh machine has, holding what that slot
+        // is called and what it runs. Read here rather than off the machine
+        // later, because names and the callback arrays are both fields the
+        // document restores: by the time a callback array is written, reading the
+        // machine would read the document's own answer back.
+        private void IndexFreshStateSlots(StateMachine machine) {
+            string[] names = StateMachineNamesField?.GetValue(machine) as string[];
+            int slots = 0;
+            foreach (FieldInfo callbackField in StateMachineCallbackFields) {
+                if (callbackField?.GetValue(machine) is Array callbacks && callbacks.Length > slots) {
+                    slots = callbacks.Length;
+                }
+            }
+            (string Name, string Driver)[] slotCoordinates = new (string Name, string Driver)[slots];
+            for (int slot = 0; slot < slots; slot++) {
+                // Monocle keeps names no longer than the callback arrays, and
+                // GetStateName finds no name for a slot past its end - it
+                // returns the state id as a string instead - so record that
+                // slot as unnamed rather than leaving it unrecorded. Recording
+                // null rather than the id keeps a state a mod happened to name
+                // "2" from matching an unnamed slot 2 on the other side.
+                slotCoordinates[slot] = (
+                    names != null && slot < names.Length ? names[slot] : null,
+                    FreshStateSlotDriver(machine, slot));
+            }
+            freshStateSlots[machine] = slotCoordinates;
+        }
+
+        // The code the fresh machine runs at one slot, written the way
+        // SavedStateSlotDriver writes it from the document so the two strings are
+        // comparable. A delegate's invocation list is spelled out because a mod
+        // can add to a callback rather than replace it, and one call is the
+        // ordinary case.
+        private static string FreshStateSlotDriver(StateMachine machine, int slot) {
+            StringBuilder driver = new StringBuilder();
+            // Walked by name rather than by FieldInfo, the same way SavedStateSlotDriver
+            // walks it, because the two strings are compared: a field Monocle no longer
+            // has must leave the same empty "<name>=;" on both sides rather than an NRE
+            // on one of them. StateMachineDriverFields is built from these names in this
+            // order, so the index addresses the same field the name does, and a lookup
+            // that found nothing is a null entry there.
+            for (int index = 0; index < StateMachineDriverFieldNames.Length; index++) {
+                driver.Append(StateMachineDriverFieldNames[index]).Append('=');
+                if (StateMachineDriverFields[index]?.GetValue(machine) is Array callbacks &&
+                    slot < callbacks.Length &&
+                    callbacks.GetValue(slot) is Delegate callback) {
+                    foreach (Delegate call in callback.GetInvocationList()) {
+                        driver.Append(TypeName(call.Method.DeclaringType))
+                            .Append('.')
+                            .Append(call.Method.Name)
+                            .Append('+');
+                    }
+                }
+                driver.Append(';');
+            }
+            return driver.ToString();
+        }
+
         private bool ShouldIndexFreshEdge(object value, HashSet<object> visited) {
             if (value == null) {
                 return false;
@@ -3097,31 +3276,76 @@ internal sealed class AkronReconstructionGraph {
             if (type.IsValueType || !visited.Contains(value)) {
                 return true;
             }
-            return value is not Delegate && !owner.isLiveResource(type);
+            // A second visit still has a path-keyed fact to record: an ordinary
+            // object its structural type here, a delegate its structural call
+            // key here. Neither walks its fields again. A live resource is
+            // identified by its own key rather than by a path, so revisiting
+            // one would add nothing.
+            return value is Delegate || !owner.isLiveResource(type);
         }
 
         private object CreateAuthenticatedObject(AkronReconstructionNode node, Type type) {
-            bool authenticatedIteratorState = IsAuthenticatedCompilerIteratorState(node, type);
+            // A compiler iterator proves itself through its captured <>4__this
+            // owner, and nodes resolve in document order. An iterator whose owner
+            // is reached later in the document - the owner's own first path runs
+            // through this iterator, or the owner is a component of an entity
+            // further down the room - cannot be asked that question yet, so it
+            // carries the question to the end of the run instead of being refused
+            // for a reason that says nothing about the saved state.
+            //
+            // Two independent proofs, and keeping them apart is what this method
+            // is careful about. The owner proof is the identity-bearing one: it
+            // says this iterator is the routine of an object the fresh room
+            // supplied, and it is the only thing that may put a node in
+            // authenticatedRuntimeStateNodes, because every rule that reads that
+            // set rests on it and on nothing else - the coroutine-stack alias,
+            // the iterator-owned-component alias, the <>4__this owner edge, the
+            // closure-local rule below, and reconstructedSafeParentEdge on either
+            // side of an edge. The structural proof below is the ordinary licence
+            // every reconstruction gets - the fresh room supplies an object of
+            // this type at this path - and it authenticates the object without
+            // saying whose routine it is.
+            //
+            // So a deferred node is still asked the structural question here, and
+            // its answer is carried to VerifyDeferredIteratorStates. Skipping it
+            // was a measured regression: a coroutine that has never updated holds
+            // its iterator exactly once, because Monocle.Coroutine stores its
+            // constructor argument raw and only Coroutine.Update wraps it in
+            // Everest's Flattened, so one unspent fresh occurrence admits the
+            // whole room and the deferral was throwing that proof away. Measured:
+            // three instances of one entity doing
+            // `Add(new Coroutine(tween.Wait())); Add(tween);`, two finished during
+            // play and one added during play, loaded on 010f660 and was refused
+            // when the deferral discarded the structural proof. See
+            // ARawCoroutineIteratorLoadsOnItsOwnStructuralEvidence.
+            bool provedIteratorState = IsAuthenticatedCompilerIteratorState(node, type);
+            bool deferredIteratorState =
+                !provedIteratorState && HasUnresolvedCompilerIteratorOwner(node, type);
             bool authenticatedRuntimeEntity =
                 IsAuthenticatedBuiltInRuntimeEntity(node, type) ||
-                IsAuthenticatedGeneratedRuntimeEntity(node, type) ||
-                IsAuthenticatedTrailSnapshotComponentOwnerEntity(node, type);
+                IsAuthenticatedGeneratedRuntimeEntity(node, type);
             bool authenticatedOwnedNestedState =
                 IsAuthenticatedFreshEntityOwnedNestedState(node, type) ||
                 IsAuthenticatedFreshRendererOwnedRuntimeState(node, type) ||
                 IsAuthenticatedRuntimeEntityOwnedState(node, type) ||
-                IsAuthenticatedGeneratedEntityOwnedState(node, type) ||
-                IsAuthenticatedMissingFreshMapTrailOwnerCollider(node, type);
-            bool authenticatedMissingFreshTrailComponent =
-                IsAuthenticatedMissingFreshAttachedTrailComponent(node, type);
-            bool authenticatedOwnedComponent =
-                IsAuthenticatedReconstructedOwnedComponent(node, type) ||
-                IsAuthenticatedTrailSnapshotOwnedComponent(node, type) ||
-                authenticatedMissingFreshTrailComponent;
+                IsAuthenticatedGeneratedEntityOwnedState(node, type);
+            bool authenticatedOwnedComponent = IsAuthenticatedReconstructedOwnedComponent(node, type);
             bool authenticatedDelegateTarget = IsStructurallyAuthenticDelegateTarget(node, type);
             bool authenticatedIteratorClosure = IsAuthenticatedIteratorClosure(node, type);
             bool authenticatedScreenWipe = IsAuthenticatedBuiltInScreenWipe(node, type);
-            if (authenticatedIteratorState) {
+            // A deferred node's membership is provisional: the owner proof is the
+            // only thing that grants it and that proof is not in yet, so
+            // VerifyDeferredIteratorStates confirms it or withdraws it before
+            // ValidateReferenceAuthenticity, where every reader but one sits. The
+            // exception is the reader inside this same loop,
+            // IsAuthenticatedIteratorClosure, asked of the compiler closure this
+            // iterator hoisted - a <>8__ field of it, so a node reached later in
+            // the same document. Granting the membership here rather than at the
+            // verify keeps that verdict what it is today, and it cannot carry the
+            // withdrawal's weight: what closure-local membership licenses is one
+            // <>4__this edge whose edge parent is a reconstruction and never a
+            // fresh node, so it cannot reach the displacement guard.
+            if (provedIteratorState || deferredIteratorState) {
                 authenticatedRuntimeStateNodes.Add(node.Id);
             }
             if (authenticatedRuntimeEntity) {
@@ -3133,9 +3357,6 @@ internal sealed class AkronReconstructionGraph {
             if (authenticatedOwnedComponent) {
                 authenticatedOwnedComponentNodes.Add(node.Id);
             }
-            if (authenticatedMissingFreshTrailComponent) {
-                authenticatedMissingFreshTrailComponentNodes.Add(node.Id);
-            }
             if (authenticatedDelegateTarget) {
                 authenticatedDelegateTargetNodes.Add(node.Id);
             }
@@ -3145,12 +3366,17 @@ internal sealed class AkronReconstructionGraph {
             if (authenticatedScreenWipe) {
                 authenticatedScreenWipeNodes.Add(node.Id);
             }
-            if (!IsExplicitlySafeReconstructionType(type) &&
-                !authenticatedIteratorState &&
-                !authenticatedRuntimeEntity &&
-                !authenticatedOwnedNestedState &&
-                !authenticatedOwnedComponent &&
-                !authenticatedScreenWipe) {
+            // Everything that authenticates this reconstruction without appealing
+            // to a compiler iterator's owner. A deferred node computes it too and
+            // hands it to VerifyDeferredIteratorStates, which is why the throw is
+            // guarded rather than the whole block.
+            bool authenticWithoutTheOwnerProof =
+                IsExplicitlySafeReconstructionType(type) ||
+                authenticatedRuntimeEntity ||
+                authenticatedOwnedNestedState ||
+                authenticatedOwnedComponent ||
+                authenticatedScreenWipe;
+            if (!authenticWithoutTheOwnerProof && !provedIteratorState) {
                 List<AkronReconstructionPathStep> structuralPath = GetDocumentStructuralPath(node);
                 string typePathKey = StructuralResourcePathKey(type, structuralPath);
                 string listTypePathKey = StructuralResourcePathKey(
@@ -3160,17 +3386,40 @@ internal sealed class AkronReconstructionGraph {
                 bool listTypeIsAvailable = HasListStorageIndex(structuralPath) &&
                                            freshListStructuralTypeCounts.ContainsKey(listTypePathKey);
                 bool exactTypeIsAvailable = freshStructuralTypes.Contains(typePathKey);
-                if ((structuralPath.Count == 0 || !exactTypeIsAvailable && !listTypeIsAvailable) &&
-                    !IsAuthenticatedByExactParentSlot(node, type) &&
-                    !authenticatedDelegateTarget) {
+                // IsAuthenticatedByExactParentSlot stays behind the path evidence,
+                // the way the negated form it replaces left it: it resolves the
+                // parent field and throws when the build no longer declares it, so
+                // asking it when the path already answers would turn a loadable
+                // room into a refusal about a field nothing needed.
+                //
+                // And a deferred node does not ask it at all. That throw is exactly
+                // the refusal the deferral exists to avoid - a mod update that drops
+                // the field an iterator was held in would answer "field is
+                // unavailable", with no type on it for the report to name the mod
+                // with, in place of the owner refusal that says what is actually
+                // wrong with the document. The owner question is the better question
+                // for this node and it is about to be asked. Nothing is lost by not
+                // asking: for an array parent this predicate reads the same fresh
+                // slot the exact path key already covers, and for a field parent it
+                // wants a field declared as the iterator's own compiler-generated
+                // type, which no source can write.
+                authenticWithoutTheOwnerProof =
+                    (structuralPath.Count > 0 && (exactTypeIsAvailable || listTypeIsAvailable)) ||
+                    (!deferredIteratorState && IsAuthenticatedByExactParentSlot(node, type)) ||
+                    authenticatedDelegateTarget;
+                if (!authenticWithoutTheOwnerProof && !deferredIteratorState) {
                     throw new AkronReconstructionException(
                         node.Path,
                         "reconstructed type is not authentic to the fresh room;type=" + type.FullName +
                         ";path-depth=" + structuralPath.Count.ToString(CultureInfo.InvariantCulture) +
                         ";list-path=" + HasListStorageIndex(structuralPath).ToString().ToLowerInvariant() +
                         ";exact-match=" + exactTypeIsAvailable.ToString().ToLowerInvariant() +
-                        ";list-match=" + listTypeIsAvailable.ToString().ToLowerInvariant());
+                        ";list-match=" + listTypeIsAvailable.ToString().ToLowerInvariant(),
+                        node.TypeName);
                 }
+            }
+            if (deferredIteratorState) {
+                deferredIteratorStateNodes.Add((node, authenticWithoutTheOwnerProof));
             }
             if (node.Kind == ArrayKind) {
                 return CreateArray(type, node, node.Path);
@@ -3193,6 +3442,84 @@ internal sealed class AkronReconstructionGraph {
             return RuntimeHelpers.GetUninitializedObject(type);
         }
 
+        // A saved entity whose EntityID the map no longer lays out in the room being
+        // rebuilt. Two different things stop the reloaded room from containing a saved
+        // entity's id, and only one of them is safe to rebuild through:
+        //
+        //   session state. The map still lays this id out; this run's flags meant
+        //   LoadLevel skipped it. The saved frame is the truth, the entity is rebuilt
+        //   beside the ones the room did build, and that restore works.
+        //
+        //   a changed map. The id is gone from the map, so the room the document was
+        //   measured against no longer exists. Every same-typed entity in the room is
+        //   a different map entity, and rebuilding the saved one hands it a live
+        //   entity's list slot, its components and its saved state while the entity
+        //   LoadLevel built is dropped - reported as success, because the only thing
+        //   consulted is that the fresh room holds SOME object of this type at this
+        //   wildcarded list path.
+        //
+        // The map is what tells them apart, and one bit per node is all it takes: an
+        // id the map owned when the slot was set, gone from the map now, is a changed
+        // map. An id the map never owned - one a mod made up for an entity it spawns
+        // itself - carries no evidence either way and is left alone, which is why the
+        // node records what capture saw rather than the restore asking the map alone.
+        //
+        // Only ids belonging to document.Room count, and that is the whole jurisdiction
+        // of the rule. An entity the player is carrying keeps the SourceId the room it
+        // was picked up in gave it - Leader.GainFollower leaves Tags.Persistent on a
+        // strawberry and Level.TransitionRoutine carries persistent entities across, so
+        // a berry picked up in a01 is still a01:5 while the player stands in a40 - and
+        // UnloadLevel keeps only Tags.Global, so that node never pairs and always
+        // reaches here. An edit to a01 says nothing about whether rebuilding it would
+        // displace one of a40's entities, which is the harm above, and a golden-berry
+        // run would otherwise make every slot in the chapter depend on the first room's
+        // ids. document.Room is the room TryLoadFreshRoom loaded, so it is exactly the
+        // population being rebuilt.
+        //
+        // Called once per node before anything resolves it, and deliberately: the
+        // resolvers decide whether an authenticator ever runs, and none of them is
+        // entitled to overrule an identity the map itself has dropped.
+        // TryResolveFreshFieldAlias in particular has no SourceId check, so a saved map
+        // entity held in an ordinary field outside entity or component list storage
+        // used to bind to whatever the fresh room kept in that field - measured: the
+        // saved state of entity 10 landing on the entity the edited map calls 99, with
+        // that entity's SourceId overwritten to 10 and the load reporting success.
+        //
+        // Running first also covers a saved map entity that would have paired, and that
+        // is the right answer rather than an accident of placement. Everest derives an
+        // EntityID from map data for everything LoadLevel builds and for everything
+        // EntityList.Add sees during a map entity's construction, so a reloaded room
+        // carrying a stable SourceId the current map does not place got it from mod code
+        // setting the field itself - and the document is still measured against a room
+        // this map no longer produces.
+        //
+        // The last clause is "!= false" rather than a plain truth test, and that is the
+        // whole of what keeps this rule from lying. Its message says the map changed, so
+        // it may only fire on evidence that the map changed: a map this process could
+        // not read answers null, which is no evidence at all, and refusing on it would
+        // tell a player their collab was updated because a map reload happened to be in
+        // flight. Null falls through here exactly as a placed id does.
+        private void RefuseMapEntityTheMapNoLongerPlaces(AkronReconstructionNode node, Type type) {
+            if (!node.MapPlacedEntity || !typeof(Entity).IsAssignableFrom(type) ||
+                !TryGetSavedEntityId(node, out EntityID savedEntityId) ||
+                !string.Equals(savedEntityId.Level, document.Room, StringComparison.Ordinal) ||
+                owner.IsMapPlacedEntityId(freshRoot, savedEntityId, mapPlacedEntityIdsByRoom) != false) {
+                return;
+            }
+            // ChangedMap, not the default: the only thing this rule has proved is that the
+            // map dropped an id it used to own. Which mod ships the entity's type is not
+            // evidence of anything here, so the message must not be built from it - a
+            // vanilla entity edited out of a collab room would otherwise be attributed to
+            // Celeste and reported to the player as an Akron bug.
+            throw new AkronReconstructionException(
+                node.Path,
+                "saved map entity is no longer placed by this map;type=" + type.FullName +
+                ";saved-entity-id=" + (savedEntityId.Level ?? string.Empty) + ":" +
+                savedEntityId.ID.ToString(CultureInfo.InvariantCulture),
+                node.TypeName,
+                AkronReconstructionRefusalKind.ChangedMap);
+        }
+
         private bool IsAuthenticatedCompilerIteratorState(AkronReconstructionNode node, Type type) {
             AkronReconstructionValue ownerReference = FindReferenceField(node, "<>4__this");
             return ownerReference != null &&
@@ -3202,6 +3529,61 @@ internal sealed class AkronReconstructionGraph {
                        resolvedFreshObjectNodes.Contains(ownerReference.NodeId),
                        authenticatedRuntimeEntityNodes.Contains(ownerReference.NodeId),
                        ownerObject);
+        }
+
+        private bool HasUnresolvedCompilerIteratorOwner(AkronReconstructionNode node, Type type) {
+            AkronReconstructionValue ownerReference = FindReferenceField(node, "<>4__this");
+            return ownerReference != null &&
+                   nodes.ContainsKey(ownerReference.NodeId) &&
+                   !Objects.ContainsKey(ownerReference.NodeId) &&
+                   typeof(IEnumerator).IsAssignableFrom(type) &&
+                   type.GetCustomAttribute<CompilerGeneratedAttribute>() != null &&
+                   type.DeclaringType != null;
+        }
+
+        // The deferred owner question, asked once every node is resolved. Runs
+        // before ValidateReferenceAuthenticity, so every rule that reads
+        // authenticatedRuntimeStateNodes there sees the settled answer.
+        private void VerifyDeferredIteratorStates() {
+            foreach ((AkronReconstructionNode node, bool authenticWithoutTheOwnerProof)
+                     in deferredIteratorStateNodes) {
+                Type type = ResolveType(node.TypeName, node.Path);
+                if (IsAuthenticatedCompilerIteratorState(node, type)) {
+                    continue;
+                }
+                if (!authenticWithoutTheOwnerProof) {
+                    throw new AkronReconstructionException(
+                        node.Path,
+                        "reconstructed compiler iterator owner is not authentic to the fresh room;type=" +
+                        type.FullName,
+                        node.TypeName);
+                }
+                // The owner is not authentic and something else admits the object
+                // anyway, which is the licence every other reconstruction in the
+                // room is holding. So the object stands and the iterator licence
+                // goes: withdraw the provisional membership, and every reference to
+                // this node has to earn its own edge the way an ordinary
+                // reconstruction's references do.
+                //
+                // For a compiler iterator that something else is always the
+                // structural evidence. The owned-nested-state and owned-component
+                // licences cannot reach one: both reject IDisposable types, and
+                // every C# iterator state machine implements IDisposable - measured
+                // against the real assemblies, Monocle.Tween+<Wait>d__45 included.
+                //
+                // Keeping the membership here was measured and it opens a wrong
+                // restore. IsAuthenticatedCoroutineStackIteratorAlias would license
+                // the node's Flattened.current alias, that becomes exactOwnerEdge,
+                // and an exactOwnerEdge is exempt from the displacement question -
+                // ValidateReferenceEdge returns before asking it - so the
+                // reconstruction is written over a live iterator the document still
+                // keeps through another field, and the restore reports success. w50
+                // and w51 have that room and its measurement on both builds; the room
+                // in the suite that fails without this line is
+                // ADeferredCompilerIteratorWhoseOwnerIsOnlyAnOwnedComponentIsRefusedBesideThatSibling,
+                // which loads on the membership alone.
+                authenticatedRuntimeStateNodes.Remove(node.Id);
+            }
         }
 
         private bool IsAuthenticatedIteratorClosure(AkronReconstructionNode node, Type type) {
@@ -3222,17 +3604,178 @@ internal sealed class AkronReconstructionGraph {
                        ResolveType(iteratorNode.TypeName, iteratorNode.Path));
         }
 
+        // Everest wraps every coroutine frame in SwapImmediatelyExtension's
+        // Flattened, whose MoveNext copies the value the inner iterator yielded
+        // into its own `current` field, and Monocle.Coroutine then pushes that
+        // value onto its own stack and wraps it in a second Flattened. So the
+        // stock Celeste idiom `yield return sprite.PlayRoutine("anim")` inside a
+        // StateMachine leaves one mid-flight iterator held three times inside a
+        // single Coroutine: the yielding routine's <>2__current, the
+        // Flattened.current it was copied into, and the inner Flattened's own
+        // stack. The document canonicalises one of the three and the other two
+        // arrive here as alias edges with nothing else to prove them.
+        //
+        // This is not a fresh-room claim and the fresh room's occurrence counts
+        // say nothing about it: the iterator does not exist in a clean load at
+        // all. It is a reconstructed object that already proved itself through
+        // its captured <>4__this owner, and it is already reachable from this
+        // Coroutine through its own document path. A second reference from
+        // elsewhere in the same Coroutine's stack therefore admits no object,
+        // reaches nothing new, and consumes no fresh occurrence. Confining the
+        // alias to that one Coroutine is what stops an authenticated iterator
+        // being planted into an unrelated component's stack.
+        private bool IsAuthenticatedCoroutineStackIteratorAlias(
+            AkronReconstructionNode target,
+            AkronReconstructionNode edgeParent,
+            Type edgeParentType,
+            AkronReconstructionField edgeField,
+            bool savedOwnerEdge
+        ) {
+            // Second references only. The document's own first-owner path to
+            // the iterator has to carry its own proof; if this rule could admit
+            // that path too, "already reachable through its canonical path"
+            // would stop being true and the rule would be proving itself.
+            if (savedOwnerEdge ||
+                !authenticatedRuntimeStateNodes.Contains(target.Id) ||
+                !IsCoroutineStackIteratorSlot(edgeParent, edgeParentType, edgeField)) {
+                return false;
+            }
+
+            return TryGetCoroutineEnumeratorStackOwner(
+                       edgeParent,
+                       CoroutineStackWalk.StorageOnly,
+                       out int aliasCoroutineId) &&
+                   TryGetCoroutineEnumeratorStackOwner(
+                       target,
+                       CoroutineStackWalk.IncludingYieldedValues,
+                       out int ownerCoroutineId) &&
+                   aliasCoroutineId == ownerCoroutineId;
+        }
+
+        // The three places a coroutine can hold a frame it is running, and the
+        // only edges this rule will authenticate. Being canonically inside the
+        // stack is not enough on its own: without this, any reference field on
+        // a frame that happens to sit in the stack would qualify, including a
+        // hoisted local the compiler named <spare>5__2, which is a value the
+        // saved room can set to anything.
+        private static bool IsCoroutineStackIteratorSlot(
+            AkronReconstructionNode edgeParent,
+            Type edgeParentType,
+            AkronReconstructionField edgeField
+        ) {
+            if (edgeField == null) {
+                return edgeParent.Kind == ArrayKind && edgeParentType == typeof(IEnumerator[]);
+            }
+            return edgeField.Name switch {
+                "current" => edgeParentType == typeof(SwapImmediatelyExtension.Flattened),
+                "<>2__current" => IsCompilerGeneratedIterator(edgeParentType),
+                _ => false
+            };
+        }
+
+        // Walk a node's document parents up to a Coroutine's own `enumerators`
+        // stack, crossing only the stack's plumbing. Every step names both the
+        // edge and the type it lands on, so a reference parked in some other
+        // field of a frame cannot be walked back to the Coroutine and passed
+        // off as part of its stack.
+        private bool TryGetCoroutineEnumeratorStackOwner(
+            AkronReconstructionNode node,
+            CoroutineStackWalk walk,
+            out int coroutineNodeId
+        ) {
+            coroutineNodeId = 0;
+            AkronReconstructionNode current = node;
+            // Restore can be handed an in-memory document that never went
+            // through the deserializer's parent-cycle check, so the walk is
+            // bounded rather than trusting the links to terminate.
+            for (int step = 0; step < MaxCoroutineStackWalkSteps; step++) {
+                if (!nodes.TryGetValue(current.ParentNodeId, out AkronReconstructionNode parent)) {
+                    return false;
+                }
+                Type parentType = ResolveType(parent.TypeName, parent.Path);
+                if (IsCoroutineEnumeratorStackField(current, parentType)) {
+                    coroutineNodeId = parent.Id;
+                    return true;
+                }
+                if (!IsCoroutineEnumeratorStackStep(current, parentType, walk)) {
+                    return false;
+                }
+                current = parent;
+            }
+            return false;
+        }
+
+        // The two walks are not the same question, and the difference is what
+        // keeps the rule honest.
+        //
+        // The container an alias lives in has to be the stack's own storage, so
+        // that walk never crosses a value a frame yielded: a routine is free to
+        // `yield return new IEnumerator[] { ... }`, and the contents of that
+        // array are the routine's own data, not slots of the coroutine's stack.
+        // Treating them as slots would let any array a frame yielded hold an
+        // authenticated iterator.
+        //
+        // The walk that establishes which coroutine owns the iterator does
+        // cross them, because the iterator being aliased legitimately IS the
+        // yielded value of one of those frames - that is the whole shape.
+        private enum CoroutineStackWalk {
+            StorageOnly,
+            IncludingYieldedValues
+        }
+
+        // The terminal step: Monocle.Coroutine's own private stack. Coroutine
+        // is not sealed, so a subclass declaring its own `enumerators` field
+        // would otherwise be read as Monocle's stack. The declaring type
+        // recorded on the edge is what decides, not the field name.
+        private bool IsCoroutineEnumeratorStackField(AkronReconstructionNode node, Type parentType) {
+            if (node.ParentKind != "field" ||
+                node.ParentFieldName != "enumerators" ||
+                !typeof(Coroutine).IsAssignableFrom(parentType)) {
+                return false;
+            }
+            return ResolveType(node.ParentDeclaringTypeName, node.Path) == typeof(Coroutine);
+        }
+
+        // One step up the stack's plumbing: a slot in an IEnumerator[], that
+        // array as a Stack's backing store, and a Flattened's own inner stack.
+        // The last two shapes are the yielded values, and only the owning walk
+        // may cross those - see CoroutineStackWalk.
+        private static bool IsCoroutineEnumeratorStackStep(
+            AkronReconstructionNode node,
+            Type parentType,
+            CoroutineStackWalk walk
+        ) {
+            if (node.ParentKind == "array") {
+                return parentType == typeof(IEnumerator[]);
+            }
+            if (node.ParentKind != "field") {
+                return false;
+            }
+            bool yieldedValuesAllowed = walk == CoroutineStackWalk.IncludingYieldedValues;
+            return node.ParentFieldName switch {
+                "_array" => parentType == typeof(Stack<IEnumerator>),
+                "enums" => parentType == typeof(SwapImmediatelyExtension.Flattened),
+                "current" => yieldedValuesAllowed &&
+                             parentType == typeof(SwapImmediatelyExtension.Flattened),
+                "<>2__current" => yieldedValuesAllowed && IsCompilerGeneratedIterator(parentType),
+                _ => false
+            };
+        }
+
+        // IsDefined rather than GetCustomAttribute: this runs on a per-edge
+        // path and materialising the attribute instance to throw it away
+        // allocates for nothing.
+        private static bool IsCompilerGeneratedIterator(Type type) {
+            return typeof(IEnumerator).IsAssignableFrom(type) &&
+                   type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) &&
+                   type.DeclaringType != null;
+        }
+
         private bool IsAuthenticatedIteratorOwnedComponentAlias(
             AkronReconstructionNode target,
-            Type targetType,
             AkronReconstructionNode edgeParent
         ) {
-            bool authenticatedFreshIterator =
-                resolvedFreshObjectNodes.Contains(target.Id) &&
-                typeof(IEnumerator).IsAssignableFrom(targetType) &&
-                IsAuthenticatedCompilerIteratorState(target, targetType);
-            if (!authenticatedFreshIterator &&
-                !authenticatedRuntimeStateNodes.Contains(target.Id)) {
+            if (!authenticatedRuntimeStateNodes.Contains(target.Id)) {
                 return false;
             }
             AkronReconstructionValue iteratorOwner = FindReferenceField(target, "<>4__this");
@@ -3291,11 +3834,9 @@ internal sealed class AkronReconstructionGraph {
                     node.ParentDeclaringTypeName,
                     node.ParentFieldName,
                     node.Path);
-                return AkronReconstructionGraph.TryGetCompatibleFreshFieldValue(
-                    field,
-                    type,
-                    fieldParent,
-                    out _);
+                return field.FieldType == type &&
+                       field.DeclaringType.IsInstanceOfType(fieldParent) &&
+                       field.GetValue(fieldParent) != null;
             }
             return false;
         }
@@ -3317,11 +3858,9 @@ internal sealed class AkronReconstructionGraph {
                     node.ParentDeclaringTypeName,
                     node.ParentFieldName,
                     node.Path);
-                AkronReconstructionGraph.TryGetCompatibleFreshFieldValue(
-                    field,
-                    type,
-                    parentObject,
-                    out matchedObject);
+                if (field.FieldType == type && field.DeclaringType.IsInstanceOfType(parentObject)) {
+                    matchedObject = field.GetValue(parentObject);
+                }
             } else if (node.ParentKind == "array" &&
                        parentObject is Array array &&
                        array.GetType().GetElementType().IsAssignableFrom(type) &&
@@ -3431,12 +3970,9 @@ internal sealed class AkronReconstructionGraph {
                 edgeParent,
                 edgeField);
             Type edgeParentType = ResolveType(edgeParent.TypeName, edgeParent.Path);
-            bool authenticatedTrailSnapshotEdgeParentOwnedComponent =
-                IsAuthenticatedTrailSnapshotOwnedComponent(edgeParent, edgeParentType);
             bool authenticatedEdgeParentOwnedComponent =
                 authenticatedOwnedComponentNodes.Contains(edgeParent.Id) ||
-                IsAuthenticatedReconstructedOwnedComponent(edgeParent, edgeParentType) ||
-                authenticatedTrailSnapshotEdgeParentOwnedComponent;
+                IsAuthenticatedReconstructedOwnedComponent(edgeParent, edgeParentType);
             bool freshComponentCapturedFreshEdge = edgeField != null &&
                                                    resolvedFreshObjectNodes.Contains(target.Id) &&
                                                    IsAuthenticatedFreshComponentOwner(edgeParent, edgeParentType) &&
@@ -3448,48 +3984,24 @@ internal sealed class AkronReconstructionGraph {
                                                        edgeField.Path).FieldType == targetType &&
                                                    freshComponentObject?.GetType() == edgeParentType &&
                                                    freshCapturedObject?.GetType() == targetType;
-            bool authenticatedTrailSnapshotOwnedComponent =
-                IsAuthenticatedTrailSnapshotOwnedComponent(target, targetType);
-            bool authenticatedTrailComponentCapturedFreshEdge =
-                IsAuthenticatedTrailComponentCapturedFreshEdge(
-                    target,
-                    targetType,
-                    edgeParent,
-                    edgeParentType,
-                    edgeField,
-                    authenticatedTrailSnapshotOwnedComponent,
-                    authenticatedTrailSnapshotEdgeParentOwnedComponent);
-            bool trailSnapshotComponentAlias =
-                (freshComponentOwner || authenticatedOwnedComponent ||
-                 authenticatedTrailSnapshotOwnedComponent) &&
-                IsAuthenticatedTrailSnapshotComponentAlias(
-                    target,
-                    targetType,
-                    edgeParent,
-                    edgeField,
-                    freshComponentOwner,
-                    authenticatedTrailSnapshotOwnedComponent);
+            bool trailSnapshotPlayerComponentAlias = freshComponentOwner &&
+                                                     IsAuthenticatedTrailSnapshotPlayerComponentAlias(
+                                                         target,
+                                                         targetType,
+                                                         edgeParent,
+                                                         edgeField);
             bool reconstructedBuiltInComponentAlias =
                 IsAuthenticatedReconstructedBuiltInComponentAlias(
                     target,
                     targetType,
                     edgeParent,
                     edgeField);
-            bool trailSnapshotComponentOwnerFieldAlias =
-                IsAuthenticatedTrailSnapshotComponentOwnerFieldAlias(
-                    target,
-                    targetType,
-                    edgeParent,
-                    edgeField,
-                    authenticatedTrailSnapshotOwnedComponent);
-            bool authenticatedRuntimeEntity =
+            bool authenticatedBuiltInRuntimeEntity =
                 authenticatedRuntimeEntityNodes.Contains(target.Id) ||
                 IsAuthenticatedBuiltInRuntimeEntity(target, targetType);
-            bool authenticatedGeneratedPrimaryEntity =
-                IsAuthenticatedGeneratedPrimaryEntity(target, targetType);
             bool authenticatedFreshOrRuntimeEntity =
                 resolvedFreshObjectNodes.Contains(target.Id) ||
-                authenticatedRuntimeEntity;
+                authenticatedBuiltInRuntimeEntity;
             bool authenticatedRuntimeEntityTrackerAlias =
                 authenticatedFreshOrRuntimeEntity &&
                 IsAuthenticatedRuntimeEntityTrackerAlias(target, targetType, edgeParent);
@@ -3500,7 +4012,7 @@ internal sealed class AkronReconstructionGraph {
                 target,
                 targetType,
                 edgeParent,
-                authenticatedRuntimeEntity);
+                authenticatedBuiltInRuntimeEntity);
             bool entityOwnedCollectionAlias =
                 IsAuthenticatedEntityOwnedCollectionAlias(target, targetType, edgeParent);
             if (typeof(Entity).IsAssignableFrom(targetType) &&
@@ -3508,7 +4020,6 @@ internal sealed class AkronReconstructionGraph {
                 savedOwnerEdge &&
                 target.ParentKind == "array" &&
                 target.ParentNodeId == edgeParent.Id &&
-                !authenticatedGeneratedPrimaryEntity &&
                 (!TryGetEntityListOwnerNode(target, out AkronReconstructionNode canonicalEntityListNode) ||
                  (!IsOwnedCollectionStorageDescendant(
                       edgeParent,
@@ -3517,7 +4028,8 @@ internal sealed class AkronReconstructionGraph {
                   !entityOwnedCollectionAlias))) {
                 throw new AkronReconstructionException(
                     target.Path,
-                    "entity canonical array is not owned by its scene EntityList;type=" + targetType.FullName);
+                    "entity canonical array is not owned by its scene EntityList;type=" + targetType.FullName,
+                    target.TypeName);
             }
             bool freshEntityPeerLink = IsAuthenticatedFreshEntityPeerLink(
                 target,
@@ -3538,7 +4050,7 @@ internal sealed class AkronReconstructionGraph {
                 TryGetComponentOwnerNodes(edgeParent, out _, out int reconstructedComponentOwnerId) &&
                 reconstructedComponentOwnerId == target.Id &&
                 (resolvedFreshObjectNodes.Contains(target.Id) ||
-                 authenticatedRuntimeEntity);
+                 authenticatedBuiltInRuntimeEntity);
             bool freshFieldAlias = IsAuthenticatedFreshFieldAlias(target, edgeParent, edgeField);
             bool freshOwnerAliasMerge = IsAuthenticatedFreshOwnerAliasMerge(
                 target,
@@ -3556,29 +4068,7 @@ internal sealed class AkronReconstructionGraph {
                 edgeParent,
                 edgeField,
                 exactParentSlot);
-            bool entityColliderBackReference = IsAuthenticatedEntityColliderBackReference(
-                target,
-                targetType,
-                edgeParent,
-                edgeParentType,
-                edgeField);
             bool sceneRendererBackReference = IsAuthenticatedSceneRendererBackReference(
-                target,
-                targetType,
-                edgeParent,
-                edgeField);
-            bool freshEntitySceneBackReference = IsAuthenticatedFreshEntitySceneBackReference(
-                target,
-                targetType,
-                edgeParent,
-                edgeField,
-                out bool conflictingFreshTrailOwnerSceneBackReference);
-            if (conflictingFreshTrailOwnerSceneBackReference) {
-                throw new AkronReconstructionException(
-                    target.Path,
-                    "fresh Trail owner Scene back-reference is not authentic to the manager Scene");
-            }
-            bool freshTrailMapSourceDataAlias = IsAuthenticatedMissingFreshMapTrailSourceDataAlias(
                 target,
                 targetType,
                 edgeParent,
@@ -3591,18 +4081,25 @@ internal sealed class AkronReconstructionGraph {
                     edgeField);
             bool freshHashSetMembership = IsAuthenticatedFreshHashSetMembership(target, edgeParent);
             bool iteratorOwnedComponentAlias =
-                IsAuthenticatedIteratorOwnedComponentAlias(target, targetType, edgeParent);
+                IsAuthenticatedIteratorOwnedComponentAlias(target, edgeParent);
+            bool coroutineStackIteratorAlias =
+                IsAuthenticatedCoroutineStackIteratorAlias(
+                    target,
+                    edgeParent,
+                    edgeParentType,
+                    edgeField,
+                    savedOwnerEdge);
             bool authenticatedIteratorOwnerEdge = edgeField?.Name == "<>4__this" &&
                                                    authenticatedRuntimeStateNodes.Contains(edgeParent.Id) &&
-                                                   edgeParentType.DeclaringType == targetType &&
+                                                   IsCapturedCompilerThisOwner(edgeParentType, targetType) &&
                                                    (resolvedFreshObjectNodes.Contains(target.Id) ||
                                                     authenticatedRuntimeEntityNodes.Contains(target.Id));
             bool authenticatedDelegateTargetOwnerEdge = edgeField?.Name == "<>4__this" &&
                                                         authenticatedDelegateTargetNodes.Contains(edgeParent.Id) &&
-                                                        edgeParentType.DeclaringType == targetType &&
+                                                        IsCapturedCompilerThisOwner(edgeParentType, targetType) &&
                                                         resolvedFreshObjectNodes.Contains(target.Id);
             bool authenticatedDelegateAliasOwnerEdge = edgeField?.Name == "<>4__this" &&
-                                                       edgeParentType.DeclaringType == targetType &&
+                                                       IsCapturedCompilerThisOwner(edgeParentType, targetType) &&
                                                        resolvedFreshObjectNodes.Contains(target.Id) &&
                                                        IsSavedDelegateTargetAlias(
                                                            edgeParent.Id,
@@ -3621,7 +4118,7 @@ internal sealed class AkronReconstructionGraph {
                                                           edgeParentType.IsInstanceOfType(delegateTargetObject);
             bool authenticatedIteratorClosureOwnerEdge = edgeField?.Name == "<>4__this" &&
                                                          authenticatedIteratorClosureNodes.Contains(edgeParent.Id) &&
-                                                         edgeParentType.DeclaringType == targetType &&
+                                                         IsCapturedCompilerThisOwner(edgeParentType, targetType) &&
                                                          resolvedFreshObjectNodes.Contains(target.Id);
             bool authenticatedTarget = resolvedFreshObjectNodes.Contains(target.Id) ||
                                        authenticatedRuntimeStateNodes.Contains(target.Id) ||
@@ -3652,34 +4149,60 @@ internal sealed class AkronReconstructionGraph {
                                   freshRendererComponentIndexAlias ||
                                   freshEntityListAlias || freshEntityPeerLink ||
                                   freshComponentCapturedFreshEdge ||
-                                  authenticatedTrailComponentCapturedFreshEdge ||
                                   entityOwnedCollectionAlias ||
                                   freshOwnedNestedState || reconstructedOwnedComponentAlias || freshFieldAlias ||
                                   reconstructedOwnedComponentOwnerEdge ||
                                   freshOwnerAliasMerge ||
-                                  trailSnapshotComponentAlias ||
+                                  trailSnapshotPlayerComponentAlias ||
                                   reconstructedBuiltInComponentAlias ||
-                                  trailSnapshotComponentOwnerFieldAlias ||
                                   freshSceneEntityAlias || entityComponentListBackReference ||
-                                  entityColliderBackReference ||
-                                  sceneRendererBackReference || freshEntitySceneBackReference ||
-                                  freshTrailMapSourceDataAlias ||
-                                  reconstructedEntitySceneBackReference ||
+                                  sceneRendererBackReference || reconstructedEntitySceneBackReference ||
                                   freshHashSetMembership || iteratorOwnedComponentAlias ||
+                                  coroutineStackIteratorAlias ||
                                   reconstructedSafeParentEdge || authenticatedIteratorOwnerEdge ||
                                   authenticatedDelegateTargetOwnerEdge ||
                                   authenticatedDelegateAliasOwnerEdge ||
                                   authenticatedDelegateCapturedFreshEdge ||
                                   authenticatedIteratorClosureOwnerEdge;
             if (HasListStorageIndex(structuralPath)) {
+                // An edge ownership has already proved does not draw on the occurrence
+                // count, so it may not spend from it either. This escape used to sit
+                // inside the exhausted branch below, which made an ownership-proved
+                // edge exempt from needing an occurrence but not from paying for one -
+                // and which of the two it did depended on whether an occurrence
+                // happened to be left when the document reached it.
+                //
+                // That decided the same room by document order alone. Two instances of
+                // one mod entity, each carrying a component that holds a runtime state
+                // object, where the reload built one of the two: one occurrence of that
+                // state type at
+                // entities._items[*].<Components>k__BackingField.components._items[*].State
+                // against the document's two edges. With the paired component first its
+                // edge spent the occurrence and the rebuilt one was refused; with the
+                // rebuilt one first it took the occurrence, the paired edge fell through
+                // this escape, and the room that came out was right in both halves -
+                // the paired component keeping its own live object and the other
+                // getting a rebuilt one. So the refusal was the wrong answer of the two.
+                // 010f660 refuses that room the same way, so this is not a defect of
+                // this branch.
+                //
+                // The other repair, charging the edge and refusing it when there is
+                // nothing to charge, was built and measured: it fails 32 rooms, because
+                // the alias rules exist precisely to admit edges the fresh room's count
+                // says nothing about. An edge that needs no occurrence cannot owe one.
+                //
+                // Nothing else moves. RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps
+                // already returned on its first clause for an ownership-proved edge, so
+                // no edge loses a check it used to get, and the exact-path branch below
+                // spends nothing and so was never order dependent.
+                if (exactOwnerEdge) {
+                    return;
+                }
                 string listPathKey = StructuralResourcePathKey(
                     targetType,
                     structuralPath,
                     wildcardListStorageIndices: true);
                 if (!freshListStructuralTypeCounts.TryGetValue(listPathKey, out int remaining) || remaining <= 0) {
-                    if (exactOwnerEdge) {
-                        return;
-                    }
                     throw new AkronReconstructionException(
                         target.Path,
                         "reconstructed reference edge is not authentic to the fresh room;type=" + targetType.FullName +
@@ -3699,11 +4222,9 @@ internal sealed class AkronReconstructionGraph {
                         ";screen-wipe-renderer-list-alias=" + screenWipeRendererListAlias.ToString().ToLowerInvariant() +
                         ";fresh-renderer-component-index-alias=" + freshRendererComponentIndexAlias.ToString().ToLowerInvariant() +
                         ";fresh-component-captured-fresh-edge=" + freshComponentCapturedFreshEdge.ToString().ToLowerInvariant() +
-                        ";authenticated-trail-component-captured-fresh-edge=" + authenticatedTrailComponentCapturedFreshEdge.ToString().ToLowerInvariant() +
-                        ";trail-snapshot-component-alias=" + trailSnapshotComponentAlias.ToString().ToLowerInvariant() +
+                        ";trail-snapshot-player-component-alias=" + trailSnapshotPlayerComponentAlias.ToString().ToLowerInvariant() +
                         ";reconstructed-built-in-component-alias=" + reconstructedBuiltInComponentAlias.ToString().ToLowerInvariant() +
-                        ";trail-snapshot-component-owner-field-alias=" + trailSnapshotComponentOwnerFieldAlias.ToString().ToLowerInvariant() +
-                        ";authenticated-runtime-entity=" + authenticatedRuntimeEntity.ToString().ToLowerInvariant() +
+                        ";authenticated-built-in-runtime-entity=" + authenticatedBuiltInRuntimeEntity.ToString().ToLowerInvariant() +
                         ";fresh-entity-list-alias=" + freshEntityListAlias.ToString().ToLowerInvariant() +
                         ";fresh-entity-peer-link=" + freshEntityPeerLink.ToString().ToLowerInvariant() +
                         ";entity-owned-collection-alias=" + entityOwnedCollectionAlias.ToString().ToLowerInvariant() +
@@ -3714,13 +4235,11 @@ internal sealed class AkronReconstructionGraph {
                         ";fresh-owner-alias-merge=" + freshOwnerAliasMerge.ToString().ToLowerInvariant() +
                         ";fresh-scene-entity-alias=" + freshSceneEntityAlias.ToString().ToLowerInvariant() +
                         ";entity-component-list-back-reference=" + entityComponentListBackReference.ToString().ToLowerInvariant() +
-                        ";entity-collider-back-reference=" + entityColliderBackReference.ToString().ToLowerInvariant() +
                         ";scene-renderer-back-reference=" + sceneRendererBackReference.ToString().ToLowerInvariant() +
-                        ";fresh-entity-scene-back-reference=" + freshEntitySceneBackReference.ToString().ToLowerInvariant() +
-                        ";fresh-trail-map-source-data-alias=" + freshTrailMapSourceDataAlias.ToString().ToLowerInvariant() +
                         ";reconstructed-entity-scene-back-reference=" + reconstructedEntitySceneBackReference.ToString().ToLowerInvariant() +
                         ";fresh-hash-set-membership=" + freshHashSetMembership.ToString().ToLowerInvariant() +
                         ";iterator-owned-component-alias=" + iteratorOwnedComponentAlias.ToString().ToLowerInvariant() +
+                        ";coroutine-stack-iterator-alias=" + coroutineStackIteratorAlias.ToString().ToLowerInvariant() +
                         ";reconstructed-safe-parent-edge=" + reconstructedSafeParentEdge.ToString().ToLowerInvariant() +
                         ";authenticated-iterator-owner-edge=" + authenticatedIteratorOwnerEdge.ToString().ToLowerInvariant() +
                         ";authenticated-delegate-target-owner-edge=" + authenticatedDelegateTargetOwnerEdge.ToString().ToLowerInvariant() +
@@ -3728,8 +4247,42 @@ internal sealed class AkronReconstructionGraph {
                         ";authenticated-delegate-captured-fresh-edge=" + authenticatedDelegateCapturedFreshEdge.ToString().ToLowerInvariant() +
                         ";authenticated-iterator-closure-owner-edge=" + authenticatedIteratorClosureOwnerEdge.ToString().ToLowerInvariant() +
                         ";edge-parent-type=" + edgeParent.TypeName +
-                        ";edge-field=" + (edgeField?.Name ?? "<array>"));
+                        ";edge-field=" + (edgeField?.Name ?? "<array>"),
+                        target.TypeName);
                 }
+                // The count admits this edge, so ask the one question it cannot.
+                RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps(
+                    target,
+                    targetType,
+                    edgeParent,
+                    edgeParentType,
+                    edgeField,
+                    exactOwnerEdge);
+                // Every edge the count admits spends, including one whose target the
+                // fresh room already holds. Exempting those was tried and reverted
+                // twice: it leaves the budget standing longer for everything, and the
+                // thing that then gets in is whatever carries no identity at all.
+                //
+                // The escape above is a different exemption, and it is not the smaller
+                // of the two - measured over the 749 list-path edges this suite's rooms
+                // produce, 613 are both ownership-proved and already in the room, 82 are
+                // ownership-proved reconstructions that the reverted exemption would
+                // still have charged, and 9 are already in the room with nothing proving
+                // the edge, which the escape above still charges. So the two overlap
+                // heavily and neither contains the other. What separates them is the
+                // fact each rests on. The reverted one said the target is already in the
+                // room, which is a fact about the object and says nothing about this
+                // edge. The escape above says this edge was admitted without consulting
+                // the count, so it has nothing to pay from.
+                //
+                // No test fails when this line is reverted any more, and that is worth
+                // saying rather than leaving to be discovered. The room that used to
+                // fail is AnUnpairableTrailedMapEntityIsRefusedInEitherDocumentOrder,
+                // and the refusal above now catches it whichever way the count is kept.
+                // Keeping the spend is still right: it is what makes the count mean the
+                // number of objects the fresh room has here, and a widened count would
+                // admit reconstructions at every path where nothing is displaced and so
+                // where the refusal above is silent.
                 freshListStructuralTypeCounts[listPathKey] = remaining - 1;
                 return;
             }
@@ -3758,11 +4311,9 @@ internal sealed class AkronReconstructionGraph {
                     ";screen-wipe-renderer-list-alias=" + screenWipeRendererListAlias.ToString().ToLowerInvariant() +
                     ";fresh-renderer-component-index-alias=" + freshRendererComponentIndexAlias.ToString().ToLowerInvariant() +
                     ";fresh-component-captured-fresh-edge=" + freshComponentCapturedFreshEdge.ToString().ToLowerInvariant() +
-                    ";authenticated-trail-component-captured-fresh-edge=" + authenticatedTrailComponentCapturedFreshEdge.ToString().ToLowerInvariant() +
-                    ";trail-snapshot-component-alias=" + trailSnapshotComponentAlias.ToString().ToLowerInvariant() +
+                    ";trail-snapshot-player-component-alias=" + trailSnapshotPlayerComponentAlias.ToString().ToLowerInvariant() +
                     ";reconstructed-built-in-component-alias=" + reconstructedBuiltInComponentAlias.ToString().ToLowerInvariant() +
-                    ";trail-snapshot-component-owner-field-alias=" + trailSnapshotComponentOwnerFieldAlias.ToString().ToLowerInvariant() +
-                    ";authenticated-runtime-entity=" + authenticatedRuntimeEntity.ToString().ToLowerInvariant() +
+                    ";authenticated-built-in-runtime-entity=" + authenticatedBuiltInRuntimeEntity.ToString().ToLowerInvariant() +
                     ";fresh-entity-list-alias=" + freshEntityListAlias.ToString().ToLowerInvariant() +
                     ";fresh-entity-peer-link=" + freshEntityPeerLink.ToString().ToLowerInvariant() +
                     ";entity-owned-collection-alias=" + entityOwnedCollectionAlias.ToString().ToLowerInvariant() +
@@ -3773,13 +4324,11 @@ internal sealed class AkronReconstructionGraph {
                     ";fresh-owner-alias-merge=" + freshOwnerAliasMerge.ToString().ToLowerInvariant() +
                     ";fresh-scene-entity-alias=" + freshSceneEntityAlias.ToString().ToLowerInvariant() +
                     ";entity-component-list-back-reference=" + entityComponentListBackReference.ToString().ToLowerInvariant() +
-                    ";entity-collider-back-reference=" + entityColliderBackReference.ToString().ToLowerInvariant() +
                     ";scene-renderer-back-reference=" + sceneRendererBackReference.ToString().ToLowerInvariant() +
-                    ";fresh-entity-scene-back-reference=" + freshEntitySceneBackReference.ToString().ToLowerInvariant() +
-                    ";fresh-trail-map-source-data-alias=" + freshTrailMapSourceDataAlias.ToString().ToLowerInvariant() +
                     ";reconstructed-entity-scene-back-reference=" + reconstructedEntitySceneBackReference.ToString().ToLowerInvariant() +
                     ";fresh-hash-set-membership=" + freshHashSetMembership.ToString().ToLowerInvariant() +
                     ";iterator-owned-component-alias=" + iteratorOwnedComponentAlias.ToString().ToLowerInvariant() +
+                    ";coroutine-stack-iterator-alias=" + coroutineStackIteratorAlias.ToString().ToLowerInvariant() +
                     ";reconstructed-safe-parent-edge=" + reconstructedSafeParentEdge.ToString().ToLowerInvariant() +
                     ";authenticated-iterator-owner-edge=" + authenticatedIteratorOwnerEdge.ToString().ToLowerInvariant() +
                     ";authenticated-delegate-target-owner-edge=" + authenticatedDelegateTargetOwnerEdge.ToString().ToLowerInvariant() +
@@ -3787,8 +4336,143 @@ internal sealed class AkronReconstructionGraph {
                     ";authenticated-delegate-captured-fresh-edge=" + authenticatedDelegateCapturedFreshEdge.ToString().ToLowerInvariant() +
                     ";authenticated-iterator-closure-owner-edge=" + authenticatedIteratorClosureOwnerEdge.ToString().ToLowerInvariant() +
                     ";edge-parent-type=" + edgeParent.TypeName +
-                    ";edge-field=" + (edgeField?.Name ?? "<array>"));
+                    ";edge-field=" + (edgeField?.Name ?? "<array>"),
+                    target.TypeName);
             }
+            // The exact path admits this edge, so ask the one question it cannot.
+            RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps(
+                target,
+                targetType,
+                edgeParent,
+                edgeParentType,
+                edgeField,
+                exactOwnerEdge);
+        }
+
+        // The last thing asked of an edge the two structural tests above have already
+        // admitted: would writing this reconstruction into a named field of an object
+        // the fresh room supplied drop the value that field holds, when some other node
+        // of this same document is already paired with it?
+        //
+        // A document that asks for that says two contradictory things about one room:
+        // that the displaced object is still in it - a node holds it and restores its
+        // state onto it - and that a live object's field belongs to something the room
+        // does not have. Neither structural test can see the contradiction. The
+        // occurrence budget counts objects, "the fresh room holds N of this type at
+        // this shape of path", and a reconstruction spends from that count in document
+        // order, so reversing two entities in the saved list flips the same room from
+        // refused to accepted. freshStructuralTypes is weaker still: the exact path it
+        // matches is the path of the very object being dropped, so the evidence
+        // admitting the reconstruction is the existence of the thing it destroys.
+        //
+        // The room this closes is
+        // AnUnpairableTrailedMapEntityIsRefusedInEitherDocumentOrder: two trailed map
+        // entities the map still places, one of which the reloaded room rebuilt under a
+        // different EntityID. With the paired entity's trail first the budget was
+        // already gone and the unpairable one was refused; with the unpairable one first
+        // it took the occurrence, and the restore reported success while the ghost the
+        // reload built was dropped from the room and the surviving trail's live
+        // PlayerSprite was pointed at the reconstruction. Both orders refuse now.
+        //
+        // The pairing is what makes the refusal safe, and "the fresh field holds
+        // anything" is deliberately not the test. A fresh field holding an object the
+        // saved frame deleted is the crossed population - the saved frame is the truth,
+        // dropping that object is the correct outcome, and the restore has to succeed.
+        // Measured: refusing on a non-null value alone refuses
+        // AFreshEntityTakesBackThePeerTheSavedFrameKeptWhenTheReloadCachedAnother, which
+        // restores correctly today. Only a displaced object the document itself keeps
+        // is evidence of anything.
+        //
+        // Collection storage is excluded because an element position is not a named
+        // slot. Arrays reach their elements with no field at all; a Dictionary or
+        // HashSet entry reaches its value through a field of the entry struct, and
+        // which entry holds which object is an artefact of hash layout, so writing a
+        // different object into one displaces nothing. Without that exclusion the
+        // membership set of a room's own EntityList refuses every rebuilt entity.
+        //
+        // The exemption on the first clause is the one thing this rule does not prove
+        // for itself, so here is what it rests on and what was tried instead.
+        //
+        // Measured over the suite: two rooms reach the displacement this rule looks for
+        // with an ownership-proved edge, and both load correctly.
+        // RestoreSeparatesOrdinaryObjectsThatTheFreshRoomAliases is the fresh room
+        // holding one object in two named fields where the document holds two, proved by
+        // savedOwnerEdge with exactParentSlot.
+        // AnEntityKeepsTheStateItRanLastWhenTheDocumentSeparatesTwoOfThem is the same
+        // separation on an entity's own nested state, and there the only proof is
+        // freshOwnedNestedState - exactParentSlot is false, because the node's own slot
+        // is the one a clean load leaves empty. So narrowing the exemption to the proof
+        // the first room uses refuses the second, and an allowlist of the two is a list
+        // of the rooms that happen to have been built rather than a reason.
+        //
+        // Replacing the exemption with a proof that the displaced object is retained
+        // elsewhere cannot be stated, because in a document this capture produces there
+        // is nothing to prove it against. ValidateAssignments writes every field of every
+        // ordinary node and every item of every array node, and every node this capture
+        // produces reaches the root through those two containers or through a delegate
+        // call, whose target CreateDelegate binds into the delegate it rebuilds. Nothing
+        // hangs anywhere else: CaptureValue returns as soon as it has made a live anchor,
+        // and stores only a payload for a persistent resource or an FMOD event. The
+        // restore therefore always puts a displaced object back into the slot the
+        // document gives it, so retention holds for every incumbent, and a test narrow
+        // enough to refuse anything either refuses a room that loads - which is what
+        // narrowing to the first room's proof does to the second - or refuses only rooms
+        // the structural tests above already refuse, which is what asking for the
+        // incumbent at its own canonical slot does, since a paired object whose canonical
+        // slot the reload left empty loses its own edge there first.
+        //
+        // One shape used to break that, and it is a document this capture cannot
+        // produce: a reference parked in a slot the restore never reads, which
+        // reachability counted as reach while nothing ever wrote it. That is a hole in
+        // the document contract rather than a question about this rule, and it is now
+        // refused where the contract is stated, by
+        // RefuseAReferenceInASlotTheRestoreNeverReads. Every slot a node can be reached
+        // through is therefore one the restore writes - assignment for a field or an
+        // item, CreateDelegate for a call target - which is what makes the paragraph
+        // above true of every document this build will read rather than only of the ones
+        // capture writes.
+        //
+        // What is left is the same shape as the two call sites above: this is a third
+        // authenticity test, for edges the structural tests admitted on weak evidence -
+        // a count that wildcards list indices, or a path shared with the very object
+        // being displaced. An edge carrying its own ownership proof needed neither
+        // structural test, which is why it does not need this one either. If a future
+        // change ever leaves an assigned document edge unwritten, or puts an object's
+        // canonical home somewhere the restore cannot reach, the retention question
+        // becomes real and this exemption has to be reopened.
+        //
+        // Order-independent by construction: freshOwners is complete before
+        // ValidateReferenceAuthenticity runs, so the verdict cannot depend on which
+        // edge is validated first, which is the whole point of the rule.
+        private void RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps(
+            AkronReconstructionNode target,
+            Type targetType,
+            AkronReconstructionNode edgeParent,
+            Type edgeParentType,
+            AkronReconstructionField edgeField,
+            bool exactOwnerEdge
+        ) {
+            if (exactOwnerEdge || edgeField == null || edgeParentType.IsValueType ||
+                resolvedFreshObjectNodes.Contains(target.Id) ||
+                !resolvedFreshObjectNodes.Contains(edgeParent.Id) ||
+                !Objects.TryGetValue(edgeParent.Id, out object freshParent)) {
+                return;
+            }
+            FieldInfo field = ResolveField(edgeField.DeclaringTypeName, edgeField.Name, edgeField.Path);
+            if (!field.DeclaringType.IsInstanceOfType(freshParent) ||
+                field.GetValue(freshParent) is not object displaced ||
+                !freshOwners.TryGetValue(displaced, out int displacedNodeId)) {
+                return;
+            }
+            throw new AkronReconstructionException(
+                target.Path,
+                "reconstructed reference edge would drop a fresh object this document keeps;type=" +
+                targetType.FullName +
+                ";edge-parent-type=" + edgeParent.TypeName +
+                ";edge-field=" + edgeField.Name +
+                ";displaced-type=" + displaced.GetType().FullName +
+                ";displaced-node=" + displacedNodeId.ToString(CultureInfo.InvariantCulture),
+                target.TypeName);
         }
 
         private bool IsExactSavedOwnerEdge(
@@ -4144,590 +4828,29 @@ internal sealed class AkronReconstructionGraph {
                    entityScene.NodeId == rendererScene?.NodeId;
         }
 
-        private bool IsAuthenticatedTrailSnapshotComponentAlias(
+        private bool IsAuthenticatedTrailSnapshotPlayerComponentAlias(
             AkronReconstructionNode target,
             Type targetType,
             AkronReconstructionNode edgeParent,
-            AkronReconstructionField edgeField,
-            bool freshComponentOwner,
-            bool authenticatedTrailSnapshotOwnedComponent
+            AkronReconstructionField edgeField
         ) {
             Type parentType = ResolveType(edgeParent.TypeName, edgeParent.Path);
             if (!AkronReconstructionGraph.IsTrailSnapshotComponentReference(
                     parentType,
                     edgeField?.Name,
                     targetType) ||
-                !TryGetSavedTrailSnapshotManagerOwnership(
-                    edgeParent,
-                    out AkronReconstructionNode managerNode,
-                    out int managerSceneNodeId) ||
-                !savedTrailManagerNodesByOwnedComponent.TryGetValue(
-                    target.Id,
-                    out int componentManagerNodeId) ||
-                componentManagerNodeId != managerNode.Id ||
-                (IsSavedTrailComponentOwnerAttached(target) &&
-                 !freshComponentOwner &&
-                 !authenticatedMissingFreshTrailComponentNodes.Contains(target.Id) &&
-                 !authenticatedTrailSnapshotOwnedComponent) ||
-                !IsAuthenticatedFreshTrailManager(managerNode, managerSceneNodeId)) {
+                !TryGetComponentOwnerNodes(target, out _, out int playerNodeId) ||
+                !nodes.TryGetValue(playerNodeId, out AkronReconstructionNode playerOwnerNode) ||
+                !AkronReconstructionGraph.IsTrailSnapshotComponentOwnerType(
+                    ResolveType(playerOwnerNode.TypeName, playerOwnerNode.Path))) {
                 return false;
             }
 
-            // A trail can outlive the entity that supplied it. The component
-            // still needs a fresh TrailManager, its exact snapshots array,
-            // and the shared saved Scene before the Snapshot field can keep it.
+            // The caller already proved that the restored component belongs to
+            // its saved owner. A trail intentionally outlives the Player or
+            // PlayerPlayback that supplied it, so the typed saved owner loop
+            // is the remaining proof for this built-in Snapshot field.
             return true;
-        }
-
-        private bool IsAuthenticatedTrailComponentCapturedFreshEdge(
-            AkronReconstructionNode target,
-            Type targetType,
-            AkronReconstructionNode edgeParent,
-            Type edgeParentType,
-            AkronReconstructionField edgeField,
-            bool authenticatedTrailSnapshotOwnedComponent,
-            bool authenticatedTrailSnapshotEdgeParentOwnedComponent
-        ) {
-            if (edgeField == null ||
-                !resolvedFreshObjectNodes.Contains(target.Id) ||
-                !authenticatedTrailSnapshotOwnedComponent ||
-                !authenticatedTrailSnapshotEdgeParentOwnedComponent ||
-                !savedTrailManagerNodesByOwnedComponent.TryGetValue(
-                    target.Id,
-                    out int targetManagerNodeId) ||
-                !savedTrailManagerNodesByOwnedComponent.TryGetValue(
-                    edgeParent.Id,
-                    out int parentManagerNodeId) ||
-                targetManagerNodeId != parentManagerNodeId ||
-                !TryGetComponentOwnerNodes(target, out _, out int targetOwnerEntityId) ||
-                !TryGetComponentOwnerNodes(edgeParent, out _, out int parentOwnerEntityId) ||
-                targetOwnerEntityId != parentOwnerEntityId ||
-                !Objects.TryGetValue(target.Id, out object targetObject) ||
-                targetObject?.GetType() != targetType ||
-                !Objects.TryGetValue(edgeParent.Id, out object parentObject) ||
-                parentObject?.GetType() != edgeParentType) {
-                return false;
-            }
-
-            FieldInfo field = ResolveField(
-                edgeField.DeclaringTypeName,
-                edgeField.Name,
-                edgeField.Path);
-            return field.DeclaringType.IsAssignableFrom(edgeParentType) &&
-                   field.FieldType.IsAssignableFrom(targetType);
-        }
-
-        private bool IsAuthenticatedMissingFreshAttachedTrailComponent(
-            AkronReconstructionNode componentNode,
-            Type componentType
-        ) {
-            if (!typeof(Component).IsAssignableFrom(componentType) ||
-                componentType.Assembly != typeof(Component).Assembly ||
-                !savedTrailManagerNodesByOwnedComponent.TryGetValue(
-                    componentNode.Id,
-                    out int managerNodeId) ||
-                !IsAuthenticatedFreshTrailManager(managerNodeId, out _) ||
-                !TryGetComponentOwnerNodes(
-                    componentNode,
-                    out AkronReconstructionNode componentListNode,
-                    out int ownerEntityId) ||
-                !savedTrailAttachedOwnerEntityNodes.Contains(ownerEntityId) ||
-                !IsSavedComponentListMember(componentNode, componentListNode) ||
-                !nodes.TryGetValue(ownerEntityId, out AkronReconstructionNode ownerNode) ||
-                ResolveType(ownerNode.TypeName, ownerNode.Path).Assembly != typeof(Entity).Assembly) {
-                return false;
-            }
-
-            Entity ownerEntity;
-            if (Objects.TryGetValue(ownerEntityId, out object ownerObject)) {
-                if (!resolvedFreshObjectNodes.Contains(ownerEntityId) || ownerObject is not Entity resolvedOwner) {
-                    return false;
-                }
-                ownerEntity = resolvedOwner;
-            } else if (!TryResolveComponentOwnerEntity(ownerEntityId, out ownerEntity)) {
-                return false;
-            }
-
-            if (GetEntityComponents(ownerEntity) is not ComponentList ownerComponents ||
-                GetComponentListComponents(ownerComponents).Any(candidate => candidate?.GetType() == componentType)) {
-                return false;
-            }
-
-            if (!TryGetSingleFieldReference(
-                    ownerNode,
-                    componentNode.Id,
-                    out AkronReconstructionField ownerField)) {
-                return false;
-            }
-
-            FieldInfo field = ResolveField(
-                ownerField.DeclaringTypeName,
-                ownerField.Name,
-                ownerField.Path);
-
-            // Heart of the Storm creates a BirdPath Sprite after the room-entry
-            // baseline. The fresh source entity is exact, but its field and
-            // ComponentList are still empty. Only that missing-field shape may
-            // accept the saved component; an existing live component always wins.
-            return field.DeclaringType.IsInstanceOfType(ownerEntity) &&
-                   field.FieldType.IsAssignableFrom(componentType) &&
-                   field.GetValue(ownerEntity) == null;
-        }
-
-        private static bool TryGetSingleFieldReference(
-            AkronReconstructionNode ownerNode,
-            int targetNodeId,
-            out AkronReconstructionField ownerField
-        ) {
-            ownerField = null;
-            foreach (AkronReconstructionField candidate in
-                     ownerNode.Fields ?? Enumerable.Empty<AkronReconstructionField>()) {
-                if (candidate?.Value?.Kind != ReferenceValueKind ||
-                    candidate.Value.NodeId != targetNodeId) {
-                    continue;
-                }
-                if (ownerField != null) {
-                    ownerField = null;
-                    return false;
-                }
-                ownerField = candidate;
-            }
-            return ownerField != null;
-        }
-
-        private void IndexAuthenticatedMissingFreshAttachedTrailComponents() {
-            foreach (int componentNodeId in savedTrailManagerNodesByOwnedComponent.Keys) {
-                AkronReconstructionNode componentNode = nodes[componentNodeId];
-                Type componentType = ResolveType(componentNode.TypeName, componentNode.Path);
-                if (IsAuthenticatedMissingFreshAttachedTrailComponent(componentNode, componentType)) {
-                    authenticatedMissingFreshTrailComponentNodes.Add(componentNodeId);
-                }
-            }
-        }
-
-        private bool IsAuthenticatedTrailSnapshotComponentOwnerEntity(
-            AkronReconstructionNode node,
-            Type type
-        ) {
-            if (!typeof(Entity).IsAssignableFrom(type) || type.IsAbstract ||
-                type.Assembly != typeof(Entity).Assembly ||
-                typeof(IDisposable).IsAssignableFrom(type) ||
-                type.GetMethod(
-                    "Finalize",
-                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly) != null ||
-                !savedTrailManagerNodesByComponentOwnerEntity.TryGetValue(
-                    node.Id,
-                    out int managerNodeId) ||
-                !IsAuthenticatedFreshTrailManager(managerNodeId, out _) ||
-                (savedTrailAttachedOwnerEntityNodes.Contains(node.Id) &&
-                 !IsAuthenticatedMissingFreshMapTrailOwner(node, type))) {
-                return false;
-            }
-
-            // The authenticated manager, Snapshot field, Component -> Entity
-            // back-reference, and ComponentList owner loop prove an owner
-            // missing from the clean room. A trail can retain that owner after
-            // Celeste removes it from both the Scene and EntityList.
-            return true;
-        }
-
-        private bool IsAuthenticatedTrailSnapshotOwnedComponent(
-            AkronReconstructionNode node,
-            Type type
-        ) {
-            if (!typeof(Component).IsAssignableFrom(type) ||
-                type.Assembly != typeof(Component).Assembly ||
-                typeof(IDisposable).IsAssignableFrom(type) ||
-                type.GetMethod(
-                    "Finalize",
-                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly) != null ||
-                !savedTrailManagerNodesByOwnedComponent.TryGetValue(
-                    node.Id,
-                    out int managerNodeId) ||
-                !IsAuthenticatedFreshTrailManager(managerNodeId, out _) ||
-                !TryGetComponentOwnerNodes(
-                    node,
-                    out _,
-                    out int ownerEntityId) ||
-                !savedTrailManagerNodesByComponentOwnerEntity.TryGetValue(
-                    ownerEntityId,
-                    out int ownerManagerNodeId) ||
-                ownerManagerNodeId != managerNodeId ||
-                !nodes.TryGetValue(ownerEntityId, out AkronReconstructionNode ownerNode)) {
-                return false;
-            }
-            Type ownerType = ResolveType(ownerNode.TypeName, ownerNode.Path);
-            return ownerType.Assembly == typeof(Entity).Assembly &&
-                   (!savedTrailAttachedOwnerEntityNodes.Contains(ownerEntityId) ||
-                    IsAuthenticatedMissingFreshMapTrailOwner(ownerNode, ownerType));
-        }
-
-        private bool IsAuthenticatedMissingFreshMapTrailOwner(
-            AkronReconstructionNode ownerNode,
-            Type ownerType
-        ) {
-            if (authenticatedMissingFreshMapTrailOwnerNodes.Contains(ownerNode.Id)) {
-                return true;
-            }
-            if (!savedTrailAttachedOwnerEntityNodes.Contains(ownerNode.Id) ||
-                ownerType.Assembly != typeof(Entity).Assembly ||
-                !TryGetSavedEntityId(ownerNode, out EntityID savedId) ||
-                FindReferenceField(ownerNode, "_sourceData") is not AkronReconstructionValue sourceDataReference ||
-                !nodes.TryGetValue(sourceDataReference.NodeId, out AkronReconstructionNode sourceDataNode) ||
-                ResolveType(sourceDataNode.TypeName, sourceDataNode.Path) != typeof(EntityData)) {
-                return false;
-            }
-
-            object sourceDataObject =
-                resolvedFreshObjectNodes.Contains(sourceDataNode.Id) &&
-                Objects.TryGetValue(sourceDataNode.Id, out object resolvedSourceData)
-                    ? resolvedSourceData
-                    : sourceDataNode.UseFreshObject
-                        ? ResolveFreshObject(sourceDataNode)
-                        : null;
-            EntityID sourceDataId = sourceDataObject is EntityData source
-                ? new EntityID { ID = source.ID, Level = source.Level?.Name }
-                : default;
-            if (sourceDataObject is not EntityData ||
-                !EntityIdsMatch(sourceDataId, savedId) ||
-                !HasAuthenticatedEntityListSceneOwnership(
-                    ownerNode,
-                    out (AkronReconstructionNode Node, EntityList List) ownerList) ||
-                GetFreshEntityTypes(ownerList.Node, ownerList.List)
-                    .TryGetValue(ownerType, out List<Entity> freshOwnersOfType) &&
-                freshOwnersOfType.Any(candidate =>
-                    EntityIdsMatch(GetEntitySourceId(candidate), savedId))) {
-                return false;
-            }
-
-            // A one-shot map entity can be attached at the saved frame yet be
-            // absent from a clean reload because session state already consumed
-            // it. Its exact fresh EntityData, stable EntityID, saved EntityList
-            // ownership, and authenticated TrailManager prove reconstruction.
-            authenticatedMissingFreshMapTrailOwnerNodes.Add(ownerNode.Id);
-            return true;
-        }
-
-        private bool IsAuthenticatedMissingFreshMapTrailOwnerCollider(
-            AkronReconstructionNode node,
-            Type type
-        ) {
-            if (node.ParentKind != "field" || node.ParentFieldName != "collider" ||
-                !savedTrailAttachedOwnerEntityNodes.Contains(node.ParentNodeId) ||
-                !typeof(Collider).IsAssignableFrom(type) ||
-                type.Assembly != typeof(Entity).Assembly ||
-                typeof(IDisposable).IsAssignableFrom(type) ||
-                type.GetMethod(
-                    "Finalize",
-                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly) != null ||
-                !nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode ownerNode) ||
-                !Objects.TryGetValue(ownerNode.Id, out object ownerObject) ||
-                ownerObject is not Entity ownerEntity ||
-                FindReferenceField(ownerNode, "collider")?.NodeId != node.Id ||
-                !savedTrailManagerNodesByComponentOwnerEntity.TryGetValue(
-                    ownerNode.Id,
-                    out int managerNodeId) ||
-                !IsAuthenticatedFreshTrailManager(managerNodeId, out _)) {
-                return false;
-            }
-
-            Type ownerType = ResolveType(ownerNode.TypeName, ownerNode.Path);
-            if (!IsAuthenticatedMissingFreshMapTrailOwner(ownerNode, ownerType)) {
-                return false;
-            }
-
-            FieldInfo field = ResolveField(
-                node.ParentDeclaringTypeName,
-                node.ParentFieldName,
-                node.Path);
-
-            // A consumed map trail owner can retain its exact built-in
-            // Collider after the clean room omits the owner itself. Keep this
-            // exception on Entity.collider; other nested state still needs an
-            // independent fresh-room proof.
-            return field.DeclaringType == typeof(Entity) &&
-                   field.FieldType == typeof(Collider) &&
-                   field.GetValue(ownerEntity) == null;
-        }
-
-        private (
-            Dictionary<int, int> Components,
-            Dictionary<int, int> Owners,
-            Dictionary<int, HashSet<int>> OwnerComponents,
-            HashSet<int> AttachedOwners
-        )
-            IndexSavedTrailSnapshotOwnership() {
-            Dictionary<int, int> componentManagers = new Dictionary<int, int>();
-            Dictionary<int, int> ownerManagers = new Dictionary<int, int>();
-            Dictionary<int, HashSet<int>> ownerComponents = new Dictionary<int, HashSet<int>>();
-            HashSet<int> attachedOwners = new HashSet<int>();
-
-            void RecordOwnership(
-                int componentNodeId,
-                int ownerEntityId,
-                int managerNodeId,
-                bool ownerIsAttached
-            ) {
-                componentManagers[componentNodeId] = managerNodeId;
-                ownerManagers[ownerEntityId] = managerNodeId;
-                if (!ownerComponents.TryGetValue(
-                        ownerEntityId,
-                        out HashSet<int> ownedComponentNodes)) {
-                    ownedComponentNodes = new HashSet<int>();
-                    ownerComponents[ownerEntityId] = ownedComponentNodes;
-                }
-                ownedComponentNodes.Add(componentNodeId);
-                if (ownerIsAttached) {
-                    attachedOwners.Add(ownerEntityId);
-                }
-            }
-
-            string snapshotTypeName = TypeName(typeof(TrailManager.Snapshot));
-            foreach (AkronReconstructionNode snapshotNode in nodes.Values) {
-                if (!string.Equals(snapshotNode.TypeName, snapshotTypeName, StringComparison.Ordinal) ||
-                    !TryGetSavedTrailSnapshotManagerOwnership(
-                        snapshotNode,
-                        out AkronReconstructionNode managerNode,
-                        out int managerSceneNodeId)) {
-                    continue;
-                }
-                List<(
-                    AkronReconstructionField SnapshotField,
-                    AkronReconstructionNode ComponentNode,
-                    Type ComponentType,
-                    int OwnerEntityId,
-                    AkronReconstructionNode OwnerNode
-                )> nonListComponentCandidates = new List<(
-                    AkronReconstructionField,
-                    AkronReconstructionNode,
-                    Type,
-                    int,
-                    AkronReconstructionNode
-                )>();
-                foreach (AkronReconstructionField field in snapshotNode.Fields ?? new List<AkronReconstructionField>()) {
-                    if (field?.Value?.Kind != ReferenceValueKind ||
-                        !nodes.TryGetValue(field.Value.NodeId, out AkronReconstructionNode componentNode)) {
-                        continue;
-                    }
-                    Type componentType = ResolveType(componentNode.TypeName, componentNode.Path);
-                    if (!AkronReconstructionGraph.IsTrailSnapshotComponentReference(
-                            typeof(TrailManager.Snapshot),
-                            field.Name,
-                            componentType) ||
-                        !TryGetComponentOwnerNodes(
-                            componentNode,
-                            out AkronReconstructionNode componentListNode,
-                            out int ownerEntityId) ||
-                        !nodes.TryGetValue(ownerEntityId, out AkronReconstructionNode ownerNode) ||
-                        !AkronReconstructionGraph.IsTrailSnapshotComponentOwnerType(
-                            field.Name,
-                            ResolveType(ownerNode.TypeName, ownerNode.Path))) {
-                        continue;
-                    }
-
-                    if (!IsSavedComponentListMember(componentNode, componentListNode)) {
-                        if (componentType.Assembly == typeof(Component).Assembly) {
-                            nonListComponentCandidates.Add((
-                                field,
-                                componentNode,
-                                componentType,
-                                ownerEntityId,
-                                ownerNode));
-                        }
-                        continue;
-                    }
-                    if (!IsAuthenticatedTrailOwnerSceneRelationship(
-                            ownerNode,
-                            managerSceneNodeId,
-                            out bool ownerIsAttached)) {
-                        continue;
-                    }
-                    RecordOwnership(
-                        componentNode.Id,
-                        ownerEntityId,
-                        managerNode.Id,
-                        ownerIsAttached);
-                }
-
-                // PlayerPlayback keeps PlayerSprite in its Sprite field but
-                // does not always add it to ComponentList. Accept that exact
-                // Trail snapshot alias only after another snapshot component,
-                // normally PlayerHair, has proved the same owner and manager.
-                foreach ((
-                    AkronReconstructionField field,
-                    AkronReconstructionNode componentNode,
-                    Type componentType,
-                    int ownerEntityId,
-                    AkronReconstructionNode ownerNode
-                ) in nonListComponentCandidates) {
-                    if (componentManagers.ContainsKey(componentNode.Id) ||
-                        !ownerManagers.TryGetValue(ownerEntityId, out int ownerManagerNodeId) ||
-                        ownerManagerNodeId != managerNode.Id ||
-                        !TryGetSingleFieldReference(
-                            ownerNode,
-                            componentNode.Id,
-                            out AkronReconstructionField ownerField)) {
-                        continue;
-                    }
-
-                    Type ownerType = ResolveType(ownerNode.TypeName, ownerNode.Path);
-                    FieldInfo liveOwnerField = ResolveField(
-                        ownerField.DeclaringTypeName,
-                        ownerField.Name,
-                        ownerField.Path);
-                    if (!liveOwnerField.DeclaringType.IsAssignableFrom(ownerType) ||
-                        !liveOwnerField.FieldType.IsAssignableFrom(componentType)) {
-                        continue;
-                    }
-
-                    RecordOwnership(
-                        componentNode.Id,
-                        ownerEntityId,
-                        managerNode.Id,
-                        attachedOwners.Contains(ownerEntityId));
-                }
-            }
-            return (componentManagers, ownerManagers, ownerComponents, attachedOwners);
-        }
-
-        private bool IsSavedTrailComponentOwnerAttached(AkronReconstructionNode componentNode) {
-            return TryGetComponentOwnerNodes(componentNode, out _, out int ownerEntityId) &&
-                   savedTrailAttachedOwnerEntityNodes.Contains(ownerEntityId);
-        }
-
-        private bool IsAuthenticatedTrailOwnerSceneRelationship(
-            AkronReconstructionNode ownerNode,
-            int managerSceneNodeId,
-            out bool ownerIsAttached
-        ) {
-            ownerIsAttached = false;
-            AkronReconstructionField ownerSceneField = (ownerNode.Fields ?? new List<AkronReconstructionField>())
-                .FirstOrDefault(field => field.Name == "<Scene>k__BackingField");
-            if (ownerSceneField?.Value?.Kind == ReferenceValueKind) {
-                if (ownerSceneField.Value.NodeId != managerSceneNodeId) {
-                    return false;
-                }
-                ownerIsAttached = HasSavedEntityListSceneOwnership(ownerNode, managerSceneNodeId);
-                return ownerIsAttached || !TryGetEntityListOwnerNode(ownerNode, out _);
-            }
-
-            // Celeste trails can outlive their source entity. A detached
-            // source can either retain the manager's Scene while absent from
-            // its EntityList, or lose both links. Accepting only those exact
-            // states keeps a stale trail valid without treating an attached
-            // room entity as one.
-            return ownerSceneField?.Value?.Kind == NullValueKind &&
-                   !TryGetEntityListOwnerNode(ownerNode, out _);
-        }
-
-        private bool HasSavedEntityListSceneOwnership(
-            AkronReconstructionNode ownerNode,
-            int managerSceneNodeId
-        ) {
-            if (FindReferenceField(ownerNode, "<Scene>k__BackingField")?.NodeId != managerSceneNodeId ||
-                !TryGetEntityListOwnerNode(ownerNode, out AkronReconstructionNode entityListNode) ||
-                FindReferenceField(entityListNode, "<Scene>k__BackingField")?.NodeId != managerSceneNodeId ||
-                !nodes.TryGetValue(managerSceneNodeId, out AkronReconstructionNode sceneNode) ||
-                !typeof(Scene).IsAssignableFrom(ResolveType(sceneNode.TypeName, sceneNode.Path))) {
-                return false;
-            }
-            return FindReferenceField(sceneNode, "<Entities>k__BackingField")?.NodeId == entityListNode.Id;
-        }
-
-        private bool TryGetSavedTrailSnapshotManagerOwnership(
-            AkronReconstructionNode snapshotNode,
-            out AkronReconstructionNode managerNode,
-            out int managerSceneNodeId
-        ) {
-            managerNode = null;
-            managerSceneNodeId = 0;
-            AkronReconstructionValue managerReference = FindReferenceField(
-                snapshotNode,
-                nameof(TrailManager.Snapshot.Manager));
-            if (managerReference == null ||
-                !nodes.TryGetValue(managerReference.NodeId, out managerNode) ||
-                ResolveType(managerNode.TypeName, managerNode.Path) != typeof(TrailManager) ||
-                FindReferenceField(managerNode, "snapshots") is not AkronReconstructionValue snapshotsReference) {
-                managerNode = null;
-                return false;
-            }
-
-            bool isManagerSnapshotArrayMember =
-                snapshotNode.ParentKind == "array" && snapshotNode.ParentNodeId == snapshotsReference.NodeId ||
-                savedArrayAliases.TryGetValue(snapshotNode.Id, out List<AkronReconstructionNode> snapshotAliases) &&
-                snapshotAliases.Any(alias => alias.Id == snapshotsReference.NodeId);
-            if (!isManagerSnapshotArrayMember ||
-                FindReferenceField(managerNode, "<Scene>k__BackingField") is not AkronReconstructionValue managerScene ||
-                !nodes.TryGetValue(managerScene.NodeId, out AkronReconstructionNode sceneNode) ||
-                !typeof(Scene).IsAssignableFrom(ResolveType(sceneNode.TypeName, sceneNode.Path))) {
-                managerNode = null;
-                return false;
-            }
-
-            AkronReconstructionValue snapshotScene = FindReferenceField(
-                snapshotNode,
-                "<Scene>k__BackingField");
-            if (snapshotScene != null && snapshotScene.NodeId != managerScene.NodeId) {
-                managerNode = null;
-                return false;
-            }
-            managerSceneNodeId = managerScene.NodeId;
-            return true;
-        }
-
-        private bool IsAuthenticatedMissingFreshMapTrailSourceDataAlias(
-            AkronReconstructionNode target,
-            Type targetType,
-            AkronReconstructionNode edgeParent,
-            AkronReconstructionField edgeField
-        ) {
-            Type ownerType = ResolveType(edgeParent.TypeName, edgeParent.Path);
-            return edgeField?.Name == "_sourceData" &&
-                   targetType == typeof(EntityData) &&
-                   resolvedFreshObjectNodes.Contains(target.Id) &&
-                   authenticatedRuntimeEntityNodes.Contains(edgeParent.Id) &&
-                   FindReferenceField(edgeParent, "_sourceData")?.NodeId == target.Id &&
-                   IsAuthenticatedMissingFreshMapTrailOwner(edgeParent, ownerType);
-        }
-
-        private bool IsAuthenticatedFreshTrailManager(
-            AkronReconstructionNode managerNode,
-            int managerSceneNodeId
-        ) {
-            AkronReconstructionField managerSceneField = (managerNode?.Fields ?? new List<AkronReconstructionField>())
-                .FirstOrDefault(field =>
-                    field.Name == "<Scene>k__BackingField" &&
-                    field.Value?.Kind == ReferenceValueKind &&
-                    field.Value.NodeId == managerSceneNodeId);
-            if (managerNode == null || managerSceneField == null ||
-                ResolveType(managerNode.TypeName, managerNode.Path) != typeof(TrailManager) ||
-                !resolvedFreshObjectNodes.Contains(managerNode.Id) ||
-                !resolvedFreshObjectNodes.Contains(managerSceneNodeId) ||
-                !Objects.TryGetValue(managerNode.Id, out object managerObject) ||
-                managerObject is not TrailManager ||
-                !Objects.TryGetValue(managerSceneNodeId, out object sceneObject) ||
-                sceneObject is not Scene) {
-                return false;
-            }
-
-            FieldInfo sceneField = ResolveField(
-                managerSceneField.DeclaringTypeName,
-                managerSceneField.Name,
-                managerSceneField.Path);
-            return ReferenceEquals(sceneField.GetValue(managerObject), sceneObject);
-        }
-
-        private bool IsAuthenticatedFreshTrailManager(
-            int managerNodeId,
-            out int managerSceneNodeId
-        ) {
-            managerSceneNodeId = 0;
-            if (!nodes.TryGetValue(managerNodeId, out AkronReconstructionNode managerNode) ||
-                FindReferenceField(managerNode, "<Scene>k__BackingField") is not AkronReconstructionValue managerScene) {
-                return false;
-            }
-            managerSceneNodeId = managerScene.NodeId;
-            return IsAuthenticatedFreshTrailManager(managerNode, managerSceneNodeId);
         }
 
         private bool IsAuthenticatedReconstructedBuiltInComponentAlias(
@@ -4756,50 +4879,15 @@ internal sealed class AkronReconstructionGraph {
             return ownerComponents?.NodeId == componentListNode.Id;
         }
 
-        private bool IsAuthenticatedTrailSnapshotComponentOwnerFieldAlias(
-            AkronReconstructionNode target,
-            Type targetType,
-            AkronReconstructionNode edgeParent,
-            AkronReconstructionField edgeField,
-            bool authenticatedTrailSnapshotOwnedComponent
-        ) {
-            if (edgeField == null ||
-                !resolvedFreshObjectNodes.Contains(target.Id) ||
-                !authenticatedRuntimeEntityNodes.Contains(edgeParent.Id) ||
-                !TryGetComponentOwnerNodes(
-                    target,
-                    out AkronReconstructionNode componentListNode,
-                    out int ownerEntityId) ||
-                ownerEntityId != edgeParent.Id ||
-                IsSavedComponentListMember(target, componentListNode) ||
-                !authenticatedTrailSnapshotOwnedComponent ||
-                !TryGetSingleFieldReference(
-                    edgeParent,
-                    target.Id,
-                    out AkronReconstructionField ownerField) ||
-                ownerField.Name != edgeField.Name ||
-                ownerField.DeclaringTypeName != edgeField.DeclaringTypeName) {
-                return false;
-            }
-
-            Type ownerType = ResolveType(edgeParent.TypeName, edgeParent.Path);
-            FieldInfo field = ResolveField(
-                edgeField.DeclaringTypeName,
-                edgeField.Name,
-                edgeField.Path);
-            return field.DeclaringType.IsAssignableFrom(ownerType) &&
-                   field.FieldType.IsAssignableFrom(targetType);
-        }
-
         private bool IsAuthenticatedEntityListAlias(
             AkronReconstructionNode target,
             Type targetType,
             AkronReconstructionNode edgeParent,
-            bool authenticatedRuntimeEntity
+            bool authenticatedBuiltInRuntimeEntity
         ) {
             return typeof(Entity).IsAssignableFrom(targetType) &&
                    (resolvedFreshObjectNodes.Contains(target.Id) ||
-                    authenticatedRuntimeEntity) &&
+                    authenticatedBuiltInRuntimeEntity) &&
                    TryGetEntityListOwnerNode(target, out AkronReconstructionNode entityListNode) &&
                    IsOwnedCollectionStorageDescendant(
                        edgeParent,
@@ -4846,323 +4934,14 @@ internal sealed class AkronReconstructionGraph {
                 return false;
             }
 
-            // A fresh occurrence of a mod type is not enough to authenticate
-            // extra instances from an imported snapshot. Only an explicit
-            // generator contract may reconstruct a population whose count or
-            // layout differs after a clean room load.
-            return IsAuthenticatedGeneratedTilePartition(node, type, entityList);
-        }
-
-        private bool IsAuthenticatedGeneratedTilePartition(
-            AkronReconstructionNode node,
-            Type type,
-            (AkronReconstructionNode Node, EntityList List) entityList
-        ) {
-            AkronGeneratedTilePartitionContract contract = generatedTilePartitionContract;
-            if (contract == null || type != contract.GeneratedEntityType) {
-                return false;
-            }
-            if (!authenticatedGeneratedTileNodesByEntityList.TryGetValue(
-                    entityList.Node.Id,
-                    out HashSet<int> authenticatedNodes)) {
-                authenticatedNodes = AuthenticateGeneratedTilePartition(entityList, contract);
-                authenticatedGeneratedTileNodesByEntityList[entityList.Node.Id] = authenticatedNodes;
-            }
-            return authenticatedNodes.Contains(node.Id);
-        }
-
-        private bool IsAuthenticatedGeneratedPrimaryEntity(
-            AkronReconstructionNode node,
-            Type type
-        ) {
-            AkronGeneratedTilePartitionContract contract = generatedTilePartitionContract;
-            return authenticatedRuntimeEntityNodes.Contains(node.Id) &&
-                   contract != null && type == contract.GeneratedEntityType &&
-                   TryGetEntityListOwnerNode(node, out AkronReconstructionNode entityListNode) &&
-                   authenticatedGeneratedTileNodesByEntityList.TryGetValue(
-                       entityListNode.Id,
-                       out HashSet<int> authenticatedNodes) &&
-                   authenticatedNodes.Contains(node.Id);
-        }
-
-        private HashSet<int> AuthenticateGeneratedTilePartition(
-            (AkronReconstructionNode Node, EntityList List) entityList,
-            AkronGeneratedTilePartitionContract contract
-        ) {
-            const int maxTiles = 1_000_000;
-            Dictionary<Type, List<Entity>> freshTypes = GetFreshEntityTypes(entityList.Node, entityList.List);
-            if (!freshTypes.TryGetValue(
-                    contract.SourceAreaEntityType,
-                    out List<Entity> freshSourceAreas) ||
-                freshSourceAreas.Count == 0 ||
-                !TryGetSavedPrimaryEntityNodes(
-                    entityList.Node,
-                    contract.GeneratedEntityType,
-                    out List<AkronReconstructionNode> savedGeneratedEntities) ||
-                savedGeneratedEntities.Count == 0) {
-                return new HashSet<int>();
-            }
-
-            // The source entities come from the freshly loaded map. Apply them
-            // in EntityList order because ClutterHelper's later source areas
-            // overwrite earlier overlapping tiles in the same order.
-            Dictionary<(int X, int Y), string> sourceTiles =
-                new Dictionary<(int X, int Y), string>();
-            foreach (Entity sourceArea in freshSourceAreas) {
-                if (contract.SourceGroupField.GetValue(sourceArea) is not string group ||
-                    string.IsNullOrEmpty(group) ||
-                    !TryGetLiveTileRectangle(sourceArea, out TileRectangle tileRectangle) ||
-                    !AddSourceTileRectangle(sourceTiles, tileRectangle, group, maxTiles)) {
-                    return new HashSet<int>();
-                }
-            }
-
-            Dictionary<string, HashSet<(int Width, int Height)>> allowedSizesByGroup =
-                new Dictionary<string, HashSet<(int Width, int Height)>>(StringComparer.Ordinal);
-            foreach (string group in sourceTiles.Values.Distinct(StringComparer.Ordinal)) {
-                HashSet<(int Width, int Height)> allowedSizes = new HashSet<(int Width, int Height)>(
-                    (contract.GetAllowedSizes(group) ?? Enumerable.Empty<(int Width, int Height)>())
-                    .Where(size => size.Width > 0 && size.Height > 0 &&
-                                   size.Width % 8 == 0 && size.Height % 8 == 0));
-                if (allowedSizes.Count == 0) {
-                    return new HashSet<int>();
-                }
-                allowedSizesByGroup[group] = allowedSizes;
-            }
-
-            foreach (AkronReconstructionNode savedEntity in savedGeneratedEntities) {
-                if (!TryGetSavedScalarField(savedEntity, contract.GeneratedGroupField, out string group)) {
-                    return new HashSet<int>();
-                }
-                if (!TryGetSavedTileRectangle(
-                        savedEntity,
-                        out TileRectangle tileRectangle,
-                        out (int Width, int Height) pixelSize)) {
-                    return new HashSet<int>();
-                }
-                if (!allowedSizesByGroup.TryGetValue(group, out HashSet<(int Width, int Height)> allowedSizes) ||
-                    !allowedSizes.Contains(pixelSize)) {
-                    return new HashSet<int>();
-                }
-                if (!ConsumeSourceTileRectangle(sourceTiles, tileRectangle, group)) {
-                    return new HashSet<int>();
-                }
-            }
-
-            if (sourceTiles.Count != 0) {
-                return new HashSet<int>();
-            }
-            return savedGeneratedEntities.Select(entity => entity.Id).ToHashSet();
-        }
-
-        private bool TryGetSavedPrimaryEntityNodes(
-            AkronReconstructionNode entityListNode,
-            Type entityType,
-            out List<AkronReconstructionNode> savedEntities
-        ) {
-            savedEntities = new List<AkronReconstructionNode>();
-            AkronReconstructionValue entitiesReference = FindReferenceField(entityListNode, "entities");
-            if (entitiesReference == null ||
-                !nodes.TryGetValue(entitiesReference.NodeId, out AkronReconstructionNode entitiesNode) ||
-                FindReferenceField(entitiesNode, "_items") is not AkronReconstructionValue storageReference ||
-                !nodes.TryGetValue(storageReference.NodeId, out AkronReconstructionNode storageNode) ||
-                storageNode.Kind != ArrayKind ||
-                !TryGetSavedScalarField(entitiesNode, EntityStorageSizeField, out int logicalSize) ||
-                logicalSize < 0 || logicalSize > storageNode.Items.Count) {
-                return false;
-            }
-
-            HashSet<int> seenNodeIds = new HashSet<int>();
-            for (int index = 0; index < logicalSize; index++) {
-                AkronReconstructionValue item = storageNode.Items[index];
-                if (item == null || item.Kind == NullValueKind) {
-                    continue;
-                }
-                if (item.Kind != ReferenceValueKind ||
-                    !nodes.TryGetValue(item.NodeId, out AkronReconstructionNode entityNode)) {
-                    savedEntities.Clear();
-                    return false;
-                }
-                if (ResolveType(entityNode.TypeName, entityNode.Path) != entityType) {
-                    continue;
-                }
-                if (!seenNodeIds.Add(entityNode.Id)) {
-                    savedEntities.Clear();
-                    return false;
-                }
-                savedEntities.Add(entityNode);
-            }
-            return true;
-        }
-
-        private static bool TryGetLiveTileRectangle(Entity entity, out TileRectangle tileRectangle) {
-            tileRectangle = default;
-            if (entity == null ||
-                EntityColliderField?.GetValue(entity) is not Hitbox hitbox ||
-                HitboxWidthField?.GetValue(hitbox) is not float width ||
-                HitboxHeightField?.GetValue(hitbox) is not float height) {
-                return false;
-            }
-            Vector2 position = entity.Position;
-            Vector2 colliderPosition = hitbox.Position;
-            return TryCreateTileRectangle(
-                position.X + colliderPosition.X,
-                position.Y + colliderPosition.Y,
-                width,
-                height,
-                out tileRectangle,
-                out _);
-        }
-
-        private bool TryGetSavedTileRectangle(
-            AkronReconstructionNode entityNode,
-            out TileRectangle tileRectangle,
-            out (int Width, int Height) pixelSize
-        ) {
-            tileRectangle = default;
-            pixelSize = default;
-            if (!TryGetSavedScalarField(entityNode, EntityPositionField, out Vector2 position)) {
-                return false;
-            }
-            if (FindReferenceField(entityNode, "collider") is not AkronReconstructionValue colliderReference ||
-                !nodes.TryGetValue(colliderReference.NodeId, out AkronReconstructionNode colliderNode) ||
-                ResolveType(colliderNode.TypeName, colliderNode.Path) != typeof(Hitbox)) {
-                return false;
-            }
-            if (!TryGetSavedScalarField(colliderNode, ColliderPositionField, out Vector2 colliderPosition) ||
-                !TryGetSavedScalarField(colliderNode, HitboxWidthField, out float width) ||
-                !TryGetSavedScalarField(colliderNode, HitboxHeightField, out float height)) {
-                return false;
-            }
-            return TryCreateTileRectangle(
-                position.X + colliderPosition.X,
-                position.Y + colliderPosition.Y,
-                width,
-                height,
-                out tileRectangle,
-                out pixelSize);
-        }
-
-        private static bool TryCreateTileRectangle(
-            float xPosition,
-            float yPosition,
-            float width,
-            float height,
-            out TileRectangle tileRectangle,
-            out (int Width, int Height) pixelSize
-        ) {
-            tileRectangle = default;
-            pixelSize = default;
-            if (!TryConvertTileCoordinate(xPosition, out int x) ||
-                !TryConvertTileCoordinate(yPosition, out int y) ||
-                !TryConvertTileLength(width, out int tileWidth, out int pixelWidth) ||
-                !TryConvertTileLength(height, out int tileHeight, out int pixelHeight) ||
-                (long) x + tileWidth > int.MaxValue ||
-                (long) y + tileHeight > int.MaxValue) {
-                return false;
-            }
-            tileRectangle = new TileRectangle(x, y, tileWidth, tileHeight);
-            pixelSize = (pixelWidth, pixelHeight);
-            return true;
-        }
-
-        private static bool TryConvertTileCoordinate(float value, out int coordinate) {
-            coordinate = 0;
-            if (!float.IsFinite(value)) {
-                return false;
-            }
-            double tiles = value / 8d;
-            double rounded = Math.Round(tiles);
-            if (rounded < int.MinValue || rounded > int.MaxValue ||
-                Math.Abs(tiles - rounded) > 0.0001d) {
-                return false;
-            }
-            coordinate = (int) rounded;
-            return true;
-        }
-
-        private static bool TryConvertTileLength(
-            float value,
-            out int tileLength,
-            out int pixelLength
-        ) {
-            tileLength = 0;
-            pixelLength = 0;
-            if (!float.IsFinite(value) || value <= 0f || value > int.MaxValue) {
-                return false;
-            }
-            pixelLength = (int) MathF.Round(value);
-            if (MathF.Abs(value - pixelLength) > 0.0001f || pixelLength % 8 != 0) {
-                return false;
-            }
-            tileLength = pixelLength / 8;
-            return tileLength > 0;
-        }
-
-        private static bool AddSourceTileRectangle(
-            Dictionary<(int X, int Y), string> tiles,
-            TileRectangle rectangle,
-            string group,
-            int maxTiles
-        ) {
-            long area = (long) rectangle.Width * rectangle.Height;
-            if (area <= 0 || area > maxTiles) {
-                return false;
-            }
-            int right = rectangle.X + rectangle.Width;
-            int bottom = rectangle.Y + rectangle.Height;
-            for (int x = rectangle.X; x < right; x++) {
-                for (int y = rectangle.Y; y < bottom; y++) {
-                    tiles[(x, y)] = group;
-                    if (tiles.Count > maxTiles) {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        }
-
-        private static bool ConsumeSourceTileRectangle(
-            Dictionary<(int X, int Y), string> sourceTiles,
-            TileRectangle rectangle,
-            string group
-        ) {
-            int right = rectangle.X + rectangle.Width;
-            int bottom = rectangle.Y + rectangle.Height;
-            for (int x = rectangle.X; x < right; x++) {
-                for (int y = rectangle.Y; y < bottom; y++) {
-                    (int X, int Y) tile = (x, y);
-                    if (!sourceTiles.TryGetValue(tile, out string sourceGroup) ||
-                        !string.Equals(sourceGroup, group, StringComparison.Ordinal)) {
-                        return false;
-                    }
-                    sourceTiles.Remove(tile);
-                }
-            }
-            return true;
-        }
-
-        private static bool TryGetSavedScalarField<T>(
-            AkronReconstructionNode node,
-            FieldInfo field,
-            out T value
-        ) {
-            value = default;
-            if (field == null) {
-                return false;
-            }
-            List<AkronReconstructionField> matches =
-                (node.Fields ?? Enumerable.Empty<AkronReconstructionField>())
-                .Where(candidate =>
-                    string.Equals(candidate.Name, field.Name, StringComparison.Ordinal) &&
-                    string.Equals(candidate.DeclaringTypeName, TypeName(field.DeclaringType), StringComparison.Ordinal) &&
-                    candidate.Value?.Kind == ScalarValueKind)
-                .ToList();
-            if (matches.Count != 1 || DecodeScalar(matches[0].Value, matches[0].Path) is not T decoded) {
-                return false;
-            }
-            value = decoded;
-            return true;
+            // Some mods generate a room's runtime entities from shuffled or
+            // random layouts. Their exact count and EntityList paths can differ
+            // after a cold reload even though the fresh room loaded the same
+            // concrete type. That fresh type occurrence, plus the saved
+            // Entity/List/Scene ownership loop, authenticates reconstruction of
+            // the saved population. A type absent from the fresh room remains
+            // rejected.
+            return GetFreshEntityTypes(entityList.Node, entityList.List).ContainsKey(type);
         }
 
         private bool HasAuthenticatedEntityListSceneOwnership(
@@ -5538,25 +5317,6 @@ internal sealed class AkronReconstructionGraph {
             return components?.NodeId == edgeParent.Id;
         }
 
-        private bool IsAuthenticatedEntityColliderBackReference(
-            AkronReconstructionNode target,
-            Type targetType,
-            AkronReconstructionNode edgeParent,
-            Type edgeParentType,
-            AkronReconstructionField edgeField
-        ) {
-            return edgeField?.Name == "<Entity>k__BackingField" &&
-                   typeof(Entity).IsAssignableFrom(targetType) &&
-                   typeof(Collider).IsAssignableFrom(edgeParentType) &&
-                   (resolvedFreshObjectNodes.Contains(target.Id) ||
-                    authenticatedRuntimeEntityNodes.Contains(target.Id)) &&
-                   authenticatedOwnedNestedStateNodes.Contains(edgeParent.Id) &&
-                   edgeParent.ParentKind == "field" &&
-                   edgeParent.ParentNodeId == target.Id &&
-                   edgeParent.ParentFieldName == "collider" &&
-                   FindReferenceField(target, "collider")?.NodeId == edgeParent.Id;
-        }
-
         private bool IsAuthenticatedSceneRendererBackReference(
             AkronReconstructionNode target,
             Type targetType,
@@ -5585,106 +5345,6 @@ internal sealed class AkronReconstructionGraph {
                    rendererListScene?.NodeId == target.Id;
         }
 
-        private bool IsAuthenticatedFreshEntitySceneBackReference(
-            AkronReconstructionNode target,
-            Type targetType,
-            AkronReconstructionNode edgeParent,
-            AkronReconstructionField edgeField,
-            out bool conflictingFreshTrailOwnerSceneBackReference
-        ) {
-            conflictingFreshTrailOwnerSceneBackReference = false;
-            Type entityType = ResolveType(edgeParent.TypeName, edgeParent.Path);
-            if (edgeField?.Name != "<Scene>k__BackingField" ||
-                !typeof(Scene).IsAssignableFrom(targetType) ||
-                !typeof(Entity).IsAssignableFrom(entityType) ||
-                !resolvedFreshObjectNodes.Contains(target.Id) ||
-                !resolvedFreshObjectNodes.Contains(edgeParent.Id) ||
-                !Objects.TryGetValue(target.Id, out object sceneObject) ||
-                sceneObject is not Scene scene ||
-                !Objects.TryGetValue(edgeParent.Id, out object entityObject) ||
-                entityObject is not Entity entity) {
-                return false;
-            }
-
-            FieldInfo sceneField = ResolveField(edgeField.DeclaringTypeName, edgeField.Name, edgeField.Path);
-            if (!sceneField.DeclaringType.IsAssignableFrom(entityType) ||
-                !sceneField.FieldType.IsAssignableFrom(targetType)) {
-                return false;
-            }
-
-            // A fresh map entity can share the canonical fresh Scene through
-            // many saved aliases. Authenticate the common case through exact
-            // fresh EntityList membership and its saved Entity/List/Scene loop.
-            object currentEntityScene = sceneField.GetValue(entity);
-            bool isFreshEntityListOwner =
-                HasAuthenticatedEntityListSceneOwnership(
-                    edgeParent,
-                    out (AkronReconstructionNode Node, EntityList List) ownerList) &&
-                IsFreshEntityListMember(ownerList.Node.Id, ownerList.List, entity) &&
-                ReferenceEquals(currentEntityScene, scene);
-
-            // TrailManager can retain a fresh PlayerPlayback after Celeste has
-            // removed it from the EntityList but before it clears Entity.Scene.
-            // Require the same saved manager, fresh manager Scene, and a fresh
-            // owned component still linked through the owner's ComponentList.
-            return isFreshEntityListOwner ||
-                   IsAuthenticatedFreshTrailOwnerSceneBackReference(
-                       target,
-                       scene,
-                       edgeParent,
-                       currentEntityScene,
-                       out conflictingFreshTrailOwnerSceneBackReference);
-        }
-
-        private bool IsAuthenticatedFreshTrailOwnerSceneBackReference(
-            AkronReconstructionNode sceneNode,
-            Scene scene,
-            AkronReconstructionNode ownerNode,
-            object currentOwnerScene,
-            out bool conflictingCurrentScene
-        ) {
-            conflictingCurrentScene = false;
-            if (!savedTrailManagerNodesByComponentOwnerEntity.TryGetValue(
-                    ownerNode.Id,
-                    out int managerNodeId) ||
-                !savedTrailOwnedComponentNodesByOwnerEntity.TryGetValue(
-                    ownerNode.Id,
-                    out HashSet<int> ownedComponentNodeIds) ||
-                !IsAuthenticatedFreshTrailManager(managerNodeId, out int managerSceneNodeId) ||
-                managerSceneNodeId != sceneNode.Id) {
-                return false;
-            }
-
-            foreach (int componentNodeId in ownedComponentNodeIds) {
-                if (!savedTrailManagerNodesByOwnedComponent.TryGetValue(
-                    componentNodeId,
-                    out int componentManagerNodeId) ||
-                    componentManagerNodeId != managerNodeId ||
-                    !nodes.TryGetValue(componentNodeId, out AkronReconstructionNode componentNode) ||
-                    !IsAuthenticatedFreshComponentOwner(
-                        componentNode,
-                        ResolveType(componentNode.TypeName, componentNode.Path))) {
-                    continue;
-                }
-                conflictingCurrentScene = currentOwnerScene != null &&
-                                          !ReferenceEquals(currentOwnerScene, scene);
-                return !conflictingCurrentScene;
-            }
-            return false;
-        }
-
-        private bool IsFreshEntityListMember(int entityListNodeId, EntityList entityList, Entity entity) {
-            if (!freshEntityMembershipByEntityList.TryGetValue(
-                    entityListNodeId,
-                    out HashSet<object> members)) {
-                members = new HashSet<object>(
-                    GetEntityListEntities(entityList).Cast<object>(),
-                    ReferenceEqualityComparer.Instance);
-                freshEntityMembershipByEntityList[entityListNodeId] = members;
-            }
-            return members.Contains(entity);
-        }
-
         private bool IsAuthenticatedReconstructedEntitySceneBackReference(
             AkronReconstructionNode target,
             Type targetType,
@@ -5702,47 +5362,16 @@ internal sealed class AkronReconstructionGraph {
                 !Objects.TryGetValue(target.Id, out object sceneObject) ||
                 sceneObject is not Scene ||
                 !Objects.TryGetValue(edgeParent.Id, out object entityObject) ||
-                entityObject is not Entity) {
+                entityObject is not Entity ||
+                !TryGetEntityListOwnerNode(edgeParent, out AkronReconstructionNode entityListNode)) {
                 return false;
             }
 
             FieldInfo sceneField = ResolveField(edgeField.DeclaringTypeName, edgeField.Name, edgeField.Path);
-            if (!sceneField.DeclaringType.IsAssignableFrom(entityType) ||
-                !sceneField.FieldType.IsAssignableFrom(targetType)) {
-                return false;
-            }
-
-            bool hasEntityListOwner =
-                TryGetEntityListOwnerNode(edgeParent, out AkronReconstructionNode entityListNode) &&
-                FindReferenceField(entityListNode, "<Scene>k__BackingField")?.NodeId == target.Id;
-            return hasEntityListOwner ||
-                   IsAuthenticatedReconstructedTrailOwnerSceneBackReference(target, edgeParent);
-        }
-
-        private bool IsAuthenticatedReconstructedTrailOwnerSceneBackReference(
-            AkronReconstructionNode sceneNode,
-            AkronReconstructionNode ownerNode
-        ) {
-            if (!savedTrailManagerNodesByComponentOwnerEntity.TryGetValue(
-                    ownerNode.Id,
-                    out int managerNodeId) ||
-                !savedTrailOwnedComponentNodesByOwnerEntity.TryGetValue(
-                    ownerNode.Id,
-                    out HashSet<int> componentNodeIds) ||
-                !IsAuthenticatedFreshTrailManager(managerNodeId, out int managerSceneNodeId) ||
-                managerSceneNodeId != sceneNode.Id) {
-                return false;
-            }
-
-            return componentNodeIds.Any(componentNodeId =>
-                savedTrailManagerNodesByOwnedComponent.TryGetValue(
-                    componentNodeId,
-                    out int componentManagerNodeId) &&
-                componentManagerNodeId == managerNodeId &&
-                nodes.TryGetValue(componentNodeId, out AkronReconstructionNode componentNode) &&
-                IsAuthenticatedTrailSnapshotOwnedComponent(
-                    componentNode,
-                    ResolveType(componentNode.TypeName, componentNode.Path)));
+            AkronReconstructionValue listScene = FindReferenceField(entityListNode, "<Scene>k__BackingField");
+            return sceneField.DeclaringType.IsAssignableFrom(entityType) &&
+                   sceneField.FieldType.IsAssignableFrom(targetType) &&
+                   listScene?.NodeId == target.Id;
         }
 
         private bool IsAuthenticatedFreshHashSetMembership(
@@ -6077,27 +5706,6 @@ internal sealed class AkronReconstructionGraph {
                 return false;
             }
 
-            if (nodes.TryGetValue(ownerEntityId, out AkronReconstructionNode ownerNode) &&
-                TryGetSingleFieldReference(ownerNode, target.Id, out AkronReconstructionField ownerField)) {
-                FieldInfo field = ResolveField(
-                    ownerField.DeclaringTypeName,
-                    ownerField.Name,
-                    ownerField.Path);
-                if (field.DeclaringType.IsInstanceOfType(ownerEntity) &&
-                    field.FieldType.IsAssignableFrom(targetType) &&
-                    field.GetValue(ownerEntity) is Component fieldComponent &&
-                    fieldComponent.GetType() == targetType &&
-                    ReferenceEquals(GetComponentEntity(fieldComponent), ownerEntity) &&
-                    GetComponentListComponents(ownerComponents).Any(candidate =>
-                        ReferenceEquals(candidate, fieldComponent)) &&
-                    !freshOwners.ContainsKey(fieldComponent) &&
-                    (!freshFieldAliasReservations.TryGetValue(fieldComponent, out int reservedNodeId) ||
-                     reservedNodeId == target.Id)) {
-                    matchedComponent = fieldComponent;
-                    return true;
-                }
-            }
-
             foreach (Component candidate in GetComponentListComponents(ownerComponents)) {
                 if (candidate == null || candidate.GetType() != targetType ||
                     !ReferenceEquals(GetComponentEntity(candidate), ownerEntity) || freshOwners.ContainsKey(candidate)) {
@@ -6227,18 +5835,10 @@ internal sealed class AkronReconstructionGraph {
             if (!freshEntityTypesByEntityList.TryGetValue(
                     entityListNode.Id,
                     out Dictionary<Type, List<Entity>> freshTypes)) {
-                freshTypes = new Dictionary<Type, List<Entity>>();
-                foreach (Entity candidate in GetEntityListEntities(freshEntityList)) {
-                    if (candidate == null) {
-                        continue;
-                    }
-                    Type candidateType = candidate.GetType();
-                    if (!freshTypes.TryGetValue(candidateType, out List<Entity> candidatesOfType)) {
-                        candidatesOfType = new List<Entity>();
-                        freshTypes[candidateType] = candidatesOfType;
-                    }
-                    candidatesOfType.Add(candidate);
-                }
+                freshTypes = GetEntityListEntities(freshEntityList)
+                    .Where(candidate => candidate != null)
+                    .GroupBy(candidate => candidate.GetType())
+                    .ToDictionary(group => group.Key, group => group.ToList());
                 freshEntityTypesByEntityList[entityListNode.Id] = freshTypes;
             }
             return freshTypes;
@@ -6727,6 +6327,86 @@ internal sealed class AkronReconstructionGraph {
             return true;
         }
 
+        // What this key deliberately does not capture, because reviewers keep
+        // reading its looseness as an oversight.
+        //
+        // It keeps the complete owner field chain, the target's type, and the
+        // method. It drops the array index, and with it the identity of the
+        // instance an array holds. Both are required, not tolerated:
+        //
+        // - Index. A clean load rebuilds the entity and component lists in an
+        //   order the saved room does not have to agree with, so a saved
+        //   callback at slot 3 has to authenticate against a fresh one at slot
+        //   7. Restoring exact indices refuses those reloads, which is the
+        //   false-refusal class this component keeps having to fix.
+        // - Owner identity. The path is the only place identity could live, so
+        //   two owners of one type inside one list are already indistinguishable
+        //   once the index is gone. That is also the point: which instance holds
+        //   a callback the room arms while it is played is decided by play, and
+        //   a key that pinned it would refuse a legitimate saved frame.
+        //
+        // The cost of both is real and is not a bug in this method: a saved
+        // document whose slot or owner no longer matches the fresh room is
+        // accepted rather than refused.
+        //
+        // Keeping exact indices for StateMachine.ends and its three siblings
+        // has been proposed twice as the one safe place to close that, on the
+        // grounds that a state id is the slot's identity and no reload moves
+        // it. It was built and measured, and it does not work. The document a
+        // mod-set shift produces - saved ends[2] against fresh ends[1] - is
+        // byte for byte the document a mod produces by calling the public
+        // SetCallbacks during play to move that same callback from state 1 to
+        // state 2. Refusing is right for the first and a false refusal for the
+        // second, and the index alone cannot tell them apart, so an exact index
+        // trades one silent wrong restore for one silent refusal of a valid
+        // frame. An array index is not evidence of identity one level up
+        // either, because Celeste hands out the first free slot in
+        // TrailManager.snapshots and LightingRenderer.lights,
+        // ColliderList.colliders compacts on removal, and Dictionary, Queue and
+        // HashSet all move entries inside their backing arrays.
+        //
+        // The sibling names array is the coordinate that does tell those two
+        // documents apart, and that is where the fix went. It is in
+        // ValidateStateSlotAssignment below, not here. Four things it settled,
+        // so nobody re-derives them:
+        //
+        // - The name cannot go in this key. This index records where the fresh
+        //   room HAS the callback and a document asks where it WANTS it, and in
+        //   both stories those are different slots. Rendering each side's own
+        //   name accepts the shift and refuses the valid frame, which is
+        //   backwards; rendering the fresh room's name at the document's index
+        //   is the exact index again. The test that works is a comparison of
+        //   the document's names[i] against the fresh room's names[i], at the
+        //   one slot being written, beside this key rather than inside it. So
+        //   this key stays wildcarded: a callback is allowed to have moved
+        //   between slots both rooms agree about.
+        // - It must sit on the array ELEMENT, not on the delegate. A document
+        //   keeps one owner edge per node, so a callback object held both in a
+        //   state slot and in an ordinary field - a cached mod lambda - records
+        //   the field, and a check reading the delegate's own edge never sees
+        //   the slot. Measured: that document restores into the wrong slot with
+        //   a delegate-side check in place.
+        // - Celeste publishes the coordinate everywhere it matters. Player,
+        //   Seeker and AngryOshiro are the only StateMachines in the game and
+        //   all three name every state through SetStateName at construction,
+        //   immediately before mods add theirs through AddState.
+        // - A name is mutable through the public SetStateName, so "names differ
+        //   at slot i" cannot on its own tell a relabelled slot from a
+        //   reinterpreted one. Two attempts to excuse the relabel with a
+        //   delegate-equality test failed in opposite directions. What settled
+        //   it was measurement rather than a third test: no published mod
+        //   relabels after construction, so there is no carve-out and the rule
+        //   refuses a relabel too. ValidateStateSlotAssignment carries the
+        //   census and what it still leaves open.
+        //
+        // Two more omissions, which are unfinished rather than load-bearing:
+        // the invocation count and the delegate's own runtime type. Neither can
+        // make a restore wrong on its own, because both come from the document
+        // rather than from this key, and CreateDelegate below rejects a method
+        // the saved delegate type cannot bind. Constraining either one here is
+        // not free: an invocation list grows while a room is played, and the
+        // static and instance method evidence would still authenticate the same
+        // call without consulting this key.
         private static string StructuralDelegateCallKey(
             IEnumerable<AkronReconstructionPathStep> delegatePath,
             Type targetType,
@@ -6802,7 +6482,19 @@ internal sealed class AkronReconstructionGraph {
                 // and generated name after a clean room load. In that case the
                 // owner field is the stable identity. A fixed field still
                 // requires its explicit resource key to match.
-                matchedByStructuralPath = HasListStorageIndex(structuralPath);
+                //
+                // That is true of a key built from a name the running process
+                // made up, and false of one that names the resource. Capture
+                // classified the saved key on the saved object and wrote the
+                // answer onto the node, so a key this process cannot find is
+                // either a resource this install does not have - refuse, the
+                // caller's key comparison says so by name - or a label the
+                // reload regenerated, which is what this path is for. The
+                // candidate is still returned either way: the refusal that
+                // follows names the key, which says more than "path
+                // unavailable" would.
+                matchedByStructuralPath = HasListStorageIndex(structuralPath) &&
+                                          !node.PortableResourceKey;
                 return structuralMatches[0];
             }
             if (keyMatches.Count > 1 || structuralMatches.Count > 1) {
@@ -6883,6 +6575,9 @@ internal sealed class AkronReconstructionGraph {
                 }
 
                 foreach (AkronReconstructionField savedField in node.Fields) {
+                    if (IsDerivedCollectionVersionField(target.GetType(), savedField.Name)) {
+                        continue;
+                    }
                     FieldInfo field = ResolveField(savedField.DeclaringTypeName, savedField.Name, savedField.Path);
                     if (!field.DeclaringType.IsInstanceOfType(target)) {
                         throw new AkronReconstructionException(savedField.Path, "field does not belong to the restored object");
@@ -6890,15 +6585,7 @@ internal sealed class AkronReconstructionGraph {
                     object fieldValue = ResolveValue(savedField.Value, savedField.Path);
                     ValidateAssignable(field.FieldType, fieldValue, savedField.Path);
                     TrackDisplacedEventInstance(field.GetValue(target), fieldValue);
-                    if (IsCollectionVersionField(field)) {
-                        collectionVersionAssignments.Add(new AkronCollectionVersionAssignment(
-                            field,
-                            target,
-                            (int) fieldValue,
-                            savedField.Path));
-                    } else {
-                        assignments.Add(() => field.SetValue(target, fieldValue));
-                    }
+                    assignments.Add(() => field.SetValue(target, fieldValue));
                 }
             }
         }
@@ -6910,24 +6597,7 @@ internal sealed class AkronReconstructionGraph {
             for (int index = assignments.Count - 1; index >= 0; index--) {
                 assignments[index]();
             }
-            ValidateAndNormalizeDerivedCollectionState(Objects.Values);
-            ApplyCollectionVersionAssignments();
-        }
-
-        public void ApplyCollectionVersionAssignments() {
-            // Collection versions are observable state for paused enumerators.
-            // Apply them after all collection mutations so a Set-frame iterator
-            // does not fail with InvalidOperationException on its next step.
-            for (int index = collectionVersionAssignments.Count - 1; index >= 0; index--) {
-                collectionVersionAssignments[index].Apply();
-            }
-        }
-
-        private static bool IsCollectionVersionField(FieldInfo field) {
-            return field.Name == "_version" &&
-                   field.FieldType == typeof(int) &&
-                   field.DeclaringType?.IsGenericType == true &&
-                   field.DeclaringType.Namespace == "System.Collections.Generic";
+            ValidateAndNormalizeDerivedMembershipSets(Objects.Values);
         }
 
         private void ValidateArrayAssignments(AkronReconstructionNode node, Array target) {
@@ -6964,6 +6634,7 @@ internal sealed class AkronReconstructionGraph {
                 string itemPath = ArrayPath(node.Path, itemIndices);
                 object itemValue = ResolveValue(savedItem, itemPath);
                 ValidateAssignable(elementType, itemValue, itemPath);
+                ValidateStateSlotAssignment(node, index, itemValue, itemPath);
                 TrackDisplacedEventInstance(target.GetValue(itemIndices), itemValue);
                 IncrementArrayIndices(target, itemIndices);
             }
@@ -6974,6 +6645,238 @@ internal sealed class AkronReconstructionGraph {
                     IncrementArrayIndices(target, assignmentIndices);
                 }
             });
+        }
+
+        // Monocle.StateMachine addresses its four callback arrays by state id,
+        // and a state id is handed out by AddState in whatever order the
+        // installed mods add states rather than declared, so the same state can
+        // sit at a different id in two sessions. Writing a saved callback into
+        // slot i of a freshly loaded machine is only faithful if slot i is the
+        // same state in both rooms, and that is checkable because the machine
+        // says so: the sibling names array names the state each slot belongs to.
+        //
+        // This is the pair two earlier passes could not separate with the index
+        // alone, and it is why the structural delegate key above stays
+        // wildcarded rather than keeping exact indices:
+        //
+        // - A mod set whose AddState order changed moves a state to another id.
+        //   The document's slot then reads as a different state in the fresh
+        //   room and the callback would land where this room never runs it. The
+        //   names disagree at that slot, so it is refused.
+        // - A mod calling the public SetCallbacks during play moves a callback
+        //   between two slots both rooms agree about. The names agree, so it is
+        //   accepted. An exact index refused this, on a document byte for byte
+        //   identical to the first.
+        //
+        // Two writes are deliberately not refused, because neither can misplace
+        // anything:
+        //
+        // - A slot the fresh machine does not have at all. A mod that calls
+        //   AddState during play leaves the saved frame holding a state a clean
+        //   load has not added yet; it is adding a state, not renaming one.
+        // - Every other array in the game. Nothing else says what its slots
+        //   mean, so there is nothing to check and the wildcard stands.
+        //
+        // There is deliberately no third case for a write that changes nothing.
+        // An earlier version carried one, to spare a state a mod had merely
+        // relabelled mid-play through the public SetStateName while its
+        // callbacks stayed put. Deciding "this write changes nothing" needs an
+        // equality test over two delegates whose targets the restore rebuilt,
+        // and there is none that is both sound and complete: by reference it
+        // refuses an ordinary mod closure, and by target type and method it
+        // admits a shifted slot whenever the fresh slot already runs that method
+        // on that type. Both were reproduced. The carve-out is gone because the
+        // mutation it protected does not occur: a census of all 6,015 mods in
+        // Everest's published database on 2026-08-15 read every shipped
+        // assembly and found exactly one caller of SetStateName - Aqua, inside
+        // an On.Celeste.Player.ctor hook, which is construction - and Celeste's
+        // own Player, Seeker and AngryOshiro name their states in constructors
+        // and never again. The only post-construction relabel found anywhere is
+        // Magedeline's unpublished Desolo Zantas (MaggyHelper, ontalkend), whose
+        // sole release asset has zero downloads and which is absent from
+        // everest_update.yaml. If it or anything like it ships, this rule
+        // refuses those frames rather than restoring them wrong.
+        //
+        // Every frame this can refuse wrongly has one shape: a state whose name
+        // differs between the two sessions while its callbacks never moved. A
+        // name comes from construction - the maxStates the constructor was
+        // given, the AddState arguments, and SetStateName - so on an install
+        // whose game and mod binaries did not change between setting the slot
+        // and loading it, both sessions build the same names and this refuses
+        // nothing. It bites when a mod update renames a state, or migrates one
+        // from the unnamed reflection idiom to AddState, and it would bite if a
+        // mod named a state from something that varies per run. Of the 66 mod
+        // repositories read for the census, every named AddState passes a string
+        // literal or a method returning one, so the per-run case was not found;
+        // it is unmeasured for published mods with no source. Across an update a
+        // rename and a reinterpretation are genuinely indistinguishable, and a
+        // reinterpretation is the silent wrong restore this exists to stop, so
+        // refusing is the conservative call rather than an accident.
+        //
+        // The check sits on the array element rather than on the delegate,
+        // because a document keeps one canonical owner edge per node: one
+        // callback object held both in a state slot and in an ordinary field -
+        // which is what a cached mod lambda is - records the field, and a check
+        // reading the delegate's own edge would never see the slot.
+        //
+        // A slot neither side names has no name to compare, and a name
+        // comparison alone reads that as agreement. The pre-2023 reflection
+        // idiom produces exactly that: a mod-local extension method resizes
+        // begins, updates, ends and coroutines and never names, so the state it
+        // adds is unnamed in both sessions and a shift among such slots used to
+        // be accepted silently. Everest's own patch expects unnamed slots -
+        // GetStateName hands back the state id as a string for one - and the
+        // idiom is still shipped by XaphanHelper, BrokemiaHelper, JackalHelper,
+        // IsaGrabBag and PrismaticHelper among others, so refusing every write
+        // into an unnamed slot would cost all of their players every slot on
+        // every load, shift or no shift.
+        //
+        // So an unnamed slot falls back to the only other thing the machine says
+        // about it: the code it runs there, updates[slot] and coroutines[slot],
+        // taken by declaring type and method name. A shift moves the slot from
+        // one mod's state to another's and those differ; a mod set that did not
+        // change wires the same methods in both sessions and this refuses
+        // nothing. The condition is "neither side names this slot" rather than
+        // the shorter names array those helpers leave behind, because the two
+        // are not the same set: Seeker asks for ten states and names eight,
+        // AngryOshiro asks for ten and names six, so a machine can have unnamed
+        // slots inside a names array of full length, and a mod that fills one of
+        // those through the public SetCallbacks has the same defect with no
+        // short names to show for it.
+        //
+        // What the fallback costs: a mod that changes an unnamed state's own
+        // update or coroutine while the room is played is refused, because
+        // without a name there is nothing to tell that change from the slot
+        // having become another mod's state, and the second is the silent wrong
+        // restore. Rewiring begins and ends is not affected, and neither is
+        // moving one of them between two unnamed slots - that is the same in-play
+        // move the named half accepts above, and the drivers still pin both
+        // slots while it happens.
+        //
+        // Three wrong restores stay open, none reachable through any published
+        // mod. Two were reproduced when the named half landed. A slot whose four
+        // saved callbacks are all null is never checked, because the check only
+        // runs where a value is written, so a machine that lost a state like
+        // that can still take a callback at the wrong id - and no driver reaches
+        // it either, for the same reason. And SavedStateSlotArrays below keeps
+        // one owner per array node, so two machines sharing one callback array -
+        // which needs reflection, the public API cannot do it - let the later
+        // one lend the earlier one its coordinates; keeping every owner and
+        // refusing when any disagrees is the fix if a mod is ever seen to alias
+        // them. The third is this fallback's own floor and is reasoned rather
+        // than reproduced: two unnamed slots that both hold no update and no
+        // coroutine have the same empty driver, so a shift between them is
+        // accepted and their begin and end callbacks swap. A state like that
+        // runs nothing while it is current and never advances out of itself.
+        private void ValidateStateSlotAssignment(
+            AkronReconstructionNode arrayNode,
+            int slot,
+            object restoredValue,
+            string itemPath
+        ) {
+            if (!SavedStateSlotArrays().TryGetValue(arrayNode.Id, out AkronReconstructionNode machineNode) ||
+                !Objects.TryGetValue(machineNode.Id, out object freshMachine) ||
+                !freshStateSlots.TryGetValue(freshMachine, out (string Name, string Driver)[] freshSlots) ||
+                slot >= freshSlots.Length) {
+                return;
+            }
+            string savedName = SavedStateSlotName(machineNode, slot);
+            string freshName = freshSlots[slot].Name;
+            if (freshName == null && savedName == null) {
+                if (string.Equals(
+                        freshSlots[slot].Driver,
+                        SavedStateSlotDriver(machineNode, slot),
+                        StringComparison.Ordinal)) {
+                    return;
+                }
+            } else if (string.Equals(freshName, savedName, StringComparison.Ordinal)) {
+                return;
+            }
+            // Name the mod the same way a refused callback does, from the type
+            // that declares the method, so the load message can still say whose
+            // state this was.
+            string refusedTypeName = restoredValue is Delegate refusedCall
+                ? refusedCall.Method?.DeclaringType?.AssemblyQualifiedName ?? string.Empty
+                : string.Empty;
+            throw new AkronReconstructionException(
+                itemPath,
+                "saved state slot is a different state in the fresh room" +
+                ";state=" + (savedName ?? "<unnamed>") +
+                ";slot=" + slot.ToString(CultureInfo.InvariantCulture),
+                refusedTypeName);
+        }
+
+        // Which document nodes are a state machine's callback array, and which
+        // machine owns each. Built from the machine's own field references
+        // rather than from the array node's owner edge, for the same reason the
+        // check above sits on the element: an owner edge records only the first
+        // place the capture reached a node from.
+        private Dictionary<int, AkronReconstructionNode> SavedStateSlotArrays() {
+            if (savedStateSlotArrays != null) {
+                return savedStateSlotArrays;
+            }
+            savedStateSlotArrays = new Dictionary<int, AkronReconstructionNode>();
+            foreach (AkronReconstructionNode machineNode in nodes.Values) {
+                foreach (AkronReconstructionField field in machineNode.Fields ?? new List<AkronReconstructionField>()) {
+                    if (field?.Value?.Kind == ReferenceValueKind &&
+                        string.Equals(field.DeclaringTypeName, StateMachineTypeName, StringComparison.Ordinal) &&
+                        Array.IndexOf(StateMachineCallbackFieldNames, field.Name) >= 0) {
+                        savedStateSlotArrays[field.Value.NodeId] = machineNode;
+                    }
+                }
+            }
+            return savedStateSlotArrays;
+        }
+
+        private string SavedStateSlotName(AkronReconstructionNode machineNode, int slot) {
+            AkronReconstructionValue names = FindReferenceField(machineNode, "names");
+            if (names == null ||
+                !nodes.TryGetValue(names.NodeId, out AkronReconstructionNode namesNode) ||
+                slot < 0 ||
+                slot >= namesNode.Items.Count) {
+                return null;
+            }
+            AkronReconstructionValue name = namesNode.Items[slot];
+            return name?.Kind == ScalarValueKind ? name.Scalar : null;
+        }
+
+        // The code the saved machine ran at one slot, read out of the document
+        // rather than off any live object, and written the way
+        // FreshStateSlotDriver writes the fresh room's answer. No such array, no
+        // such index or a null callback all contribute nothing here, and the
+        // fresh machine holding nothing there contributes nothing too, so the
+        // two match.
+        //
+        // One shape does not match, and it refuses rather than accepts: a
+        // callback whose method is generated at runtime. CaptureDelegate records
+        // no call for one unless it can name the detour behind it, while the
+        // fresh machine still spells out whatever it holds, so the slot is
+        // refused. That takes a state callback built by MonoMod or by
+        // DynamicMethod rather than passed to SetCallbacks as a method or a
+        // lambda, which is not a shape any mod has been seen to produce, and
+        // refusing is the direction this rule is for.
+        private string SavedStateSlotDriver(AkronReconstructionNode machineNode, int slot) {
+            StringBuilder driver = new StringBuilder();
+            foreach (string driverFieldName in StateMachineDriverFieldNames) {
+                driver.Append(driverFieldName).Append('=');
+                AkronReconstructionValue callbacks = FindReferenceField(machineNode, driverFieldName);
+                if (callbacks != null &&
+                    nodes.TryGetValue(callbacks.NodeId, out AkronReconstructionNode callbacksNode) &&
+                    slot >= 0 &&
+                    slot < callbacksNode.Items.Count &&
+                    callbacksNode.Items[slot]?.Kind == ReferenceValueKind &&
+                    nodes.TryGetValue(callbacksNode.Items[slot].NodeId, out AkronReconstructionNode callbackNode)) {
+                    foreach (AkronReconstructionDelegateCall call in
+                             callbackNode.DelegateCalls ?? new List<AkronReconstructionDelegateCall>()) {
+                        driver.Append(call.DeclaringTypeName)
+                            .Append('.')
+                            .Append(call.MethodName)
+                            .Append('+');
+                    }
+                }
+                driver.Append(';');
+            }
+            return driver.ToString();
         }
 
         private void TrackDisplacedEventInstance(object currentValue, object restoredValue) {
@@ -7156,9 +7059,16 @@ internal sealed class AkronReconstructionGraph {
                             method);
                     }
                     if (!authentic) {
+                        // What the fresh room does not have here is the callback, not the
+                        // delegate field's own type, so the refusal is reported against the
+                        // type that declares the method. For a mod hook's lambda that is the
+                        // mod's closure type, which is what names the mod in the load message.
                         throw new AkronReconstructionException(
                             node.Path,
-                            "delegate method is not authentic to the fresh room");
+                            "delegate method is not authentic to the fresh room;type=" +
+                            (method.DeclaringType?.FullName ?? "<unknown>") +
+                            ";method=" + method.Name,
+                            method.DeclaringType?.AssemblyQualifiedName ?? string.Empty);
                     }
                 } else {
                     throw new AkronReconstructionException(node.Path, "delegate call kind is unsupported");
@@ -7359,7 +7269,7 @@ internal sealed class AkronReconstructionGraph {
         }
 
         public void Verify() {
-            ValidateAndNormalizeDerivedCollectionState(objects.Values);
+            ValidateAndNormalizeDerivedMembershipSets(objects.Values);
             foreach (AkronReconstructionNode node in document.Nodes.OrderBy(node => node.Id)) {
                 if (!objects.TryGetValue(node.Id, out object current) || current == null) {
                     throw new AkronReconstructionException(node.Path, "restored node is missing");
@@ -7368,7 +7278,7 @@ internal sealed class AkronReconstructionGraph {
                 if (current.GetType() != expectedType) {
                     throw new AkronReconstructionException(node.Path, "restored node type differs");
                 }
-                if (IsDerivedCollectionNode(node)) {
+                if (IsDerivedMembershipNode(node)) {
                     continue;
                 }
                 if (node.Kind == AnchorKind || IsMasked(node.Path)) {
@@ -7395,20 +7305,84 @@ internal sealed class AkronReconstructionGraph {
                 if (IsMasked(savedField.Path)) {
                     continue;
                 }
-                if (IsDerivedCollectionField(current.GetType(), savedField.Name)) {
+                if (IsDerivedMembershipField(current.GetType(), savedField.Name)) {
+                    continue;
+                }
+                if (IsDerivedCollectionVersionField(current.GetType(), savedField.Name)) {
                     continue;
                 }
                 FieldInfo field = ResolveField(savedField.DeclaringTypeName, savedField.Name, savedField.Path);
+                if (IsRewrittenHashIndexField(node, current, field)) {
+                    continue;
+                }
                 VerifyValue(savedField.Value, field.GetValue(current), savedField.Path);
             }
         }
 
-        private bool IsDerivedCollectionNode(AkronReconstructionNode node) {
+        // The scalar fields AkronHashIndex.Rebuild wrote, and only those. An
+        // entry is not skipped wholesale: the rebuild steps over the free slots,
+        // and the free chain runs through next, so a free slot keeps the values
+        // the document holds and keeps being compared against them. Only a slot
+        // the document calls live and the restore also left live has its hash
+        // and its chain link skipped; a slot that changed sides fails at its own
+        // path like any other field.
+        // Keyed on the type that declares the field rather than on the object's
+        // runtime type, so a mod that derives from Dictionary and gives itself a
+        // field of the same name keeps that field verified.
+        private bool IsRewrittenHashIndexField(
+            AkronReconstructionNode node,
+            object current,
+            FieldInfo field
+        ) {
+            if (!AkronHashIndex.IsDerivedIndexField(field.DeclaringType, field.Name)) {
+                return false;
+            }
+            if (!AkronHashIndex.IsHashEntryType(field.DeclaringType)) {
+                return true;
+            }
+            // Both sides have to agree the slot is live. A slot the document
+            // calls live and the restore left free would be stepped over by the
+            // rebuild and by every enumerator, so it is compared rather than
+            // skipped and fails at its own path.
+            return SavedHashEntryIsLive(node) && AkronHashIndex.IsLiveHashEntry(current);
+        }
+
+        private static bool SavedHashEntryIsLive(AkronReconstructionNode node) {
+            foreach (AkronReconstructionField savedField in node.Fields) {
+                if (savedField.Name is "next" or "Next") {
+                    return savedField.Value?.Kind == ScalarValueKind &&
+                           int.TryParse(
+                               savedField.Value.Scalar,
+                               NumberStyles.Integer,
+                               CultureInfo.InvariantCulture,
+                               out int chain) &&
+                           chain >= -1;
+                }
+            }
+            return false;
+        }
+
+        // A bucket array holds nothing but positions, so its contents are this
+        // process's after the rebuild. Its length is not derived - it is what the
+        // container's bucket count is - and the rebuild never replaces the array,
+        // so the field that points at it and the length both keep being compared.
+        // Only the direct parent is consulted: the array's elements are positions
+        // or chain heads and have no children of their own to reach.
+        private bool IsDerivedHashIndexArrayNode(AkronReconstructionNode node) {
+            return node.ParentKind == "field" &&
+                   AkronHashIndex.IsDerivedIndexArrayFieldName(node.ParentFieldName) &&
+                   !string.IsNullOrEmpty(node.ParentDeclaringTypeName) &&
+                   AkronHashIndex.IsDerivedIndexArrayField(
+                       ResolveType(node.ParentDeclaringTypeName, node.Path),
+                       node.ParentFieldName);
+        }
+
+        private bool IsDerivedMembershipNode(AkronReconstructionNode node) {
             AkronReconstructionNode current = node;
             while (current.ParentNodeId > 0 && nodes.TryGetValue(current.ParentNodeId, out AkronReconstructionNode parent)) {
                 Type parentType = ResolveType(parent.TypeName, parent.Path);
                 if (current.ParentKind == "field" &&
-                    IsDerivedCollectionField(parentType, current.ParentFieldName)) {
+                    IsDerivedMembershipField(parentType, current.ParentFieldName)) {
                     return true;
                 }
                 current = parent;
@@ -7416,22 +7390,23 @@ internal sealed class AkronReconstructionGraph {
             return false;
         }
 
-        private static bool IsDerivedCollectionField(Type ownerType, string fieldName) {
-            if ((ownerType == typeof(EntityList) || ownerType == typeof(ComponentList)) &&
-                fieldName is "current" or "adding" or "removing") {
-                return true;
-            }
-            if (IsHashCollectionType(ownerType)) {
-                return fieldName is "_buckets" or "_keys" or "_values";
-            }
-            if (!ownerType.IsNested || ownerType.DeclaringType == null ||
-                !IsHashCollectionType(ownerType.DeclaringType)) {
-                return false;
-            }
-            return fieldName is "hashCode" or "HashCode" or "next" or "Next";
+        private static bool IsDerivedMembershipField(Type ownerType, string fieldName) {
+            return (ownerType == typeof(EntityList) || ownerType == typeof(ComponentList)) &&
+                   fieldName is "current" or "adding" or "removing";
         }
 
         private void VerifyArray(AkronReconstructionNode node, Array current) {
+            if (IsDerivedHashIndexArrayNode(node)) {
+                if (node.PackedPrimitiveArrayBytes != null) {
+                    if (!CanPackPrimitiveArray(current) ||
+                        Buffer.ByteLength(current) != node.PackedPrimitiveArrayBytes.Length) {
+                        throw new AkronReconstructionException(node.Path, "packed primitive array size differs");
+                    }
+                } else if (current.LongLength != node.Items.Count) {
+                    throw new AkronReconstructionException(node.Path, "array item count differs");
+                }
+                return;
+            }
             if (node.PackedPrimitiveArrayBytes != null) {
                 if (!CanPackPrimitiveArray(current) ||
                     Buffer.ByteLength(current) != node.PackedPrimitiveArrayBytes.Length) {
@@ -7533,10 +7508,10 @@ internal sealed class AkronReconstructionGraph {
 
         private void VerifyInlineValueType(AkronReconstructionNode node, object current, string path) {
             foreach (AkronReconstructionField savedField in node.Fields) {
-                if (IsDerivedCollectionField(current.GetType(), savedField.Name)) {
+                FieldInfo field = ResolveField(savedField.DeclaringTypeName, savedField.Name, path);
+                if (IsRewrittenHashIndexField(node, current, field)) {
                     continue;
                 }
-                FieldInfo field = ResolveField(savedField.DeclaringTypeName, savedField.Name, path);
                 VerifyValue(savedField.Value, field.GetValue(current), FieldPath(path, savedField.Name));
             }
         }
@@ -7619,9 +7594,7 @@ internal sealed class AkronReconstructionGraph {
     }
 
     private static bool CanPackPrimitiveElementType(Type elementType) {
-        return elementType?.IsPrimitive == true &&
-               elementType != typeof(IntPtr) &&
-               elementType != typeof(UIntPtr);
+        return IsPersistablePrimitive(elementType);
     }
 
     private static int GetPackedPrimitiveElementSize(Type elementType) {
@@ -7704,34 +7677,122 @@ internal sealed class AkronReconstructionGraph {
         return true;
     }
 
-    private sealed class AkronReconstructionException : Exception {
-        public AkronReconstructionException(string path, string message) : base(message) {
-            Path = string.IsNullOrWhiteSpace(path) ? "$" : path;
-        }
+}
 
-        public string Path { get; }
+// Which question a refusal answers, which is what decides the sentence the player gets.
+//
+// AkronStartPosRefusal resolves the refused type to the mod that owns it. That is the
+// right axis for a refusal about an object the fresh room cannot supply, because the mod
+// that ships the object is the mod whose setup changed. It is the wrong axis for a
+// refusal about the room itself: an entity the map has stopped placing says nothing
+// about who wrote that entity's type, so attribution lands on Celeste for a vanilla
+// entity and asks for a bug report about a refusal working exactly as designed.
+//
+// The kind travels beside the refused type from the throw all the way to the message,
+// rather than being read back out of the reason text, for the same reason the type does:
+// the reason text is written for whoever reads the log and its wording is free to change.
+internal enum AkronReconstructionRefusalKind {
+    // The fresh room cannot supply an object the saved state names. The refused type is
+    // that object's, and the mod that owns the type is the one the player has to look at.
+    SavedObject = 0,
+
+    // This room's map data no longer places an entity the saved state names. The refused
+    // type is that entity's and it is not what is wrong - the map is, and a map is not
+    // something a player checks a settings menu for. Setting the slot again against the
+    // map as it stands now is the whole fix, and it always works.
+    ChangedMap
+}
+
+// Top-level rather than nested and private because it can escape the graph: a type that
+// will not load is refused while the document is being walked outside Restore's own
+// catch, and the StartPos load reports that through its outermost handler. That handler
+// needs RefusedTypeName to tell the player which mod is missing.
+internal sealed class AkronReconstructionException : Exception {
+    public AkronReconstructionException(string path, string message)
+        : this(path, message, string.Empty) {
     }
+
+    // refusedTypeName is the assembly-qualified name of the saved object the refusal
+    // is about. It is carried as data rather than parsed back out of the message
+    // text: the load-failure sentence a player reads is built from it, while the
+    // message keeps the graph path and the authenticity flags for the log.
+    //
+    // refusedKind defaults to SavedObject because that is what a refusal is unless it
+    // says otherwise: the fresh room did not supply what the document asked for. A
+    // refusal that is about the room rather than about the object has to say so.
+    public AkronReconstructionException(
+        string path,
+        string message,
+        string refusedTypeName,
+        AkronReconstructionRefusalKind refusedKind = AkronReconstructionRefusalKind.SavedObject
+    )
+        : base(message) {
+        Path = string.IsNullOrWhiteSpace(path) ? "$" : path;
+        RefusedTypeName = refusedTypeName ?? string.Empty;
+        RefusedKind = refusedKind;
+    }
+
+    public string Path { get; }
+    public string RefusedTypeName { get; }
+    public AkronReconstructionRefusalKind RefusedKind { get; }
+}
+
+// What one prewarm read did with its slot. A bool could not tell a slot that was
+// already in the cache apart from one that failed, so a queue re-issued over a warm
+// map logged "warmed 0 of 3" while working perfectly.
+internal enum AkronPrewarmOutcome {
+    Stored,
+    AlreadyCached,
+    BudgetFull,
+    NotStored
 }
 
 internal static class AkronStartPosReconstruction {
-    // A Heart of the Storm capture expanded to about 218 MiB. Keep bounded
-    // headroom without allowing 512 MiB of hostile JSON to materialize into
-    // several gigabytes of managed objects.
-    internal const long MaxDecompressedSnapshotBytes = 256L * 1024L * 1024L;
-    private const string SnapshotDirectoryName = "AkronStartPos";
-    private const BindingFlags RuntimeInstanceFields =
-        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-    private static readonly FieldInfo VirtualTexturePathField =
-        typeof(VirtualTexture).GetField("<Path>k__BackingField", RuntimeInstanceFields);
-    private static readonly FieldInfo VirtualAssetWidthField =
-        typeof(VirtualAsset).GetField("<Width>k__BackingField", RuntimeInstanceFields);
-    private static readonly FieldInfo VirtualAssetHeightField =
-        typeof(VirtualAsset).GetField("<Height>k__BackingField", RuntimeInstanceFields);
+    private static readonly FieldInfo VirtualContentAssetsField = typeof(VirtualContent).GetField(
+        "assets",
+        BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(VirtualContent).FullName, "assets");
+    private static readonly FieldInfo VirtualTexturePathField = typeof(VirtualTexture).GetField(
+        "<Path>k__BackingField",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(VirtualTexture).FullName, "<Path>k__BackingField");
+    private static readonly FieldInfo VirtualAssetNameField = typeof(VirtualAsset).GetField(
+        "<Name>k__BackingField",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(VirtualAsset).FullName, "<Name>k__BackingField");
+    private static readonly FieldInfo VirtualAssetWidthField = typeof(VirtualAsset).GetField(
+        "<Width>k__BackingField",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(VirtualAsset).FullName, "<Width>k__BackingField");
+    private static readonly FieldInfo VirtualAssetHeightField = typeof(VirtualAsset).GetField(
+        "<Height>k__BackingField",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(VirtualAsset).FullName, "<Height>k__BackingField");
+    // The hard limit on one snapshot, hostile or not. Raised from 192 MiB, which was
+    // 13% below the largest snapshot a real install has produced: 231,081,666 bytes
+    // decompressed, one of 17 measured off the test box. A limit under the largest
+    // real measurement is not a limit on hostile input at all, it is a slot that
+    // cannot be loaded, which is what the released build did with that file.
+    // 384 MiB is 1.74x that largest real snapshot, so the headroom is against a
+    // modded map that grows rather than against the measurement itself.
+    // It is also the ceiling on what one cold load can cost: at the 3.8x
+    // of process RSS per decompressed byte measured in game, a document at this
+    // limit is about 1.4 GiB of RSS, which is below what the whole prewarm cache is
+    // allowed to hold (MaxPrewarmedSnapshotBytes, 512 MiB, ~1.9 GiB of RSS).
+    internal const long MaxDecompressedSnapshotBytes = 384L * 1024L * 1024L;
+    // Also the name the save backup uses to leave this folder out of a backup archive,
+    // so the two cannot drift apart.
+    internal const string SnapshotDirectoryName = "AkronStartPos";
     // Persistence capture runs on its worker while restore owns live resources
     // on the game thread. Separate graph instances keep those lifecycles from
     // sharing mutable resource ownership.
     private static readonly AkronReconstructionGraph CaptureGraph = CreateGraph();
     private static readonly AkronReconstructionGraph RestoreGraph = CreateGraph();
+    // Prewarm deserializes on a worker thread while the game thread can be in the
+    // middle of a restore on RestoreGraph. Deserialize touches no live object, but
+    // it gets its own instance for the same reason capture does: no graph instance
+    // is ever entered from two threads at once.
+    private static readonly AkronReconstructionGraph PrewarmGraph = CreateGraph();
 
     private static AkronReconstructionGraph CreateGraph() {
         return new AkronReconstructionGraph(
@@ -7740,148 +7801,307 @@ internal static class AkronStartPosReconstruction {
             new AkronVirtualRenderTargetResourceAdapter(),
             ResolveDetachedLiveResource,
             areEquivalentLiveResources: AreEquivalentLiveResources,
-            generatedTilePartitionContractProvider: CreateClutterHelperPartitionContract);
+            hasPortableLiveResourceKey: HasPortableLiveResourceKey,
+            getMapPlacedEntityIds: GetMapPlacedEntityIds);
     }
 
-    private static AkronGeneratedTilePartitionContract CreateClutterHelperPartitionContract() {
-        // The graph is created before Everest exposes non-dependency mod
-        // assemblies to Akron. Resolve this contract once per restore, after
-        // the destination map has loaded and Everest can expose CustomClutter.
-        Assembly clutterHelperAssembly = AppDomain.CurrentDomain.GetAssemblies()
-            .FirstOrDefault(assembly => string.Equals(
-                assembly.GetName().Name,
-                "CustomClutter",
-                StringComparison.OrdinalIgnoreCase));
-        Type generatedType = clutterHelperAssembly?.GetType(
-            "Celeste.Mod.ClutterHelper.CustomClutter");
-        Type sourceAreaType = clutterHelperAssembly?.GetType(
-            "Celeste.Mod.ClutterHelper.CustomClutterBlockBase");
-        if (generatedType == null || sourceAreaType == null) {
-            return null;
-        }
-
-        return new AkronGeneratedTilePartitionContract(
-            generatedType,
-            sourceAreaType,
-            "BlockColor",
-            GetClutterTextureSizes);
+    // Does GetLiveResourceKey name this resource, or label this instance? The two
+    // read the same way and mean opposite things when a second process cannot find
+    // the key. A name that is missing means the resource is missing: a sort this
+    // install cannot open, a texture file this install does not have, a type from an
+    // assembly this install did not load. A label that is missing means nothing at
+    // all, because the process that wrote it made it up and the process reading it
+    // made up a different one for the same resource - which is what the restore's
+    // structural owner path exists to carry.
+    //
+    // Asked of the saved object during capture and written onto its node. It is a
+    // property of the individual resource and not of its type: two Types are named
+    // or labelled by where their assembly came from, and two VirtualAssets by
+    // whether the wrapper has a content path. Asking a fresh candidate instead would
+    // classify a different object, which is how the previous attempt at this waived
+    // the exact keys it was written to hold.
+    //
+    // The branches follow GetLiveResourceKey's, in its order, so no object can take
+    // corresponding branches in the two functions. Four of them deliberately collapse
+    // rather than mirror: Atlas and ModAsset answer no whether or not their path is
+    // set, MemberInfo answers no outright for the reason spelled out below, and both
+    // arms of VirtualAsset - including the file-backed VirtualTexture arm - fall to the
+    // last return for the reason spelled out there. Anything with no key never reaches
+    // here at all, because capture only asks when the key is non-empty.
+    internal static bool HasPortableLiveResourceKey(object resource) {
+        return HasPortableLiveResourceKey(resource, HasReproducibleAssemblyName);
     }
 
-    private static IEnumerable<(int Width, int Height)> GetClutterTextureSizes(string group) {
-        HashSet<(int Width, int Height)> sizes = new HashSet<(int Width, int Height)>();
-        foreach (MTexture texture in GFX.Game.GetAtlasSubtextures(group + "_")) {
-            sizes.Add((texture.Width, texture.Height));
-        }
-        sizes.UnionWith(GetRetainedClutterTextureSizes(group, VirtualContent.Assets));
-        Dictionary<string, VirtualTexture> retainedTexturesByAssetKey =
-            new Dictionary<string, VirtualTexture>(StringComparer.Ordinal);
-        foreach (VirtualTexture texture in VirtualContent.Assets.OfType<VirtualTexture>()) {
-            if (texture.Metadata == null) {
-                continue;
-            }
-            string assetKey = GetLiveResourceKey(texture.Metadata);
-            if (!string.IsNullOrEmpty(assetKey)) {
-                retainedTexturesByAssetKey.TryAdd(assetKey, texture);
-            }
-        }
-        sizes.UnionWith(GetInstalledClutterTextureSizes(
-            group,
-            Everest.Content.Map.Values,
-            asset => {
-                string assetKey = GetLiveResourceKey(asset);
-                if (retainedTexturesByAssetKey.TryGetValue(assetKey, out VirtualTexture texture)) {
-                    return texture;
-                }
-                texture = VirtualContent.CreateTexture(asset);
-                retainedTexturesByAssetKey[assetKey] = texture;
-                return texture;
-            }));
-        return sizes;
-    }
-
-    internal static IEnumerable<(int Width, int Height)> GetRetainedClutterTextureSizes(
-        string group,
-        IEnumerable<VirtualAsset> assets
+    internal static bool HasPortableLiveResourceKey(
+        object resource,
+        Func<Assembly, bool> hasReproducibleAssemblyName
     ) {
-        if (string.IsNullOrWhiteSpace(group) || assets == null) {
-            return Enumerable.Empty<(int Width, int Height)>();
+        if (resource is CompareInfo) {
+            // A sort name. Every install derives the same one for the same
+            // collation, and one it cannot open is a collation it does not have.
+            return true;
         }
-
-        // Everest can replace an atlas path while moving between rooms, but
-        // VirtualContent retains the old VirtualTexture wrapper so persisted
-        // entities can still bind to the exact asset they captured.
-        string pathPrefix = "Graphics/Atlases/Gameplay/" +
-                            group.Replace('\\', '/').TrimStart('/') + "_";
-        List<(int Width, int Height)> sizes = new List<(int Width, int Height)>();
-        HashSet<(int Width, int Height)> seen = new HashSet<(int Width, int Height)>();
-        foreach (VirtualTexture texture in assets.OfType<VirtualTexture>()) {
-            if (VirtualTexturePathField?.GetValue(texture) is not string path ||
-                !path.Replace('\\', '/').StartsWith(pathPrefix, StringComparison.Ordinal) ||
-                !TryGetVirtualTextureSize(texture, out int width, out int height)) {
-                continue;
-            }
-            if (seen.Add((width, height))) {
-                sizes.Add((width, height));
-            }
+        if (resource is Type type) {
+            // GetLiveResourceKey uses the assembly-qualified name and falls back to a
+            // bare name when there is none. Requiring the key to actually be that name
+            // is what keeps out every shape whose name leaves something unqualified.
+            // Measured on .NET 8: a generic parameter, an array of one, and a generic
+            // type still holding one - List<T>, Dictionary<int,T> - all return null
+            // here, while a generic type definition and a fully closed generic return
+            // a real name. Without this, List<T> would be judged on the core library
+            // alone while its name carries a bare "T" that two different parameters
+            // share.
+            return type.AssemblyQualifiedName != null &&
+                   HasReproducibleMetadataName(type, hasReproducibleAssemblyName);
         }
-        return sizes;
-    }
-
-    internal static IEnumerable<(int Width, int Height)> GetInstalledClutterTextureSizes(
-        string group,
-        IEnumerable<ModAsset> assets,
-        Func<ModAsset, VirtualTexture> getTexture
-    ) {
-        if (string.IsNullOrWhiteSpace(group) || assets == null || getTexture == null) {
-            return Enumerable.Empty<(int Width, int Height)>();
+        // A MemberInfo deliberately falls through to the last return. Its key is the
+        // assembly's full name plus a metadata token, and a token names a position in
+        // one build's member table rather than the member. Rebuilding an assembly at
+        // the same name and version moves them: measured on .NET 8, adding one method
+        // ahead of two others shifted both their tokens by one, so the saved token
+        // named a different method in the rebuilt assembly under an identical
+        // Assembly.FullName. Celeste itself is rebuilt at the same version, and Everest
+        // regenerates MMHOOK_Celeste.dll whenever the mod set changes.
+        //
+        // HasReproducibleAssemblyName below says the next process derives the same
+        // assembly name. It does not say the assembly is the same build, and nothing in
+        // this key does. So a MemberInfo key is a label on this build rather than a name
+        // for the member, and the structural owner path that carries it today keeps
+        // carrying it.
+        if (resource is Assembly assembly) {
+            return hasReproducibleAssemblyName(assembly);
         }
-
-        string pathPrefix = "Graphics/Atlases/Gameplay/" +
-                            group.Replace('\\', '/').TrimStart('/') + "_";
-        List<(int Width, int Height)> sizes = new List<(int Width, int Height)>();
-        HashSet<(int Width, int Height)> seen = new HashSet<(int Width, int Height)>();
-        foreach (ModAsset asset in assets) {
-            if (asset?.Type != typeof(Texture2D) ||
-                !string.Equals(asset.Format, "png", StringComparison.OrdinalIgnoreCase) ||
-                string.IsNullOrWhiteSpace(asset.PathVirtual) ||
-                !asset.PathVirtual.Replace('\\', '/').StartsWith(pathPrefix, StringComparison.Ordinal)) {
-                continue;
-            }
-
-            // ClutterHelper selects from the installed gameplay atlas, but a
-            // cold process has not created wrappers for variants that its new
-            // random partition did not choose. Load those exact installed
-            // assets now so both the partition proof and later resource
-            // rebinding use the same content catalog.
-            VirtualTexture texture = getTexture(asset);
-            if (TryGetVirtualTextureSize(texture, out int width, out int height) &&
-                seen.Add((width, height))) {
-                sizes.Add((width, height));
-            }
+        if (resource is EverestModule || resource is EverestModuleSettings) {
+            return HasReproducibleMetadataName(resource.GetType(), hasReproducibleAssemblyName);
         }
-        return sizes;
-    }
-
-    private static bool TryGetVirtualTextureSize(
-        VirtualTexture texture,
-        out int width,
-        out int height
-    ) {
-        if (texture == null) {
-            width = 0;
-            height = 0;
+        if (resource is Atlas || resource is ModAsset) {
+            // Both keys read like content - a data path, a virtual path, a source
+            // name - and both are built from publicly writable properties that a mod
+            // is free to set per process for identical content. There is no
+            // reproduction of either being satisfied by the wrong object, and
+            // calling a label a name costs a slot that loads today, so these keep
+            // the owner path they have always had.
             return false;
         }
-        width = VirtualAssetWidthField?.GetValue(texture) is int valueWidth ? valueWidth : 0;
-        height = VirtualAssetHeightField?.GetValue(texture) is int valueHeight ? valueHeight : 0;
-        return width > 0 && height > 0;
+        // A VirtualAsset deliberately falls through to the last return, both halves of
+        // it. A texture built from data is keyed on a name its creator passed in, which
+        // is regenerated per process for the same asset, and carrying that on the owner
+        // path is exactly what the structural override was written for.
+        //
+        // A texture loaded from a file is keyed on its path and its dimensions, and
+        // that is the same defect MemberInfo has by a different route: half the key is
+        // a name and half is a measurement of the file's current contents. A mod that
+        // retextures a PNG at a new size leaves the asset present under the same path
+        // and changes the key, so a process that cannot produce the key can still hold
+        // the resource - which is the one thing "portable" is supposed to mean here.
+        // Reading a miss as absence would refuse a whole slot over a decal being
+        // redrawn, where the owner path hands the room the fresh texture today.
+        // ResolveDetachedLiveResource compares the whole key including the dimensions,
+        // so it is a miss, not a near match. AreEquivalentLiveResources already treats
+        // two VirtualTexture wrappers with one key as interchangeable, so this file
+        // already says a texture reference is about content rather than about one
+        // particular wrapper, and claiming the key names the content contradicts it.
+        return false;
     }
+
+    // Does the next process derive this assembly's name again, or did this one make
+    // it up? A Type's key, an EverestModule's and an EverestModuleSettings' are all
+    // built out of the assembly's name, so this is the whole of what decides whether
+    // those keys name their resource.
+    //
+    // Three populations, and each answers differently:
+    //
+    // - Emitted. AssemblyBuilder takes whatever name the caller passed and callers
+    //   number them in the order this process happened to build them. IsDynamic says
+    //   so.
+    // - Loaded off a file by the runtime. The name came out of that file's metadata,
+    //   so the next process reads the same name off the same file. Location says so.
+    // - Loaded from bytes. Location is empty and IsDynamic is false for a mod's
+    //   assembly and for a helper a mod compiled at startup and handed to
+    //   Assembly.Load(byte[]) alike, and nothing on Assembly separates them. The
+    //   load context does. EverestModuleAssemblyContext.LoadRelinkedAssembly reads a
+    //   relinked dll into memory and calls LoadFromStream so the file on disk is not
+    //   locked, so every installed mod's assembly is in one of those contexts and its
+    //   name is the mod's own, off the mod's own dll. Assembly.Load(byte[]) builds an
+    //   IndividualAssemblyLoadContext of its own instead - measured on .NET 8 - so it
+    //   is not one of Everest's, and neither is a context a mod builds for itself.
+    //
+    // Asking whether the assembly came off disk, which is what this used to do,
+    // answers no for every mod assembly there has ever been, because of the
+    // LoadFromStream above. That waived the key for every mod-owned Type,
+    // EverestModule and EverestModuleSettings at site A, and the error direction there
+    // is a wrong restore rather than a false refusal: a mod-owned reflection resource
+    // this process genuinely lacks was answered by whatever object sat at the saved
+    // structural position, silently.
+    //
+    // This says which assembly is loaded and deliberately not which BUILD of it. A
+    // MemberInfo key is an assembly name plus a metadata token, and rebuilding an
+    // assembly at the same name and version moves tokens, so a MemberInfo key is a
+    // label on one build rather than a name for the member. MemberInfo therefore never
+    // reaches here: HasPortableLiveResourceKey falls it through to its last return.
+    private static bool HasReproducibleAssemblyName(Assembly assembly) {
+        if (assembly == null || assembly.IsDynamic) {
+            return false;
+        }
+        if (!string.IsNullOrEmpty(assembly.Location)) {
+            return true;
+        }
+        return AssemblyLoadContext.GetLoadContext(assembly) is EverestModuleAssemblyContext;
+    }
+
+    // A Type's key is its assembly-qualified name, which spells out the assembly of
+    // every type inside it as well as its own. List<T> over an emitted type lives in
+    // the core library and still carries the emitted assembly's made-up name in its
+    // key, so every assembly the shape names has to be reproducibly named for the key
+    // to name anything.
+    private static bool HasReproducibleMetadataName(
+        Type type,
+        Func<Assembly, bool> hasReproducibleAssemblyName
+    ) {
+        if (type == null) {
+            return false;
+        }
+        if (type.IsFunctionPointer) {
+            // Measured: a function pointer type's assembly-qualified name says the
+            // core library and spells its signature types out inside the name without
+            // qualifying them, and GetElementType returns nothing, so the recursion
+            // below cannot see what it is built from. Nothing here names it.
+            return false;
+        }
+        if (type.HasElementType) {
+            return HasReproducibleMetadataName(type.GetElementType(), hasReproducibleAssemblyName);
+        }
+        if (type.IsGenericType &&
+            type.GetGenericArguments().Any(argument =>
+                !HasReproducibleMetadataName(argument, hasReproducibleAssemblyName))) {
+            return false;
+        }
+        return hasReproducibleAssemblyName(type.Assembly);
+    }
+
+    // Every EntityID the map lays out in one room, however this run's session flags
+    // decided to build it. LoadLevel skips entities a flag has retired, so the room
+    // is a subset of this and the map data is the only session-independent record of
+    // what the room is meant to contain. Both the capture baseline and the room a
+    // restore rebuilds into resolve the same static AreaData, so a difference between
+    // the two answers is a difference in the map file itself.
+    //
+    // Triggers carry EntityIDs from the same per-room numbering as entities, so both
+    // lists belong here. Decals do not have ids and never reach this.
+    //
+    // Session.MapData resolves through the process-wide AreaData rather than through
+    // the room graph, so a capture reads it from the persistence worker rather than
+    // from the game thread. That is the same live process state the worker already
+    // reads through ResolveDetachedLiveResource - VirtualContent.Assets,
+    // Everest.Content.Map, the loaded assembly list - and map data is the least
+    // volatile of them: it is built once when the map is loaded and only rebuilt by
+    // an explicit map reload.
+    //
+    // Three answers, and the third is the one this exists for. A set of ids is map data
+    // that places them. An empty set is map data that places nothing in that room, which
+    // covers both an empty room and a room the map does not have at all. Null is no map
+    // data to read: a root that is not a loaded room, a session whose area or side is not
+    // in the loaded area list, or a map that was being rebuilt while this read it.
+    //
+    // Only the second may lead to a refusal. The refusal built on this rule tells the
+    // player their map or their collab changed, so it may only fire where the map has
+    // actually been read and has actually dropped the id. Folding the third case into the
+    // second - which returning an empty set for it would do - would tell a player their
+    // collab was updated because a map reload happened to overlap a load.
+    //
+    // The ids are materialised inside the guard rather than handed back lazily. The
+    // caller enumerates them to build its per-room set, and LevelData.Entities is a
+    // List the game thread owns: an enumeration that ran outside this try would put
+    // the "Collection was modified" throw back where nothing catches it.
+    internal static IEnumerable<int> GetMapPlacedEntityIds(object roomRoot, string roomName) {
+        try {
+            MapData map = ResolveMapData((roomRoot as AkronPersistentRuntimeState)?.Level?.Session);
+            if (map == null) {
+                return null;
+            }
+            LevelData room = map.Levels.FirstOrDefault(level =>
+                string.Equals(level.Name, roomName ?? string.Empty, StringComparison.Ordinal));
+            return room == null ? Array.Empty<int>() : GetMapPlacedEntityIds(room).ToList();
+        } catch (Exception exception) when (exception is ArgumentOutOfRangeException ||
+                                           exception is IndexOutOfRangeException ||
+                                           exception is InvalidOperationException) {
+            // The three shapes a rebuild of AreaData.Areas under a reader takes, and the
+            // reason the bounds checks in ResolveMapData are not on their own a mitigation:
+            // they are check-then-act on a list another thread owns. ArgumentOutOfRange is
+            // the List indexer after the list shrank past the checked Count,
+            // IndexOutOfRange is the ModeProperties array indexer, and InvalidOperation is
+            // "Collection was modified" out of MapData.Levels or LevelData.Entities. Any
+            // other exception is a defect here rather than a race and is left to travel.
+            return null;
+        }
+    }
+
+    // The map this session is playing, or null when there is none to read.
+    //
+    // Session.MapData is "AreaData.Areas[Area.ID].Mode[(int)Area.Mode].MapData" - two
+    // array indexes with no bounds check - so reading it through the property throws
+    // ArgumentOutOfRangeException for an Area.ID past the end of the loaded area list
+    // and IndexOutOfRangeException for a side the map has no ModeProperties for. Both
+    // were measured, and both are what these bounds checks are for.
+    //
+    // What the bounds checks are not for is the race. Capture runs on the persistence
+    // worker against a deep-cloned Session while the game thread is free to rebuild
+    // AreaData.Areas for a map reload or a mod-set change, and no amount of checking a
+    // shared list before indexing it makes the pair atomic. The caller's catch is what
+    // covers that, and it turns the race into the same "no map data" answer these
+    // checks produce.
+    //
+    // Deliberately stops at the MapData rather than resolving the room. A map that has
+    // no such room is still map data, and its answer for that room is "nothing", not
+    // "I could not look".
+    private static MapData ResolveMapData(Session session) {
+        List<AreaData> areas = AreaData.Areas;
+        int areaId = session?.Area.ID ?? -1;
+        if (areas == null || areaId < 0 || areaId >= areas.Count) {
+            return null;
+        }
+        ModeProperties[] modes = areas[areaId]?.Mode;
+        int modeIndex = (int) session.Area.Mode;
+        if (modes == null || modeIndex < 0 || modeIndex >= modes.Length) {
+            return null;
+        }
+        return modes[modeIndex]?.MapData;
+    }
+
+    internal static IEnumerable<int> GetMapPlacedEntityIds(LevelData room) {
+        return room.Entities
+            .Where(entityData => entityData != null)
+            .Select(entityData => entityData.ID)
+            .Concat(room.Triggers
+                .Where(entityData => entityData != null)
+                .Select(entityData => entityData.ID + TriggerEntityIdOffset));
+    }
+
+    // Everest numbers triggers in their own range. patch_Level.CreateEntityId is
+    // "new EntityID(levelData.Name, entityData.ID + (_isLoadingTriggers ? 10000000 : 0))",
+    // and the IL patch sets that flag around the LevelData.Triggers loop, so a
+    // trigger's live SourceId is its map id plus this and an entity's is its map id
+    // alone. Reading both lists as one range would leave every trigger unmatched -
+    // no protection for triggers - and worse, an entity whose id the map dropped
+    // would still be found through a trigger that happens to carry the same raw
+    // number, which is common because the two lists number independently.
+    private const int TriggerEntityIdOffset = 10000000;
 
     internal static bool AreEquivalentLiveResources(Type type) {
         // A VirtualTexture key includes its source path and dimensions. A
         // ModAsset key includes its source module, path, data type, and format.
         // Multiple fresh wrappers with either key expose the same immutable
-        // loader content, unlike other process-owned resource types.
+        // loader content, unlike other process-owned resource types. What
+        // earns a type a place here is that the fresh room cannot be relied on
+        // to produce as many distinct wrappers as the saved frame held, so
+        // folding saved references onto one is the only way through.
+        // CompareInfo is deliberately not here even though two instances with
+        // the same sort name do sort identically. Sorting the same is not being
+        // the same object, and folding would quietly turn two saved references
+        // into one. The process caches one CompareInfo per sort name, so a
+        // saved graph holding two of them cannot be satisfied twice: the second
+        // anchor collides with the first and is refused by name, which is the
+        // outcome this file prefers everywhere else.
         return typeof(VirtualTexture).IsAssignableFrom(type) ||
                typeof(ModAsset).IsAssignableFrom(type);
     }
@@ -7933,12 +8153,6 @@ internal static class AkronStartPosReconstruction {
         AkronReconstructionRestore restore
     ) {
         return RestoreGraph.Reapply(document, restore);
-    }
-
-    public static AkronReconstructionVerification ReapplyCollectionVersions(
-        AkronReconstructionRestore restore
-    ) {
-        return RestoreGraph.ReapplyCollectionVersions(restore);
     }
 
     public static AkronReconstructionVerification Verify(
@@ -8023,11 +8237,19 @@ internal static class AkronStartPosReconstruction {
             document.FileSlot = fileSlot;
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             using (FileStream file = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            using (GZipStream compressed = new GZipStream(file, CompressionLevel.Optimal, leaveOpen: false)) {
-                CaptureGraph.Serialize(document, compressed);
+            using (GZipStream compressed = new GZipStream(file, CompressionLevel.Optimal, leaveOpen: false))
+            using (AkronPacedWriteStream paced = new AkronPacedWriteStream(compressed)) {
+                CaptureGraph.Serialize(document, paced);
             }
             File.Move(temporaryPath, path, overwrite: true);
             return true;
+        } catch (OperationCanceledException) {
+            // Same reason Capture rethrows it: the paced writer cancels through
+            // AkronSnapshotPacing.Pace once per buffer flush, and quitting is not a
+            // snapshot failure to describe with an exception name. Only the persistence
+            // worker paces, so this can only be thrown on the thread whose caller has the
+            // handler for it. The finally below still removes the partial temp file.
+            throw;
         } catch (Exception exception) {
             error = exception.GetType().Name + ": " + exception.Message;
             return false;
@@ -8035,6 +8257,10 @@ internal static class AkronStartPosReconstruction {
             if (File.Exists(temporaryPath)) {
                 File.Delete(temporaryPath);
             }
+            // SaveSnapshot writes the destination directly rather than through
+            // PreparedSnapshotInstall, so it has to drop the cached existence answer
+            // itself. Run on failure too: the move may have partly happened.
+            InvalidateSnapshotExistence(path);
         }
     }
 
@@ -8044,9 +8270,34 @@ internal static class AkronStartPosReconstruction {
         out string error,
         string directory = null
     ) {
+        return TryLoadSnapshot(slotName, out document, out error, out _, directory);
+    }
+
+    // refusedTypeName is set when the read failed because the snapshot names a type this
+    // process cannot load, which is what an uninstalled or blacklisted mod looks like
+    // from in here. The document is walked far enough during deserialization to hit that,
+    // so this refusal never reaches Restore and the load message is built from here
+    // instead.
+    public static bool TryLoadSnapshot(
+        string slotName,
+        out AkronReconstructionDocument document,
+        out string error,
+        out string refusedTypeName,
+        string directory = null
+    ) {
         document = null;
         error = string.Empty;
+        refusedTypeName = string.Empty;
         string path = GetSnapshotPath(slotName, directory);
+        // A prewarmed document was produced by this same reader from this same file.
+        // Taking it removes it, so one prewarm serves at most one load and a second
+        // load of the same slot reads the file again exactly as it does today.
+        if (directory == null) {
+            document = TakePrewarmedSnapshot(path);
+            if (document != null) {
+                return true;
+            }
+        }
         if (!File.Exists(path)) {
             error = "snapshot file is missing";
             return false;
@@ -8054,7 +8305,7 @@ internal static class AkronStartPosReconstruction {
 
         try {
             using FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            if (!TryReadSnapshot(file, out document, out error)) {
+            if (!TryReadSnapshot(RestoreGraph, file, out document, out error, out refusedTypeName, out _, MaxDecompressedSnapshotBytes)) {
                 return false;
             }
             if (!string.Equals(document.SlotName, slotName, StringComparison.Ordinal)) {
@@ -8065,6 +8316,7 @@ internal static class AkronStartPosReconstruction {
             return true;
         } catch (Exception exception) {
             error = exception.GetType().Name + ": " + exception.Message;
+            refusedTypeName = exception is AkronReconstructionException refusal ? refusal.RefusedTypeName : string.Empty;
             document = null;
             return false;
         }
@@ -8076,8 +8328,22 @@ internal static class AkronStartPosReconstruction {
         out string error,
         long maxDecompressedBytes = MaxDecompressedSnapshotBytes
     ) {
+        return TryReadSnapshot(RestoreGraph, snapshotStream, out document, out error, out _, out _, maxDecompressedBytes);
+    }
+
+    private static bool TryReadSnapshot(
+        AkronReconstructionGraph graph,
+        Stream snapshotStream,
+        out AkronReconstructionDocument document,
+        out string error,
+        out string refusedTypeName,
+        out long decompressedBytes,
+        long maxDecompressedBytes
+    ) {
         document = null;
         error = string.Empty;
+        refusedTypeName = string.Empty;
+        decompressedBytes = 0;
         if (snapshotStream == null || !snapshotStream.CanRead) {
             error = "snapshot stream is unavailable";
             return false;
@@ -8086,13 +8352,62 @@ internal static class AkronStartPosReconstruction {
         try {
             using GZipStream compressed = new GZipStream(snapshotStream, CompressionMode.Decompress, leaveOpen: true);
             using AkronBoundedReadStream bounded = new AkronBoundedReadStream(compressed, maxDecompressedBytes);
-            document = RestoreGraph.Deserialize(bounded);
+            document = graph.Deserialize(bounded);
+            decompressedBytes = bounded.Position;
             return true;
         } catch (Exception exception) {
             error = exception.GetType().Name + ": " + exception.Message;
+            // A snapshot that names a type this process cannot load is refused during
+            // deserialization, before Restore ever sees the document. Carrying the type
+            // out of here is what lets the load message name the mod that is missing.
+            refusedTypeName = exception is AkronReconstructionException refusal ? refusal.RefusedTypeName : string.Empty;
             document = null;
             return false;
         }
+    }
+
+    // Serializing a snapshot allocates roughly in proportion to the JSON it
+    // emits, so the byte stream is the natural pacing point for the write half
+    // of the job. Writes arrive here in whole buffer flushes, so each one is a
+    // safe place to stop and none of them is large enough to matter if the
+    // player takes control halfway through.
+    private sealed class AkronPacedWriteStream : Stream {
+        private readonly Stream destination;
+
+        public AkronPacedWriteStream(Stream destination) {
+            this.destination = destination ?? throw new ArgumentNullException(nameof(destination));
+        }
+
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) {
+            AkronSnapshotPacing.Pace();
+            destination.Write(buffer, offset, count);
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer) {
+            AkronSnapshotPacing.Pace();
+            destination.Write(buffer);
+        }
+
+        public override void WriteByte(byte value) {
+            destination.WriteByte(value);
+        }
+
+        public override void Flush() {
+            destination.Flush();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 
     private sealed class AkronBoundedReadStream : Stream {
@@ -8114,13 +8429,22 @@ internal static class AkronStartPosReconstruction {
             set => throw new NotSupportedException();
         }
 
+        // Reading a snapshot allocates roughly 2.3 bytes of managed heap for every
+        // decompressed byte that passes through here, so this is the natural pacing
+        // point for the read half of the pipeline, exactly as the write stream is for
+        // the write half. The reader above fills a 64 KiB buffer at a time, which
+        // bounds how much a prewarm can still allocate after the player takes control.
+        // Pace is a thread-static check and does nothing at all on the game thread, so
+        // a load reading its own snapshot is unaffected.
         public override int Read(byte[] buffer, int offset, int count) {
+            AkronSnapshotPacing.Pace();
             int read = source.Read(buffer, offset, LimitReadCount(count));
             RecordRead(read);
             return read;
         }
 
         public override int Read(Span<byte> buffer) {
+            AkronSnapshotPacing.Pace();
             int read = source.Read(buffer[..LimitReadCount(buffer.Length)]);
             RecordRead(read);
             return read;
@@ -8163,8 +8487,371 @@ internal static class AkronStartPosReconstruction {
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
+    // GetSnapshotPath is a pure function of (directory, slot name) but costs a SHA-256
+    // plus roughly 35 allocations. HUD and overlay code reach it through HasSnapshot on
+    // every rendered frame, so the result is memoized. The key carries the directory
+    // because a staging install resolves the same slot name against a temp directory;
+    // keying on the slot name alone would hand back the wrong file.
+    private static readonly ConcurrentDictionary<string, string> SnapshotPathCache =
+        new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+
+    // File.Exists is a stat syscall and must not run once per slot per frame. Akron is
+    // the only writer of this directory, so every write and delete below invalidates the
+    // affected path, and LoadStartPositionsForLevel resets the whole cache on each room
+    // load to bound staleness if a player edits the Saves folder while the game runs.
+    private static readonly ConcurrentDictionary<string, bool> SnapshotExistenceCache =
+        new ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
+
+    private static long snapshotExistenceRevision;
+    private static long snapshotWriteRevision;
+
+    // Callers that cache a value derived from HasSnapshot compare this counter to know
+    // whether any snapshot appeared or disappeared since they last looked.
+    internal static long SnapshotExistenceRevision => Interlocked.Read(ref snapshotExistenceRevision);
+
+    // Moves only when a snapshot file is actually written or deleted. The existence
+    // revision above also moves when the cached answers are merely flushed so the next
+    // caller re-stats, which happens on every room load and changes no file. A prewarm
+    // read that spans one of those flushes has read a file nobody touched, so it must
+    // keep its result; a read that spans a real write must not.
+    internal static long SnapshotWriteRevision => Interlocked.Read(ref snapshotWriteRevision);
+
+    internal static void InvalidateSnapshotExistence(string path) {
+        if (string.IsNullOrEmpty(path)) {
+            return;
+        }
+        SnapshotExistenceCache.TryRemove(path, out _);
+        DropPrewarmedSnapshot(path);
+        Interlocked.Increment(ref snapshotWriteRevision);
+        Interlocked.Increment(ref snapshotExistenceRevision);
+    }
+
+    // A cold StartPos load spends its snapshot time in gzip plus a reflection-driven
+    // JSON parse before it touches anything live. That half is pure data, so it can be
+    // produced ahead of time on a worker. Everything after it - the rollback clone, the
+    // fresh-room load, the graph restore, reapply and verify passes - mutates the live
+    // Level and can only run on the game thread, so this cache is the whole of what
+    // prewarming is able to move off the critical path.
+    //
+    // Documents are large. The budget is expressed in decompressed snapshot bytes,
+    // which is the one size known exactly at read time, and the read is bounded by the
+    // remaining budget so a snapshot that cannot fit is abandoned partway instead of
+    // materializing in full and then being rejected. When the budget is full, prewarm
+    // simply stops: a slot that was not prewarmed loads exactly as it does today.
+    //
+    // 512 MiB, which implies an RSS ceiling of about 1.9 GiB. The numbers, all
+    // measured rather than assumed:
+    //
+    //   * A prewarmed slot costs 3.8x its decompressed bytes in process RSS. Measured
+    //     in game on Midnight Aquarium: two slots, 136,094,710 decompressed bytes
+    //     cached, RSS 498 MiB above the same load with nothing queued (n=2 per side),
+    //     so 249 MiB of RSS for a 64.9 MiB snapshot. An earlier managed-heap figure of
+    //     2.30x is what this budget used to be sized on; RSS is 65% higher than that
+    //     because it carries committed GC segments and fragmentation the managed
+    //     number does not, and RSS is what the machine has to find.
+    //   * 512 MiB x 3.8 is about 1.9 GiB of resident memory when the cache is
+    //     completely full. That is the number to judge this constant by, not the
+    //     512 MiB. Celeste with mods sat at 1055 MB of RSS before any of this, so a
+    //     full cache puts the process near 3 GB. The test box has 7751 MB; the budget
+    //     is set so that a 4 GB machine still survives a full cache, because the
+    //     player's machine is not the test box.
+    //   * 17 real snapshots off the test box, decompressed: 42-85 MB for vanilla maps,
+    //     150-231 MB for modded ones. At the original 96 MiB, 8 of the 17 - every
+    //     modded one - did not fit, so on exactly the maps with the slowest loads the
+    //     cache was never used at all. 512 MiB clears the largest of them (231 MB)
+    //     2.3x, so a modded map still warms two slots and a vanilla map six to twelve.
+    //
+    // What this does not buy is a full fifteen-slot map on every map. Fifteen of the
+    // heaviest vanilla snapshots would be 4.7 GiB of RSS and fifteen modded ones
+    // 12 GiB; no budget a real machine can pay warms those, and the ratio that
+    // decides it is the 3.8x, not this constant. Lowering the 3.8x means making
+    // AkronReconstructionNode's eager lists lazy, which is a snapshot format change.
+    //
+    // The cache is not a steady-state cost. Every entry is removed when its slot is
+    // loaded, when its file is written or deleted, and when the map or save file
+    // changes, so the ceiling is only reached by a player who leaves the game sitting
+    // outside gameplay long enough for the worker to read a whole map.
+    internal const long MaxPrewarmedSnapshotBytes = 512L * 1024L * 1024L;
+
+    private sealed class PrewarmedSnapshot {
+        internal AkronReconstructionDocument Document;
+        internal long DecompressedBytes;
+        internal long FileLength;
+        internal DateTime FileWriteTimeUtc;
+    }
+
+    private static readonly Dictionary<string, PrewarmedSnapshot> PrewarmedSnapshots =
+        new Dictionary<string, PrewarmedSnapshot>(StringComparer.Ordinal);
+    private static readonly object PrewarmedSnapshotsLock = new object();
+    private static long prewarmedSnapshotBytes;
+    private static long prewarmedSnapshotHits;
+    private static long prewarmedSnapshotStores;
+
+    internal static long PrewarmedSnapshotBytes {
+        get {
+            lock (PrewarmedSnapshotsLock) {
+                return prewarmedSnapshotBytes;
+            }
+        }
+    }
+
+    internal static int PrewarmedSnapshotCount {
+        get {
+            lock (PrewarmedSnapshotsLock) {
+                return PrewarmedSnapshots.Count;
+            }
+        }
+    }
+
+    // Cumulative for the session, and deliberately not reset with the cache: these are
+    // what makes the cache observable at all. Two verification passes could only infer
+    // that a load had been served from the cache by comparing its wall-clock time
+    // against an earlier one, which cannot tell a cache hit from a faster machine, and
+    // would not have noticed a change that silently disabled the cache.
+    internal static long PrewarmedSnapshotHits => Interlocked.Read(ref prewarmedSnapshotHits);
+    internal static long PrewarmedSnapshotStores => Interlocked.Read(ref prewarmedSnapshotStores);
+
+    internal static void ResetPrewarmedSnapshots() {
+        lock (PrewarmedSnapshotsLock) {
+            PrewarmedSnapshots.Clear();
+            prewarmedSnapshotBytes = 0;
+        }
+    }
+
+    // Test seam, called from nowhere in the mod. A cache with too little room left to
+    // accept a snapshot holds more than MaxPrewarmedSnapshotBytes minus that snapshot,
+    // which for anything but a toy document is hundreds of megabytes of real captured
+    // rooms - a state no unit test can build and the exact state whose reporting
+    // regressed. This writes the same field a real store writes, under the same lock,
+    // and ResetPrewarmedSnapshots puts it back in step with the dictionary.
+    internal static void HoldPrewarmedSnapshotBytesForTests(long bytes) {
+        lock (PrewarmedSnapshotsLock) {
+            prewarmedSnapshotBytes = bytes;
+        }
+    }
+
+    private static void DropPrewarmedSnapshot(string path) {
+        lock (PrewarmedSnapshotsLock) {
+            if (PrewarmedSnapshots.Remove(path, out PrewarmedSnapshot dropped)) {
+                prewarmedSnapshotBytes -= dropped.DecompressedBytes;
+            }
+        }
+    }
+
+    // Reads the snapshot for one slot into the cache, and reports what happened to it.
+    // Runs on the prewarm worker. isCancelled is polled inside the read so a queue that
+    // is cancelled mid-file stops immediately instead of finishing a multi-second parse
+    // nobody wants, and the read paces on the same gate the restart copy uses, so it
+    // makes no progress at all while the player is in control.
+    internal static AkronPrewarmOutcome PrewarmSnapshot(string slotName, Func<bool> isCancelled) {
+        string path = GetSnapshotPath(slotName);
+        long remainingBudget;
+        lock (PrewarmedSnapshotsLock) {
+            if (PrewarmedSnapshots.ContainsKey(path)) {
+                return AkronPrewarmOutcome.AlreadyCached;
+            }
+            remainingBudget = MaxPrewarmedSnapshotBytes - prewarmedSnapshotBytes;
+        }
+
+        // Every writer of this directory bumps the write revision. Reading it before the
+        // file and rejecting the result if it moved closes the window where a Set
+        // replaces the snapshot while this read is in flight: the entry is not in the
+        // cache yet, so the writer's DropPrewarmedSnapshot has nothing to remove.
+        //
+        // The write revision rather than the existence revision, because a read now runs
+        // during the load that queued it, and a load reloads the room, and a room load
+        // flushes the existence cache. Comparing the existence revision would throw away
+        // the result of every read started inside the window this feature exists to use.
+        long revisionBeforeRead = SnapshotWriteRevision;
+        FileInfo info = new FileInfo(path);
+        if (!info.Exists) {
+            return AkronPrewarmOutcome.NotStored;
+        }
+        long fileLength = info.Length;
+        DateTime fileWriteTimeUtc = info.LastWriteTimeUtc;
+
+        AkronReconstructionDocument document;
+        long decompressedBytes;
+        try {
+            // ReadWrite | Delete rather than Read, because this read now parks at its
+            // pace points and can hold the handle for as long as the player keeps
+            // playing. Windows refuses to rename or delete a file another handle holds
+            // open unless that handle shares the right, so a narrower share would let a
+            // speculative read block a Set from installing its own snapshot. Reading
+            // across a write is already refused by the revision check below.
+            using FileStream file = new FileStream(
+                path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+            // The budget question is answered before a byte is decompressed, from the
+            // size this snapshot expands to. Clamping the read to the remaining budget
+            // instead - which is what this used to do - makes a snapshot that does not
+            // fit throw its way out of the bounded stream, so a full cache reported
+            // every slot it skipped as one it "could not be read", which reads like a
+            // corrupt file and sent a maintainer hunting for one. It also decompressed
+            // up to the whole remaining budget per skipped slot for nothing.
+            if (!TryReadExpandedSnapshotSize(file, out long expandedBytes)) {
+                return AkronPrewarmOutcome.NotStored;
+            }
+            // Ordered before the budget on purpose. A snapshot that expands past the
+            // cold-read limit is one no load can use either, and a trailer claiming more
+            // than that belongs to a truncated or corrupt file. Calling either of them a
+            // budget refusal would blame a full cache for a file that will never load.
+            if (expandedBytes > MaxDecompressedSnapshotBytes) {
+                return AkronPrewarmOutcome.NotStored;
+            }
+            if (expandedBytes > remainingBudget) {
+                return AkronPrewarmOutcome.BudgetFull;
+            }
+            file.Position = 0;
+
+            using AkronCancellableReadStream cancellable = new AkronCancellableReadStream(file, isCancelled);
+            // The cache exists to serve documents a cold read would have produced, so it
+            // must never accept one a cold read would refuse. The budget is larger than a
+            // whole legal snapshot, so without this bound an oversized snapshot would be
+            // prewarmed successfully and then fail when read from disk, which would make
+            // whether a slot loads at all depend on whether the worker got to it first.
+            if (!TryReadSnapshot(PrewarmGraph, cancellable, out document, out _, out _, out decompressedBytes, MaxDecompressedSnapshotBytes)) {
+                return AkronPrewarmOutcome.NotStored;
+            }
+        } catch (Exception) {
+            // A prewarm failure is not a load failure. The slot still loads from disk
+            // on the normal path, which reports its own errors to the player.
+            return AkronPrewarmOutcome.NotStored;
+        }
+        if (document == null ||
+            !string.Equals(document.SlotName, slotName, StringComparison.Ordinal) ||
+            revisionBeforeRead != SnapshotWriteRevision) {
+            return AkronPrewarmOutcome.NotStored;
+        }
+
+        lock (PrewarmedSnapshotsLock) {
+            // CancelPrewarm changes the generation before resetting this cache. Check
+            // while holding the cache lock so cancellation either prevents this store
+            // or the following reset waits for it and removes it.
+            if (isCancelled()) {
+                return AkronPrewarmOutcome.NotStored;
+            }
+            if (PrewarmedSnapshots.ContainsKey(path)) {
+                return AkronPrewarmOutcome.AlreadyCached;
+            }
+            if (prewarmedSnapshotBytes + decompressedBytes > MaxPrewarmedSnapshotBytes) {
+                return AkronPrewarmOutcome.BudgetFull;
+            }
+            PrewarmedSnapshots[path] = new PrewarmedSnapshot {
+                Document = document,
+                DecompressedBytes = decompressedBytes,
+                FileLength = fileLength,
+                FileWriteTimeUtc = fileWriteTimeUtc
+            };
+            prewarmedSnapshotBytes += decompressedBytes;
+        }
+        Interlocked.Increment(ref prewarmedSnapshotStores);
+        return AkronPrewarmOutcome.Stored;
+    }
+
+    // How many bytes a snapshot expands to, taken from the gzip trailer instead of by
+    // decompressing it. RFC 1952 stores the uncompressed length in the last four bytes
+    // of a member, little endian, modulo 2^32. SaveSnapshot writes each snapshot as a
+    // single member and MaxDecompressedSnapshotBytes keeps every legal one far below
+    // 4 GiB, so this is the exact expanded size for any file the prewarm reads.
+    //
+    // The caller leaves the stream where it wants it; this one only seeks.
+    private static bool TryReadExpandedSnapshotSize(FileStream file, out long expandedBytes) {
+        expandedBytes = 0;
+        // A gzip member is at least a 10-byte header, a 2-byte deflate payload and an
+        // 8-byte trailer. Anything shorter is not a snapshot at all.
+        if (file.Length < 20) {
+            return false;
+        }
+        Span<byte> trailer = stackalloc byte[4];
+        file.Position = file.Length - trailer.Length;
+        if (file.ReadAtLeast(trailer, trailer.Length, throwOnEndOfStream: false) != trailer.Length) {
+            return false;
+        }
+        expandedBytes = BinaryPrimitives.ReadUInt32LittleEndian(trailer);
+        return true;
+    }
+
+    // Removes and returns the prewarmed document for a path, but only when the file on
+    // disk is still the one it was read from. Every Akron writer of this directory calls
+    // InvalidateSnapshotExistence, which already drops the entry; the stamp closes the
+    // remaining window, where a setup-pack import or the player replaces the file
+    // without going through those writers.
+    private static AkronReconstructionDocument TakePrewarmedSnapshot(string path) {
+        PrewarmedSnapshot prewarmed;
+        lock (PrewarmedSnapshotsLock) {
+            if (!PrewarmedSnapshots.Remove(path, out prewarmed)) {
+                return null;
+            }
+            prewarmedSnapshotBytes -= prewarmed.DecompressedBytes;
+        }
+
+        FileInfo info = new FileInfo(path);
+        if (!info.Exists ||
+            info.Length != prewarmed.FileLength ||
+            info.LastWriteTimeUtc != prewarmed.FileWriteTimeUtc) {
+            return null;
+        }
+        Interlocked.Increment(ref prewarmedSnapshotHits);
+        return prewarmed.Document;
+    }
+
+    private sealed class AkronCancellableReadStream : Stream {
+        private readonly Stream source;
+        private readonly Func<bool> isCancelled;
+
+        public AkronCancellableReadStream(Stream source, Func<bool> isCancelled) {
+            this.source = source ?? throw new ArgumentNullException(nameof(source));
+            this.isCancelled = isCancelled;
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) {
+            ThrowIfCancelled();
+            return source.Read(buffer, offset, count);
+        }
+
+        public override int Read(Span<byte> buffer) {
+            ThrowIfCancelled();
+            return source.Read(buffer);
+        }
+
+        private void ThrowIfCancelled() {
+            if (isCancelled != null && isCancelled()) {
+                throw new OperationCanceledException("StartPos prewarm was cancelled.");
+            }
+        }
+
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    internal static void ResetSnapshotExistenceCache() {
+        if (SnapshotExistenceCache.IsEmpty) {
+            return;
+        }
+        SnapshotExistenceCache.Clear();
+        Interlocked.Increment(ref snapshotExistenceRevision);
+    }
+
     public static bool HasSnapshot(string slotName, string directory = null) {
-        return File.Exists(GetSnapshotPath(slotName, directory));
+        string path = GetSnapshotPath(slotName, directory);
+        if (SnapshotExistenceCache.TryGetValue(path, out bool cachedExists)) {
+            return cachedExists;
+        }
+        bool exists = File.Exists(path);
+        SnapshotExistenceCache[path] = exists;
+        return exists;
     }
 
     public static void DeleteSnapshot(string slotName, string directory = null) {
@@ -8176,6 +8863,10 @@ internal static class AkronStartPosReconstruction {
         } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
             Logger.Log(LogLevel.Warn, nameof(AkronStartPosReconstruction),
                 "Could not delete StartPos snapshot " + path + ": " + exception.Message);
+        } finally {
+            // Run even when the delete threw: the file may be half gone, and a stale
+            // "exists" answer would keep a dead slot in the StartPos list.
+            InvalidateSnapshotExistence(path);
         }
     }
 
@@ -8196,18 +8887,46 @@ internal static class AkronStartPosReconstruction {
     }
 
     internal static string GetSnapshotPath(string slotName, string directory = null) {
-        string root = string.IsNullOrWhiteSpace(directory)
-            ? Path.Combine(AppContext.BaseDirectory, "Saves", SnapshotDirectoryName)
-            : directory;
+        // Only the canonical root is memoized. Callers that pass an explicit directory
+        // are staging installs with a fresh GUID directory per capture, so caching those
+        // would grow without bound for no benefit; they are not on any per-frame path.
+        if (!string.IsNullOrWhiteSpace(directory)) {
+            return Path.Combine(directory, BuildSnapshotFileName(slotName ?? string.Empty));
+        }
+        return SnapshotPathCache.GetOrAdd(slotName ?? string.Empty, static key =>
+            Path.Combine(
+                Path.Combine(AppContext.BaseDirectory, "Saves", SnapshotDirectoryName),
+                BuildSnapshotFileName(key)));
+    }
+
+    // Tracks AkronReconstructionDocument.CurrentFormat. A snapshot written against a
+    // different fresh-room baseline gets a different path, so no read can reach it and
+    // no write can replace it in place.
+    private const string SnapshotFileNamePrefix = "v9-";
+    private const string SnapshotFileNameSuffix = ".json.gz";
+
+    private static string BuildSnapshotFileName(string slotName) {
+        return SnapshotFileNamePrefix + BuildSnapshotSlotDigest(slotName) + SnapshotFileNameSuffix;
+    }
+
+    private static string BuildSnapshotSlotDigest(string slotName) {
         byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(slotName ?? string.Empty));
-        string key = string.Concat(digest.Select(value => value.ToString("x2", CultureInfo.InvariantCulture)));
-        return Path.Combine(root, "v7-" + key + ".json.gz");
+        return Convert.ToHexString(digest).ToLowerInvariant();
     }
 
     internal sealed class PreparedSnapshotInstall : IDisposable {
         private readonly string sourcePath;
         private readonly string destinationPath;
         private readonly string backupPath;
+        // What this install did to the slot, recorded as it happens, because the rollback
+        // cannot read it back off the filesystem: a file at the destination with no backup
+        // beside it is both "this install put it there" and "this install never took the
+        // destination at all", and those two want opposite actions - remove it, or leave
+        // the player's snapshot exactly where it is.
+        private bool previousSnapshotBanked;
+        private bool destinationClaimed;
+
+        private bool attempted;
         private bool installed;
         private bool committed;
 
@@ -8217,23 +8936,84 @@ internal static class AkronStartPosReconstruction {
             backupPath = Path.Combine(stagingDirectory, "replaced-" + Guid.NewGuid().ToString("N"));
         }
 
+        // True once the move that puts the slot's previous snapshot back has failed. What
+        // that leaves cannot be assumed to be a loadable slot: the copy of the snapshot is
+        // in the staging directory, which AkronStartPosPersistence.Update deletes as soon
+        // as the completion returns, so the failed Set says the slot has to be set again
+        // rather than reporting that the previous StartPos was kept.
+        //
+        // One outcome reports here and is not a loss: a cross-volume move is a copy
+        // followed by a delete of its source, so a copy that landed and a delete that then
+        // failed throws with the slot's snapshot back in place. That direction is the one
+        // to err in - a re-set the player did not need costs a Set, while silence about a
+        // slot that is gone costs the slot.
+        public bool PreviousSnapshotLost { get; private set; }
+
+        // One attempt per prepared install, refused rather than retried. The two facts
+        // recorded above describe one attempt, and the rollback of that attempt has already
+        // acted on them: a claim this object made and then removed would otherwise license
+        // a second attempt's rollback to delete whatever had arrived at the destination
+        // since. A caller that wants another go prepares another install.
         public bool Install(out string error) {
             error = string.Empty;
-            if (installed) {
-                error = "staged snapshot is already installed";
+            if (attempted) {
+                error = "staged snapshot install has already been attempted";
                 return false;
             }
+            attempted = true;
             try {
                 if (!File.Exists(sourcePath)) {
                     error = "staged snapshot file is missing";
                     return false;
                 }
                 Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
-                if (File.Exists(destinationPath)) {
+                try {
                     File.Move(destinationPath, backupPath);
+                    previousSnapshotBanked = true;
+                } catch (FileNotFoundException) {
+                    // "Nothing to bank" is not something to take on trust. This exception
+                    // and File.Exists come from the same query, which answers "missing"
+                    // for a directory in the way and for a query it could not complete -
+                    // a folder in the path that has lost its search permission, an IO
+                    // error, a Windows attribute read something is holding off - so a
+                    // slot that does hold a snapshot can land here. Measured: with the
+                    // snapshot folder made unsearchable, this move reports
+                    // FileNotFoundException for a file that is there.
+                    //
+                    // The exclusive create is the proof, and the only airtight one on
+                    // offer: it can only succeed on a free name, so the slot really was
+                    // empty and the file the rollback may delete is the one this install
+                    // created. A slot that turns out to be occupied fails it, and the
+                    // install is refused with nothing moved and nothing removed.
+                    //
+                    // The cost is a zero-byte file at the slot's path until the move below
+                    // replaces it, and two things can see it. The prewarm reader, if it
+                    // opens the path in that window, reads nothing usable and counts the
+                    // slot as one it could not read in a Diagnostic log line; it caches
+                    // nothing, because a zero-byte file fails its size check, and it cannot
+                    // wedge the move or the delete either, because it opens snapshots with
+                    // FileShare.Delete for that reason (see PrewarmSnapshot). A program
+                    // outside this process can wedge both, on Windows, and leave the slot
+                    // reporting a snapshot it cannot read. Neither is created by the claim:
+                    // a cross-volume install with no claim in it publishes a growing
+                    // partial file at the same path for as long as the copy takes, which
+                    // reads as unreadable and wedges the same delete. What the claim buys
+                    // is that the delete below can never take a file this install did not
+                    // create, short of an outside writer replacing it inside those two
+                    // statements.
+                    using (new FileStream(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+                    destinationClaimed = true;
                 }
-                File.Move(sourcePath, destinationPath);
+                // The overwrite has this install's own claim to overwrite and nothing
+                // else: the other way here banked what the slot held and left the name
+                // free. Nothing outside this process is expected at that path, and a
+                // writer that does appear there is not something a move could refuse
+                // usefully.
+                File.Move(sourcePath, destinationPath, overwrite: true);
                 installed = true;
+                // The destination just gained a file. Drop any cached "missing" answer
+                // so the slot becomes visible in the StartPos list on the next query.
+                InvalidateSnapshotExistence(destinationPath);
                 return true;
             } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
                 error = exception.GetType().Name + ": " + exception.Message;
@@ -8249,14 +9029,53 @@ internal static class AkronStartPosReconstruction {
             committed = true;
         }
 
+        // Puts the slot back the way it was, and never throws doing it.
+        //
+        // Both callers are already carrying a failure: Install's catch block is about to
+        // report an IOException, and Dispose runs inside a using whose body may be
+        // propagating one. A throw from here would replace that failure with this one or
+        // lose it entirely, so the catch is total by design rather than filtered.
+        //
+        // Which branch runs is decided by what Install recorded doing, never by what is
+        // on disk now, because the two states that matter look identical from outside.
+        //
+        // The move back overwrites instead of being preceded by a delete. Deleting first
+        // left a window with no snapshot in the slot at all, and the copy that was going
+        // to fill it lives in the staging directory AkronStartPosPersistence.Update
+        // deletes unconditionally - so a move that failed after the delete lost the
+        // slot's last good snapshot rather than keeping it.
         private void RollBack() {
-            if (File.Exists(destinationPath)) {
-                File.Delete(destinationPath);
+            try {
+                if (previousSnapshotBanked) {
+                    // Overwrites whatever this install left at the destination: the staged
+                    // file it moved in, or a part-copied one from a cross-volume move that
+                    // failed on the way there.
+                    File.Move(backupPath, destinationPath, overwrite: true);
+                } else if (destinationClaimed) {
+                    // The slot was proved free and this install is what put a file at
+                    // the destination, whole, half-copied or still the zero-byte claim,
+                    // so removing it takes nothing of the player's.
+                    File.Delete(destinationPath);
+                }
+                // Neither flag: the install never took the destination, and a failed move
+                // leaves its source alone, so the slot still holds the file it held
+                // before this install started. Nothing to put back, and nothing here
+                // that this install can prove it created.
+            } catch (Exception exception) {
+                if (previousSnapshotBanked) {
+                    PreviousSnapshotLost = true;
+                }
+                Logger.Log(LogLevel.Warn, nameof(AkronStartPosReconstruction),
+                    "Could not roll back the StartPos snapshot install for " + destinationPath + ": " + exception.Message);
+            } finally {
+                // Cleared even when the rollback failed, so Dispose does not retry a move
+                // that has already been reported.
+                installed = false;
+                // Rollback can leave the destination present or absent depending on which
+                // branch ran and whether it worked, so re-stat on the next query rather
+                // than guessing.
+                InvalidateSnapshotExistence(destinationPath);
             }
-            if (File.Exists(backupPath)) {
-                File.Move(backupPath, destinationPath, overwrite: true);
-            }
-            installed = false;
         }
 
         public void Dispose() {
@@ -8265,6 +9084,11 @@ internal static class AkronStartPosReconstruction {
             }
         }
     }
+
+    // A CompareInfo's sort name is empty for the invariant culture, and an
+    // empty resource key means "this type has no key" to the graph. Prefix it
+    // so every culture, the invariant one included, gets a resolvable key.
+    private const string CompareInfoSortNameKeyPrefix = "sort-name=";
 
     internal static bool IsLiveResourceType(Type type) {
         if (type == null) {
@@ -8278,7 +9102,22 @@ internal static class AkronStartPosReconstruction {
         // VirtualTexture and ModAsset children remain live anchors.
         // Pathfinder is a room-load cache of static collision tiles. Keeping
         // the fresh room's cache avoids persisting tens of thousands of cells.
+        // CompareInfo is an immutable culture-owned wrapper around this
+        // process's native collation state: _sortHandle is a handle into the
+        // platform's globalization data, opened when the wrapper is built.
+        // Nothing about it describes the room, and it is two hops from any
+        // string collection built with a culture-aware comparer - ordinary mod
+        // code. Walking into it reaches an IntPtr, which capture must refuse,
+        // so one such collection anywhere in a mod session costs the player
+        // every StartPos slot. Its whole identity is its sort name, so
+        // GetLiveResourceKey and ResolveDetachedLiveResource can hand the
+        // rebuilt room the same collation the saved frame used. Note this
+        // fixes the pointer only: a hash-based collection also stores hash
+        // codes that belong to the capturing process, which is a separate
+        // problem this file solves for EntityList and ComponentList alone
+        // (see ValidateAndNormalizeMembershipSet) and nowhere else yet.
         return type == typeof(Pathfinder) ||
+               type == typeof(CompareInfo) ||
                typeof(Type).IsAssignableFrom(type) ||
                typeof(MemberInfo).IsAssignableFrom(type) ||
                typeof(Assembly).IsAssignableFrom(type) ||
@@ -8319,12 +9158,28 @@ internal static class AkronStartPosReconstruction {
             // time their room loads. VirtualContent retains every wrapper by
             // asset identity, so the saved texture can still be authenticated
             // even when the fresh entity graph did not select it.
-            return ResolveDetachedVirtualTexture(resourceType, resourceKey, VirtualContent.Assets);
+            IEnumerable<VirtualAsset> assets =
+                (IEnumerable<VirtualAsset>) VirtualContentAssetsField.GetValue(null);
+            return assets.FirstOrDefault(asset =>
+                asset?.GetType() == resourceType &&
+                string.Equals(GetLiveResourceKey(asset), resourceKey, StringComparison.Ordinal));
         }
         if (typeof(ModAsset).IsAssignableFrom(resourceType)) {
             return Everest.Content.Map.Values.FirstOrDefault(asset =>
                 asset?.GetType() == resourceType &&
                 string.Equals(GetLiveResourceKey(asset), resourceKey, StringComparison.Ordinal));
+        }
+        if (typeof(Atlas).IsAssignableFrom(resourceType)) {
+            // A content atlas is loaded once for the process and handed out by
+            // name. The fresh room only holds a reference to one while
+            // something the room built happens to draw from it, so an atlas the
+            // saved frame reached is routinely absent from the fresh-room index
+            // while the process still owns the identical object: a Textbox
+            // takes its frame from GFX.Portraits, and a room that loaded
+            // without dialogue on screen has no path to that atlas at all.
+            // Without this the anchor has nothing to pair with and the whole
+            // slot is refused over content that never went anywhere.
+            return ResolveContentAtlas(resourceType, resourceKey);
         }
         if (typeof(EverestModule).IsAssignableFrom(resourceType)) {
             return Everest.Modules.FirstOrDefault(module => module?.GetType() == resourceType);
@@ -8333,6 +9188,25 @@ internal static class AkronStartPosReconstruction {
             return Everest.Modules
                 .Select(module => module?._Settings)
                 .FirstOrDefault(settings => settings?.GetType() == resourceType);
+        }
+        if (resourceType == typeof(CompareInfo)) {
+            if (!resourceKey.StartsWith(CompareInfoSortNameKeyPrefix, StringComparison.Ordinal)) {
+                return null;
+            }
+            try {
+                return CompareInfo.GetCompareInfo(resourceKey.Substring(CompareInfoSortNameKeyPrefix.Length));
+            } catch (Exception exception) when (
+                exception is CultureNotFoundException || exception is ExternalException) {
+                // The saved frame names a sort this install cannot open:
+                // CultureNotFoundException when the name is unknown, and
+                // ExternalException when the platform has the name but fails to
+                // build a collator for it. Report nothing here: the caller
+                // falls through to a refusal that names the node, which beats a
+                // raw exception the restore can only report against the
+                // document root. Anything else is a real fault and is left to
+                // propagate.
+                return null;
+            }
         }
         if (typeof(Type).IsAssignableFrom(resourceType)) {
             Type resolved = Type.GetType(resourceKey, throwOnError: false);
@@ -8349,92 +9223,95 @@ internal static class AkronStartPosReconstruction {
             return null;
         }
 
-        string[] memberKeyParts = resourceKey.Split('|');
-        if (memberKeyParts.Length != 5 ||
-            !Guid.TryParseExact(memberKeyParts[1], "D", out Guid moduleVersionId) ||
+        int tokenSeparator = resourceKey.LastIndexOf('|');
+        if (tokenSeparator <= 0 ||
             !int.TryParse(
-                memberKeyParts[2],
+                resourceKey.Substring(tokenSeparator + 1),
                 NumberStyles.Integer,
                 CultureInfo.InvariantCulture,
-                out int metadataToken) ||
-            !TryDecodeMemberContext(memberKeyParts[3], out Type[] genericTypeArguments) ||
-            !TryDecodeMemberContext(memberKeyParts[4], out Type[] genericMethodArguments)) {
+                out int metadataToken)) {
             return null;
         }
 
-        string assemblyName = memberKeyParts[0];
+        string assemblyName = resourceKey.Substring(0, tokenSeparator);
         foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies().Where(candidate =>
                      string.Equals(candidate.FullName, assemblyName, StringComparison.Ordinal))) {
-            foreach (Module module in assembly.GetModules().Where(candidate =>
-                         candidate.ModuleVersionId == moduleVersionId)) {
+            foreach (Module module in assembly.GetModules()) {
                 try {
-                    MemberInfo member = module.ResolveMember(
-                        metadataToken,
-                        genericTypeArguments,
-                        genericMethodArguments);
-                    member = ApplyMemberGenericContext(
-                        member,
-                        genericTypeArguments,
-                        genericMethodArguments);
+                    MemberInfo member = module.ResolveMember(metadataToken);
                     if (member?.GetType() == resourceType) {
                         return member;
                     }
                 } catch (ArgumentException) {
-                    // The saved token is not valid for this exact module.
+                    // The metadata token belongs to a different module in this assembly.
                 }
             }
         }
         return null;
     }
 
-    internal static object ResolveDetachedVirtualTexture(
-        Type resourceType,
-        string resourceKey,
-        IEnumerable<VirtualAsset> assets
-    ) {
-        return assets.FirstOrDefault(asset =>
-            asset?.GetType() == resourceType &&
-            string.Equals(GetLiveResourceKey(asset), resourceKey, StringComparison.Ordinal));
-    }
+    // Where the game keeps the atlases it loads for the whole process. Both are
+    // plain static fields, and Everest rebinds them in place when it reloads an
+    // atlas, so the field is read on every lookup rather than the object being
+    // cached here. The fields are found by type rather than by name, so an
+    // atlas either type gains is covered without being listed.
+    //
+    // These two types are deliberately the whole list. There is no process-wide
+    // registry of Atlas instances to enumerate - Monocle does not keep one and
+    // Everest does not add one - so an atlas a helper mod built and kept to
+    // itself is still refused, by name, with its data path in the message.
+    // Reaching those would mean walking the statics of every type in every
+    // loaded assembly on a capture worker, which costs more than the refusal it
+    // would avoid.
+    private static readonly Type[] ContentAtlasOwners = { typeof(GFX), typeof(MTN) };
 
-    private static MemberInfo ApplyMemberGenericContext(
-        MemberInfo member,
-        Type[] genericTypeArguments,
-        Type[] genericMethodArguments
-    ) {
-        // Module.ResolveMember can still return a member bound to the generic type
-        // definition, so locate the same metadata token on the constructed type.
-        if (genericTypeArguments.Length > 0 && member?.DeclaringType?.IsGenericTypeDefinition == true) {
-            Type declaringType = member.DeclaringType.MakeGenericType(genericTypeArguments);
-            member = declaringType
-                .GetMembers(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public |
-                            BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
-                .FirstOrDefault(candidate =>
-                    candidate.MetadataToken == member.MetadataToken &&
-                    candidate.MemberType == member.MemberType);
+    // Two of these carrying one key would be two distinct objects the rebuilt
+    // room cannot tell apart, and Atlas is deliberately absent from
+    // AreEquivalentLiveResources, so handing back whichever came first would be
+    // the quiet fold this file refuses everywhere else. Returning nothing
+    // instead falls through to a refusal that names the key. No two atlases the
+    // game loads share one: the key carries the data path, and each field is
+    // loaded from a path of its own.
+    private static Atlas ResolveContentAtlas(Type resourceType, string resourceKey) {
+        Atlas match = null;
+        foreach (Type owner in ContentAtlasOwners) {
+            foreach (FieldInfo field in owner.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)) {
+                if (!typeof(Atlas).IsAssignableFrom(field.FieldType) ||
+                    field.GetValue(null) is not Atlas atlas ||
+                    atlas.GetType() != resourceType ||
+                    !string.Equals(GetLiveResourceKey(atlas), resourceKey, StringComparison.Ordinal)) {
+                    continue;
+                }
+                if (match != null && !ReferenceEquals(match, atlas)) {
+                    return null;
+                }
+                match = atlas;
+            }
         }
-        if (genericMethodArguments.Length > 0 && member is MethodInfo { IsGenericMethodDefinition: true } method) {
-            member = method.MakeGenericMethod(genericMethodArguments);
-        }
-        return member;
+        return match;
     }
 
     internal static string GetLiveResourceKey(object resource) {
+        if (resource is CompareInfo compareInfo) {
+            // This names a collation, not a particular wrapper object. The sort
+            // name carries alternate sort orders too - "de-DE_phoneb" is a
+            // different collation from "de-DE" and gets a different key - so
+            // two wrappers sharing this key sort identically, and one process
+            // can hold several of them. It names the sort rather than its data
+            // across processes: an install whose globalization data is a
+            // different version, or which runs NLS where the saved one ran ICU,
+            // orders some strings differently under the same name. Pinning the
+            // collation version here would only refuse a slot over a difference
+            // the player cannot act on, and the rebuilt room would have used
+            // the local data anyway.
+            return CompareInfoSortNameKeyPrefix + compareInfo.Name;
+        }
         if (resource is Type type) {
             return type.AssemblyQualifiedName ?? type.FullName ?? type.Name;
         }
         if (resource is MemberInfo member) {
-            Type[] genericTypeArguments = member.DeclaringType is { IsGenericType: true, ContainsGenericParameters: false }
-                ? member.DeclaringType.GetGenericArguments()
-                : Type.EmptyTypes;
-            Type[] genericMethodArguments = member is MethodInfo { IsGenericMethod: true, ContainsGenericParameters: false } method
-                ? method.GetGenericArguments()
-                : Type.EmptyTypes;
             return member.Module.Assembly.FullName + "|" +
-                   member.Module.ModuleVersionId.ToString("D") + "|" +
-                   member.MetadataToken.ToString(CultureInfo.InvariantCulture) + "|" +
-                   EncodeMemberContext(genericTypeArguments) + "|" +
-                   EncodeMemberContext(genericMethodArguments);
+                   member.MetadataToken.ToString(CultureInfo.InvariantCulture);
         }
         if (resource is Assembly assembly) {
             return assembly.FullName ?? assembly.GetName().Name;
@@ -8454,47 +9331,19 @@ internal static class AkronStartPosReconstruction {
                    (modAsset.Format ?? string.Empty);
         }
         if (resource is VirtualTexture texture &&
-            VirtualTexturePathField?.GetValue(texture) is string texturePath &&
-            !string.IsNullOrWhiteSpace(texturePath) &&
-            VirtualAssetWidthField?.GetValue(texture) is int textureWidth &&
-            VirtualAssetHeightField?.GetValue(texture) is int textureHeight) {
-            // Read the auto-property fields directly. The CI reference archive
-            // strips Celeste method bodies, including these property getters.
-            return texturePath + "|" + textureWidth.ToString(CultureInfo.InvariantCulture) + "x" +
-                   textureHeight.ToString(CultureInfo.InvariantCulture);
+            VirtualTexturePathField.GetValue(texture) is string texturePath &&
+            !string.IsNullOrWhiteSpace(texturePath)) {
+            return texturePath + "|" +
+                   ((int) VirtualAssetWidthField.GetValue(texture)).ToString(CultureInfo.InvariantCulture) + "x" +
+                   ((int) VirtualAssetHeightField.GetValue(texture)).ToString(CultureInfo.InvariantCulture);
         }
-        if (resource is VirtualAsset asset && !string.IsNullOrWhiteSpace(asset.Name)) {
-            return asset.Name + "|" + asset.Width.ToString(CultureInfo.InvariantCulture) + "x" +
-                   asset.Height.ToString(CultureInfo.InvariantCulture);
+        if (resource is VirtualAsset asset &&
+            VirtualAssetNameField.GetValue(asset) is string assetName &&
+            !string.IsNullOrWhiteSpace(assetName)) {
+            return assetName + "|" +
+                   ((int) VirtualAssetWidthField.GetValue(asset)).ToString(CultureInfo.InvariantCulture) + "x" +
+                   ((int) VirtualAssetHeightField.GetValue(asset)).ToString(CultureInfo.InvariantCulture);
         }
         return string.Empty;
-    }
-
-    private static string EncodeMemberContext(IEnumerable<Type> types) {
-        return string.Join(",", types.Select(type =>
-            Convert.ToBase64String(Encoding.UTF8.GetBytes(type.AssemblyQualifiedName))));
-    }
-
-    private static bool TryDecodeMemberContext(string encoded, out Type[] types) {
-        if (string.IsNullOrEmpty(encoded)) {
-            types = Type.EmptyTypes;
-            return true;
-        }
-
-        try {
-            string[] encodedTypes = encoded.Split(',');
-            types = new Type[encodedTypes.Length];
-            for (int index = 0; index < encodedTypes.Length; index++) {
-                string typeName = Encoding.UTF8.GetString(Convert.FromBase64String(encodedTypes[index]));
-                types[index] = Type.GetType(typeName, throwOnError: false);
-                if (types[index] == null) {
-                    return false;
-                }
-            }
-            return true;
-        } catch (FormatException) {
-            types = Type.EmptyTypes;
-            return false;
-        }
     }
 }

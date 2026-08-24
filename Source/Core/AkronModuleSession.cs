@@ -13,6 +13,7 @@ public sealed class AkronStartPos {
     public AkronStartPosFacing Facing { get; set; } = AkronStartPosFacing.Current;
     public bool Idle { get; set; }
     public bool Grab { get; set; }
+    internal string ProfileId { get; set; } = string.Empty;
     internal string StateSlotName { get; set; } = string.Empty;
 }
 
@@ -39,7 +40,18 @@ public class AkronModuleSession : EverestModuleSession {
     public float LevelEnterSkipHoldSeconds { get; set; }
     public string LastRoomStatsExportPath { get; set; } = string.Empty;
     public string LoadedStartPositionsAreaSid { get; set; } = string.Empty;
-    public Dictionary<int, AkronStartPos> StartPositions { get; set; } = new Dictionary<int, AkronStartPos>();
+    // Explicit backing field so every replacement of the catalog invalidates the cached
+    // StartPos list that the HUD and overlay read each frame. Callers that mutate the
+    // dictionary in place must call AkronActions.MarkStartPosCatalogChanged themselves.
+    private Dictionary<int, AkronStartPos> startPositions = new Dictionary<int, AkronStartPos>();
+
+    public Dictionary<int, AkronStartPos> StartPositions {
+        get => startPositions;
+        set {
+            startPositions = value;
+            AkronActions.MarkStartPosCatalogChanged();
+        }
+    }
     public int LastLoadedStartPosSlot { get; set; }
     public bool FreezeGameplay { get; set; }
     public bool StepFrameRequested { get; set; }

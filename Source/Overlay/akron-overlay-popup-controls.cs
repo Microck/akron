@@ -268,14 +268,15 @@ public sealed partial class AkronOverlay {
     private void DrawLoggingPopupControls(string popupId) {
         ImGui.TextUnformatted("Level: " + AkronLog.FormatLevel(AkronModule.Settings.LoggingLevel));
         DrawLoggingLevelChoice("Normal", AkronLoggingLevel.Normal, popupId);
-        DrawLoggingLevelChoice("Verbose", AkronLoggingLevel.Verbose, popupId);
         DrawLoggingLevelChoice("Diagnostic", AkronLoggingLevel.Diagnostic, popupId);
+        DrawLoggingLevelChoice("Verbose", AkronLoggingLevel.Verbose, popupId);
         DrawLoggingLevelChoice("Trace", AkronLoggingLevel.Trace, popupId);
         ImGui.Separator();
         DrawPopupCheckbox("Mirror warnings", () => AkronModule.Settings.LoggingMirrorWarningsToEverest, value => {
             AkronLog.FlushDiagnosticSummaries();
             AkronModule.Settings.LoggingMirrorWarningsToEverest = value;
             AkronLog.LogSettingsChanged("mirror-warnings=" + value.ToString().ToLowerInvariant());
+            AkronModule.SaveAkronSettingsNow("overlay-logging-mirror-warnings");
         }, popupId, "Send warnings and errors to Everest's shared log as well as Akron's log file.");
         DrawIntStepperRow("Max MB", () => AkronModule.Settings.LoggingMaxFileSizeMb, value => {
             AkronLog.FlushDiagnosticSummaries();
@@ -297,9 +298,9 @@ public sealed partial class AkronOverlay {
     private static void DrawLoggingLevelChoice(string label, AkronLoggingLevel level, string popupId) {
         bool selected = AkronModuleSettings.NormalizeLoggingLevel(AkronModule.Settings.LoggingLevel) == level;
         if (ImGui.RadioButton(label + "##logging-level-" + popupId, selected)) {
-            AkronLog.FlushDiagnosticSummaries();
-            AkronModule.Settings.LoggingLevel = level;
-            AkronLog.LogSettingsChanged("level=" + AkronLog.FormatLevel(level));
+            // Everything the choice does lives in AkronLog.ApplyLoggingLevel, including the immediate write
+            // to disk, so the akron_log_level command exercises this row rather than an imitation of it.
+            AkronLog.ApplyLoggingLevel(level, "overlay-logging-level");
         }
     }
 

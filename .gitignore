@@ -15,6 +15,7 @@ backups/
 autoresearch-state.json
 *.bak-*
 dist/
+/tas/
 live-verification/
 opensrc/
 .residue/

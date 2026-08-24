@@ -12,7 +12,12 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static partial class AkronInternalRecorder {
-    private const string DefaultOutputFolderName = "AkronRecordings";
+    // Both of these live under Saves and a backup has to know about them. The ffmpeg child process holds its
+    // output file and the replay buffer's segment files open for as long as it records, and a player-supplied
+    // ffmpeg binary is a loaded executable image while it runs. On Windows neither can be deleted or renamed
+    // by the game, so a restore leaves both folders alone (Source/Actions/akron-backup-actions.cs).
+    internal const string DefaultOutputFolderName = "AkronRecordings";
+    internal const string ToolsFolderName = "AkronTools";
     private static readonly object Sync = new object();
 
     private static Process ffmpegProcess;
@@ -438,7 +443,7 @@ public static partial class AkronInternalRecorder {
             return configured;
         }
 
-        string localTool = Path.Combine(Everest.PathGame, "Saves", "AkronTools", "ffmpeg");
+        string localTool = Path.Combine(Everest.PathGame, "Saves", ToolsFolderName, "ffmpeg");
         if (File.Exists(localTool)) {
             return localTool;
         }

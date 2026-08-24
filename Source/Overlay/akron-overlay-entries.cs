@@ -49,6 +49,7 @@ public sealed partial class AkronOverlay {
         }, "proof", "submission", "goldberry", "hardlist"));
         entries.Add(Toggle("Pause Buffering", () => AkronModule.Settings.AllowPauseBuffering, value => AkronModule.Settings.AllowPauseBuffering = value));
         entries.Add(Toggle("Autosave", () => AkronModule.Settings.Autosave, value => AkronModule.Settings.Autosave = value, "save", "room load", "respawn"));
+        entries.Add(Toggle("Defer Engine GC", () => AkronModule.Settings.DeferEngineGarbageCollection, value => AkronModule.Settings.DeferEngineGarbageCollection = value, "gc", "garbage", "stutter", "lag spike", "death", "reload"));
         return entries;
     }
 
@@ -116,6 +117,7 @@ public sealed partial class AkronOverlay {
                     Toggle("Hide Wind Snow", () => AkronModule.Settings.HideWindSnow, value => AkronModule.Settings.HideWindSnow = value),
                     Toggle("Hide Waterfalls", () => AkronModule.Settings.HideWaterfalls, value => AkronModule.Settings.HideWaterfalls = value),
                     Toggle("Hide Tentacles", () => AkronModule.Settings.HideTentacles, value => AkronModule.Settings.HideTentacles = value),
+                    PolicyToggle("Disable Playback", AkronFeatureKind.DisablePlayback, () => AkronModule.Settings.DisablePlayback, value => AkronModule.Settings.DisablePlayback = value),
                     Toggle("Hide Heat Distortion", () => AkronModule.Settings.HideHeatDistortion, value => AkronModule.Settings.HideHeatDistortion = value),
                     PolicyToggle("No Death Wipe", AkronFeatureKind.DeathVisuals, () => AkronModule.Settings.NoDeathWipe, value => AkronModule.Settings.NoDeathWipe = value),
                     PolicyToggle("No Freeze Frames", AkronFeatureKind.FreezeFrames, () => AkronModule.Settings.NoFreezeFrames, value => AkronModule.Settings.NoFreezeFrames = value)

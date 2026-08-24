@@ -13,7 +13,7 @@ Most archives contain two entries. StartPos and Whole setup archives add one sna
 flowchart TD
   archive["example.akr"] --> manifest["manifest.json"]
   archive --> payload["payload JSON"]
-  archive --> snapshots["startpos/*.v7.json.gz"]
+  archive --> snapshots["startpos/*.v9.json.gz"]
   manifest --> format["Format and target"]
   payload --> data["Kind data"]
   snapshots --> roomState["Exact StartPos room state"]
@@ -59,12 +59,48 @@ manifest size limit is 16 KiB.
 
 | Kind | Payload entry | Payload format | Payload limit | Default directory |
 |---|---|---|---|---|
-| `setup` | `setup.json` | `akron-setup-v4` | 2 MiB, plus declared StartPos attachments | `Saves/AkronSetups` |
+| `setup` | `setup.json` | `akron-setup-v6` | 2 MiB, plus declared StartPos attachments | `Saves/AkronSetups` |
 | `theme` | `theme.json` | `akron-overlay-theme-v1` | 64 KiB | `Saves/AkronThemes` |
 | `hud-labels` | `hud-labels.json` | `akron-hud-labels-v1` | 256 KiB | `Saves/AkronHudLabels` |
 | `control-display` | `control-display.json` | `akron-control-display-v1` | 256 KiB | `Saves/AkronControlDisplay` |
 
 Every current kind uses manifest `kindVersion` 1. The payload format has its own version and is validated before Akron applies imported state.
+
+## Payload contract versions
+
+The archive container (`akron-archive`, `formatVersion` 1, `kindVersion` 1) describes
+the ZIP shape and the manifest. It is independent of what a payload means, and it does
+not change when a payload contract changes.
+
+The `setup` payload contract and the StartPos snapshot contract move together:
+
+| Setup payload | StartPos snapshot document | StartPos attachment name | Snapshot file on disk |
+|---|---|---|---|
+| `akron-setup-v6` | `akron-reconstruction-v9` | `startpos/<slot>.v9.json.gz` | `Saves/AkronStartPos/v9-<digest>.json.gz` |
+
+A StartPos snapshot addresses each object by its position in a clean reload of the room
+rather than by an identifier of its own. That makes a snapshot meaningful only against
+the fresh room the build that wrote it produced. When Akron changes what a clean reload
+contains, every position after the change shifts, and two objects of the same type with
+no distinguishing identity can pair the wrong way round and restore without reporting a
+failure. Both contracts are therefore bumped together whenever the fresh room changes,
+and the snapshot file name carries the same version so an older file is never read.
+
+The contracts also move when a snapshot has to carry something it did not carry before.
+A snapshot records, next to each saved object, whether the name it was saved under is
+one any install can look up again and whether the map laid that entity out. A snapshot
+written without those cannot be checked against them, so it is refused rather than read
+with a weaker guarantee under the same version number.
+
+Akron does not convert older payloads. A pack whose payload format is not the current
+one is refused when it is read, before any attachment is opened, and the message names
+both contract versions. A snapshot whose document format is not the current one is
+refused by the reader, before the reconstruction path sees it.
+
+| Change | Effect on existing data |
+|---|---|
+| `akron-setup-v4` -> `akron-setup-v6` | Every `.akr` setup pack made by an earlier build must be exported again. |
+| `akron-reconstruction-v7` -> `akron-reconstruction-v9` | Every StartPos slot set by an earlier build must be set again. Slot positions, spawn settings and keybinds are unaffected; only the saved room state behind each slot is. |
 
 ## Setup payload
 
@@ -73,7 +109,7 @@ Setup packs use the `setup` archive contract:
 ```text
 kind: setup
 Payload entry: setup.json
-Payload format: akron-setup-v4
+Payload format: akron-setup-v6
 Directory: Saves/AkronSetups
 ```
 
@@ -82,7 +118,7 @@ It is not an importable payload because `state` omits its required fields:
 
 ```json
 {
-  "format": "akron-setup-v4",
+  "format": "akron-setup-v6",
   "name": "Whole Setup",
   "createdUtc": "2026-05-14T00:00:00.0000000Z",
   "section": "Whole",
@@ -104,7 +140,7 @@ The setup payload size limit is 2 MiB.
 
 Each compressed StartPos snapshot attachment is limited to 128 MiB. All
 snapshot attachments in one setup archive are limited to 509 MiB in total.
-Each expanded v7 snapshot is limited to 256 MiB while Akron validates it.
+Each expanded v9 snapshot is limited to 384 MiB while Akron validates it.
 A `StartPos` or `Whole` archive can contain at most 99 StartPos entries. Each
 slot key must be in the range 1-99.
 
@@ -167,7 +203,7 @@ but cannot exceed their listed length.
 | HUD row-order key | Required, at most 128 characters |
 
 Every enum field must contain a defined named string value. Each StartPos entry
-must use the archive name `startpos/<slot>.v7.json.gz` and a 64-character
+must use the archive name `startpos/<slot>.v9.json.gz` and a 64-character
 lowercase hexadecimal SHA-256 digest.
 
 ## Setup sections
@@ -209,7 +245,7 @@ flowchart TD
   payloadCheck -->|Yes| apply["Apply section"]
 ```
 
-Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats.
+Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats. Setup packs created before `akron-setup-v6` cannot be imported. Recreate the setup and its StartPos slots in the current build, then export a new pack.
 
 For each StartPos attachment, Akron verifies the declared checksum, map, and
 room before applying the setup. It then binds the snapshot to the recipient's

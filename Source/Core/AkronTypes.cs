@@ -85,10 +85,14 @@ public enum AkronFrameIncreaseMethod {
     Dynamic
 }
 
+// The numeric order is AkronLog.ShouldWrite's verbosity ladder, so this declaration order is load-bearing.
+// Diagnostic is deliberately quieter than Verbose: at Diagnostic, per-event feature-use and policy-check
+// records are rolled into 60-second aggregate summaries instead of one line per event.
+// Do not reorder these values without updating the thresholds in Source/Core/akron-log.cs.
 public enum AkronLoggingLevel {
     Normal = 0,
-    Verbose = 1,
-    Diagnostic = 2,
+    Diagnostic = 1,
+    Verbose = 2,
     Trace = 3
 }
 
@@ -666,7 +670,8 @@ public enum AkronFeatureKind {
     LagPauser,
     Logging,
     JournalSnapshotCompare,
-    Backups
+    Backups,
+    DisablePlayback
 }
 
 public readonly struct FeatureDefinition {

@@ -61,6 +61,12 @@ public static partial class AkronCommands {
         Log("lag-pauser-recovery-grace-ms: " + AkronModule.Settings.LagPauserRecoveryGraceMs.ToString(CultureInfo.InvariantCulture));
         Log("lag-pauser-repeat-cooldown-ms: " + AkronModule.Settings.LagPauserRepeatCooldownMs.ToString(CultureInfo.InvariantCulture));
         Log("lag-pauser-ignore-srt: " + AkronModule.Settings.LagPauserIgnoreSpeedrunToolLoadStates.ToString().ToLowerInvariant());
+        Log("defer-engine-gc: " + AkronModule.Settings.DeferEngineGarbageCollection.ToString().ToLowerInvariant());
+        // Zero deferrals with the setting on means the IL guard never installed,
+        // which looks identical to the fix working until a spike shows up.
+        Log("defer-engine-gc-deferred: " + AkronEngineGarbageCollection.DeferredCollections.ToString(CultureInfo.InvariantCulture));
+        Log("defer-engine-gc-paid: " + AkronEngineGarbageCollection.PaidCollections.ToString(CultureInfo.InvariantCulture));
+        Log("defer-engine-gc-owed: " + AkronEngineGarbageCollection.CollectionOwed.ToString().ToLowerInvariant());
         Log("lag-pauser-trigger-count: " + (session?.LagPauserTriggerCount.ToString(CultureInfo.InvariantCulture) ?? "0"));
         Log("lag-pauser-last-spike-ms: " + (session?.LagPauserLastSpikeMs.ToString("0.000", CultureInfo.InvariantCulture) ?? "0.000"));
         Log("golden-start-helper-used: " + (session?.UsedGoldenStartHelper.ToString().ToLowerInvariant() ?? "false"));
@@ -214,6 +220,7 @@ public static partial class AkronCommands {
         Log("hide-wind-snow: " + AkronModule.Settings.HideWindSnow.ToString().ToLowerInvariant());
         Log("hide-waterfalls: " + AkronModule.Settings.HideWaterfalls.ToString().ToLowerInvariant());
         Log("hide-tentacles: " + AkronModule.Settings.HideTentacles.ToString().ToLowerInvariant());
+        Log("disable-playback: " + AkronModule.Settings.DisablePlayback.ToString().ToLowerInvariant());
         Log("hide-heat-distortion: " + AkronModule.Settings.HideHeatDistortion.ToString().ToLowerInvariant());
         Log("screenshake: " + AkronModule.Settings.Screenshake.ToString().ToLowerInvariant());
         Log("screenshake-intensity: " + AkronModule.Settings.ScreenshakeIntensity.ToString(CultureInfo.InvariantCulture));

@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -104,8 +103,10 @@ public partial class AkronModule : EverestModule {
         typeof(Player).GetMethod("SuperJump", BindingFlags.Instance | BindingFlags.NonPublic);
     private static readonly FieldInfo PlayerJumpGraceTimerField =
         typeof(Player).GetField("jumpGraceTimer", BindingFlags.Instance | BindingFlags.NonPublic);
-    private static readonly MethodInfo EverestSaveSettingsMethod =
-        typeof(Everest).GetMethod("_SaveSettings", BindingFlags.Static | BindingFlags.NonPublic);
+    // Everest saves module settings from its own background thread as well as from Akron's own
+    // callers, so two writers can reach SaveSettings at once and would otherwise share one
+    // temporary file.
+    private static readonly object SettingsFileSync = new object();
     private static MethodInfo playerDashCoroutineMethod;
     private static ILHook dashCoroutineHook;
     private static MethodInfo lookoutLookRoutineMethod;
@@ -154,6 +155,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.Update += LevelOnUpdate;
         On.Celeste.Level.BeforeRender += LevelOnBeforeRender;
         IL.Celeste.Level.Render += LevelOnRenderForStartPosPresentation;
+        AkronEngineGarbageCollection.Load();
         On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent += HudRendererOnRenderContent;
         On.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiOnRender;
@@ -165,6 +167,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.BigWaterfall.Render += BigWaterfallOnRender;
         On.Celeste.BigWaterfall.RenderDisplacement += BigWaterfallOnRenderDisplacement;
         On.Celeste.ReflectionTentacles.Render += ReflectionTentaclesOnRender;
+        On.Celeste.PlayerPlayback.Update += PlayerPlaybackOnUpdate;
         On.Celeste.HeatWave.RenderDisplacement += HeatWaveOnRenderDisplacement;
         On.Celeste.AreaData.DoScreenWipe += AreaDataOnDoScreenWipe;
         On.Celeste.ScreenWipe.DrawPrimitives += ScreenWipeOnDrawPrimitives;
@@ -289,6 +292,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Level.Update -= LevelOnUpdate;
         On.Celeste.Level.BeforeRender -= LevelOnBeforeRender;
         IL.Celeste.Level.Render -= LevelOnRenderForStartPosPresentation;
+        AkronEngineGarbageCollection.Unload();
         On.Celeste.GameplayRenderer.Render -= GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent -= HudRendererOnRenderContent;
         On.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiOnRender;
@@ -305,6 +309,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.BigWaterfall.Render -= BigWaterfallOnRender;
         On.Celeste.BigWaterfall.RenderDisplacement -= BigWaterfallOnRenderDisplacement;
         On.Celeste.ReflectionTentacles.Render -= ReflectionTentaclesOnRender;
+        On.Celeste.PlayerPlayback.Update -= PlayerPlaybackOnUpdate;
         On.Celeste.HeatWave.RenderDisplacement -= HeatWaveOnRenderDisplacement;
         On.Celeste.AreaData.DoScreenWipe -= AreaDataOnDoScreenWipe;
         On.Celeste.ScreenWipe.DrawPrimitives -= ScreenWipeOnDrawPrimitives;
@@ -369,6 +374,9 @@ public partial class AkronModule : EverestModule {
 #pragma warning disable CS0618
         Engine.TimeRate = 1f;
 #pragma warning restore CS0618
+        // AkronLog holds the log file open for the whole session, so unload has to release the handle.
+        // Reloading the mod would otherwise leave a second appender on the same file.
+        AkronLog.CloseLogFile();
     }
 
     private static void EngineOnExiting(object sender, EventArgs eventArgs) {
@@ -633,20 +641,113 @@ public partial class AkronModule : EverestModule {
         orig(file, settings);
     }
 
-    internal static void SaveAkronSettingsNow(string reason) {
+    // Everest rewrites modsettings-<mod>.celeste in place: it deletes the file and then streams the
+    // new contents into a fresh file at the same path. Anything that interrupts that - a crash, a
+    // kill, a full disk - leaves the player's settings truncated at whatever buffer boundary the
+    // writer reached, and every Akron setting they ever chose is gone. Writing the whole file beside
+    // the target and renaming it over the target makes the target either the old file or the new
+    // file and never a fragment, because rename is the one filesystem operation that is atomic
+    // everywhere the game runs.
+    //
+    // The temporary file is a fixed sibling name rather than a random one, so a run of failures
+    // cannot fill the Saves folder with fragments, and the caller holds SettingsFileSync so the two
+    // threads that can save settings never share it.
+    internal static void WriteFileAtomically(string path, Action<Stream> writeContent) {
+        string temporaryPath = path + ".tmp";
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
         try {
-            if (EverestSaveSettingsMethod != null) {
-                if (EverestSaveSettingsMethod.Invoke(null, Array.Empty<object>()) is IEnumerator routine) {
-                    while (routine.MoveNext()) {
-                    }
-                }
-            } else {
-                UserIO.SaveHandler(false, true);
+            using (FileStream stream = new FileStream(temporaryPath, FileMode.Create, FileAccess.Write, FileShare.None)) {
+                writeContent(stream);
+                // A rename only publishes bytes the operating system already has, so push them to
+                // the device before publishing them.
+                stream.Flush(true);
             }
 
-            AkronLog.Verbose(nameof(AkronModule), "settings saved; reason=" + (reason ?? "unknown"));
+            File.Move(temporaryPath, path, true);
+        } catch {
+            // The target is untouched: the previous settings, or nothing at all on a first save.
+            // Drop the fragment so nothing sitting next to the real file looks like a settings
+            // file, but never let a failure to do that hide why the write failed.
+            try {
+                File.Delete(temporaryPath);
+            } catch {
+                // Reported through the exception being rethrown.
+            }
+
+            throw;
+        }
+    }
+
+    // Overridden purely to make the write atomic; the path, the format and the serializer are
+    // Everest's. Akron's settings file is the only state a player builds up by hand over months,
+    // and the stock implementation can destroy all of it in one interrupted write.
+    public override void SaveSettings() {
+        TrySaveSettings();
+    }
+
+    // Returns whether the settings actually reached disk, so a caller can say that they did not
+    // rather than logging a save that never happened.
+    internal bool TrySaveSettings() {
+        if (SettingsType == null || _Settings == null) {
+            return false;
+        }
+
+        string path = UserIO.GetSaveFilePath("modsettings-" + Metadata.Name);
+        lock (SettingsFileSync) {
+            try {
+                WriteFileAtomically(path, stream => {
+                    // Deliberately not disposed: disposing the writer closes the stream, and the
+                    // stream still has to be flushed to the device after the YAML is in it.
+                    StreamWriter writer = new StreamWriter(stream);
+                    YamlHelper.Serializer.Serialize(writer, _Settings, SettingsType);
+                    writer.Flush();
+                });
+                return true;
+            } catch (Exception exception) {
+                // Everest saves every installed module's settings from one background thread and
+                // stops at the first exception, so throwing here would cost every other mod its
+                // save as well.
+                AkronLog.Warn(nameof(AkronModule), "Could not save Akron settings: " + exception);
+                return false;
+            }
+        }
+    }
+
+    // Akron settings have to reach disk the moment the player changes one: the overlay is routinely
+    // still open when the game is killed, and a setting that only survives a clean exit is a setting
+    // the player loses.
+    //
+    // This used to reflect Everest's private _SaveSettings() coroutine and drain it with
+    // while (routine.MoveNext()) { } on the game thread. That coroutine does the work on a
+    // background thread and waits for it by yielding until a captured bool flips, so draining it in
+    // a tight loop stops the game loop and burns a core until the flag changes. It is not guaranteed
+    // to change: the assignment is the last statement of the background delegate, and an exception
+    // from any installed module's SaveSettings skips it - Everest leaves File.Delete and
+    // Directory.CreateDirectory outside its try/catch, so one sharing violation on one of thirty
+    // modsettings files is enough - after which the game thread spins on that flag forever. Saving
+    // one Akron toggle also deleted and rewrote every other installed mod's settings file.
+    //
+    // Akron's settings are one file, so write that one file here, on the calling thread, and leave
+    // Celeste's own settings to Celeste's own save routine, which is what the coroutine reached
+    // anyway and which does not block the caller.
+    internal static bool SaveAkronSettingsNow(string reason) {
+        try {
+            bool saved = Instance?.TrySaveSettings() == true;
+            // Celeste's own settings, which Akron changes through actions like Grab Mode. This
+            // hands off to Celeste's save routine and returns; it does not block the caller.
+            UserIO.SaveHandler(false, true);
+            if (saved) {
+                AkronLog.Verbose(nameof(AkronModule), "settings saved; reason=" + (reason ?? "unknown"));
+            } else {
+                // TrySaveSettings already logged why. Saying it here as well is what connects the
+                // failure to the thing the player did.
+                AkronLog.Warn(nameof(AkronModule), "settings not saved; reason=" + (reason ?? "unknown"));
+            }
+
+            return saved;
         } catch (Exception exception) {
             AkronLog.Warn(nameof(AkronModule), "settings save failed; reason=" + (reason ?? "unknown") + "; error=" + exception);
+            return false;
         }
     }
 
@@ -676,6 +777,9 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void EngineOnUpdate(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime) {
+        // First thing in the hook, so the recorded interval spans a whole engine
+        // update including everything Akron itself adds to the frame.
+        AkronPerformanceTelemetry.RecordUpdateFrame();
         AkronStartPosPersistence.Update();
         RunDeferredScreenWipeAction();
         UpdateDeathWipeRenderSuppression();

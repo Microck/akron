@@ -140,7 +140,7 @@ public static partial class AkronCommands {
             case "slots":
             case "slotcount":
                 if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int slotCount)) {
-                    Log("usage: akron_startpos slots <1..99>");
+                    Log("usage: akron_startpos slots <1.." + AkronModuleSettings.MaximumStartPosSlots + ">");
                     return;
                 }
                 AkronModule.Settings.StartPosSlotCount = AkronModuleSettings.ClampStartPosSlotCount(slotCount);
@@ -289,7 +289,45 @@ public static partial class AkronCommands {
         Log("startpos-area: " + (startPos?.AreaSid ?? "unset"));
         Log("startpos-state-slot: " + (string.IsNullOrWhiteSpace(startPos?.StateSlotName) ? "none" : startPos.StateSlotName));
         Log("startpos-state-snapshot: " + (startPos != null && AkronSaveLoadService.HasRuntimeState(startPos.StateSlotName)).ToString().ToLowerInvariant());
+        // startpos-set says a slot is active in this session, which is not the same as its
+        // saved state being on disk. A Set returns before its restart copy runs, and that
+        // copy parks while the player is in control, so on the Windows test machine the two
+        // answers were twenty-five minutes apart and a gate that asserted startpos-set was
+        // asserting memory and calling it disk.
+        //
+        // Three plain facts rather than one verdict. None of them says the slot is proved
+        // loadable: whether a file loads is decided by reading it, which only a load does.
+        // What they say is whether Akron holds a file at this slot's path, whether a Set on
+        // it is still outstanding, and how many Sets across the run are. The first is the
+        // memoized answer the slot list itself acts on, invalidated at every writer, so a
+        // file deleted from outside the game still reads as present until a room load
+        // clears the cache - which is the same thing every other reader believes.
+        string stateSlotName = startPos?.StateSlotName;
+        bool namesRuntimeState = !string.IsNullOrWhiteSpace(stateSlotName);
+        Log("startpos-snapshot-on-disk: " +
+            (namesRuntimeState && AkronStartPosReconstruction.HasSnapshot(stateSlotName))
+                .ToString().ToLowerInvariant());
+        Log("startpos-restart-copy-outstanding: " +
+            (namesRuntimeState && AkronActions.HasPendingStartPosState(stateSlotName))
+                .ToString().ToLowerInvariant());
+        Log("startpos-restart-copies-outstanding: " +
+            AkronActions.PendingStartPosStateCount.ToString(CultureInfo.InvariantCulture));
         Log("startpos-tracked-virtual-assets: " + AkronVirtualAssetReloadTracker.Count.ToString(CultureInfo.InvariantCulture));
+        // The prewarm cache used to be invisible: no log line, no counter, and its only
+        // reader was a unit test. These four say whether it is filling, whether it is
+        // being used, and whether the budget is what stopped it.
+        Log("startpos-prewarm-slots: " + AkronStartPosReconstruction.PrewarmedSnapshotCount.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-prewarm-bytes: " + AkronStartPosReconstruction.PrewarmedSnapshotBytes.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-prewarm-budget-bytes: " + AkronStartPosReconstruction.MaxPrewarmedSnapshotBytes.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-prewarm-queued: " + AkronStartPosPersistence.PrewarmQueueLength.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-prewarm-stored: " + AkronStartPosReconstruction.PrewarmedSnapshotStores.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-prewarm-hits: " + AkronStartPosReconstruction.PrewarmedSnapshotHits.ToString(CultureInfo.InvariantCulture));
+        // The warm clones are the other memory population and the one that scales with
+        // the slot count, so it needs the same two numbers: what it holds and what it is
+        // allowed to hold. Without these a map that stops keeping slots warm looks
+        // identical to one that never filled up.
+        Log("startpos-warm-bytes: " + AkronSaveLoadService.WarmStartPosBytes.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-warm-budget-bytes: " + AkronSaveLoadService.MaxWarmStartPosBytes.ToString(CultureInfo.InvariantCulture));
         Log("startpos-last-loaded-slot: " + (AkronModule.Session?.LastLoadedStartPosSlot ?? 0).ToString(CultureInfo.InvariantCulture));
         Log("startpos-dashes: " + (startPos?.Dashes ?? AkronModule.Settings.StartPosConfiguredDashes).ToString(CultureInfo.InvariantCulture));
         Log("startpos-stamina: " + (startPos?.StaminaPercent ?? AkronModule.Settings.StartPosConfiguredStaminaPercent).ToString(CultureInfo.InvariantCulture));

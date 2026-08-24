@@ -16,6 +16,7 @@ public static class AkronFeatureRegistry
         { AkronFeatureKind.RoomTimer, new FeatureDefinition(AkronFeatureKind.RoomTimer, AkronStatus.RegularClean, "Room timer", "Displays timing information for the current room.") },
         { AkronFeatureKind.DeathStats, new FeatureDefinition(AkronFeatureKind.DeathStats, AkronStatus.GoldberryHardlistClean, "Death stats", "Displays death counters without mutating play.") },
         { AkronFeatureKind.ReducedVisualNoise, new FeatureDefinition(AkronFeatureKind.ReducedVisualNoise, AkronStatus.RegularClean, "Reduced visual noise", "Accessibility-focused visual suppression.") },
+        { AkronFeatureKind.DisablePlayback, new FeatureDefinition(AkronFeatureKind.DisablePlayback, AkronStatus.RegularClean, "Disable playback", "Suppresses map-placed playback tutorial ghosts, including their visuals and audio, during gameplay.") },
         { AkronFeatureKind.VisualTuning, new FeatureDefinition(AkronFeatureKind.VisualTuning, AkronStatus.RegularClean, "Visual tuning", "Adjusts lighting, bloom, and tint presentation without changing gameplay state.") },
         { AkronFeatureKind.GrabModeHotkey, new FeatureDefinition(AkronFeatureKind.GrabModeHotkey, AkronStatus.RegularClean, "Grab mode hotkey", "Changes a player control preference without changing gameplay state.") },
         { AkronFeatureKind.ScreenshotTool, new FeatureDefinition(AkronFeatureKind.ScreenshotTool, AkronStatus.GoldberryHardlistClean, "Screenshot tool", "Captures the current view for review and sharing.") },
@@ -198,6 +199,7 @@ public static class AkronFeatureRegistry
         { "Hide Wind Snow", AkronStatus.RegularClean },
         { "Hide Waterfalls", AkronStatus.RegularClean },
         { "Hide Tentacles", AkronStatus.RegularClean },
+        { "Disable Playback", AkronStatus.RegularClean },
         { "Hide Heat Distortion", AkronStatus.RegularClean },
         { "Stamina Bar", AkronStatus.Cheat },
         { "Dash Bar", AkronStatus.Cheat },
@@ -339,6 +341,7 @@ public static class AkronFeatureRegistry
         { "Journal Snapshot / Compare", AkronStatus.GoldberryHardlistClean }
     };
 
+    private static readonly FeatureDefinition?[] DefinitionByKind = BuildDefinitionByKind();
     private static readonly AkronStatus[] ClassificationByKind = BuildClassificationByKind();
 
     private static readonly Dictionary<string, AkronStatus> UiSuboptionClassifications = new Dictionary<string, AkronStatus>(StringComparer.OrdinalIgnoreCase) {
@@ -399,6 +402,12 @@ public static class AkronFeatureRegistry
 
     public static FeatureDefinition Get(AkronFeatureKind kind)
     {
+        int index = (int)kind;
+        if (index >= 0 && index < DefinitionByKind.Length && DefinitionByKind[index].HasValue)
+        {
+            return DefinitionByKind[index].Value;
+        }
+
         return Definitions[kind];
     }
 
@@ -425,7 +434,7 @@ public static class AkronFeatureRegistry
         return (parentLabel ?? string.Empty).Trim() + "\n" + (suboptionLabel ?? string.Empty).Trim();
     }
 
-    private static AkronStatus[] BuildClassificationByKind()
+    private static FeatureDefinition?[] BuildDefinitionByKind()
     {
         Array values = Enum.GetValues(typeof(AkronFeatureKind));
         int max = 0;
@@ -434,10 +443,24 @@ public static class AkronFeatureRegistry
             max = Math.Max(max, (int)kind);
         }
 
-        AkronStatus[] classifications = new AkronStatus[max + 1];
+        FeatureDefinition?[] definitions = new FeatureDefinition?[max + 1];
         foreach (AkronFeatureKind kind in values)
         {
-            classifications[(int)kind] = Definitions[kind].Classification;
+            definitions[(int)kind] = Definitions[kind];
+        }
+
+        return definitions;
+    }
+
+    private static AkronStatus[] BuildClassificationByKind()
+    {
+        AkronStatus[] classifications = new AkronStatus[DefinitionByKind.Length];
+        for (int index = 0; index < DefinitionByKind.Length; index++)
+        {
+            if (DefinitionByKind[index].HasValue)
+            {
+                classifications[index] = DefinitionByKind[index].Value.Classification;
+            }
         }
 
         return classifications;

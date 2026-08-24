@@ -11,7 +11,7 @@ Akron has two separate state-restore workflows:
 ## StartPos capabilities
 
 Setting a StartPos captures an in-memory native clone for same-process loads
-while a worker builds and validates the restart-safe v7 snapshot. After a
+while a worker builds and validates the restart-safe v9 snapshot. After a
 restart, or when the in-memory copy is unavailable, Load reconstructs the state
 from that snapshot file. It contains room entities and
 components, their reference relationships, movement, timers, state machines,
@@ -33,8 +33,9 @@ Persistent StartPos Set or Load may fail if:
 - A Set capture is still finishing.
 - Celeste is paused, transitioning rooms, or running or skipping a cutscene.
 - The saved StartPos belongs to a different map SID or save-file slot.
-- The v7 snapshot file is missing, damaged, or incomplete.
+- The v9 snapshot file is missing, damaged, or incomplete.
 - The map, save file, mod set, runtime, or snapshot format differs from the capture environment.
+- The slot was set by an earlier Akron that built fresh rooms differently, so its restart copy uses a superseded snapshot format.
 
 Attempt status does not block ordinary persistent StartPos actions. Invoking Set or Load records their Cheat classification even if a later runtime check fails.
 
@@ -51,12 +52,21 @@ Attempt status does not block ordinary persistent StartPos actions. Invoking Set
     Confirm that the active StartPos slot is set, belongs to the current map and save-file slot, and names the intended destination room. The room you load from can differ.
   </Step>
   <Step title="Check the snapshot">
-    If the in-memory state is unavailable, confirm that the matching v7 snapshot still exists and was created with the current map, save file, mod set, runtime, and snapshot format.
+    If the in-memory state is unavailable, confirm that the matching v9 snapshot still exists and was created with the current map, save file, mod set, runtime, and snapshot format.
+  </Step>
+  <Step title="Set the slot again after a snapshot format change">
+    A slot the format move emptied leaves the slot list, so loading it reports that it was saved by an older Akron that built rooms differently. That slot predates a snapshot format change and cannot be recovered. Set the StartPos again. Akron does not convert older snapshots: an older snapshot describes a fresh room that this build no longer produces, so there is nothing correct to convert it into.
   </Step>
   <Step title="Document the issue">
     If the problem remains, record the map SID, save-file slot, Akron setup, StartPos slot, visible error, and logs. Attach screenshots when they show the failure.
   </Step>
 </Steps>
+
+## Snapshot format changes
+
+A StartPos snapshot records where each room object sits in a clean reload of that room, so it only means anything against the fresh room the build that wrote it produced. When Akron changes what a clean reload contains, the snapshot format version changes with it, and snapshots written before the change are refused rather than read: an index that has shifted can pair two same-typed objects the wrong way round and report a successful load. The format also changes when a snapshot has to carry something it did not carry before, such as whether the map laid a saved entity out, because a snapshot without it cannot be checked against it. That map check covers the room a slot was set in; state a mod registers with Akron separately is checked by every other rule but not by the map. The current format is `akron-reconstruction-v9`.
+
+Slot positions, spawn settings, keybinds and every other setting survive a format change. The saved room state behind each slot does not, and has to be captured again with Set. `.akr` setup packs carry the same snapshots, so a pack made before the change has to be exported again as well.
 
 ## Capture and Restore StartPos State savestates
 

@@ -5,9 +5,29 @@ description: Create, browse, restore, and clean up Akron save backups.
 
 The Backups tab keeps ZIP snapshots of Celeste's `Saves` folder. Akron stores them in `Saves/AkronBackups`, then excludes that folder from later snapshots so each archive contains save data and no older backup ZIPs.
 
+A backup holds your save files. It leaves out the folders Akron itself runs out of, and a restore leaves those folders exactly where they are:
+
+| Folder | Why it is left out |
+|---|---|
+| `Saves/AkronBackups` | The backups themselves. |
+| `Saves/AkronStartPos` | One saved room state per StartPos slot, and hundreds of megabytes of them in total. You rebuild one by setting the slot again, and setup packs already carry them between installs. |
+| `Saves/AkronNative` | The graphics library Akron loads when it starts. Windows will not let anything replace a library that is loaded, and Akron writes this one again on the next launch anyway. |
+| `Saves/AkronRecordings` | Video, which FFmpeg is still writing while you record. |
+| `Saves/AkronTools` | An FFmpeg build you put there yourself. |
+| `Saves/AkronAutomation` | Scratch files for the automation queue used to test Akron. |
+| `Saves/AkronRestore` | Where a restore does its work. It is removed when the restore finishes, so a folder of this name left behind means a restore was interrupted. |
+
+The StartPos folder is the one worth knowing about, because it used to be included: at hundreds of megabytes per backup the total-size limit then deleted the older backups you wanted to keep. Restoring a backup never removes a StartPos slot - and never rewinds one either. A slot you have re-set since the backup was taken still holds what you set last.
+
+Everything else in your Saves folder is backed up and restored, including `Saves/AkronLogs` and the performance recorder's `Saves/.tmp-perf`. Akron closes both of those itself before a restore touches anything.
+
 Use it before risky mod changes, save-file edits, testing sessions, or any run where losing the current profile would be expensive. Backups can be created manually or triggered on launch, close, save/settings writes, chapter entry, and timed intervals.
 
-Restore is intentionally conservative. Akron verifies the selected ZIP, creates a `pre-restore` backup of the current save files, extracts the selected backup to disk, reloads the restored save slot, and returns to the main menu so Celeste does not keep using stale in-level save data. That safety backup stays in the browser like any other backup, so you can recover the state you had immediately before the restore.
+Restore is intentionally conservative. Akron verifies the selected ZIP, creates a `pre-restore` backup of the current save files, unpacks the selected backup, puts it in place, reloads the save file you have open so Celeste does not keep using stale save data, and returns to the main menu. If you had no save file open, which is the case at the main menu, there is nothing to reload and Akron just rebuilds the menu so the file list shows the restored files. That safety backup stays in the browser like any other backup, so you can recover the state you had immediately before the restore.
+
+Restore stops before it changes anything if either backup could not read every file, and names what it missed. That covers the `pre-restore` backup it takes for you, and the backup you picked: a backup records the files it could not read inside the archive, and putting one of those over your save files would move the missing ones aside and have nothing to put back. The browser says so next to any backup this applies to, so you can pick a different one. It also closes the Akron log and stops any performance recording, because both write into the Saves folder it is about to replace.
+
+**A restore that fails leaves your save files exactly as they were.** It unpacks the backup into `Saves/AkronRestore` first, so a bad ZIP or a full disk is found before anything is touched. Only then does it move your current files aside and the unpacked ones into place, and if any of that will not go through, everything it has already moved goes back and the restore stops with a message saying so. Your old files are discarded last, after the restore has already succeeded.
 
 | Option | Control | What it does | Classification |
 |---|---|---|---|
@@ -42,7 +62,11 @@ Rows with a triangle expose the controls listed below.
 
 ## Backup metadata
 
-Every ZIP includes `_akron-backup.json`. This file records why the backup was created, when it was created, the Celeste and Akron versions, the active save slot and profile name, the current area and room when available, and the enabled Everest module list. Metadata makes the restore browser easier to inspect and helps diagnose backups made around mod changes.
+Every ZIP includes `_akron-backup.json` with numeric `schema` value `2`. This file records why the backup was created, when it was created, the Celeste and Akron versions, the active save slot and profile name, the current area and room when available, the enabled Everest module list, the folders the backup deliberately leaves out under `excludedFolders`, and any file the backup could not read. Metadata makes the restore browser easier to inspect and helps diagnose backups made around mod changes.
+
+A file that cannot be read is left out of the ZIP and named in `skippedFiles` with the reason, and the backup finishes with the rest of the folder. The result line names the missing files too. A backup that lists nothing under `skippedFiles` holds everything in your Saves folder apart from the folders named under `excludedFolders`.
+
+Akron writes `_akron-backup.json` into the archive last, so a ZIP without one is either a backup that was interrupted part way through or a ZIP that was never one of Akron's. Akron also refuses metadata that is malformed, uses a schema other than `2`, or does not contain a `skippedFiles` array. None of those archives can be restored: Akron cannot prove what they hold, and restoring one would take away every save file it does not happen to carry. They remain ordinary ZIPs you can open and take files out of by hand. Retention can still prune an older Akron archive whose numeric schema is no longer restorable, but it leaves ZIPs without parsed Akron metadata alone.
 
 ## Retention
 

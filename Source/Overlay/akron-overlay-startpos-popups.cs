@@ -120,7 +120,7 @@ public sealed partial class AkronOverlay {
     }
 
     private void DrawStartPosConfigControls(string popupId) {
-        DrawIntStepperRow("Slot count", () => AkronModule.Settings.StartPosSlotCount, value => AkronModule.Settings.StartPosSlotCount = AkronModuleSettings.ClampStartPosSlotCount(value), -1, 1, 1, 99, popupId, "Selectors and previous/next always expose at least 15 StartPos slots. Raise this when you want more.");
+        DrawIntStepperRow("Slot count", () => AkronModule.Settings.StartPosSlotCount, value => AkronModule.Settings.StartPosSlotCount = AkronModuleSettings.ClampStartPosSlotCount(value), -1, 1, 1, AkronModuleSettings.MaximumStartPosSlots, popupId, "Selectors and previous/next always expose at least 15 StartPos slots. Raise this when you want more. Each slot you capture holds a full savestate in memory, so a high count costs memory.");
         DrawIntStepperRow("Dashes", () => ActiveStartPosDashes(), SetActiveStartPosDashes, -1, 1, -1, 5, popupId, "-1 keeps the native/current dash count. 0-5 force that many dashes after spawning.");
         DrawIntStepperRow("Stamina %", () => ActiveStartPosStaminaPercent(), SetActiveStartPosStaminaPercent, -5, 5, -1, 100, popupId, "-1 keeps native/current stamina. 0-100 forces stamina after spawning.");
         DrawPopupChoiceCombo(

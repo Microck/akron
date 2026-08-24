@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -16,6 +17,9 @@ public static partial class AkronActions {
     internal const string StartPosStateSlotPrefix = "Akron StartPos ";
     private const int MinPositionSlot = 1;
     private const int MaxPositionSlot = 9999;
+    // A toast is a few lines on screen. Reconstruction failures carry whole graph
+    // paths, so the toast shows the head of the reason and the log keeps all of it.
+    internal const int MaxStartPosFailureToastLength = 180;
 
     // Level.Update reads this generation before processing pre-update actions.
     // A successful Set or Load increments it so the exact StartPos frame can
@@ -24,6 +28,188 @@ public static partial class AkronActions {
     private static bool startPosCaptureInProgress;
     private static readonly Dictionary<string, Dictionary<int, AkronStartPos>> PendingStartPositionsByFileAndMap =
         new Dictionary<string, Dictionary<int, AkronStartPos>>(StringComparer.Ordinal);
+
+    // GetStartPositions is called several times per rendered frame by the HUD label, the
+    // label obstruction pass and the overlay rows. Rebuilding it costs a map-wide room
+    // order dictionary, a LINQ sort, and a HasRuntimeState probe per slot, so the result
+    // is cached. The cache is only reused while every input is provably unchanged:
+    //   - the same AkronModuleSession instance (a new session means a new run)
+    //   - the same area SID (the room order and the area filter both derive from it)
+    //   - the catalog revision (any add, remove, or wholesale replacement of
+    //     Session.StartPositions)
+    //   - the runtime-slot revision (warm state appearing or being dropped)
+    //   - the snapshot-existence revision (a disk snapshot written or deleted)
+    // Room changes need no key of their own: nothing in the built list depends on the
+    // current room, and a room load reloads the catalog, which bumps the revisions.
+    private static long startPosCatalogRevision;
+    private static AkronModuleSession cachedStartPosListSession;
+    private static string cachedStartPosListAreaSid;
+    private static long cachedStartPosListCatalogRevision = -1;
+    private static long cachedStartPosListRuntimeRevision = -1;
+    private static long cachedStartPosListSnapshotRevision = -1;
+    private static IReadOnlyList<AkronStartPosEntry> cachedStartPosList;
+    // Save file and map the prewarmed snapshot documents were read for.
+    private static string prewarmedSnapshotScope;
+
+    // Exposed so the cache-invalidation tests can observe that a catalog mutation was
+    // seen, and so the counter reads the same way as the two revisions it is compared
+    // against in GetStartPositions.
+    internal static long StartPosCatalogRevision => startPosCatalogRevision;
+
+    internal static void MarkStartPosCatalogChanged() {
+        startPosCatalogRevision++;
+        cachedStartPosList = null;
+    }
+
+    // A Set has to be atomic with respect to whatever the slot already held. Two of the
+    // four pieces of a committed StartPos are already transactional: the disk snapshot
+    // goes through PreparedSnapshotInstall, which moves the previous file aside and puts
+    // it back on rollback, and the persisted metadata is only written once the snapshot is
+    // in place. The other two - the warm clone with its fresh-room baseline, and the
+    // in-memory catalog entry - are replaced the instant Set runs, long before the restart
+    // copy exists. This record parks them so a Set whose restart copy never lands leaves
+    // the slot exactly as it found it.
+    //
+    // Keyed by state slot name rather than by persistence generation on purpose: what is
+    // parked is the last state that actually committed, so a second Set arriving while the
+    // first is still writing inherits the same record instead of parking its own
+    // uncommitted capture on top of it.
+    private sealed class StartPosRollback {
+        public string ParkedRuntimeStateName;
+        public string ParkedFreshBaselineKey;
+        public AkronStartPos PreviousEntry;
+        public AkronStartPos PublishedEntry;
+        public bool HadCommittedState;
+    }
+
+    private static readonly Dictionary<string, StartPosRollback> StartPosRollbacks =
+        new Dictionary<string, StartPosRollback>(StringComparer.Ordinal);
+
+    private static StartPosRollback BeginStartPosRollback(int slot, string stateSlotName, out bool ownsRollback) {
+        if (StartPosRollbacks.TryGetValue(stateSlotName, out StartPosRollback existing)) {
+            // An earlier Set on this slot is still writing. Its record already holds the
+            // last committed state, which is what any failure has to restore, and that
+            // earlier Set keeps ownership of it: a capture that fails before publishing
+            // anything has changed nothing, so it must leave the record alone.
+            ownsRollback = false;
+            return existing;
+        }
+
+        ownsRollback = true;
+        AkronModuleSession session = AkronModule.TryGetSession();
+        AkronStartPos previousEntry = null;
+        if (session?.StartPositions != null) {
+            session.StartPositions.TryGetValue(NormalizePositionSlot(slot), out previousEntry);
+        }
+
+        StartPosRollback rollback = new StartPosRollback {
+            PreviousEntry = previousEntry,
+            ParkedRuntimeStateName = AkronSaveLoadService.ParkRuntimeState(stateSlotName),
+            ParkedFreshBaselineKey = AkronStartPosPersistence.ParkRuntimeFreshBaseline(stateSlotName)
+        };
+        // Occupancy is decided conservatively and only once, here: any one of these means
+        // the slot held something a failure must not destroy. Guessing "empty" would send
+        // the failure down the discard path, which deletes the snapshot and the metadata.
+        rollback.HadCommittedState = previousEntry != null ||
+                                     rollback.ParkedRuntimeStateName != null ||
+                                     AkronStartPosReconstruction.HasSnapshot(stateSlotName);
+        StartPosRollbacks[stateSlotName] = rollback;
+        return rollback;
+    }
+
+    // The new state is the committed state now, so the previous clone and baseline are
+    // released. This is the release StoreRuntimeSlot used to perform at Set time, moved to
+    // the point where the replacement is actually durable.
+    private static void ReleaseStartPosRollback(string stateSlotName) {
+        if (string.IsNullOrWhiteSpace(stateSlotName) ||
+            !StartPosRollbacks.Remove(stateSlotName, out StartPosRollback rollback)) {
+            return;
+        }
+
+        AkronSaveLoadService.DiscardParkedRuntimeState(rollback.ParkedRuntimeStateName);
+        AkronStartPosPersistence.DiscardParkedRuntimeFreshBaseline(rollback.ParkedFreshBaselineKey);
+    }
+
+    // Puts the slot back the way it was before the Set that owns this record. A null reason
+    // means the caller already reported the failure itself.
+    //
+    // previousDurableStateLost is only read when a reason is being reported: it says the
+    // snapshot or persisted metadata could not be put back, so nothing restored below can
+    // be counted on to survive this session - everything it puts back is memory.
+    private static void RestoreStartPosRollback(
+        int fileSlot,
+        int slot,
+        AkronStartPos startPos,
+        string stateSlotName,
+        string reason,
+        bool previousDurableStateLost = false
+    ) {
+        if (string.IsNullOrWhiteSpace(stateSlotName) ||
+            !StartPosRollbacks.Remove(stateSlotName, out StartPosRollback rollback)) {
+            return;
+        }
+
+        int normalizedSlot = NormalizePositionSlot(slot);
+        AkronSaveLoadService.RestoreParkedRuntimeState(rollback.ParkedRuntimeStateName, stateSlotName);
+        AkronStartPosPersistence.RestoreParkedRuntimeFreshBaseline(rollback.ParkedFreshBaselineKey, stateSlotName);
+
+        AkronModuleSession session = AkronModule.TryGetSession();
+        if (rollback.PublishedEntry != null &&
+            session?.StartPositions != null &&
+            session.StartPositions.TryGetValue(normalizedSlot, out AkronStartPos current) &&
+            ReferenceEquals(current, rollback.PublishedEntry)) {
+            // Only this Set's own entry is taken back out. Anything else sitting in the
+            // slot belongs to a later action - a clear, a setup-pack import - that already
+            // owns the slot and must not be overwritten with older metadata.
+            if (rollback.PreviousEntry != null) {
+                session.StartPositions[normalizedSlot] = rollback.PreviousEntry;
+            } else {
+                session.StartPositions.Remove(normalizedSlot);
+            }
+            MarkStartPosCatalogChanged();
+        }
+        // The pending marker is what stops a Load from pairing the new metadata with the
+        // previous snapshot, so it is cleared last, once the previous state is back.
+        RemovePendingStartPos(fileSlot, slot, startPos);
+
+        if (reason == null) {
+            return;
+        }
+        string message = DescribeFailedStartPosReplacement(normalizedSlot, reason, previousDurableStateLost);
+        AkronLog.Warn(nameof(AkronActions), message);
+        if (AkronModule.Instance != null) {
+            Engine.Scene?.Add(new AkronToast(message));
+        }
+    }
+
+    // What a failed Set over an occupied slot leaves on screen.
+    //
+    // The second sentence is the one the player acts on, so it has to describe the slot
+    // they are left with rather than the outcome this path was written for. The previous
+    // position, its warm clone and its metadata are back either way; what the lost case
+    // cannot promise is the saved room state behind them, which is the only part that
+    // survives leaving the map. It says so plainly rather than hedging: a re-set the
+    // player did not need costs one Set, and a slot they trusted costs the run.
+    //
+    // Split out from the toast because the toast needs a scene: the completion path that
+    // reaches it cannot run outside the game, and both sentences can be read back here.
+    internal static string DescribeFailedStartPosReplacement(int slot, string reason, bool previousDurableStateLost) {
+        string slotText = slot.ToString(CultureInfo.InvariantCulture);
+        return "StartPos " + slotText + " was not replaced because " + reason +
+               (previousDurableStateLost
+                   ? ". The previous StartPos " + slotText + " could not be put back either, so it works " +
+                     "until you leave this map and then has to be set again."
+                   : ". The previous StartPos " + slotText + " was kept.");
+    }
+
+    // Cancel invalidates the generation whose completion would otherwise run the rollback,
+    // so the parked previous state has to be released at the same moment. Every cancel in
+    // this file goes through here; releasing separately would leave a record that a later
+    // Set on the same slot could restore over state the player already replaced or cleared.
+    private static void CancelStartPosPersistence(string stateSlotName) {
+        AkronStartPosPersistence.Cancel(stateSlotName);
+        ReleaseStartPosRollback(stateSlotName);
+    }
 
     public static void SetStartPos(Level level) {
         SetStartPos(level, null);
@@ -74,18 +260,54 @@ public static partial class AkronActions {
             completion?.Invoke(false);
             return;
         }
-        startPosCaptureInProgress = true;
-
         int slot = AkronModule.Settings.ActiveStartPosSlot;
         int fileSlot = GetCurrentFileSlot();
-        AkronModuleSaveData saveData = AkronModule.SaveData;
         string areaSid = GetAreaSid(level);
         string stateSlotName = GetStartPosStateSlotName(areaSid, slot, fileSlot);
+        // A previous Set can finish its synchronous capture while its restart copy still
+        // owns this slot's rollback. Refuse before reservation so a no-op Set cannot
+        // evict unrelated warm clones.
+        if (StartPosRollbacks.ContainsKey(stateSlotName)) {
+            Engine.Scene?.Add(new AkronToast("StartPos " + slot + " is still finishing its restart copy."));
+            completion?.Invoke(false);
+            return;
+        }
+        // Make room before cloning. Trimming after the capture cannot prevent the peak
+        // allocation, and pending clones have no disk copy that can safely replace them.
+        if (!AkronSaveLoadService.PrepareWarmStartPosCapture(
+                areaSid,
+                out int droppedWarmSlots,
+                out long droppedWarmBytes)) {
+            Engine.Scene?.Add(new AkronToast(
+                "StartPos slots on this map do not leave room for another capture inside the " +
+                (AkronSaveLoadService.MaxWarmStartPosBytes / (1024L * 1024L)).ToString(CultureInfo.InvariantCulture) +
+                " MB warm limit. Pause for a moment to let the restart copies finish, or clear a slot."));
+            completion?.Invoke(false);
+            return;
+        }
+        startPosCaptureInProgress = true;
+        // A Set freezes the game thread for a full clone. Nothing speculative should be
+        // reading a snapshot file or allocating a document graph across that window.
+        AkronStartPosPersistence.CancelPrewarm();
+
         AkronSaveLoadResult saveResult = AkronSaveLoadResult.Failed;
         Stopwatch captureTimer = Stopwatch.StartNew();
         StartPosPlayerSnapshot playerSnapshot = null;
         Vector2? originalRespawnPoint = level.Session.RespawnPoint;
         Vector2 clampedPosition = ClampToRoom(level, position);
+
+        // Park whatever this slot already holds before the capture overwrites it. Every
+        // exit below either commits the replacement or restores what was parked.
+        StartPosRollback rollback = BeginStartPosRollback(slot, stateSlotName, out bool ownsRollback);
+        if (!ownsRollback) {
+            // One runtime slot cannot safely hold two captures while the first capture's
+            // restart copy still owns its rollback. Refuse the second Set before it
+            // mutates the shared runtime state or rollback record.
+            startPosCaptureInProgress = false;
+            Engine.Scene?.Add(new AkronToast("StartPos " + slot + " is still finishing its restart copy."));
+            completion?.Invoke(false);
+            return;
+        }
 
         try {
             if (useSpawnConfig && level.Tracker.GetEntity<Player>() is Player player) {
@@ -105,6 +327,10 @@ public static partial class AkronActions {
             }
         } catch {
             startPosCaptureInProgress = false;
+            // The capture threw, so nothing was published yet and the throw is the report.
+            if (ownsRollback) {
+                RestoreStartPosRollback(fileSlot, slot, null, stateSlotName, reason: null);
+            }
             completion?.Invoke(false);
             throw;
         } finally {
@@ -116,13 +342,20 @@ public static partial class AkronActions {
 
         if (saveResult != AkronSaveLoadResult.Success) {
             startPosCaptureInProgress = false;
+            // Nothing was published, and the toast below already names the failure.
+            if (ownsRollback) {
+                RestoreStartPosRollback(fileSlot, slot, null, stateSlotName, reason: null);
+            }
             Engine.Scene?.Add(new AkronToast("StartPos capture failed: " + saveResult + "."));
             completion?.Invoke(false);
             return;
         }
 
+        // Preparing the capture may have moved older slots to disk. Report that only once this capture has
+        // succeeded, so an exception or refused save does not emit an eviction notice as if Set completed.
+        ReportDroppedWarmStartPosSlots(droppedWarmSlots, droppedWarmBytes);
         captureTimer.Stop();
-        Logger.Log(LogLevel.Info, nameof(AkronActions),
+        AkronLog.Diagnostic(nameof(AkronActions),
             "StartPos warm capture finished in " +
             captureTimer.Elapsed.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture) + " ms.");
 
@@ -136,32 +369,79 @@ public static partial class AkronActions {
             Facing = useSpawnConfig ? AkronModule.Settings.StartPosConfiguredFacing : AkronStartPosFacing.Current,
             Idle = useSpawnConfig && AkronModule.Settings.StartPosConfiguredIdle,
             Grab = useSpawnConfig && AkronModule.Settings.StartPosConfiguredGrab,
+            ProfileId = GetCurrentStartPosProfileId(),
             StateSlotName = stateSlotName
         };
-        PublishPendingStartPos(fileSlot, slot, startPos);
-        startPosCaptureInProgress = false;
-        long persistenceGeneration = AkronStartPosPersistence.Enqueue(
-            fileSlot,
-            saveData,
-            slot,
-            startPos,
-            stateSlotName);
-        if (persistenceGeneration == 0) {
-            const string persistenceError = "StartPos was captured in memory, but its restart copy could not start.";
-            Logger.Log(LogLevel.Warn, nameof(AkronActions), persistenceError);
-            Engine.Scene?.Add(new AkronToast(persistenceError));
-        } else {
-            Engine.Scene?.Add(new AkronToast(toast));
+        long persistenceGeneration;
+        try {
+            PublishPendingStartPos(fileSlot, slot, startPos);
+            rollback.PublishedEntry = startPos;
+            startPosCaptureInProgress = false;
+            // No save file means the metadata half of a restart copy can never be
+            // written, so the copy cannot start and the Set below is rolled back.
+            persistenceGeneration = AkronModule.SaveData == null
+                ? 0
+                : AkronStartPosPersistence.Enqueue(fileSlot, slot, startPos, stateSlotName);
+        } catch {
+            // Publishing and queueing are what hand this Set to the completion that would
+            // otherwise own the rollback. A throw here means no completion will ever run,
+            // so the parked state has to be put back now or it stays retained and a later
+            // Set on this slot would inherit a record it does not own. The throw itself is
+            // the report.
+            startPosCaptureInProgress = false;
+            if (ownsRollback) {
+                RestoreStartPosRollback(fileSlot, slot, startPos, stateSlotName, reason: null);
+            }
+            completion?.Invoke(false);
+            throw;
         }
+        if (persistenceGeneration == 0) {
+            // No restart copy will ever be produced for this capture, so the slot
+            // cannot survive leaving the map. Roll the Set back now instead of handing
+            // back a StartPos that stops working without explanation later.
+            RollBackFailedStartPos(fileSlot, slot, startPos, "its restart copy could not start");
+            completion?.Invoke(false);
+            return;
+        }
+
+        // Run after the Set is published, so this capture counts as pending and is never
+        // the clone dropped to pay for itself.
+        TrimWarmStartPosSlotsAndReport();
+
+        Engine.Scene?.Add(new AkronToast(toast));
         completion?.Invoke(true);
         if (!useSpawnConfig) {
             StartPosFrameGeneration++;
         }
     }
 
+    // Drops the coldest warm clones the memory budget can no longer pay for, and says so
+    // when it does. A dropped clone is not a lost slot - it loads from its restart copy
+    // instead of from memory - but the player is about to notice one slot taking seconds
+    // where the others are instant, so the toast explains it rather than leaving them to
+    // wonder which slots went slow and why.
+    private static void TrimWarmStartPosSlotsAndReport() {
+        int droppedWarmSlots = AkronSaveLoadService.TrimWarmStartPosSlots(out long droppedBytes);
+        ReportDroppedWarmStartPosSlots(droppedWarmSlots, droppedBytes);
+    }
+
+    private static void ReportDroppedWarmStartPosSlots(int droppedWarmSlots, long droppedBytes) {
+        if (droppedWarmSlots == 0) {
+            return;
+        }
+
+        Engine.Scene?.Add(new AkronToast(
+            droppedWarmSlots.ToString(CultureInfo.InvariantCulture) +
+            (droppedWarmSlots == 1 ? " StartPos slot on this map is" : " StartPos slots on this map are") +
+            " no longer held in memory (" +
+            (droppedBytes / (1024d * 1024d)).ToString("F0", CultureInfo.InvariantCulture) +
+            " MB). " +
+            (droppedWarmSlots == 1 ? "It still loads, from disk." : "They still load, from disk.")));
+    }
+
     internal static void CompletePersistentStartPosCapture(
         int fileSlot,
-        AkronModuleSaveData saveData,
+        string profileId,
         int slot,
         AkronStartPos startPos,
         string stateSlotName,
@@ -172,16 +452,22 @@ public static partial class AkronActions {
         TimeSpan elapsed
     ) {
         if (!AkronStartPosPersistence.IsCurrent(stateSlotName, generation)) {
-            return;
-        }
-        if (!IsOriginatingSaveFileActive(fileSlot, saveData)) {
-            Logger.Log(LogLevel.Warn, nameof(AkronActions),
-                "StartPos restart copy was discarded because the active save file changed.");
+            // A newer Set already owns this slot and published its own pending entry.
+            // That generation owns the outcome; clearing anything here would destroy
+            // state that is still being written.
             return;
         }
 
         AkronStartPosReconstruction.PreparedSnapshotInstall installedSnapshot = null;
+        bool committed = false;
+        bool previousMetadataLost = false;
+        string failureReason = null;
         try {
+            if (!IsOriginatingSaveFileActive(fileSlot, profileId)) {
+                failureReason = "the save file it belongs to is no longer open";
+                return;
+            }
+
             if (persistResult == AkronSaveLoadResult.Success) {
                 installedSnapshot = AkronStartPosReconstruction.PrepareSnapshotInstall(
                     stateSlotName,
@@ -193,27 +479,142 @@ public static partial class AkronActions {
             }
 
             if (persistResult != AkronSaveLoadResult.Success) {
-                string message = "StartPos is ready in memory, but its restart copy failed" +
-                                 (string.IsNullOrWhiteSpace(persistError) ? "." : ": " + persistError);
-                Logger.Log(LogLevel.Warn, nameof(AkronActions), message);
-                Engine.Scene?.Add(new AkronToast(message));
+                failureReason = string.IsNullOrWhiteSpace(persistError)
+                    ? "the restart copy failed"
+                    : persistError;
                 return;
             }
 
-            if (!PersistStartPos(slot, startPos, fileSlot, saveData)) {
-                const string message = "StartPos is ready in memory, but its restart metadata could not be saved.";
-                Logger.Log(LogLevel.Warn, nameof(AkronActions), message);
-                Engine.Scene?.Add(new AkronToast(message));
+            if (!PersistStartPos(slot, startPos, fileSlot, out previousMetadataLost)) {
+                failureReason = "its restart metadata could not be saved";
                 return;
             }
 
+            // Commit order: the snapshot file is in place, its metadata is written, and
+            // only then does the install stop being reversible. Everything from here to
+            // the end of the block runs on the game thread without an engine boundary, so
+            // nothing can observe the slot half-committed.
             installedSnapshot.Commit();
             RemovePendingStartPos(fileSlot, slot, startPos);
-            Logger.Log(LogLevel.Debug, nameof(AkronActions),
+            ReleaseStartPosRollback(stateSlotName);
+            committed = true;
+            AkronLog.Diagnostic(nameof(AkronActions),
                 "Restart-safe StartPos copy finished in " +
                 elapsed.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture) + " ms.");
+            // This slot has just become droppable, and it may be the first one that is.
+            // A player who sets slot after slot without pausing leaves every clone
+            // pending, so the Set-time trim has nothing it is allowed to drop and the
+            // population sits over budget until something makes a slot droppable again.
+            // This is that moment, so the trim runs here too rather than waiting for a
+            // Set that may not come.
+            TrimWarmStartPosSlotsAndReport();
         } finally {
-            installedSnapshot?.Dispose();
+            try {
+                // Dispose rolls the staged install back, so it has to run before the
+                // slot state is deleted. The rollback reports its own file-move
+                // failures rather than throwing them, so nothing here throws today;
+                // the nested finally is what keeps the cleanup below reachable
+                // without this method having to depend on that.
+                installedSnapshot?.Dispose();
+            } finally {
+                // Every exit except the committed one leaves this slot without the restart
+                // copy this Set was making; what it keeps is whatever it had before, put
+                // back above. Rolling back from the finally rather than from each exit is
+                // what keeps a future exit path from reintroducing an unloadable pending
+                // entry.
+                if (!committed) {
+                    // Read after Dispose, because Dispose is where the rollback of a
+                    // staged install that did land runs, and a rollback that could not
+                    // put the previous snapshot back changes what this slot is left with.
+                    RollBackFailedStartPos(
+                        fileSlot,
+                        slot,
+                        startPos,
+                        failureReason ?? "the restart copy did not finish",
+                        installedSnapshot?.PreviousSnapshotLost == true || previousMetadataLost);
+                }
+            }
+        }
+    }
+
+    // The single failure exit for a Set. Which of the two outcomes applies is decided by
+    // what the slot held when the Set began, recorded then rather than re-derived now: by
+    // this point the new capture has already replaced the in-memory state, so "was this
+    // slot occupied" no longer has a truthful answer.
+    //
+    //  - the slot held a StartPos: it keeps its previous metadata, warm clone, fresh-room
+    //    baseline and snapshot, and stays loadable. The failed Set is the no-op.
+    //  - the slot was empty: it ends up empty again, reported with the reason.
+    //
+    // previousDurableStateLost is the one exception to the first outcome. A staged
+    // snapshot install can fail to put the previous snapshot back, and a metadata write
+    // can fail to republish the exact previous bytes. Either leaves the slot with only
+    // its in-memory state for this session.
+    private static void RollBackFailedStartPos(
+        int fileSlot,
+        int slot,
+        AkronStartPos startPos,
+        string reason,
+        bool previousDurableStateLost = false
+    ) {
+        string stateSlotName = startPos?.StateSlotName;
+        if (!string.IsNullOrWhiteSpace(stateSlotName) &&
+            StartPosRollbacks.TryGetValue(stateSlotName, out StartPosRollback rollback) &&
+            rollback.HadCommittedState) {
+            RestoreStartPosRollback(fileSlot, slot, startPos, stateSlotName, reason, previousDurableStateLost);
+            return;
+        }
+
+        // Nothing to keep. Release the parked handles here so the discard below stays a
+        // plain removal of a slot that never had committed state.
+        ReleaseStartPosRollback(stateSlotName);
+        DiscardFailedStartPos(fileSlot, slot, startPos, reason);
+    }
+
+    // A StartPos whose restart copy failed has no durable state. It keeps working from
+    // its memory clone until the player leaves the map, then stops with no explanation.
+    // Removing it here, while the player can still act on it, is the only honest
+    // outcome: the alternative is a slot that silently lies about being saved.
+    //
+    // Only reached for a slot that had no committed state when the Set began, so there is
+    // nothing here worth preserving. A Set over an occupied slot rolls back instead.
+    private static void DiscardFailedStartPos(
+        int fileSlot,
+        int slot,
+        AkronStartPos startPos,
+        string reason
+    ) {
+        if (startPos == null) {
+            return;
+        }
+
+        int normalizedSlot = NormalizePositionSlot(slot);
+        RemovePendingStartPos(fileSlot, slot, startPos);
+        CancelStartPosPersistence(startPos.StateSlotName);
+        // Drops the memory clone, its fresh-room baseline and any snapshot left on this
+        // slot name. Keeping a snapshot would pair it with newer position metadata, which
+        // is exactly the mismatch the load path must never see.
+        AkronSaveLoadService.ClearRuntimeState(startPos.StateSlotName);
+
+        if (IsOriginatingSaveFileActive(fileSlot, startPos.ProfileId)) {
+            RemovePersistedStartPos(NormalizeAreaSid(startPos.AreaSid), normalizedSlot);
+            AkronModuleSession session = AkronModule.TryGetSession();
+            if (session?.StartPositions != null &&
+                session.StartPositions.TryGetValue(normalizedSlot, out AkronStartPos current) &&
+                string.Equals(current?.StateSlotName, startPos.StateSlotName, StringComparison.Ordinal)) {
+                session.StartPositions.Remove(normalizedSlot);
+                MarkStartPosCatalogChanged();
+            }
+            if (session != null && session.LastLoadedStartPosSlot == normalizedSlot) {
+                session.LastLoadedStartPosSlot = 0;
+            }
+        }
+
+        string message = "StartPos " + normalizedSlot.ToString(CultureInfo.InvariantCulture) +
+                         " was removed because " + reason + ". Set it again.";
+        AkronLog.Warn(nameof(AkronActions), message);
+        if (AkronModule.Instance != null) {
+            Engine.Scene?.Add(new AkronToast(message));
         }
     }
 
@@ -223,7 +624,7 @@ public static partial class AkronActions {
             return;
         }
 
-        string pendingKey = BuildPendingStartPosKey(fileSlot, areaSid);
+        string pendingKey = BuildPendingStartPosKey(fileSlot, areaSid, startPos.ProfileId);
         if (!PendingStartPositionsByFileAndMap.TryGetValue(pendingKey, out Dictionary<int, AkronStartPos> pending)) {
             pending = new Dictionary<int, AkronStartPos>();
             PendingStartPositionsByFileAndMap[pendingKey] = pending;
@@ -234,12 +635,13 @@ public static partial class AkronActions {
             AkronModule.Session.LoadedStartPositionsAreaSid = areaSid;
             AkronModule.Session.StartPositions ??= new Dictionary<int, AkronStartPos>();
             AkronModule.Session.StartPositions[normalizedSlot] = startPos;
+            MarkStartPosCatalogChanged();
         }
     }
 
     private static void RemovePendingStartPos(int fileSlot, int slot, AkronStartPos startPos) {
         string areaSid = NormalizeAreaSid(startPos?.AreaSid);
-        string pendingKey = BuildPendingStartPosKey(fileSlot, areaSid);
+        string pendingKey = BuildPendingStartPosKey(fileSlot, areaSid, startPos?.ProfileId);
         int normalizedSlot = NormalizePositionSlot(slot);
         if (!PendingStartPositionsByFileAndMap.TryGetValue(pendingKey, out Dictionary<int, AkronStartPos> pending) ||
             !pending.TryGetValue(normalizedSlot, out AkronStartPos current) ||
@@ -274,8 +676,41 @@ public static partial class AkronActions {
                 string.Equals(startPos?.StateSlotName, stateSlotName, StringComparison.Ordinal)));
     }
 
+    // How many Sets are still waiting for a restart copy, across every save file and map
+    // this run has touched.
+    //
+    // A Set publishes its slot and returns as soon as the warm clone exists. The restart
+    // copy behind it runs on a worker that parks at its next pace point once the player is
+    // in control of the game, so on a session with no pause, no chapter change and no input
+    // wait, a slot reads as set and works for hours with nothing on disk - measured at
+    // twenty-five minutes of play on the Windows test machine, with three copies landing
+    // the moment the game was paused.
+    //
+    // Quitting is bounded rather than complete: it opens the gate, spends a few seconds on
+    // the queue at full speed, and reports per slot the copies it then cancels. A worker
+    // that outlives the cancel budget as well leaves its remaining slots unreported. A
+    // crash or a kill runs none of that.
+    //
+    // One slot waiting is ordinary. A number that only grows while the player keeps
+    // playing is the pacing gate holding the whole queue, which is what the per-slot
+    // answer cannot show.
+    internal static int PendingStartPosStateCount {
+        get {
+            int pendingCount = 0;
+            foreach (Dictionary<int, AkronStartPos> pending in PendingStartPositionsByFileAndMap.Values) {
+                pendingCount += pending.Count;
+            }
+            return pendingCount;
+        }
+    }
+
     internal static void ClearPendingStartPosState() {
         PendingStartPositionsByFileAndMap.Clear();
+        // Shutdown and module unload abandon every in-flight Set, so nothing will ever run
+        // their rollbacks. Release the parked clones instead of leaving them retained.
+        foreach (string stateSlotName in StartPosRollbacks.Keys.ToArray()) {
+            ReleaseStartPosRollback(stateSlotName);
+        }
         startPosCaptureInProgress = false;
     }
 
@@ -314,6 +749,82 @@ public static partial class AkronActions {
         }
     }
 
+    // Every StartPos slot set before the snapshot format was bumped disappears from the
+    // slot list rather than failing to load: BuildRuntimeStartPositions keeps only slots
+    // HasRuntimeState answers for, and a slot whose restart copy is under the previous
+    // format's name has none. So the message a player actually gets after an update is
+    // this one, not the one on the load path, and "No StartPos saved in slot 3" would
+    // send them looking for a slot they know they set.
+    //
+    // The catalog is what says the slot was set, not the leftover file. Both answer
+    // today, but only the catalog keeps answering: the superseded file is swept once
+    // nothing can read it, and evidence that a player set a slot cannot live in a file
+    // this build intends to delete. The catalog also survives the next bump, and every
+    // one after it, for free.
+    //
+    // The catalog carries the reason as well as the fact, because the entry records the
+    // format its state was written under. That is what separates the two sentences
+    // below. A slot emptied by a format move is named as one, which is the sentence
+    // worth showing: it says what happened and what to do. A slot whose state went
+    // missing with the format unchanged - a file deleted by hand, a backup restored
+    // over the folder, a write that never landed - gets a sentence that claims nothing
+    // about the cause, because there is nothing here that knows it.
+    internal static string DescribeMissingStartPos(Level level, int slot) {
+        return DescribeMissingStartPos(slot, GetPersistedStartPositions(GetAreaSid(level)));
+    }
+
+    internal static string DescribeMissingStartPos(
+        int slot,
+        IReadOnlyDictionary<int, AkronPersistedStartPos> persisted
+    ) {
+        if (persisted == null ||
+            !persisted.TryGetValue(NormalizePositionSlot(slot), out AkronPersistedStartPos entry)) {
+            return "No StartPos saved in slot " + slot.ToString(CultureInfo.InvariantCulture) + ".";
+        }
+
+        return WasSavedByAnOlderAkron(entry)
+            ? "StartPos " + slot.ToString(CultureInfo.InvariantCulture) +
+              " was saved by an older Akron that built rooms differently, so it cannot be loaded. Set it again."
+            : "StartPos " + slot.ToString(CultureInfo.InvariantCulture) +
+              " was set, but the state behind it is missing. Set it again.";
+    }
+
+    // True when the slot's room state was written under a saved-state format older than
+    // the one this build reads, which is the one cause of an emptied slot this build can
+    // name with certainty: such a state sits under a file name this build never builds,
+    // and would be refused at the header even if it did.
+    //
+    // Compared as a number rather than for equality on purpose. A slot written by a
+    // newer build the player has since downgraded from is unreadable here too, and the
+    // sweep deliberately leaves its file alone; calling that slot older would be wrong
+    // in the one direction this message must never be wrong in.
+    private static bool WasSavedByAnOlderAkron(AkronPersistedStartPos entry) {
+        return entry != null &&
+               ReadSnapshotFormatVersion(entry.SnapshotFormat) <
+               ReadSnapshotFormatVersion(AkronReconstructionDocument.CurrentFormat);
+    }
+
+    // The trailing number in a saved-state format name: "akron-reconstruction-v9" is 9.
+    // Read out of the name rather than written down so a format move needs no edit here.
+    //
+    // A name with no trailing number reads as 0, which is where an entry written before
+    // the format was recorded lands. That is the right answer for it: the field arrived
+    // in the release that moved the format, so anything without one is older.
+    private static int ReadSnapshotFormatVersion(string format) {
+        int end = format?.Length ?? 0;
+        int start = end;
+        while (start > 0 && format[start - 1] >= '0' && format[start - 1] <= '9') {
+            start--;
+        }
+
+        // Bounded so a hand-edited name carrying a long run of digits cannot overflow
+        // the comparison into reading as some other version.
+        int digits = end - start;
+        return digits > 0 && digits <= 9
+            ? int.Parse(format.AsSpan(start, digits), NumberStyles.None, CultureInfo.InvariantCulture)
+            : 0;
+    }
+
     public static void LoadStartPos(Level level) {
         if (level == null || !AkronModule.TryUse(AkronFeatureKind.StartPosTools)) {
             return;
@@ -326,7 +837,7 @@ public static partial class AkronActions {
         int slot = AkronModule.Settings.ActiveStartPosSlot;
         AkronStartPos startPos = GetStartPos(slot);
         if (startPos == null) {
-            Engine.Scene?.Add(new AkronToast("No StartPos saved in slot " + AkronModule.Settings.ActiveStartPosSlot + "."));
+            Engine.Scene?.Add(new AkronToast(DescribeMissingStartPos(level, slot)));
             return;
         }
         if (!IsStartPosInArea(startPos, level.Session.Area.GetSID())) {
@@ -335,10 +846,14 @@ public static partial class AkronActions {
         }
 
         AkronModule.ScheduleAfterStableEngineUpdate(() => {
+            // The load runs one engine boundary after the key press. Both of these
+            // used to return silently, which is indistinguishable from a dead hotkey.
             if (Engine.Scene != level) {
+                Engine.Scene?.Add(new AkronToast("StartPos " + slot + " was not loaded: the scene changed."));
                 return;
             }
             if (startPosCaptureInProgress) {
+                Engine.Scene?.Add(new AkronToast("StartPos " + slot + " was not loaded: a capture is still finishing."));
                 return;
             }
 
@@ -377,7 +892,7 @@ public static partial class AkronActions {
         string areaSid = GetLoadedAreaSid();
         int fileSlot = GetCurrentFileSlot();
         string pendingKey = BuildPendingStartPosKey(fileSlot, areaSid);
-        AkronStartPosPersistence.Cancel(GetStartPosStateSlotName(areaSid, clampedSlot, fileSlot));
+        CancelStartPosPersistence(GetStartPosStateSlotName(areaSid, clampedSlot, fileSlot));
         if (PendingStartPositionsByFileAndMap.TryGetValue(pendingKey, out Dictionary<int, AkronStartPos> pending)) {
             pending.Remove(clampedSlot);
             if (pending.Count == 0) {
@@ -389,11 +904,37 @@ public static partial class AkronActions {
             AkronSaveLoadService.ClearRuntimeState(startPos.StateSlotName);
         }
         AkronModule.Session.StartPositions.Remove(clampedSlot);
+        MarkStartPosCatalogChanged();
         RemovePersistedStartPos(areaSid, clampedSlot);
         if (AkronModule.Session.LastLoadedStartPosSlot == clampedSlot) {
             AkronModule.Session.LastLoadedStartPosSlot = 0;
         }
         Engine.Scene?.Add(new AkronToast("StartPos " + clampedSlot + " cleared."));
+    }
+
+    // The same hole DescribeMissingStartPos covers, one map up. A snapshot format bump
+    // drops every slot on the map from the list at once, so Previous and Next find no
+    // entries at all, and "No StartPos entries in this chapter." is what a player with a
+    // map full of slots is told. The persisted metadata is what the bump does not touch,
+    // so it is what can tell an emptied map apart from one that never had a slot.
+    //
+    // The format move is named only when every slot on the map was written under an
+    // older format, which is what a move actually does: it takes the whole map at once.
+    // One slot on the map that lost its state some other way makes the sentence false
+    // for that slot, and this sentence covers them together, so a mixed map gets the one
+    // that claims nothing about the cause.
+    internal static string DescribeEmptyStartPosList(Level level) {
+        return DescribeEmptyStartPosList(GetPersistedStartPositions(GetAreaSid(level)));
+    }
+
+    internal static string DescribeEmptyStartPosList(IReadOnlyDictionary<int, AkronPersistedStartPos> persisted) {
+        if (persisted == null || persisted.Count == 0) {
+            return "No StartPos entries in this chapter.";
+        }
+
+        return persisted.Values.All(WasSavedByAnOlderAkron)
+            ? "This chapter's StartPos slots were saved by an older Akron that built rooms differently. Set them again."
+            : "This chapter's StartPos slots were set, but the states behind them are missing. Set them again.";
     }
 
     public static void ShiftStartPos(Level level, int delta) {
@@ -403,7 +944,7 @@ public static partial class AkronActions {
 
         IReadOnlyList<AkronStartPosEntry> entries = GetStartPositions(level);
         if (entries.Count == 0) {
-            Engine.Scene?.Add(new AkronToast("No StartPos entries in this chapter."));
+            Engine.Scene?.Add(new AkronToast(DescribeEmptyStartPosList(level)));
             return;
         }
 
@@ -434,8 +975,19 @@ public static partial class AkronActions {
 
         EnsureStartPositionsLoaded(level);
         string areaSid = GetAreaSid(level);
+        long runtimeRevision = AkronSaveLoadService.RuntimeStateRevision;
+        long snapshotRevision = AkronStartPosReconstruction.SnapshotExistenceRevision;
+        if (cachedStartPosList != null &&
+            ReferenceEquals(cachedStartPosListSession, AkronModule.Session) &&
+            string.Equals(cachedStartPosListAreaSid, areaSid, StringComparison.Ordinal) &&
+            cachedStartPosListCatalogRevision == startPosCatalogRevision &&
+            cachedStartPosListRuntimeRevision == runtimeRevision &&
+            cachedStartPosListSnapshotRevision == snapshotRevision) {
+            return cachedStartPosList;
+        }
+
         Dictionary<string, int> roomOrder = BuildRoomOrder(level);
-        return AkronModule.Session.StartPositions
+        List<AkronStartPosEntry> entries = AkronModule.Session.StartPositions
             .Where(pair => IsStartPosInArea(pair.Value, areaSid))
             .OrderBy(pair => RoomSortIndex(roomOrder, pair.Value.Room))
             .ThenBy(pair => pair.Value.Position.X)
@@ -443,6 +995,16 @@ public static partial class AkronActions {
             .ThenBy(pair => pair.Key)
             .Select(pair => new AkronStartPosEntry(NormalizePositionSlot(pair.Key), pair.Value))
             .ToList();
+
+        // Callers now share one instance, so hand out a read-only view instead of the
+        // list the cache holds.
+        cachedStartPosList = new ReadOnlyCollection<AkronStartPosEntry>(entries);
+        cachedStartPosListSession = AkronModule.Session;
+        cachedStartPosListAreaSid = areaSid;
+        cachedStartPosListCatalogRevision = startPosCatalogRevision;
+        cachedStartPosListRuntimeRevision = runtimeRevision;
+        cachedStartPosListSnapshotRevision = snapshotRevision;
+        return cachedStartPosList;
     }
 
     public static string DescribeStartPosIndex(Level level) {
@@ -451,7 +1013,13 @@ public static partial class AkronActions {
             return "0/0";
         }
 
-        int index = entries.ToList().FindIndex(entry => entry.Slot == AkronModule.Settings.ActiveStartPosSlot);
+        int index = -1;
+        for (int candidate = 0; candidate < entries.Count; candidate++) {
+            if (entries[candidate].Slot == AkronModule.Settings.ActiveStartPosSlot) {
+                index = candidate;
+                break;
+            }
+        }
         return (index >= 0 ? index + 1 : 0) + "/" + entries.Count;
     }
 
@@ -495,119 +1063,336 @@ public static partial class AkronActions {
         });
     }
 
+    // The deferred engine boundary that runs a StartPos load catches and logs every
+    // exception (AkronModule.RunAfterEngineUpdateActions). Without this wrapper a
+    // throwing restore is a several-second freeze followed by nothing at all, with no
+    // message anywhere the player can see.
     private static bool RestoreStartPos(Level level, AkronStartPos startPos, string toast, int loadedSlot = 0, bool endPlacementForLoad = true) {
+        try {
+            return RestoreStartPosCore(level, startPos, toast, loadedSlot, endPlacementForLoad);
+        } catch (Exception exception) {
+            // A saved type that will not load is refused while the document is walked,
+            // which happens outside the reconstruction graph's own handlers, so this is
+            // where an uninstalled mod's refusal arrives. It carries the type it refused
+            // and what the refusal is about, and the player message is built from both
+            // exactly as for a returned failure.
+            AkronReconstructionException refusal = exception as AkronReconstructionException;
+            ReportStartPosLoadFailure(
+                loadedSlot,
+                exception.GetType().Name + ": " + exception.Message,
+                refusal?.RefusedTypeName ?? string.Empty,
+                refusal?.RefusedKind ?? AkronReconstructionRefusalKind.SavedObject);
+            return false;
+        }
+    }
+
+    // Restore failures reach the player through a toast, and reconstruction errors carry
+    // full graph paths. Keep the whole reason in the log and a readable head in the toast.
+    //
+    // refusedTypeName is set only when the reconstruction graph refused a saved object,
+    // and refusedKind says what that refusal was about. Between them the toast says which
+    // mod the object came from, or that the room's map has changed, and what to do about
+    // it - because the graph's own text, a path ten levels deep and thirty authenticity
+    // flags, is written for whoever reads the log and the player cannot act on any of it.
+    // The log keeps both: the full reason, then the sentence that went on screen.
+    //
+    // Neither parameter has a default. Both call sites hold a real kind, and a default
+    // would let a future one report a map change as a missing mod without saying so.
+    private static void ReportStartPosLoadFailure(
+        int loadedSlot,
+        string reason,
+        string refusedTypeName,
+        AkronReconstructionRefusalKind refusedKind
+    ) {
+        string slotLabel = loadedSlot > 0
+            ? "StartPos " + loadedSlot.ToString(CultureInfo.InvariantCulture)
+            : "StartPos";
+        string message = slotLabel + " could not be loaded: " + reason;
+        AkronLog.Warn(nameof(AkronActions), message);
+
+        string refusal = AkronStartPosRefusal.Describe(slotLabel, refusedTypeName, refusedKind);
+        if (refusal != null) {
+            AkronLog.Warn(nameof(AkronActions), slotLabel + " load message shown: " + refusal);
+        }
+        // The cap covers the refusal sentence too, not only the diagnostic text. A type
+        // name comes out of a snapshot file and the reader allows strings into the
+        // megabytes, so a corrupt or hostile one would otherwise put all of it on screen.
+        string toast = refusal ?? message;
+        Engine.Scene?.Add(new AkronToast(
+            toast.Length <= MaxStartPosFailureToastLength
+                ? toast
+                : toast.Substring(0, MaxStartPosFailureToastLength) + "... (see akron-current.log)"));
+    }
+
+    private static string DescribeRestoreFailure(AkronSaveLoadResult result) {
+        string detail = AkronSaveLoadService.LastPersistentSnapshotError;
+        if (!string.IsNullOrWhiteSpace(detail)) {
+            return detail;
+        }
+
+        return result switch {
+            AkronSaveLoadResult.NoState => "no saved state remains for this slot",
+            AkronSaveLoadResult.Blocked =>
+                "the game is paused, transitioning, or in a cutscene",
+            AkronSaveLoadResult.SessionMismatch =>
+                "the saved state belongs to a different map or save file",
+            AkronSaveLoadResult.BrokerUnavailable => "the savestate broker is unavailable",
+            _ => "the saved state could not be rebuilt"
+        };
+    }
+
+    private static bool RestoreStartPosCore(Level level, AkronStartPos startPos, string toast, int loadedSlot, bool endPlacementForLoad) {
         ClearStartPosInputWait();
         bool restoreRespawnAtStartPos = AkronModule.Settings.RespawnAtStartPos;
-        Dictionary<string, AkronPersistedStartPosMap> startPosCatalogSnapshot =
-            AkronModule.Instance == null
-                ? null
-                : SnapshotStartPosCatalog(AkronModule.SaveData?.StartPositionsByMap);
         AkronModule.Settings.RespawnAtStartPos = false;
         try {
-            if (endPlacementForLoad && !AkronModule.EndStartPosPlacementForLoad()) {
-                AkronModule.Settings.StartPosMousePlacement = false;
-            }
-            bool wasInMemory = AkronSaveLoadService.HasRuntimeStateInMemory(startPos.StateSlotName);
-            Stopwatch restoreTimer = Stopwatch.StartNew();
-            AkronSaveLoadResult restored;
-            try {
-                restored = AkronSaveLoadService.LoadRuntimeState(level, startPos.StateSlotName, allowDeadPlayer: true);
-            } finally {
-                // Module save data is part of the gameplay rewind. The StartPos
-                // catalog is not: it can contain slots created after this
-                // snapshot, and those newer entries must remain loadable.
-                RestoreStartPosCatalog(
-                    AkronModule.Instance == null ? null : AkronModule.SaveData,
-                    startPosCatalogSnapshot);
-            }
-            restoreTimer.Stop();
-            if (restored != AkronSaveLoadResult.Success) {
-                string detail = AkronSaveLoadService.LastPersistentSnapshotError;
-                string message = "StartPos state restore failed: " + restored +
-                                 (string.IsNullOrWhiteSpace(detail) ? "." : " at " + detail);
-                Logger.Log(LogLevel.Warn, nameof(AkronActions), message);
-                Engine.Scene?.Add(new AkronToast(message));
+            if (!RestoreStartPosUnderPacingGate(level, startPos, toast, loadedSlot, endPlacementForLoad)) {
                 return false;
             }
-            Logger.Log(LogLevel.Info, nameof(AkronActions),
-                "StartPos " + (wasInMemory ? "warm" : "cold") + " restore finished in " +
-                restoreTimer.Elapsed.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture) + " ms.");
-
-            Level currentLevel = Engine.Scene as Level ?? level;
-            RelinkRuntimeRenderState(currentLevel);
-            StartPosFrameGeneration++;
-
-            // The room snapshot contains the Akron session from its Set boundary. Rebuild the
-            // cumulative slot registry from persisted metadata so loading an older slot cannot
-            // erase slots that the player created later.
-            LoadStartPositionsForLevel(currentLevel);
-            if (loadedSlot > 0) {
-                AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;
-            }
-            if (!string.IsNullOrWhiteSpace(toast)) {
-                Engine.Scene?.Add(new AkronToast(toast));
-            }
+            // The level graph that was live a moment ago is now garbage, and every
+            // death since the last load left Celeste's forced collection unpaid.
+            // Settle it here, while the player is already waiting on a load they
+            // asked for, instead of during the next retry. After the gate hold has
+            // been released, so the prewarm worker stops at its next buffer fill
+            // rather than growing the heap all the way through the collection.
+            AkronEngineGarbageCollection.CollectDeferred();
         } finally {
             AkronModule.Settings.RespawnAtStartPos = restoreRespawnAtStartPos;
         }
 
+        // Queued after the load, never inside it. Measured in game on Forsaken City
+        // with four other slots placed, same snapshot files on both builds: queueing
+        // inside the load's frozen window took the first load from 5222.5 +- 21.9 ms
+        // (n=4) to 8220.1 +- 669.5 ms (n=4), +57%, and 69% worse with fifteen slots.
+        // The same build with nothing to queue landed at 5183.3 +- 9.1 ms (n=3), so
+        // every millisecond of that was the speculative reads competing with the
+        // load's own parse rather than anything else the split changed. It is
+        // contention, not waiting: the worker's summary line lands 0.4-0.6 s before
+        // the restore line, and the runtime reports one workstation GC heap, so two
+        // reflection-driven JSON parses allocate into it at once. The cost scaled
+        // with bytes read in the window, 19-27 ms of first-load latency per MB.
+        //
+        // By the time this runs the gate is closed again, so the worker parks at its
+        // first buffer fill and drains where the player is not in control: a pause,
+        // the overworld or chapter select, a StartPos input wait. That converges more
+        // slowly than reading inside the load did, which is the trade - the load the
+        // player is waiting on runs alone.
+        PrewarmOtherStartPosSnapshots(Engine.Scene as Level ?? level, loadedSlot);
         return true;
     }
 
-    internal static Dictionary<string, AkronPersistedStartPosMap> SnapshotStartPosCatalog(
-        Dictionary<string, AkronPersistedStartPosMap> startPositionsByMap
+    // Everything a load does while the game thread is frozen, with the snapshot pacing
+    // gate held open for all of it.
+    //
+    // A load freezes the game thread for seconds: waiting for an outstanding restart
+    // copy, reading the requested snapshot, then unloading and rebuilding the whole
+    // room. The gate is held open so the one restart copy this load is blocked on can
+    // run; nothing speculative is queued in here. Filling the prewarm queue inside this
+    // window cost the first load 51-59% and is now done after the load returns - see
+    // RestoreStartPosCore for the measurements.
+    private static bool RestoreStartPosUnderPacingGate(
+        Level level,
+        AkronStartPos startPos,
+        string toast,
+        int loadedSlot,
+        bool endPlacementForLoad
     ) {
-        Dictionary<string, AkronPersistedStartPosMap> snapshot =
-            new Dictionary<string, AkronPersistedStartPosMap>(
-                startPositionsByMap?.Count ?? 0,
-                StringComparer.Ordinal);
-        if (startPositionsByMap == null) {
-            return snapshot;
+        long prewarmHitsBeforeLoad = AkronStartPosReconstruction.PrewarmedSnapshotHits;
+        // Abandon any speculative read before the gate opens, not after. A read left
+        // over from an earlier load is parked while the player is in control, and
+        // opening the gate would wake it straight into competition with the restart
+        // copy this load is about to block on. A parked read checks the abandon
+        // predicate on its next 25 ms wake, before it re-tests the gate, so opening
+        // the gate underneath it does not release it.
+        //
+        // One narrow case is left, and it is bounded rather than closed: a load
+        // started from the pause menu catches the worker already running, and Pace
+        // has no reason to suspend, so the read only stops at the cancellation the
+        // file stream polls. That is one gzip input buffer of parse - a few hundred
+        // KB decompressed, single-digit milliseconds against a multi-second load.
+        // Closing it completely means testing the abandon predicate on the Pace fast
+        // path, which runs millions of times per capture.
+        AkronStartPosPersistence.CancelPrewarm();
+        using AkronStartPosPersistence.PacingGateHold gate = AkronStartPosPersistence.HoldPacingGateOpen();
+        // A load that cannot come from memory has to come from the restart copy, and the
+        // worker that writes it is stopped for as long as the player is in a level.
+        // Refusing the slot is the worse answer: a Load is not gameplay, it is a pause
+        // the player asked for and already waits seconds through. Finish that one copy
+        // here. Runs before the catalog snapshot below so a completion applied during
+        // the wait is not undone by the restore afterwards.
+        if (!AkronSaveLoadService.WillRestoreFromRuntimeMemory(level, startPos.StateSlotName)) {
+            AkronStartPosPersistence.FinishPendingRestartCopy(startPos.StateSlotName);
+        }
+        Dictionary<string, AkronPersistedStartPosMap> currentStartPositionsByMap =
+            AkronModule.Instance == null ? null : AkronModule.SaveData?.StartPositionsByMap;
+        if (endPlacementForLoad && !AkronModule.EndStartPosPlacementForLoad()) {
+            AkronModule.Settings.StartPosMousePlacement = false;
+        }
+        Stopwatch restoreTimer = Stopwatch.StartNew();
+        AkronSaveLoadResult restored;
+        bool usedSnapshot;
+        try {
+            restored = AkronSaveLoadService.LoadRuntimeState(
+                level, startPos.StateSlotName, allowDeadPlayer: true, out usedSnapshot);
+        } finally {
+            // Module save data is part of the gameplay rewind. The StartPos
+            // catalog is not: it can contain slots created after this
+            // snapshot, and those newer entries must remain loadable.
+            RestoreStartPosCatalog(
+                AkronModule.Instance == null ? null : AkronModule.SaveData,
+                currentStartPositionsByMap);
+        }
+        restoreTimer.Stop();
+        if (restored != AkronSaveLoadResult.Success) {
+            ReportStartPosLoadFailure(
+                loadedSlot,
+                DescribeRestoreFailure(restored),
+                AkronSaveLoadService.LastPersistentSnapshotRefusedTypeName,
+                AkronSaveLoadService.LastPersistentSnapshotRefusedKind);
+            return false;
+        }
+        ReportStartPosRestoreTiming(restoreTimer.Elapsed, usedSnapshot, prewarmHitsBeforeLoad);
+
+        Level currentLevel = Engine.Scene as Level ?? level;
+        RelinkRuntimeRenderState(currentLevel);
+        StartPosFrameGeneration++;
+
+        // The room snapshot contains the Akron session from its Set boundary. Rebuild the
+        // cumulative slot registry from persisted metadata so loading an older slot cannot
+        // erase slots that the player created later.
+        LoadStartPositionsForLevel(currentLevel);
+        if (loadedSlot > 0) {
+            AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;
+        }
+        if (!string.IsNullOrWhiteSpace(toast)) {
+            Engine.Scene?.Add(new AkronToast(toast));
+        }
+        return true;
+    }
+
+    // Once per load, at Diagnostic, which is the default logging level. The prewarm
+    // cache had no log line and no counter at all, so two verification passes could
+    // only guess at whether it had served a load by comparing wall-clock timings, and
+    // a change that silently disabled it would have left every test green.
+    private static void ReportStartPosRestoreTiming(
+        TimeSpan elapsed,
+        bool usedSnapshot,
+        long prewarmHitsBeforeLoad
+    ) {
+        string line = "StartPos " + (usedSnapshot ? "cold" : "warm") + " restore finished in " +
+                      elapsed.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture) + " ms";
+        if (usedSnapshot) {
+            // TryLoadSnapshot is the only thing that takes from the cache and it only
+            // runs on this thread, so a hit counted across the load is this load's.
+            bool servedFromPrewarm =
+                AkronStartPosReconstruction.PrewarmedSnapshotHits > prewarmHitsBeforeLoad;
+            line += servedFromPrewarm
+                ? "; the snapshot came from the prewarm cache"
+                : "; the snapshot was read from disk";
+        }
+        AkronLog.Diagnostic(nameof(AkronActions),
+            line + ". Prewarm holds " +
+            AkronStartPosReconstruction.PrewarmedSnapshotCount.ToString(CultureInfo.InvariantCulture) +
+            " slots, " +
+            (AkronStartPosReconstruction.PrewarmedSnapshotBytes / (1024d * 1024d))
+                .ToString("F1", CultureInfo.InvariantCulture) + " MB of the " +
+            (AkronStartPosReconstruction.MaxPrewarmedSnapshotBytes / (1024d * 1024d))
+                .ToString("F1", CultureInfo.InvariantCulture) + " MB budget.");
+    }
+
+    // A cold load spends most of its time turning the snapshot file into a document:
+    // gzip plus a reflection-driven JSON parse, none of which touches the live scene.
+    // That is the only part of a load that can run ahead of time, so queue every other
+    // placed slot of this map for it. Every slot goes in the queue, not just the ones
+    // near the loaded slot, because the queue costs nothing until the gate opens and a
+    // map that never warms completely is the defect this replaced. The order puts the
+    // nearest slots first, because the budget or the window can run out before the
+    // queue does and the near ones are wanted soonest.
+    private static void PrewarmOtherStartPosSnapshots(Level level, int loadedSlot) {
+        Dictionary<int, AkronStartPos> startPositions = AkronModule.Session?.StartPositions;
+        if (startPositions == null) {
+            AkronStartPosPersistence.CancelPrewarm();
+            return;
         }
 
-        foreach (KeyValuePair<string, AkronPersistedStartPosMap> mapPair in startPositionsByMap) {
-            AkronPersistedStartPosMap map = mapPair.Value;
-            if (map == null) {
-                snapshot[mapPair.Key] = null;
+        List<string> stateSlotNames = new List<string>();
+        // Nearest slot first: after loading slot 4 the next press is far more often 3
+        // or 5 than 1, and the budget can run out before the queue does.
+        foreach (KeyValuePair<int, AkronStartPos> pair in startPositions
+                     .Where(pair => pair.Key != loadedSlot && pair.Value != null)
+                     .OrderBy(pair => Math.Abs(pair.Key - loadedSlot))
+                     .ThenBy(pair => pair.Key)) {
+            string stateSlotName = pair.Value.StateSlotName;
+            // A slot that will still restore from memory never reads its snapshot, and a
+            // slot whose restart copy is still pending is refused before the read. Neither
+            // can use a prewarm. The memory check is session-aware on purpose: a slot left
+            // over from before a chapter re-entry is in memory but is going to be rebuilt
+            // from disk anyway, so it is exactly the one worth prewarming.
+            if (AkronSaveLoadService.WillRestoreFromRuntimeMemory(level, stateSlotName) ||
+                HasPendingStartPosState(stateSlotName) ||
+                !AkronStartPosReconstruction.HasSnapshot(stateSlotName)) {
                 continue;
             }
-
-            Dictionary<int, AkronPersistedStartPos> slots =
-                new Dictionary<int, AkronPersistedStartPos>(map.Slots?.Count ?? 0);
-            if (map.Slots != null) {
-                foreach (KeyValuePair<int, AkronPersistedStartPos> slotPair in map.Slots) {
-                    AkronPersistedStartPos startPos = slotPair.Value;
-                    slots[slotPair.Key] = startPos == null
-                        ? null
-                        : new AkronPersistedStartPos {
-                            X = startPos.X,
-                            Y = startPos.Y,
-                            Room = startPos.Room,
-                            AreaSid = startPos.AreaSid,
-                            UsesSpawnConfig = startPos.UsesSpawnConfig,
-                            Dashes = startPos.Dashes,
-                            StaminaPercent = startPos.StaminaPercent,
-                            Facing = startPos.Facing,
-                            Idle = startPos.Idle,
-                            Grab = startPos.Grab
-                        };
-                }
-            }
-            snapshot[mapPair.Key] = new AkronPersistedStartPosMap { Slots = slots };
+            stateSlotNames.Add(stateSlotName);
         }
+        AkronStartPosPersistence.PrewarmSnapshots(stateSlotNames);
+    }
 
-        return snapshot;
+    // Puts the StartPos catalog back after a savestate load has rewound Akron's module
+    // state, and re-derives the in-session view onto whatever session object came out
+    // of the restore.
+    //
+    // A savestate restore replaces AkronModule._SaveData and AkronModule._Session
+    // wholesale - the native path at RestoreNativeSlot does it, and SpeedrunTool's
+    // SupportModSessionAndSaveData does the same thing through the broker, which is
+    // the path every shipped build actually takes. The StartPos catalog lives in
+    // both: the persisted metadata in _SaveData.StartPositionsByMap and the
+    // in-session view in _Session.StartPositions. Neither is gameplay state. Both can
+    // hold slots created after the savestate was taken, and rewinding them makes
+    // those slots unreachable - measured in game, a slot set after the savestate read
+    // startpos-set: false with its snapshot and metadata both intact on disk, and
+    // only came back at the next process start. Worse, the rewound persisted catalog
+    // is what the next save file write would have persisted.
+    //
+    // The session view is rebuilt rather than carried across, because the session
+    // object itself is replaced by the restore and the view has to land on the new
+    // one. LoadStartPositionsForLevel derives it from the persisted metadata, which
+    // is why the metadata is put back first.
+    internal static void RestoreStartPosCatalogAfterStateLoad(
+        Level level,
+        Dictionary<string, AkronPersistedStartPosMap> catalogBeforeLoad
+    ) {
+        // Caught because the only caller runs this from a finally. A savestate load
+        // that worked must not be reported as failed because the catalog rebuild
+        // stumbled, and a load that threw must report its own exception rather than
+        // this one. Nothing durable is at risk either way: the metadata on disk is
+        // untouched and the next room load rebuilds the same view.
+        try {
+            if (catalogBeforeLoad != null) {
+                RestoreStartPosCatalog(
+                    AkronModule.Instance == null ? null : AkronModule.SaveData,
+                    catalogBeforeLoad);
+            }
+            // The same Level instance survives both restore paths - each copies into
+            // it rather than replacing it in the scene - so this is the level the
+            // rebuilt catalog belongs to.
+            LoadStartPositionsForLevel(level);
+        } catch (Exception exception) {
+            AkronLog.Warn(nameof(AkronActions),
+                "Could not rebuild the StartPos catalog after a savestate load: " + exception);
+        }
     }
 
     internal static void RestoreStartPosCatalog(
         AkronModuleSaveData saveData,
-        Dictionary<string, AkronPersistedStartPosMap> startPosCatalogSnapshot
+        Dictionary<string, AkronPersistedStartPosMap> currentStartPositionsByMap
     ) {
         if (saveData == null) {
             return;
         }
 
-        saveData.StartPositionsByMap = startPosCatalogSnapshot;
+        saveData.StartPositionsByMap = currentStartPositionsByMap ??
+            new Dictionary<string, AkronPersistedStartPosMap>(StringComparer.Ordinal);
     }
 
     internal static void RelinkRuntimeRenderState(Level level) {
@@ -774,12 +1559,25 @@ public static partial class AkronActions {
             return;
         }
 
+        // A room load is the only point where the game can notice that a player edited
+        // the Saves folder from outside. Re-stat there instead of trusting the cache
+        // forever; it costs one stat per slot per room load and nothing per frame.
+        AkronStartPosReconstruction.ResetSnapshotExistenceCache();
+
         string areaSid = GetAreaSid(level);
+        // Prewarmed documents belong to one map and one save-file incarnation. Celeste
+        // reuses a deleted profile's numbered slot, but that replacement profile has
+        // different snapshot names and cannot use anything held for the deleted one.
+        string prewarmScope = BuildPendingStartPosKey(GetCurrentFileSlot(), areaSid);
+        if (!string.Equals(prewarmScope, prewarmedSnapshotScope, StringComparison.Ordinal)) {
+            prewarmedSnapshotScope = prewarmScope;
+            AkronStartPosPersistence.CancelPrewarm();
+            AkronStartPosReconstruction.ResetPrewarmedSnapshots();
+        }
         AkronModule.Session.LoadedStartPositionsAreaSid = areaSid;
-        Dictionary<int, AkronPersistedStartPos> persistedStartPositions = GetPersistedStartPositions(areaSid);
         Dictionary<int, AkronStartPos> startPositions = BuildRuntimeStartPositions(
             areaSid,
-            persistedStartPositions);
+            GetPersistedStartPositions(areaSid));
         string pendingKey = BuildPendingStartPosKey(GetCurrentFileSlot(), areaSid);
         if (PendingStartPositionsByFileAndMap.TryGetValue(pendingKey, out Dictionary<int, AkronStartPos> pending)) {
             foreach (KeyValuePair<int, AkronStartPos> pair in pending) {
@@ -891,7 +1689,7 @@ public static partial class AkronActions {
                     .Distinct()
                     .ToArray();
                 foreach (int pendingSlot in pendingOnlySlots) {
-                    AkronStartPosPersistence.Cancel(GetStartPosStateSlotName(areaSid, pendingSlot, fileSlot));
+                    CancelStartPosPersistence(GetStartPosStateSlotName(areaSid, pendingSlot, fileSlot));
                 }
                 PendingStartPositionsByFileAndMap.Remove(pendingKey);
             }
@@ -1009,7 +1807,7 @@ public static partial class AkronActions {
                 foreach (int pendingSlot in pending.Keys.Select(NormalizePositionSlot).Distinct()) {
                     string stateSlotName = GetStartPosStateSlotName(areaSid, pendingSlot, fileSlot);
                     RunPostCommitCleanup(
-                        () => AkronStartPosPersistence.Cancel(stateSlotName),
+                        () => CancelStartPosPersistence(stateSlotName),
                         "cancel pending slot " + pendingSlot.ToString(CultureInfo.InvariantCulture));
                     if (!deferredCleanupSlots.Contains(pendingSlot)) {
                         RunPostCommitCleanup(
@@ -1027,7 +1825,7 @@ public static partial class AkronActions {
             try {
                 cleanup();
             } catch (Exception exception) {
-                Logger.Log(LogLevel.Warn, nameof(AkronActions),
+                AkronLog.Warn(nameof(AkronActions),
                     "Post-commit StartPos cleanup failed during " + operation + ": " +
                     exception.GetType().Name + ": " + exception.Message);
             }
@@ -1055,12 +1853,17 @@ public static partial class AkronActions {
         int slot,
         AkronStartPos startPos,
         int fileSlot,
-        AkronModuleSaveData saveData
+        out bool previousMetadataLost
     ) {
-        if (startPos == null || !IsOriginatingSaveFileActive(fileSlot, saveData)) {
+        previousMetadataLost = false;
+        if (startPos == null || !IsOriginatingSaveFileActive(fileSlot, startPos.ProfileId)) {
             return false;
         }
 
+        // Whatever object currently owns the file is the one to write into. The Set
+        // that queued this copy read a different instance, and holding on to that
+        // one would write the StartPos into an orphan the game has already replaced.
+        AkronModuleSaveData saveData = AkronModule.SaveData;
         string areaSid = NormalizeAreaSid(startPos.AreaSid);
         if (string.IsNullOrWhiteSpace(areaSid)) {
             return false;
@@ -1074,7 +1877,7 @@ public static partial class AkronActions {
         int normalizedSlot = NormalizePositionSlot(slot);
         bool hadSlot = map.Slots.TryGetValue(normalizedSlot, out AkronPersistedStartPos previousStartPos);
         map.Slots[normalizedSlot] = ToPersistedStartPos(startPos);
-        if (SaveAkronStartPosData()) {
+        if (SaveAkronStartPosData(out previousMetadataLost)) {
             return true;
         }
 
@@ -1116,7 +1919,7 @@ public static partial class AkronActions {
         }
 
         string stateSlotName = GetStartPosStateSlotName(normalizedAreaSid, slot);
-        AkronStartPosPersistence.Cancel(stateSlotName);
+        CancelStartPosPersistence(stateSlotName);
         AkronSaveLoadService.ClearRuntimeState(stateSlotName);
     }
 
@@ -1127,7 +1930,7 @@ public static partial class AkronActions {
         }
 
         string stateSlotName = GetStartPosStateSlotName(normalizedAreaSid, slot);
-        AkronStartPosPersistence.Cancel(stateSlotName);
+        CancelStartPosPersistence(stateSlotName);
         AkronSaveLoadService.ClearRuntimeStateExceptPersistentSnapshot(stateSlotName);
     }
 
@@ -1149,7 +1952,12 @@ public static partial class AkronActions {
     }
 
     private static Dictionary<int, AkronPersistedStartPos> GetPersistedStartPositions(string areaSid) {
-        Dictionary<string, AkronPersistedStartPosMap> maps = AkronModule.SaveData?.StartPositionsByMap;
+        // AkronModule.SaveData reads through Instance without checking it, the way
+        // ReplaceAllStartPositions already has to allow for. The catalog is what says a
+        // slot was ever set, so it is read from message paths that have to answer
+        // without a game behind them.
+        Dictionary<string, AkronPersistedStartPosMap> maps =
+            AkronModule.Instance == null ? null : AkronModule.SaveData?.StartPositionsByMap;
         string normalizedAreaSid = NormalizeAreaSid(areaSid);
         if (maps == null ||
             string.IsNullOrWhiteSpace(normalizedAreaSid) ||
@@ -1187,6 +1995,7 @@ public static partial class AkronActions {
                 Facing = entry.Facing,
                 Idle = entry.Idle,
                 Grab = entry.Grab,
+                ProfileId = GetCurrentStartPosProfileId(),
                 StateSlotName = stateSlotName
             };
         }
@@ -1194,8 +2003,14 @@ public static partial class AkronActions {
         return startPositions;
     }
 
+    // Every persisted entry is built here, and every one of them is built at the point
+    // a slot's room state is written by this build: a Set writes the snapshot right
+    // after this, and an import is refused unless its pack carries the current
+    // contract. So stamping the current format is a statement about the file that is
+    // about to exist, not a guess about one already on disk.
     private static AkronPersistedStartPos ToPersistedStartPos(AkronStartPos startPos) {
         return new AkronPersistedStartPos {
+            SnapshotFormat = AkronReconstructionDocument.CurrentFormat,
             X = startPos.Position.X,
             Y = startPos.Position.Y,
             Room = startPos.Room ?? string.Empty,
@@ -1210,26 +2025,66 @@ public static partial class AkronActions {
     }
 
     internal static bool SaveAkronStartPosData() {
+        return SaveAkronStartPosData(out _);
+    }
+
+    private static bool SaveAkronStartPosData(out bool previousPersistedLost) {
+        int fileSlot = -1;
+        byte[] previousPersisted = null;
+        bool writeStarted = false;
+        previousPersistedLost = false;
         try {
             if (AkronModule.Instance == null || SaveData.Instance == null) {
                 return false;
             }
 
-            int fileSlot = SaveData.Instance.FileSlot;
+            fileSlot = SaveData.Instance.FileSlot;
+            // Preserve the exact published bytes before attempting the replacement.
+            // The caller restores its in-memory catalog when this method returns false;
+            // these bytes let the disk half follow it even when WriteSaveData published
+            // data that the readback could not verify.
+            previousPersisted = AkronModule.Instance.ReadSaveData(fileSlot);
             byte[] serialized = AkronModule.Instance.SerializeSaveData(fileSlot);
             if (serialized == null) {
                 return false;
             }
+            writeStarted = true;
             AkronModule.Instance.WriteSaveData(fileSlot, serialized);
             byte[] persisted = AkronModule.Instance.ReadSaveData(fileSlot);
             if (persisted == null || !persisted.SequenceEqual(serialized)) {
-                Logger.Log(LogLevel.Warn, nameof(AkronActions),
+                AkronLog.Warn(nameof(AkronActions),
                     "Failed to verify persisted StartPos metadata after writing it.");
+                previousPersistedLost = !RestoreAkronStartPosData(fileSlot, previousPersisted);
                 return false;
             }
             return true;
         } catch (Exception exception) {
-            Logger.Log(LogLevel.Warn, nameof(AkronActions), "Failed to save persisted StartPos metadata: " + exception.Message);
+            AkronLog.Warn(nameof(AkronActions), "Failed to save persisted StartPos metadata: " + exception.Message);
+            if (writeStarted) {
+                previousPersistedLost = !RestoreAkronStartPosData(fileSlot, previousPersisted);
+            }
+            return false;
+        }
+    }
+
+    // Re-publishes the exact bytes displaced by a failed metadata replacement. Null is
+    // meaningful here: Everest documents WriteSaveData(null) as the deletion path, so a
+    // failed first write does not leave a module save file where none existed before.
+    private static bool RestoreAkronStartPosData(int fileSlot, byte[] previousPersisted) {
+        try {
+            AkronModule.Instance.WriteSaveData(fileSlot, previousPersisted);
+            byte[] restored = AkronModule.Instance.ReadSaveData(fileSlot);
+            bool matches = previousPersisted == null
+                ? restored == null
+                : restored != null && restored.SequenceEqual(previousPersisted);
+            if (!matches) {
+                AkronLog.Warn(nameof(AkronActions),
+                    "Failed to verify the previous StartPos metadata after restoring it.");
+            }
+            return matches;
+        } catch (Exception exception) {
+            AkronLog.Warn(nameof(AkronActions),
+                "Failed to restore the previous StartPos metadata: " + exception.Message);
             return false;
         }
     }
@@ -1281,25 +2136,70 @@ public static partial class AkronActions {
     }
 
     internal static string GetStartPosStateSlotName(string areaSid, int slot, int fileSlot) {
+        return GetStartPosStateSlotName(areaSid, slot, fileSlot, GetCurrentStartPosProfileId());
+    }
+
+    internal static string GetStartPosStateSlotName(
+        string areaSid,
+        int slot,
+        int fileSlot,
+        string profileId
+    ) {
         return StartPosStateSlotPrefix +
                "File " + fileSlot.ToString(CultureInfo.InvariantCulture) + " " +
+               profileId + " " +
                SanitizeStartPosKey(areaSid) + " " +
                NormalizePositionSlot(slot).ToString(CultureInfo.InvariantCulture);
+    }
+
+    // The module save file is the ownership record for a profile's hashed snapshots.
+    // Celeste is about to remove that record, so derive every owned name from it first;
+    // a directory-wide orphan sweep cannot prove which current profile still owns a file.
+    internal static int DeleteStartPosSnapshotsForProfile(int fileSlot, AkronModuleSaveData profile) {
+        if (profile?.StartPositionsByMap == null || string.IsNullOrWhiteSpace(profile.ProfileId)) {
+            return 0;
+        }
+
+        HashSet<string> stateSlotNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, AkronPersistedStartPosMap> map in profile.StartPositionsByMap) {
+            if (map.Value?.Slots == null) {
+                continue;
+            }
+            foreach (int slot in map.Value.Slots.Keys) {
+                stateSlotNames.Add(GetStartPosStateSlotName(map.Key, slot, fileSlot, profile.ProfileId));
+            }
+        }
+
+        AkronStartPosPersistence.CancelPrewarm();
+        foreach (string stateSlotName in stateSlotNames) {
+            CancelStartPosPersistence(stateSlotName);
+            AkronSaveLoadService.ClearRuntimeState(stateSlotName);
+        }
+        return stateSlotNames.Count;
     }
 
     private static int GetCurrentFileSlot() {
         return SaveData.Instance?.FileSlot ?? -1;
     }
 
-    private static string BuildPendingStartPosKey(int fileSlot, string areaSid) {
-        return fileSlot.ToString(CultureInfo.InvariantCulture) + "|" + NormalizeAreaSid(areaSid);
+    private static string BuildPendingStartPosKey(int fileSlot, string areaSid, string profileId = null) {
+        return fileSlot.ToString(CultureInfo.InvariantCulture) + "|" +
+               (profileId ?? GetCurrentStartPosProfileId()) + "|" + NormalizeAreaSid(areaSid);
     }
 
-    private static bool IsOriginatingSaveFileActive(int fileSlot, AkronModuleSaveData saveData) {
-        return saveData != null &&
+    // Object identity cannot identify a profile: Everest replaces module save data on
+    // file load, and Akron installs clones during savestate loads. The slot number also
+    // cannot identify it because Celeste reuses a deleted profile's slot. The persisted
+    // profile ID follows both kinds of clone while distinguishing a replacement profile.
+    private static bool IsOriginatingSaveFileActive(int fileSlot, string profileId) {
+        return AkronModule.Instance != null &&
+               AkronModule.SaveData != null &&
                SaveData.Instance?.FileSlot == fileSlot &&
-               AkronModule.Instance != null &&
-               ReferenceEquals(AkronModule.SaveData, saveData);
+               string.Equals(AkronModule.SaveData.ProfileId, profileId, StringComparison.Ordinal);
+    }
+
+    internal static string GetCurrentStartPosProfileId() {
+        return AkronModule.Instance == null ? "NoProfile" : AkronModule.SaveData?.ProfileId ?? "NoProfile";
     }
 
     internal static void RefreshStartPositionsAfterSnapshotImport(string areaSid, AkronModuleSession targetSession) {

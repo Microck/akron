@@ -48,10 +48,10 @@ Rows with a triangle expose the controls listed below.
 | Theme | Button in levels | Allow the floating activation button in active levels. | Normal clear |
 | Theme | Button in menus | Allow the floating activation button outside active levels. | Normal clear |
 | Theme | Search autofocus | Focus Akron search automatically when the overlay opens. | Normal clear |
-| Logging | Normal | Record normal diagnostic events. | Goldberry/Hardlist clear |
-| Logging | Verbose | Record normal and verbose diagnostic events. | Goldberry/Hardlist clear |
-| Logging | Diagnostic | Record normal, verbose, and diagnostic events. | Goldberry/Hardlist clear |
-| Logging | Trace | Record maximum diagnostic events. | Goldberry/Hardlist clear |
+| Logging | Normal | Record normal events only. Quietest level. | Goldberry/Hardlist clear |
+| Logging | Diagnostic | Record normal events plus one 60-second summary line counting feature uses and policy checks. The default. | Goldberry/Hardlist clear |
+| Logging | Verbose | Record one line per feature use instead of the 60-second summary. Louder than Diagnostic. | Goldberry/Hardlist clear |
+| Logging | Trace | Record one line per policy check as well, which is one line per active HUD feature per frame. Loudest level, and it fills the rotation budget in minutes. | Goldberry/Hardlist clear |
 | Logging | Mirror warnings | Also send warnings and errors to Everest's shared log. | Goldberry/Hardlist clear |
 | Logging | Max MB | Rotate the active Akron log file after the configured file size. | Goldberry/Hardlist clear |
 | Logging | Retained | Keep the configured number of rotated Akron log files. | Goldberry/Hardlist clear |
@@ -66,8 +66,8 @@ Rows with a triangle expose the controls listed below.
 | Export Setup | Recorder | Export only Internal Recorder setup data into the `.akr` setup pack. | Normal clear |
 | Export Setup | Audio | Export only audio setup data into the `.akr` setup pack. | Normal clear |
 | Export Setup | HUD | Export only HUD setup data into the `.akr` setup pack. | Normal clear |
-| Import Setup | Whole | Import all portable setup state from the selected `.akr` setup pack while preserving machine-local values. This replaces every saved StartPos slot for the pack's target map. | Normal clear |
-| Import Setup | StartPos | Import only StartPos setup data from the selected `.akr` setup pack. This replaces every saved StartPos slot for the pack's target map. | Normal clear |
+| Import Setup | Whole | Import all portable setup state from the selected `.akr` setup pack while preserving machine-local values. | Normal clear |
+| Import Setup | StartPos | Import only StartPos setup data from the selected `.akr` setup pack. | Normal clear |
 | Import Setup | Keybinds | Import Everest `ButtonBinding` properties and Akron menu action bindings from the selected `.akr` setup pack. | Normal clear |
 | Import Setup | Auto Kill | Import only Auto Kill setup data from the selected `.akr` setup pack. | Normal clear |
 | Import Setup | Auto Deafen | Import only Auto Deafen setup data from the selected `.akr` setup pack. | Normal clear |

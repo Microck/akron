@@ -21,6 +21,7 @@ public static class AkronAutomationService {
     private const int MaxOutputLines = 512;
     private const int MaxOutputLineCharacters = 4096;
     private const int DeferredRunFrameLimit = 600;
+    private const ulong IdlePollFrames = 15UL;
     private static readonly List<string> RunOutput = new List<string>();
     private static readonly Queue<string> PendingCommands = new Queue<string>();
     private static readonly HashSet<string> JoinedTextArgumentCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
@@ -78,6 +79,7 @@ public static class AkronAutomationService {
         "akron_ips",
         "akron_journal_snapshot",
         "akron_load",
+        "akron_log_level",
         "akron_madeline_colors",
         "akron_map_capture",
         "akron_megahack_public",
@@ -129,6 +131,7 @@ public static class AkronAutomationService {
         "akron_qa_label_number",
         "akron_qa_label_row_order",
         "akron_qa_list_maps",
+        "akron_qa_messages",
         "akron_qa_pause",
         "akron_qa_pause_event",
         "akron_qa_pause_state",
@@ -190,7 +193,12 @@ public static class AkronAutomationService {
     private static ulong nextIdlePollFrame;
     private static int deferredRunFramesRemaining;
 
-    private static string AutomationDirectory => Path.Combine(Everest.PathGame, "Saves", "AkronAutomation");
+    // Named rather than inline because a backup has to know about it. The command file is read with
+    // FileShare.None, and the result file is written by the very command that asked for a restore, so this
+    // folder is one a restore leaves alone (Source/Actions/akron-backup-actions.cs).
+    internal const string DirectoryName = "AkronAutomation";
+
+    private static string AutomationDirectory => Path.Combine(Everest.PathGame, "Saves", DirectoryName);
     private static string CommandPath => Path.Combine(AutomationDirectory, "command.txt");
     private static string LastCommandPath => Path.Combine(AutomationDirectory, "last-command.txt");
     private static string LastResultPath => Path.Combine(AutomationDirectory, "last-result.txt");
@@ -205,11 +213,19 @@ public static class AkronAutomationService {
         }
 
         if (!hasActiveRun) {
-            if (Engine.FrameCounter < nextIdlePollFrame) {
+            // Engine.FrameCounter is part of the state a StartPos restores, so it
+            // jumps to the counter the snapshot was captured with, and it jumps one
+            // engine boundary AFTER the command that caused it has already finished.
+            // A deadline further ahead than one poll interval is therefore a rewound
+            // clock rather than a wait, and idling it out costs the whole difference:
+            // loading a snapshot captured 13000 frames earlier in the process left
+            // the queue apparently dead for three and a half minutes.
+            if (Engine.FrameCounter < nextIdlePollFrame &&
+                nextIdlePollFrame - Engine.FrameCounter <= IdlePollFrames) {
                 return;
             }
 
-            nextIdlePollFrame = Engine.FrameCounter + 15UL;
+            nextIdlePollFrame = Engine.FrameCounter + IdlePollFrames;
             EnsureAutomationDirectory();
             if (!File.Exists(CommandPath)) {
                 return;
@@ -410,9 +426,6 @@ public static class AkronAutomationService {
         runCompletionDeferred = false;
         deferredRunFramesRemaining = 0;
         hasActiveRun = false;
-        // StartPos restores Engine.FrameCounter. Reset the poll deadline to that
-        // restored clock so automation does not wait for the old frame number.
-        nextIdlePollFrame = Engine.FrameCounter;
     }
 
     private static void WriteResult(string status) {

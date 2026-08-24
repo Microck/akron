@@ -408,7 +408,7 @@ public static partial class AkronCommands {
         Log("invincibility-spike-ground-refills: " + AkronModule.Settings.InvincibilitySpikeGroundRefills.ToString().ToLowerInvariant());
     }
 
-    [Command("akron_visual_noise", "control visual suppression: particles|trails|glitch|anxiety|distortion|snow|wind-snow|waterfalls|tentacles|heat-distortion <on|off|toggle|status>")]
+    [Command("akron_visual_noise", "control visual suppression: particles|trails|glitch|anxiety|distortion|snow|wind-snow|waterfalls|tentacles|playback|heat-distortion <on|off|toggle|status>")]
     public static void VisualNoise(string channel = "status", string action = "status") {
         string normalizedChannel = NormalizeToken(channel);
         bool handled = normalizedChannel switch {
@@ -422,6 +422,7 @@ public static partial class AkronCommands {
             "windsnow" or "hidewindsnow" => SetFeatureToggle(action, AkronFeatureKind.ReducedVisualNoise, () => AkronModule.Settings.HideWindSnow, value => AkronModule.Settings.HideWindSnow = value, "hide-wind-snow"),
             "waterfalls" or "hidewaterfalls" => SetFeatureToggle(action, AkronFeatureKind.ReducedVisualNoise, () => AkronModule.Settings.HideWaterfalls, value => AkronModule.Settings.HideWaterfalls = value, "hide-waterfalls"),
             "tentacles" or "hidetentacles" => SetFeatureToggle(action, AkronFeatureKind.ReducedVisualNoise, () => AkronModule.Settings.HideTentacles, value => AkronModule.Settings.HideTentacles = value, "hide-tentacles"),
+            "playback" or "disableplayback" => SetFeatureToggle(action, AkronFeatureKind.DisablePlayback, () => AkronModule.Settings.DisablePlayback, value => AkronModule.Settings.DisablePlayback = value, "disable-playback"),
             "heatdistortion" or "hideheatdistortion" => SetFeatureToggle(action, AkronFeatureKind.ReducedVisualNoise, () => AkronModule.Settings.HideHeatDistortion, value => AkronModule.Settings.HideHeatDistortion = value, "hide-heat-distortion"),
             _ => false
         };
