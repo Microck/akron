@@ -493,10 +493,12 @@ public sealed class StartPosPersistenceTests {
     // the pack contract to akron-setup-v5 while the build wrote v9 and v6, so the one
     // instruction a player is given named a version this build never writes.
     //
-    // Only the unreleased section is checked. The entries below it name the contracts
-    // their own release shipped, which is what a changelog is for.
+    // The active section is normally Unreleased. Release preparation leaves that
+    // section empty and moves its notes into the first versioned section below it,
+    // which is then the section for the build being tested. Older entries name the
+    // contracts their own release shipped, which is what a changelog is for.
     [Fact]
-    public void TheUnreleasedChangelogNamesTheContractsThisBuildActuallyWrites() {
+    public void TheActiveChangelogNamesTheContractsThisBuildActuallyWrites() {
         string changelog = File.ReadAllText(GetRepositoryFilePath("CHANGELOG.md"));
         int unreleased = changelog.IndexOf("## Unreleased", StringComparison.Ordinal);
         Assert.True(unreleased >= 0, "CHANGELOG.md has no Unreleased section.");
@@ -504,6 +506,13 @@ public sealed class StartPosPersistenceTests {
         string section = nextRelease < 0
             ? SourceTail(changelog, unreleased)
             : SourceSlice(changelog, unreleased, nextRelease - unreleased);
+        if (string.IsNullOrWhiteSpace(section.Substring("## Unreleased".Length))) {
+            Assert.True(nextRelease >= 0, "CHANGELOG.md has no current release section.");
+            int followingRelease = changelog.IndexOf("\n## ", nextRelease + 1, StringComparison.Ordinal);
+            section = followingRelease < 0
+                ? SourceTail(changelog, nextRelease)
+                : SourceSlice(changelog, nextRelease, followingRelease - nextRelease);
+        }
 
         Assert.Contains(AkronReconstructionDocument.CurrentFormat, section);
         Assert.Contains(AkronSetupPacks.SetupPackFormat, section);
