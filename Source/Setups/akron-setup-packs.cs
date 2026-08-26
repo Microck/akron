@@ -102,7 +102,7 @@ public static partial class AkronSetupPacks {
     // whether a saved resource's key names it, and, for the room half of a snapshot,
     // whether the map laid a saved entity's id out - so the v8 snapshots inside a v5
     // pack cannot be rebuilt here either.
-    public const string SetupPackFormat = "akron-setup-v6";
+    public const string SetupPackFormat = "akron-setup-v7";
 
     public const int MaxStartPositions = 99;
     public const int MaxAutoKillAreas = 128;
@@ -814,7 +814,7 @@ public static partial class AkronSetupPacks {
     // Tracks AkronReconstructionDocument.CurrentFormat, so the entry name states which
     // fresh-room baseline the attachment was measured against.
     private static string GetSnapshotEntryName(int slot) {
-        return "startpos/" + slot.ToString(CultureInfo.InvariantCulture) + ".v9.json.gz";
+        return "startpos/" + slot.ToString(CultureInfo.InvariantCulture) + ".v10.json.gz";
     }
 
     private static string ComputeFileSha256(string path) {

@@ -1,0 +1,413 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Text;
+using Newtonsoft.Json;
+
+namespace Celeste.Mod.Akron;
+
+// Measures where the bytes of a StartPos snapshot go, so the format work that
+// shrinks large saved states is sized from real files instead of estimates.
+// One streaming pass per file, nothing materialized: the whole point is to
+// measure files whether or not they fit the reader's structural limits, so
+// this reads with a plain JsonTextReader rather than the bounded one, holds
+// only counters and two capped string tables, and never builds the document.
+//
+// Byte figures are computed from token text lengths - a string is its length
+// plus two quotes, a property name its length plus quotes and colon - which
+// undercounts escaped characters and ignores commas, so the unattributed
+// remainder is reported as structure. The answer this exists to give is
+// proportional (what share of a 200 MB snapshot is repeated type names), and
+// for that a few bytes per token of slack changes nothing.
+internal static class AkronSnapshotComposition {
+    // The names here are the v10 serialized tags, shared with the model's
+    // [JsonProperty] attributes through AkronReconstructionTags so a tag rename
+    // fails to compile here instead of silently skewing the report.
+    //
+    // In v10 every distinct type name is written once, in the document's TypeNames
+    // table; the per-use properties carry integer indexes into it. The table's
+    // strings are the type-name bucket, and the index properties are counted as
+    // uses so the report can still say how hard the table is working.
+    private const string TypeNameTableProperty = nameof(AkronReconstructionDocument.TypeNames);
+    private static readonly HashSet<string> TypeNameIndexProperties = new HashSet<string>(StringComparer.Ordinal) {
+        AkronReconstructionTags.TypeNameIndex,
+        AkronReconstructionTags.DeclaringTypeNameIndex,
+        AkronReconstructionTags.ParentDeclaringTypeNameIndex,
+        AkronReconstructionTags.ReturnTypeNameIndex,
+        AkronReconstructionTags.HookTargetDeclaringTypeNameIndex,
+        AkronReconstructionTags.HookTargetReturnTypeNameIndex,
+        AkronReconstructionTags.ParameterTypeNameIndexes,
+        AkronReconstructionTags.HookTargetParameterTypeNameIndexes,
+    };
+
+    // Short repeated identifiers: record kinds, field and method names, resource
+    // keys. Reported apart from type names because a table for these would save
+    // far less per entry.
+    private static readonly HashSet<string> NameAndKindProperties = new HashSet<string>(StringComparer.Ordinal) {
+        AkronReconstructionTags.Kind,
+        AkronReconstructionTags.ParentKind,
+        AkronReconstructionTags.ParentFieldName,
+        AkronReconstructionTags.FieldName,
+        AkronReconstructionTags.MethodName,
+        AkronReconstructionTags.HookTargetMethodName,
+        AkronReconstructionTags.ResourceKey,
+    };
+
+    // Base64 payloads: packed primitive arrays and render-target pixels ("Bytes"
+    // on the resource payload, which keeps its long names). Already dense; a
+    // format change does not shrink these.
+    private static readonly HashSet<string> PackedProperties = new HashSet<string>(StringComparer.Ordinal) {
+        AkronReconstructionTags.PackedPrimitiveArrayBytes, "Bytes",
+    };
+
+    // Bound on the exact-duplicate string table, not on the analysis: past this
+    // many distinct strings, new ones count as unique and the dedup figure
+    // becomes a lower bound, which the report says when it happens.
+    private const int MaxDistinctTrackedStrings = 500_000;
+    private const int TopWasteEntries = 10;
+    // A corrupt or hostile stream must not keep an analysis thread busy forever.
+    // Real snapshots are capped at MaxDecompressedSnapshotBytes; this is well
+    // above it because measuring an over-limit file is exactly the job here.
+    private const long MaxAnalyzedDecompressedBytes = 4L * 1024L * 1024L * 1024L;
+
+    internal sealed class Report {
+        public string FilePath = string.Empty;
+        public string SlotName = string.Empty;
+        public string MapSid = string.Empty;
+        public string Room = string.Empty;
+        public long CompressedBytes;
+        public long DecompressedBytes;
+        public long TokenCount;
+        public long ContainerCount;
+        public long RecordCount;
+        public long NodeCount;
+        public long ComplexRecordCount;
+        public long ItemCount;
+        public long PropertyNameBytes;
+        public long TypeNameBytes;
+        public long NameAndKindBytes;
+        public long ScalarBytes;
+        public long PackedBase64Bytes;
+        public long NumberBytes;
+        public long OtherStringBytes;
+        public long TypeNameOccurrences;
+        public int DistinctTypeNameCount;
+        public long DistinctTypeNameBytes;
+        public long DuplicateStringWasteBytes;
+        public bool DuplicateStringTableSaturated;
+        public List<(string Value, long Count, long WasteBytes)> TopWaste = new List<(string, long, long)>();
+
+        public long AttributedBytes =>
+            PropertyNameBytes + TypeNameBytes + NameAndKindBytes + ScalarBytes +
+            PackedBase64Bytes + NumberBytes + OtherStringBytes;
+        public long StructureBytes => Math.Max(0, DecompressedBytes - AttributedBytes);
+    }
+
+    public static Report AnalyzeFile(string path) {
+        using FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using GZipStream decompressed = new GZipStream(file, CompressionMode.Decompress, leaveOpen: true);
+        using CountingReadStream counted = new CountingReadStream(decompressed, MaxAnalyzedDecompressedBytes);
+        Report report = Analyze(counted);
+        report.FilePath = path;
+        report.CompressedBytes = file.Length;
+        report.DecompressedBytes = counted.BytesRead;
+        return report;
+    }
+
+    internal static Report Analyze(Stream json) {
+        Report report = new Report();
+        Dictionary<string, long> allStrings = new Dictionary<string, long>(StringComparer.Ordinal);
+        Dictionary<string, long> typeNames = new Dictionary<string, long>(StringComparer.Ordinal);
+
+        using StreamReader text = new StreamReader(json, Encoding.UTF8, true, 65536, leaveOpen: true);
+        using JsonTextReader reader = new JsonTextReader(text) {
+            CloseInput = false,
+            // Type names and scalar strings must arrive as the text on disk, not
+            // as whatever a date-shaped string parses into.
+            DateParseHandling = DateParseHandling.None,
+        };
+
+        // The owner of a value is the property it sits under, or the enclosing
+        // array's property for array elements, tracked with a manual grow-only
+        // frame stack so a 25-million-record file does not allocate a frame per
+        // record.
+        string[] labels = new string[64];
+        bool[] isArray = new bool[64];
+        string[] pending = new string[64];
+        int depth = 0;
+        labels[0] = string.Empty;
+
+        while (reader.Read()) {
+            report.TokenCount++;
+            switch (reader.TokenType) {
+                case JsonToken.PropertyName: {
+                    string name = (string)reader.Value;
+                    report.PropertyNameBytes += name.Length + 3;
+                    pending[depth] = name;
+                    break;
+                }
+                case JsonToken.StartObject:
+                case JsonToken.StartArray: {
+                    report.ContainerCount++;
+                    string owner = isArray[depth] ? labels[depth] : pending[depth];
+                    if (reader.TokenType == JsonToken.StartObject) {
+                        report.RecordCount++;
+                        if (isArray[depth]) {
+                            CountRecordKind(report, owner);
+                        }
+                    }
+                    depth++;
+                    if (depth == labels.Length) {
+                        Array.Resize(ref labels, depth * 2);
+                        Array.Resize(ref isArray, depth * 2);
+                        Array.Resize(ref pending, depth * 2);
+                    }
+                    labels[depth] = owner ?? string.Empty;
+                    isArray[depth] = reader.TokenType == JsonToken.StartArray;
+                    pending[depth] = null;
+                    break;
+                }
+                case JsonToken.EndObject:
+                case JsonToken.EndArray:
+                    depth--;
+                    break;
+                case JsonToken.String: {
+                    string value = (string)reader.Value;
+                    string owner = (isArray[depth] ? labels[depth] : pending[depth]) ?? string.Empty;
+                    long size = value.Length + 2;
+                    if (owner == TypeNameTableProperty) {
+                        report.TypeNameBytes += size;
+                        typeNames.TryGetValue(value, out long seen);
+                        typeNames[value] = seen + 1;
+                    } else if (owner == AkronReconstructionTags.Scalar) {
+                        report.ScalarBytes += size;
+                    } else if (PackedProperties.Contains(owner)) {
+                        report.PackedBase64Bytes += size;
+                    } else if (NameAndKindProperties.Contains(owner)) {
+                        report.NameAndKindBytes += size;
+                    } else {
+                        report.OtherStringBytes += size;
+                    }
+                    // Top-level identity, first value wins: a nested
+                    // ActionStateDocument repeats these property names later
+                    // with empty values.
+                    if (depth == 1) {
+                        switch (owner) {
+                            case "SlotName" when report.SlotName.Length == 0: report.SlotName = value; break;
+                            case "MapSid" when report.MapSid.Length == 0: report.MapSid = value; break;
+                            case "Room" when report.Room.Length == 0: report.Room = value; break;
+                        }
+                    }
+                    if (value.Length >= 2 && !PackedProperties.Contains(owner)) {
+                        if (allStrings.TryGetValue(value, out long count)) {
+                            allStrings[value] = count + 1;
+                        } else if (allStrings.Count < MaxDistinctTrackedStrings) {
+                            allStrings[value] = 1;
+                        } else {
+                            report.DuplicateStringTableSaturated = true;
+                        }
+                    }
+                    break;
+                }
+                case JsonToken.Integer:
+                case JsonToken.Float:
+                case JsonToken.Boolean: {
+                    string owner = (isArray[depth] ? labels[depth] : pending[depth]) ?? string.Empty;
+                    if (reader.TokenType == JsonToken.Integer && TypeNameIndexProperties.Contains(owner)) {
+                        report.TypeNameOccurrences++;
+                    }
+                    report.NumberBytes += Convert.ToString(reader.Value, CultureInfo.InvariantCulture)?.Length ?? 1;
+                    break;
+                }
+                case JsonToken.Null:
+                    report.NumberBytes += 4;
+                    break;
+            }
+        }
+
+        report.DistinctTypeNameCount = typeNames.Count;
+        report.DistinctTypeNameBytes = typeNames.Keys.Sum(name => (long)name.Length + 2);
+        report.DuplicateStringWasteBytes = allStrings
+            .Where(entry => entry.Value > 1)
+            .Sum(entry => (entry.Value - 1) * (entry.Key.Length + 2));
+        report.TopWaste = allStrings
+            .Where(entry => entry.Value > 1)
+            .Select(entry => (entry.Key, entry.Value, (entry.Value - 1) * ((long)entry.Key.Length + 2)))
+            .OrderByDescending(entry => entry.Item3)
+            .Take(TopWasteEntries)
+            .ToList();
+        return report;
+    }
+
+    // Classifies an object opening inside an array by the array's tag. Every such
+    // object is already in RecordCount; these are the sub-counts the read limits
+    // are calibrated against.
+    private static void CountRecordKind(Report report, string owner) {
+        switch (owner) {
+            case AkronReconstructionTags.Nodes: report.NodeCount++; break;
+            case AkronReconstructionTags.Items: report.ItemCount++; break;
+            case AkronReconstructionTags.Fields:
+            case AkronReconstructionTags.DelegateCalls:
+            case AkronReconstructionTags.FreshPath: report.ComplexRecordCount++; break;
+        }
+    }
+
+    // Analyzes every snapshot in the given files and writes one block of
+    // AkronSnapshotReport lines per file plus a totals line, all through
+    // AkronLog so the result lands in the log a player already shares.
+    public static void ReportAll(IReadOnlyList<string> files) {
+        long totalDecompressed = 0;
+        long totalCompressed = 0;
+        long totalTypeNameTableBytes = 0;
+        long totalDedupSavableBytes = 0;
+        int analyzed = 0;
+        foreach (string path in files) {
+            Report report;
+            try {
+                report = AnalyzeFile(path);
+            } catch (Exception exception) {
+                // The exception message can echo the file path (a file-open error
+                // quotes it), so it is sanitized too. The type name is safe.
+                AkronLog.Warn(nameof(AkronSnapshotComposition),
+                    "Snapshot " + SanitizeForLog(Path.GetFileName(path), maxChars: 160) + " could not be measured: " +
+                    exception.GetType().Name + ": " + SanitizeForLog(exception.Message, maxChars: 300));
+                continue;
+            }
+            analyzed++;
+            totalDecompressed += report.DecompressedBytes;
+            totalCompressed += report.CompressedBytes;
+            totalTypeNameTableBytes += report.TypeNameBytes;
+            totalDedupSavableBytes += report.DuplicateStringWasteBytes;
+            foreach (string line in Describe(report)) {
+                AkronLog.Normal(nameof(AkronSnapshotComposition), line);
+            }
+        }
+        AkronLog.Normal(nameof(AkronSnapshotComposition),
+            "Measured " + analyzed + " of " + files.Count + " snapshot(s): " +
+            Megabytes(totalCompressed) + " on disk, " + Megabytes(totalDecompressed) + " decompressed; " +
+            "type-name tables hold " + Megabytes(totalTypeNameTableBytes) +
+            "; further exact string dedup would save ~" + Megabytes(totalDedupSavableBytes) + ".");
+    }
+
+    internal static IReadOnlyList<string> Describe(Report report) {
+        // The file name is directory-derived, and a hand-placed file can carry
+        // line separators in its name on Windows, so it is sanitized like every
+        // other value that reaches the log.
+        string name = SanitizeForLog(Path.GetFileName(report.FilePath), maxChars: 160);
+        List<string> lines = new List<string> {
+            name + ": slot=\"" + SanitizeForLog(report.SlotName, maxChars: 160) + "\" map=" +
+            SanitizeForLog(report.MapSid, maxChars: 160) + " room=" + SanitizeForLog(report.Room, maxChars: 160) +
+            "; " + Megabytes(report.CompressedBytes) + " on disk, " + Megabytes(report.DecompressedBytes) + " decompressed.",
+            name + ": tokens " + WithCap(report.TokenCount, AkronReconstructionGraph.DefaultMaxJsonTokenCount) +
+            ", records " + WithCap(report.RecordCount, AkronReconstructionGraph.DefaultMaxJsonRecordCount) +
+            ", complex " + WithCap(report.ComplexRecordCount, AkronReconstructionGraph.DefaultMaxJsonExpensiveRecordCount) +
+            ", nodes " + WithCap(report.NodeCount, AkronReconstructionGraph.DefaultMaxJsonNodeCount) +
+            ", containers " + WithCap(report.ContainerCount, AkronReconstructionGraph.DefaultMaxJsonContainerCount) +
+            ", items " + report.ItemCount.ToString("N0", CultureInfo.InvariantCulture) + ".",
+            name + ": type-names " + Share(report.TypeNameBytes, report.DecompressedBytes) +
+            ", property-names " + Share(report.PropertyNameBytes, report.DecompressedBytes) +
+            ", names+kinds " + Share(report.NameAndKindBytes, report.DecompressedBytes) +
+            ", scalars " + Share(report.ScalarBytes, report.DecompressedBytes) +
+            ", packed-arrays " + Share(report.PackedBase64Bytes, report.DecompressedBytes) +
+            ", numbers " + Share(report.NumberBytes, report.DecompressedBytes) +
+            ", other-strings " + Share(report.OtherStringBytes, report.DecompressedBytes) +
+            ", structure " + Share(report.StructureBytes, report.DecompressedBytes) + ".",
+            name + ": type-name table holds " + report.DistinctTypeNameCount.ToString("N0", CultureInfo.InvariantCulture) +
+            " names (" + Megabytes(report.DistinctTypeNameBytes) + ") across " +
+            report.TypeNameOccurrences.ToString("N0", CultureInfo.InvariantCulture) +
+            " indexed uses; further exact string dedup would save ~" + Megabytes(report.DuplicateStringWasteBytes) +
+            (report.DuplicateStringTableSaturated ? " (lower bound, table saturated)" : "") + ".",
+        };
+        if (report.TopWaste.Count > 0) {
+            lines.Add(name + ": top repeats: " + string.Join("; ", report.TopWaste.Select(entry =>
+                "\"" + SanitizeForLog(entry.Value, maxChars: 80) + "\" (" +
+                entry.Value.Length.ToString("N0", CultureInfo.InvariantCulture) + " chars) x" +
+                entry.Count.ToString("N0", CultureInfo.InvariantCulture) + " = " + Megabytes(entry.WasteBytes))) + ".");
+        }
+        return lines;
+    }
+
+    // These strings come out of snapshot JSON, so a repeated value can carry
+    // newlines or control characters that would break the log's one-record-per-
+    // line shape, and it is echoed into a log a player may share. Collapse every
+    // control character to a dot and bound the length so what reaches the log is
+    // a single printable line, enough to recognize the dominant type names
+    // without spilling an arbitrary value. The full length travels as a separate
+    // count so the truncation is visible.
+    private static string SanitizeForLog(string value, int maxChars) {
+        value ??= string.Empty;
+        StringBuilder builder = new StringBuilder(Math.Min(value.Length, maxChars) + 3);
+        foreach (char character in value) {
+            if (builder.Length >= maxChars) {
+                builder.Append("...");
+                break;
+            }
+            // char.IsControl misses U+2028 (line separator) and U+2029
+            // (paragraph separator), which many log viewers still render as
+            // line breaks, so a value carrying them could forge extra log records.
+            bool breaksLine = char.IsControl(character) ||
+                              character == '\u2028' || character == '\u2029';
+            builder.Append(breaksLine ? '.' : character);
+        }
+        return builder.ToString();
+    }
+
+    private static string WithCap(long count, long cap) {
+        return count.ToString("N0", CultureInfo.InvariantCulture) + " (" + Percent(count, cap) + "% of limit)";
+    }
+
+    private static string Share(long bytes, long total) {
+        return Megabytes(bytes) + " (" + Percent(bytes, total) + "%)";
+    }
+
+    private static string Percent(long numerator, long denominator) {
+        return (denominator > 0 ? 100.0 * numerator / denominator : 0)
+            .ToString("0.0", CultureInfo.InvariantCulture);
+    }
+
+    private static string Megabytes(long bytes) {
+        return (bytes / (1024.0 * 1024.0)).ToString("0.0", CultureInfo.InvariantCulture) + " MB";
+    }
+
+
+    // Counts decompressed bytes on the way through and stops a stream that
+    // expands past the analysis ceiling, so a corrupt file cannot pin the
+    // report thread.
+    private sealed class CountingReadStream : Stream {
+        private readonly Stream source;
+        private readonly long maxBytes;
+
+        public CountingReadStream(Stream source, long maxBytes) {
+            this.source = source;
+            this.maxBytes = maxBytes;
+        }
+
+        public long BytesRead { get; private set; }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position {
+            get => BytesRead;
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) {
+            int read = source.Read(buffer, offset, count);
+            BytesRead += read;
+            if (BytesRead > maxBytes) {
+                throw new InvalidDataException("Snapshot expands beyond the analysis ceiling.");
+            }
+            return read;
+        }
+
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+}

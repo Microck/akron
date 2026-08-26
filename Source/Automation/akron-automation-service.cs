@@ -150,6 +150,7 @@ public static class AkronAutomationService {
         "akron_qa_session_probe",
         "akron_qa_session_state",
         "akron_qa_sleep",
+        "akron_qa_snapshot_report",
         "akron_qa_sound_sources",
         "akron_qa_startpos_action",
         "akron_qa_startpos_death_candidate",

@@ -55,7 +55,7 @@ public sealed class ArchiveTests : IDisposable {
             CreateManifest("setup"),
             "setup.json",
             "{}",
-            new Dictionary<string, string> { ["startpos/1.v9.json.gz"] = attachmentPath });
+            new Dictionary<string, string> { ["startpos/1.v10.json.gz"] = attachmentPath });
 
         string payload = AkronArchive.ReadPayloadArchive(
             path,
@@ -68,7 +68,7 @@ public sealed class ArchiveTests : IDisposable {
             out string[] attachmentNames);
 
         Assert.Equal("{}", payload);
-        Assert.Equal(new[] { "startpos/1.v9.json.gz" }, attachmentNames);
+        Assert.Equal(new[] { "startpos/1.v10.json.gz" }, attachmentNames);
         Assert.Equal(new byte[] { 1, 2, 3, 4 }, AkronArchive.ReadBinaryEntry(path, attachmentNames[0], 4096));
     }
 
@@ -80,8 +80,8 @@ public sealed class ArchiveTests : IDisposable {
                 CreateManifest("setup"),
                 new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
             WriteEntry(archive, "setup.json", "{}");
-            WriteEntry(archive, "startpos/1.v9.json.gz", "one");
-            WriteEntry(archive, "startpos/2.v9.json.gz", "two");
+            WriteEntry(archive, "startpos/1.v10.json.gz", "one");
+            WriteEntry(archive, "startpos/2.v10.json.gz", "two");
         }
 
         InvalidDataException exception = Assert.Throws<InvalidDataException>(() => AkronArchive.ReadPayloadArchive(
@@ -105,8 +105,8 @@ public sealed class ArchiveTests : IDisposable {
                 CreateManifest("setup"),
                 new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
             WriteEntry(archive, "setup.json", "{}");
-            WriteEntry(archive, "startpos/1.v9.json.gz", "12345");
-            WriteEntry(archive, "startpos/2.v9.json.gz", "67890");
+            WriteEntry(archive, "startpos/1.v10.json.gz", "12345");
+            WriteEntry(archive, "startpos/2.v10.json.gz", "67890");
         }
 
         InvalidDataException exception = Assert.Throws<InvalidDataException>(() => AkronArchive.ReadPayloadArchive(

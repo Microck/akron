@@ -52,7 +52,7 @@ public sealed class StartPosHotPathCacheTests {
 
         string expectedDigest =
             Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(slotName))).ToLowerInvariant();
-        Assert.Equal("v9-" + expectedDigest + ".json.gz", Path.GetFileName(first));
+        Assert.Equal("v10-" + expectedDigest + ".json.gz", Path.GetFileName(first));
     }
 
     [Fact]

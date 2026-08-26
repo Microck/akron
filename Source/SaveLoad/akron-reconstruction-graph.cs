@@ -42,6 +42,17 @@ internal sealed class AkronReconstructionDocument {
     // v7 and earlier documents are refused outright, never upgraded and never read.
     //
     // v7 -> v8: fresh-room baseline changed (trail parity fix, PlayerPlayback exclusion).
+    // v9 -> v10: the JSON shrank to fit real maps under the snapshot size limit.
+    //   Measured on real v9 snapshots (Summit, Farewell, 70-95 MB decompressed each),
+    //   36-44% of every file was the same few hundred assembly-qualified type names
+    //   written hundreds of thousands of times, and another ~21% was property names.
+    //   v10 writes each distinct type name once in the document's TypeNames table and
+    //   an integer index at every use, shortens the per-record property names, omits
+    //   empty lists and default values, and shortens the per-value kind strings. The
+    //   in-memory model is unchanged: the string properties are rebuilt from the table
+    //   right after a document is read, so capture and restore never see an index.
+    //   A v9 document is refused by the header gate like every older version, and the
+    //   snapshot file prefix moved with the format so no v10 read can reach one.
     // v8 -> v9: nodes now carry the capture-side identity evidence the restore needs.
     //   A saved live resource records whether its ResourceKey names the resource
     //   (PortableResourceKey) and a saved map entity records whether the map placed
@@ -61,9 +72,16 @@ internal sealed class AkronReconstructionDocument {
     //   for those nodes rather than to a wrong restore. The key half has no such
     //   limit: it is read off the saved object and applies to every node in both
     //   documents.
-    public const string CurrentFormat = "akron-reconstruction-v9";
+    public const string CurrentFormat = "akron-reconstruction-v10";
 
     public string Format { get; set; } = CurrentFormat;
+    // Every distinct type name in this document, in first-use order, shared by the
+    // nested ActionStateDocument. Declared before Nodes so it streams first: the
+    // resolver that rebuilds the string properties needs the whole table, and the
+    // whole document is materialized before resolution anyway, but keeping the table
+    // ahead of its uses also lets a streaming reader bound each name on arrival.
+    public List<string> TypeNames { get; set; } = new List<string>();
+    public bool ShouldSerializeTypeNames() => TypeNames != null && TypeNames.Count > 0;
     public string SlotName { get; set; } = string.Empty;
     public string MapSid { get; set; } = string.Empty;
     public string Room { get; set; } = string.Empty;
@@ -76,21 +94,87 @@ internal sealed class AkronReconstructionDocument {
     public List<AkronGameplayBufferSnapshot> GameplayBuffers { get; set; } = new List<AkronGameplayBufferSnapshot>();
 }
 
+// One name per serialized v10 tag that more than one place has to agree on: the
+// [JsonProperty] attribute that writes it, the bounded reader's record matchers,
+// and the composition analyzer's byte attribution. Referencing the same constant
+// everywhere makes a tag rename a compile error at every consumer instead of a
+// silently wrong report. Tags read by nothing but their own attribute stay as
+// inline literals on the model. Two constants share a value on purpose and must
+// not be merged: PathStepFieldName is a scalar on a path step while Fields is an
+// array on a node, and NodeId is an integer on a value while FieldName is a
+// string on a field - consumers tell them apart by token type and record shape.
+internal static class AkronReconstructionTags {
+    internal const string Nodes = "Nodes";
+    internal const string Fields = "f";
+    internal const string DelegateCalls = "dc";
+    internal const string FreshPath = "fp";
+    internal const string Items = "it";
+    internal const string Kind = "k";
+    internal const string ParentKind = "pk";
+    internal const string ParentFieldName = "pf";
+    internal const string FieldName = "n";
+    internal const string NodeId = "n";
+    internal const string MethodName = "m";
+    internal const string HookTargetMethodName = "hm";
+    internal const string ResourceKey = "rk";
+    internal const string Scalar = "s";
+    internal const string PackedPrimitiveArrayBytes = "pb";
+    internal const string PathStepFieldName = "f";
+    internal const string TypeNameIndex = "t";
+    internal const string DeclaringTypeNameIndex = "d";
+    internal const string ParentDeclaringTypeNameIndex = "pd";
+    internal const string ReturnTypeNameIndex = "r";
+    internal const string HookTargetDeclaringTypeNameIndex = "hd";
+    internal const string HookTargetReturnTypeNameIndex = "hr";
+    internal const string ParameterTypeNameIndexes = "pt";
+    internal const string HookTargetParameterTypeNameIndexes = "hpt";
+}
+
+// The per-record property names below are one or two characters because they are
+// written millions of times per snapshot: measured on real v9 files, the long
+// names alone were ~21% of 70-95 MB documents. Type names are indexes into
+// AkronReconstructionDocument.TypeNames for the same reason; the string
+// properties they shadow are [JsonIgnore], populated by capture and rebuilt by
+// AkronReconstructionGraph.ResolveTypeNames right after a read, so everything
+// outside the serialization boundary keeps working with plain strings. Empty
+// lists and default values are omitted; the property initializers put them back.
 internal sealed class AkronReconstructionNode {
+    [JsonProperty("i")]
     public int Id { get; set; }
+    [JsonProperty(AkronReconstructionTags.Kind)]
     public string Kind { get; set; } = string.Empty;
+    [JsonIgnore]
     public string TypeName { get; set; } = string.Empty;
+    [JsonProperty(AkronReconstructionTags.TypeNameIndex, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue(-1)]
+    public int TypeNameIndex { get; set; } = -1;
     // Full diagnostic paths grow quadratically with graph depth. Keep the
     // compact first-owner edge on disk and rebuild this text after loading.
     [JsonIgnore]
     public string Path { get; set; } = string.Empty;
+    [JsonProperty("p", DefaultValueHandling = DefaultValueHandling.Ignore)]
     public int ParentNodeId { get; set; }
+    [JsonProperty(AkronReconstructionTags.ParentKind, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue("")]
     public string ParentKind { get; set; } = string.Empty;
+    [JsonIgnore]
     public string ParentDeclaringTypeName { get; set; } = string.Empty;
+    [JsonProperty(AkronReconstructionTags.ParentDeclaringTypeNameIndex, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue(-1)]
+    public int ParentDeclaringTypeNameIndex { get; set; } = -1;
+    [JsonProperty(AkronReconstructionTags.ParentFieldName, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue("")]
     public string ParentFieldName { get; set; } = string.Empty;
+    [JsonProperty("pa")]
     public List<int> ParentArrayIndices { get; set; } = new List<int>();
+    public bool ShouldSerializeParentArrayIndices() => ParentArrayIndices != null && ParentArrayIndices.Count > 0;
+    [JsonProperty("pi", DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue(-1)]
     public int ParentDelegateIndex { get; set; } = -1;
+    [JsonProperty("uf", DefaultValueHandling = DefaultValueHandling.Ignore)]
     public bool UseFreshObject { get; set; }
+    [JsonProperty(AkronReconstructionTags.ResourceKey, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue("")]
     public string ResourceKey { get; set; } = string.Empty;
     // The two identity facts capture knows and restore cannot work out for itself,
     // because working them out needs the saved object and the saved map, and a
@@ -104,44 +188,66 @@ internal sealed class AkronReconstructionNode {
     // culture sort name, a file-backed texture path, a reflection key from an
     // assembly loaded off disk. Not set for a key built from a name the running
     // process made up, which a second process renames for the same resource.
-    [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [JsonProperty("pr", DefaultValueHandling = DefaultValueHandling.Ignore)]
     public bool PortableResourceKey { get; set; }
     // MapPlacedEntity: the map laid this entity's EntityID out in its room when the
     // slot was set. An id the map owns going missing means the map changed; an id
     // the map never owned going missing means nothing, because a mod made it up.
-    [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [JsonProperty("mp", DefaultValueHandling = DefaultValueHandling.Ignore)]
     public bool MapPlacedEntity { get; set; }
+    [JsonProperty(AkronReconstructionTags.FreshPath)]
     public List<AkronReconstructionPathStep> FreshPath { get; set; } = new List<AkronReconstructionPathStep>();
+    public bool ShouldSerializeFreshPath() => FreshPath != null && FreshPath.Count > 0;
+    [JsonProperty(AkronReconstructionTags.Fields)]
     public List<AkronReconstructionField> Fields { get; set; } = new List<AkronReconstructionField>();
+    public bool ShouldSerializeFields() => Fields != null && Fields.Count > 0;
+    [JsonProperty(AkronReconstructionTags.Items)]
     public List<AkronReconstructionValue> Items { get; set; } = new List<AkronReconstructionValue>();
+    public bool ShouldSerializeItems() => Items != null && Items.Count > 0;
+    [JsonProperty("al")]
     public List<int> ArrayLengths { get; set; } = new List<int>();
+    public bool ShouldSerializeArrayLengths() => ArrayLengths != null && ArrayLengths.Count > 0;
+    [JsonProperty("ab")]
     public List<int> ArrayLowerBounds { get; set; } = new List<int>();
-    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public bool ShouldSerializeArrayLowerBounds() => ArrayLowerBounds != null && ArrayLowerBounds.Count > 0;
+    [JsonProperty(AkronReconstructionTags.PackedPrimitiveArrayBytes, NullValueHandling = NullValueHandling.Ignore)]
     public byte[] PackedPrimitiveArrayBytes { get; set; }
+    [JsonProperty(AkronReconstructionTags.DelegateCalls)]
     public List<AkronReconstructionDelegateCall> DelegateCalls { get; set; } = new List<AkronReconstructionDelegateCall>();
+    public bool ShouldSerializeDelegateCalls() => DelegateCalls != null && DelegateCalls.Count > 0;
+    [JsonProperty("ev", NullValueHandling = NullValueHandling.Ignore)]
     public AkronPersistentEventInstanceState EventInstance { get; set; }
+    [JsonProperty("rp", NullValueHandling = NullValueHandling.Ignore)]
     public AkronReconstructionResourcePayload ResourcePayload { get; set; }
 }
 
 internal sealed class AkronReconstructionField {
+    [JsonIgnore]
     public string DeclaringTypeName { get; set; } = string.Empty;
+    [JsonProperty(AkronReconstructionTags.DeclaringTypeNameIndex, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue(-1)]
+    public int DeclaringTypeNameIndex { get; set; } = -1;
+    [JsonProperty(AkronReconstructionTags.FieldName)]
     public string Name { get; set; } = string.Empty;
     [JsonIgnore]
     public string Path { get; set; } = string.Empty;
+    [JsonProperty("v")]
     public AkronReconstructionValue Value { get; set; } = new AkronReconstructionValue();
 }
 
 internal sealed class AkronReconstructionValue {
-    [System.ComponentModel.DefaultValue("null")]
-    [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
-    public string Kind { get; set; } = "null";
-    [System.ComponentModel.DefaultValue("")]
-    [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue(AkronReconstructionGraph.NullValueKind)]
+    [JsonProperty(AkronReconstructionTags.Kind, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    public string Kind { get; set; } = AkronReconstructionGraph.NullValueKind;
+    [JsonIgnore]
     public string TypeName { get; set; } = string.Empty;
+    [JsonProperty(AkronReconstructionTags.TypeNameIndex, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue(-1)]
+    public int TypeNameIndex { get; set; } = -1;
     [System.ComponentModel.DefaultValue("")]
-    [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [JsonProperty(AkronReconstructionTags.Scalar, DefaultValueHandling = DefaultValueHandling.Ignore)]
     public string Scalar { get; set; } = string.Empty;
-    [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [JsonProperty(AkronReconstructionTags.NodeId, DefaultValueHandling = DefaultValueHandling.Ignore)]
     public int NodeId { get; set; }
 }
 
@@ -439,23 +545,64 @@ internal static class AkronGameplayBufferState {
 }
 
 internal sealed class AkronReconstructionPathStep {
+    [JsonProperty(AkronReconstructionTags.Kind)]
     public string Kind { get; set; } = string.Empty;
+    [JsonIgnore]
     public string DeclaringTypeName { get; set; } = string.Empty;
+    [JsonProperty(AkronReconstructionTags.DeclaringTypeNameIndex, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue(-1)]
+    public int DeclaringTypeNameIndex { get; set; } = -1;
+    [JsonProperty(AkronReconstructionTags.PathStepFieldName, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue("")]
     public string FieldName { get; set; } = string.Empty;
+    [JsonProperty("a")]
     public List<int> ArrayIndices { get; set; } = new List<int>();
+    public bool ShouldSerializeArrayIndices() => ArrayIndices != null && ArrayIndices.Count > 0;
 }
 
 internal sealed class AkronReconstructionDelegateCall {
+    [JsonProperty(AkronReconstructionTags.Kind)]
     public string Kind { get; set; } = "method";
+    [JsonProperty("tg")]
     public AkronReconstructionValue Target { get; set; } = new AkronReconstructionValue();
+    [JsonIgnore]
     public string DeclaringTypeName { get; set; } = string.Empty;
+    [JsonProperty(AkronReconstructionTags.DeclaringTypeNameIndex, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue(-1)]
+    public int DeclaringTypeNameIndex { get; set; } = -1;
+    [JsonProperty(AkronReconstructionTags.MethodName, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue("")]
     public string MethodName { get; set; } = string.Empty;
+    [JsonIgnore]
     public string ReturnTypeName { get; set; } = string.Empty;
+    [JsonProperty(AkronReconstructionTags.ReturnTypeNameIndex, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue(-1)]
+    public int ReturnTypeNameIndex { get; set; } = -1;
+    [JsonIgnore]
     public List<string> ParameterTypeNames { get; set; } = new List<string>();
+    [JsonProperty(AkronReconstructionTags.ParameterTypeNameIndexes)]
+    public List<int> ParameterTypeNameIndexes { get; set; } = new List<int>();
+    public bool ShouldSerializeParameterTypeNameIndexes() =>
+        ParameterTypeNameIndexes != null && ParameterTypeNameIndexes.Count > 0;
+    [JsonIgnore]
     public string HookTargetDeclaringTypeName { get; set; } = string.Empty;
+    [JsonProperty(AkronReconstructionTags.HookTargetDeclaringTypeNameIndex, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue(-1)]
+    public int HookTargetDeclaringTypeNameIndex { get; set; } = -1;
+    [JsonProperty(AkronReconstructionTags.HookTargetMethodName, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue("")]
     public string HookTargetMethodName { get; set; } = string.Empty;
+    [JsonIgnore]
     public string HookTargetReturnTypeName { get; set; } = string.Empty;
+    [JsonProperty(AkronReconstructionTags.HookTargetReturnTypeNameIndex, DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [System.ComponentModel.DefaultValue(-1)]
+    public int HookTargetReturnTypeNameIndex { get; set; } = -1;
+    [JsonIgnore]
     public List<string> HookTargetParameterTypeNames { get; set; } = new List<string>();
+    [JsonProperty(AkronReconstructionTags.HookTargetParameterTypeNameIndexes)]
+    public List<int> HookTargetParameterTypeNameIndexes { get; set; } = new List<int>();
+    public bool ShouldSerializeHookTargetParameterTypeNameIndexes() =>
+        HookTargetParameterTypeNameIndexes != null && HookTargetParameterTypeNameIndexes.Count > 0;
 }
 
 internal sealed class AkronReconstructionCapture {
@@ -686,51 +833,58 @@ internal sealed class AkronBoundedJsonTextReader : JsonTextReader {
         }
         tokenCount++;
         if (tokenCount > maxTokenCount) {
-            throw new InvalidOperationException("Reconstruction JSON token count exceeds the supported limit.");
+            throw new InvalidOperationException(
+                $"Reconstruction JSON token count exceeds the supported limit of {maxTokenCount:N0}.");
         }
         if (TokenType is JsonToken.StartObject or JsonToken.StartArray or JsonToken.StartConstructor) {
             containerCount++;
             if (containerCount > maxContainerCount) {
-                throw new InvalidOperationException("Reconstruction JSON container count exceeds the supported limit.");
+                throw new InvalidOperationException(
+                    $"Reconstruction JSON container count exceeds the supported limit of {maxContainerCount:N0}.");
             }
         }
         if (TokenType == JsonToken.StartObject) {
             recordCount++;
             if (recordCount > maxRecordCount) {
-                throw new InvalidOperationException("Reconstruction JSON record count exceeds the supported limit.");
+                throw new InvalidOperationException(
+                    $"Reconstruction JSON record count exceeds the supported limit of {maxRecordCount:N0}.");
             }
             if (IsExpensiveRecordPath(Path)) {
                 expensiveRecordCount++;
                 if (expensiveRecordCount > maxExpensiveRecordCount) {
-                    throw new InvalidOperationException("Reconstruction JSON complex record count exceeds the supported limit.");
+                    throw new InvalidOperationException(
+                        $"Reconstruction JSON complex record count exceeds the supported limit of {maxExpensiveRecordCount:N0}.");
                 }
             }
         }
         if (TokenType == JsonToken.StartObject && IsNodeObjectPath(Path)) {
             nodeCount++;
             if (nodeCount > maxNodeCount) {
-                throw new InvalidOperationException("Reconstruction JSON node count exceeds the supported limit.");
+                throw new InvalidOperationException(
+                    $"Reconstruction JSON node count exceeds the supported limit of {maxNodeCount:N0}.");
             }
         }
         if (Value is string text && text.Length > maxStringChars) {
-            throw new InvalidOperationException("Reconstruction JSON string length exceeds the supported limit.");
+            throw new InvalidOperationException(
+                $"Reconstruction JSON string length exceeds the supported limit of {maxStringChars:N0} characters.");
         }
         if (Value is byte[] bytes) {
             binaryBytes = checked(binaryBytes + bytes.LongLength);
             if (binaryBytes > maxBinaryBytes) {
-                throw new InvalidOperationException("Reconstruction JSON binary data exceeds the supported limit.");
+                throw new InvalidOperationException(
+                    $"Reconstruction JSON binary data exceeds the supported limit of {maxBinaryBytes:N0} bytes.");
             }
         }
     }
 
     private static bool IsNodeObjectPath(string path) {
-        return IsArrayElementObjectPath(path, "Nodes");
+        return IsArrayElementObjectPath(path, AkronReconstructionTags.Nodes);
     }
 
     private static bool IsExpensiveRecordPath(string path) {
-        return IsArrayElementObjectPath(path, "Fields") ||
-               IsArrayElementObjectPath(path, "DelegateCalls") ||
-               IsArrayElementObjectPath(path, "FreshPath");
+        return IsArrayElementObjectPath(path, AkronReconstructionTags.Fields) ||
+               IsArrayElementObjectPath(path, AkronReconstructionTags.DelegateCalls) ||
+               IsArrayElementObjectPath(path, AkronReconstructionTags.FreshPath);
     }
 
     private static bool IsArrayElementObjectPath(string path, string propertyName) {
@@ -759,14 +913,39 @@ internal sealed class AkronReconstructionGraph {
     private const long MaxTotalDiagnosticPathChars = 64L * 1024L * 1024L;
     private const int MaxRestoredArrayRank = 32;
     private const long MaxRestoredArrayBytes = 128L * 1024L * 1024L;
-    private const long DefaultMaxJsonTokenCount = 12_000_000;
-    private const long DefaultMaxJsonContainerCount = 5_000_000;
-    private const long DefaultMaxJsonNodeCount = 100_000;
-    private const long DefaultMaxJsonRecordCount = 3_000_000;
-    // Heart of the Storm captures contain about 338,000 field, delegate, and
-    // fresh-path records. Keep a finite ceiling with enough room for that real
-    // custom-map graph instead of rejecting state Akron wrote itself.
-    internal const long DefaultMaxJsonExpensiveRecordCount = 500_000;
+    // Structural caps on one snapshot document, each derived from
+    // MaxDecompressedSnapshotBytes so the byte cap is the only limit a document
+    // Akron wrote itself can reach. They used to be fixed counts calibrated one
+    // real map at a time - 500,000 complex records was the Heart of the Storm
+    // bump - and the 12,000,000-token cap sat inside the real-data band: a
+    // vanilla 7-Summit session wrote slots past it that every later cold load
+    // then refused, the same released-build failure the byte cap's own comment
+    // at MaxDecompressedSnapshotBytes describes. A limit under what real maps
+    // produce is not a limit on hostile input, it is a slot that cannot be
+    // loaded.
+    //
+    // Each divisor sits under the sustained bytes-per-element of anything
+    // Serialize emits at scale, so a document inside the byte cap cannot trip
+    // these and a document that does is denser than this writer's output -
+    // crafted, not saved. Measured on real v10 snapshots (Summit and Farewell,
+    // 32-36 MB decompressed): ~5 bytes per token against the 4-byte divisor,
+    // ~18.5 bytes per record against 16, and ~1.8 KB per node against 512, so
+    // the byte cap still binds first at every element the writer produces. The
+    // v9 format ran 15-25 bytes per token; v10's type-name table and short
+    // property names are what moved real output toward the floors. What
+    // actually bounds a hostile document's memory is the record cap: at ~64
+    // bytes per materialized value object its ceiling is about 1.5 GiB, the
+    // same order as the 1.4 GiB of RSS the byte cap already budgets for one
+    // cold load.
+    internal const long DefaultMaxJsonTokenCount =
+        AkronStartPosReconstruction.MaxDecompressedSnapshotBytes / 4;
+    internal const long DefaultMaxJsonContainerCount = DefaultMaxJsonTokenCount / 2;
+    internal const long DefaultMaxJsonNodeCount =
+        AkronStartPosReconstruction.MaxDecompressedSnapshotBytes / 512;
+    internal const long DefaultMaxJsonRecordCount =
+        AkronStartPosReconstruction.MaxDecompressedSnapshotBytes / 16;
+    internal const long DefaultMaxJsonExpensiveRecordCount =
+        AkronStartPosReconstruction.MaxDecompressedSnapshotBytes / 64;
     private const int DefaultMaxJsonStringChars = 16 * 1024 * 1024;
     private const long DefaultMaxJsonBinaryBytes = 192L * 1024L * 1024L;
     private const string ObjectKind = "object";
@@ -775,9 +954,22 @@ internal sealed class AkronReconstructionGraph {
     private const string DelegateKind = "delegate";
     private const string EventInstanceKind = "event-instance";
     private const string PersistentResourceKind = "persistent-resource";
-    private const string NullValueKind = "null";
-    private const string ScalarValueKind = "scalar";
-    private const string ReferenceValueKind = "reference";
+    // A WeakReference owns one process GC handle and nothing else, so walking its
+    // fields reaches an IntPtr and refuses the slot - which is what a Spring
+    // Collab 2020 backdrop holding a weak reference to itself did to every
+    // Heart of the Storm capture. This kind stores what the handle means
+    // instead: Items[0] is the target and Items[1] is the non-generic type's
+    // resurrection flag, and the restore builds a new WeakReference around the
+    // restored target - the same shape AkronDeepClone gives a warm copy.
+    private const string WeakReferenceKind = "weak-reference";
+    // The value kinds are one character because a real snapshot writes them
+    // hundreds of thousands of times ("reference" alone was 325,000 uses and
+    // 3.4 MB on a measured Farewell document). Node kinds above appear once per
+    // node - tens of thousands - and stay readable words. Internal because the
+    // value model's [DefaultValue] attribute names the null kind.
+    internal const string NullValueKind = "n";
+    internal const string ScalarValueKind = "s";
+    internal const string ReferenceValueKind = "r";
     private const string MethodDelegateCallKind = "method";
     private const string DetourNextDelegateCallKind = "detour-next";
 
@@ -985,8 +1177,146 @@ internal sealed class AkronReconstructionGraph {
         }
     }
 
+    // v10 writes each distinct assembly-qualified type name once, in the document's
+    // TypeNames table, and a small integer at every use. Build runs at the top of a
+    // serialize and fills the serialized index shadows from the [JsonIgnore] strings
+    // capture populated; Resolve runs right after a deserialize and rebuilds those
+    // strings, so capture, validation, and restore only ever see plain strings. The
+    // nested ActionStateDocument shares the root table: it is serialized inside the
+    // root document, so its indexes always travel with the list they point into.
+    //
+    // One walker owns the list of type-name slots so the two directions cannot
+    // drift: a slot added to the model gets indexed and resolved in the same place
+    // or not at all, and the round-trip test fails loudly on the latter.
+    private static void MapTypeNames(
+        AkronReconstructionDocument document,
+        bool build,
+        Func<string, int> toIndex,
+        Func<int, string> toName
+    ) {
+        void MapValue(AkronReconstructionValue value) {
+            if (value == null) {
+                return;
+            }
+            if (build) {
+                value.TypeNameIndex = toIndex(value.TypeName);
+            } else {
+                value.TypeName = toName(value.TypeNameIndex);
+            }
+        }
+
+        void Walk(AkronReconstructionDocument current) {
+            if (current == null) {
+                return;
+            }
+            foreach (AkronReconstructionNode node in current.Nodes ?? new List<AkronReconstructionNode>()) {
+                if (node == null) {
+                    continue;
+                }
+                if (build) {
+                    node.TypeNameIndex = toIndex(node.TypeName);
+                    node.ParentDeclaringTypeNameIndex = toIndex(node.ParentDeclaringTypeName);
+                } else {
+                    node.TypeName = toName(node.TypeNameIndex);
+                    node.ParentDeclaringTypeName = toName(node.ParentDeclaringTypeNameIndex);
+                }
+                foreach (AkronReconstructionField field in node.Fields ?? new List<AkronReconstructionField>()) {
+                    if (field == null) {
+                        continue;
+                    }
+                    if (build) {
+                        field.DeclaringTypeNameIndex = toIndex(field.DeclaringTypeName);
+                    } else {
+                        field.DeclaringTypeName = toName(field.DeclaringTypeNameIndex);
+                    }
+                    MapValue(field.Value);
+                }
+                foreach (AkronReconstructionValue item in node.Items ?? new List<AkronReconstructionValue>()) {
+                    MapValue(item);
+                }
+                foreach (AkronReconstructionPathStep step in node.FreshPath ?? new List<AkronReconstructionPathStep>()) {
+                    if (step == null) {
+                        continue;
+                    }
+                    if (build) {
+                        step.DeclaringTypeNameIndex = toIndex(step.DeclaringTypeName);
+                    } else {
+                        step.DeclaringTypeName = toName(step.DeclaringTypeNameIndex);
+                    }
+                }
+                foreach (AkronReconstructionDelegateCall call in node.DelegateCalls ?? new List<AkronReconstructionDelegateCall>()) {
+                    if (call == null) {
+                        continue;
+                    }
+                    if (build) {
+                        call.DeclaringTypeNameIndex = toIndex(call.DeclaringTypeName);
+                        call.ReturnTypeNameIndex = toIndex(call.ReturnTypeName);
+                        call.ParameterTypeNameIndexes =
+                            (call.ParameterTypeNames ?? new List<string>()).Select(toIndex).ToList();
+                        call.HookTargetDeclaringTypeNameIndex = toIndex(call.HookTargetDeclaringTypeName);
+                        call.HookTargetReturnTypeNameIndex = toIndex(call.HookTargetReturnTypeName);
+                        call.HookTargetParameterTypeNameIndexes =
+                            (call.HookTargetParameterTypeNames ?? new List<string>()).Select(toIndex).ToList();
+                    } else {
+                        call.DeclaringTypeName = toName(call.DeclaringTypeNameIndex);
+                        call.ReturnTypeName = toName(call.ReturnTypeNameIndex);
+                        call.ParameterTypeNames =
+                            (call.ParameterTypeNameIndexes ?? new List<int>()).Select(toName).ToList();
+                        call.HookTargetDeclaringTypeName = toName(call.HookTargetDeclaringTypeNameIndex);
+                        call.HookTargetReturnTypeName = toName(call.HookTargetReturnTypeNameIndex);
+                        call.HookTargetParameterTypeNames =
+                            (call.HookTargetParameterTypeNameIndexes ?? new List<int>()).Select(toName).ToList();
+                    }
+                    MapValue(call.Target);
+                }
+            }
+            Walk(current.ActionStateDocument);
+        }
+
+        Walk(document);
+    }
+
+    // Internal so tests can craft structurally invalid v10 files: a hostile writer
+    // still produces a table, and Serialize cannot produce those files because it
+    // validates the document first.
+    internal static void BuildTypeNameTable(AkronReconstructionDocument document) {
+        List<string> table = new List<string>();
+        Dictionary<string, int> indexes = new Dictionary<string, int>(StringComparer.Ordinal);
+        MapTypeNames(document, build: true, typeName => {
+            if (string.IsNullOrEmpty(typeName)) {
+                return -1;
+            }
+            if (!indexes.TryGetValue(typeName, out int index)) {
+                index = table.Count;
+                table.Add(typeName);
+                indexes[typeName] = index;
+            }
+            return index;
+        }, toName: null);
+        document.TypeNames = table;
+        if (document.ActionStateDocument != null) {
+            // The nested document's uses are indexed into the root table above, so a
+            // table of its own would be dead weight that a reader might resolve against.
+            document.ActionStateDocument.TypeNames = new List<string>();
+        }
+    }
+
+    private static void ResolveTypeNames(AkronReconstructionDocument document) {
+        List<string> table = document?.TypeNames ?? new List<string>();
+        MapTypeNames(document, build: false, toIndex: null, index => {
+            if (index == -1) {
+                return string.Empty;
+            }
+            if (index < 0 || index >= table.Count) {
+                throw new InvalidOperationException("Reconstruction type name index is out of range.");
+            }
+            return table[index];
+        });
+    }
+
     public string Serialize(AkronReconstructionDocument document) {
         ValidateDocumentHeader(document);
+        BuildTypeNameTable(document);
         return JsonConvert.SerializeObject(document, JsonSettings);
     }
 
@@ -999,6 +1329,7 @@ internal sealed class AkronReconstructionGraph {
         using StringReader stringReader = new StringReader(json);
         using AkronBoundedJsonTextReader jsonReader = CreateJsonReader(stringReader);
         AkronReconstructionDocument document = serializer.Deserialize<AkronReconstructionDocument>(jsonReader);
+        ResolveTypeNames(document);
         ValidateDocumentHeader(document);
         RestoreDiagnosticPaths(document);
         return document;
@@ -1006,6 +1337,7 @@ internal sealed class AkronReconstructionGraph {
 
     public void Serialize(AkronReconstructionDocument document, Stream stream) {
         ValidateDocumentHeader(document);
+        BuildTypeNameTable(document);
         if (stream == null || !stream.CanWrite) {
             throw new InvalidOperationException("Reconstruction output stream is unavailable.");
         }
@@ -1026,6 +1358,7 @@ internal sealed class AkronReconstructionGraph {
         using StreamReader streamReader = new StreamReader(stream, Encoding.UTF8, true, 65536, leaveOpen: true);
         using AkronBoundedJsonTextReader jsonReader = CreateJsonReader(streamReader);
         AkronReconstructionDocument document = serializer.Deserialize<AkronReconstructionDocument>(jsonReader);
+        ResolveTypeNames(document);
         ValidateDocumentHeader(document);
         RestoreDiagnosticPaths(document);
         return document;
@@ -1202,6 +1535,13 @@ internal sealed class AkronReconstructionGraph {
                 DelegateKind => typeof(Delegate).IsAssignableFrom(type),
                 EventInstanceKind => type == typeof(EventInstance) && node.EventInstance != null,
                 PersistentResourceKind => resourceAdapter?.CanPersist(type) == true && node.ResourcePayload != null,
+                // Exactly two items: the target, then the resurrection flag as a
+                // scalar. Requiring the flag's slot to be a scalar here is what
+                // lets RefuseAReferenceInASlotTheRestoreNeverReads treat the whole
+                // item list as read: a reference can only ever sit in Items[0].
+                WeakReferenceKind => IsWeakReferenceType(type) &&
+                                     node.Items is { Count: 2 } &&
+                                     node.Items[1]?.Kind == ScalarValueKind,
                 AnchorKind => node.UseFreshObject &&
                               (isLiveResource(type) || typeof(Delegate).IsAssignableFrom(type)),
                 _ => false
@@ -1263,9 +1603,13 @@ internal sealed class AkronReconstructionGraph {
         AkronReconstructionNode node,
         Type type
     ) {
-        // The kind is one of the six the switch above admits, so these are exact.
+        // The kind is one of the seven the switch above admits, so these are exact.
+        // A weak reference's items are both read: the target by CreateWeakReference
+        // and the flag by its scalar decode, and the kind contract has already
+        // pinned the flag slot to a scalar, so a reference there cannot exist.
         bool readsFields = node.Kind == ObjectKind;
-        bool readsItems = node.Kind == ArrayKind && node.PackedPrimitiveArrayBytes == null;
+        bool readsItems = node.Kind == ArrayKind && node.PackedPrimitiveArrayBytes == null ||
+                          node.Kind == WeakReferenceKind;
         bool readsCalls = node.Kind == DelegateKind;
 
         foreach (AkronReconstructionField field in node.Fields ?? new List<AkronReconstructionField>()) {
@@ -1368,6 +1712,10 @@ internal sealed class AkronReconstructionGraph {
                        parent.DelegateCalls != null &&
                        node.ParentDelegateIndex < parent.DelegateCalls.Count) {
                 parentValue = parent.DelegateCalls[node.ParentDelegateIndex]?.Target;
+            } else if (node.ParentKind == "weak-target" &&
+                       string.Equals(parent.Kind, WeakReferenceKind, StringComparison.Ordinal) &&
+                       parent.Items is { Count: > 0 }) {
+                parentValue = parent.Items[0];
             }
             if (parentValue?.Kind != ReferenceValueKind || parentValue.NodeId != node.Id) {
                 throw new InvalidOperationException("Reconstruction document node parent edge is invalid.");
@@ -1502,6 +1850,9 @@ internal sealed class AkronReconstructionGraph {
                         parentPath,
                         ".<target>[" + child.ParentDelegateIndex.ToString(CultureInfo.InvariantCulture) + "]");
                     break;
+                case "weak-target":
+                    child.Path = BuildDiagnosticPath(parentPath, ".<weak-target>");
+                    break;
                 default:
                     throw new InvalidOperationException("Reconstruction node parent kind is invalid.");
             }
@@ -1509,6 +1860,26 @@ internal sealed class AkronReconstructionGraph {
             parentPath = child.Path;
         }
         return node.Path;
+    }
+
+    private static bool IsWeakReferenceType(Type type) {
+        return type == typeof(WeakReference) ||
+               type is { IsGenericType: true } && type.GetGenericTypeDefinition() == typeof(WeakReference<>);
+    }
+
+    // WeakReference<T> exposes its target through TryGetTarget alone and never
+    // exposes its resurrection flag, so a generic weak reference reads as
+    // (target, false) and is rebuilt without the flag. The flag only matters in
+    // the window between a finalizer running and its object being collected,
+    // which nothing in a room capture can observe.
+    private static (object Target, bool TrackResurrection) ReadWeakReference(object weakReference) {
+        if (weakReference is WeakReference plain) {
+            return (plain.Target, plain.TrackResurrection);
+        }
+        object[] arguments = { null };
+        weakReference.GetType().GetMethod(nameof(WeakReference<object>.TryGetTarget))!
+            .Invoke(weakReference, arguments);
+        return (arguments[0], false);
     }
 
     private static string BuildDiagnosticPath(string parentPath, string suffix) {
@@ -2353,6 +2724,7 @@ internal sealed class AkronReconstructionGraph {
             // reassignment of the descending path did.
             List<AkronReconstructionPathStep> matchedFreshPath = null;
             bool persistentEventInstance = savedValue is EventInstance;
+            bool weakReference = IsWeakReferenceType(savedType);
             bool persistentResource = owner.resourceAdapter?.CanPersist(savedType) == true;
             bool freshTypeMatches = freshValue != null && freshValue.GetType() == savedType;
             bool entityIdentityMatches = savedValue is not Entity savedEntity ||
@@ -2414,8 +2786,11 @@ internal sealed class AkronReconstructionGraph {
 
             int nodeId = Document.Nodes.Count + 1;
             savedNodeIds[savedValue] = nodeId;
+            // A weak reference is constructed on restore, never paired with the
+            // fresh one, for the same reason a delegate is: its whole state is a
+            // construction argument, not a field an existing object can take.
             bool useFreshObject = freshTypeMatches && !savedType.IsValueType &&
-                                  savedValue is not Delegate && !persistentEventInstance;
+                                  savedValue is not Delegate && !persistentEventInstance && !weakReference;
             if (useFreshObject && pairedFreshObjects.TryGetValue(freshValue, out int existingOwnerId)) {
                 if (liveAnchor) {
                     throw new AkronReconstructionException(path, "fresh resource is already paired with node " + existingOwnerId.ToString(CultureInfo.InvariantCulture));
@@ -2435,6 +2810,8 @@ internal sealed class AkronReconstructionGraph {
                         ? PersistentResourceKind
                     : persistentEventInstance
                         ? EventInstanceKind
+                        : weakReference
+                            ? WeakReferenceKind
                         : savedValue is Delegate
                             ? DelegateKind
                             : savedType.IsArray ? ArrayKind : ObjectKind,
@@ -2488,6 +2865,8 @@ internal sealed class AkronReconstructionGraph {
                 if (node.EventInstance == null) {
                     throw new AkronReconstructionException(path, "FMOD event has no stable event path");
                 }
+            } else if (weakReference) {
+                CaptureWeakReference(node, savedValue, freshTypeMatches ? freshValue : null, path);
             } else if (savedValue is Delegate savedDelegate) {
                 CaptureDelegate(node, savedDelegate, freshValue as Delegate, path, containingType);
             } else if (savedValue is Array savedArray) {
@@ -2497,6 +2876,52 @@ internal sealed class AkronReconstructionGraph {
             }
 
             return new AkronReconstructionValue { Kind = ReferenceValueKind, NodeId = nodeId };
+        }
+
+        // The fresh weak reference's target is handed down as the target's fresh
+        // counterpart, exactly as CaptureObject hands a fresh field value down,
+        // so a target the fresh room also reaches weakly still pairs. A target
+        // first reached through a weak edge and nowhere else records this edge
+        // as its parent, which no fresh-slot authentication matches - the
+        // restore then rebuilds it as a plain reconstructed object, and refuses
+        // loudly if that object's type needs room authentication.
+        private void CaptureWeakReference(
+            AkronReconstructionNode node,
+            object savedWeakReference,
+            object freshWeakReference,
+            string path
+        ) {
+            (object savedTarget, bool trackResurrection) = ReadWeakReference(savedWeakReference);
+            object freshTarget = freshWeakReference == null ? null : ReadWeakReference(freshWeakReference).Target;
+            string targetPath = path + ".<weak-target>";
+            AkronReconstructionValue targetValue = CaptureValue(
+                savedTarget,
+                freshTarget,
+                targetPath,
+                savedWeakReference.GetType(),
+                null,
+                node,
+                new AkronReconstructionPathStep { Kind = "weak-target" });
+            // Weak-reference nodes are rebuilt in one ascending-id pass after every
+            // other node, so a target that is itself a weak reference must have been
+            // captured before this one to exist when this one is created. Capture
+            // walks the target inline, giving it a higher id - or, for a weak
+            // reference targeting itself, this very id - so either way the target
+            // would not be in Objects yet and every load would refuse the slot.
+            // Refuse it here instead, at the Set, so no such slot is ever written.
+            // A target-first weak chain keeps its lower id and is left alone.
+            if (targetValue.Kind == ReferenceValueKind && targetValue.NodeId >= node.Id &&
+                string.Equals(Document.Nodes[targetValue.NodeId - 1].Kind, WeakReferenceKind, StringComparison.Ordinal)) {
+                throw new AkronReconstructionException(
+                    targetPath,
+                    "a weak reference whose target is itself or a later weak reference cannot be persisted");
+            }
+            node.Items.Add(targetValue);
+            node.Items.Add(new AkronReconstructionValue {
+                Kind = ScalarValueKind,
+                TypeName = TypeName(typeof(bool)),
+                Scalar = EncodeScalar(trackResurrection, typeof(bool), path)
+            });
         }
 
         private void CaptureObject(
@@ -2992,7 +3417,8 @@ internal sealed class AkronReconstructionGraph {
                 } else if (TryResolveFreshOwnedEntity(node, type, out Entity lateOwnedEntity)) {
                     restoredObject = lateOwnedEntity;
                     resolvedFreshObjectNodes.Add(node.Id);
-                } else if (node.Kind == DelegateKind || node.Kind == EventInstanceKind) {
+                } else if (node.Kind == DelegateKind || node.Kind == EventInstanceKind ||
+                           node.Kind == WeakReferenceKind) {
                     continue;
                 } else if (node.Kind == ArrayKind) {
                     restoredObject = CreateAuthenticatedObject(node, type);
@@ -3025,6 +3451,29 @@ internal sealed class AkronReconstructionGraph {
                 }
                 Objects[node.Id] = eventInstance;
             }
+            // After delegates and events so a target that is one of those already
+            // exists. A weak reference whose target is another weak reference
+            // would need yet another ordering and has never been seen; its target
+            // reference resolves to nothing here and the restore refuses it.
+            foreach (AkronReconstructionNode node in document.Nodes.Where(node => node.Kind == WeakReferenceKind).OrderBy(node => node.Id)) {
+                Objects[node.Id] = CreateWeakReference(node);
+            }
+        }
+
+        // Mirrors ReadWeakReference: the non-generic type takes its target and
+        // flag through the constructor, and WeakReference<T> takes the target
+        // alone because its flag is not readable off a live instance either.
+        private object CreateWeakReference(AkronReconstructionNode node) {
+            Type type = ResolveType(node.TypeName, node.Path);
+            object target = ResolveValue(node.Items[0], node.Path + ".<weak-target>");
+            bool trackResurrection = DecodeScalar(node.Items[1], node.Path) is true;
+            if (type == typeof(WeakReference)) {
+                return new WeakReference(target, trackResurrection);
+            }
+            if (target != null && !type.GetGenericArguments()[0].IsInstanceOfType(target)) {
+                throw new AkronReconstructionException(node.Path, "weak reference target type differs");
+            }
+            return Activator.CreateInstance(type, new[] { target });
         }
 
         public void CommitPersistentResources() {
@@ -3931,7 +4380,8 @@ internal sealed class AkronReconstructionGraph {
             AkronReconstructionField edgeField
         ) {
             if (value?.Kind != ReferenceValueKind || !nodes.TryGetValue(value.NodeId, out AkronReconstructionNode target) ||
-                target.Kind is AnchorKind or PersistentResourceKind or DelegateKind or EventInstanceKind) {
+                target.Kind is AnchorKind or PersistentResourceKind or DelegateKind or EventInstanceKind
+                    or WeakReferenceKind) {
                 return;
             }
             Type targetType = ResolveType(target.TypeName, target.Path);
@@ -6564,7 +7014,8 @@ internal sealed class AkronReconstructionGraph {
         public void ValidateAssignments() {
             foreach (AkronReconstructionNode node in document.Nodes.OrderBy(node => node.Id)) {
                 if (node.Kind == AnchorKind || node.Kind == PersistentResourceKind ||
-                    node.Kind == DelegateKind || node.Kind == EventInstanceKind) {
+                    node.Kind == DelegateKind || node.Kind == EventInstanceKind ||
+                    node.Kind == WeakReferenceKind) {
                     continue;
                 }
 
@@ -7292,6 +7743,8 @@ internal sealed class AkronReconstructionGraph {
                     VerifyDelegate(node, (Delegate) current);
                 } else if (node.Kind == EventInstanceKind) {
                     VerifyEventInstance(node, (EventInstance) current);
+                } else if (node.Kind == WeakReferenceKind) {
+                    VerifyWeakReference(node, current);
                 } else if (node.Kind == ArrayKind) {
                     VerifyArray(node, (Array) current);
                 } else {
@@ -7435,6 +7888,20 @@ internal sealed class AkronReconstructionGraph {
                     VerifyValue(expected, actual, path);
                 }
                 IncrementArrayIndices(current, itemIndices);
+            }
+        }
+
+        private void VerifyWeakReference(AkronReconstructionNode node, object current) {
+            (object currentTarget, bool currentTrackResurrection) = ReadWeakReference(current);
+            // A scalar target was boxed into the constructor and nothing holds
+            // that box strongly, so a collection between construction and this
+            // check legitimately leaves the weak reference dead. Every other
+            // target is a node object the restore still holds.
+            if (node.Items[0]?.Kind != ScalarValueKind || currentTarget != null) {
+                VerifyValue(node.Items[0], currentTarget, node.Path + ".<weak-target>");
+            }
+            if (current is WeakReference && currentTrackResurrection != (DecodeScalar(node.Items[1], node.Path) is true)) {
+                throw new AkronReconstructionException(node.Path, "weak reference resurrection flag differs");
             }
         }
 
@@ -8225,7 +8692,9 @@ internal static class AkronStartPosReconstruction {
         int fileSlot,
         AkronReconstructionDocument document,
         out string error,
-        string directory = null
+        string directory = null,
+        long maxDecompressedBytes = MaxDecompressedSnapshotBytes,
+        AkronReconstructionGraph verificationGraph = null
     ) {
         error = string.Empty;
         string path = GetSnapshotPath(slotName, directory);
@@ -8238,8 +8707,31 @@ internal static class AkronStartPosReconstruction {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             using (FileStream file = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             using (GZipStream compressed = new GZipStream(file, CompressionLevel.Optimal, leaveOpen: false))
-            using (AkronPacedWriteStream paced = new AkronPacedWriteStream(compressed)) {
+            using (AkronPacedWriteStream paced = new AkronPacedWriteStream(compressed, maxDecompressedBytes)) {
                 CaptureGraph.Serialize(document, paced);
+            }
+            // Read the file back through the same bounded reader before committing
+            // it. The paced writer only caps bytes, but the reader also bounds
+            // structure - node, record, container and token counts - and a real
+            // capture dense in tiny nodes can pass the byte cap yet trip a
+            // structural ceiling, which would put back the unreadable-slot failure
+            // this whole path exists to prevent. Verifying readability here makes a
+            // successful Set mean the slot loads, whatever ceiling is tightest, and
+            // catches a corrupt write as a bonus. CaptureGraph is safe to reuse:
+            // the persistence worker runs one job at a time, so serialize and this
+            // read never overlap on it. Same thread, so the read paces too; a
+            // shutdown cancel surfaces as a cancellation rather than a save failure.
+            using (FileStream verify = new FileStream(temporaryPath, FileMode.Open, FileAccess.Read, FileShare.None)) {
+                // verificationGraph is a test seam for driving the read ceilings with
+                // small caps; production passes null and verifies with CaptureGraph,
+                // whose default caps match the loader the slot will actually face.
+                if (!TryReadSnapshot(verificationGraph ?? CaptureGraph, verify, out _, out string readBackError, out _, out _, maxDecompressedBytes)) {
+                    if (AkronSnapshotPacing.Cancelled) {
+                        throw new OperationCanceledException(AkronSnapshotPacing.CancelledMessage);
+                    }
+                    error = "snapshot could not be read back after writing: " + readBackError;
+                    return false;
+                }
             }
             File.Move(temporaryPath, path, overwrite: true);
             return true;
@@ -8252,6 +8744,11 @@ internal static class AkronStartPosReconstruction {
             throw;
         } catch (Exception exception) {
             error = exception.GetType().Name + ": " + exception.Message;
+            // Diagnostic, not Warn: the short form above travels out through the
+            // caller and is already reported at Warn where the slot is rolled back.
+            // This line adds the one thing that report cannot carry - the stack.
+            AkronLog.Diagnostic(nameof(AkronStartPosReconstruction),
+                "SaveSnapshot failed for " + slotName + ": " + exception);
             return false;
         } finally {
             if (File.Exists(temporaryPath)) {
@@ -8371,11 +8868,27 @@ internal static class AkronStartPosReconstruction {
     // of the job. Writes arrive here in whole buffer flushes, so each one is a
     // safe place to stop and none of them is large enough to matter if the
     // player takes control halfway through.
+    //
+    // It also enforces MaxDecompressedSnapshotBytes on the way out. The read
+    // side has always refused a snapshot past that limit, so writing one is
+    // writing a slot that every later load refuses; failing the save here puts
+    // the message on the Set that caused it instead.
     private sealed class AkronPacedWriteStream : Stream {
         private readonly Stream destination;
+        private readonly long maxBytes;
+        private long bytesWritten;
 
-        public AkronPacedWriteStream(Stream destination) {
+        public AkronPacedWriteStream(Stream destination, long maxBytes) {
             this.destination = destination ?? throw new ArgumentNullException(nameof(destination));
+            this.maxBytes = maxBytes > 0 ? maxBytes : throw new ArgumentOutOfRangeException(nameof(maxBytes));
+        }
+
+        private void RecordWrite(long count) {
+            bytesWritten += count;
+            if (bytesWritten > maxBytes) {
+                throw new InvalidOperationException(
+                    "Snapshot is larger than the " + (maxBytes >> 20) + " MiB size limit, so this state cannot be saved.");
+            }
         }
 
         public override bool CanRead => false;
@@ -8389,15 +8902,18 @@ internal static class AkronStartPosReconstruction {
 
         public override void Write(byte[] buffer, int offset, int count) {
             AkronSnapshotPacing.Pace();
+            RecordWrite(count);
             destination.Write(buffer, offset, count);
         }
 
         public override void Write(ReadOnlySpan<byte> buffer) {
             AkronSnapshotPacing.Pace();
+            RecordWrite(buffer.Length);
             destination.Write(buffer);
         }
 
         public override void WriteByte(byte value) {
+            RecordWrite(1);
             destination.WriteByte(value);
         }
 
@@ -8886,6 +9402,10 @@ internal static class AkronStartPosReconstruction {
             sourceDirectory);
     }
 
+    internal static string GetSnapshotDirectory() {
+        return Path.Combine(AppContext.BaseDirectory, "Saves", SnapshotDirectoryName);
+    }
+
     internal static string GetSnapshotPath(string slotName, string directory = null) {
         // Only the canonical root is memoized. Callers that pass an explicit directory
         // are staging installs with a fresh GUID directory per capture, so caching those
@@ -8894,16 +9414,15 @@ internal static class AkronStartPosReconstruction {
             return Path.Combine(directory, BuildSnapshotFileName(slotName ?? string.Empty));
         }
         return SnapshotPathCache.GetOrAdd(slotName ?? string.Empty, static key =>
-            Path.Combine(
-                Path.Combine(AppContext.BaseDirectory, "Saves", SnapshotDirectoryName),
-                BuildSnapshotFileName(key)));
+            Path.Combine(GetSnapshotDirectory(), BuildSnapshotFileName(key)));
     }
 
     // Tracks AkronReconstructionDocument.CurrentFormat. A snapshot written against a
     // different fresh-room baseline gets a different path, so no read can reach it and
     // no write can replace it in place.
-    private const string SnapshotFileNamePrefix = "v9-";
-    private const string SnapshotFileNameSuffix = ".json.gz";
+    private const string SnapshotFileNamePrefix = "v10-";
+    // Internal so the snapshot-report command can glob the same files this writes.
+    internal const string SnapshotFileNameSuffix = ".json.gz";
 
     private static string BuildSnapshotFileName(string slotName) {
         return SnapshotFileNamePrefix + BuildSnapshotSlotDigest(slotName) + SnapshotFileNameSuffix;
@@ -9256,14 +9775,17 @@ internal static class AkronStartPosReconstruction {
     // cached here. The fields are found by type rather than by name, so an
     // atlas either type gains is covered without being listed.
     //
-    // These two types are deliberately the whole list. There is no process-wide
+    // These three types are deliberately the whole list. There is no process-wide
     // registry of Atlas instances to enumerate - Monocle does not keep one and
     // Everest does not add one - so an atlas a helper mod built and kept to
     // itself is still refused, by name, with its data path in the message.
     // Reaching those would mean walking the statics of every type in every
     // loaded assembly on a capture worker, which costs more than the refusal it
-    // would avoid.
-    private static readonly Type[] ContentAtlasOwners = { typeof(GFX), typeof(MTN) };
+    // would avoid. OVR is the overworld atlas: chapter-panel UI reaches it
+    // through button callbacks a room can retain, and a Spring Collab 2020
+    // capture was refused over exactly that key when only GFX and MTN were
+    // listed here.
+    private static readonly Type[] ContentAtlasOwners = { typeof(GFX), typeof(MTN), typeof(OVR) };
 
     // Two of these carrying one key would be two distinct objects the rebuilt
     // room cannot tell apart, and Atlas is deliberately absent from
