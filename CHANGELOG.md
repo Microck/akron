@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 71
+
 ### Changed
 
 - **Set your StartPos slots again, and re-export any `.akr` setup packs you share.** The saved-state contract moves to `akron-reconstruction-v10` and the pack contract to `akron-setup-v7`; older slots and packs are refused rather than read.
