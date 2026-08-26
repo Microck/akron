@@ -42,13 +42,13 @@
 #
 # What can be asserted about a restore is the load probe's state output - position,
 # facing, dashes, state id, session flag, session counter - which is deterministic.
-# Those named fields, not the whole rebuilt room. Check 1 prints that output and
-# asserts none of it, and checks 2 and 3 do not print it at all, which is a hole worth
-# knowing about:
-# akron_qa_startpos_load_probe arms its capture whether or not the load succeeded, so
-# a refused load still produces a hash and check 1 can reach a PASS on it. None of
-# the PASS lines below claims the load succeeded, for that reason. Asserting those
-# fields is the next thing this harness needs.
+# Those named fields, not the whole rebuilt room. Check 1 asserts the fields whose
+# exact values the setup wrote (facing, dashes, flag, counter - position is one
+# gravity frame past the set point, so it is deterministic but not the set value),
+# and keeps the whole field set as a baseline; checks 2 and 3 assert their probes
+# reproduce that baseline exactly. A refused load still arms a pixel capture, so
+# the hash comparisons alone never claimed the load succeeded - these field
+# assertions are what does.
 
 set -uo pipefail
 
@@ -276,6 +276,27 @@ fi
 # all, and the only correctness evidence in this check was invisible.
 printf '%s\n' "$LOAD_OUT" | grep -E '^qa-(startpos-load-probe|session)' | sed 's/^/      /'
 
+# The deterministic fields the header names. The physics-free ones are asserted
+# against the exact values the setup wrote; the whole set, position included, is
+# the baseline the cross-map and post-restart loads must reproduce.
+# The result file is written by the game, a Windows process, so its lines end
+# CRLF; the \r must go before any exact-line match.
+probe_state() {
+    printf '%s\n' "$1" | tr -d '\r' | grep -E '^qa-(startpos-load-probe-(position|facing|dashes|state)|session-(flag|counter)):' | sort
+}
+PROBE_BASELINE="$(probe_state "$LOAD_OUT")"
+for expected in \
+    'qa-startpos-load-probe-facing: Left' \
+    'qa-startpos-load-probe-dashes: 1' \
+    'qa-session-flag: akron-verify-flag=true' \
+    'qa-session-counter: verify-counter=7'; do
+    if printf '%s\n' "$PROBE_BASELINE" | grep -qxF "$expected"; then
+        pass "cross-room state: ${expected}"
+    else
+        fail "cross-room state: the probe output is missing '${expected}'"
+    fi
+done
+
 # ------------------------------------------------------------- 2. cross-map
 
 say "Check 2: StartPos survives leaving the map and coming back"
@@ -298,6 +319,13 @@ elif [ "$BASELINE_HASH" = "$XMAP_HASH" ]; then
 else
     fail "cross-map: a map round trip changed the restored frame (cross-room=${BASELINE_HASH:0:16} cross-map=${XMAP_HASH:0:16})"
 fi
+XMAP_STATE="$(probe_state "$LOAD_OUT")"
+if [ -n "$PROBE_BASELINE" ] && [ "$XMAP_STATE" = "$PROBE_BASELINE" ]; then
+    pass "cross-map state: the probe fields match the cross-room load exactly"
+else
+    fail "cross-map state: the probe fields differ from the cross-room load"
+    diff <(printf '%s\n' "$PROBE_BASELINE") <(printf '%s\n' "$XMAP_STATE") | sed 's/^/      /'
+fi
 
 # ------------------------------------------------- 3. persistence + latency
 
@@ -317,6 +345,13 @@ elif [ "$BASELINE_HASH" = "$COLD_HASH" ]; then
     pass "persistent slot: after a full restart the load frame hashed identically to the warm load (${SNAP_COUNT_BEFORE} snapshots on disk)"
 else
     fail "persistent slot: a cold load differs from the warm load (warm=${BASELINE_HASH:0:16} cold=${COLD_HASH:0:16})"
+fi
+COLD_STATE="$(probe_state "$LOAD_OUT")"
+if [ -n "$PROBE_BASELINE" ] && [ "$COLD_STATE" = "$PROBE_BASELINE" ]; then
+    pass "persistent state: the probe fields survived the restart exactly"
+else
+    fail "persistent state: the probe fields differ after a restart"
+    diff <(printf '%s\n' "$PROBE_BASELINE") <(printf '%s\n' "$COLD_STATE") | sed 's/^/      /'
 fi
 printf '      cold load round trip including automation polling: %s ms\n' "$COLD_MS"
 
@@ -350,7 +385,7 @@ say "Check 5: log-level filtering is a real verbosity ladder"
 # not how the level got set. Check 6 covers how the level gets set.
 LOG="${GAME_ROOT}/Saves/AkronLogs/akron-current.log"
 SETTINGS="${GAME_ROOT}/Saves/modsettings-Akron.celeste"
-ORIGINAL_LEVEL="$(rsh "sed -n 's/^LoggingLevel: *//p' '${SETTINGS}' | head -1")"
+ORIGINAL_LEVEL="$(rsh "sed -n 's/^LoggingLevel: *//p' '${SETTINGS}' | head -1" | tr -d '\r')"
 printf '      original LoggingLevel on the box: %s\n' "${ORIGINAL_LEVEL:-unknown}"
 
 declare -A LEVEL_LINES
@@ -361,11 +396,22 @@ for level in Normal Diagnostic Verbose; do
     launch_game || { fail "log level: could not boot at ${level}"; continue; }
     enter_level
     # The Diagnostic tier rolls per-event records into 60-second summaries, so
-    # the window has to be longer than 60 s for the comparison to be fair.
-    send "akron_startpos status" 40 >/dev/null
+    # the window has to be longer than 60 s for the comparison to be fair. The
+    # summary is flushed lazily: RecordDiagnosticFeatureUse only emits it when a
+    # LATER use arrives after the window has elapsed, so the window needs a use
+    # at its start and a second one past the 60 s mark, or a lone use sits
+    # unflushed forever and the rollup assertion fails against working code.
+    # Every level runs the same commands, so the ladder comparison stays fair.
+    send 'akron_startpos set 1
+akron_startpos status' 60 >/dev/null
     sleep 70
+    send 'akron_startpos set 1' 60 >/dev/null
+    sleep 3
     COUNT="$(rsh "wc -l < '${LOG}' 2>/dev/null || echo 0")"
-    ROLLUP="$(rsh "grep -c 'feature uses recorded:' '${LOG}' 2>/dev/null || echo 0")"
+    # grep -c prints its 0 AND exits nonzero when nothing matches, so an
+    # `|| echo 0` fallback produced "0\n0" and broke every integer test on it.
+    ROLLUP="$(rsh "grep -c 'feature uses recorded:' '${LOG}' 2>/dev/null" | tr -d '\r\n ')"
+    ROLLUP="${ROLLUP:-0}"
     SEVERITIES="$(rsh "awk '{print \$2}' '${LOG}' 2>/dev/null | sort -u | tr '\n' ' '")"
     LEVEL_LINES[$level]="$COUNT"
     printf '      level=%-11s lines=%-7s rollup-lines=%-4s severities: %s\n' \
@@ -425,19 +471,19 @@ stop_game
 if launch_game; then
     enter_level
     send "akron_log_level trace" 40 >/dev/null
-    BOOT_LEVEL="$(rsh "sed -n 's/^LoggingLevel: *//p' '${SETTINGS}' | head -1")"
+    BOOT_LEVEL="$(rsh "sed -n 's/^LoggingLevel: *//p' '${SETTINGS}' | head -1" | tr -d '\r')"
 
     # The overlay is open for the same reason it was open when this was
     # reported: it is the state the popup is reached from.
     send "akron_overlay show" 40 >/dev/null
     SET_OUT="$(send 'akron_log_level diagnostic
 akron_menu_input off' 60)"
-    LIVE_LEVEL="$(rsh "sed -n 's/^LoggingLevel: *//p' '${SETTINGS}' | head -1")"
-    LIVE_MENU="$(rsh "sed -n 's/^ConsumeGameplayInputInMenu: *//p' '${SETTINGS}' | head -1")"
+    LIVE_LEVEL="$(rsh "sed -n 's/^LoggingLevel: *//p' '${SETTINGS}' | head -1" | tr -d '\r')"
+    LIVE_MENU="$(rsh "sed -n 's/^ConsumeGameplayInputInMenu: *//p' '${SETTINGS}' | head -1" | tr -d '\r')"
 
     kill_game_hard
-    DEAD_LEVEL="$(rsh "sed -n 's/^LoggingLevel: *//p' '${SETTINGS}' | head -1")"
-    DEAD_MENU="$(rsh "sed -n 's/^ConsumeGameplayInputInMenu: *//p' '${SETTINGS}' | head -1")"
+    DEAD_LEVEL="$(rsh "sed -n 's/^LoggingLevel: *//p' '${SETTINGS}' | head -1" | tr -d '\r')"
+    DEAD_MENU="$(rsh "sed -n 's/^ConsumeGameplayInputInMenu: *//p' '${SETTINGS}' | head -1" | tr -d '\r')"
 
     printf '      before=%s live=%s after-kill=%s | control live=%s after-kill=%s\n' \
         "$BOOT_LEVEL" "$LIVE_LEVEL" "$DEAD_LEVEL" "$LIVE_MENU" "$DEAD_MENU"

@@ -536,7 +536,7 @@ public sealed class StartPosPersistenceTests {
             Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
                 slotName, out AkronReconstructionDocument document, out string loadError, directory), loadError);
             Assert.Equal(AkronReconstructionDocument.CurrentFormat, document.Format);
-            Assert.Equal("akron-reconstruction-v9", document.Format);
+            Assert.Equal("akron-reconstruction-v10", document.Format);
             Assert.Equal(slotName, document.SlotName);
             Assert.Equal("Tests/FormatBump", document.MapSid);
             Assert.Equal("room", document.Room);

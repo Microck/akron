@@ -19,7 +19,7 @@ The StartPos tab is Akron's player position and room-state restore workflow. The
 A StartPos is an exact gameplay-state snapshot. Loading it must restore every
 captured entity, component, reference, position, speed, timer, state machine,
 animation, coroutine, random-number state, and registered helper state to the
-captured frame. Akron stores this state in a local v9 snapshot file so it
+captured frame. Akron stores this state in a local v10 snapshot file so it
 survives closing and restarting Celeste. Set and Load hold the room state until
 Celeste renders the restored frame.
 
@@ -57,7 +57,7 @@ ghosts a map places in a room. Playback figures a cutscene owns, such as
 Farewell's wave-dash tutorial, are captured and restored exactly as before. Use
 **Disable Playback** if you would rather the ghost were not there at all.
 
-Akron does not load old selected-field room snapshots. A v9 snapshot contains
+Akron does not load old selected-field room snapshots. A v10 snapshot contains
 the complete managed room graph, registered helper state, audio state, and
 render-buffer pixels required by the Set frame. Akron refuses the load if the
 file is missing, damaged, uses another snapshot format, or belongs to another

@@ -27,6 +27,14 @@ public sealed class StartPosReconstructionTests {
     private const BindingFlags RuntimeInstanceFields =
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
+    // Serializes a structurally invalid document the way a hostile writer would:
+    // with a real v10 type-name table, but without the validation that keeps
+    // graph.Serialize from ever producing such a file.
+    private static string SerializeCraftedDocument(AkronReconstructionDocument document) {
+        AkronReconstructionGraph.BuildTypeNameTable(document);
+        return Newtonsoft.Json.JsonConvert.SerializeObject(document);
+    }
+
     [Fact]
     public void SoundSourceProvidesItsExactEventPathWhenFmodDropsTheDormantDescription() {
         SoundSource soundSource = (SoundSource) RuntimeHelpers.GetUninitializedObject(typeof(SoundSource));
@@ -42,13 +50,13 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionNode emitter = new AkronReconstructionNode { Id = 1 };
         emitter.Fields.Add(new AkronReconstructionField {
             Name = "<Source>k__BackingField",
-            Value = new AkronReconstructionValue { Kind = "reference", NodeId = 2 }
+            Value = new AkronReconstructionValue { Kind = AkronReconstructionGraph.ReferenceValueKind, NodeId = 2 }
         });
         AkronReconstructionNode source = new AkronReconstructionNode { Id = 2 };
         source.Fields.Add(new AkronReconstructionField {
             Name = nameof(SoundSource.EventName),
             Value = new AkronReconstructionValue {
-                Kind = "scalar",
+                Kind = AkronReconstructionGraph.ScalarValueKind,
                 TypeName = typeof(string).AssemblyQualifiedName!,
                 Scalar = "event:/game/general/touchswitch_last_oneshot"
             }
@@ -230,7 +238,7 @@ public sealed class StartPosReconstructionTests {
             Name = "_version",
             Path = listNode.Path + "._version",
             Value = new AkronReconstructionValue {
-                Kind = "scalar",
+                Kind = AkronReconstructionGraph.ScalarValueKind,
                 TypeName = typeof(int).AssemblyQualifiedName!,
                 Scalar = "99"
             }
@@ -335,7 +343,7 @@ public sealed class StartPosReconstructionTests {
         MethodInfo untrustedMethod = typeof(StartPosReconstructionTests).GetMethod(
             nameof(UntrustedSnapshotCallback),
             BindingFlags.Static | BindingFlags.NonPublic)!;
-        call.Target = new AkronReconstructionValue { Kind = "null" };
+        call.Target = new AkronReconstructionValue { Kind = AkronReconstructionGraph.NullValueKind };
         call.DeclaringTypeName = untrustedMethod.DeclaringType!.AssemblyQualifiedName!;
         call.MethodName = untrustedMethod.Name;
         call.ReturnTypeName = untrustedMethod.ReturnType.AssemblyQualifiedName!;
@@ -409,7 +417,7 @@ public sealed class StartPosReconstructionTests {
         MethodInfo modMethod = typeof(ProbeHelperModA).GetMethod(
             nameof(ProbeHelperModA.Leave),
             BindingFlags.Static | BindingFlags.NonPublic)!;
-        call.Target = new AkronReconstructionValue { Kind = "null" };
+        call.Target = new AkronReconstructionValue { Kind = AkronReconstructionGraph.NullValueKind };
         call.DeclaringTypeName = modMethod.DeclaringType!.AssemblyQualifiedName!;
         call.MethodName = modMethod.Name;
         call.ReturnTypeName = modMethod.ReturnType.AssemblyQualifiedName!;
@@ -473,7 +481,7 @@ public sealed class StartPosReconstructionTests {
                 node.Fields.Add(new AkronReconstructionField {
                     DeclaringTypeName = typeof(TestNode).AssemblyQualifiedName!,
                     Name = "Next",
-                    Value = new AkronReconstructionValue { Kind = "reference", NodeId = id + 1 }
+                    Value = new AkronReconstructionValue { Kind = AkronReconstructionGraph.ReferenceValueKind, NodeId = id + 1 }
                 });
             }
             document.Nodes.Add(node);
@@ -486,7 +494,7 @@ public sealed class StartPosReconstructionTests {
         root.Fields.Add(new AkronReconstructionField {
             DeclaringTypeName = typeof(TestNode).AssemblyQualifiedName!,
             Name = "Next",
-            Value = new AkronReconstructionValue { Kind = "reference", NodeId = 2 }
+            Value = new AkronReconstructionValue { Kind = AkronReconstructionGraph.ReferenceValueKind, NodeId = 2 }
         });
         document.Nodes.Add(root);
         AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
@@ -508,7 +516,7 @@ public sealed class StartPosReconstructionTests {
         foreach (AkronReconstructionNode child in capture.Document.Nodes.Where(node => node.ParentNodeId > 0)) {
             AkronReconstructionNode parent = nodes[child.ParentNodeId];
             AkronReconstructionField parentField = parent.Fields.Single(field =>
-                field.Value?.Kind == "reference" && field.Value.NodeId == child.Id);
+                field.Value?.Kind == AkronReconstructionGraph.ReferenceValueKind && field.Value.NodeId == child.Id);
             string longFieldName = parentField.Name + new string('x', 1024);
             parentField.Name = longFieldName;
             child.ParentFieldName = longFieldName;
@@ -548,7 +556,7 @@ public sealed class StartPosReconstructionTests {
         root.Fields.Add(new AkronReconstructionField {
             DeclaringTypeName = nodeType,
             Name = "Next",
-            Value = new AkronReconstructionValue { Kind = "reference", NodeId = 2 }
+            Value = new AkronReconstructionValue { Kind = AkronReconstructionGraph.ReferenceValueKind, NodeId = 2 }
         });
         AkronReconstructionNode first = new AkronReconstructionNode {
             Id = 2,
@@ -562,7 +570,7 @@ public sealed class StartPosReconstructionTests {
         first.Fields.Add(new AkronReconstructionField {
             DeclaringTypeName = nodeType,
             Name = "Next",
-            Value = new AkronReconstructionValue { Kind = "reference", NodeId = 3 }
+            Value = new AkronReconstructionValue { Kind = AkronReconstructionGraph.ReferenceValueKind, NodeId = 3 }
         });
         AkronReconstructionNode second = new AkronReconstructionNode {
             Id = 3,
@@ -576,7 +584,7 @@ public sealed class StartPosReconstructionTests {
         second.Fields.Add(new AkronReconstructionField {
             DeclaringTypeName = nodeType,
             Name = "Next",
-            Value = new AkronReconstructionValue { Kind = "reference", NodeId = 2 }
+            Value = new AkronReconstructionValue { Kind = AkronReconstructionGraph.ReferenceValueKind, NodeId = 2 }
         });
         document.Nodes.Add(root);
         document.Nodes.Add(first);
@@ -584,7 +592,7 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            graph.Deserialize(Newtonsoft.Json.JsonConvert.SerializeObject(document)));
+            graph.Deserialize(SerializeCraftedDocument(document)));
 
         Assert.Contains("parent cycle is invalid", exception.Message);
     }
@@ -630,7 +638,7 @@ public sealed class StartPosReconstructionTests {
         });
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            graph.Deserialize(Newtonsoft.Json.JsonConvert.SerializeObject(capture.Document)));
+            graph.Deserialize(SerializeCraftedDocument(capture.Document)));
 
         Assert.Contains("parent edge is invalid", exception.Message);
     }
@@ -1480,7 +1488,7 @@ public sealed class StartPosReconstructionTests {
         // Simulate an imported snapshot that makes an unrelated array the
         // entity's canonical parent while retaining the real EntityList alias.
         unrelatedArrayNode.Items.Add(new AkronReconstructionValue {
-            Kind = "reference",
+            Kind = AkronReconstructionGraph.ReferenceValueKind,
             TypeName = typeof(SlashFx).AssemblyQualifiedName!,
             NodeId = savedSlashNode.Id
         });
@@ -2586,7 +2594,7 @@ public sealed class StartPosReconstructionTests {
             maxJsonRecordCount: 3);
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            graph.Deserialize("{\"Nodes\":[{\"DelegateCalls\":[{},{}]}]}"));
+            graph.Deserialize("{\"Nodes\":[{\"dc\":[{},{}]}]}"));
 
         Assert.Contains("record count exceeds", exception.Message);
     }
@@ -2604,7 +2612,7 @@ public sealed class StartPosReconstructionTests {
             maxJsonExpensiveRecordCount: 1);
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            graph.Deserialize("{\"Nodes\":[{\"DelegateCalls\":[{},{}]}]}"));
+            graph.Deserialize("{\"Nodes\":[{\"dc\":[{},{}]}]}"));
 
         Assert.Contains("complex record count exceeds", exception.Message);
     }
@@ -2617,6 +2625,320 @@ public sealed class StartPosReconstructionTests {
         Assert.True(
             AkronReconstructionGraph.DefaultMaxJsonExpensiveRecordCount >= 337_736,
             "The default complex-record budget rejects Heart of the Storm.");
+    }
+
+    // The read side has always refused a snapshot past MaxDecompressedSnapshotBytes,
+    // so a save allowed to pass it is a slot every later load refuses with no hint
+    // of when it went wrong. The failure has to land on the Set that wrote it.
+    [Fact]
+    public void SaveSnapshotRefusesAStatePastTheSnapshotSizeLimit() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-write-cap-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+            AkronReconstructionCapture capture = graph.Capture(
+                new TestRoot { Primary = new TestNode() },
+                new TestRoot { Primary = new TestNode() });
+            Assert.True(capture.Success, capture.Error);
+
+            bool saved = AkronStartPosReconstruction.SaveSnapshot(
+                "Akron StartPos write cap 1",
+                "Celeste/1-ForsakenCity",
+                "1",
+                0,
+                capture.Document,
+                out string error,
+                directory,
+                maxDecompressedBytes: 64);
+
+            Assert.False(saved);
+            Assert.Contains("size limit", error);
+            // Neither the slot file nor the temporary file may survive a refused save.
+            Assert.Empty(Directory.GetFiles(directory, "*", SearchOption.AllDirectories));
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // A capture can pass the byte cap and still trip a structural read ceiling
+    // (many tiny nodes serialize small). Before this, such a slot saved and then
+    // refused on every load, which is the failure the whole path exists to stop.
+    // SaveSnapshot now reads its own output back and fails the Set instead.
+    [Fact]
+    public void SaveSnapshotRefusesAStateThatWouldTripAStructuralReadCeiling() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-readback-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+            AkronReconstructionCapture capture = graph.Capture(
+                new TestRoot { Primary = new TestNode { Value = 5 } },
+                new TestRoot { Primary = new TestNode() });
+            Assert.True(capture.Success, capture.Error);
+            Assert.True(capture.Document.Nodes.Count > 1);
+
+            // A verifier whose node ceiling is 1 stands in for a real graph whose
+            // default ceiling a huge tiny-node capture would exceed while staying
+            // under the byte cap.
+            AkronReconstructionGraph tinyCeiling = new AkronReconstructionGraph(
+                IsLiveResource,
+                maxJsonNodeCount: 1);
+
+            bool saved = AkronStartPosReconstruction.SaveSnapshot(
+                "Akron StartPos readback 1",
+                "Celeste/1-ForsakenCity",
+                "1",
+                0,
+                capture.Document,
+                out string error,
+                directory,
+                maxDecompressedBytes: AkronStartPosReconstruction.MaxDecompressedSnapshotBytes,
+                verificationGraph: tinyCeiling);
+
+            Assert.False(saved);
+            Assert.Contains("read back", error);
+            Assert.Contains("node count exceeds", error);
+            // The unreadable slot must not survive on disk.
+            Assert.Empty(Directory.GetFiles(directory, "*", SearchOption.AllDirectories));
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // A weak reference whose target is a later weak reference would be rebuilt
+    // before its target exists, so it loaded on no cold restore. Capture refuses
+    // it now, at the Set, so the dead slot is never written.
+    [Fact]
+    public void CaptureRefusesAWeakReferenceTargetingALaterWeakReference() {
+        WeakChainRoot saved = new WeakChainRoot();
+        saved.Outer = new WeakReference(new WeakReference(new TestNode { Value = 9 }));
+        WeakChainRoot baseline = new WeakChainRoot();
+        baseline.Outer = new WeakReference(new WeakReference(new TestNode()));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.False(capture.Success);
+        Assert.Contains("weak reference whose target is itself or a later weak reference", capture.Error);
+    }
+
+    // A weak reference can legally target itself. Its target id equals its own
+    // id, so the rebuild pass would resolve the target before the node exists
+    // in Objects and every cold load would refuse the slot. Capture refuses it.
+    [Fact]
+    public void CaptureRefusesAWeakReferenceTargetingItself() {
+        WeakChainRoot saved = new WeakChainRoot { Outer = new WeakReference(null) };
+        saved.Outer.Target = saved.Outer;
+        WeakChainRoot baseline = new WeakChainRoot { Outer = new WeakReference(null) };
+        baseline.Outer.Target = baseline.Outer;
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.False(capture.Success);
+        Assert.Contains("weak reference whose target is itself or a later weak reference", capture.Error);
+    }
+
+    // The composition report exists to size format work from real files, so its
+    // accounting has to be checked against a snapshot the real writer produced:
+    // identity read from the header, counts matching the document, and every
+    // attributed byte fitting inside the actual decompressed size.
+    [Fact]
+    public void SnapshotCompositionReportAccountsForAWrittenSnapshot() {
+        string directory = Path.Combine(Path.GetTempPath(), "akron-composition-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+            AkronReconstructionCapture capture = graph.Capture(
+                new TestRoot { Primary = new TestNode { Value = 37 } },
+                new TestRoot { Primary = new TestNode() });
+            Assert.True(capture.Success, capture.Error);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                "Akron StartPos composition 1",
+                "Celeste/1-ForsakenCity",
+                "1",
+                0,
+                capture.Document,
+                out string error,
+                directory), error);
+            string path = AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos composition 1", directory);
+
+            AkronSnapshotComposition.Report report = AkronSnapshotComposition.AnalyzeFile(path);
+
+            long decompressedBytes;
+            using (FileStream reading = File.OpenRead(path))
+            using (GZipStream decompressing = new GZipStream(reading, CompressionMode.Decompress)) {
+                byte[] buffer = new byte[65536];
+                decompressedBytes = 0;
+                int read;
+                while ((read = decompressing.Read(buffer, 0, buffer.Length)) > 0) {
+                    decompressedBytes += read;
+                }
+            }
+            Assert.Equal(decompressedBytes, report.DecompressedBytes);
+            Assert.Equal(new FileInfo(path).Length, report.CompressedBytes);
+            Assert.Equal("Akron StartPos composition 1", report.SlotName);
+            Assert.Equal("Celeste/1-ForsakenCity", report.MapSid);
+            Assert.Equal("1", report.Room);
+            Assert.Equal(capture.Document.Nodes.Count, report.NodeCount);
+            Assert.True(report.TokenCount > 0);
+            Assert.True(report.TypeNameBytes > 0, "No type-name bytes were attributed.");
+            Assert.True(report.DistinctTypeNameCount >= 1);
+            // The byte figures are token-text estimates that undercount escapes
+            // and skip commas, so they must land inside the real size, never past it.
+            Assert.InRange(report.AttributedBytes, 1, report.DecompressedBytes);
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // The report echoes snapshot-derived strings (slot name, map, room, and the
+    // most-repeated values) into a log a player may share. A crafted snapshot
+    // must not be able to forge extra log records with newlines or the Unicode
+    // line/paragraph separators, which char.IsControl alone misses.
+    // The report echoes snapshot-derived strings (slot name, map, room, and the
+    // most-repeated values) into a log a player may share. A crafted snapshot
+    // must not be able to forge extra log records with newlines or the Unicode
+    // line and paragraph separators, which char.IsControl alone misses.
+    [Fact]
+    public void SnapshotCompositionReportNeverEmitsLineBreaksFromSnapshotData() {
+        string poison = "a\rb\nc\u2028d\u2029e\tf";
+        AkronSnapshotComposition.Report report = new AkronSnapshotComposition.Report {
+            FilePath = "v10-" + poison + ".json.gz",
+            SlotName = poison,
+            MapSid = poison,
+            Room = poison,
+            DecompressedBytes = 1000,
+            TokenCount = 1,
+            TopWaste = { (poison, 5, 100) }
+        };
+
+        foreach (string line in AkronSnapshotComposition.Describe(report)) {
+            foreach (char forbidden in new[] { '\r', '\n', '\u2028', '\u2029' }) {
+                Assert.DoesNotContain(forbidden, line);
+            }
+        }
+    }
+
+    // The failure path echoes the exception message, and a file-open failure
+    // puts the file's path inside that message, so a poisoned file name must
+    // not forge log records through it either.
+    [Fact]
+    public void SnapshotCompositionFailureLogNeverEmitsLineBreaksFromThePath() {
+        string poisonedPath = "v10-a\rb\nc\u2028d\u2029e.json.gz";
+        Exception failure = new IOException("could not open '" + poisonedPath + "'");
+
+        string line = AkronSnapshotComposition.DescribeFailure(poisonedPath, failure);
+
+        Assert.Contains(nameof(IOException), line);
+        foreach (char forbidden in new[] { '\r', '\n', '\u2028', '\u2029' }) {
+            Assert.DoesNotContain(forbidden, line);
+        }
+    }
+
+    // Walking a WeakReference's fields reaches its GC-handle IntPtr, which used
+    // to refuse the slot; Spring Collab 2020's stylegrounds hold one, so every
+    // Heart of the Storm capture died on it. The capture now stores the target
+    // and flag, and the restore rebuilds the weak reference around the restored
+    // target - through a full serialize/deserialize, like a real cold load.
+    [Fact]
+    public void WeakReferencesRoundTripAroundTheirRestoredTarget() {
+        TestNode savedTarget = new TestNode { Value = 41 };
+        WeakReferenceRoot saved = new WeakReferenceRoot {
+            Strong = savedTarget,
+            Weak = new WeakReference(savedTarget, trackResurrection: true),
+            TypedWeak = new WeakReference<TestNode>(savedTarget)
+        };
+        TestNode baselineTarget = new TestNode();
+        WeakReferenceRoot baseline = new WeakReferenceRoot {
+            Strong = baselineTarget,
+            Weak = new WeakReference(baselineTarget),
+            TypedWeak = new WeakReference<TestNode>(baselineTarget)
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+
+        TestNode freshTarget = new TestNode();
+        WeakReferenceRoot fresh = new WeakReferenceRoot {
+            Strong = freshTarget,
+            Weak = new WeakReference(freshTarget),
+            TypedWeak = new WeakReference<TestNode>(freshTarget)
+        };
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(41, fresh.Strong.Value);
+        Assert.True(fresh.Weak.TrackResurrection);
+        Assert.Same(fresh.Strong, fresh.Weak.Target);
+        Assert.True(fresh.TypedWeak.TryGetTarget(out TestNode? typedTarget));
+        Assert.Same(fresh.Strong, typedTarget);
+        Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void ADeadWeakReferenceRestoresDead() {
+        WeakReferenceRoot saved = new WeakReferenceRoot {
+            Strong = new TestNode(),
+            Weak = new WeakReference(null),
+            TypedWeak = new WeakReference<TestNode>(null!)
+        };
+        WeakReferenceRoot baseline = new WeakReferenceRoot {
+            Strong = new TestNode(),
+            Weak = new WeakReference(null),
+            TypedWeak = new WeakReference<TestNode>(null!)
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+
+        WeakReferenceRoot fresh = new WeakReferenceRoot {
+            Strong = new TestNode(),
+            Weak = new WeakReference(null),
+            TypedWeak = new WeakReference<TestNode>(null!)
+        };
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Null(fresh.Weak.Target);
+        Assert.False(fresh.Weak.TrackResurrection);
+        Assert.False(fresh.TypedWeak.TryGetTarget(out _));
+        Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+    }
+
+    // The measured Heart of the Storm shape exactly: a backdrop-like object
+    // holding a weak reference to itself.
+    [Fact]
+    public void AWeakReferenceToItsOwnHolderRoundTrips() {
+        WeakReferenceRoot saved = new WeakReferenceRoot {
+            Strong = new TestNode(),
+            Weak = null!,
+            TypedWeak = new WeakReference<TestNode>(null!)
+        };
+        saved.Weak = new WeakReference(saved);
+        WeakReferenceRoot baseline = new WeakReferenceRoot {
+            Strong = new TestNode(),
+            Weak = null!,
+            TypedWeak = new WeakReference<TestNode>(null!)
+        };
+        baseline.Weak = new WeakReference(baseline);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+
+        WeakReferenceRoot fresh = new WeakReferenceRoot {
+            Strong = new TestNode(),
+            Weak = null!,
+            TypedWeak = new WeakReference<TestNode>(null!)
+        };
+        fresh.Weak = new WeakReference(fresh);
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(fresh, fresh.Weak.Target);
+        Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
     }
 
     [Fact]
@@ -2850,7 +3172,7 @@ public sealed class StartPosReconstructionTests {
             "Reconstruction document format is unsupported: set this StartPos again.",
             exception.Message);
         Assert.Contains("akron-reconstruction-v8", exception.Message);
-        Assert.Contains("akron-reconstruction-v9", exception.Message);
+        Assert.Contains("akron-reconstruction-v10", exception.Message);
     }
 
     [Fact]
@@ -2863,7 +3185,7 @@ public sealed class StartPosReconstructionTests {
             maxJsonBinaryBytes: 100);
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            graph.Deserialize("{\"Format\":\"akron-reconstruction-v9\",\"Nodes\":[]}"));
+            graph.Deserialize("{\"Format\":\"akron-reconstruction-v10\",\"Nodes\":[]}"));
 
         Assert.Contains("container count exceeds", exception.Message);
     }
@@ -3172,11 +3494,12 @@ public sealed class StartPosReconstructionTests {
         IEnumerable<JObject> emptyMetadataValues = serializedDocument
             .Descendants()
             .OfType<JObject>()
-            .Where(value => value["Kind"]?.Value<string>() is "null" or "reference");
+            .Where(value => value["k"]?.Value<string>() is
+                AkronReconstructionGraph.NullValueKind or AkronReconstructionGraph.ReferenceValueKind);
         Assert.NotEmpty(emptyMetadataValues);
         Assert.All(emptyMetadataValues, value => {
-            Assert.Null(value.Property("TypeName"));
-            Assert.Null(value.Property("Scalar"));
+            Assert.Null(value.Property("t"));
+            Assert.Null(value.Property("s"));
         });
         Assert.True(restore.Success, restore.Error);
         Assert.NotNull(fresh.Primary);
@@ -3811,7 +4134,7 @@ public sealed class StartPosReconstructionTests {
 
         RemoveOriginalOwningField(capture.Document, keptNode);
         packedNode.Items.Add(new AkronReconstructionValue {
-            Kind = "reference",
+            Kind = AkronReconstructionGraph.ReferenceValueKind,
             NodeId = keptNode.Id
         });
         keptNode.ParentNodeId = packedNode.Id;
@@ -3858,7 +4181,7 @@ public sealed class StartPosReconstructionTests {
         RemoveOriginalOwningField(capture.Document, keptNode);
         rootNode.DelegateCalls.Add(new AkronReconstructionDelegateCall {
             Kind = "method",
-            Target = new AkronReconstructionValue { Kind = "reference", NodeId = keptNode.Id },
+            Target = new AkronReconstructionValue { Kind = AkronReconstructionGraph.ReferenceValueKind, NodeId = keptNode.Id },
             DeclaringTypeName = typeof(TestNode).AssemblyQualifiedName!,
             MethodName = nameof(TestNode.Increment),
             ReturnTypeName = typeof(void).AssemblyQualifiedName!
@@ -3895,7 +4218,7 @@ public sealed class StartPosReconstructionTests {
             DeclaringTypeName = declaringType.AssemblyQualifiedName!,
             Name = fieldName,
             Path = holder.Path + "." + fieldName,
-            Value = new AkronReconstructionValue { Kind = "reference", NodeId = keptNode.Id }
+            Value = new AkronReconstructionValue { Kind = AkronReconstructionGraph.ReferenceValueKind, NodeId = keptNode.Id }
         });
         keptNode.ParentNodeId = holder.Id;
         keptNode.ParentKind = "field";
@@ -3911,7 +4234,7 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionNode originalOwner = document.Nodes.Single(node => node.Id == keptNode.ParentNodeId);
         AkronReconstructionField originalEdge = originalOwner.Fields.Single(field =>
             field.Name == keptNode.ParentFieldName &&
-            field.Value.Kind == "reference" &&
+            field.Value.Kind == AkronReconstructionGraph.ReferenceValueKind &&
             field.Value.NodeId == keptNode.Id);
         Assert.True(originalOwner.Fields.Remove(originalEdge));
     }
@@ -3923,7 +4246,7 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionNode parent = document.Nodes.Single(node => node.Id == keptNode.ParentNodeId);
         parent.Fields.Single(field =>
                 field.Name == keptNode.ParentFieldName &&
-                field.Value?.Kind == "reference" &&
+                field.Value?.Kind == AkronReconstructionGraph.ReferenceValueKind &&
                 field.Value.NodeId == keptNode.Id)
             .Value = new AkronReconstructionValue();
     }
@@ -6734,10 +7057,10 @@ public sealed class StartPosReconstructionTests {
             Assert.Equal("Celeste/1-ForsakenCity", document.MapSid);
             Assert.Equal("1", document.Room);
             Assert.Equal(0, document.FileSlot);
-            Assert.Equal("akron-reconstruction-v9", document.Format);
+            Assert.Equal("akron-reconstruction-v10", document.Format);
             Assert.Equal("LightBuffer", Assert.Single(document.GameplayBuffers).FieldName);
             Assert.Equal(new byte[] { 1, 2, 3, 4 }, document.GameplayBuffers[0].Payload.Bytes);
-            Assert.Contains("v9-", Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
+            Assert.Contains("v10-", Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
             Assert.True(File.Exists(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
         } finally {
             if (Directory.Exists(directory)) {
@@ -6915,6 +7238,21 @@ public sealed class StartPosReconstructionTests {
     // reaches is known to hold one, but a helper that talks to native code can.
     private sealed class NativeHandleRoot {
         public IntPtr Handle;
+    }
+
+    // The Spring Collab 2020 shape that used to refuse every Heart of the Storm
+    // capture: an ordinary room object holding a WeakReference alongside a
+    // strong edge to the same target.
+    private sealed class WeakReferenceRoot {
+        public TestNode Strong = null!;
+        public WeakReference Weak = null!;
+        public WeakReference<TestNode> TypedWeak = null!;
+    }
+
+    // A weak reference pointing at another weak reference, to exercise the
+    // capture-time refusal of a chain that would restore out of order.
+    private sealed class WeakChainRoot {
+        public WeakReference Outer = null!;
     }
 
     private sealed class NativeUnsignedHandleRoot {

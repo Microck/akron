@@ -25,6 +25,64 @@ public static partial class AkronCommands {
         Log("qa-save-settings: " + (AkronModule.SaveAkronSettingsNow("qa-command") ? "saved" : "failed"));
     }
 
+    // One report at a time: the analysis streams every snapshot on disk and a
+    // second thread doing the same work doubles the disk and CPU cost for the
+    // same answer.
+    private static int snapshotReportRunning;
+
+    [Command("akron_qa_snapshot_report", "measure every StartPos snapshot on disk: size, structure counts against the read limits, byte composition, and what a type-name table would save")]
+    public static void QaSnapshotReport() {
+        string directory = AkronStartPosReconstruction.GetSnapshotDirectory();
+        string[] files;
+        try {
+            files = Directory.GetFiles(directory, "*" + AkronStartPosReconstruction.SnapshotFileNameSuffix);
+        } catch (DirectoryNotFoundException) {
+            // A directory that has never held a snapshot does not exist yet;
+            // that is the same answer as an existing empty one. Caught before
+            // the general IOException it derives from.
+            files = Array.Empty<string>();
+        } catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) {
+            // An unreadable directory is not "no snapshots": say which it was,
+            // so a permissions problem is not misread as an empty slot list.
+            Log("snapshot-report: could not list " + directory + ": " +
+                exception.GetType().Name + ": " + exception.Message);
+            return;
+        }
+        if (files.Length == 0) {
+            Log("snapshot-report: no snapshots in " + directory);
+            return;
+        }
+        if (Interlocked.CompareExchange(ref snapshotReportRunning, 1, 0) != 0) {
+            Log("snapshot-report: a report is already running");
+            return;
+        }
+        Log("snapshot-report: measuring " + files.Length + " snapshot(s) in the background; results land in the Akron log as AkronSnapshotComposition lines");
+        Thread thread = new Thread(() => {
+            try {
+                AkronSnapshotComposition.ReportAll(files);
+            } catch (Exception exception) {
+                AkronLog.Warn(nameof(AkronSnapshotComposition),
+                    "Snapshot report failed: " + exception.GetType().Name + ": " + exception.Message);
+            } finally {
+                Interlocked.Exchange(ref snapshotReportRunning, 0);
+            }
+        }) {
+            IsBackground = true,
+            Name = "Akron snapshot report",
+            Priority = ThreadPriority.BelowNormal,
+        };
+        try {
+            thread.Start();
+        } catch (Exception exception) {
+            // Start can throw before the delegate runs, e.g. OutOfMemoryException
+            // when the runtime cannot allocate the thread. The finally above never
+            // runs then, so clear the guard here or the command stays wedged on
+            // "a report is already running" for the rest of the session.
+            Interlocked.Exchange(ref snapshotReportRunning, 0);
+            Log("snapshot-report: could not start the worker: " + exception.GetType().Name + ": " + exception.Message);
+        }
+    }
+
     [Command("akron_qa_area_complete", "trigger Level.RegisterAreaComplete for Akron proof automation")]
     public static void QaAreaComplete(string _ = "") {
         Level level = RequireLevel();

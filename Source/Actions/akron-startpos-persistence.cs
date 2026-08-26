@@ -1468,6 +1468,12 @@ internal static class AkronStartPosPersistence {
             } catch (Exception exception) {
                 result = AkronSaveLoadResult.Failed;
                 error = exception.GetType().Name + ": " + exception.Message;
+                // Diagnostic, not Warn: the short form travels out through the
+                // completion and is already reported at Warn when the slot is
+                // rolled back. This line adds the stack, which that report cannot
+                // carry, and is what attributes a failure no message names.
+                AkronLog.Diagnostic(nameof(AkronStartPosPersistence),
+                    "StartPos restart copy for " + job.StateSlotName + " threw: " + exception);
             } finally {
                 parked = AkronSnapshotPacing.ParkedTime;
                 AkronSnapshotPacing.EndPacedWork();
