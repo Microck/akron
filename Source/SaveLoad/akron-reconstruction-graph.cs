@@ -1028,6 +1028,15 @@ internal sealed class AkronReconstructionGraph {
     private readonly Func<object, string> getLiveResourceKey;
     private readonly IAkronReconstructionResourceAdapter resourceAdapter;
     private readonly Func<Type, string, object> resolveDetachedLiveResource;
+    // Restore's last resort for a labelled live resource that resolved nowhere.
+    // Asked only after the fresh key index, the detached registry, and the
+    // structural owner path all came up empty, and never for a portable key: a
+    // name that resolves nowhere is a resource this install does not have,
+    // which stays a refusal. Capture never calls this - capture records what
+    // the saved frame holds and must not create process state to do it, and it
+    // runs on the persistence worker where a graphics resource must not be
+    // created anyway.
+    private readonly Func<Type, string, object> recreateDetachedLiveResource;
     private readonly Func<Type, bool> areEquivalentLiveResources;
     // Asked of the saved object at capture, never of a fresh candidate. The question
     // is whether the saved key names the resource, and only the saved object can
@@ -1117,12 +1126,14 @@ internal sealed class AkronReconstructionGraph {
         long maxJsonExpensiveRecordCount = DefaultMaxJsonExpensiveRecordCount,
         Func<Type, bool> areEquivalentLiveResources = null,
         Func<object, bool> hasPortableLiveResourceKey = null,
-        Func<object, string, IEnumerable<int>> getMapPlacedEntityIds = null
+        Func<object, string, IEnumerable<int>> getMapPlacedEntityIds = null,
+        Func<Type, string, object> recreateDetachedLiveResource = null
     ) {
         this.isLiveResource = isLiveResource ?? throw new ArgumentNullException(nameof(isLiveResource));
         this.getLiveResourceKey = getLiveResourceKey;
         this.resourceAdapter = resourceAdapter;
         this.resolveDetachedLiveResource = resolveDetachedLiveResource;
+        this.recreateDetachedLiveResource = recreateDetachedLiveResource;
         this.areEquivalentLiveResources = areEquivalentLiveResources;
         this.hasPortableLiveResourceKey = hasPortableLiveResourceKey;
         this.getMapPlacedEntityIds = getMapPlacedEntityIds;
@@ -6900,6 +6911,14 @@ internal sealed class AkronReconstructionGraph {
                 return keyMatches.FirstOrDefault() ?? allKeyMatches[0];
             }
 
+            // A candidate a delegate hands back is authenticated the same way
+            // wherever it came from: exact type, and its recomputed key must be
+            // the saved key.
+            bool MatchesSavedKey(object candidate) =>
+                candidate != null &&
+                candidate.GetType() == type &&
+                string.Equals(node.ResourceKey, owner.GetTypedResourceKey(candidate), StringComparison.Ordinal);
+
             // An exact process-registry key is stronger than an approximate
             // owner path. Resolve it first so successful detached lookups do
             // not build structural paths, and cache misses for this restore.
@@ -6908,9 +6927,7 @@ internal sealed class AkronReconstructionGraph {
                     detachedResource = owner.resolveDetachedLiveResource?.Invoke(type, node.ResourceKey);
                     detachedLiveResources[node.ResourceKey] = detachedResource;
                 }
-                if (detachedResource != null &&
-                    detachedResource.GetType() == type &&
-                    string.Equals(node.ResourceKey, owner.GetTypedResourceKey(detachedResource), StringComparison.Ordinal)) {
+                if (MatchesSavedKey(detachedResource)) {
                     return detachedResource;
                 }
             }
@@ -6953,6 +6970,27 @@ internal sealed class AkronReconstructionGraph {
                     "fresh resource key is ambiguous;matches=" +
                     Math.Max(keyMatches.Count, structuralMatches.Count).ToString(CultureInfo.InvariantCulture) +
                     ";key=" + node.ResourceKey);
+            }
+
+            // Last resort, and only for a label. A resource its owner creates
+            // on first use can be absent from every index above at once:
+            // DustEdges builds its noise textures in BeforeRender, so a fresh
+            // baseline that never rendered holds null at the anchor's owner
+            // field, and the process registry lost the captured level's
+            // instances when the map was exited. The owner delegate recreates
+            // the equivalent wrapper - content the room regenerates on its own,
+            // identity checked by the same key comparison the detached lookup
+            // uses. A portable key is a name rather than a label, and a name
+            // that resolves nowhere is a resource this install does not have,
+            // so it keeps the refusal below.
+            if (!node.PortableResourceKey) {
+                object recreated = owner.recreateDetachedLiveResource?.Invoke(type, node.ResourceKey);
+                if (MatchesSavedKey(recreated)) {
+                    // Later nodes carrying this key pair with the same wrapper
+                    // through the detached cache instead of recreating another.
+                    detachedLiveResources[node.ResourceKey] = recreated;
+                    return recreated;
+                }
             }
             throw new AkronReconstructionException(
                 node.Path,
@@ -8269,7 +8307,8 @@ internal static class AkronStartPosReconstruction {
             ResolveDetachedLiveResource,
             areEquivalentLiveResources: AreEquivalentLiveResources,
             hasPortableLiveResourceKey: HasPortableLiveResourceKey,
-            getMapPlacedEntityIds: GetMapPlacedEntityIds);
+            getMapPlacedEntityIds: GetMapPlacedEntityIds,
+            recreateDetachedLiveResource: RecreateDetachedLiveResource);
     }
 
     // Does GetLiveResourceKey name this resource, or label this instance? The two
@@ -9661,17 +9700,25 @@ internal static class AkronStartPosReconstruction {
                    candidate.FullName?.IndexOf("Detour", StringComparison.OrdinalIgnoreCase) >= 0);
     }
 
+    // GetTypedResourceKey writes "<type name>|<resource key>", and both detached
+    // lookups below read the key back out of it. One parser, so the guard - no
+    // separator, or nothing after it - cannot drift between them.
+    private static string StripTypedKeyPrefix(string typedResourceKey) {
+        int separator = typedResourceKey.IndexOf('|');
+        return separator < 0 || separator == typedResourceKey.Length - 1
+            ? null
+            : typedResourceKey.Substring(separator + 1);
+    }
+
     internal static object ResolveDetachedLiveResource(Type resourceType, string typedResourceKey) {
         if (resourceType == null || string.IsNullOrWhiteSpace(typedResourceKey)) {
             return null;
         }
 
-        int separator = typedResourceKey.IndexOf('|');
-        if (separator < 0 || separator == typedResourceKey.Length - 1) {
+        string resourceKey = StripTypedKeyPrefix(typedResourceKey);
+        if (resourceKey == null) {
             return null;
         }
-
-        string resourceKey = typedResourceKey.Substring(separator + 1);
         if (typeof(VirtualTexture).IsAssignableFrom(resourceType)) {
             // Randomized decals can select a different texture wrapper each
             // time their room loads. VirtualContent retains every wrapper by
@@ -9767,6 +9814,54 @@ internal static class AkronStartPosReconstruction {
             }
         }
         return null;
+    }
+
+    // Restore's last resort, asked by the graph only after the fresh key index,
+    // the detached registry above, and the structural owner path all came up
+    // empty, and only for a non-portable key. The one population that lands
+    // here today is a texture an entity builds on first render: DustEdges
+    // creates dust-noise-a and dust-noise-b in BeforeRender, so a fresh-room
+    // baseline that never rendered holds null at the anchor's owner field, and
+    // exiting the captured map disposed its instances out of
+    // VirtualContent.Assets. Such a texture is keyed on a made-up name and its
+    // dimensions - a label, per HasPortableLiveResourceKey - and its pixels are
+    // regenerated by the room itself (DustEdges refills its noise every cycle),
+    // so an equivalent wrapper at the right size is the resource. A texture
+    // loaded from a file is keyed on a content path instead; recreating a blank
+    // in its place would silently swap real content, so a path-shaped name is
+    // refused here and the caller's refusal names the key.
+    internal static object RecreateDetachedLiveResource(Type resourceType, string typedResourceKey) {
+        if (resourceType != typeof(VirtualTexture) || string.IsNullOrWhiteSpace(typedResourceKey)) {
+            return null;
+        }
+        string resourceKey = StripTypedKeyPrefix(typedResourceKey);
+        if (resourceKey == null) {
+            return null;
+        }
+        // The key reads name|WxH. The dimensions are the last segment so the
+        // name keeps any '|' its creator put in it and the recomputed key
+        // round-trips through GetLiveResourceKey.
+        int dimensionsSeparator = resourceKey.LastIndexOf('|');
+        if (dimensionsSeparator <= 0) {
+            return null;
+        }
+        string name = resourceKey.Substring(0, dimensionsSeparator);
+        if (name.IndexOf('/') >= 0 || name.IndexOf('\\') >= 0) {
+            return null;
+        }
+        string[] dimensions = resourceKey.Substring(dimensionsSeparator + 1).Split('x');
+        // 16384 is the largest texture current GPUs accept, and a real
+        // runtime-built texture is a fraction of the screen; the cap keeps a
+        // hostile snapshot from demanding the allocation instead.
+        if (dimensions.Length != 2 ||
+            !int.TryParse(dimensions[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int width) ||
+            !int.TryParse(dimensions[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int height) ||
+            width <= 0 || height <= 0 || width > 16384 || height > 16384) {
+            return null;
+        }
+        // Transparent because the content is the room's to regenerate; for the
+        // dust noise that happens within one noise cycle of the first render.
+        return VirtualContent.CreateTexture(name, width, height, Color.Transparent);
     }
 
     // Where the game keeps the atlases it loads for the whole process. Both are

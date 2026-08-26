@@ -3921,6 +3921,112 @@ public sealed class StartPosReconstructionTests {
         Assert.Equal(1, lookupCount);
     }
 
+    // The DustEdges shape: a resource its owner creates on first render is live at
+    // capture (the running level made it), null in both fresh baselines (never
+    // rendered), and gone from the process registry at restore (exiting the map
+    // disposed it). The recreate delegate is the only thing that can answer, and
+    // its answer must pass the same key comparison the detached lookup uses.
+    [Fact]
+    public void ARecreatedResourceAnswersALabelledKeyThatResolvesNowhere() {
+        TestResource liveAtCapture = new TestResource("live", "runtime-noise");
+        TestResource recreated = new TestResource("recreated", "runtime-noise");
+        bool captureDone = false;
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            resource => ((TestResource) resource).StableKey,
+            resolveDetachedLiveResource: (_, _) => captureDone ? null : liveAtCapture,
+            recreateDetachedLiveResource: (_, key) => key.EndsWith("|runtime-noise", StringComparison.Ordinal)
+                ? recreated
+                : null);
+        DuplicateResourceRoot saved = new DuplicateResourceRoot { TargetA = new TestResource("saved", "runtime-noise") };
+        AkronReconstructionCapture capture = graph.Capture(saved, new DuplicateResourceRoot());
+        Assert.True(capture.Success, capture.Error);
+        captureDone = true;
+        DuplicateResourceRoot fresh = new DuplicateResourceRoot();
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(recreated, fresh.TargetA);
+    }
+
+    [Fact]
+    public void ARecreatedResourceWithTheWrongKeyIsRefused() {
+        TestResource liveAtCapture = new TestResource("live", "runtime-noise");
+        bool captureDone = false;
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            resource => ((TestResource) resource).StableKey,
+            resolveDetachedLiveResource: (_, _) => captureDone ? null : liveAtCapture,
+            recreateDetachedLiveResource: (_, _) => new TestResource("recreated", "some-other-key"));
+        DuplicateResourceRoot saved = new DuplicateResourceRoot { TargetA = new TestResource("saved", "runtime-noise") };
+        AkronReconstructionCapture capture = graph.Capture(saved, new DuplicateResourceRoot());
+        Assert.True(capture.Success, capture.Error);
+        captureDone = true;
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, new DuplicateResourceRoot());
+
+        Assert.False(restore.Success);
+        Assert.Contains("fresh resource key and structural path are unavailable", restore.Error);
+    }
+
+    // A portable key is a name, and a name that resolves nowhere is a resource
+    // this install does not have. Recreating one would hand the room a blank
+    // where real content was expected, so the delegate is never even asked.
+    [Fact]
+    public void APortableKeyIsNeverRecreated() {
+        TestResource liveAtCapture = new TestResource("live", "named-content");
+        bool captureDone = false;
+        int recreateCalls = 0;
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            resource => ((TestResource) resource).StableKey,
+            resolveDetachedLiveResource: (_, _) => captureDone ? null : liveAtCapture,
+            hasPortableLiveResourceKey: _ => true,
+            recreateDetachedLiveResource: (_, _) => {
+                recreateCalls++;
+                return new TestResource("recreated", "named-content");
+            });
+        DuplicateResourceRoot saved = new DuplicateResourceRoot { TargetA = new TestResource("saved", "named-content") };
+        AkronReconstructionCapture capture = graph.Capture(saved, new DuplicateResourceRoot());
+        Assert.True(capture.Success, capture.Error);
+        captureDone = true;
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, new DuplicateResourceRoot());
+
+        Assert.False(restore.Success);
+        Assert.Contains("fresh resource key and structural path are unavailable", restore.Error);
+        Assert.Equal(0, recreateCalls);
+    }
+
+    // The refusal arms of the game-side recreate delegate. The creating arm needs
+    // a graphics device, so it is exercised in game rather than here.
+    [Fact]
+    public void RecreateDetachedLiveResourceRefusesEverythingButARuntimeTextureLabel() {
+        // Only VirtualTexture is recreatable.
+        Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
+            typeof(VirtualRenderTarget), "t|dust-noise-a|128x72"));
+        // A path-shaped name is file-backed content, not a runtime label.
+        Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
+            typeof(VirtualTexture), "t|Graphics/Atlases/Gameplay|128x72"));
+        Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
+            typeof(VirtualTexture), "t|Graphics\\Atlases\\Gameplay|128x72"));
+        // Dimensions must be sane positive integers.
+        Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
+            typeof(VirtualTexture), "t|dust-noise-a|0x72"));
+        Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
+            typeof(VirtualTexture), "t|dust-noise-a|128x-72"));
+        Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
+            typeof(VirtualTexture), "t|dust-noise-a|123456x72"));
+        Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
+            typeof(VirtualTexture), "t|dust-noise-a|axb"));
+        // A key with no name or no dimensions segment never parses.
+        Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
+            typeof(VirtualTexture), "t|128x72"));
+        Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
+            typeof(VirtualTexture), "no-separator"));
+    }
+
     [Fact]
     public void StructuralOwnerPathFindsAFreshResourceWhenItsRuntimeNameAndListIndexChange() {
         TestResource savedResource = new TestResource("saved-process", "snapshot-0");
