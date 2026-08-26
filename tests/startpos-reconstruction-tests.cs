@@ -4002,22 +4002,27 @@ public sealed class StartPosReconstructionTests {
     // The refusal arms of the game-side recreate delegate. The creating arm needs
     // a graphics device, so it is exercised in game rather than here.
     [Fact]
-    public void RecreateDetachedLiveResourceRefusesEverythingButARuntimeTextureLabel() {
+    public void RecreateDetachedLiveResourceRefusesEverythingButAListedRuntimeTexture() {
         // Only VirtualTexture is recreatable.
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
             typeof(VirtualRenderTarget), "t|dust-noise-a|128x72"));
-        // A path-shaped name is file-backed content, not a runtime label.
+        // Only the listed names are recreatable. A file-backed texture's key is
+        // its content path, and a bare path is indistinguishable from a made-up
+        // name, so anything unlisted keeps the refusal.
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
             typeof(VirtualTexture), "t|Graphics/Atlases/Gameplay|128x72"));
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
-            typeof(VirtualTexture), "t|Graphics\\Atlases\\Gameplay|128x72"));
-        // Dimensions must be sane positive integers.
+            typeof(VirtualTexture), "t|icon.png|128x72"));
+        Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
+            typeof(VirtualTexture), "t|dust-noise-c|128x72"));
+        // Dimensions must be sane positive integers under the pixel budget, so
+        // a doctored key cannot demand a huge allocation.
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
             typeof(VirtualTexture), "t|dust-noise-a|0x72"));
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
             typeof(VirtualTexture), "t|dust-noise-a|128x-72"));
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
-            typeof(VirtualTexture), "t|dust-noise-a|123456x72"));
+            typeof(VirtualTexture), "t|dust-noise-a|4096x4096"));
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
             typeof(VirtualTexture), "t|dust-noise-a|axb"));
         // A key with no name or no dimensions segment never parses.
