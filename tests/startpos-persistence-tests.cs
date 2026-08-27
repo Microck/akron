@@ -511,7 +511,23 @@ public sealed class StartPosPersistenceTests {
         string? newestMention = sections.FirstOrDefault(section =>
             section.Contains(contractPrefix, StringComparison.Ordinal));
         Assert.True(newestMention != null, "CHANGELOG.md never names " + contractPrefix + "*.");
-        Assert.Contains(currentFormat, newestMention);
+        Assert.True(
+            ContainsExactVersionToken(newestMention!, currentFormat),
+            "The newest " + contractPrefix + "* mention does not name " + currentFormat + ".");
+    }
+
+    // A plain Contains would read akron-reconstruction-v100 as naming v10. The
+    // token ends at its version digits, so an occurrence only counts when the
+    // next character is not another digit.
+    private static bool ContainsExactVersionToken(string text, string token) {
+        for (int at = text.IndexOf(token, StringComparison.Ordinal); at >= 0;
+             at = text.IndexOf(token, at + 1, StringComparison.Ordinal)) {
+            int end = at + token.Length;
+            if (end >= text.Length || !char.IsDigit(text[end])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     [Fact]
