@@ -493,33 +493,41 @@ public sealed class StartPosPersistenceTests {
     // the pack contract to akron-setup-v5 while the build wrote v9 and v6, so the one
     // instruction a player is given named a version this build never writes.
     //
-    // The active section is normally Unreleased. Release preparation leaves that
-    // section empty and moves its notes into the first versioned section below it,
-    // which is then the section for the build being tested. Older entries name the
-    // contracts their own release shipped, which is what a changelog is for.
+    // What holds that instruction current is the newest section that names a contract
+    // at all: sections are ordered newest first, so the first mention a reader meets is
+    // the one that must match the constants. Older sections name the contracts their
+    // own release shipped, which is what a changelog is for, and a section about
+    // something else entirely has no contract prose to drift.
     [Fact]
-    public void TheActiveChangelogNamesTheContractsThisBuildActuallyWrites() {
+    public void TheNewestChangelogContractMentionNamesTheContractsThisBuildActuallyWrites() {
         string changelog = File.ReadAllText(GetRepositoryFilePath("CHANGELOG.md"));
-        int unreleased = changelog.IndexOf("## Unreleased", StringComparison.Ordinal);
-        Assert.True(unreleased >= 0, "CHANGELOG.md has no Unreleased section.");
-        int nextRelease = changelog.IndexOf("\n## ", unreleased + 1, StringComparison.Ordinal);
-        string section = nextRelease < 0
-            ? SourceTail(changelog, unreleased)
-            : SourceSlice(changelog, unreleased, nextRelease - unreleased);
-        if (string.IsNullOrWhiteSpace(section.Substring("## Unreleased".Length))) {
-            Assert.True(nextRelease >= 0, "CHANGELOG.md has no current release section.");
-            int followingRelease = changelog.IndexOf("\n## ", nextRelease + 1, StringComparison.Ordinal);
-            section = followingRelease < 0
-                ? SourceTail(changelog, nextRelease)
-                : SourceSlice(changelog, nextRelease, followingRelease - nextRelease);
-        }
+        Assert.Contains("## Unreleased", changelog);
+        AssertNewestMentionIsCurrent(changelog, "akron-reconstruction-v", AkronReconstructionDocument.CurrentFormat);
+        AssertNewestMentionIsCurrent(changelog, "akron-setup-v", AkronSetupPacks.SetupPackFormat);
+    }
 
-        Assert.Contains(AkronReconstructionDocument.CurrentFormat, section);
-        Assert.Contains(AkronSetupPacks.SetupPackFormat, section);
-        // The two contracts the move passed through on this branch. Naming either of
-        // them as where the move ends is the failure this exists for.
-        Assert.DoesNotContain("akron-reconstruction-v8", section);
-        Assert.DoesNotContain("akron-setup-v5", section);
+    private static void AssertNewestMentionIsCurrent(string changelog, string contractPrefix, string currentFormat) {
+        string[] sections = changelog.Split("\n## ", StringSplitOptions.None);
+        string? newestMention = sections.FirstOrDefault(section =>
+            section.Contains(contractPrefix, StringComparison.Ordinal));
+        Assert.True(newestMention != null, "CHANGELOG.md never names " + contractPrefix + "*.");
+        Assert.True(
+            ContainsExactVersionToken(newestMention!, currentFormat),
+            "The newest " + contractPrefix + "* mention does not name " + currentFormat + ".");
+    }
+
+    // A plain Contains would read akron-reconstruction-v100 as naming v10. The
+    // token ends at its version digits, so an occurrence only counts when the
+    // next character is not another digit.
+    private static bool ContainsExactVersionToken(string text, string token) {
+        for (int at = text.IndexOf(token, StringComparison.Ordinal); at >= 0;
+             at = text.IndexOf(token, at + 1, StringComparison.Ordinal)) {
+            int end = at + token.Length;
+            if (end >= text.Length || !char.IsDigit(text[end])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     [Fact]

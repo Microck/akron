@@ -1028,6 +1028,15 @@ internal sealed class AkronReconstructionGraph {
     private readonly Func<object, string> getLiveResourceKey;
     private readonly IAkronReconstructionResourceAdapter resourceAdapter;
     private readonly Func<Type, string, object> resolveDetachedLiveResource;
+    // Restore's last resort for a labelled live resource that resolved nowhere.
+    // Asked only after the fresh key index, the detached registry, and the
+    // structural owner path all came up empty, and never for a portable key: a
+    // name that resolves nowhere is a resource this install does not have,
+    // which stays a refusal. Capture never calls this - capture records what
+    // the saved frame holds and must not create process state to do it, and it
+    // runs on the persistence worker where a graphics resource must not be
+    // created anyway.
+    private readonly Func<Type, string, object> recreateDetachedLiveResource;
     private readonly Func<Type, bool> areEquivalentLiveResources;
     // Asked of the saved object at capture, never of a fresh candidate. The question
     // is whether the saved key names the resource, and only the saved object can
@@ -1117,12 +1126,14 @@ internal sealed class AkronReconstructionGraph {
         long maxJsonExpensiveRecordCount = DefaultMaxJsonExpensiveRecordCount,
         Func<Type, bool> areEquivalentLiveResources = null,
         Func<object, bool> hasPortableLiveResourceKey = null,
-        Func<object, string, IEnumerable<int>> getMapPlacedEntityIds = null
+        Func<object, string, IEnumerable<int>> getMapPlacedEntityIds = null,
+        Func<Type, string, object> recreateDetachedLiveResource = null
     ) {
         this.isLiveResource = isLiveResource ?? throw new ArgumentNullException(nameof(isLiveResource));
         this.getLiveResourceKey = getLiveResourceKey;
         this.resourceAdapter = resourceAdapter;
         this.resolveDetachedLiveResource = resolveDetachedLiveResource;
+        this.recreateDetachedLiveResource = recreateDetachedLiveResource;
         this.areEquivalentLiveResources = areEquivalentLiveResources;
         this.hasPortableLiveResourceKey = hasPortableLiveResourceKey;
         this.getMapPlacedEntityIds = getMapPlacedEntityIds;
@@ -2338,10 +2349,10 @@ internal sealed class AkronReconstructionGraph {
     internal static bool IsAuthenticatedCompilerIteratorOwner(
         Type iteratorType,
         bool ownerIsFresh,
-        bool ownerIsAuthenticatedRuntimeEntity,
+        bool ownerIsAuthenticatedReconstruction,
         object owner
     ) {
-        return (ownerIsFresh || ownerIsAuthenticatedRuntimeEntity) &&
+        return (ownerIsFresh || ownerIsAuthenticatedReconstruction) &&
                typeof(IEnumerator).IsAssignableFrom(iteratorType) &&
                iteratorType.GetCustomAttribute<CompilerGeneratedAttribute>() != null &&
                iteratorType.DeclaringType != null &&
@@ -3252,6 +3263,7 @@ internal sealed class AkronReconstructionGraph {
         private readonly HashSet<int> authenticatedDelegateTargetNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedIteratorClosureNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedScreenWipeNodes = new HashSet<int>();
+        private readonly HashSet<int> authenticatedFieldBuiltComponentNodes = new HashSet<int>();
         // Iterator nodes whose captured owner had not resolved yet, with what the
         // rest of CreateAuthenticatedObject was able to prove about each one
         // without that owner. VerifyDeferredIteratorStates needs both.
@@ -3779,6 +3791,7 @@ internal sealed class AkronReconstructionGraph {
                 IsAuthenticatedRuntimeEntityOwnedState(node, type) ||
                 IsAuthenticatedGeneratedEntityOwnedState(node, type);
             bool authenticatedOwnedComponent = IsAuthenticatedReconstructedOwnedComponent(node, type);
+            bool authenticatedFieldBuiltComponent = IsAuthenticatedLazilyBuiltFieldComponent(node, type);
             bool authenticatedDelegateTarget = IsStructurallyAuthenticDelegateTarget(node, type);
             bool authenticatedIteratorClosure = IsAuthenticatedIteratorClosure(node, type);
             bool authenticatedScreenWipe = IsAuthenticatedBuiltInScreenWipe(node, type);
@@ -3806,6 +3819,9 @@ internal sealed class AkronReconstructionGraph {
             if (authenticatedOwnedComponent) {
                 authenticatedOwnedComponentNodes.Add(node.Id);
             }
+            if (authenticatedFieldBuiltComponent) {
+                authenticatedFieldBuiltComponentNodes.Add(node.Id);
+            }
             if (authenticatedDelegateTarget) {
                 authenticatedDelegateTargetNodes.Add(node.Id);
             }
@@ -3824,6 +3840,7 @@ internal sealed class AkronReconstructionGraph {
                 authenticatedRuntimeEntity ||
                 authenticatedOwnedNestedState ||
                 authenticatedOwnedComponent ||
+                authenticatedFieldBuiltComponent ||
                 authenticatedScreenWipe;
             if (!authenticWithoutTheOwnerProof && !provedIteratorState) {
                 List<AkronReconstructionPathStep> structuralPath = GetDocumentStructuralPath(node);
@@ -3971,12 +3988,17 @@ internal sealed class AkronReconstructionGraph {
 
         private bool IsAuthenticatedCompilerIteratorState(AkronReconstructionNode node, Type type) {
             AkronReconstructionValue ownerReference = FindReferenceField(node, "<>4__this");
+            // An owned-nested-state owner counts the same as a runtime entity:
+            // LightningRenderer's Bolt runs its own Run() coroutine, so the
+            // iterator's captured `this` is a nested object the owned-nested-
+            // state licence already proved, not an entity or component.
             return ownerReference != null &&
                    Objects.TryGetValue(ownerReference.NodeId, out object ownerObject) &&
                    AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
                        type,
                        resolvedFreshObjectNodes.Contains(ownerReference.NodeId),
-                       authenticatedRuntimeEntityNodes.Contains(ownerReference.NodeId),
+                       authenticatedRuntimeEntityNodes.Contains(ownerReference.NodeId) ||
+                       authenticatedOwnedNestedStateNodes.Contains(ownerReference.NodeId),
                        ownerObject);
         }
 
@@ -4434,6 +4456,25 @@ internal sealed class AkronReconstructionGraph {
                                                        edgeField.Path).FieldType == targetType &&
                                                    freshComponentObject?.GetType() == edgeParentType &&
                                                    freshCapturedObject?.GetType() == targetType;
+            // The runtime-entity counterpart of freshComponentCapturedFreshEdge:
+            // an entity the room builds on first use keeps a reference to the
+            // live object that built it. DustGraphic adds its Eyeballs entity in
+            // AddDustNodesIfInCamera and hands it `this` in the constructor, so
+            // the reconstructed Eyeballs points at the fresh DustGraphic through
+            // its own declared, exactly-typed field. The reference is written
+            // into the reconstruction's own field and displaces nothing the
+            // fresh room built.
+            bool runtimeEntityCapturedFreshEdge = edgeField != null &&
+                                                  resolvedFreshObjectNodes.Contains(target.Id) &&
+                                                  (authenticatedRuntimeEntityNodes.Contains(edgeParent.Id) ||
+                                                   IsAuthenticatedBuiltInRuntimeEntity(edgeParent, edgeParentType) ||
+                                                   IsAuthenticatedGeneratedRuntimeEntity(edgeParent, edgeParentType)) &&
+                                                  Objects.TryGetValue(target.Id, out object runtimeCapturedObject) &&
+                                                  ResolveField(
+                                                      edgeField.DeclaringTypeName,
+                                                      edgeField.Name,
+                                                      edgeField.Path).FieldType == targetType &&
+                                                  runtimeCapturedObject?.GetType() == targetType;
             bool trailSnapshotPlayerComponentAlias = freshComponentOwner &&
                                                      IsAuthenticatedTrailSnapshotPlayerComponentAlias(
                                                          target,
@@ -4501,6 +4542,15 @@ internal sealed class AkronReconstructionGraph {
                 reconstructedComponentOwnerId == target.Id &&
                 (resolvedFreshObjectNodes.Contains(target.Id) ||
                  authenticatedBuiltInRuntimeEntity);
+            // The canonical owner edge of a component built on first use: the
+            // node licence carries the ownership proof, so only the exact edge
+            // the saved graph proves is admitted, never an alias from elsewhere.
+            bool lazilyBuiltFieldComponentEdge =
+                savedOwnerEdge &&
+                target.ParentKind == "field" &&
+                target.ParentNodeId == edgeParent.Id &&
+                (authenticatedFieldBuiltComponentNodes.Contains(target.Id) ||
+                 IsAuthenticatedLazilyBuiltFieldComponent(target, targetType));
             bool freshFieldAlias = IsAuthenticatedFreshFieldAlias(target, edgeParent, edgeField);
             bool freshOwnerAliasMerge = IsAuthenticatedFreshOwnerAliasMerge(
                 target,
@@ -4539,6 +4589,21 @@ internal sealed class AkronReconstructionGraph {
                     edgeParentType,
                     edgeField,
                     savedOwnerEdge);
+            // The canonical owner edge of an owner-proved iterator into a
+            // Coroutine stack slot. The alias rule refuses this edge so it
+            // cannot prove itself; what proves it instead is the iterator's own
+            // captured <>4__this owner. The fresh room's silence here is
+            // expected rather than suspicious: a routine that finished before
+            // the fresh baseline froze leaves an empty stack, so there is no
+            // occurrence to spend where the saved room was mid-flight -
+            // LightningRenderer's bolts hold exactly that shape. The storage-
+            // only walk is the confinement: the canonical chain must be pure
+            // stack plumbing, so a value a frame yielded cannot carry this.
+            bool coroutineStackIteratorOwnerEdge =
+                savedOwnerEdge &&
+                authenticatedRuntimeStateNodes.Contains(target.Id) &&
+                IsCoroutineStackIteratorSlot(edgeParent, edgeParentType, edgeField) &&
+                TryGetCoroutineEnumeratorStackOwner(target, CoroutineStackWalk.StorageOnly, out _);
             bool authenticatedIteratorOwnerEdge = edgeField?.Name == "<>4__this" &&
                                                    authenticatedRuntimeStateNodes.Contains(edgeParent.Id) &&
                                                    IsCapturedCompilerThisOwner(edgeParentType, targetType) &&
@@ -4599,8 +4664,10 @@ internal sealed class AkronReconstructionGraph {
                                   freshRendererComponentIndexAlias ||
                                   freshEntityListAlias || freshEntityPeerLink ||
                                   freshComponentCapturedFreshEdge ||
+                                  runtimeEntityCapturedFreshEdge ||
                                   entityOwnedCollectionAlias ||
                                   freshOwnedNestedState || reconstructedOwnedComponentAlias || freshFieldAlias ||
+                                  lazilyBuiltFieldComponentEdge ||
                                   reconstructedOwnedComponentOwnerEdge ||
                                   freshOwnerAliasMerge ||
                                   trailSnapshotPlayerComponentAlias ||
@@ -4609,6 +4676,7 @@ internal sealed class AkronReconstructionGraph {
                                   sceneRendererBackReference || reconstructedEntitySceneBackReference ||
                                   freshHashSetMembership || iteratorOwnedComponentAlias ||
                                   coroutineStackIteratorAlias ||
+                                  coroutineStackIteratorOwnerEdge ||
                                   reconstructedSafeParentEdge || authenticatedIteratorOwnerEdge ||
                                   authenticatedDelegateTargetOwnerEdge ||
                                   authenticatedDelegateAliasOwnerEdge ||
@@ -4672,6 +4740,7 @@ internal sealed class AkronReconstructionGraph {
                         ";screen-wipe-renderer-list-alias=" + screenWipeRendererListAlias.ToString().ToLowerInvariant() +
                         ";fresh-renderer-component-index-alias=" + freshRendererComponentIndexAlias.ToString().ToLowerInvariant() +
                         ";fresh-component-captured-fresh-edge=" + freshComponentCapturedFreshEdge.ToString().ToLowerInvariant() +
+                        ";runtime-entity-captured-fresh-edge=" + runtimeEntityCapturedFreshEdge.ToString().ToLowerInvariant() +
                         ";trail-snapshot-player-component-alias=" + trailSnapshotPlayerComponentAlias.ToString().ToLowerInvariant() +
                         ";reconstructed-built-in-component-alias=" + reconstructedBuiltInComponentAlias.ToString().ToLowerInvariant() +
                         ";authenticated-built-in-runtime-entity=" + authenticatedBuiltInRuntimeEntity.ToString().ToLowerInvariant() +
@@ -4680,6 +4749,7 @@ internal sealed class AkronReconstructionGraph {
                         ";entity-owned-collection-alias=" + entityOwnedCollectionAlias.ToString().ToLowerInvariant() +
                         ";fresh-owned-nested-state=" + freshOwnedNestedState.ToString().ToLowerInvariant() +
                         ";reconstructed-owned-component-alias=" + reconstructedOwnedComponentAlias.ToString().ToLowerInvariant() +
+                        ";lazily-built-field-component=" + lazilyBuiltFieldComponentEdge.ToString().ToLowerInvariant() +
                         ";reconstructed-owned-component-owner-edge=" + reconstructedOwnedComponentOwnerEdge.ToString().ToLowerInvariant() +
                         ";fresh-field-alias=" + freshFieldAlias.ToString().ToLowerInvariant() +
                         ";fresh-owner-alias-merge=" + freshOwnerAliasMerge.ToString().ToLowerInvariant() +
@@ -4690,6 +4760,7 @@ internal sealed class AkronReconstructionGraph {
                         ";fresh-hash-set-membership=" + freshHashSetMembership.ToString().ToLowerInvariant() +
                         ";iterator-owned-component-alias=" + iteratorOwnedComponentAlias.ToString().ToLowerInvariant() +
                         ";coroutine-stack-iterator-alias=" + coroutineStackIteratorAlias.ToString().ToLowerInvariant() +
+                        ";coroutine-stack-iterator-owner-edge=" + coroutineStackIteratorOwnerEdge.ToString().ToLowerInvariant() +
                         ";reconstructed-safe-parent-edge=" + reconstructedSafeParentEdge.ToString().ToLowerInvariant() +
                         ";authenticated-iterator-owner-edge=" + authenticatedIteratorOwnerEdge.ToString().ToLowerInvariant() +
                         ";authenticated-delegate-target-owner-edge=" + authenticatedDelegateTargetOwnerEdge.ToString().ToLowerInvariant() +
@@ -4761,6 +4832,7 @@ internal sealed class AkronReconstructionGraph {
                     ";screen-wipe-renderer-list-alias=" + screenWipeRendererListAlias.ToString().ToLowerInvariant() +
                     ";fresh-renderer-component-index-alias=" + freshRendererComponentIndexAlias.ToString().ToLowerInvariant() +
                     ";fresh-component-captured-fresh-edge=" + freshComponentCapturedFreshEdge.ToString().ToLowerInvariant() +
+                    ";runtime-entity-captured-fresh-edge=" + runtimeEntityCapturedFreshEdge.ToString().ToLowerInvariant() +
                     ";trail-snapshot-player-component-alias=" + trailSnapshotPlayerComponentAlias.ToString().ToLowerInvariant() +
                     ";reconstructed-built-in-component-alias=" + reconstructedBuiltInComponentAlias.ToString().ToLowerInvariant() +
                     ";authenticated-built-in-runtime-entity=" + authenticatedBuiltInRuntimeEntity.ToString().ToLowerInvariant() +
@@ -4769,6 +4841,7 @@ internal sealed class AkronReconstructionGraph {
                     ";entity-owned-collection-alias=" + entityOwnedCollectionAlias.ToString().ToLowerInvariant() +
                     ";fresh-owned-nested-state=" + freshOwnedNestedState.ToString().ToLowerInvariant() +
                     ";reconstructed-owned-component-alias=" + reconstructedOwnedComponentAlias.ToString().ToLowerInvariant() +
+                    ";lazily-built-field-component=" + lazilyBuiltFieldComponentEdge.ToString().ToLowerInvariant() +
                     ";reconstructed-owned-component-owner-edge=" + reconstructedOwnedComponentOwnerEdge.ToString().ToLowerInvariant() +
                     ";fresh-field-alias=" + freshFieldAlias.ToString().ToLowerInvariant() +
                     ";fresh-owner-alias-merge=" + freshOwnerAliasMerge.ToString().ToLowerInvariant() +
@@ -4779,6 +4852,7 @@ internal sealed class AkronReconstructionGraph {
                     ";fresh-hash-set-membership=" + freshHashSetMembership.ToString().ToLowerInvariant() +
                     ";iterator-owned-component-alias=" + iteratorOwnedComponentAlias.ToString().ToLowerInvariant() +
                     ";coroutine-stack-iterator-alias=" + coroutineStackIteratorAlias.ToString().ToLowerInvariant() +
+                    ";coroutine-stack-iterator-owner-edge=" + coroutineStackIteratorOwnerEdge.ToString().ToLowerInvariant() +
                     ";reconstructed-safe-parent-edge=" + reconstructedSafeParentEdge.ToString().ToLowerInvariant() +
                     ";authenticated-iterator-owner-edge=" + authenticatedIteratorOwnerEdge.ToString().ToLowerInvariant() +
                     ";authenticated-delegate-target-owner-edge=" + authenticatedDelegateTargetOwnerEdge.ToString().ToLowerInvariant() +
@@ -4957,15 +5031,23 @@ internal sealed class AkronReconstructionGraph {
                    GetComponentListComponents(ownerComponents).Any(candidate => ReferenceEquals(candidate, component));
         }
 
+        // The hostile-surface limit both component licences share: a component
+        // owning native or process state through IDisposable or a finalizer
+        // never enters a room through either of them. One predicate, so the
+        // two licences cannot drift apart.
+        private static bool IsComponentTypeSafeToReconstruct(Type targetType) {
+            return typeof(Component).IsAssignableFrom(targetType) &&
+                   !typeof(IDisposable).IsAssignableFrom(targetType) &&
+                   targetType.GetMethod(
+                       "Finalize",
+                       BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly) == null;
+        }
+
         private bool IsAuthenticatedReconstructedOwnedComponent(
             AkronReconstructionNode target,
             Type targetType
         ) {
-            if (!typeof(Component).IsAssignableFrom(targetType) ||
-                typeof(IDisposable).IsAssignableFrom(targetType) ||
-                targetType.GetMethod(
-                    "Finalize",
-                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly) != null ||
+            if (!IsComponentTypeSafeToReconstruct(targetType) ||
                 !TryGetComponentOwnerNodes(
                     target,
                     out AkronReconstructionNode componentListNode,
@@ -4982,6 +5064,55 @@ internal sealed class AkronReconstructionGraph {
             return resolvedFreshObjectNodes.Contains(ownerEntityId) ||
                    authenticatedRuntimeEntityNodes.Contains(ownerEntityId) ||
                    IsAuthenticatedBuiltInRuntimeEntity(ownerEntityNode, ownerEntityType);
+        }
+
+        // A Component built on first use and kept in a declared field that no
+        // ComponentList ever carries. DustGraphic builds its blink Coroutine in
+        // BeforeRender and updates it by hand, and LightningRenderer's Bolt does
+        // the same with its routine, so no list can vouch for the saved one and
+        // a fresh room that never rendered holds null at the slot - which is why
+        // the list-owned licence above cannot reach these and Celestial Resort
+        // and Farewell rooms were refused over them.
+        //
+        // What vouches instead: the node's canonical owner is a field the
+        // owner's own type declares at the exact component type, and that owner
+        // has already proved itself - a fresh pairing, the list-owned component
+        // licence, the owned-nested-state licence, or the runtime-entity
+        // licence. IsAuthenticatedByExactParentSlot deliberately refuses
+        // Component targets because a generic slot proves nothing about
+        // gameplay ownership; this asks the owner to be proved first, which is
+        // the ownership that generic rule lacks. When the owner is a fresh
+        // object its slot must still be empty, so nothing the room built is
+        // displaced. IsComponentTypeSafeToReconstruct carries the same
+        // hostile-surface limit the list-owned licence holds.
+        private bool IsAuthenticatedLazilyBuiltFieldComponent(AkronReconstructionNode target, Type targetType) {
+            if (!IsComponentTypeSafeToReconstruct(targetType) ||
+                target.ParentKind != "field" ||
+                !nodes.TryGetValue(target.ParentNodeId, out AkronReconstructionNode ownerNode)) {
+                return false;
+            }
+            Type ownerType = ResolveType(ownerNode.TypeName, ownerNode.Path);
+            bool ownerIsFresh = resolvedFreshObjectNodes.Contains(ownerNode.Id);
+            if (!ownerIsFresh &&
+                !authenticatedOwnedComponentNodes.Contains(ownerNode.Id) &&
+                !authenticatedOwnedNestedStateNodes.Contains(ownerNode.Id) &&
+                !authenticatedRuntimeEntityNodes.Contains(ownerNode.Id) &&
+                !IsAuthenticatedReconstructedOwnedComponent(ownerNode, ownerType)) {
+                return false;
+            }
+            FieldInfo field = ResolveField(
+                target.ParentDeclaringTypeName,
+                target.ParentFieldName,
+                target.Path);
+            if (field.FieldType != targetType || !field.DeclaringType.IsAssignableFrom(ownerType)) {
+                return false;
+            }
+            if (!ownerIsFresh) {
+                return true;
+            }
+            return Objects.TryGetValue(ownerNode.Id, out object ownerObject) &&
+                   field.DeclaringType.IsInstanceOfType(ownerObject) &&
+                   field.GetValue(ownerObject) == null;
         }
 
         private bool IsAuthenticatedOwnedComponentAlias(
@@ -5629,7 +5760,19 @@ internal sealed class AkronReconstructionGraph {
             }
 
             Type ownerType = ResolveType(ownerNode.TypeName, ownerNode.Path);
-            if (ownerType.Assembly == typeof(Entity).Assembly) {
+            if (ownerType.Assembly == typeof(Entity).Assembly &&
+                !authenticatedRuntimeEntityNodes.Contains(ownerNode.Id)) {
+                // A vanilla map-placed entity pairs by EntityID and its owned
+                // state aliases the fresh object, so the population evidence
+                // below is only for owners a clean load cannot recreate
+                // one-for-one. That is not only mod entities: Celestial
+                // Resort's clutter blocks are vanilla, generated at load, and
+                // cross-reference each other, so the surplus the fresh room did
+                // not build carries colliders whose only other evidence is a
+                // structural path through another block's hash set - a path the
+                // fresh room can honestly lack. A vanilla owner that proved
+                // itself through the runtime-entity licence gets the same
+                // owned-state licence a generated mod entity gets.
                 return false;
             }
             FieldInfo field = ResolveField(
@@ -6900,6 +7043,14 @@ internal sealed class AkronReconstructionGraph {
                 return keyMatches.FirstOrDefault() ?? allKeyMatches[0];
             }
 
+            // A candidate a delegate hands back is authenticated the same way
+            // wherever it came from: exact type, and its recomputed key must be
+            // the saved key.
+            bool MatchesSavedKey(object candidate) =>
+                candidate != null &&
+                candidate.GetType() == type &&
+                string.Equals(node.ResourceKey, owner.GetTypedResourceKey(candidate), StringComparison.Ordinal);
+
             // An exact process-registry key is stronger than an approximate
             // owner path. Resolve it first so successful detached lookups do
             // not build structural paths, and cache misses for this restore.
@@ -6908,9 +7059,7 @@ internal sealed class AkronReconstructionGraph {
                     detachedResource = owner.resolveDetachedLiveResource?.Invoke(type, node.ResourceKey);
                     detachedLiveResources[node.ResourceKey] = detachedResource;
                 }
-                if (detachedResource != null &&
-                    detachedResource.GetType() == type &&
-                    string.Equals(node.ResourceKey, owner.GetTypedResourceKey(detachedResource), StringComparison.Ordinal)) {
+                if (MatchesSavedKey(detachedResource)) {
                     return detachedResource;
                 }
             }
@@ -6954,6 +7103,27 @@ internal sealed class AkronReconstructionGraph {
                     Math.Max(keyMatches.Count, structuralMatches.Count).ToString(CultureInfo.InvariantCulture) +
                     ";key=" + node.ResourceKey);
             }
+
+            // Last resort, and only for a label. A resource its owner creates
+            // on first use can be absent from every index above at once:
+            // DustEdges builds its noise textures in BeforeRender, so a fresh
+            // baseline that never rendered holds null at the anchor's owner
+            // field, and the process registry lost the captured level's
+            // instances when the map was exited. The owner delegate recreates
+            // the equivalent wrapper - content the room regenerates on its own,
+            // identity checked by the same key comparison the detached lookup
+            // uses. A portable key is a name rather than a label, and a name
+            // that resolves nowhere is a resource this install does not have,
+            // so it keeps the refusal below.
+            if (!node.PortableResourceKey) {
+                object recreated = owner.recreateDetachedLiveResource?.Invoke(type, node.ResourceKey);
+                if (MatchesSavedKey(recreated)) {
+                    // Later nodes carrying this key pair with the same wrapper
+                    // through the detached cache instead of recreating another.
+                    detachedLiveResources[node.ResourceKey] = recreated;
+                    return recreated;
+                }
+            }
             throw new AkronReconstructionException(
                 node.Path,
                 "fresh resource key and structural path are unavailable;key=" + node.ResourceKey);
@@ -6970,10 +7140,7 @@ internal sealed class AkronReconstructionGraph {
                 if (step.Kind == "field") {
                     key.Append("|field:").Append(step.DeclaringTypeName).Append('.').Append(step.FieldName);
                 } else if (step.Kind == "array") {
-                    bool listStorageIndex = previous?.Kind == "field" &&
-                                            string.Equals(previous.FieldName, "_items", StringComparison.Ordinal) &&
-                                            previous.DeclaringTypeName?.StartsWith("System.Collections.Generic.List`1", StringComparison.Ordinal) == true;
-                    key.Append(wildcardListStorageIndices && listStorageIndex
+                    key.Append(wildcardListStorageIndices && IsCollectionStorageField(previous)
                         ? "[*]"
                         : "[" + string.Join(",", step.ArrayIndices ?? new List<int>()) + "]");
                 }
@@ -6982,12 +7149,30 @@ internal sealed class AkronReconstructionGraph {
             return key.ToString();
         }
 
+        // Storage an index means nothing durable in. List`1 keeps _items in
+        // insertion order, so a wildcarded index still says "one of this list's
+        // slots" while a concrete one names a position two loads can honestly
+        // disagree on. HashSet`1 and Dictionary`2 place _entries by per-process
+        // hash codes - AkronHashIndex.Rebuild exists because those positions do
+        // not survive a process change - so a concrete entry index is a fact
+        // about the capturing process, never about the set, and it wildcards
+        // for the same reason list indices do.
+        private static bool IsCollectionStorageField(AkronReconstructionPathStep step) {
+            if (step?.Kind != "field" || step.DeclaringTypeName == null) {
+                return false;
+            }
+            if (string.Equals(step.FieldName, "_items", StringComparison.Ordinal)) {
+                return step.DeclaringTypeName.StartsWith("System.Collections.Generic.List`1", StringComparison.Ordinal);
+            }
+            return string.Equals(step.FieldName, "_entries", StringComparison.Ordinal) &&
+                   (step.DeclaringTypeName.StartsWith("System.Collections.Generic.HashSet`1", StringComparison.Ordinal) ||
+                    step.DeclaringTypeName.StartsWith("System.Collections.Generic.Dictionary`2", StringComparison.Ordinal));
+        }
+
         private static bool HasListStorageIndex(IEnumerable<AkronReconstructionPathStep> path) {
             AkronReconstructionPathStep previous = null;
             foreach (AkronReconstructionPathStep step in path ?? Enumerable.Empty<AkronReconstructionPathStep>()) {
-                if (step.Kind == "array" && previous?.Kind == "field" &&
-                    previous.FieldName == "_items" &&
-                    previous.DeclaringTypeName?.StartsWith("System.Collections.Generic.List`1", StringComparison.Ordinal) == true) {
+                if (step.Kind == "array" && IsCollectionStorageField(previous)) {
                     return true;
                 }
                 previous = step;
@@ -8269,7 +8454,8 @@ internal static class AkronStartPosReconstruction {
             ResolveDetachedLiveResource,
             areEquivalentLiveResources: AreEquivalentLiveResources,
             hasPortableLiveResourceKey: HasPortableLiveResourceKey,
-            getMapPlacedEntityIds: GetMapPlacedEntityIds);
+            getMapPlacedEntityIds: GetMapPlacedEntityIds,
+            recreateDetachedLiveResource: RecreateDetachedLiveResource);
     }
 
     // Does GetLiveResourceKey name this resource, or label this instance? The two
@@ -9661,17 +9847,25 @@ internal static class AkronStartPosReconstruction {
                    candidate.FullName?.IndexOf("Detour", StringComparison.OrdinalIgnoreCase) >= 0);
     }
 
+    // GetTypedResourceKey writes "<type name>|<resource key>", and both detached
+    // lookups below read the key back out of it. One parser, so the guard - no
+    // separator, or nothing after it - cannot drift between them.
+    private static string StripTypedKeyPrefix(string typedResourceKey) {
+        int separator = typedResourceKey.IndexOf('|');
+        return separator < 0 || separator == typedResourceKey.Length - 1
+            ? null
+            : typedResourceKey.Substring(separator + 1);
+    }
+
     internal static object ResolveDetachedLiveResource(Type resourceType, string typedResourceKey) {
         if (resourceType == null || string.IsNullOrWhiteSpace(typedResourceKey)) {
             return null;
         }
 
-        int separator = typedResourceKey.IndexOf('|');
-        if (separator < 0 || separator == typedResourceKey.Length - 1) {
+        string resourceKey = StripTypedKeyPrefix(typedResourceKey);
+        if (resourceKey == null) {
             return null;
         }
-
-        string resourceKey = typedResourceKey.Substring(separator + 1);
         if (typeof(VirtualTexture).IsAssignableFrom(resourceType)) {
             // Randomized decals can select a different texture wrapper each
             // time their room loads. VirtualContent retains every wrapper by
@@ -9767,6 +9961,58 @@ internal static class AkronStartPosReconstruction {
             }
         }
         return null;
+    }
+
+    // Every runtime texture this build agrees to recreate, at exactly the size
+    // its creator hardcodes: DustEdges.CreateTextures builds both at 128x72.
+    // The table is deliberately exact on both name and dimensions. The key
+    // alone cannot tell a data-built texture's made-up name from a file-backed
+    // texture's bare content path, so an unlisted name keeps today's refusal,
+    // which names the key. Pinning the dimensions closes the allocation
+    // surface too: a doctored snapshot cannot mint distinct keys out of made-up
+    // sizes, so one process can ever materialize at most this table - a repeat
+    // key reuses the registered wrapper through the detached lookup.
+    private static readonly Dictionary<string, (int Width, int Height)> RecreatableRuntimeTextures =
+        new Dictionary<string, (int Width, int Height)>(StringComparer.Ordinal) {
+            ["dust-noise-a"] = (128, 72),
+            ["dust-noise-b"] = (128, 72),
+        };
+
+    // Restore's last resort, asked by the graph only after the fresh key index,
+    // the detached registry above, and the structural owner path all came up
+    // empty, and only for a non-portable key. The population that lands here is
+    // a texture an entity builds on first render: DustEdges creates its noise
+    // textures in BeforeRender, so a fresh-room baseline that never rendered
+    // holds null at the anchor's owner field, and exiting the captured map
+    // disposed its instances out of VirtualContent.Assets.
+    internal static object RecreateDetachedLiveResource(Type resourceType, string typedResourceKey) {
+        if (resourceType != typeof(VirtualTexture) || string.IsNullOrWhiteSpace(typedResourceKey)) {
+            return null;
+        }
+        string resourceKey = StripTypedKeyPrefix(typedResourceKey);
+        if (resourceKey == null) {
+            return null;
+        }
+        // The key reads name|WxH. The dimensions are the last segment so the
+        // recomputed key round-trips through GetLiveResourceKey.
+        int dimensionsSeparator = resourceKey.LastIndexOf('|');
+        if (dimensionsSeparator <= 0) {
+            return null;
+        }
+        string name = resourceKey.Substring(0, dimensionsSeparator);
+        if (!RecreatableRuntimeTextures.TryGetValue(name, out (int Width, int Height) size)) {
+            return null;
+        }
+        string[] dimensions = resourceKey.Substring(dimensionsSeparator + 1).Split('x');
+        if (dimensions.Length != 2 ||
+            !int.TryParse(dimensions[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int width) ||
+            !int.TryParse(dimensions[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int height) ||
+            width != size.Width || height != size.Height) {
+            return null;
+        }
+        // White because that is what DustEdges creates; the room regenerates
+        // the noise within one cycle of the first render either way.
+        return VirtualContent.CreateTexture(name, width, height, Color.White);
     }
 
     // Where the game keeps the atlases it loads for the whole process. Both are
