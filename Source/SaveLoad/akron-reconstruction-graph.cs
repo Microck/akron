@@ -9963,20 +9963,20 @@ internal static class AkronStartPosReconstruction {
         return null;
     }
 
-    // Every texture name this build agrees to recreate. DustEdges builds these
-    // two in BeforeRender and refills their noise every cycle, so an equivalent
-    // wrapper at the right size is the resource. The list is deliberately
-    // exact: the key alone cannot tell a data-built texture's made-up name from
-    // a file-backed texture's bare content path, and recreating a blank in a
-    // file-backed texture's place would silently swap real content. A runtime
-    // texture that is not listed keeps today's refusal, which names the key,
-    // and gets added here on measurement rather than guessed from its shape.
-    private static readonly string[] RecreatableRuntimeTextureNames = { "dust-noise-a", "dust-noise-b" };
-
-    // The largest pixel count a recreated texture may claim. The real dust
-    // noise is 128x72; 512x512 is 28x that and still only 1 MiB of RGBA, so a
-    // doctored snapshot cannot turn recreation into a memory grab.
-    private const int MaxRecreatedTexturePixels = 512 * 512;
+    // Every runtime texture this build agrees to recreate, at exactly the size
+    // its creator hardcodes: DustEdges.CreateTextures builds both at 128x72.
+    // The table is deliberately exact on both name and dimensions. The key
+    // alone cannot tell a data-built texture's made-up name from a file-backed
+    // texture's bare content path, so an unlisted name keeps today's refusal,
+    // which names the key. Pinning the dimensions closes the allocation
+    // surface too: a doctored snapshot cannot mint distinct keys out of made-up
+    // sizes, so one process can ever materialize at most this table - a repeat
+    // key reuses the registered wrapper through the detached lookup.
+    private static readonly Dictionary<string, (int Width, int Height)> RecreatableRuntimeTextures =
+        new Dictionary<string, (int Width, int Height)>(StringComparer.Ordinal) {
+            ["dust-noise-a"] = (128, 72),
+            ["dust-noise-b"] = (128, 72),
+        };
 
     // Restore's last resort, asked by the graph only after the fresh key index,
     // the detached registry above, and the structural owner path all came up
@@ -10000,19 +10000,19 @@ internal static class AkronStartPosReconstruction {
             return null;
         }
         string name = resourceKey.Substring(0, dimensionsSeparator);
-        if (!RecreatableRuntimeTextureNames.Contains(name, StringComparer.Ordinal)) {
+        if (!RecreatableRuntimeTextures.TryGetValue(name, out (int Width, int Height) size)) {
             return null;
         }
         string[] dimensions = resourceKey.Substring(dimensionsSeparator + 1).Split('x');
         if (dimensions.Length != 2 ||
             !int.TryParse(dimensions[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int width) ||
             !int.TryParse(dimensions[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int height) ||
-            width <= 0 || height <= 0 || (long) width * height > MaxRecreatedTexturePixels) {
+            width != size.Width || height != size.Height) {
             return null;
         }
-        // Transparent because the content is the room's to regenerate; for the
-        // dust noise that happens within one noise cycle of the first render.
-        return VirtualContent.CreateTexture(name, width, height, Color.Transparent);
+        // White because that is what DustEdges creates; the room regenerates
+        // the noise within one cycle of the first render either way.
+        return VirtualContent.CreateTexture(name, width, height, Color.White);
     }
 
     // Where the game keeps the atlases it loads for the whole process. Both are

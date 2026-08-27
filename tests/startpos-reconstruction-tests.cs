@@ -4015,14 +4015,16 @@ public sealed class StartPosReconstructionTests {
             typeof(VirtualTexture), "t|icon.png|128x72"));
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
             typeof(VirtualTexture), "t|dust-noise-c|128x72"));
-        // Dimensions must be sane positive integers under the pixel budget, so
-        // a doctored key cannot demand a huge allocation.
+        // Dimensions must be exactly what the creator hardcodes, so a doctored
+        // key cannot mint distinct allocations out of made-up sizes.
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
             typeof(VirtualTexture), "t|dust-noise-a|0x72"));
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
             typeof(VirtualTexture), "t|dust-noise-a|128x-72"));
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
             typeof(VirtualTexture), "t|dust-noise-a|4096x4096"));
+        Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
+            typeof(VirtualTexture), "t|dust-noise-a|127x72"));
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
             typeof(VirtualTexture), "t|dust-noise-a|axb"));
         // A key with no name or no dimensions segment never parses.
