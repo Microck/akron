@@ -1,0 +1,62 @@
+# The runbook's completion checks, run without being remembered: every Release
+# workflow run is followed by this one, which proves each public surface serves
+# the released tag or fails loudly. It can also be dispatched against any
+# existing tag when repairing a partial publish.
+name: Verify Release
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing release tag to verify, for example v0.1.2-beta.72.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve the tag under verification
+        id: tag
+        env:
+          DISPATCH_TAG: ${{ inputs.tag_name }}
+          RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          if [ -n "${DISPATCH_TAG}" ]; then
+            tag="${DISPATCH_TAG}"
+          else
+            # A tag-triggered Release run reports the tag as its head branch. A
+            # manually dispatched Release run reports main instead; verify that
+            # one by dispatching this workflow with the tag.
+            case "${RUN_BRANCH}" in
+              v*) tag="${RUN_BRANCH}" ;;
+              *)
+                echo "No tag to verify for Release run on '${RUN_BRANCH}'." \
+                     "Dispatch Verify Release with tag_name instead."
+                exit 0
+                ;;
+            esac
+            if [ "${RUN_CONCLUSION}" != "success" ]; then
+              echo "Release run for ${tag} concluded '${RUN_CONCLUSION}': ${RUN_URL}" >&2
+              echo "Repair it per docs/release-runbook.md, then rerun." >&2
+              exit 1
+            fi
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.tag.outputs.tag != ''
+
+      - name: Run the completion checks
+        if: steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/release/verify-release.sh "${{ steps.tag.outputs.tag }}"
