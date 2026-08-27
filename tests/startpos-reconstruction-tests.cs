@@ -5198,6 +5198,40 @@ public sealed class StartPosReconstructionTests {
         Assert.All(watchers, watcher => Assert.Same(freshOwner.Graphic, watcher.Dust));
     }
 
+    // DynamicData's per-type member cache holds compiled FastReflection
+    // invokers - anonymous delegates no fresh room can vouch for - and every
+    // instance points at the process-wide entry. A mod attaching DynamicData
+    // to a room entity removed every Set in the room over those delegates.
+    // The cache is a live resource now: capture never walks in, and restore
+    // rebinds to this process's own entry for the same target type.
+    [Fact]
+    public void ADynamicDataMemberCacheRestoresAsThisProcessesOwnEntry() {
+        DynamicDataSubject subject = new DynamicDataSubject();
+        MonoMod.Utils.DynamicData data = new MonoMod.Utils.DynamicData(subject);
+        Assert.Equal(5, data.Get<int>("Exposed"));
+        DynamicDataHolder saved = new DynamicDataHolder { Data = data, Value = 3 };
+        DynamicDataHolder baseline = new DynamicDataHolder {
+            Data = new MonoMod.Utils.DynamicData(new DynamicDataSubject())
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            AkronStartPosReconstruction.IsLiveResourceType,
+            AkronStartPosReconstruction.GetLiveResourceKey,
+            resolveDetachedLiveResource: AkronStartPosReconstruction.ResolveDetachedLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        DynamicDataHolder fresh = new DynamicDataHolder {
+            Data = new MonoMod.Utils.DynamicData(new DynamicDataSubject())
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(3, fresh.Value);
+        object restoredCache = GetRuntimeField<object>(fresh.Data!, "_Cache");
+        object liveCache = GetRuntimeField<object>(new MonoMod.Utils.DynamicData(new DynamicDataSubject()), "_Cache");
+        Assert.Same(liveCache, restoredCache);
+    }
+
     // Level.StartCutscene stores the skip callback and nothing in Celeste ever
     // clears it, so a slot set after any skipped cutscene dragged the finished
     // cutscene entity into the graph through a callback that can never fire
@@ -9055,6 +9089,15 @@ public sealed class StartPosReconstructionTests {
 
     private sealed class RelocatedCallbackEntity : Entity {
         public Action? Stolen;
+    }
+
+    private sealed class DynamicDataHolder {
+        public MonoMod.Utils.DynamicData? Data;
+        public int Value;
+    }
+
+    private sealed class DynamicDataSubject {
+        public int Exposed = 5;
     }
 
     // LightningRenderer's shape: an entity builds nested plain objects in its

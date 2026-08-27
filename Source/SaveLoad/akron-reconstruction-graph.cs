@@ -3783,7 +3783,19 @@ internal sealed class AkronReconstructionGraph {
             // play and one added during play, loaded on 010f660 and was refused
             // when the deferral discarded the structural proof. See
             // ARawCoroutineIteratorLoadsOnItsOwnStructuralEvidence.
-            bool provedIteratorState = IsAuthenticatedCompilerIteratorState(node, type);
+            // An OWNERLESS frame stored in a coroutine stack proves itself by
+            // position. A mod can wrap a routine in a static hook iterator
+            // (FemtoHelper's dash hook), which captures no <>4__this, so the
+            // owner question is unaskable rather than failed; the canonical
+            // chain being pure stack plumbing says the frame is the
+            // coroutine's own saved state, and its hoisted fields still
+            // validate one by one. A frame that DID capture an owner keeps the
+            // owner question - a Tween's Wait whose Tween is not authentic
+            // stays refused whatever stack it sits in.
+            bool provedIteratorState = IsAuthenticatedCompilerIteratorState(node, type) ||
+                                       (IsCompilerGeneratedIterator(type) &&
+                                        FindReferenceField(node, "<>4__this") == null &&
+                                        TryGetCoroutineEnumeratorStackOwner(node, CoroutineStackWalk.IncludingYieldedValues, out _));
             bool deferredIteratorState =
                 !provedIteratorState && HasUnresolvedCompilerIteratorOwner(node, type);
             bool authenticatedRuntimeEntity =
@@ -3799,6 +3811,14 @@ internal sealed class AkronReconstructionGraph {
             bool authenticatedDelegateTarget = IsStructurallyAuthenticDelegateTarget(node, type);
             bool authenticatedIteratorClosure = IsAuthenticatedIteratorClosure(node, type);
             bool authenticatedScreenWipe = IsAuthenticatedBuiltInScreenWipe(node, type);
+            // Everest wraps yielded enumerators in SwapImmediately, so a saved
+            // mid-flight frame carries one as its current value while an idle
+            // fresh routine has none. It is Everest's own passive plumbing,
+            // proved the same way a frame is: by its position inside a
+            // coroutine's stack, yielded values included.
+            bool authenticatedCoroutinePlumbing =
+                type == typeof(SwapImmediately) &&
+                TryGetCoroutineEnumeratorStackOwner(node, CoroutineStackWalk.IncludingYieldedValues, out _);
             // A deferred node's membership is provisional: the owner proof is the
             // only thing that grants it and that proof is not in yet, so
             // VerifyDeferredIteratorStates confirms it or withdraws it before
@@ -3861,6 +3881,7 @@ internal sealed class AkronReconstructionGraph {
                 authenticatedOwnedComponent ||
                 authenticatedFieldBuiltComponent ||
                 authenticatedDirectIteratorClosure ||
+                authenticatedCoroutinePlumbing ||
                 authenticatedScreenWipe;
             if (!authenticWithoutTheOwnerProof && !provedIteratorState) {
                 List<AkronReconstructionPathStep> structuralPath = GetDocumentStructuralPath(node);
@@ -4256,6 +4277,9 @@ internal sealed class AkronReconstructionGraph {
                 "current" => yieldedValuesAllowed &&
                              parentType == typeof(SwapImmediatelyExtension.Flattened),
                 "<>2__current" => yieldedValuesAllowed && IsCompilerGeneratedIterator(parentType),
+                // The enumerator a SwapImmediately wrapper carries; mods chain
+                // dash-coroutine hooks through exactly this.
+                "Inner" => yieldedValuesAllowed && parentType == typeof(SwapImmediately),
                 _ => false
             };
         }
@@ -9915,6 +9939,7 @@ internal static class AkronStartPosReconstruction {
         // problem this file solves for EntityList and ComponentList alone
         // (see ValidateAndNormalizeMembershipSet) and nowhere else yet.
         return type == typeof(Pathfinder) ||
+               type == DynamicDataCacheType ||
                type == typeof(CompareInfo) ||
                typeof(Type).IsAssignableFrom(type) ||
                typeof(MemberInfo).IsAssignableFrom(type) ||
@@ -9958,6 +9983,9 @@ internal static class AkronStartPosReconstruction {
         string resourceKey = StripTypedKeyPrefix(typedResourceKey);
         if (resourceKey == null) {
             return null;
+        }
+        if (resourceType == DynamicDataCacheType) {
+            return ResolveDynamicDataCache(resourceKey);
         }
         if (typeof(VirtualTexture).IsAssignableFrom(resourceType)) {
             // Randomized decals can select a different texture wrapper each
@@ -10108,6 +10136,45 @@ internal static class AkronStartPosReconstruction {
         return VirtualContent.CreateTexture(name, width, height, Color.White);
     }
 
+    // DynamicData's per-type member cache. Every DynamicData instance's _Cache
+    // field points at the process-wide entry in the static _CacheMap, and the
+    // entry holds compiled FastReflection invokers - anonymous delegates no
+    // fresh room can vouch for. It is pure memoization DynamicData rebuilds on
+    // demand, so it is a live resource keyed by its target type: capture never
+    // walks into it, and restore rebinds to (or builds) this process's own
+    // entry. Surfaced by a mod attaching DynamicData to a room entity, which
+    // removed every Set in the room over the cache's delegates.
+    private static readonly Type DynamicDataCacheType =
+        typeof(MonoMod.Utils.DynamicData).GetNestedType("_Cache_", BindingFlags.NonPublic);
+    private static readonly FieldInfo DynamicDataCacheMapField =
+        typeof(MonoMod.Utils.DynamicData).GetField("_CacheMap", BindingFlags.Static | BindingFlags.NonPublic);
+
+    private static string GetDynamicDataCacheKey(object cache) {
+        if (DynamicDataCacheMapField?.GetValue(null) is not IDictionary cacheMap) {
+            return string.Empty;
+        }
+        foreach (DictionaryEntry entry in cacheMap) {
+            if (ReferenceEquals(entry.Value, cache)) {
+                Type target = (Type) entry.Key;
+                return target.AssemblyQualifiedName ?? target.FullName ?? string.Empty;
+            }
+        }
+        return string.Empty;
+    }
+
+    private static object ResolveDynamicDataCache(string typeName) {
+        Type target = Type.GetType(typeName, throwOnError: false);
+        if (target == null || DynamicDataCacheMapField?.GetValue(null) is not IDictionary cacheMap) {
+            return null;
+        }
+        if (!cacheMap.Contains(target)) {
+            // Building a DynamicData for the type is the public way to make
+            // MonoMod publish the type's cache entry.
+            _ = new MonoMod.Utils.DynamicData(target);
+        }
+        return cacheMap.Contains(target) ? cacheMap[target] : null;
+    }
+
     // Where the game keeps the atlases it loads for the whole process. Both are
     // plain static fields, and Everest rebinds them in place when it reloads an
     // atlas, so the field is read on every lookup rather than the object being
@@ -10153,6 +10220,9 @@ internal static class AkronStartPosReconstruction {
     }
 
     internal static string GetLiveResourceKey(object resource) {
+        if (resource.GetType() == DynamicDataCacheType) {
+            return GetDynamicDataCacheKey(resource);
+        }
         if (resource is CompareInfo compareInfo) {
             // This names a collation, not a particular wrapper object. The sort
             // name carries alternate sort orders too - "de-DE_phoneb" is a
