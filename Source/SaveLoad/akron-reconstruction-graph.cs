@@ -7736,7 +7736,7 @@ internal sealed class AkronReconstructionGraph {
                             method);
                     }
                     if (!authentic && target != null) {
-                        authentic = IsAuthenticatedDirectIteratorClosureDelegateCall(call, target, method);
+                        authentic = IsAuthenticatedDirectIteratorClosureDelegateCall(node, call, target, method);
                     }
                     if (!authentic) {
                         // What the fresh room does not have here is the callback, not the
@@ -7791,20 +7791,46 @@ internal sealed class AkronReconstructionGraph {
         // AttackSequence hands exactly this to Alarm.Set while a Kevin attacks,
         // and an idle fresh room has no such callback anywhere. Deferred
         // iterators stay out for the withdrawal reason the node licence names.
+        //
+        // The callback must also stay inside the entity that owns the routine:
+        // the delegate node's own document chain has to reach the iterator's
+        // captured owner before any other entity, so a crafted document cannot
+        // relocate the lambda into an unrelated delegate field.
         private bool IsAuthenticatedDirectIteratorClosureDelegateCall(
+            AkronReconstructionNode delegateNode,
             AkronReconstructionDelegateCall call,
             object targetObject,
             MethodInfo method
         ) {
-            return call.Target?.Kind == ReferenceValueKind &&
-                   !method.IsStatic &&
-                   method.DeclaringType == targetObject.GetType() &&
-                   method.DeclaringType?.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) == true &&
-                   nodes.TryGetValue(call.Target.NodeId, out AkronReconstructionNode targetNode) &&
-                   Objects.TryGetValue(targetNode.Id, out object restoredTarget) &&
-                   ReferenceEquals(restoredTarget, targetObject) &&
-                   authenticatedIteratorClosureNodes.Contains(targetNode.Id) &&
-                   !deferredProvisionalIteratorIds.Contains(targetNode.ParentNodeId);
+            if (call.Target?.Kind != ReferenceValueKind ||
+                method.IsStatic ||
+                method.DeclaringType != targetObject.GetType() ||
+                method.DeclaringType?.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) != true ||
+                !nodes.TryGetValue(call.Target.NodeId, out AkronReconstructionNode targetNode) ||
+                !Objects.TryGetValue(targetNode.Id, out object restoredTarget) ||
+                !ReferenceEquals(restoredTarget, targetObject) ||
+                !authenticatedIteratorClosureNodes.Contains(targetNode.Id) ||
+                deferredProvisionalIteratorIds.Contains(targetNode.ParentNodeId) ||
+                !nodes.TryGetValue(targetNode.ParentNodeId, out AkronReconstructionNode iteratorNode)) {
+                return false;
+            }
+            AkronReconstructionValue iteratorOwner = FindReferenceField(iteratorNode, "<>4__this");
+            if (iteratorOwner == null) {
+                return false;
+            }
+            AkronReconstructionNode current = delegateNode;
+            while (current != null) {
+                if (current.Id == iteratorOwner.NodeId) {
+                    return true;
+                }
+                if (typeof(Entity).IsAssignableFrom(ResolveType(current.TypeName, current.Path))) {
+                    return false;
+                }
+                current = nodes.TryGetValue(current.ParentNodeId, out AkronReconstructionNode parent)
+                    ? parent
+                    : null;
+            }
+            return false;
         }
 
         private bool IsAuthenticatedRuntimeEntityOwnedDelegateCall(

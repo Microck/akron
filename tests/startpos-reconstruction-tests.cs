@@ -5241,6 +5241,46 @@ public sealed class StartPosReconstructionTests {
         Assert.Single(GetRuntimeField<Stack<IEnumerator>>(freshOwner.Routine!, "enumerators"));
     }
 
+    // The containment side of the closure-lambda licence: a document that moves
+    // the routine's callback into another entity's delegate field is refused,
+    // because the delegate no longer lives inside the entity that owns the
+    // routine.
+    [Fact]
+    public void AClosureLambdaRelocatedToAnotherEntityIsRefused() {
+        (SavedSceneRoot saved, ClosureRoutineEntity savedOwner) = CreateClosureRoutineScene(midFlight: true);
+        RelocatedCallbackEntity thief = CreateUninitializedEntity<RelocatedCallbackEntity>();
+        InitializeEmptyComponentList(thief);
+        SetRuntimeField(thief, "<Scene>k__BackingField", saved.Scene);
+        SetRuntimeField(thief, "<SourceId>k__BackingField", CreateEntityId("a00", 11));
+        IEnumerator iterator = GetRuntimeField<Stack<IEnumerator>>(savedOwner.Routine!, "enumerators").Peek();
+        object closure = GetRuntimeField<object>(iterator, "<>8__1");
+        MethodInfo lambda = closure.GetType().GetMethods(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+            .Single(candidate => candidate.Name.Contains("b__", StringComparison.Ordinal));
+        thief.Stolen = (Action) lambda.CreateDelegate(typeof(Action), closure);
+        AddDetachedEntity(saved.Entities, thief);
+        SavedSceneRoot baseline = BuildRelocatedCallbackBaseline();
+
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        SavedSceneRoot fresh = BuildRelocatedCallbackBaseline();
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("not authentic", restore.Error);
+    }
+
+    private static SavedSceneRoot BuildRelocatedCallbackBaseline() {
+        (SavedSceneRoot root, _) = CreateClosureRoutineScene(midFlight: false);
+        RelocatedCallbackEntity bystander = CreateUninitializedEntity<RelocatedCallbackEntity>();
+        InitializeEmptyComponentList(bystander);
+        SetRuntimeField(bystander, "<Scene>k__BackingField", root.Scene);
+        SetRuntimeField(bystander, "<SourceId>k__BackingField", CreateEntityId("a00", 11));
+        AddDetachedEntity(root.Entities, bystander);
+        return root;
+    }
+
     // LightningRenderer's shape: a saved bolt mid-flight against a fresh bolt
     // whose own routine already finished. The fresh room's empty stack is
     // expected silence, not missing evidence, so the iterator restores on its
@@ -9011,6 +9051,10 @@ public sealed class StartPosReconstructionTests {
                 yield return null;
             }
         }
+    }
+
+    private sealed class RelocatedCallbackEntity : Entity {
+        public Action? Stolen;
     }
 
     // LightningRenderer's shape: an entity builds nested plain objects in its
