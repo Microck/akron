@@ -3268,6 +3268,7 @@ internal sealed class AkronReconstructionGraph {
         // VerifyDeferredIteratorStates confirms or withdraws it. Node licences
         // must not build on these; see authenticatedDirectIteratorClosure.
         private readonly HashSet<int> deferredProvisionalIteratorIds = new HashSet<int>();
+        private readonly HashSet<int> authenticatedCoroutinePlumbingNodes = new HashSet<int>();
         // Iterator nodes whose captured owner had not resolved yet, with what the
         // rest of CreateAuthenticatedObject was able to prove about each one
         // without that owner. VerifyDeferredIteratorStates needs both.
@@ -3848,6 +3849,9 @@ internal sealed class AkronReconstructionGraph {
             }
             if (authenticatedFieldBuiltComponent) {
                 authenticatedFieldBuiltComponentNodes.Add(node.Id);
+            }
+            if (authenticatedCoroutinePlumbing) {
+                authenticatedCoroutinePlumbingNodes.Add(node.Id);
             }
             if (authenticatedDelegateTarget) {
                 authenticatedDelegateTargetNodes.Add(node.Id);
@@ -4666,6 +4670,16 @@ internal sealed class AkronReconstructionGraph {
                 target.ParentNodeId == edgeParent.Id &&
                 authenticatedIteratorClosureNodes.Contains(target.Id) &&
                 !deferredProvisionalIteratorIds.Contains(edgeParent.Id);
+            // The two canonical edges of Everest's yielded-value plumbing: a
+            // frame's <>2__current holding the SwapImmediately wrapper, and the
+            // wrapper's Inner holding the frame it wraps. The node licences
+            // carry the position proof; these edges spend it.
+            bool coroutinePlumbingEdge =
+                savedOwnerEdge &&
+                target.ParentNodeId == edgeParent.Id &&
+                (authenticatedCoroutinePlumbingNodes.Contains(target.Id) ||
+                 (authenticatedCoroutinePlumbingNodes.Contains(edgeParent.Id) &&
+                  authenticatedRuntimeStateNodes.Contains(target.Id)));
             bool authenticatedIteratorOwnerEdge = edgeField?.Name == "<>4__this" &&
                                                    authenticatedRuntimeStateNodes.Contains(edgeParent.Id) &&
                                                    IsCapturedCompilerThisOwner(edgeParentType, targetType) &&
@@ -4740,6 +4754,7 @@ internal sealed class AkronReconstructionGraph {
                                   coroutineStackIteratorAlias ||
                                   coroutineStackIteratorOwnerEdge ||
                                   directIteratorClosureOwnerEdge ||
+                                  coroutinePlumbingEdge ||
                                   reconstructedSafeParentEdge || authenticatedIteratorOwnerEdge ||
                                   authenticatedDelegateTargetOwnerEdge ||
                                   authenticatedDelegateAliasOwnerEdge ||
@@ -4825,6 +4840,7 @@ internal sealed class AkronReconstructionGraph {
                         ";coroutine-stack-iterator-alias=" + coroutineStackIteratorAlias.ToString().ToLowerInvariant() +
                         ";coroutine-stack-iterator-owner-edge=" + coroutineStackIteratorOwnerEdge.ToString().ToLowerInvariant() +
                         ";direct-iterator-closure-owner-edge=" + directIteratorClosureOwnerEdge.ToString().ToLowerInvariant() +
+                        ";coroutine-plumbing-edge=" + coroutinePlumbingEdge.ToString().ToLowerInvariant() +
                         ";reconstructed-safe-parent-edge=" + reconstructedSafeParentEdge.ToString().ToLowerInvariant() +
                         ";authenticated-iterator-owner-edge=" + authenticatedIteratorOwnerEdge.ToString().ToLowerInvariant() +
                         ";authenticated-delegate-target-owner-edge=" + authenticatedDelegateTargetOwnerEdge.ToString().ToLowerInvariant() +
@@ -4918,6 +4934,7 @@ internal sealed class AkronReconstructionGraph {
                     ";coroutine-stack-iterator-alias=" + coroutineStackIteratorAlias.ToString().ToLowerInvariant() +
                     ";coroutine-stack-iterator-owner-edge=" + coroutineStackIteratorOwnerEdge.ToString().ToLowerInvariant() +
                     ";direct-iterator-closure-owner-edge=" + directIteratorClosureOwnerEdge.ToString().ToLowerInvariant() +
+                    ";coroutine-plumbing-edge=" + coroutinePlumbingEdge.ToString().ToLowerInvariant() +
                     ";reconstructed-safe-parent-edge=" + reconstructedSafeParentEdge.ToString().ToLowerInvariant() +
                     ";authenticated-iterator-owner-edge=" + authenticatedIteratorOwnerEdge.ToString().ToLowerInvariant() +
                     ";authenticated-delegate-target-owner-edge=" + authenticatedDelegateTargetOwnerEdge.ToString().ToLowerInvariant() +
