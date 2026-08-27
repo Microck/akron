@@ -5198,6 +5198,123 @@ public sealed class StartPosReconstructionTests {
         Assert.All(watchers, watcher => Assert.Same(freshOwner.Graphic, watcher.Dust));
     }
 
+    // DynamicData's per-type member cache holds compiled FastReflection
+    // invokers - anonymous delegates no fresh room can vouch for - and every
+    // instance points at the process-wide entry. A mod attaching DynamicData
+    // to a room entity removed every Set in the room over those delegates.
+    // The cache is a live resource now: capture never walks in, and restore
+    // rebinds to this process's own entry for the same target type.
+    [Fact]
+    public void ADynamicDataMemberCacheRestoresAsThisProcessesOwnEntry() {
+        DynamicDataSubject subject = new DynamicDataSubject();
+        MonoMod.Utils.DynamicData data = new MonoMod.Utils.DynamicData(subject);
+        Assert.Equal(5, data.Get<int>("Exposed"));
+        DynamicDataHolder saved = new DynamicDataHolder { Data = data, Value = 3 };
+        DynamicDataHolder baseline = new DynamicDataHolder {
+            Data = new MonoMod.Utils.DynamicData(new DynamicDataSubject())
+        };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            AkronStartPosReconstruction.IsLiveResourceType,
+            AkronStartPosReconstruction.GetLiveResourceKey,
+            resolveDetachedLiveResource: AkronStartPosReconstruction.ResolveDetachedLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        DynamicDataHolder fresh = new DynamicDataHolder {
+            Data = new MonoMod.Utils.DynamicData(new DynamicDataSubject())
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(3, fresh.Value);
+        object restoredCache = GetRuntimeField<object>(fresh.Data!, "_Cache");
+        object liveCache = GetRuntimeField<object>(new MonoMod.Utils.DynamicData(new DynamicDataSubject()), "_Cache");
+        Assert.Same(liveCache, restoredCache);
+    }
+
+    // Level.StartCutscene stores the skip callback and nothing in Celeste ever
+    // clears it, so a slot set after any skipped cutscene dragged the finished
+    // cutscene entity into the graph through a callback that can never fire
+    // again. The dormant clone drops the dead callback; a running cutscene's
+    // callback is real state and stays.
+    [Fact]
+    public void ADeadCutsceneSkipCallbackIsDroppedFromTheDormantClone() {
+        Level level = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        Action<Level> callback = _ => { };
+        SetRuntimeField(level, "onCutsceneSkip", callback);
+        level.InCutscene = false;
+
+        AkronSaveLoadService.ClearDeadCutsceneSkipCallback(level);
+        Assert.Null(GetRuntimeField<Action<Level>>(level, "onCutsceneSkip"));
+
+        SetRuntimeField(level, "onCutsceneSkip", callback);
+        level.InCutscene = true;
+        AkronSaveLoadService.ClearDeadCutsceneSkipCallback(level);
+        Assert.Same(callback, GetRuntimeField<Action<Level>>(level, "onCutsceneSkip"));
+    }
+
+    // CrushBlock's shape: the saved attack routine is mid-flight and its
+    // iterator hoisted a lambda closure. The fresh room's routine is idle, so
+    // no structural path vouches for the closure; the iterator's own direct
+    // owner proof carries it. A slot set while riding a punched Kevin was
+    // refused over exactly this node.
+    [Fact]
+    public void AMidFlightIteratorClosureRestoresWhenTheFreshRoutineIsIdle() {
+        (SavedSceneRoot saved, ClosureRoutineEntity savedOwner) = CreateClosureRoutineScene(midFlight: true);
+        savedOwner.Steps = 3;
+        (SavedSceneRoot baseline, _) = CreateClosureRoutineScene(midFlight: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, ClosureRoutineEntity freshOwner) = CreateClosureRoutineScene(midFlight: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(3, freshOwner.Steps);
+        Assert.Single(GetRuntimeField<Stack<IEnumerator>>(freshOwner.Routine!, "enumerators"));
+    }
+
+    // The containment side of the closure-lambda licence: a document that moves
+    // the routine's callback into another entity's delegate field is refused,
+    // because the delegate no longer lives inside the entity that owns the
+    // routine.
+    [Fact]
+    public void AClosureLambdaRelocatedToAnotherEntityIsRefused() {
+        (SavedSceneRoot saved, ClosureRoutineEntity savedOwner) = CreateClosureRoutineScene(midFlight: true);
+        RelocatedCallbackEntity thief = CreateUninitializedEntity<RelocatedCallbackEntity>();
+        InitializeEmptyComponentList(thief);
+        SetRuntimeField(thief, "<Scene>k__BackingField", saved.Scene);
+        SetRuntimeField(thief, "<SourceId>k__BackingField", CreateEntityId("a00", 11));
+        IEnumerator iterator = GetRuntimeField<Stack<IEnumerator>>(savedOwner.Routine!, "enumerators").Peek();
+        object closure = GetRuntimeField<object>(iterator, "<>8__1");
+        MethodInfo lambda = closure.GetType().GetMethods(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+            .Single(candidate => candidate.Name.Contains("b__", StringComparison.Ordinal));
+        thief.Stolen = (Action) lambda.CreateDelegate(typeof(Action), closure);
+        AddDetachedEntity(saved.Entities, thief);
+        SavedSceneRoot baseline = BuildRelocatedCallbackBaseline();
+
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        SavedSceneRoot fresh = BuildRelocatedCallbackBaseline();
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("not authentic", restore.Error);
+    }
+
+    private static SavedSceneRoot BuildRelocatedCallbackBaseline() {
+        (SavedSceneRoot root, _) = CreateClosureRoutineScene(midFlight: false);
+        RelocatedCallbackEntity bystander = CreateUninitializedEntity<RelocatedCallbackEntity>();
+        InitializeEmptyComponentList(bystander);
+        SetRuntimeField(bystander, "<Scene>k__BackingField", root.Scene);
+        SetRuntimeField(bystander, "<SourceId>k__BackingField", CreateEntityId("a00", 11));
+        AddDetachedEntity(root.Entities, bystander);
+        return root;
+    }
+
     // LightningRenderer's shape: a saved bolt mid-flight against a fresh bolt
     // whose own routine already finished. The fresh room's empty stack is
     // expected silence, not missing evidence, so the iterator restores on its
@@ -6096,6 +6213,26 @@ public sealed class StartPosReconstructionTests {
             watchers.Add(watcher);
         }
         return (new SavedSceneRoot { Scene = scene, Entities = entityList }, owner, watchers.ToArray());
+    }
+
+    private static (SavedSceneRoot Root, ClosureRoutineEntity Owner) CreateClosureRoutineScene(bool midFlight) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        ClosureRoutineEntity owner = CreateUninitializedEntity<ClosureRoutineEntity>();
+        InitializeEmptyComponentList(owner);
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 9));
+        Coroutine routine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+        Stack<IEnumerator> iterators = new Stack<IEnumerator>();
+        if (midFlight) {
+            IEnumerator iterator = owner.AttackSequence();
+            Assert.True(iterator.MoveNext());
+            iterators.Push(iterator);
+        }
+        SetRuntimeField(routine, "enumerators", iterators);
+        owner.Routine = routine;
+        AddDetachedEntity(entityList, owner);
+        return (new SavedSceneRoot { Scene = scene, Entities = entityList }, owner);
     }
 
     private static (SavedSceneRoot Root, BoltOwnerEntity Owner) CreateBoltScene(bool midFlight) {
@@ -8930,6 +9067,37 @@ public sealed class StartPosReconstructionTests {
     // a reference to the live component that built it in a declared field.
     private sealed class EyeballsWatcherEntity : Entity {
         public LazyBlinkComponent Dust = null!;
+    }
+
+    // CrushBlock's shape: a map-placed entity runs an attack routine whose
+    // iterator hoists a lambda closure (<>8__1). The fresh room's routine is
+    // idle, so nothing structural vouches for the mid-flight closure.
+    private sealed class ClosureRoutineEntity : Entity {
+        public Coroutine? Routine;
+        public int Steps;
+
+        public IEnumerator AttackSequence() {
+            int steps = 0;
+            Action advance = () => steps++;
+            while (true) {
+                advance();
+                Steps = steps;
+                yield return null;
+            }
+        }
+    }
+
+    private sealed class RelocatedCallbackEntity : Entity {
+        public Action? Stolen;
+    }
+
+    private sealed class DynamicDataHolder {
+        public MonoMod.Utils.DynamicData? Data;
+        public int Value;
+    }
+
+    private sealed class DynamicDataSubject {
+        public int Exposed = 5;
     }
 
     // LightningRenderer's shape: an entity builds nested plain objects in its

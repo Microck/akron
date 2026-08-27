@@ -3264,6 +3264,11 @@ internal sealed class AkronReconstructionGraph {
         private readonly HashSet<int> authenticatedIteratorClosureNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedScreenWipeNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedFieldBuiltComponentNodes = new HashSet<int>();
+        // Iterators whose runtime-state membership is provisional until
+        // VerifyDeferredIteratorStates confirms or withdraws it. Node licences
+        // must not build on these; see authenticatedDirectIteratorClosure.
+        private readonly HashSet<int> deferredProvisionalIteratorIds = new HashSet<int>();
+        private readonly HashSet<int> authenticatedCoroutinePlumbingNodes = new HashSet<int>();
         // Iterator nodes whose captured owner had not resolved yet, with what the
         // rest of CreateAuthenticatedObject was able to prove about each one
         // without that owner. VerifyDeferredIteratorStates needs both.
@@ -3779,7 +3784,22 @@ internal sealed class AkronReconstructionGraph {
             // play and one added during play, loaded on 010f660 and was refused
             // when the deferral discarded the structural proof. See
             // ARawCoroutineIteratorLoadsOnItsOwnStructuralEvidence.
-            bool provedIteratorState = IsAuthenticatedCompilerIteratorState(node, type);
+            // An OWNERLESS frame stored in a coroutine stack proves itself by
+            // position. A mod can wrap a routine in a static hook iterator
+            // (FemtoHelper's dash hook), whose compiled type declares no
+            // <>4__this, so the owner question is unaskable rather than
+            // failed; the canonical chain being pure stack plumbing says the
+            // frame is the coroutine's own saved state, and its hoisted fields
+            // still validate one by one. Ownerlessness is read off the TYPE,
+            // never the document: a crafted file omitting the field for a type
+            // that declares it keeps the owner question - a Tween's Wait whose
+            // Tween is not authentic stays refused whatever stack it sits in.
+            bool provedIteratorState = IsAuthenticatedCompilerIteratorState(node, type) ||
+                                       (IsCompilerGeneratedIterator(type) &&
+                                        type.GetField(
+                                            "<>4__this",
+                                            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) == null &&
+                                        TryGetCoroutineEnumeratorStackOwner(node, CoroutineStackWalk.IncludingYieldedValues, out _));
             bool deferredIteratorState =
                 !provedIteratorState && HasUnresolvedCompilerIteratorOwner(node, type);
             bool authenticatedRuntimeEntity =
@@ -3795,6 +3815,14 @@ internal sealed class AkronReconstructionGraph {
             bool authenticatedDelegateTarget = IsStructurallyAuthenticDelegateTarget(node, type);
             bool authenticatedIteratorClosure = IsAuthenticatedIteratorClosure(node, type);
             bool authenticatedScreenWipe = IsAuthenticatedBuiltInScreenWipe(node, type);
+            // Everest wraps yielded enumerators in SwapImmediately, so a saved
+            // mid-flight frame carries one as its current value while an idle
+            // fresh routine has none. It is Everest's own passive plumbing,
+            // proved the same way a frame is: by its position inside a
+            // coroutine's stack, yielded values included.
+            bool authenticatedCoroutinePlumbing =
+                type == typeof(SwapImmediately) &&
+                TryGetCoroutineEnumeratorStackOwner(node, CoroutineStackWalk.IncludingYieldedValues, out _);
             // A deferred node's membership is provisional: the owner proof is the
             // only thing that grants it and that proof is not in yet, so
             // VerifyDeferredIteratorStates confirms it or withdraws it before
@@ -3810,6 +3838,9 @@ internal sealed class AkronReconstructionGraph {
             if (provedIteratorState || deferredIteratorState) {
                 authenticatedRuntimeStateNodes.Add(node.Id);
             }
+            if (deferredIteratorState) {
+                deferredProvisionalIteratorIds.Add(node.Id);
+            }
             if (authenticatedRuntimeEntity) {
                 authenticatedRuntimeEntityNodes.Add(node.Id);
             }
@@ -3822,6 +3853,9 @@ internal sealed class AkronReconstructionGraph {
             if (authenticatedFieldBuiltComponent) {
                 authenticatedFieldBuiltComponentNodes.Add(node.Id);
             }
+            if (authenticatedCoroutinePlumbing) {
+                authenticatedCoroutinePlumbingNodes.Add(node.Id);
+            }
             if (authenticatedDelegateTarget) {
                 authenticatedDelegateTargetNodes.Add(node.Id);
             }
@@ -3831,6 +3865,18 @@ internal sealed class AkronReconstructionGraph {
             if (authenticatedScreenWipe) {
                 authenticatedScreenWipeNodes.Add(node.Id);
             }
+            // A hoisted closure of an owner-proved iterator. The fresh room's
+            // silence about it is expected rather than suspicious: a routine
+            // that was idle or finished in the clean load hoisted no closure,
+            // so a mid-flight CrushBlock attack was refused over exactly this.
+            // The licence rests only on a DIRECT owner proof: a provisionally
+            // admitted (deferred) iterator can still be withdrawn by
+            // VerifyDeferredIteratorStates, and a node licence granted on it
+            // would outlive its foundation, so a closure under a deferred
+            // iterator keeps the structural question below instead.
+            bool authenticatedDirectIteratorClosure =
+                authenticatedIteratorClosure &&
+                !deferredProvisionalIteratorIds.Contains(node.ParentNodeId);
             // Everything that authenticates this reconstruction without appealing
             // to a compiler iterator's owner. A deferred node computes it too and
             // hands it to VerifyDeferredIteratorStates, which is why the throw is
@@ -3841,6 +3887,8 @@ internal sealed class AkronReconstructionGraph {
                 authenticatedOwnedNestedState ||
                 authenticatedOwnedComponent ||
                 authenticatedFieldBuiltComponent ||
+                authenticatedDirectIteratorClosure ||
+                authenticatedCoroutinePlumbing ||
                 authenticatedScreenWipe;
             if (!authenticWithoutTheOwnerProof && !provedIteratorState) {
                 List<AkronReconstructionPathStep> structuralPath = GetDocumentStructuralPath(node);
@@ -4020,6 +4068,13 @@ internal sealed class AkronReconstructionGraph {
                      in deferredIteratorStateNodes) {
                 Type type = ResolveType(node.TypeName, node.Path);
                 if (IsAuthenticatedCompilerIteratorState(node, type)) {
+                    // Confirmed is as good as direct for everything that runs
+                    // after this pass: the withdrawal risk the provisional
+                    // marker guards against is gone, so the closure edge and
+                    // delegate licences treat this iterator like one proved on
+                    // first sight. The closure NODE licence stays direct-only
+                    // because it was already decided before this pass ran.
+                    deferredProvisionalIteratorIds.Remove(node.Id);
                     continue;
                 }
                 if (!authenticWithoutTheOwnerProof) {
@@ -4229,6 +4284,9 @@ internal sealed class AkronReconstructionGraph {
                 "current" => yieldedValuesAllowed &&
                              parentType == typeof(SwapImmediatelyExtension.Flattened),
                 "<>2__current" => yieldedValuesAllowed && IsCompilerGeneratedIterator(parentType),
+                // The enumerator a SwapImmediately wrapper carries; mods chain
+                // dash-coroutine hooks through exactly this.
+                "Inner" => yieldedValuesAllowed && parentType == typeof(SwapImmediately),
                 _ => false
             };
         }
@@ -4604,6 +4662,27 @@ internal sealed class AkronReconstructionGraph {
                 authenticatedRuntimeStateNodes.Contains(target.Id) &&
                 IsCoroutineStackIteratorSlot(edgeParent, edgeParentType, edgeField) &&
                 TryGetCoroutineEnumeratorStackOwner(target, CoroutineStackWalk.StorageOnly, out _);
+            // The canonical owner edge of a closure the node licence carried:
+            // its owner iterator holds a direct proof, so the hoisted <>8__
+            // field edge from that same iterator is the ownership the licence
+            // already established. Deferred iterators stay out for the same
+            // withdrawal reason the node licence keeps them out.
+            bool directIteratorClosureOwnerEdge =
+                savedOwnerEdge &&
+                target.ParentKind == "field" &&
+                target.ParentNodeId == edgeParent.Id &&
+                authenticatedIteratorClosureNodes.Contains(target.Id) &&
+                !deferredProvisionalIteratorIds.Contains(edgeParent.Id);
+            // The two canonical edges of Everest's yielded-value plumbing: a
+            // frame's <>2__current holding the SwapImmediately wrapper, and the
+            // wrapper's Inner holding the frame it wraps. The node licences
+            // carry the position proof; these edges spend it.
+            bool coroutinePlumbingEdge =
+                savedOwnerEdge &&
+                target.ParentNodeId == edgeParent.Id &&
+                (authenticatedCoroutinePlumbingNodes.Contains(target.Id) ||
+                 (authenticatedCoroutinePlumbingNodes.Contains(edgeParent.Id) &&
+                  authenticatedRuntimeStateNodes.Contains(target.Id)));
             bool authenticatedIteratorOwnerEdge = edgeField?.Name == "<>4__this" &&
                                                    authenticatedRuntimeStateNodes.Contains(edgeParent.Id) &&
                                                    IsCapturedCompilerThisOwner(edgeParentType, targetType) &&
@@ -4677,6 +4756,8 @@ internal sealed class AkronReconstructionGraph {
                                   freshHashSetMembership || iteratorOwnedComponentAlias ||
                                   coroutineStackIteratorAlias ||
                                   coroutineStackIteratorOwnerEdge ||
+                                  directIteratorClosureOwnerEdge ||
+                                  coroutinePlumbingEdge ||
                                   reconstructedSafeParentEdge || authenticatedIteratorOwnerEdge ||
                                   authenticatedDelegateTargetOwnerEdge ||
                                   authenticatedDelegateAliasOwnerEdge ||
@@ -4761,6 +4842,8 @@ internal sealed class AkronReconstructionGraph {
                         ";iterator-owned-component-alias=" + iteratorOwnedComponentAlias.ToString().ToLowerInvariant() +
                         ";coroutine-stack-iterator-alias=" + coroutineStackIteratorAlias.ToString().ToLowerInvariant() +
                         ";coroutine-stack-iterator-owner-edge=" + coroutineStackIteratorOwnerEdge.ToString().ToLowerInvariant() +
+                        ";direct-iterator-closure-owner-edge=" + directIteratorClosureOwnerEdge.ToString().ToLowerInvariant() +
+                        ";coroutine-plumbing-edge=" + coroutinePlumbingEdge.ToString().ToLowerInvariant() +
                         ";reconstructed-safe-parent-edge=" + reconstructedSafeParentEdge.ToString().ToLowerInvariant() +
                         ";authenticated-iterator-owner-edge=" + authenticatedIteratorOwnerEdge.ToString().ToLowerInvariant() +
                         ";authenticated-delegate-target-owner-edge=" + authenticatedDelegateTargetOwnerEdge.ToString().ToLowerInvariant() +
@@ -4853,6 +4936,8 @@ internal sealed class AkronReconstructionGraph {
                     ";iterator-owned-component-alias=" + iteratorOwnedComponentAlias.ToString().ToLowerInvariant() +
                     ";coroutine-stack-iterator-alias=" + coroutineStackIteratorAlias.ToString().ToLowerInvariant() +
                     ";coroutine-stack-iterator-owner-edge=" + coroutineStackIteratorOwnerEdge.ToString().ToLowerInvariant() +
+                    ";direct-iterator-closure-owner-edge=" + directIteratorClosureOwnerEdge.ToString().ToLowerInvariant() +
+                    ";coroutine-plumbing-edge=" + coroutinePlumbingEdge.ToString().ToLowerInvariant() +
                     ";reconstructed-safe-parent-edge=" + reconstructedSafeParentEdge.ToString().ToLowerInvariant() +
                     ";authenticated-iterator-owner-edge=" + authenticatedIteratorOwnerEdge.ToString().ToLowerInvariant() +
                     ";authenticated-delegate-target-owner-edge=" + authenticatedDelegateTargetOwnerEdge.ToString().ToLowerInvariant() +
@@ -7694,6 +7779,9 @@ internal sealed class AkronReconstructionGraph {
                             target,
                             method);
                     }
+                    if (!authentic && target != null) {
+                        authentic = IsAuthenticatedDirectIteratorClosureDelegateCall(node, call, target, method);
+                    }
                     if (!authentic) {
                         // What the fresh room does not have here is the callback, not the
                         // delegate field's own type, so the refusal is reported against the
@@ -7738,6 +7826,55 @@ internal sealed class AkronReconstructionGraph {
                 targetObject.GetType(),
                 delegateNode,
                 method);
+        }
+
+        // A lambda hoisted from an owner-proved iterator: the method is the
+        // compiler-generated closure's own, and the closure already carried the
+        // direct-proof licence, so the callback is the iterator's own code
+        // rather than anything a census could vouch for. CrushBlock's
+        // AttackSequence hands exactly this to Alarm.Set while a Kevin attacks,
+        // and an idle fresh room has no such callback anywhere. Deferred
+        // iterators stay out for the withdrawal reason the node licence names.
+        //
+        // The callback must also stay inside the entity that owns the routine:
+        // the delegate node's own document chain has to reach the iterator's
+        // captured owner before any other entity, so a crafted document cannot
+        // relocate the lambda into an unrelated delegate field.
+        private bool IsAuthenticatedDirectIteratorClosureDelegateCall(
+            AkronReconstructionNode delegateNode,
+            AkronReconstructionDelegateCall call,
+            object targetObject,
+            MethodInfo method
+        ) {
+            if (call.Target?.Kind != ReferenceValueKind ||
+                method.IsStatic ||
+                method.DeclaringType != targetObject.GetType() ||
+                method.DeclaringType?.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) != true ||
+                !nodes.TryGetValue(call.Target.NodeId, out AkronReconstructionNode targetNode) ||
+                !Objects.TryGetValue(targetNode.Id, out object restoredTarget) ||
+                !ReferenceEquals(restoredTarget, targetObject) ||
+                !authenticatedIteratorClosureNodes.Contains(targetNode.Id) ||
+                deferredProvisionalIteratorIds.Contains(targetNode.ParentNodeId) ||
+                !nodes.TryGetValue(targetNode.ParentNodeId, out AkronReconstructionNode iteratorNode)) {
+                return false;
+            }
+            AkronReconstructionValue iteratorOwner = FindReferenceField(iteratorNode, "<>4__this");
+            if (iteratorOwner == null) {
+                return false;
+            }
+            AkronReconstructionNode current = delegateNode;
+            while (current != null) {
+                if (current.Id == iteratorOwner.NodeId) {
+                    return true;
+                }
+                if (typeof(Entity).IsAssignableFrom(ResolveType(current.TypeName, current.Path))) {
+                    return false;
+                }
+                current = nodes.TryGetValue(current.ParentNodeId, out AkronReconstructionNode parent)
+                    ? parent
+                    : null;
+            }
+            return false;
         }
 
         private bool IsAuthenticatedRuntimeEntityOwnedDelegateCall(
@@ -9822,6 +9959,7 @@ internal static class AkronStartPosReconstruction {
         // problem this file solves for EntityList and ComponentList alone
         // (see ValidateAndNormalizeMembershipSet) and nowhere else yet.
         return type == typeof(Pathfinder) ||
+               type == DynamicDataCacheType ||
                type == typeof(CompareInfo) ||
                typeof(Type).IsAssignableFrom(type) ||
                typeof(MemberInfo).IsAssignableFrom(type) ||
@@ -9865,6 +10003,9 @@ internal static class AkronStartPosReconstruction {
         string resourceKey = StripTypedKeyPrefix(typedResourceKey);
         if (resourceKey == null) {
             return null;
+        }
+        if (resourceType == DynamicDataCacheType) {
+            return ResolveDynamicDataCache(resourceKey);
         }
         if (typeof(VirtualTexture).IsAssignableFrom(resourceType)) {
             // Randomized decals can select a different texture wrapper each
@@ -10015,6 +10156,45 @@ internal static class AkronStartPosReconstruction {
         return VirtualContent.CreateTexture(name, width, height, Color.White);
     }
 
+    // DynamicData's per-type member cache. Every DynamicData instance's _Cache
+    // field points at the process-wide entry in the static _CacheMap, and the
+    // entry holds compiled FastReflection invokers - anonymous delegates no
+    // fresh room can vouch for. It is pure memoization DynamicData rebuilds on
+    // demand, so it is a live resource keyed by its target type: capture never
+    // walks into it, and restore rebinds to (or builds) this process's own
+    // entry. Surfaced by a mod attaching DynamicData to a room entity, which
+    // removed every Set in the room over the cache's delegates.
+    private static readonly Type DynamicDataCacheType =
+        typeof(MonoMod.Utils.DynamicData).GetNestedType("_Cache_", BindingFlags.NonPublic);
+    private static readonly FieldInfo DynamicDataCacheMapField =
+        typeof(MonoMod.Utils.DynamicData).GetField("_CacheMap", BindingFlags.Static | BindingFlags.NonPublic);
+
+    private static string GetDynamicDataCacheKey(object cache) {
+        if (DynamicDataCacheMapField?.GetValue(null) is not IDictionary cacheMap) {
+            return string.Empty;
+        }
+        foreach (DictionaryEntry entry in cacheMap) {
+            if (ReferenceEquals(entry.Value, cache)) {
+                Type target = (Type) entry.Key;
+                return target.AssemblyQualifiedName ?? target.FullName ?? string.Empty;
+            }
+        }
+        return string.Empty;
+    }
+
+    private static object ResolveDynamicDataCache(string typeName) {
+        Type target = Type.GetType(typeName, throwOnError: false);
+        if (target == null || DynamicDataCacheMapField?.GetValue(null) is not IDictionary cacheMap) {
+            return null;
+        }
+        if (!cacheMap.Contains(target)) {
+            // Building a DynamicData for the type is the public way to make
+            // MonoMod publish the type's cache entry.
+            _ = new MonoMod.Utils.DynamicData(target);
+        }
+        return cacheMap.Contains(target) ? cacheMap[target] : null;
+    }
+
     // Where the game keeps the atlases it loads for the whole process. Both are
     // plain static fields, and Everest rebinds them in place when it reloads an
     // atlas, so the field is read on every lookup rather than the object being
@@ -10060,6 +10240,9 @@ internal static class AkronStartPosReconstruction {
     }
 
     internal static string GetLiveResourceKey(object resource) {
+        if (resource.GetType() == DynamicDataCacheType) {
+            return GetDynamicDataCacheKey(resource);
+        }
         if (resource is CompareInfo compareInfo) {
             // This names a collation, not a particular wrapper object. The sort
             // name carries alternate sort orders too - "de-DE_phoneb" is a
