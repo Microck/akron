@@ -3786,16 +3786,19 @@ internal sealed class AkronReconstructionGraph {
             // ARawCoroutineIteratorLoadsOnItsOwnStructuralEvidence.
             // An OWNERLESS frame stored in a coroutine stack proves itself by
             // position. A mod can wrap a routine in a static hook iterator
-            // (FemtoHelper's dash hook), which captures no <>4__this, so the
-            // owner question is unaskable rather than failed; the canonical
-            // chain being pure stack plumbing says the frame is the
-            // coroutine's own saved state, and its hoisted fields still
-            // validate one by one. A frame that DID capture an owner keeps the
-            // owner question - a Tween's Wait whose Tween is not authentic
-            // stays refused whatever stack it sits in.
+            // (FemtoHelper's dash hook), whose compiled type declares no
+            // <>4__this, so the owner question is unaskable rather than
+            // failed; the canonical chain being pure stack plumbing says the
+            // frame is the coroutine's own saved state, and its hoisted fields
+            // still validate one by one. Ownerlessness is read off the TYPE,
+            // never the document: a crafted file omitting the field for a type
+            // that declares it keeps the owner question - a Tween's Wait whose
+            // Tween is not authentic stays refused whatever stack it sits in.
             bool provedIteratorState = IsAuthenticatedCompilerIteratorState(node, type) ||
                                        (IsCompilerGeneratedIterator(type) &&
-                                        FindReferenceField(node, "<>4__this") == null &&
+                                        type.GetField(
+                                            "<>4__this",
+                                            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) == null &&
                                         TryGetCoroutineEnumeratorStackOwner(node, CoroutineStackWalk.IncludingYieldedValues, out _));
             bool deferredIteratorState =
                 !provedIteratorState && HasUnresolvedCompilerIteratorOwner(node, type);
