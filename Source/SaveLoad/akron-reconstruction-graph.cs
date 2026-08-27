@@ -3264,6 +3264,10 @@ internal sealed class AkronReconstructionGraph {
         private readonly HashSet<int> authenticatedIteratorClosureNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedScreenWipeNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedFieldBuiltComponentNodes = new HashSet<int>();
+        // Iterators whose runtime-state membership is provisional until
+        // VerifyDeferredIteratorStates confirms or withdraws it. Node licences
+        // must not build on these; see authenticatedDirectIteratorClosure.
+        private readonly HashSet<int> deferredProvisionalIteratorIds = new HashSet<int>();
         // Iterator nodes whose captured owner had not resolved yet, with what the
         // rest of CreateAuthenticatedObject was able to prove about each one
         // without that owner. VerifyDeferredIteratorStates needs both.
@@ -3810,6 +3814,9 @@ internal sealed class AkronReconstructionGraph {
             if (provedIteratorState || deferredIteratorState) {
                 authenticatedRuntimeStateNodes.Add(node.Id);
             }
+            if (deferredIteratorState) {
+                deferredProvisionalIteratorIds.Add(node.Id);
+            }
             if (authenticatedRuntimeEntity) {
                 authenticatedRuntimeEntityNodes.Add(node.Id);
             }
@@ -3831,6 +3838,18 @@ internal sealed class AkronReconstructionGraph {
             if (authenticatedScreenWipe) {
                 authenticatedScreenWipeNodes.Add(node.Id);
             }
+            // A hoisted closure of an owner-proved iterator. The fresh room's
+            // silence about it is expected rather than suspicious: a routine
+            // that was idle or finished in the clean load hoisted no closure,
+            // so a mid-flight CrushBlock attack was refused over exactly this.
+            // The licence rests only on a DIRECT owner proof: a provisionally
+            // admitted (deferred) iterator can still be withdrawn by
+            // VerifyDeferredIteratorStates, and a node licence granted on it
+            // would outlive its foundation, so a closure under a deferred
+            // iterator keeps the structural question below instead.
+            bool authenticatedDirectIteratorClosure =
+                authenticatedIteratorClosure &&
+                !deferredProvisionalIteratorIds.Contains(node.ParentNodeId);
             // Everything that authenticates this reconstruction without appealing
             // to a compiler iterator's owner. A deferred node computes it too and
             // hands it to VerifyDeferredIteratorStates, which is why the throw is
@@ -3841,6 +3860,7 @@ internal sealed class AkronReconstructionGraph {
                 authenticatedOwnedNestedState ||
                 authenticatedOwnedComponent ||
                 authenticatedFieldBuiltComponent ||
+                authenticatedDirectIteratorClosure ||
                 authenticatedScreenWipe;
             if (!authenticWithoutTheOwnerProof && !provedIteratorState) {
                 List<AkronReconstructionPathStep> structuralPath = GetDocumentStructuralPath(node);
@@ -4604,6 +4624,17 @@ internal sealed class AkronReconstructionGraph {
                 authenticatedRuntimeStateNodes.Contains(target.Id) &&
                 IsCoroutineStackIteratorSlot(edgeParent, edgeParentType, edgeField) &&
                 TryGetCoroutineEnumeratorStackOwner(target, CoroutineStackWalk.StorageOnly, out _);
+            // The canonical owner edge of a closure the node licence carried:
+            // its owner iterator holds a direct proof, so the hoisted <>8__
+            // field edge from that same iterator is the ownership the licence
+            // already established. Deferred iterators stay out for the same
+            // withdrawal reason the node licence keeps them out.
+            bool directIteratorClosureOwnerEdge =
+                savedOwnerEdge &&
+                target.ParentKind == "field" &&
+                target.ParentNodeId == edgeParent.Id &&
+                authenticatedIteratorClosureNodes.Contains(target.Id) &&
+                !deferredProvisionalIteratorIds.Contains(edgeParent.Id);
             bool authenticatedIteratorOwnerEdge = edgeField?.Name == "<>4__this" &&
                                                    authenticatedRuntimeStateNodes.Contains(edgeParent.Id) &&
                                                    IsCapturedCompilerThisOwner(edgeParentType, targetType) &&
@@ -4677,6 +4708,7 @@ internal sealed class AkronReconstructionGraph {
                                   freshHashSetMembership || iteratorOwnedComponentAlias ||
                                   coroutineStackIteratorAlias ||
                                   coroutineStackIteratorOwnerEdge ||
+                                  directIteratorClosureOwnerEdge ||
                                   reconstructedSafeParentEdge || authenticatedIteratorOwnerEdge ||
                                   authenticatedDelegateTargetOwnerEdge ||
                                   authenticatedDelegateAliasOwnerEdge ||
@@ -4761,6 +4793,7 @@ internal sealed class AkronReconstructionGraph {
                         ";iterator-owned-component-alias=" + iteratorOwnedComponentAlias.ToString().ToLowerInvariant() +
                         ";coroutine-stack-iterator-alias=" + coroutineStackIteratorAlias.ToString().ToLowerInvariant() +
                         ";coroutine-stack-iterator-owner-edge=" + coroutineStackIteratorOwnerEdge.ToString().ToLowerInvariant() +
+                        ";direct-iterator-closure-owner-edge=" + directIteratorClosureOwnerEdge.ToString().ToLowerInvariant() +
                         ";reconstructed-safe-parent-edge=" + reconstructedSafeParentEdge.ToString().ToLowerInvariant() +
                         ";authenticated-iterator-owner-edge=" + authenticatedIteratorOwnerEdge.ToString().ToLowerInvariant() +
                         ";authenticated-delegate-target-owner-edge=" + authenticatedDelegateTargetOwnerEdge.ToString().ToLowerInvariant() +
@@ -4853,6 +4886,7 @@ internal sealed class AkronReconstructionGraph {
                     ";iterator-owned-component-alias=" + iteratorOwnedComponentAlias.ToString().ToLowerInvariant() +
                     ";coroutine-stack-iterator-alias=" + coroutineStackIteratorAlias.ToString().ToLowerInvariant() +
                     ";coroutine-stack-iterator-owner-edge=" + coroutineStackIteratorOwnerEdge.ToString().ToLowerInvariant() +
+                    ";direct-iterator-closure-owner-edge=" + directIteratorClosureOwnerEdge.ToString().ToLowerInvariant() +
                     ";reconstructed-safe-parent-edge=" + reconstructedSafeParentEdge.ToString().ToLowerInvariant() +
                     ";authenticated-iterator-owner-edge=" + authenticatedIteratorOwnerEdge.ToString().ToLowerInvariant() +
                     ";authenticated-delegate-target-owner-edge=" + authenticatedDelegateTargetOwnerEdge.ToString().ToLowerInvariant() +
@@ -7694,6 +7728,9 @@ internal sealed class AkronReconstructionGraph {
                             target,
                             method);
                     }
+                    if (!authentic && target != null) {
+                        authentic = IsAuthenticatedDirectIteratorClosureDelegateCall(call, target, method);
+                    }
                     if (!authentic) {
                         // What the fresh room does not have here is the callback, not the
                         // delegate field's own type, so the refusal is reported against the
@@ -7738,6 +7775,29 @@ internal sealed class AkronReconstructionGraph {
                 targetObject.GetType(),
                 delegateNode,
                 method);
+        }
+
+        // A lambda hoisted from an owner-proved iterator: the method is the
+        // compiler-generated closure's own, and the closure already carried the
+        // direct-proof licence, so the callback is the iterator's own code
+        // rather than anything a census could vouch for. CrushBlock's
+        // AttackSequence hands exactly this to Alarm.Set while a Kevin attacks,
+        // and an idle fresh room has no such callback anywhere. Deferred
+        // iterators stay out for the withdrawal reason the node licence names.
+        private bool IsAuthenticatedDirectIteratorClosureDelegateCall(
+            AkronReconstructionDelegateCall call,
+            object targetObject,
+            MethodInfo method
+        ) {
+            return call.Target?.Kind == ReferenceValueKind &&
+                   !method.IsStatic &&
+                   method.DeclaringType == targetObject.GetType() &&
+                   method.DeclaringType?.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) == true &&
+                   nodes.TryGetValue(call.Target.NodeId, out AkronReconstructionNode targetNode) &&
+                   Objects.TryGetValue(targetNode.Id, out object restoredTarget) &&
+                   ReferenceEquals(restoredTarget, targetObject) &&
+                   authenticatedIteratorClosureNodes.Contains(targetNode.Id) &&
+                   !deferredProvisionalIteratorIds.Contains(targetNode.ParentNodeId);
         }
 
         private bool IsAuthenticatedRuntimeEntityOwnedDelegateCall(

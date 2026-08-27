@@ -6,13 +6,18 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Fixed
+
+- Load StartPos slots set after skipping or finishing a cutscene. Celeste keeps the skip callback forever, so every later slot dragged the finished cutscene entity along and was refused over it; the callback is now dropped from the saved copy.
+- Load StartPos slots set while an entity's routine is mid-flight with captured locals, such as riding a punched Kevin. The routine's closure and its callback now restore on the routine's own proof instead of being refused over evidence an idle room never has.
+
 ## Akron Beta 72
 
 ### Fixed
 
-- Load StartPos slots saved near dust bunnies after leaving and re-entering the map. Their renderer builds its noise textures on first render, so a load that arrived before the room rendered had nothing to pair them with and refused the slot; the restore now recreates them.
-- Load StartPos slots saved in Celestial Resort's clutter rooms. Generated clutter blocks cross-reference each other through hash sets whose entry positions belong to the saving process, so the restore no longer reads those positions as identity.
-- Load StartPos slots saved with dust eyes on screen or lightning mid-flash. State a room builds on first use - a dust blink coroutine, its eyeball entity, a bolt's running routine - now restores on its owner's proof instead of being refused over evidence a fresh room never has.
+- Load StartPos slots saved near dust bunnies after leaving and re-entering the map.
+- Restore StartPos slots in Celestial Resort clutter rooms.
+- Restore StartPos slots with dust eyes on screen or lightning mid-flash.
 
 ## Akron Beta 71
 

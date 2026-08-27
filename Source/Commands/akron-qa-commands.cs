@@ -1037,6 +1037,24 @@ public static partial class AkronCommands {
             return;
         }
 
+        if (NormalizeToken(action) == "stale") {
+            // The state Celeste leaves after any finished or skipped cutscene:
+            // InCutscene is false but onCutsceneSkip still holds the removed
+            // cutscene entity through its SkipCutscene method.
+            level.InCutscene = false;
+            level.SkippingCutscene = false;
+            CutsceneEntity removedCutscene =
+                (CutsceneEntity) RuntimeHelpers.GetUninitializedObject(typeof(CS06_Granny));
+            MethodInfo vanillaSkip = typeof(CutsceneEntity).GetMethod(
+                "SkipCutscene",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            SetQaCutsceneSkipCallback(
+                level,
+                (Action<Level>) vanillaSkip.CreateDelegate(typeof(Action<Level>), removedCutscene));
+            Log("qa-cutscene-state: stale");
+            return;
+        }
+
         level.InCutscene = true;
         level.SkippingCutscene = false;
         SetQaCutsceneSkipCallback(level, skippedLevel => {

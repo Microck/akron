@@ -2017,6 +2017,7 @@ public static partial class AkronSaveLoadService {
             if (includeLevelSnapshot) {
                 saveSlot.SavedLevel = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
                 saveSlot.SavedLevelEventInstances = AkronDeepClone.CopyIntoDormant(level, saveSlot.SavedLevel);
+                ClearDeadCutsceneSkipCallback(saveSlot.SavedLevel);
             }
             saveSlot.SessionState = (Session) DeepClone(level.Session);
             CaptureCuratedSessionState(level.Session, saveSlot);
@@ -2082,6 +2083,7 @@ public static partial class AkronSaveLoadService {
         try {
             saveSlot.SavedLevel = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
             saveSlot.SavedLevelEventInstances = AkronDeepClone.CopyIntoDormant(level, saveSlot.SavedLevel);
+            ClearDeadCutsceneSkipCallback(saveSlot.SavedLevel);
             saveSlot.FileSlot = SaveData.Instance?.FileSlot ?? -1;
             saveSlot.GrabMode = Settings.Instance.GrabMode;
             saveSlot.CrouchDashMode = Settings.Instance.CrouchDashMode;
@@ -2404,6 +2406,25 @@ public static partial class AkronSaveLoadService {
 
     internal static int RemoveClonedDustEdges(Level level) {
         return RemoveClonedVisualRuntimeEntities(level);
+    }
+
+    // Level.StartCutscene stores the skip callback and nothing ever clears it:
+    // SkipCutscene's routine, EndCutscene, and CancelCutscene all leave
+    // onCutsceneSkip pointing at the finished cutscene entity. Every slot set
+    // after any skipped vanilla cutscene then drags a removed CutsceneEntity
+    // into the graph through a callback that can never fire again - the skip
+    // path only runs while InCutscene - and a cold load refuses the room over
+    // that zombie. The dormant clone is Akron's own copy, so the dead callback
+    // is dropped there; a running cutscene's callback is real state and stays.
+    private static readonly FieldInfo LevelOnCutsceneSkipField = typeof(Level).GetField(
+        "onCutsceneSkip",
+        BindingFlags.Instance | BindingFlags.NonPublic);
+
+    internal static void ClearDeadCutsceneSkipCallback(Level savedLevel) {
+        if (savedLevel == null || savedLevel.InCutscene) {
+            return;
+        }
+        LevelOnCutsceneSkipField?.SetValue(savedLevel, null);
     }
 
     private static readonly string[] FrostHelperSpinnerRendererTypeNames = {
