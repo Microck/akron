@@ -694,7 +694,6 @@ public sealed class ModuleSettingsTests
     [Fact]
     public void SettingsWriteCreatesTheTargetWhenNothingIsThereYet()
     {
-        // First run on a fresh install: there is no previous file to rename over.
         string directory = CreateTemporaryDirectory();
         try
         {
@@ -5617,7 +5616,6 @@ public sealed class ModuleSettingsTests
             // own metadata entry is not unpacked into the player's Saves folder.
             Assert.False(File.Exists(Path.Combine(savesFolder, "3.celeste")));
             Assert.False(File.Exists(Path.Combine(savesFolder, "_akron-backup.json")));
-            // And the folder it worked in is gone once it has succeeded.
             Assert.False(Directory.Exists(Path.Combine(savesFolder, "AkronRestore", "run")));
         }
         finally

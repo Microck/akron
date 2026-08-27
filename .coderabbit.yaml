@@ -1,7 +1,6 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 
-# Keep the organization-level review profile and guidance that already produced
-# useful findings on Akron pull requests.
+# Inherit the organization-level review profile; add only Akron-specific guidance below.
 inheritance: true
 
 knowledge_base:

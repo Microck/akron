@@ -122,7 +122,6 @@ for endpoint in "akron.micr.dev/olympus" "akron.micr.dev/raw"; do
     fi
 done
 
-# ------------------------------------------------------------------------------
 if [ "$failures" -gt 0 ]; then
     echo "verify-release: ${failures} completion check(s) failed for ${tag}." >&2
     echo "verify-release: repair the same tag per docs/release-runbook.md." >&2

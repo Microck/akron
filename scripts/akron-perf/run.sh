@@ -152,10 +152,9 @@ TAS_PATH="${GAME_ROOT}/Saves/AkronPerfScenario/scenario.tas"
 # ------------------------------------------------------------------ game loop
 
 launch_game() {
-    # setsid plus a hard local timeout. Without setsid the wine children keep the
-    # ssh channel open and the launch call never returns; the timeout is the
-    # belt-and-braces version of that, since the poll below is what actually
-    # decides whether the boot worked.
+    # setsid prevents Wine children from keeping the SSH channel open after launch.
+    # The local timeout provides a second bound if detachment fails; the poll below
+    # remains the authority on whether boot succeeded.
     # Everest appends to log.txt and only rotates it into LogHistory at boot, so
     # a stale "Loaded assembly Akron" from the previous scenario would satisfy
     # the poll instantly. The marker makes the poll require a log written after

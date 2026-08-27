@@ -785,7 +785,6 @@ public sealed class StartPosPersistenceTests {
 
             // Every one of these is a near miss the sweep must not take.
             string[] keep = {
-                // The name this build writes.
                 currentPath,
                 // The temporary file a write lands through, which a prefix-only test
                 // would match and a copy in flight would then lose.
@@ -799,7 +798,6 @@ public sealed class StartPosPersistenceTests {
                 Path.Combine(directory, "v7-" + new string('z', digestLength) + suffix),
                 // The scheme without a version number at all.
                 Path.Combine(directory, "backup-" + digestAndSuffix),
-                // Not this scheme.
                 Path.Combine(directory, "notes.txt")
             };
             foreach (string path in keep) {

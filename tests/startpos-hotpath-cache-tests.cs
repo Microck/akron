@@ -324,7 +324,7 @@ public sealed class StartPosHotPathCacheTests {
         try {
             WriteSnapshot(slotName);
 
-            // Reference: exactly what the load path reads today.
+            // Read the snapshot without prewarming to establish the reference document.
             Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
                 slotName, out AkronReconstructionDocument coldDocument, out string coldError), coldError);
 
@@ -838,7 +838,6 @@ public sealed class StartPosHotPathCacheTests {
 
     [Fact]
     public void ThePrewarmRunLineAccountsForEverySlotItQueued() {
-        // Warmed the whole queue: nothing to explain.
         Assert.Equal(
             "StartPos prewarm warmed 4 of 4 slots for this map",
             AkronStartPosPersistence.DescribePrewarmRun(4, 4, 0, 0, 0, replaced: false));

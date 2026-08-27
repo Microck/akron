@@ -4063,7 +4063,6 @@ public sealed class StartPosReconstructionTests {
     // a graphics device, so it is exercised in game rather than here.
     [Fact]
     public void RecreateDetachedLiveResourceRefusesEverythingButAListedRuntimeTexture() {
-        // Only VirtualTexture is recreatable.
         Assert.Null(AkronStartPosReconstruction.RecreateDetachedLiveResource(
             typeof(VirtualRenderTarget), "t|dust-noise-a|128x72"));
         // Only the listed names are recreatable. A file-backed texture's key is

@@ -193,17 +193,9 @@ internal static class AkronStartPosPersistence {
         return (files, bytes);
     }
 
-    // The shape of a snapshot file name, read back from the writer rather than
-    // repeated here.
-    //
-    // A version literal written out here would go on matching after the format had
-    // moved off it, and this is the test that decides whether a file is deleted, so
-    // the one thing it must never do is call a live name superseded. The format
-    // moved twice while this was being written, which is the whole argument. Instead
-    // it asks GetSnapshotPath for the name this build writes for a known slot, finds
-    // that slot's digest inside it, and takes what is on either side as the version
-    // prefix and the extension. Anything it cannot parse leaves the sweep doing
-    // nothing, which is the safe direction for a delete.
+    // Derive the older-format filename pattern from GetSnapshotPath rather than
+    // duplicating a version literal. If the current name cannot be parsed, skip the
+    // sweep so a delete cannot target an unknown file.
     private readonly struct SnapshotNaming {
         private readonly string versionStem;
         private readonly string versionSeparator;

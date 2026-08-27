@@ -14,19 +14,9 @@ using Monocle;
 
 namespace Celeste.Mod.Akron;
 
-// Per-phase cost attribution for the overlay, reported per sample window so an
-// overlay frame-time regression can be pinned on a phase instead of guessed at.
-//
-// This enum used to carry eleven more members for other subsystems, plus an
-// AkronPerfCounter enum of call counters, reached through BeginScope / EndScope /
-// Count. Nothing ever called any of them: every one of those buckets and every
-// counter was a structural zero in every JSONL record ever recorded, which made
-// each perf report's "per-subsystem attribution" section empty while looking
-// populated. They are gone rather than wired, because the paths they named -
-// HasSnapshot, the snapshot path SHA-256, DeepClone - are exactly the paths this
-// project spent the session memoizing off the render path, and putting an
-// unconditional counter increment back into them would add cost to the hot path
-// in order to measure that the hot path is cheap.
+// Per-phase overlay cost attribution stays at sample-window granularity. Do not
+// add call counters or per-call instrumentation to the render path: measuring
+// memoized hot paths would add the cost this telemetry is meant to detect.
 internal enum AkronPerfBucket {
     OverlayInput,
     OverlayLayout,

@@ -50,7 +50,7 @@ public static class AkronBackupActions {
     private const string MetadataEntryName = "_akron-backup.json";
     internal const int CurrentMetadataSchema = 2;
 
-    // Where a restore unpacks the archive and holds the folder's previous contents while it swaps them.
+    // Root for restore staging and previous-content swaps, kept separate from player save files.
     internal const string RestoreWorkFolderName = "AkronRestore";
     private const string RestoreExtractedFolderName = "extracted";
     private const string RestorePreviousFolderName = "previous";
@@ -1053,7 +1053,7 @@ public static class AkronBackupActions {
         return entries;
     }
 
-    // One rename to the filesystem either way; .NET splits it by type.
+    // Both branches perform one filesystem rename; .NET exposes separate APIs for files and directories.
     private static void MoveEntry(string source, string destination) {
         if (Directory.Exists(source)) {
             Directory.Move(source, destination);

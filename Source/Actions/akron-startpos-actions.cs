@@ -327,7 +327,6 @@ public static partial class AkronActions {
             }
         } catch {
             startPosCaptureInProgress = false;
-            // The capture threw, so nothing was published yet and the throw is the report.
             if (ownsRollback) {
                 RestoreStartPosRollback(fileSlot, slot, null, stateSlotName, reason: null);
             }
@@ -342,7 +341,6 @@ public static partial class AkronActions {
 
         if (saveResult != AkronSaveLoadResult.Success) {
             startPosCaptureInProgress = false;
-            // Nothing was published, and the toast below already names the failure.
             if (ownsRollback) {
                 RestoreStartPosRollback(fileSlot, slot, null, stateSlotName, reason: null);
             }
