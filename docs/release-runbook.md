@@ -23,6 +23,36 @@ Required public surfaces:
 
 Tags and artifact names stay canonical because external links use them. Public titles and changelog headings can use readable names such as `Akron Beta 42`. Do not mint a replacement tag for a sync or publishing failure unless rollback or unpublish has been explicitly chosen. Normal recovery repairs the same tag.
 
+## Deterministic path
+
+The prepare, publish, and completion phases below are scripted. The prose
+sections stay authoritative for what each step means and for repairing a
+partial publish; the scripts are how a normal release runs them.
+
+1. Write the release notes into the changelog's `## Unreleased` section as work
+   merges. This is the one judgment step no script owns.
+2. Cut the release:
+
+```bash
+scripts/release/cut-release.sh X.Y.Z
+```
+
+The script refuses a dirty tree, a stale `main`, an existing tag, an unbumped
+version, or an empty `Unreleased` section, then moves the notes under the
+release heading, bumps `everest.yaml`, runs `make preflight-release`, checks
+the package contents contract, commits, pushes `main`, and pushes the tag.
+`main` and `v*` tags are admin-bypass only by ruleset, so the cut runs locally
+as the release owner; everything after the tag is Actions.
+
+3. The tag triggers the `Release` workflow as before. When it completes, the
+   `Verify Release` workflow runs `scripts/release/verify-release.sh` against
+   the tag: release assets, checksum, zip integrity, the GameBanana update,
+   both `akron.micr.dev` install endpoints, byte-identity between the
+   GameBanana file and the GitHub release zip, and the README links. A stale
+   surface fails that run instead of waiting for someone to remember a check.
+   The same script runs locally, and the workflow can be dispatched with
+   `tag_name` when repairing an old tag.
+
 ## Required configuration
 
 See [Release Configuration](./reference/release-configuration) for the non-secret configuration matrix.
