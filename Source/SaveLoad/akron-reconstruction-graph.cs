@@ -1025,6 +1025,8 @@ internal sealed class AkronReconstructionGraph {
         typeof(StateMachine).GetField("names", RuntimeInstanceFields);
 
     private readonly Func<Type, bool> isLiveResource;
+    private readonly Func<object, bool> isAdditionalLiveResource;
+    private readonly Func<Type, string, bool> hasDeferredDetachedLiveResourceKey;
     private readonly Func<object, string> getLiveResourceKey;
     private readonly IAkronReconstructionResourceAdapter resourceAdapter;
     private readonly Func<Type, string, object> resolveDetachedLiveResource;
@@ -1127,9 +1129,13 @@ internal sealed class AkronReconstructionGraph {
         Func<Type, bool> areEquivalentLiveResources = null,
         Func<object, bool> hasPortableLiveResourceKey = null,
         Func<object, string, IEnumerable<int>> getMapPlacedEntityIds = null,
-        Func<Type, string, object> recreateDetachedLiveResource = null
+        Func<Type, string, object> recreateDetachedLiveResource = null,
+        Func<object, bool> isAdditionalLiveResource = null,
+        Func<Type, string, bool> hasDeferredDetachedLiveResourceKey = null
     ) {
         this.isLiveResource = isLiveResource ?? throw new ArgumentNullException(nameof(isLiveResource));
+        this.isAdditionalLiveResource = isAdditionalLiveResource;
+        this.hasDeferredDetachedLiveResourceKey = hasDeferredDetachedLiveResourceKey;
         this.getLiveResourceKey = getLiveResourceKey;
         this.resourceAdapter = resourceAdapter;
         this.resolveDetachedLiveResource = resolveDetachedLiveResource;
@@ -1554,7 +1560,10 @@ internal sealed class AkronReconstructionGraph {
                                      node.Items is { Count: 2 } &&
                                      node.Items[1]?.Kind == ScalarValueKind,
                 AnchorKind => node.UseFreshObject &&
-                              (isLiveResource(type) || typeof(Delegate).IsAssignableFrom(type)),
+                              (isLiveResource(type) ||
+                               typeof(Delegate).IsAssignableFrom(type) ||
+                               IsDeferredDetachedAnchor(node, type) ||
+                               IsResolvableDetachedAnchor(node, type)),
                 _ => false
             };
             if (!valid) {
@@ -1567,6 +1576,18 @@ internal sealed class AkronReconstructionGraph {
             // and what RestoreRejectsAnOrdinaryObjectRelabeledAsAnAnchor reads.
             RefuseAReferenceInASlotTheRestoreNeverReads(node, type);
         }
+    }
+
+    private bool IsResolvableDetachedAnchor(AkronReconstructionNode node, Type resourceType) {
+        return node.PortableResourceKey &&
+               !string.IsNullOrWhiteSpace(node.ResourceKey) &&
+               resolveDetachedLiveResource?.Invoke(resourceType, node.ResourceKey) != null;
+    }
+
+    private bool IsDeferredDetachedAnchor(AkronReconstructionNode node, Type resourceType) {
+        return node.PortableResourceKey &&
+               !string.IsNullOrWhiteSpace(node.ResourceKey) &&
+               hasDeferredDetachedLiveResourceKey?.Invoke(resourceType, node.ResourceKey) == true;
     }
 
     // A document names objects by where they sit, and the restore attaches each
@@ -2023,7 +2044,7 @@ internal sealed class AkronReconstructionGraph {
         return true;
     }
 
-    private static NotSupportedException UnsupportedDetourReflection(string member) {
+    internal static NotSupportedException UnsupportedDetourReflection(string member) {
         Version version = typeof(DetourInfo).Assembly.GetName().Version;
         return new NotSupportedException(
             "MonoMod.RuntimeDetour " + (version?.ToString() ?? "unknown") +
@@ -2755,7 +2776,10 @@ internal sealed class AkronReconstructionGraph {
                     freshTypeMatches = false;
                 }
             }
-            bool liveAnchor = !persistentEventInstance && !persistentResource && owner.isLiveResource(savedType);
+            bool additionalLiveAnchor = owner.isAdditionalLiveResource?.Invoke(savedValue) == true;
+            bool liveAnchor = !persistentEventInstance &&
+                              !persistentResource &&
+                              (owner.isLiveResource(savedType) || additionalLiveAnchor);
             string savedLiveResourceKey = string.Empty;
             if (liveAnchor || persistentResource) {
                 string savedResourceKey = ResourceKey(savedValue);
@@ -2842,7 +2866,8 @@ internal sealed class AkronReconstructionGraph {
                 // what the map looked like when the slot was set.
                 PortableResourceKey = liveAnchor &&
                                       !string.IsNullOrWhiteSpace(savedLiveResourceKey) &&
-                                      owner.hasPortableLiveResourceKey?.Invoke(savedValue) == true,
+                                      (additionalLiveAnchor ||
+                                       owner.hasPortableLiveResourceKey?.Invoke(savedValue) == true),
                 // == true, so "there was no map data to ask" stamps nothing rather than
                 // stamping the answer a map that dropped the id would have given.
                 MapPlacedEntity = savedValue is Entity mapEntity &&
@@ -8592,7 +8617,9 @@ internal static class AkronStartPosReconstruction {
             areEquivalentLiveResources: AreEquivalentLiveResources,
             hasPortableLiveResourceKey: HasPortableLiveResourceKey,
             getMapPlacedEntityIds: GetMapPlacedEntityIds,
-            recreateDetachedLiveResource: RecreateDetachedLiveResource);
+            recreateDetachedLiveResource: RecreateDetachedLiveResource,
+            isAdditionalLiveResource: IsLiveHookOwner,
+            hasDeferredDetachedLiveResourceKey: HasDeferredHookOwnerKey);
     }
 
     // Does GetLiveResourceKey name this resource, or label this instance? The two
@@ -8626,6 +8653,12 @@ internal static class AkronStartPosReconstruction {
         object resource,
         Func<Assembly, bool> hasReproducibleAssemblyName
     ) {
+        if (!string.IsNullOrWhiteSpace(GetHookOwnerResourceKey(resource))) {
+            // HookGen rebuilds this registry from the installed mods on every
+            // launch. A missing exact hook set means this install no longer has
+            // the owner that produced the saved iterator.
+            return true;
+        }
         if (resource is CompareInfo) {
             // A sort name. Every install derives the same one for the same
             // collation, and one it cannot open is a collation it does not have.
@@ -8928,6 +8961,7 @@ internal static class AkronStartPosReconstruction {
         AkronReconstructionDocument document,
         AkronPersistentRuntimeState freshState
     ) {
+        using IDisposable hookOwners = UseHookOwnerRegistrations();
         return RestoreGraph.Restore(document, freshState);
     }
 
@@ -8935,6 +8969,7 @@ internal static class AkronStartPosReconstruction {
         AkronReconstructionDocument document,
         Dictionary<string, Dictionary<Type, Dictionary<string, object>>> freshState
     ) {
+        using IDisposable hookOwners = UseHookOwnerRegistrations();
         return RestoreGraph.Restore(document, freshState);
     }
 
@@ -10007,6 +10042,9 @@ internal static class AkronStartPosReconstruction {
         if (resourceType == DynamicDataCacheType) {
             return ResolveDynamicDataCache(resourceKey);
         }
+        if (resourceKey.StartsWith(HookOwnerKeyPrefix, StringComparison.Ordinal)) {
+            return ResolveHookOwner(resourceType, resourceKey);
+        }
         if (typeof(VirtualTexture).IsAssignableFrom(resourceType)) {
             // Randomized decals can select a different texture wrapper each
             // time their room loads. VirtualContent retains every wrapper by
@@ -10195,6 +10233,290 @@ internal static class AkronStartPosReconstruction {
         return cacheMap.Contains(target) ? cacheMap[target] : null;
     }
 
+    // HookGen is the canonical registry for On.* hooks. Its keys retain the
+    // exact delegate a mod registered, including the target instance for an
+    // instance method. A registered target is process state only when a loaded
+    // Everest module also owns it through a registry whose process lifetime is
+    // known from that mod's load contract. A scalar dictionary key alone proves
+    // identity, not lifetime: room objects can sit behind stable keys too.
+    // Room-scoped objects can register hooks too, so registration alone is not
+    // enough evidence to keep an object live across a StartPos clone.
+    private const string HookOwnerKeyPrefix = "hook-owner:";
+    private static readonly FieldInfo HookEndpointHooksField =
+        typeof(Hook).Assembly
+            .GetType("MonoMod.RuntimeDetour.HookGen.HookEndpointManager", throwOnError: false)
+            ?.GetField("Hooks", BindingFlags.Static | BindingFlags.NonPublic);
+    private static readonly FieldInfo EverestModulesField =
+        typeof(Everest).GetField("_Modules", BindingFlags.Static | BindingFlags.NonPublic);
+    private static readonly IReadOnlyDictionary<object, string> EmptyHookOwnerRegistrations =
+        new Dictionary<object, string>(ReferenceEqualityComparer.Instance);
+    private static readonly AsyncLocal<IReadOnlyDictionary<object, string>>
+        CurrentHookOwnerRegistrations =
+            new AsyncLocal<IReadOnlyDictionary<object, string>>();
+
+    private static object ResolveHookOwner(Type resourceType, string resourceKey) {
+        object match = null;
+        foreach (KeyValuePair<object, string> registration in GetHookOwnerRegistrations()) {
+            if (registration.Key.GetType() != resourceType ||
+                !string.Equals(registration.Value, resourceKey, StringComparison.Ordinal)) {
+                continue;
+            }
+            if (match != null) {
+                return null;
+            }
+            match = registration.Key;
+        }
+        return match;
+    }
+
+    internal static bool HasDeferredHookOwnerKey(Type resourceType, string typedResourceKey) {
+        return resourceType != null &&
+               StripTypedKeyPrefix(typedResourceKey)?.StartsWith(
+                   HookOwnerKeyPrefix,
+                   StringComparison.Ordinal) == true;
+    }
+
+    private static string GetHookOwnerResourceKey(object resource) {
+        return resource != null &&
+               GetHookOwnerRegistrations().TryGetValue(resource, out string resourceKey)
+            ? resourceKey
+            : string.Empty;
+    }
+
+    internal static bool IsLiveHookOwner(object resource) {
+        return resource != null && GetHookOwnerRegistrations().ContainsKey(resource);
+    }
+
+    private static IReadOnlyDictionary<object, string> GetHookOwnerRegistrations() {
+        // The hook and module registries form one operation snapshot. Outside
+        // that scope there is no coherent ownership claim to make.
+        return CurrentHookOwnerRegistrations.Value ?? EmptyHookOwnerRegistrations;
+    }
+
+    internal static IReadOnlyDictionary<object, string> CaptureHookOwnerRegistrations(
+        IReadOnlyList<EverestModule> loadedModules = null,
+        Func<EverestModule, FieldInfo, bool> isStableRegistry = null) {
+        return BuildHookOwnerRegistrations(
+            loadedModules ?? GetLoadedHookOwnerModules(),
+            isStableRegistry ?? IsSupportedHookOwnerRegistry);
+    }
+
+    internal static IDisposable UseHookOwnerRegistrations() {
+        IReadOnlyDictionary<object, string> previous = CurrentHookOwnerRegistrations.Value;
+        if (previous == null) {
+            CurrentHookOwnerRegistrations.Value = CaptureHookOwnerRegistrations();
+        }
+        return new HookOwnerRegistrationScope(previous);
+    }
+
+    internal static IDisposable UseHookOwnerRegistrations(
+        IReadOnlyDictionary<object, string> registrations) {
+        IReadOnlyDictionary<object, string> previous = CurrentHookOwnerRegistrations.Value;
+        if (previous == null) {
+            CurrentHookOwnerRegistrations.Value = registrations ?? EmptyHookOwnerRegistrations;
+        }
+        return new HookOwnerRegistrationScope(previous);
+    }
+
+    internal static bool AreHookOwnerRegistrationsCurrent(
+        IReadOnlyDictionary<object, string> savedRegistrations,
+        IReadOnlyDictionary<object, string> currentRegistrations) {
+        if (savedRegistrations == null || savedRegistrations.Count == 0) {
+            return true;
+        }
+        if (currentRegistrations == null) {
+            return false;
+        }
+        foreach (KeyValuePair<object, string> savedRegistration in savedRegistrations) {
+            if (!currentRegistrations.TryGetValue(savedRegistration.Key, out string currentKey) ||
+                !string.Equals(savedRegistration.Value, currentKey, StringComparison.Ordinal)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static IReadOnlyList<EverestModule> GetLoadedHookOwnerModules() {
+        // HookGen's registry is private too. Read Everest's backing list in the
+        // same snapshot so test reference assemblies and runtime wrappers cannot
+        // make the two sources observe different moments.
+        if (EverestModulesField == null) {
+            throw UnsupportedEverestReflection("Everest._Modules");
+        }
+        return EverestModulesField.GetValue(null) as IReadOnlyList<EverestModule> ??
+               throw UnsupportedEverestReflection("Everest._Modules value");
+    }
+
+    private static NotSupportedException UnsupportedEverestReflection(string member) {
+        Version version = typeof(Everest).Assembly.GetName().Version;
+        return new NotSupportedException(
+            "Everest " + (version?.ToString() ?? "unknown") +
+            " does not provide the required module registry member " + member + ".");
+    }
+
+    private static IReadOnlyDictionary<object, string> BuildHookOwnerRegistrations(
+        IReadOnlyList<EverestModule> loadedModules,
+        Func<EverestModule, FieldInfo, bool> isStableRegistry) {
+        Dictionary<object, HashSet<MethodInfo>> methodsByTarget =
+            new Dictionary<object, HashSet<MethodInfo>>(ReferenceEqualityComparer.Instance);
+        if (HookEndpointHooksField == null) {
+            throw AkronReconstructionGraph.UnsupportedDetourReflection(
+                "HookGen.HookEndpointManager.Hooks");
+        }
+        if (HookEndpointHooksField.GetValue(null) is not IEnumerable hooks) {
+            throw AkronReconstructionGraph.UnsupportedDetourReflection(
+                "HookGen.HookEndpointManager.Hooks value");
+        }
+        Dictionary<object, string> moduleOwnerKeys = BuildModuleOwnerKeys(
+            loadedModules,
+            isStableRegistry);
+        foreach (object entry in hooks) {
+            PropertyInfo keyProperty = entry?.GetType().GetProperty("Key");
+            if (keyProperty == null) {
+                throw AkronReconstructionGraph.UnsupportedDetourReflection(
+                    (entry?.GetType().FullName ?? "HookGen hook entry") + ".Key");
+            }
+            object key = keyProperty.GetValue(entry);
+            FieldInfo delegateField = key?.GetType().GetField("Item2");
+            if (delegateField == null) {
+                throw AkronReconstructionGraph.UnsupportedDetourReflection(
+                    (key?.GetType().FullName ?? "HookGen hook key") + ".Item2");
+            }
+            if (delegateField.GetValue(key) is not Delegate hook) {
+                throw AkronReconstructionGraph.UnsupportedDetourReflection(
+                    key.GetType().FullName + ".Item2 value");
+            }
+            foreach (Delegate invocation in hook.GetInvocationList()) {
+                if (invocation.Target == null || !moduleOwnerKeys.ContainsKey(invocation.Target)) {
+                    continue;
+                }
+                if (!methodsByTarget.TryGetValue(invocation.Target, out HashSet<MethodInfo> methods)) {
+                    methods = new HashSet<MethodInfo>();
+                    methodsByTarget[invocation.Target] = methods;
+                }
+                methods.Add(invocation.Method);
+            }
+        }
+        Dictionary<object, string> registrations =
+            new Dictionary<object, string>(ReferenceEqualityComparer.Instance);
+        foreach (KeyValuePair<object, HashSet<MethodInfo>> pair in methodsByTarget) {
+            if (moduleOwnerKeys.TryGetValue(pair.Key, out string moduleOwnerKey)) {
+                registrations[pair.Key] = HookOwnerKeyPrefix + moduleOwnerKey + "|" + string.Join(
+                    ";",
+                    pair.Value
+                        .Select(GetHookMethodKey)
+                        .Where(key => !string.IsNullOrWhiteSpace(key))
+                        .OrderBy(key => key, StringComparer.Ordinal));
+            }
+        }
+        return registrations;
+    }
+
+    private static Dictionary<object, string> BuildModuleOwnerKeys(
+        IReadOnlyList<EverestModule> loadedModules,
+        Func<EverestModule, FieldInfo, bool> isStableRegistry) {
+        Dictionary<object, string> ownerKeys =
+            new Dictionary<object, string>(ReferenceEqualityComparer.Instance);
+        foreach (EverestModule module in loadedModules.Where(module => module != null)) {
+            for (Type type = module.GetType();
+                 type != null && typeof(EverestModule).IsAssignableFrom(type);
+                 type = type.BaseType) {
+                foreach (FieldInfo field in type.GetFields(
+                             BindingFlags.Instance |
+                             BindingFlags.Public |
+                             BindingFlags.NonPublic |
+                             BindingFlags.DeclaredOnly)) {
+                    if (!isStableRegistry(module, field)) {
+                        continue;
+                    }
+                    object value = field.GetValue(module);
+                    if (value is not IDictionary dictionary) {
+                        continue;
+                    }
+                    string fieldKey = (module.GetType().AssemblyQualifiedName ?? module.GetType().FullName) + "|" +
+                                      (field.DeclaringType?.AssemblyQualifiedName ?? field.DeclaringType?.FullName) +
+                                      "|" + field.Name;
+                    foreach (DictionaryEntry entry in dictionary) {
+                        if (entry.Value == null ||
+                            entry.Value.GetType().Assembly != module.GetType().Assembly) {
+                            continue;
+                        }
+                        string dictionaryKey = GetStableModuleDictionaryKey(entry.Key);
+                        if (!string.IsNullOrWhiteSpace(dictionaryKey)) {
+                            ownerKeys.TryGetValue(entry.Value, out string currentOwnerKey);
+                            ownerKeys[entry.Value] = EarlierOrdinalKey(
+                                currentOwnerKey,
+                                fieldKey + "|" + dictionaryKey);
+                        }
+                    }
+                }
+            }
+        }
+        return ownerKeys;
+    }
+
+    private static bool IsSupportedHookOwnerRegistry(EverestModule module, FieldInfo field) {
+        Type moduleType = module?.GetType();
+        return moduleType?.Assembly.GetName().Name == "XaphanHelper" &&
+               moduleType.FullName == "Celeste.Mod.XaphanHelper.XaphanModule" &&
+               field?.DeclaringType == moduleType &&
+               field.Name == "UpgradeHandlers";
+    }
+
+    private static string EarlierOrdinalKey(string current, string candidate) {
+        return string.IsNullOrEmpty(current) || string.CompareOrdinal(candidate, current) < 0
+            ? candidate
+            : current;
+    }
+
+    private static string GetStableModuleDictionaryKey(object key) {
+        if (key == null) {
+            return string.Empty;
+        }
+        Type keyType = key.GetType();
+        if (!keyType.IsEnum &&
+            key is not string &&
+            key is not char &&
+            key is not bool &&
+            key is not byte &&
+            key is not sbyte &&
+            key is not short &&
+            key is not ushort &&
+            key is not int &&
+            key is not uint &&
+            key is not long &&
+            key is not ulong &&
+            key is not Guid) {
+            return string.Empty;
+        }
+        string value = key is IFormattable formattable
+            ? formattable.ToString(null, CultureInfo.InvariantCulture)
+            : key.ToString();
+        return (keyType.AssemblyQualifiedName ?? keyType.FullName) + "|" + value;
+    }
+
+    private static string GetHookMethodKey(MethodInfo method) {
+        if (method?.DeclaringType == null) {
+            return string.Empty;
+        }
+        string declaringType = method.DeclaringType.AssemblyQualifiedName ?? method.DeclaringType.FullName;
+        string parameters = string.Join(",", method.GetParameters().Select(parameter =>
+            parameter.ParameterType.AssemblyQualifiedName ?? parameter.ParameterType.FullName));
+        return declaringType + "|" + method.Name + "(" + parameters + ")";
+    }
+
+    private sealed class HookOwnerRegistrationScope : IDisposable {
+        private readonly IReadOnlyDictionary<object, string> previous;
+
+        public HookOwnerRegistrationScope(IReadOnlyDictionary<object, string> previous) {
+            this.previous = previous;
+        }
+
+        public void Dispose() {
+            CurrentHookOwnerRegistrations.Value = previous;
+        }
+    }
+
     // Where the game keeps the atlases it loads for the whole process. Both are
     // plain static fields, and Everest rebinds them in place when it reloads an
     // atlas, so the field is read on every lookup rather than the object being
@@ -10240,6 +10562,10 @@ internal static class AkronStartPosReconstruction {
     }
 
     internal static string GetLiveResourceKey(object resource) {
+        string hookOwnerKey = GetHookOwnerResourceKey(resource);
+        if (!string.IsNullOrWhiteSpace(hookOwnerKey)) {
+            return hookOwnerKey;
+        }
         if (resource.GetType() == DynamicDataCacheType) {
             return GetDynamicDataCacheKey(resource);
         }

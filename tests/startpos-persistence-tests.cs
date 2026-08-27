@@ -320,6 +320,15 @@ public sealed class StartPosPersistenceTests {
         string helperPath = SourceSlice(source, helper, helperEnd - helper);
 
         Assert.Contains("PrepareRuntimeSlotPreClone(saveSlot)", runtimeRestorePath);
+        int validateHookOwners = runtimeRestorePath.IndexOf("AreHookOwnerRegistrationsCurrent(", StringComparison.Ordinal);
+        int hookOwnerScope = runtimeRestorePath.IndexOf("UseHookOwnerRegistrations(", StringComparison.Ordinal);
+        int restoreNativeSlot = runtimeRestorePath.IndexOf("RestoreNativeSlot(", StringComparison.Ordinal);
+        int restoreActionState = runtimeRestorePath.IndexOf("DeepClone(savedValues)", StringComparison.Ordinal);
+        int preparePreClone = runtimeRestorePath.IndexOf("PrepareRuntimeSlotPreClone(saveSlot)", StringComparison.Ordinal);
+        Assert.True(validateHookOwners >= 0 && validateHookOwners < hookOwnerScope);
+        Assert.True(hookOwnerScope >= 0 && hookOwnerScope < restoreNativeSlot);
+        Assert.True(hookOwnerScope < restoreActionState);
+        Assert.True(hookOwnerScope < preparePreClone);
         Assert.Contains("AkronVirtualAssetReloadTracker.Mark()", helperPath);
         Assert.Contains("PrepareSlotPreClone(saveSlot)", helperPath);
         Assert.Contains(

@@ -8,6 +8,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Load StartPos slots set during hook-wrapped routines whose iterator captures a mod's singleton handler, including XaphanHelper's Lightning Dash.
 - Set StartPos slots in rooms where a mod attached member caches to an entity. The cache's compiled accessors are process state, so every Set in the room was removed over them; the saved state now rebinds to this install's own cache.
 - Load StartPos slots saved while a modded dash routine runs. Hook wrappers without an owner and Everest's own coroutine plumbing now restore on their position in the routine's stack.
 - Load StartPos slots set after skipping or finishing a cutscene. Celeste keeps the skip callback forever, so every later slot dragged the finished cutscene entity along and was refused over it; the callback is now dropped from the saved copy.

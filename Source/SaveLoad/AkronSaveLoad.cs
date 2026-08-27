@@ -724,6 +724,16 @@ public static partial class AkronSaveLoadService {
                 action.PreCloneEntities?.Invoke();
             }
 
+            // Keep the exact Set-frame hook-owner identities with every clone
+            // that can reach them. Persistence runs later on a worker, after a
+            // mod may have changed its live hook registrations.
+            IReadOnlyDictionary<object, string> hookOwnerRegistrations = isStartPosCapture
+                ? AkronStartPosReconstruction.CaptureHookOwnerRegistrations()
+                : null;
+            using IDisposable hookOwnerScope = hookOwnerRegistrations != null
+                ? AkronStartPosReconstruction.UseHookOwnerRegistrations(hookOwnerRegistrations)
+                : null;
+
             // StartPos needs full-state semantics: the room is cloned as a whole,
             // then restored as a whole. A player-only snapshot cannot preserve
             // collected objects, entity cycles, triggers, or room-local runtime
@@ -731,6 +741,9 @@ public static partial class AkronSaveLoadService {
             saveSlot = BuildNativeSlot(level, CurrentSlotName, saveTimeAndDeaths, includeLevelSnapshot: true);
             saveSlot.GameplayBuffers = gameplayBuffers;
             saveSlot.PersistentRenderTargets = persistentRenderTargets;
+            if (hookOwnerRegistrations != null) {
+                saveSlot.HookOwnerRegistrations = hookOwnerRegistrations;
+            }
             AkronIgnoreSaveStateComponent.RemoveAllFromSnapshot(saveSlot.SavedLevel);
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 CaptureRegisteredActionState(saveSlot, action, level);
@@ -1096,6 +1109,8 @@ public static partial class AkronSaveLoadService {
         AkronPersistentRuntimeState freshRuntimeState = AkronPersistentRuntimeState.CaptureSaved(freshSlot);
         using IDisposable renderTargetScope = AkronStartPosReconstruction.UseCapturedRenderTargets(
             saveSlot.PersistentRenderTargets);
+        using IDisposable hookOwnerScope = AkronStartPosReconstruction.UseHookOwnerRegistrations(
+            saveSlot.HookOwnerRegistrations);
         AkronReconstructionCapture capture = AkronStartPosReconstruction.Capture(savedRuntimeState, freshRuntimeState);
         if (!capture.Success) {
             error = capture.Error;
@@ -1140,6 +1155,21 @@ public static partial class AkronSaveLoadService {
             return AkronSaveLoadResult.SessionMismatch;
         }
 
+        IReadOnlyDictionary<object, string> hookOwnerRegistrations = saveSlot.HookOwnerRegistrations;
+        if (hookOwnerRegistrations?.Count > 0) {
+            IReadOnlyDictionary<object, string> currentHookOwnerRegistrations =
+                AkronStartPosReconstruction.CaptureHookOwnerRegistrations();
+            if (!AkronStartPosReconstruction.AreHookOwnerRegistrationsCurrent(
+                    hookOwnerRegistrations,
+                    currentHookOwnerRegistrations)) {
+                // A helper hot reload replaced or changed a process singleton.
+                // Reject this warm cache before it mutates the level so the caller
+                // can discard it and rebuild from the restart-safe snapshot.
+                return AkronSaveLoadResult.SessionMismatch;
+            }
+            hookOwnerRegistrations = currentHookOwnerRegistrations;
+        }
+
         bool suppressLagPauserForStartPos = saveSlot.SlotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal);
         if (suppressLagPauserForStartPos) {
             AkronModule.SuppressLagPauserForNativeStartPosRestore();
@@ -1152,6 +1182,8 @@ public static partial class AkronSaveLoadService {
         // that come back are the same ones that were here a moment ago.
         List<Entity> detachedGhosts = AkronSnapshotExclusion.DetachFromLevel(level);
         try {
+            using IDisposable hookOwnerScope = AkronStartPosReconstruction.UseHookOwnerRegistrations(
+                hookOwnerRegistrations);
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 action.BeforeLoadState?.Invoke(level);
             }
@@ -1502,6 +1534,7 @@ public static partial class AkronSaveLoadService {
         Dictionary<string, Dictionary<Type, Dictionary<string, object>>> freshActionState,
         AkronReconstructionRestore actionRestore
     ) {
+        using IDisposable hookOwnerScope = AkronStartPosReconstruction.UseHookOwnerRegistrations();
         AkronReconstructionVerification actionVerification = AkronStartPosReconstruction.Verify(
             document.ActionStateDocument,
             actionRestore,
