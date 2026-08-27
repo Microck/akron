@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 72
+
 ### Fixed
 
 - Load StartPos slots saved near dust bunnies after leaving and re-entering the map. Their renderer builds its noise textures on first render, so a load that arrived before the room rendered had nothing to pair them with and refused the slot; the restore now recreates them.
