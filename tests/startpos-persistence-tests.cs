@@ -508,7 +508,7 @@ public sealed class StartPosPersistenceTests {
 
     private static void AssertNewestMentionIsCurrent(string changelog, string contractPrefix, string currentFormat) {
         string[] sections = changelog.Split("\n## ", StringSplitOptions.None);
-        string newestMention = sections.FirstOrDefault(section =>
+        string? newestMention = sections.FirstOrDefault(section =>
             section.Contains(contractPrefix, StringComparison.Ordinal));
         Assert.True(newestMention != null, "CHANGELOG.md never names " + contractPrefix + "*.");
         Assert.Contains(currentFormat, newestMention);

@@ -1341,17 +1341,17 @@ public sealed class StartPosReconstructionTests {
         Assert.True(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
             routineType,
             ownerIsFresh: false,
-            ownerIsAuthenticatedRuntimeEntity: true,
+            ownerIsAuthenticatedReconstruction: true,
             owner));
         Assert.False(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
             routineType,
             ownerIsFresh: false,
-            ownerIsAuthenticatedRuntimeEntity: false,
+            ownerIsAuthenticatedReconstruction: false,
             owner));
         Assert.False(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
             routineType,
             ownerIsFresh: false,
-            ownerIsAuthenticatedRuntimeEntity: true,
+            ownerIsAuthenticatedReconstruction: true,
             CreateUninitializedEntity<SlashFx>()));
     }
 
@@ -1364,22 +1364,22 @@ public sealed class StartPosReconstructionTests {
         Assert.True(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
             playUtilType,
             ownerIsFresh: true,
-            ownerIsAuthenticatedRuntimeEntity: false,
+            ownerIsAuthenticatedReconstruction: false,
             RuntimeHelpers.GetUninitializedObject(typeof(PlayerSprite))));
         Assert.True(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
             playUtilType,
             ownerIsFresh: true,
-            ownerIsAuthenticatedRuntimeEntity: false,
+            ownerIsAuthenticatedReconstruction: false,
             RuntimeHelpers.GetUninitializedObject(typeof(Sprite))));
         Assert.False(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
             playUtilType,
             ownerIsFresh: true,
-            ownerIsAuthenticatedRuntimeEntity: false,
+            ownerIsAuthenticatedReconstruction: false,
             RuntimeHelpers.GetUninitializedObject(typeof(Image))));
         Assert.False(AkronReconstructionGraph.IsAuthenticatedCompilerIteratorOwner(
             playUtilType,
             ownerIsFresh: true,
-            ownerIsAuthenticatedRuntimeEntity: false,
+            ownerIsAuthenticatedReconstruction: false,
             CreateUninitializedEntity<SlashFx>()));
     }
 
@@ -5148,6 +5148,94 @@ public sealed class StartPosReconstructionTests {
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
 
+    // DustGraphic builds its blink Coroutine in BeforeRender, keeps it in a
+    // private field, and updates it by hand without adding it to any
+    // ComponentList, so no list can vouch for the saved one and a fresh room
+    // that never rendered holds null at the slot. A slot saved with dust on
+    // camera then refused its whole room over that empty slot.
+    [Fact]
+    public void AComponentBuiltOnFirstUseRestoresIntoItsFreshOwnersEmptyField() {
+        LazyBlinkOwnerRoot saved = new LazyBlinkOwnerRoot { Owner = CreateLazyBlinkOwnerEntity(withBlink: true) };
+        LazyBlinkOwnerRoot baseline = new LazyBlinkOwnerRoot { Owner = CreateLazyBlinkOwnerEntity() };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        LazyBlinkOwnerEntity freshOwner = CreateLazyBlinkOwnerEntity();
+        LazyBlinkOwnerRoot fresh = new LazyBlinkOwnerRoot { Owner = freshOwner };
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.NotNull(freshOwner.Graphic.Blink);
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    // DustGraphic.Eyeballs' shape: the room builds an extra entity on first
+    // render and hands it the component that built it. The surplus watcher the
+    // fresh room did not build must keep its reference to the fresh component.
+    [Fact]
+    public void ARuntimeEntityKeepsItsReferenceToTheFreshComponentThatBuiltIt() {
+        (SavedSceneRoot saved, LazyBlinkOwnerEntity savedOwner, EyeballsWatcherEntity[] savedWatchers) =
+            CreateEyeballsScene(2);
+        foreach (EyeballsWatcherEntity watcher in savedWatchers) {
+            watcher.Dust = savedOwner.Graphic;
+        }
+        (SavedSceneRoot baseline, _, _) = CreateEyeballsScene(1);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, LazyBlinkOwnerEntity freshOwner, _) = CreateEyeballsScene(1);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        EyeballsWatcherEntity[] watchers = GetEntityListContents(fresh.Entities)
+            .OfType<EyeballsWatcherEntity>()
+            .ToArray();
+        Assert.Equal(2, watchers.Length);
+        Assert.All(watchers, watcher => Assert.Same(freshOwner.Graphic, watcher.Dust));
+    }
+
+    // LightningRenderer's shape: a saved bolt mid-flight against a fresh bolt
+    // whose own routine already finished. The fresh room's empty stack is
+    // expected silence, not missing evidence, so the iterator restores on its
+    // captured owner's proof.
+    [Fact]
+    public void AMidFlightRoutineRestoresIntoAFreshBoltWhoseOwnRoutineFinished() {
+        (SavedSceneRoot saved, BoltOwnerEntity savedOwner) = CreateBoltScene(midFlight: true);
+        savedOwner.Bolts[0].Flashes = 4;
+        (SavedSceneRoot baseline, _) = CreateBoltScene(midFlight: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, BoltOwnerEntity freshOwner) = CreateBoltScene(midFlight: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(4, freshOwner.Bolts[0].Flashes);
+        Assert.Single(GetRuntimeField<Stack<IEnumerator>>(freshOwner.Bolts[0].Routine, "enumerators"));
+    }
+
+    // The licence stays narrow the same way the list-owned rule keeps it: a
+    // component that owns process state through IDisposable never enters a
+    // room through an empty field slot.
+    [Fact]
+    public void ADisposableComponentIsNotRestoredIntoAnEmptyFieldSlot() {
+        LazyDisposableOwnerRoot saved = new LazyDisposableOwnerRoot { Owner = CreateLazyDisposableOwnerEntity(withBlink: true) };
+        LazyDisposableOwnerRoot baseline = new LazyDisposableOwnerRoot { Owner = CreateLazyDisposableOwnerEntity() };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        AkronReconstructionRestore restore = graph.Restore(
+            capture.Document,
+            new LazyDisposableOwnerRoot { Owner = CreateLazyDisposableOwnerEntity() });
+
+        Assert.False(restore.Success);
+        Assert.Contains("not authentic", restore.Error);
+    }
+
     [Fact]
     public void FreshComponentCanRestoreThroughAReorderedFreshArrayMembership() {
         OwnedComponentEntity savedOwner = CreateOwnedComponentEntity();
@@ -5577,6 +5665,42 @@ public sealed class StartPosReconstructionTests {
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
 
+    // A hash container places its live entries at positions derived from
+    // per-process hash codes - AkronHashIndex.Rebuild exists because those
+    // positions do not survive a process change - so the saved process's entry
+    // indices never match the fresh process's for the same logical set. One
+    // process hands out one hash code per object, so the saved side shifts its
+    // entries by inserting and removing a dummy first, which is what a real
+    // cross-process document looks like to the authenticity keys. Celestial
+    // Resort's clutter blocks cross-reference each other through exactly such
+    // sets and their whole room was refused over the entry position.
+    [Fact]
+    public void HashEntryPositionsFromTheSavedProcessDoNotDecideAuthenticity() {
+        (SavedSceneRoot saved, ClutterLinkedEntity[] savedEntities) =
+            CreateClutterLinkedScene(11, 22, 33);
+        ClutterLinkedEntity dummy = CreateClutterLinkedEntity(99);
+        savedEntities[0].HasBelow[dummy] = true;
+        savedEntities[0].HasBelow[savedEntities[1]] = true;
+        savedEntities[0].HasBelow.Remove(dummy);
+        savedEntities[1].Above.Add(savedEntities[2]);
+        (SavedSceneRoot baseline, _) = CreateClutterLinkedScene(0, 0, 0);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, _) = CreateClutterLinkedScene(0, 0);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        ClutterLinkedEntity[] restored = GetEntityListContents(fresh.Entities)
+            .Cast<ClutterLinkedEntity>()
+            .ToArray();
+        Assert.Equal(new[] { 11, 22, 33 }, restored.Select(entity => entity.Value));
+        Assert.Same(restored[1], Assert.Single(restored[0].HasBelow).Key);
+        Assert.Same(restored[2], Assert.Single(restored[1].Above));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
     [Fact]
     public void GeneratedEntityTypeAbsentFromFreshEntityListFailsClosed() {
         (SavedSceneRoot saved, _) = CreateClutterLinkedScene(11, 22);
@@ -5759,6 +5883,38 @@ public sealed class StartPosReconstructionTests {
         return entity;
     }
 
+    // withBlink mirrors what BeforeRender does for the saved side; the fresh and
+    // baseline sides never rendered, so their private slot stays null. The blink
+    // coroutine is deliberately never added to the component list, exactly like
+    // DustGraphic's.
+    private static LazyBlinkOwnerEntity CreateLazyBlinkOwnerEntity(bool withBlink = false) {
+        LazyBlinkOwnerEntity entity = CreateUninitializedEntity<LazyBlinkOwnerEntity>();
+        ComponentList components = CreateDetachedComponentList(entity);
+        entity.Graphic = new LazyBlinkComponent();
+        SetRuntimeField(entity.Graphic, "<Entity>k__BackingField", entity);
+        if (withBlink) {
+            entity.Graphic.Blink = new Coroutine(entity.Graphic.BlinkRoutine());
+        }
+        List<Component> orderedComponents = new List<Component> { entity.Graphic };
+        SetRuntimeField(components, "components", orderedComponents);
+        SetRuntimeField(components, "current", new HashSet<Component>(orderedComponents));
+        return entity;
+    }
+
+    private static LazyDisposableOwnerEntity CreateLazyDisposableOwnerEntity(bool withBlink = false) {
+        LazyDisposableOwnerEntity entity = CreateUninitializedEntity<LazyDisposableOwnerEntity>();
+        ComponentList components = CreateDetachedComponentList(entity);
+        entity.Holder = new LazyDisposableHolderComponent();
+        SetRuntimeField(entity.Holder, "<Entity>k__BackingField", entity);
+        if (withBlink) {
+            entity.Holder.Blink = new LazyDisposableComponent { Ticks = 3 };
+        }
+        List<Component> orderedComponents = new List<Component> { entity.Holder };
+        SetRuntimeField(components, "components", orderedComponents);
+        SetRuntimeField(components, "current", new HashSet<Component>(orderedComponents));
+        return entity;
+    }
+
     // pendingValue null is what a clean load leaves: the entity built the state it
     // starts with and has not needed the other one yet, so the slot that records what
     // ran last still holds the first.
@@ -5918,6 +6074,49 @@ public sealed class StartPosReconstructionTests {
             AddDetachedEntity(entityList, entity);
         }
         return (new SavedSceneRoot { Scene = scene, Entities = entityList }, entities);
+    }
+
+    private static (SavedSceneRoot Root, LazyBlinkOwnerEntity Owner, EyeballsWatcherEntity[] Watchers) CreateEyeballsScene(
+        int watcherCount
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        LazyBlinkOwnerEntity owner = CreateLazyBlinkOwnerEntity();
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 3));
+        AddDetachedEntity(entityList, owner);
+        List<EyeballsWatcherEntity> watchers = new List<EyeballsWatcherEntity>();
+        for (int i = 0; i < watcherCount; i++) {
+            EyeballsWatcherEntity watcher = CreateUninitializedEntity<EyeballsWatcherEntity>();
+            InitializeEmptyComponentList(watcher);
+            SetRuntimeField(watcher, "<Scene>k__BackingField", scene);
+            AddDetachedEntity(entityList, watcher);
+            watchers.Add(watcher);
+        }
+        return (new SavedSceneRoot { Scene = scene, Entities = entityList }, owner, watchers.ToArray());
+    }
+
+    private static (SavedSceneRoot Root, BoltOwnerEntity Owner) CreateBoltScene(bool midFlight) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        BoltOwnerEntity owner = CreateUninitializedEntity<BoltOwnerEntity>();
+        InitializeEmptyComponentList(owner);
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 7));
+        BoltOwnerEntity.BoltState bolt = new BoltOwnerEntity.BoltState();
+        Coroutine routine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+        Stack<IEnumerator> iterators = new Stack<IEnumerator>();
+        if (midFlight) {
+            IEnumerator iterator = bolt.Run();
+            Assert.True(iterator.MoveNext());
+            iterators.Push(iterator);
+        }
+        SetRuntimeField(routine, "enumerators", iterators);
+        bolt.Routine = routine;
+        // GetUninitializedObject skips field initializers, so the list is built here.
+        owner.Bolts = new List<BoltOwnerEntity.BoltState> { bolt };
+        AddDetachedEntity(entityList, owner);
+        return (new SavedSceneRoot { Scene = scene, Entities = entityList }, owner);
     }
 
     private static SavedSceneRoot CreateDuplicateIteratorScene(bool includeIterator) {
@@ -8664,6 +8863,94 @@ public sealed class StartPosReconstructionTests {
     private sealed class ComponentOwnerRoot {
         public OwnedComponentEntity Owner = null!;
         public Component? UnrelatedAlias;
+    }
+
+    // DustGraphic's shape: a component the room pairs fresh builds a Coroutine
+    // in BeforeRender, keeps it in a private field, and updates it by hand
+    // without ever adding it to a ComponentList. A fresh room that never
+    // rendered holds null at that slot.
+    private sealed class LazyBlinkOwnerEntity : Entity {
+        public LazyBlinkComponent Graphic = null!;
+    }
+
+    private sealed class LazyBlinkComponent : Component {
+        public LazyBlinkComponent() : base(true, true) {
+        }
+
+        private Coroutine? blink;
+
+        public Coroutine? Blink {
+            get => blink;
+            set => blink = value;
+        }
+
+        public int Blinks;
+
+        public IEnumerator BlinkRoutine() {
+            while (true) {
+                Blinks++;
+                yield return 0.1f;
+            }
+        }
+    }
+
+    private sealed class LazyDisposableHolderComponent : Component {
+        public LazyDisposableHolderComponent() : base(true, true) {
+        }
+
+        private LazyDisposableComponent? blink;
+
+        public LazyDisposableComponent? Blink {
+            get => blink;
+            set => blink = value;
+        }
+    }
+
+    private sealed class LazyDisposableComponent : Component, IDisposable {
+        public LazyDisposableComponent() : base(true, true) {
+        }
+
+        public int Ticks;
+
+        public void Dispose() {
+        }
+    }
+
+    private sealed class LazyDisposableOwnerEntity : Entity {
+        public LazyDisposableHolderComponent Holder = null!;
+    }
+
+    private sealed class LazyBlinkOwnerRoot {
+        public LazyBlinkOwnerEntity Owner = null!;
+    }
+
+    // DustGraphic.Eyeballs' shape: an entity the room builds on first use keeps
+    // a reference to the live component that built it in a declared field.
+    private sealed class EyeballsWatcherEntity : Entity {
+        public LazyBlinkComponent Dust = null!;
+    }
+
+    // LightningRenderer's shape: an entity builds nested plain objects in its
+    // constructor, each running its own Coroutine by hand without any
+    // ComponentList carrying it.
+    private sealed class BoltOwnerEntity : Entity {
+        public List<BoltState> Bolts = new List<BoltState>();
+
+        public sealed class BoltState {
+            public Coroutine Routine = null!;
+            public int Flashes;
+
+            public IEnumerator Run() {
+                while (true) {
+                    Flashes++;
+                    yield return null;
+                }
+            }
+        }
+    }
+
+    private sealed class LazyDisposableOwnerRoot {
+        public LazyDisposableOwnerEntity Owner = null!;
     }
 
     private sealed class ComponentArrayAliasRoot {
