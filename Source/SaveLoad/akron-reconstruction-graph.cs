@@ -4040,6 +4040,13 @@ internal sealed class AkronReconstructionGraph {
                      in deferredIteratorStateNodes) {
                 Type type = ResolveType(node.TypeName, node.Path);
                 if (IsAuthenticatedCompilerIteratorState(node, type)) {
+                    // Confirmed is as good as direct for everything that runs
+                    // after this pass: the withdrawal risk the provisional
+                    // marker guards against is gone, so the closure edge and
+                    // delegate licences treat this iterator like one proved on
+                    // first sight. The closure NODE licence stays direct-only
+                    // because it was already decided before this pass ran.
+                    deferredProvisionalIteratorIds.Remove(node.Id);
                     continue;
                 }
                 if (!authenticWithoutTheOwnerProof) {
