@@ -9,6 +9,7 @@
     "href": "/docs/"
   },
   "favicon": "/images/favicon.png",
+  "css": "/custom.css",
   "colors": {
     "primary": "#A45D45",
     "light": "#F0D8A8",
