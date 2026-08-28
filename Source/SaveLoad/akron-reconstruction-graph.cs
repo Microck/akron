@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Concurrent;
@@ -137,8 +138,18 @@ internal static class AkronReconstructionTags {
 // properties they shadow are [JsonIgnore], populated by capture and rebuilt by
 // AkronReconstructionGraph.ResolveTypeNames right after a read, so everything
 // outside the serialization boundary keeps working with plain strings. Empty
-// lists and default values are omitted; the property initializers put them back.
+// lists and default values are omitted; optional node lists remain null until
+// capture or deserialization has an element to store.
 internal sealed class AkronReconstructionNode {
+    private string diagnosticPath = string.Empty;
+    private List<int> parentArrayIndices;
+    private List<AkronReconstructionPathStep> freshPath;
+    private List<AkronReconstructionField> fields;
+    private List<AkronReconstructionValue> items;
+    private List<int> arrayLengths;
+    private List<int> arrayLowerBounds;
+    private List<AkronReconstructionDelegateCall> delegateCalls;
+
     [JsonProperty("i")]
     public int Id { get; set; }
     [JsonProperty(AkronReconstructionTags.Kind)]
@@ -151,7 +162,39 @@ internal sealed class AkronReconstructionNode {
     // Full diagnostic paths grow quadratically with graph depth. Keep the
     // compact first-owner edge on disk and rebuild this text after loading.
     [JsonIgnore]
-    public string Path { get; set; } = string.Empty;
+    public string Path {
+        get {
+            if (!DiagnosticPathReady || !string.IsNullOrWhiteSpace(diagnosticPath) ||
+                DiagnosticPathParent == null) {
+                return diagnosticPath;
+            }
+            diagnosticPath = AkronReconstructionGraph.MaterializeDiagnosticPath(this);
+            return diagnosticPath;
+        }
+        set {
+            diagnosticPath = value;
+            DiagnosticPathParent = null;
+            DiagnosticPathLength = string.IsNullOrWhiteSpace(value) ? -1 : value.Length;
+            DiagnosticPathReady = !string.IsNullOrWhiteSpace(value);
+        }
+    }
+    internal AkronReconstructionNode DiagnosticPathParent { get; private set; }
+    internal int DiagnosticPathLength { get; private set; } = -1;
+    internal bool DiagnosticPathReady { get; private set; }
+
+    internal void ResetDiagnosticPath() {
+        diagnosticPath = string.Empty;
+        DiagnosticPathParent = null;
+        DiagnosticPathLength = -1;
+        DiagnosticPathReady = false;
+    }
+
+    internal void SetLazyDiagnosticPath(AkronReconstructionNode parent, int length) {
+        diagnosticPath = string.Empty;
+        DiagnosticPathParent = parent;
+        DiagnosticPathLength = length;
+        DiagnosticPathReady = true;
+    }
     [JsonProperty("p", DefaultValueHandling = DefaultValueHandling.Ignore)]
     public int ParentNodeId { get; set; }
     [JsonProperty(AkronReconstructionTags.ParentKind, DefaultValueHandling = DefaultValueHandling.Ignore)]
@@ -166,8 +209,15 @@ internal sealed class AkronReconstructionNode {
     [System.ComponentModel.DefaultValue("")]
     public string ParentFieldName { get; set; } = string.Empty;
     [JsonProperty("pa")]
-    public List<int> ParentArrayIndices { get; set; } = new List<int>();
-    public bool ShouldSerializeParentArrayIndices() => ParentArrayIndices != null && ParentArrayIndices.Count > 0;
+    public List<int> ParentArrayIndices {
+        get => parentArrayIndices ??= new List<int>();
+        set => parentArrayIndices = value;
+    }
+    internal List<int> ParentArrayIndicesOrNull {
+        get => parentArrayIndices;
+        set => parentArrayIndices = value;
+    }
+    public bool ShouldSerializeParentArrayIndices() => parentArrayIndices != null && parentArrayIndices.Count > 0;
     [JsonProperty("pi", DefaultValueHandling = DefaultValueHandling.Ignore)]
     [System.ComponentModel.DefaultValue(-1)]
     public int ParentDelegateIndex { get; set; } = -1;
@@ -196,25 +246,67 @@ internal sealed class AkronReconstructionNode {
     [JsonProperty("mp", DefaultValueHandling = DefaultValueHandling.Ignore)]
     public bool MapPlacedEntity { get; set; }
     [JsonProperty(AkronReconstructionTags.FreshPath)]
-    public List<AkronReconstructionPathStep> FreshPath { get; set; } = new List<AkronReconstructionPathStep>();
-    public bool ShouldSerializeFreshPath() => FreshPath != null && FreshPath.Count > 0;
+    public List<AkronReconstructionPathStep> FreshPath {
+        get => freshPath ??= new List<AkronReconstructionPathStep>();
+        set => freshPath = value;
+    }
+    internal List<AkronReconstructionPathStep> FreshPathOrNull {
+        get => freshPath;
+        set => freshPath = value;
+    }
+    public bool ShouldSerializeFreshPath() => freshPath != null && freshPath.Count > 0;
     [JsonProperty(AkronReconstructionTags.Fields)]
-    public List<AkronReconstructionField> Fields { get; set; } = new List<AkronReconstructionField>();
-    public bool ShouldSerializeFields() => Fields != null && Fields.Count > 0;
+    public List<AkronReconstructionField> Fields {
+        get => fields ??= new List<AkronReconstructionField>();
+        set => fields = value;
+    }
+    internal List<AkronReconstructionField> FieldsOrNull {
+        get => fields;
+        set => fields = value;
+    }
+    public bool ShouldSerializeFields() => fields != null && fields.Count > 0;
     [JsonProperty(AkronReconstructionTags.Items)]
-    public List<AkronReconstructionValue> Items { get; set; } = new List<AkronReconstructionValue>();
-    public bool ShouldSerializeItems() => Items != null && Items.Count > 0;
+    public List<AkronReconstructionValue> Items {
+        get => items ??= new List<AkronReconstructionValue>();
+        set => items = value;
+    }
+    internal List<AkronReconstructionValue> ItemsOrNull {
+        get => items;
+        set => items = value;
+    }
+    public bool ShouldSerializeItems() => items != null && items.Count > 0;
     [JsonProperty("al")]
-    public List<int> ArrayLengths { get; set; } = new List<int>();
-    public bool ShouldSerializeArrayLengths() => ArrayLengths != null && ArrayLengths.Count > 0;
+    public List<int> ArrayLengths {
+        get => arrayLengths ??= new List<int>();
+        set => arrayLengths = value;
+    }
+    internal List<int> ArrayLengthsOrNull {
+        get => arrayLengths;
+        set => arrayLengths = value;
+    }
+    public bool ShouldSerializeArrayLengths() => arrayLengths != null && arrayLengths.Count > 0;
     [JsonProperty("ab")]
-    public List<int> ArrayLowerBounds { get; set; } = new List<int>();
-    public bool ShouldSerializeArrayLowerBounds() => ArrayLowerBounds != null && ArrayLowerBounds.Count > 0;
+    public List<int> ArrayLowerBounds {
+        get => arrayLowerBounds ??= new List<int>();
+        set => arrayLowerBounds = value;
+    }
+    internal List<int> ArrayLowerBoundsOrNull {
+        get => arrayLowerBounds;
+        set => arrayLowerBounds = value;
+    }
+    public bool ShouldSerializeArrayLowerBounds() => arrayLowerBounds != null && arrayLowerBounds.Count > 0;
     [JsonProperty(AkronReconstructionTags.PackedPrimitiveArrayBytes, NullValueHandling = NullValueHandling.Ignore)]
     public byte[] PackedPrimitiveArrayBytes { get; set; }
     [JsonProperty(AkronReconstructionTags.DelegateCalls)]
-    public List<AkronReconstructionDelegateCall> DelegateCalls { get; set; } = new List<AkronReconstructionDelegateCall>();
-    public bool ShouldSerializeDelegateCalls() => DelegateCalls != null && DelegateCalls.Count > 0;
+    public List<AkronReconstructionDelegateCall> DelegateCalls {
+        get => delegateCalls ??= new List<AkronReconstructionDelegateCall>();
+        set => delegateCalls = value;
+    }
+    internal List<AkronReconstructionDelegateCall> DelegateCallsOrNull {
+        get => delegateCalls;
+        set => delegateCalls = value;
+    }
+    public bool ShouldSerializeDelegateCalls() => delegateCalls != null && delegateCalls.Count > 0;
     [JsonProperty("ev", NullValueHandling = NullValueHandling.Ignore)]
     public AkronPersistentEventInstanceState EventInstance { get; set; }
     [JsonProperty("rp", NullValueHandling = NullValueHandling.Ignore)]
@@ -222,6 +314,11 @@ internal sealed class AkronReconstructionNode {
 }
 
 internal sealed class AkronReconstructionField {
+    private string diagnosticPath = string.Empty;
+    private AkronReconstructionNode diagnosticPathParent;
+    private AkronReconstructionNode diagnosticPathChild;
+    private bool diagnosticPathReady;
+
     [JsonIgnore]
     public string DeclaringTypeName { get; set; } = string.Empty;
     [JsonProperty(AkronReconstructionTags.DeclaringTypeNameIndex, DefaultValueHandling = DefaultValueHandling.Ignore)]
@@ -230,9 +327,39 @@ internal sealed class AkronReconstructionField {
     [JsonProperty(AkronReconstructionTags.FieldName)]
     public string Name { get; set; } = string.Empty;
     [JsonIgnore]
-    public string Path { get; set; } = string.Empty;
-    [JsonProperty("v")]
-    public AkronReconstructionValue Value { get; set; } = new AkronReconstructionValue();
+    public string Path {
+        get {
+            if (!diagnosticPathReady || !string.IsNullOrWhiteSpace(diagnosticPath)) {
+                return diagnosticPath;
+            }
+            diagnosticPath = diagnosticPathChild != null
+                ? diagnosticPathChild.Path
+                : AkronReconstructionGraph.BuildFieldDiagnosticPath(diagnosticPathParent?.Path, Name);
+            return diagnosticPath;
+        }
+        set {
+            diagnosticPath = value;
+            diagnosticPathParent = null;
+            diagnosticPathChild = null;
+            diagnosticPathReady = !string.IsNullOrWhiteSpace(value);
+        }
+    }
+
+    internal void SetLazyParentDiagnosticPath(AkronReconstructionNode parent) {
+        diagnosticPath = string.Empty;
+        diagnosticPathParent = parent;
+        diagnosticPathChild = null;
+        diagnosticPathReady = true;
+    }
+
+    internal void SetLazyChildDiagnosticPath(AkronReconstructionNode child) {
+        diagnosticPath = string.Empty;
+        diagnosticPathParent = null;
+        diagnosticPathChild = child;
+        diagnosticPathReady = true;
+    }
+    [JsonProperty("v", Required = Required.Always)]
+    public AkronReconstructionValue Value { get; set; }
 }
 
 internal sealed class AkronReconstructionValue {
@@ -264,7 +391,7 @@ internal sealed class AkronReconstructionResourcePayload {
 
 internal sealed class AkronGameplayBufferSnapshot {
     public string FieldName { get; set; } = string.Empty;
-    public AkronReconstructionResourcePayload Payload { get; set; } = new AkronReconstructionResourcePayload();
+    public AkronReconstructionResourcePayload Payload { get; set; }
 }
 
 internal interface IAkronReconstructionResourceAdapter {
@@ -545,6 +672,8 @@ internal static class AkronGameplayBufferState {
 }
 
 internal sealed class AkronReconstructionPathStep {
+    private List<int> arrayIndices;
+
     [JsonProperty(AkronReconstructionTags.Kind)]
     public string Kind { get; set; } = string.Empty;
     [JsonIgnore]
@@ -556,15 +685,22 @@ internal sealed class AkronReconstructionPathStep {
     [System.ComponentModel.DefaultValue("")]
     public string FieldName { get; set; } = string.Empty;
     [JsonProperty("a")]
-    public List<int> ArrayIndices { get; set; } = new List<int>();
-    public bool ShouldSerializeArrayIndices() => ArrayIndices != null && ArrayIndices.Count > 0;
+    public List<int> ArrayIndices {
+        get => arrayIndices ??= new List<int>();
+        set => arrayIndices = value;
+    }
+    internal List<int> ArrayIndicesOrNull {
+        get => arrayIndices;
+        set => arrayIndices = value;
+    }
+    public bool ShouldSerializeArrayIndices() => arrayIndices != null && arrayIndices.Count > 0;
 }
 
 internal sealed class AkronReconstructionDelegateCall {
     [JsonProperty(AkronReconstructionTags.Kind)]
     public string Kind { get; set; } = "method";
-    [JsonProperty("tg")]
-    public AkronReconstructionValue Target { get; set; } = new AkronReconstructionValue();
+    [JsonProperty("tg", Required = Required.Always)]
+    public AkronReconstructionValue Target { get; set; }
     [JsonIgnore]
     public string DeclaringTypeName { get; set; } = string.Empty;
     [JsonProperty(AkronReconstructionTags.DeclaringTypeNameIndex, DefaultValueHandling = DefaultValueHandling.Ignore)]
@@ -579,9 +715,9 @@ internal sealed class AkronReconstructionDelegateCall {
     [System.ComponentModel.DefaultValue(-1)]
     public int ReturnTypeNameIndex { get; set; } = -1;
     [JsonIgnore]
-    public List<string> ParameterTypeNames { get; set; } = new List<string>();
+    public List<string> ParameterTypeNames { get; set; }
     [JsonProperty(AkronReconstructionTags.ParameterTypeNameIndexes)]
-    public List<int> ParameterTypeNameIndexes { get; set; } = new List<int>();
+    public List<int> ParameterTypeNameIndexes { get; set; }
     public bool ShouldSerializeParameterTypeNameIndexes() =>
         ParameterTypeNameIndexes != null && ParameterTypeNameIndexes.Count > 0;
     [JsonIgnore]
@@ -598,9 +734,9 @@ internal sealed class AkronReconstructionDelegateCall {
     [System.ComponentModel.DefaultValue(-1)]
     public int HookTargetReturnTypeNameIndex { get; set; } = -1;
     [JsonIgnore]
-    public List<string> HookTargetParameterTypeNames { get; set; } = new List<string>();
+    public List<string> HookTargetParameterTypeNames { get; set; }
     [JsonProperty(AkronReconstructionTags.HookTargetParameterTypeNameIndexes)]
-    public List<int> HookTargetParameterTypeNameIndexes { get; set; } = new List<int>();
+    public List<int> HookTargetParameterTypeNameIndexes { get; set; }
     public bool ShouldSerializeHookTargetParameterTypeNameIndexes() =>
         HookTargetParameterTypeNameIndexes != null && HookTargetParameterTypeNameIndexes.Count > 0;
 }
@@ -736,6 +872,12 @@ internal sealed class AkronReconstructionVerification {
 // Count the stream as Json.NET reads it so hostile pack data cannot create an
 // unbounded object graph or scalar before those checks get control.
 internal sealed class AkronBoundedJsonTextReader : JsonTextReader {
+    private enum RecordArrayKind : byte {
+        None,
+        Nodes,
+        Expensive
+    }
+
     private readonly long maxTokenCount;
     private readonly long maxContainerCount;
     private readonly long maxNodeCount;
@@ -749,6 +891,8 @@ internal sealed class AkronBoundedJsonTextReader : JsonTextReader {
     private long recordCount;
     private long expensiveRecordCount;
     private long binaryBytes;
+    private RecordArrayKind[] recordArrayKindsByDepth = new RecordArrayKind[8];
+    private string pendingPropertyName;
 
     public AkronBoundedJsonTextReader(
         TextReader reader,
@@ -831,6 +975,8 @@ internal sealed class AkronBoundedJsonTextReader : JsonTextReader {
         if (TokenType == JsonToken.None) {
             return;
         }
+        string valuePropertyName = pendingPropertyName;
+        RecordArrayKind recordArrayKind = TrackRecordArrayKind();
         tokenCount++;
         if (tokenCount > maxTokenCount) {
             throw new InvalidOperationException(
@@ -849,52 +995,92 @@ internal sealed class AkronBoundedJsonTextReader : JsonTextReader {
                 throw new InvalidOperationException(
                     $"Reconstruction JSON record count exceeds the supported limit of {maxRecordCount:N0}.");
             }
-            if (IsExpensiveRecordPath(Path)) {
+            if (recordArrayKind == RecordArrayKind.Expensive) {
                 expensiveRecordCount++;
                 if (expensiveRecordCount > maxExpensiveRecordCount) {
                     throw new InvalidOperationException(
                         $"Reconstruction JSON complex record count exceeds the supported limit of {maxExpensiveRecordCount:N0}.");
                 }
             }
-        }
-        if (TokenType == JsonToken.StartObject && IsNodeObjectPath(Path)) {
-            nodeCount++;
-            if (nodeCount > maxNodeCount) {
-                throw new InvalidOperationException(
-                    $"Reconstruction JSON node count exceeds the supported limit of {maxNodeCount:N0}.");
+            if (recordArrayKind == RecordArrayKind.Nodes) {
+                nodeCount++;
+                if (nodeCount > maxNodeCount) {
+                    throw new InvalidOperationException(
+                        $"Reconstruction JSON node count exceeds the supported limit of {maxNodeCount:N0}.");
+                }
             }
         }
-        if (Value is string text && text.Length > maxStringChars) {
+        bool streamedBinary = TokenType == JsonToken.String &&
+                              IsBinaryProperty(valuePropertyName) &&
+                              Value is string;
+        if (streamedBinary) {
+            RecordBase64Bytes((string) Value);
+        } else if (Value is string text && text.Length > maxStringChars) {
             throw new InvalidOperationException(
                 $"Reconstruction JSON string length exceeds the supported limit of {maxStringChars:N0} characters.");
         }
         if (Value is byte[] bytes) {
-            binaryBytes = checked(binaryBytes + bytes.LongLength);
-            if (binaryBytes > maxBinaryBytes) {
-                throw new InvalidOperationException(
-                    $"Reconstruction JSON binary data exceeds the supported limit of {maxBinaryBytes:N0} bytes.");
+            RecordBinaryBytes(bytes.LongLength);
+        }
+    }
+
+    private static bool IsBinaryProperty(string propertyName) {
+        return propertyName == AkronReconstructionTags.PackedPrimitiveArrayBytes ||
+               propertyName == nameof(AkronReconstructionResourcePayload.Bytes);
+    }
+
+    private void RecordBase64Bytes(string encoded) {
+        if ((encoded.Length & 3) != 0) {
+            throw new InvalidOperationException("Reconstruction JSON binary data is invalid.");
+        }
+        int padding = encoded.Length > 0 && encoded[encoded.Length - 1] == '=' ? 1 : 0;
+        if (encoded.Length > 1 && encoded[encoded.Length - 2] == '=') {
+            padding++;
+        }
+        RecordBinaryBytes(checked((long) (encoded.Length / 4) * 3L - padding));
+    }
+
+    private void RecordBinaryBytes(long count) {
+        binaryBytes = checked(binaryBytes + count);
+        if (binaryBytes > maxBinaryBytes) {
+            throw new InvalidOperationException(
+                $"Reconstruction JSON binary data exceeds the supported limit of {maxBinaryBytes:N0} bytes.");
+        }
+    }
+
+    private RecordArrayKind TrackRecordArrayKind() {
+        if (TokenType == JsonToken.PropertyName) {
+            pendingPropertyName = Value as string;
+            return RecordArrayKind.None;
+        }
+
+        RecordArrayKind kind = RecordArrayKind.None;
+        if (TokenType == JsonToken.StartArray) {
+            int depth = Depth;
+            if (depth >= recordArrayKindsByDepth.Length) {
+                int newLength = Math.Max(checked(depth + 1), checked(recordArrayKindsByDepth.Length * 2));
+                Array.Resize(ref recordArrayKindsByDepth, newLength);
             }
+            recordArrayKindsByDepth[depth] = pendingPropertyName switch {
+                AkronReconstructionTags.Nodes => RecordArrayKind.Nodes,
+                AkronReconstructionTags.Fields or
+                    AkronReconstructionTags.DelegateCalls or
+                    AkronReconstructionTags.FreshPath => RecordArrayKind.Expensive,
+                _ => RecordArrayKind.None
+            };
+        } else if (TokenType == JsonToken.EndArray) {
+            if (Depth < recordArrayKindsByDepth.Length) {
+                recordArrayKindsByDepth[Depth] = RecordArrayKind.None;
+            }
+        } else if (TokenType == JsonToken.StartObject && Depth > 0 &&
+                   Depth - 1 < recordArrayKindsByDepth.Length) {
+            kind = recordArrayKindsByDepth[Depth - 1];
         }
-    }
 
-    private static bool IsNodeObjectPath(string path) {
-        return IsArrayElementObjectPath(path, AkronReconstructionTags.Nodes);
-    }
-
-    private static bool IsExpensiveRecordPath(string path) {
-        return IsArrayElementObjectPath(path, AkronReconstructionTags.Fields) ||
-               IsArrayElementObjectPath(path, AkronReconstructionTags.DelegateCalls) ||
-               IsArrayElementObjectPath(path, AkronReconstructionTags.FreshPath);
-    }
-
-    private static bool IsArrayElementObjectPath(string path, string propertyName) {
-        int bracket = path?.LastIndexOf('[') ?? -1;
-        if (bracket <= 0 || path[path.Length - 1] != ']' ||
-            !path.Substring(0, bracket).EndsWith(propertyName, StringComparison.Ordinal)) {
-            return false;
+        if (TokenType != JsonToken.Comment) {
+            pendingPropertyName = null;
         }
-        return path.Substring(bracket + 1, path.Length - bracket - 2)
-            .All(character => character is >= '0' and <= '9');
+        return kind;
     }
 }
 
@@ -948,6 +1134,7 @@ internal sealed class AkronReconstructionGraph {
         AkronStartPosReconstruction.MaxDecompressedSnapshotBytes / 64;
     private const int DefaultMaxJsonStringChars = 16 * 1024 * 1024;
     private const long DefaultMaxJsonBinaryBytes = 192L * 1024L * 1024L;
+    private const int JsonStreamBufferChars = 8 * 1024;
     private const string ObjectKind = "object";
     private const string ArrayKind = "array";
     private const string AnchorKind = "anchor";
@@ -978,6 +1165,21 @@ internal sealed class AkronReconstructionGraph {
         MissingMemberHandling = MissingMemberHandling.Error,
         ObjectCreationHandling = ObjectCreationHandling.Replace,
         TypeNameHandling = TypeNameHandling.None
+    };
+    private static readonly Newtonsoft.Json.IArrayPool<char> JsonCharArrayPool = new SharedCharArrayPool();
+    private static readonly string[] KnownJsonPropertyNames = {
+        "Format", "TypeNames", "SlotName", "MapSid", "Room", "FileSlot",
+        "BerryProgress", "RootNodeId", "Nodes", "ActionStateDocument",
+        "RegisteredActionIds", "GameplayBuffers",
+        "i", "k", "t", "p", "pk", "pd", "pf", "pa", "pi", "uf", "rk",
+        "pr", "mp", "fp", "f", "it", "al", "ab", "pb", "dc", "ev", "rp",
+        "d", "n", "v", "s", "a", "tg", "m", "r", "pt", "hd", "hm", "hr", "hpt",
+        "Kind", "Name", "Width", "Height", "MultiSampleCount", "Depth", "Preserve",
+        "Bytes", "FieldName", "Payload", "Strawberries", "TotalStrawberries", "Level", "ID",
+        "Path", "Volume", "Pitch", "Has3DAttributes", "PositionX", "PositionY", "PositionZ",
+        "VelocityX", "VelocityY", "VelocityZ", "ForwardX", "ForwardY", "ForwardZ",
+        "UpX", "UpY", "UpZ", "HasListenerMask", "ListenerMask", "Parameters",
+        "TimelinePosition", "ShouldPlay", "Paused", "ManualClone"
     };
     private static readonly ConcurrentDictionary<Type, string> TypeNames = new ConcurrentDictionary<Type, string>();
     private static readonly ConcurrentDictionary<string, Type> ResolvedTypes = new ConcurrentDictionary<string, Type>(StringComparer.Ordinal);
@@ -1064,8 +1266,36 @@ internal sealed class AkronReconstructionGraph {
     private readonly long maxJsonNodeCount;
     private readonly long maxJsonRecordCount;
     private readonly long maxJsonExpensiveRecordCount;
+    private readonly DefaultJsonNameTable jsonPropertyNames = CreateJsonPropertyNameTable();
     private readonly HashSet<object> ownedPersistentResources =
         new HashSet<object>(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<(int ParentNodeId, string DeclaringTypeName, string FieldName), AkronReconstructionValue>
+        validationParentFieldValues =
+            new Dictionary<(int, string, string), AkronReconstructionValue>();
+    private readonly HashSet<int> validationReachedNodeIds = new HashSet<int>();
+    private readonly Stack<int> validationPendingNodeIds = new Stack<int>();
+    private readonly Dictionary<int, AkronReconstructionNode> validationNodes =
+        new Dictionary<int, AkronReconstructionNode>();
+
+    private static DefaultJsonNameTable CreateJsonPropertyNameTable() {
+        DefaultJsonNameTable table = new DefaultJsonNameTable();
+        foreach (string name in KnownJsonPropertyNames) {
+            table.Add(name);
+        }
+        return table;
+    }
+
+    private sealed class SharedCharArrayPool : Newtonsoft.Json.IArrayPool<char> {
+        public char[] Rent(int minimumLength) {
+            return ArrayPool<char>.Shared.Rent(minimumLength);
+        }
+
+        public void Return(char[] array) {
+            if (array != null) {
+                ArrayPool<char>.Shared.Return(array);
+            }
+        }
+    }
 
     private static void ValidateAndNormalizeDerivedMembershipSets(IEnumerable<object> values) {
         foreach (object value in values.Where(value => value != null).Distinct(ReferenceEqualityComparer.Instance)) {
@@ -1211,6 +1441,28 @@ internal sealed class AkronReconstructionGraph {
         Func<string, int> toIndex,
         Func<int, string> toName
     ) {
+        List<int> MapNames(List<string> names) {
+            if (names == null || names.Count == 0) {
+                return null;
+            }
+            List<int> indexes = new List<int>(names.Count);
+            foreach (string name in names) {
+                indexes.Add(toIndex(name));
+            }
+            return indexes;
+        }
+
+        List<string> MapIndexes(List<int> indexes) {
+            if (indexes == null || indexes.Count == 0) {
+                return null;
+            }
+            List<string> names = new List<string>(indexes.Count);
+            foreach (int index in indexes) {
+                names.Add(toName(index));
+            }
+            return names;
+        }
+
         void MapValue(AkronReconstructionValue value) {
             if (value == null) {
                 return;
@@ -1237,7 +1489,7 @@ internal sealed class AkronReconstructionGraph {
                     node.TypeName = toName(node.TypeNameIndex);
                     node.ParentDeclaringTypeName = toName(node.ParentDeclaringTypeNameIndex);
                 }
-                foreach (AkronReconstructionField field in node.Fields ?? new List<AkronReconstructionField>()) {
+                foreach (AkronReconstructionField field in node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
                     if (field == null) {
                         continue;
                     }
@@ -1248,10 +1500,10 @@ internal sealed class AkronReconstructionGraph {
                     }
                     MapValue(field.Value);
                 }
-                foreach (AkronReconstructionValue item in node.Items ?? new List<AkronReconstructionValue>()) {
+                foreach (AkronReconstructionValue item in node.ItemsOrNull ?? Enumerable.Empty<AkronReconstructionValue>()) {
                     MapValue(item);
                 }
-                foreach (AkronReconstructionPathStep step in node.FreshPath ?? new List<AkronReconstructionPathStep>()) {
+                foreach (AkronReconstructionPathStep step in node.FreshPathOrNull ?? Enumerable.Empty<AkronReconstructionPathStep>()) {
                     if (step == null) {
                         continue;
                     }
@@ -1261,28 +1513,24 @@ internal sealed class AkronReconstructionGraph {
                         step.DeclaringTypeName = toName(step.DeclaringTypeNameIndex);
                     }
                 }
-                foreach (AkronReconstructionDelegateCall call in node.DelegateCalls ?? new List<AkronReconstructionDelegateCall>()) {
+                foreach (AkronReconstructionDelegateCall call in node.DelegateCallsOrNull ?? Enumerable.Empty<AkronReconstructionDelegateCall>()) {
                     if (call == null) {
                         continue;
                     }
                     if (build) {
                         call.DeclaringTypeNameIndex = toIndex(call.DeclaringTypeName);
                         call.ReturnTypeNameIndex = toIndex(call.ReturnTypeName);
-                        call.ParameterTypeNameIndexes =
-                            (call.ParameterTypeNames ?? new List<string>()).Select(toIndex).ToList();
+                        call.ParameterTypeNameIndexes = MapNames(call.ParameterTypeNames);
                         call.HookTargetDeclaringTypeNameIndex = toIndex(call.HookTargetDeclaringTypeName);
                         call.HookTargetReturnTypeNameIndex = toIndex(call.HookTargetReturnTypeName);
-                        call.HookTargetParameterTypeNameIndexes =
-                            (call.HookTargetParameterTypeNames ?? new List<string>()).Select(toIndex).ToList();
+                        call.HookTargetParameterTypeNameIndexes = MapNames(call.HookTargetParameterTypeNames);
                     } else {
                         call.DeclaringTypeName = toName(call.DeclaringTypeNameIndex);
                         call.ReturnTypeName = toName(call.ReturnTypeNameIndex);
-                        call.ParameterTypeNames =
-                            (call.ParameterTypeNameIndexes ?? new List<int>()).Select(toName).ToList();
+                        call.ParameterTypeNames = MapIndexes(call.ParameterTypeNameIndexes);
                         call.HookTargetDeclaringTypeName = toName(call.HookTargetDeclaringTypeNameIndex);
                         call.HookTargetReturnTypeName = toName(call.HookTargetReturnTypeNameIndex);
-                        call.HookTargetParameterTypeNames =
-                            (call.HookTargetParameterTypeNameIndexes ?? new List<int>()).Select(toName).ToList();
+                        call.HookTargetParameterTypeNames = MapIndexes(call.HookTargetParameterTypeNameIndexes);
                     }
                     MapValue(call.Target);
                 }
@@ -1318,6 +1566,217 @@ internal sealed class AkronReconstructionGraph {
         }
     }
 
+    private static void ValidateTypeNameIndexes(AkronReconstructionDocument document) {
+        List<string> table = document?.TypeNames;
+        if (table == null) {
+            throw new InvalidOperationException("Reconstruction type name table is missing.");
+        }
+        ValidateTypeNameIndexes(document, table);
+    }
+
+    private static void ValidateTypeNameIndexes(
+        AkronReconstructionDocument document,
+        List<string> table
+    ) {
+        if (document == null) {
+            return;
+        }
+        foreach (AkronReconstructionNode node in document.Nodes) {
+            if (node == null) {
+                continue;
+            }
+            ValidateTypeNameIndex(node.TypeName, node.TypeNameIndex, table);
+            ValidateTypeNameIndex(
+                node.ParentDeclaringTypeName,
+                node.ParentDeclaringTypeNameIndex,
+                table);
+            if (node.FieldsOrNull != null) {
+                foreach (AkronReconstructionField field in node.FieldsOrNull) {
+                    if (field == null) {
+                        continue;
+                    }
+                    ValidateTypeNameIndex(field.DeclaringTypeName, field.DeclaringTypeNameIndex, table);
+                    ValidateValueTypeNameIndex(field.Value, table);
+                }
+            }
+            if (node.ItemsOrNull != null) {
+                foreach (AkronReconstructionValue item in node.ItemsOrNull) {
+                    ValidateValueTypeNameIndex(item, table);
+                }
+            }
+            if (node.FreshPathOrNull != null) {
+                foreach (AkronReconstructionPathStep step in node.FreshPathOrNull) {
+                    if (step != null) {
+                        ValidateTypeNameIndex(step.DeclaringTypeName, step.DeclaringTypeNameIndex, table);
+                    }
+                }
+            }
+            if (node.DelegateCallsOrNull != null) {
+                foreach (AkronReconstructionDelegateCall call in node.DelegateCallsOrNull) {
+                    if (call == null) {
+                        continue;
+                    }
+                    ValidateTypeNameIndex(call.DeclaringTypeName, call.DeclaringTypeNameIndex, table);
+                    ValidateTypeNameIndex(call.ReturnTypeName, call.ReturnTypeNameIndex, table);
+                    ValidateTypeNameIndexList(call.ParameterTypeNames, call.ParameterTypeNameIndexes, table);
+                    ValidateTypeNameIndex(
+                        call.HookTargetDeclaringTypeName,
+                        call.HookTargetDeclaringTypeNameIndex,
+                        table);
+                    ValidateTypeNameIndex(
+                        call.HookTargetReturnTypeName,
+                        call.HookTargetReturnTypeNameIndex,
+                        table);
+                    ValidateTypeNameIndexList(
+                        call.HookTargetParameterTypeNames,
+                        call.HookTargetParameterTypeNameIndexes,
+                        table);
+                    ValidateValueTypeNameIndex(call.Target, table);
+                }
+            }
+        }
+        ValidateTypeNameIndexes(document.ActionStateDocument, table);
+    }
+
+    private static void ValidateValueTypeNameIndex(
+        AkronReconstructionValue value,
+        List<string> table
+    ) {
+        if (value != null) {
+            ValidateTypeNameIndex(value.TypeName, value.TypeNameIndex, table);
+        }
+    }
+
+    private static void ValidateTypeNameIndexList(
+        List<string> names,
+        List<int> indexes,
+        List<string> table
+    ) {
+        int count = names?.Count ?? 0;
+        if (count != (indexes?.Count ?? 0)) {
+            throw new InvalidOperationException("Reconstruction type name index list differs from its names.");
+        }
+        for (int index = 0; index < count; index++) {
+            ValidateTypeNameIndex(names[index], indexes[index], table);
+        }
+    }
+
+    private static void ValidateTypeNameIndex(string name, int index, List<string> table) {
+        if (string.IsNullOrEmpty(name)) {
+            if (index == -1) {
+                return;
+            }
+        } else if (index >= 0 && index < table.Count &&
+                   string.Equals(table[index], name, StringComparison.Ordinal)) {
+            return;
+        }
+        throw new InvalidOperationException("Reconstruction type name index differs from its name.");
+    }
+
+    private static bool CanReuseTypeNameTable(AkronReconstructionDocument document) {
+        List<string> table = document?.TypeNames;
+        if (table == null || table.Count == 0 ||
+            document.ActionStateDocument?.TypeNames is { Count: > 0 }) {
+            return false;
+        }
+        // BuildTypeNameTable deduplicates names in first-use order. Preserve that
+        // canonical wire form rather than merely accepting any internally
+        // consistent table an external writer might have supplied.
+        for (int index = 0; index < table.Count; index++) {
+            string name = table[index];
+            if (string.IsNullOrEmpty(name)) {
+                return false;
+            }
+            for (int earlier = 0; earlier < index; earlier++) {
+                if (string.Equals(table[earlier], name, StringComparison.Ordinal)) {
+                    return false;
+                }
+            }
+        }
+        try {
+            ValidateTypeNameIndexes(document, table);
+        } catch (InvalidOperationException) {
+            return false;
+        }
+
+        int nextIndex = 0;
+        bool Observe(int index) {
+            if (index == -1) {
+                return true;
+            }
+            if (index == nextIndex) {
+                nextIndex++;
+                return true;
+            }
+            return index >= 0 && index < nextIndex;
+        }
+        bool ObserveValue(AkronReconstructionValue value) {
+            return value == null || Observe(value.TypeNameIndex);
+        }
+        bool ObserveList(List<int> indexes) {
+            if (indexes == null) {
+                return true;
+            }
+            foreach (int index in indexes) {
+                if (!Observe(index)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        bool Walk(AkronReconstructionDocument current) {
+            if (current == null) {
+                return true;
+            }
+            foreach (AkronReconstructionNode node in current.Nodes) {
+                if (node == null) {
+                    continue;
+                }
+                if (!Observe(node.TypeNameIndex) || !Observe(node.ParentDeclaringTypeNameIndex)) {
+                    return false;
+                }
+                if (node.FieldsOrNull != null) {
+                    foreach (AkronReconstructionField field in node.FieldsOrNull) {
+                        if (field != null &&
+                            (!Observe(field.DeclaringTypeNameIndex) || !ObserveValue(field.Value))) {
+                            return false;
+                        }
+                    }
+                }
+                if (node.ItemsOrNull != null) {
+                    foreach (AkronReconstructionValue item in node.ItemsOrNull) {
+                        if (!ObserveValue(item)) {
+                            return false;
+                        }
+                    }
+                }
+                if (node.FreshPathOrNull != null) {
+                    foreach (AkronReconstructionPathStep step in node.FreshPathOrNull) {
+                        if (step != null && !Observe(step.DeclaringTypeNameIndex)) {
+                            return false;
+                        }
+                    }
+                }
+                if (node.DelegateCallsOrNull != null) {
+                    foreach (AkronReconstructionDelegateCall call in node.DelegateCallsOrNull) {
+                        if (call != null &&
+                            (!Observe(call.DeclaringTypeNameIndex) ||
+                             !Observe(call.ReturnTypeNameIndex) ||
+                             !ObserveList(call.ParameterTypeNameIndexes) ||
+                             !Observe(call.HookTargetDeclaringTypeNameIndex) ||
+                             !Observe(call.HookTargetReturnTypeNameIndex) ||
+                             !ObserveList(call.HookTargetParameterTypeNameIndexes) ||
+                             !ObserveValue(call.Target))) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            return Walk(current.ActionStateDocument);
+        }
+        return Walk(document) && nextIndex == table.Count;
+    }
+
     private static void ResolveTypeNames(AkronReconstructionDocument document) {
         List<string> table = document?.TypeNames ?? new List<string>();
         MapTypeNames(document, build: false, toIndex: null, index => {
@@ -1332,8 +1791,7 @@ internal sealed class AkronReconstructionGraph {
     }
 
     public string Serialize(AkronReconstructionDocument document) {
-        ValidateDocumentHeader(document);
-        BuildTypeNameTable(document);
+        PrepareForSerialization(document);
         return JsonConvert.SerializeObject(document, JsonSettings);
     }
 
@@ -1347,23 +1805,59 @@ internal sealed class AkronReconstructionGraph {
         using AkronBoundedJsonTextReader jsonReader = CreateJsonReader(stringReader);
         AkronReconstructionDocument document = serializer.Deserialize<AkronReconstructionDocument>(jsonReader);
         ResolveTypeNames(document);
-        ValidateDocumentHeader(document);
-        RestoreDiagnosticPaths(document);
+        validationNodes.Clear();
+        try {
+            ValidateDocumentHeader(document, validationNodes);
+            RestoreDiagnosticPaths(document, validationNodes);
+        } finally {
+            validationNodes.Clear();
+        }
         return document;
     }
 
     public void Serialize(AkronReconstructionDocument document, Stream stream) {
-        ValidateDocumentHeader(document);
-        BuildTypeNameTable(document);
+        PrepareForSerialization(document);
         if (stream == null || !stream.CanWrite) {
             throw new InvalidOperationException("Reconstruction output stream is unavailable.");
         }
 
         JsonSerializer serializer = JsonSerializer.Create(JsonSettings);
-        using StreamWriter streamWriter = new StreamWriter(stream, new UTF8Encoding(false), 65536, leaveOpen: true);
-        using JsonTextWriter jsonWriter = new JsonTextWriter(streamWriter) { CloseOutput = false };
+        using StreamWriter streamWriter = new StreamWriter(
+            stream,
+            new UTF8Encoding(false),
+            JsonStreamBufferChars,
+            leaveOpen: true);
+        using JsonTextWriter jsonWriter = new JsonTextWriter(streamWriter) {
+            ArrayPool = JsonCharArrayPool,
+            CloseOutput = false
+        };
         serializer.Serialize(jsonWriter, document);
         jsonWriter.Flush();
+    }
+
+    private void PrepareForSerialization(AkronReconstructionDocument document) {
+        validationNodes.Clear();
+        try {
+            ValidateDocumentHeader(document, validationNodes);
+            // Capture holds eager diagnostic strings, while the wire format keeps
+            // only parent edges. Rebuild those ignored caches before writing so Set
+            // enforces the same path, aggregate-size and parent-depth ceilings that
+            // a later load will enforce, without allocating a second graph.
+            // Only JsonIgnore diagnostic caches are touched, so a document left
+            // partially reset by a validation exception here is disposable and
+            // must not be treated as unchanged; wire state is unaffected.
+            ResetDiagnosticPaths(document);
+            RestoreDiagnosticPaths(document, validationNodes);
+        } finally {
+            validationNodes.Clear();
+        }
+        if (!CanReuseTypeNameTable(document)) {
+            BuildTypeNameTable(document);
+        }
+        // Validate the exact indexed view that will go to disk, not only the
+        // pre-index strings. This retains the old read-back guarantee without
+        // constructing a second copy of the complete object graph.
+        ValidateTypeNameIndexes(document);
     }
 
     public AkronReconstructionDocument Deserialize(Stream stream) {
@@ -1372,13 +1866,44 @@ internal sealed class AkronReconstructionGraph {
         }
 
         JsonSerializer serializer = JsonSerializer.Create(JsonSettings);
-        using StreamReader streamReader = new StreamReader(stream, Encoding.UTF8, true, 65536, leaveOpen: true);
+        using StreamReader streamReader = new StreamReader(
+            stream,
+            Encoding.UTF8,
+            true,
+            JsonStreamBufferChars,
+            leaveOpen: true);
         using AkronBoundedJsonTextReader jsonReader = CreateJsonReader(streamReader);
         AkronReconstructionDocument document = serializer.Deserialize<AkronReconstructionDocument>(jsonReader);
         ResolveTypeNames(document);
-        ValidateDocumentHeader(document);
-        RestoreDiagnosticPaths(document);
+        validationNodes.Clear();
+        try {
+            ValidateDocumentHeader(document, validationNodes);
+            RestoreDiagnosticPaths(document, validationNodes);
+        } finally {
+            validationNodes.Clear();
+        }
         return document;
+    }
+
+    internal void ValidateSerializedDocument(Stream stream) {
+        if (stream == null || !stream.CanRead) {
+            throw new InvalidOperationException("Reconstruction input stream is unavailable.");
+        }
+
+        using StreamReader streamReader = new StreamReader(
+            stream,
+            Encoding.UTF8,
+            true,
+            JsonStreamBufferChars,
+            leaveOpen: true);
+        using AkronBoundedJsonTextReader jsonReader = CreateJsonReader(streamReader);
+        bool readAny = false;
+        while (jsonReader.Read()) {
+            readAny = true;
+        }
+        if (!readAny) {
+            throw new InvalidOperationException("Reconstruction document is empty.");
+        }
     }
 
     private AkronBoundedJsonTextReader CreateJsonReader(TextReader reader) {
@@ -1391,7 +1916,9 @@ internal sealed class AkronReconstructionGraph {
             maxJsonNodeCount,
             maxJsonRecordCount,
             maxJsonExpensiveRecordCount) {
-            CloseInput = false
+            ArrayPool = JsonCharArrayPool,
+            CloseInput = false,
+            PropertyNameTable = jsonPropertyNames
         };
     }
 
@@ -1492,7 +2019,10 @@ internal sealed class AkronReconstructionGraph {
         }
     }
 
-    private void ValidateDocumentHeader(AkronReconstructionDocument document) {
+    private IReadOnlyDictionary<int, AkronReconstructionNode> ValidateDocumentHeader(
+        AkronReconstructionDocument document,
+        Dictionary<int, AkronReconstructionNode> reusableNodes = null
+    ) {
         if (document == null || !string.Equals(document.Format, AkronReconstructionDocument.CurrentFormat, StringComparison.Ordinal)) {
             // The one gate that decides whether a document may be read at all, so it is
             // also the one place that can say why. A document names the objects in a
@@ -1513,19 +2043,29 @@ internal sealed class AkronReconstructionGraph {
         if (document.RootNodeId <= 0 || document.Nodes == null || document.Nodes.Count == 0) {
             throw new InvalidOperationException("Reconstruction document has no root node.");
         }
-        if (document.Nodes.Any(node => node == null || node.Id <= 0) ||
-            document.Nodes.Select(node => node.Id).Distinct().Count() != document.Nodes.Count) {
-            throw new InvalidOperationException("Reconstruction document has invalid node IDs.");
+        Dictionary<int, AkronReconstructionNode> nodes = reusableNodes ??
+            new Dictionary<int, AkronReconstructionNode>(document.Nodes.Count);
+        if (reusableNodes != null) {
+            nodes.Clear();
+            nodes.EnsureCapacity(document.Nodes.Count);
         }
-        if (document.Nodes.All(node => node.Id != document.RootNodeId)) {
+        bool rootFound = false;
+        foreach (AkronReconstructionNode node in document.Nodes) {
+            if (node == null || node.Id <= 0 || !nodes.TryAdd(node.Id, node)) {
+                throw new InvalidOperationException("Reconstruction document has invalid node IDs.");
+            }
+            rootFound |= node.Id == document.RootNodeId;
+        }
+        if (!rootFound) {
             throw new InvalidOperationException("Reconstruction document root node is missing.");
         }
         ValidateNodeKindContracts(document);
-        ValidateNodeParentEdges(document);
-        ValidateNodeReachability(document);
+        ValidateNodeParentEdges(document, nodes, validationParentFieldValues);
+        ValidateNodeReachability(document, nodes);
         if (document.ActionStateDocument != null) {
             ValidateDocumentHeader(document.ActionStateDocument);
         }
+        return nodes;
     }
 
     // The format string comes out of a snapshot file and the reader allows a string into
@@ -1557,8 +2097,8 @@ internal sealed class AkronReconstructionGraph {
                 // lets RefuseAReferenceInASlotTheRestoreNeverReads treat the whole
                 // item list as read: a reference can only ever sit in Items[0].
                 WeakReferenceKind => IsWeakReferenceType(type) &&
-                                     node.Items is { Count: 2 } &&
-                                     node.Items[1]?.Kind == ScalarValueKind,
+                                     node.ItemsOrNull is { Count: 2 } &&
+                                     node.ItemsOrNull[1]?.Kind == ScalarValueKind,
                 AnchorKind => node.UseFreshObject &&
                               (isLiveResource(type) ||
                                typeof(Delegate).IsAssignableFrom(type) ||
@@ -1644,7 +2184,7 @@ internal sealed class AkronReconstructionGraph {
                           node.Kind == WeakReferenceKind;
         bool readsCalls = node.Kind == DelegateKind;
 
-        foreach (AkronReconstructionField field in node.Fields ?? new List<AkronReconstructionField>()) {
+        foreach (AkronReconstructionField field in node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
             if (field?.Value?.Kind != ReferenceValueKind) {
                 continue;
             }
@@ -1656,7 +2196,7 @@ internal sealed class AkronReconstructionGraph {
             }
         }
         if (!readsItems) {
-            foreach (AkronReconstructionValue item in node.Items ?? new List<AkronReconstructionValue>()) {
+            foreach (AkronReconstructionValue item in node.ItemsOrNull ?? Enumerable.Empty<AkronReconstructionValue>()) {
                 if (item?.Kind == ReferenceValueKind) {
                     throw UnreadSlot(
                         node,
@@ -1665,7 +2205,7 @@ internal sealed class AkronReconstructionGraph {
                 }
             }
         }
-        foreach (AkronReconstructionDelegateCall call in node.DelegateCalls ?? new List<AkronReconstructionDelegateCall>()) {
+        foreach (AkronReconstructionDelegateCall call in node.DelegateCallsOrNull ?? Enumerable.Empty<AkronReconstructionDelegateCall>()) {
             if (call?.Target?.Kind != ReferenceValueKind) {
                 continue;
             }
@@ -1699,59 +2239,71 @@ internal sealed class AkronReconstructionGraph {
             " in " + slot + ", which the restore never reads.");
     }
 
-    private static void ValidateNodeParentEdges(AkronReconstructionDocument document) {
-        Dictionary<int, AkronReconstructionNode> nodes = document.Nodes.ToDictionary(node => node.Id);
+    private static void ValidateNodeParentEdges(
+        AkronReconstructionDocument document,
+        IReadOnlyDictionary<int, AkronReconstructionNode> nodes,
+        Dictionary<(int ParentNodeId, string DeclaringTypeName, string FieldName), AkronReconstructionValue>
+            parentFieldValues
+    ) {
         // Index each field once. Looking through every parent field for every
         // child makes a wide crafted snapshot quadratic to validate.
-        Dictionary<(int ParentNodeId, string DeclaringTypeName, string FieldName), AkronReconstructionValue>
-            parentFieldValues = new Dictionary<(int, string, string), AkronReconstructionValue>();
+        int fieldCount = 0;
         foreach (AkronReconstructionNode parent in document.Nodes) {
-            foreach (AkronReconstructionField field in parent.Fields ?? new List<AkronReconstructionField>()) {
-                if (field == null) {
+            fieldCount = checked(fieldCount + (parent.FieldsOrNull?.Count ?? 0));
+        }
+        parentFieldValues.Clear();
+        parentFieldValues.EnsureCapacity(fieldCount);
+        try {
+            foreach (AkronReconstructionNode parent in document.Nodes) {
+                foreach (AkronReconstructionField field in parent.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
+                    if (field == null) {
+                        continue;
+                    }
+                    if (!parentFieldValues.TryAdd(
+                            (parent.Id, field.DeclaringTypeName, field.Name),
+                            field.Value)) {
+                        throw new InvalidOperationException(
+                            "Reconstruction document parent field identity is duplicated.");
+                    }
+                }
+            }
+
+            foreach (AkronReconstructionNode node in document.Nodes) {
+                if (node.Id == document.RootNodeId) {
+                    if (node.ParentNodeId != 0 || !string.IsNullOrEmpty(node.ParentKind)) {
+                        throw new InvalidOperationException("Reconstruction document root parent edge is invalid.");
+                    }
                     continue;
                 }
-                if (!parentFieldValues.TryAdd(
-                        (parent.Id, field.DeclaringTypeName, field.Name),
-                        field.Value)) {
-                    throw new InvalidOperationException(
-                        "Reconstruction document parent field identity is duplicated.");
+                if (!nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode parent)) {
+                    throw new InvalidOperationException("Reconstruction document node parent is missing.");
+                }
+
+                AkronReconstructionValue parentValue = null;
+                if (node.ParentKind == "field") {
+                    parentFieldValues.TryGetValue(
+                        (parent.Id, node.ParentDeclaringTypeName, node.ParentFieldName),
+                        out parentValue);
+                } else if (node.ParentKind == "array" &&
+                           TryGetFlatArrayIndex(parent, node.ParentArrayIndicesOrNull, out int itemIndex) &&
+                           parent.ItemsOrNull != null && itemIndex < parent.ItemsOrNull.Count) {
+                    parentValue = parent.ItemsOrNull[itemIndex];
+                } else if (node.ParentKind == "delegate" &&
+                           node.ParentDelegateIndex >= 0 &&
+                           parent.DelegateCallsOrNull != null &&
+                           node.ParentDelegateIndex < parent.DelegateCallsOrNull.Count) {
+                    parentValue = parent.DelegateCallsOrNull[node.ParentDelegateIndex]?.Target;
+                } else if (node.ParentKind == "weak-target" &&
+                           string.Equals(parent.Kind, WeakReferenceKind, StringComparison.Ordinal) &&
+                           parent.ItemsOrNull is { Count: > 0 }) {
+                    parentValue = parent.ItemsOrNull[0];
+                }
+                if (parentValue?.Kind != ReferenceValueKind || parentValue.NodeId != node.Id) {
+                    throw new InvalidOperationException("Reconstruction document node parent edge is invalid.");
                 }
             }
-        }
-
-        foreach (AkronReconstructionNode node in document.Nodes) {
-            if (node.Id == document.RootNodeId) {
-                if (node.ParentNodeId != 0 || !string.IsNullOrEmpty(node.ParentKind)) {
-                    throw new InvalidOperationException("Reconstruction document root parent edge is invalid.");
-                }
-                continue;
-            }
-            if (!nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode parent)) {
-                throw new InvalidOperationException("Reconstruction document node parent is missing.");
-            }
-
-            AkronReconstructionValue parentValue = null;
-            if (node.ParentKind == "field") {
-                parentFieldValues.TryGetValue(
-                    (parent.Id, node.ParentDeclaringTypeName, node.ParentFieldName),
-                    out parentValue);
-            } else if (node.ParentKind == "array" &&
-                       TryGetFlatArrayIndex(parent, node.ParentArrayIndices, out int itemIndex) &&
-                       parent.Items != null && itemIndex < parent.Items.Count) {
-                parentValue = parent.Items[itemIndex];
-            } else if (node.ParentKind == "delegate" &&
-                       node.ParentDelegateIndex >= 0 &&
-                       parent.DelegateCalls != null &&
-                       node.ParentDelegateIndex < parent.DelegateCalls.Count) {
-                parentValue = parent.DelegateCalls[node.ParentDelegateIndex]?.Target;
-            } else if (node.ParentKind == "weak-target" &&
-                       string.Equals(parent.Kind, WeakReferenceKind, StringComparison.Ordinal) &&
-                       parent.Items is { Count: > 0 }) {
-                parentValue = parent.Items[0];
-            }
-            if (parentValue?.Kind != ReferenceValueKind || parentValue.NodeId != node.Id) {
-                throw new InvalidOperationException("Reconstruction document node parent edge is invalid.");
-            }
+        } finally {
+            parentFieldValues.Clear();
         }
     }
 
@@ -1761,16 +2313,16 @@ internal sealed class AkronReconstructionGraph {
         out int flatIndex
     ) {
         flatIndex = 0;
-        if (arrayNode.ArrayLengths == null || arrayNode.ArrayLowerBounds == null || indices == null ||
-            arrayNode.ArrayLengths.Count == 0 ||
-            arrayNode.ArrayLengths.Count != arrayNode.ArrayLowerBounds.Count ||
-            arrayNode.ArrayLengths.Count != indices.Count) {
+        if (arrayNode.ArrayLengthsOrNull == null || arrayNode.ArrayLowerBoundsOrNull == null || indices == null ||
+            arrayNode.ArrayLengthsOrNull.Count == 0 ||
+            arrayNode.ArrayLengthsOrNull.Count != arrayNode.ArrayLowerBoundsOrNull.Count ||
+            arrayNode.ArrayLengthsOrNull.Count != indices.Count) {
             return false;
         }
         long offset = 0;
         for (int dimension = 0; dimension < indices.Count; dimension++) {
-            int length = arrayNode.ArrayLengths[dimension];
-            int lowerBound = arrayNode.ArrayLowerBounds[dimension];
+            int length = arrayNode.ArrayLengthsOrNull[dimension];
+            int lowerBound = arrayNode.ArrayLowerBoundsOrNull[dimension];
             long relativeIndex = (long) indices[dimension] - lowerBound;
             if (length < 0 || relativeIndex < 0 || relativeIndex >= length) {
                 return false;
@@ -1784,73 +2336,139 @@ internal sealed class AkronReconstructionGraph {
         return true;
     }
 
-    private static void ValidateNodeReachability(AkronReconstructionDocument document) {
-        Dictionary<int, AkronReconstructionNode> nodes = document.Nodes.ToDictionary(node => node.Id);
-        HashSet<int> reached = new HashSet<int>();
-        Stack<int> pending = new Stack<int>();
-        pending.Push(document.RootNodeId);
-        while (pending.Count > 0) {
-            int nodeId = pending.Pop();
-            if (!reached.Add(nodeId)) {
-                continue;
-            }
-            AkronReconstructionNode node = nodes[nodeId];
-            IEnumerable<AkronReconstructionValue> references =
-                (node.Fields ?? new List<AkronReconstructionField>()).Select(field => field?.Value)
-                .Concat(node.Items ?? new List<AkronReconstructionValue>())
-                .Concat((node.DelegateCalls ?? new List<AkronReconstructionDelegateCall>()).Select(call => call?.Target));
-            foreach (AkronReconstructionValue reference in references.Where(value => value?.Kind == ReferenceValueKind)) {
-                if (!nodes.ContainsKey(reference.NodeId)) {
-                    throw new InvalidOperationException("Reconstruction document contains an invalid node reference.");
+    private void ValidateNodeReachability(
+        AkronReconstructionDocument document,
+        IReadOnlyDictionary<int, AkronReconstructionNode> nodes
+    ) {
+        validationReachedNodeIds.Clear();
+        validationReachedNodeIds.EnsureCapacity(document.Nodes.Count);
+        validationPendingNodeIds.Clear();
+        validationPendingNodeIds.EnsureCapacity(document.Nodes.Count);
+        try {
+            validationPendingNodeIds.Push(document.RootNodeId);
+            while (validationPendingNodeIds.Count > 0) {
+                int nodeId = validationPendingNodeIds.Pop();
+                if (!validationReachedNodeIds.Add(nodeId)) {
+                    continue;
                 }
-                pending.Push(reference.NodeId);
+                AkronReconstructionNode node = nodes[nodeId];
+                if (node.FieldsOrNull != null) {
+                    foreach (AkronReconstructionField field in node.FieldsOrNull) {
+                        QueueReachableReference(field?.Value, nodes, validationPendingNodeIds);
+                    }
+                }
+                if (node.ItemsOrNull != null) {
+                    foreach (AkronReconstructionValue item in node.ItemsOrNull) {
+                        QueueReachableReference(item, nodes, validationPendingNodeIds);
+                    }
+                }
+                if (node.DelegateCallsOrNull != null) {
+                    foreach (AkronReconstructionDelegateCall call in node.DelegateCallsOrNull) {
+                        QueueReachableReference(call?.Target, nodes, validationPendingNodeIds);
+                    }
+                }
             }
-        }
-        if (reached.Count != nodes.Count) {
-            throw new InvalidOperationException("Reconstruction document contains nodes that are not reachable from its root.");
+            if (validationReachedNodeIds.Count != nodes.Count) {
+                throw new InvalidOperationException("Reconstruction document contains nodes that are not reachable from its root.");
+            }
+        } finally {
+            validationReachedNodeIds.Clear();
+            validationPendingNodeIds.Clear();
         }
     }
 
-    private static void RestoreDiagnosticPaths(AkronReconstructionDocument document) {
-        long totalPathChars = 0;
-        RestoreDiagnosticPaths(document, ref totalPathChars);
+    private static void QueueReachableReference(
+        AkronReconstructionValue value,
+        IReadOnlyDictionary<int, AkronReconstructionNode> nodes,
+        Stack<int> pending
+    ) {
+        if (value?.Kind != ReferenceValueKind) {
+            return;
+        }
+        if (!nodes.ContainsKey(value.NodeId)) {
+            throw new InvalidOperationException("Reconstruction document contains an invalid node reference.");
+        }
+        pending.Push(value.NodeId);
     }
 
     private static void RestoreDiagnosticPaths(
         AkronReconstructionDocument document,
-        ref long totalPathChars
+        IReadOnlyDictionary<int, AkronReconstructionNode> nodes
     ) {
-        Dictionary<int, AkronReconstructionNode> nodes = document.Nodes.ToDictionary(node => node.Id);
+        long totalPathChars = 0;
+        RestoreDiagnosticPaths(document, nodes, ref totalPathChars);
+    }
+
+    private static void ResetDiagnosticPaths(AkronReconstructionDocument document) {
         foreach (AkronReconstructionNode node in document.Nodes) {
-            RestoreNodePath(node, document.RootNodeId, nodes, ref totalPathChars);
-        }
-        foreach (AkronReconstructionNode node in document.Nodes) {
-            foreach (AkronReconstructionField field in node.Fields ?? new List<AkronReconstructionField>()) {
-                field.Path = BuildDiagnosticPath(node.Path, "." + (field.Name ?? string.Empty));
-                AddDiagnosticPathChars(field.Path, ref totalPathChars);
-            }
+            node.ResetDiagnosticPath();
         }
         if (document.ActionStateDocument != null) {
-            RestoreDiagnosticPaths(document.ActionStateDocument, ref totalPathChars);
+            ResetDiagnosticPaths(document.ActionStateDocument);
         }
     }
 
-    private static string RestoreNodePath(
-        AkronReconstructionNode node,
-        int rootNodeId,
+    private static void RestoreDiagnosticPaths(
+        AkronReconstructionDocument document,
         IReadOnlyDictionary<int, AkronReconstructionNode> nodes,
         ref long totalPathChars
     ) {
-        if (!string.IsNullOrWhiteSpace(node.Path)) {
-            return node.Path;
+        int scratchCapacity = Math.Min(document.Nodes.Count, MaxParentChainDepth);
+        List<AkronReconstructionNode> unresolved = new List<AkronReconstructionNode>(scratchCapacity);
+        HashSet<int> resolving = new HashSet<int>(scratchCapacity);
+        foreach (AkronReconstructionNode node in document.Nodes) {
+            RestoreNodePath(
+                node,
+                document.RootNodeId,
+                nodes,
+                unresolved,
+                resolving,
+                ref totalPathChars);
         }
-        List<AkronReconstructionNode> unresolved = new List<AkronReconstructionNode>();
-        HashSet<int> resolving = new HashSet<int>();
+        foreach (AkronReconstructionNode node in document.Nodes) {
+            foreach (AkronReconstructionField field in node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
+                int pathLength;
+                if (field.Value?.Kind == ReferenceValueKind &&
+                    nodes.TryGetValue(field.Value.NodeId, out AkronReconstructionNode child) &&
+                    child.ParentNodeId == node.Id &&
+                    child.ParentKind == "field" &&
+                    string.Equals(child.ParentDeclaringTypeName, field.DeclaringTypeName, StringComparison.Ordinal) &&
+                    string.Equals(child.ParentFieldName, field.Name, StringComparison.Ordinal)) {
+                    field.SetLazyChildDiagnosticPath(child);
+                    pathLength = child.DiagnosticPathLength;
+                } else {
+                    field.SetLazyParentDiagnosticPath(node);
+                    pathLength = GetFieldDiagnosticPathLength(node.DiagnosticPathLength, field.Name);
+                }
+                AddDiagnosticPathChars(pathLength, ref totalPathChars);
+            }
+        }
+        if (document.ActionStateDocument != null) {
+            RestoreDiagnosticPaths(
+                document.ActionStateDocument,
+                document.ActionStateDocument.Nodes.ToDictionary(node => node.Id),
+                ref totalPathChars);
+        }
+    }
+
+    private static int RestoreNodePath(
+        AkronReconstructionNode node,
+        int rootNodeId,
+        IReadOnlyDictionary<int, AkronReconstructionNode> nodes,
+        List<AkronReconstructionNode> unresolved,
+        HashSet<int> resolving,
+        ref long totalPathChars
+    ) {
+        if (node.DiagnosticPathReady) {
+            return node.DiagnosticPathLength;
+        }
+        unresolved.Clear();
+        resolving.Clear();
         AkronReconstructionNode current = node;
-        while (string.IsNullOrWhiteSpace(current.Path)) {
+        while (!current.DiagnosticPathReady) {
             if (current.Id == rootNodeId) {
                 current.Path = "$";
-                AddDiagnosticPathChars(current.Path, ref totalPathChars);
+                AddDiagnosticPathChars(current.DiagnosticPathLength, ref totalPathChars);
                 break;
             }
             if (!resolving.Add(current.Id)) {
@@ -1865,33 +2483,32 @@ internal sealed class AkronReconstructionGraph {
             }
         }
 
-        string parentPath = current.Path;
+        int parentPathLength = current.DiagnosticPathLength;
         for (int index = unresolved.Count - 1; index >= 0; index--) {
             AkronReconstructionNode child = unresolved[index];
+            int childPathLength;
             switch (child.ParentKind) {
                 case "field":
-                    child.Path = BuildDiagnosticPath(parentPath, "." + (child.ParentFieldName ?? string.Empty));
+                    childPathLength = GetFieldDiagnosticPathLength(parentPathLength, child.ParentFieldName);
                     break;
                 case "array":
-                    child.Path = BuildDiagnosticPath(
-                        parentPath,
-                        "[" + string.Join(",", child.ParentArrayIndices ?? new List<int>()) + "]");
+                    childPathLength = GetArrayDiagnosticPathLength(parentPathLength, child.ParentArrayIndicesOrNull);
                     break;
                 case "delegate":
-                    child.Path = BuildDiagnosticPath(
-                        parentPath,
-                        ".<target>[" + child.ParentDelegateIndex.ToString(CultureInfo.InvariantCulture) + "]");
+                    childPathLength = GetDelegateDiagnosticPathLength(parentPathLength, child.ParentDelegateIndex);
                     break;
                 case "weak-target":
-                    child.Path = BuildDiagnosticPath(parentPath, ".<weak-target>");
+                    childPathLength = GetDiagnosticPathLength(parentPathLength, ".<weak-target>");
                     break;
                 default:
                     throw new InvalidOperationException("Reconstruction node parent kind is invalid.");
             }
-            AddDiagnosticPathChars(child.Path, ref totalPathChars);
-            parentPath = child.Path;
+            child.SetLazyDiagnosticPath(current, childPathLength);
+            AddDiagnosticPathChars(childPathLength, ref totalPathChars);
+            current = child;
+            parentPathLength = childPathLength;
         }
-        return node.Path;
+        return node.DiagnosticPathLength;
     }
 
     private static bool IsWeakReferenceType(Type type) {
@@ -1914,17 +2531,132 @@ internal sealed class AkronReconstructionGraph {
         return (arguments[0], false);
     }
 
+    internal static string MaterializeDiagnosticPath(AkronReconstructionNode node) {
+        string parentPath = node.DiagnosticPathParent?.Path;
+        return node.ParentKind switch {
+            "field" => BuildFieldDiagnosticPath(parentPath, node.ParentFieldName),
+            "array" => BuildArrayDiagnosticPath(parentPath, node.ParentArrayIndicesOrNull),
+            "delegate" => BuildDelegateDiagnosticPath(parentPath, node.ParentDelegateIndex),
+            "weak-target" => BuildDiagnosticPath(parentPath, ".<weak-target>"),
+            _ => throw new InvalidOperationException("Reconstruction node parent kind is invalid.")
+        };
+    }
+
+    private static int GetDiagnosticPathLength(int parentPathLength, string suffix) {
+        int suffixLength = suffix?.Length ?? 0;
+        if (parentPathLength < 0 || parentPathLength > MaxDiagnosticPathChars - suffixLength) {
+            throw new InvalidOperationException("Reconstruction diagnostic path exceeds the supported limit.");
+        }
+        return parentPathLength + suffixLength;
+    }
+
     private static string BuildDiagnosticPath(string parentPath, string suffix) {
         parentPath ??= string.Empty;
         suffix ??= string.Empty;
-        if (parentPath.Length > MaxDiagnosticPathChars - suffix.Length) {
-            throw new InvalidOperationException("Reconstruction diagnostic path exceeds the supported limit.");
-        }
+        GetDiagnosticPathLength(parentPath.Length, suffix);
         return parentPath + suffix;
     }
 
-    private static void AddDiagnosticPathChars(string path, ref long totalPathChars) {
-        int pathChars = path?.Length ?? 0;
+    private static int GetFieldDiagnosticPathLength(int parentPathLength, string fieldName) {
+        fieldName ??= string.Empty;
+        if (parentPathLength < 0 || fieldName.Length >= MaxDiagnosticPathChars ||
+            parentPathLength > MaxDiagnosticPathChars - fieldName.Length - 1) {
+            throw new InvalidOperationException("Reconstruction diagnostic path exceeds the supported limit.");
+        }
+        return parentPathLength + fieldName.Length + 1;
+    }
+
+    internal static string BuildFieldDiagnosticPath(string parentPath, string fieldName) {
+        parentPath ??= string.Empty;
+        fieldName ??= string.Empty;
+        GetFieldDiagnosticPathLength(parentPath.Length, fieldName);
+        return string.Concat(parentPath, ".", fieldName);
+    }
+
+    private static int GetArrayDiagnosticPathLength(
+        int parentPathLength,
+        IReadOnlyList<int> indices
+    ) {
+        indices ??= Array.Empty<int>();
+        long suffixLength = 2L + Math.Max(0, indices.Count - 1);
+        for (int index = 0; index < indices.Count; index++) {
+            suffixLength += Int32FormattedLength(indices[index]);
+        }
+        if (parentPathLength < 0 || suffixLength > MaxDiagnosticPathChars ||
+            parentPathLength > MaxDiagnosticPathChars - suffixLength) {
+            throw new InvalidOperationException("Reconstruction diagnostic path exceeds the supported limit.");
+        }
+        return parentPathLength + (int) suffixLength;
+    }
+
+    private static string BuildArrayDiagnosticPath(
+        string parentPath,
+        IReadOnlyList<int> indices
+    ) {
+        parentPath ??= string.Empty;
+        indices ??= Array.Empty<int>();
+        int pathLength = GetArrayDiagnosticPathLength(parentPath.Length, indices);
+        return string.Create(
+            pathLength,
+            (Parent: parentPath, Indices: indices),
+            static (destination, state) => {
+                state.Parent.AsSpan().CopyTo(destination);
+                int position = state.Parent.Length;
+                destination[position++] = '[';
+                for (int index = 0; index < state.Indices.Count; index++) {
+                    if (index > 0) {
+                        destination[position++] = ',';
+                    }
+                    state.Indices[index].TryFormat(
+                        destination[position..],
+                        out int written,
+                        provider: CultureInfo.InvariantCulture);
+                    position += written;
+                }
+                destination[position] = ']';
+            });
+    }
+
+    private static int GetDelegateDiagnosticPathLength(int parentPathLength, int delegateIndex) {
+        const string prefix = ".<target>[";
+        int suffixLength = prefix.Length + Int32FormattedLength(delegateIndex) + 1;
+        if (parentPathLength < 0 || parentPathLength > MaxDiagnosticPathChars - suffixLength) {
+            throw new InvalidOperationException("Reconstruction diagnostic path exceeds the supported limit.");
+        }
+        return parentPathLength + suffixLength;
+    }
+
+    private static string BuildDelegateDiagnosticPath(string parentPath, int delegateIndex) {
+        parentPath ??= string.Empty;
+        const string prefix = ".<target>[";
+        int pathLength = GetDelegateDiagnosticPathLength(parentPath.Length, delegateIndex);
+        return string.Create(
+            pathLength,
+            (Parent: parentPath, Index: delegateIndex),
+            static (destination, state) => {
+                state.Parent.AsSpan().CopyTo(destination);
+                int position = state.Parent.Length;
+                prefix.AsSpan().CopyTo(destination[position..]);
+                position += prefix.Length;
+                state.Index.TryFormat(
+                    destination[position..],
+                    out int written,
+                    provider: CultureInfo.InvariantCulture);
+                destination[position + written] = ']';
+            });
+    }
+
+    private static int Int32FormattedLength(int value) {
+        uint magnitude = value < 0 ? (uint) -(long) value : (uint) value;
+        int length = value < 0 ? 2 : 1;
+        while (magnitude >= 10) {
+            magnitude /= 10;
+            length++;
+        }
+        return length;
+    }
+
+    private static void AddDiagnosticPathChars(int pathChars, ref long totalPathChars) {
         if (pathChars > MaxDiagnosticPathChars || totalPathChars > MaxTotalDiagnosticPathChars - pathChars) {
             throw new InvalidOperationException("Reconstruction diagnostic path exceeds the supported limit.");
         }
@@ -2298,7 +3030,7 @@ internal sealed class AkronReconstructionGraph {
             !sourceNodes.TryGetValue(sourceReference.NodeId, out AkronReconstructionNode sourceNode)) {
             throw new AkronReconstructionException(emitterNode?.Path ?? "$", "saved sound emitter source is missing");
         }
-        AkronReconstructionField eventNameField = (sourceNode.Fields ?? new List<AkronReconstructionField>())
+        AkronReconstructionField eventNameField = (sourceNode.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>())
             .FirstOrDefault(field => field.Name == nameof(SoundSource.EventName) &&
                                      field.Value?.Kind == ScalarValueKind);
         string eventName = eventNameField == null
@@ -2720,7 +3452,10 @@ internal sealed class AkronReconstructionGraph {
             Type containingType = null,
             string knownEventPath = null,
             AkronReconstructionNode parentNode = null,
-            AkronReconstructionPathStep parentStep = null,
+            string parentKind = null,
+            string parentDeclaringTypeName = null,
+            string parentFieldName = null,
+            IReadOnlyList<int> parentArrayIndices = null,
             int parentDelegateIndex = -1
         ) {
             if (savedValue == null) {
@@ -2853,10 +3588,12 @@ internal sealed class AkronReconstructionGraph {
                 TypeName = TypeName(savedType),
                 Path = path,
                 ParentNodeId = parentNode?.Id ?? 0,
-                ParentKind = parentStep?.Kind ?? (parentDelegateIndex >= 0 ? "delegate" : string.Empty),
-                ParentDeclaringTypeName = parentStep?.DeclaringTypeName ?? string.Empty,
-                ParentFieldName = parentStep?.FieldName ?? string.Empty,
-                ParentArrayIndices = new List<int>(parentStep?.ArrayIndices ?? new List<int>()),
+                ParentKind = parentKind ?? (parentDelegateIndex >= 0 ? "delegate" : string.Empty),
+                ParentDeclaringTypeName = parentDeclaringTypeName ?? string.Empty,
+                ParentFieldName = parentFieldName ?? string.Empty,
+                ParentArrayIndicesOrNull = parentArrayIndices is { Count: > 0 }
+                    ? new List<int>(parentArrayIndices)
+                    : null,
                 ParentDelegateIndex = parentDelegateIndex,
                 UseFreshObject = liveAnchor || useFreshObject,
                 ResourceKey = savedLiveResourceKey,
@@ -2875,7 +3612,7 @@ internal sealed class AkronReconstructionGraph {
                                       freshBaselineRoot,
                                       GetEntitySourceId(mapEntity),
                                       mapPlacedEntityIdsByRoom) == true,
-                FreshPath = matchedFreshPath ?? new List<AkronReconstructionPathStep>()
+                FreshPath = matchedFreshPath
             };
             Document.Nodes.Add(node);
             // The walk allocates in proportion to the nodes it produces, so this
@@ -2934,10 +3671,9 @@ internal sealed class AkronReconstructionGraph {
                 savedTarget,
                 freshTarget,
                 targetPath,
-                savedWeakReference.GetType(),
-                null,
-                node,
-                new AkronReconstructionPathStep { Kind = "weak-target" });
+                containingType: savedWeakReference.GetType(),
+                parentNode: node,
+                parentKind: "weak-target");
             // Weak-reference nodes are rebuilt in one ascending-id pass after every
             // other node, so a target that is itself a weak reference must have been
             // captured before this one to exist when this one is created. Capture
@@ -2952,12 +3688,14 @@ internal sealed class AkronReconstructionGraph {
                     targetPath,
                     "a weak reference whose target is itself or a later weak reference cannot be persisted");
             }
-            node.Items.Add(targetValue);
-            node.Items.Add(new AkronReconstructionValue {
-                Kind = ScalarValueKind,
-                TypeName = TypeName(typeof(bool)),
-                Scalar = EncodeScalar(trackResurrection, typeof(bool), path)
-            });
+            node.ItemsOrNull = new List<AkronReconstructionValue>(2) {
+                targetValue,
+                new AkronReconstructionValue {
+                    Kind = ScalarValueKind,
+                    TypeName = TypeName(typeof(bool)),
+                    Scalar = EncodeScalar(trackResurrection, typeof(bool), path)
+                }
+            };
         }
 
         private void CaptureObject(
@@ -2971,15 +3709,11 @@ internal sealed class AkronReconstructionGraph {
                     continue;
                 }
                 string childPath = FieldPath(path, field.Name);
-                AkronReconstructionPathStep pathStep = new AkronReconstructionPathStep {
-                    Kind = "field",
-                    DeclaringTypeName = TypeName(field.DeclaringType),
-                    FieldName = field.Name
-                };
+                string declaringTypeName = TypeName(field.DeclaringType);
                 object freshFieldValue = freshObject == null ? null : field.GetValue(freshObject);
                 string knownEventPath = AkronEventInstanceUtils.GetOwnerEventPath(savedObject, field.Name);
-                node.Fields.Add(new AkronReconstructionField {
-                    DeclaringTypeName = TypeName(field.DeclaringType),
+                (node.FieldsOrNull ??= new List<AkronReconstructionField>()).Add(new AkronReconstructionField {
+                    DeclaringTypeName = declaringTypeName,
                     Name = field.Name,
                     Path = childPath,
                     Value = CaptureValue(
@@ -2989,7 +3723,9 @@ internal sealed class AkronReconstructionGraph {
                         savedObject.GetType(),
                         knownEventPath,
                         node,
-                        pathStep)
+                        parentKind: "field",
+                        parentDeclaringTypeName: declaringTypeName,
+                        parentFieldName: field.Name)
                 });
             }
         }
@@ -3000,9 +3736,11 @@ internal sealed class AkronReconstructionGraph {
             Array freshArray,
             string path
         ) {
+            node.ArrayLengthsOrNull = new List<int>(savedArray.Rank);
+            node.ArrayLowerBoundsOrNull = new List<int>(savedArray.Rank);
             for (int dimension = 0; dimension < savedArray.Rank; dimension++) {
-                node.ArrayLengths.Add(savedArray.GetLength(dimension));
-                node.ArrayLowerBounds.Add(savedArray.GetLowerBound(dimension));
+                node.ArrayLengthsOrNull.Add(savedArray.GetLength(dimension));
+                node.ArrayLowerBoundsOrNull.Add(savedArray.GetLowerBound(dimension));
             }
 
             // A packed grid is one allocation of however many megabytes the map
@@ -3027,17 +3765,14 @@ internal sealed class AkronReconstructionGraph {
             }
             foreach (int[] indices in EnumerateArrayIndices(savedArray)) {
                 string childPath = ArrayPath(path, indices);
-                AkronReconstructionPathStep pathStep = new AkronReconstructionPathStep {
-                    Kind = "array",
-                    ArrayIndices = indices.ToList()
-                };
                 object freshItem = HasArrayIndex(freshArray, indices) ? freshArray.GetValue(indices) : null;
-                node.Items.Add(CaptureValue(
+                (node.ItemsOrNull ??= new List<AkronReconstructionValue>()).Add(CaptureValue(
                     savedArray.GetValue(indices),
                     freshItem,
                     childPath,
                     parentNode: node,
-                    parentStep: pathStep));
+                    parentKind: "array",
+                    parentArrayIndices: indices));
             }
         }
 
@@ -3054,21 +3789,17 @@ internal sealed class AkronReconstructionGraph {
             if (hasAnonymousRuntimeMethod) {
                 if (savedCalls.Length == 1 &&
                     TryDescribeDetourNext(savedCalls[0], containingType, out MethodInfo sourceMethod, out MethodInfo hookTarget)) {
-                    node.DelegateCalls.Add(new AkronReconstructionDelegateCall {
+                    (node.DelegateCallsOrNull ??= new List<AkronReconstructionDelegateCall>()).Add(new AkronReconstructionDelegateCall {
                         Kind = DetourNextDelegateCallKind,
                         Target = new AkronReconstructionValue { Kind = NullValueKind },
                         DeclaringTypeName = TypeName(sourceMethod.DeclaringType),
                         MethodName = sourceMethod.Name,
                         ReturnTypeName = TypeName(sourceMethod.ReturnType),
-                        ParameterTypeNames = sourceMethod.GetParameters()
-                            .Select(parameter => TypeName(parameter.ParameterType))
-                            .ToList(),
+                        ParameterTypeNames = GetParameterTypeNames(sourceMethod),
                         HookTargetDeclaringTypeName = TypeName(hookTarget.DeclaringType),
                         HookTargetMethodName = hookTarget.Name,
                         HookTargetReturnTypeName = TypeName(hookTarget.ReturnType),
-                        HookTargetParameterTypeNames = hookTarget.GetParameters()
-                            .Select(parameter => TypeName(parameter.ParameterType))
-                            .ToList()
+                        HookTargetParameterTypeNames = GetParameterTypeNames(hookTarget)
                     });
                     return;
                 }
@@ -3109,7 +3840,7 @@ internal sealed class AkronReconstructionGraph {
                 Delegate freshCall = index < freshCalls.Length && MethodsMatch(savedCall.Method, freshCalls[index].Method)
                     ? freshCalls[index]
                     : null;
-                node.DelegateCalls.Add(new AkronReconstructionDelegateCall {
+                (node.DelegateCallsOrNull ??= new List<AkronReconstructionDelegateCall>()).Add(new AkronReconstructionDelegateCall {
                     Kind = MethodDelegateCallKind,
                     Target = CaptureValue(
                         savedCall.Target,
@@ -3120,9 +3851,21 @@ internal sealed class AkronReconstructionGraph {
                     DeclaringTypeName = TypeName(method.DeclaringType),
                     MethodName = method.Name,
                     ReturnTypeName = TypeName(method.ReturnType),
-                    ParameterTypeNames = method.GetParameters().Select(parameter => TypeName(parameter.ParameterType)).ToList()
+                    ParameterTypeNames = GetParameterTypeNames(method)
                 });
             }
+        }
+
+        private List<string> GetParameterTypeNames(MethodBase method) {
+            ParameterInfo[] parameters = method.GetParameters();
+            if (parameters.Length == 0) {
+                return null;
+            }
+            List<string> names = new List<string>(parameters.Length);
+            foreach (ParameterInfo parameter in parameters) {
+                names.Add(TypeName(parameter.ParameterType));
+            }
+            return names;
         }
 
         private static bool TryDescribeDetourNext(
@@ -3226,7 +3969,9 @@ internal sealed class AkronReconstructionGraph {
                 Kind = step.Kind,
                 DeclaringTypeName = step.DeclaringTypeName,
                 FieldName = step.FieldName,
-                ArrayIndices = new List<int>(step.ArrayIndices ?? new List<int>())
+                ArrayIndices = step.ArrayIndicesOrNull is { Count: > 0 }
+                    ? new List<int>(step.ArrayIndicesOrNull)
+                    : null
             }).ToList();
         }
     }
@@ -3507,8 +4252,8 @@ internal sealed class AkronReconstructionGraph {
         // alone because its flag is not readable off a live instance either.
         private object CreateWeakReference(AkronReconstructionNode node) {
             Type type = ResolveType(node.TypeName, node.Path);
-            object target = ResolveValue(node.Items[0], node.Path + ".<weak-target>");
-            bool trackResurrection = DecodeScalar(node.Items[1], node.Path) is true;
+            object target = ResolveValue(node.ItemsOrNull[0], node.Path + ".<weak-target>");
+            bool trackResurrection = DecodeScalar(node.ItemsOrNull[1], node.Path) is true;
             if (type == typeof(WeakReference)) {
                 return new WeakReference(target, trackResurrection);
             }
@@ -4372,13 +5117,13 @@ internal sealed class AkronReconstructionGraph {
                 nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode arrayParent) &&
                 Objects.TryGetValue(node.ParentNodeId, out object parentObject) &&
                 parentObject is Array freshArray &&
-                HasArrayIndex(freshArray, node.ParentArrayIndices)) {
+                HasArrayIndex(freshArray, node.ParentArrayIndicesOrNull)) {
                 Type arrayType = ResolveType(arrayParent.TypeName, arrayParent.Path);
                 if (!arrayType.IsArray) {
                     return false;
                 }
                 Type elementType = arrayType.GetElementType();
-                object freshItem = freshArray.GetValue(node.ParentArrayIndices.ToArray());
+                object freshItem = freshArray.GetValue(node.ParentArrayIndicesOrNull.ToArray());
             return (elementType == type && freshItem != null) ||
                    (elementType.IsAssignableFrom(type) && freshItem?.GetType() == type);
             }
@@ -4418,8 +5163,8 @@ internal sealed class AkronReconstructionGraph {
             } else if (node.ParentKind == "array" &&
                        parentObject is Array array &&
                        array.GetType().GetElementType().IsAssignableFrom(type) &&
-                       HasArrayIndex(array, node.ParentArrayIndices)) {
-                matchedObject = array.GetValue(node.ParentArrayIndices.ToArray());
+                       HasArrayIndex(array, node.ParentArrayIndicesOrNull)) {
+                matchedObject = array.GetValue(node.ParentArrayIndicesOrNull.ToArray());
             }
 
             if (matchedObject == null || matchedObject.GetType() != type ||
@@ -4435,7 +5180,7 @@ internal sealed class AkronReconstructionGraph {
         private void ValidateReferenceAuthenticity() {
             foreach (AkronReconstructionNode parent in document.Nodes) {
                 List<AkronReconstructionPathStep> parentPath = null;
-                foreach (AkronReconstructionField field in parent.Fields ?? Enumerable.Empty<AkronReconstructionField>()) {
+                foreach (AkronReconstructionField field in parent.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
                     if (field?.Value?.Kind != ReferenceValueKind) {
                         continue;
                     }
@@ -4459,9 +5204,9 @@ internal sealed class AkronReconstructionGraph {
                 // values. Only references need an authenticated edge. Delay
                 // the path work so sparse arrays do not allocate one path and
                 // one index array for every empty slot.
-                int itemCount = Math.Min(parent.Items.Count, array.Length);
+                int itemCount = Math.Min(parent.ItemsOrNull?.Count ?? 0, array.Length);
                 for (int itemIndex = 0; itemIndex < itemCount; itemIndex++) {
-                    AkronReconstructionValue item = parent.Items[itemIndex];
+                    AkronReconstructionValue item = parent.ItemsOrNull[itemIndex];
                     if (item?.Kind != ReferenceValueKind) {
                         continue;
                     }
@@ -6310,7 +7055,7 @@ internal sealed class AkronReconstructionGraph {
             HashSet<int> aliases = new HashSet<int>();
             foreach (AkronReconstructionDelegateCall call in sourceDocument.Nodes
                          .Where(node => node.Kind == DelegateKind)
-                         .SelectMany(node => node.DelegateCalls ?? new List<AkronReconstructionDelegateCall>())) {
+                         .SelectMany(node => node.DelegateCallsOrNull ?? Enumerable.Empty<AkronReconstructionDelegateCall>())) {
                 if (call.Target?.Kind == ReferenceValueKind &&
                     sourceNodes.TryGetValue(call.Target.NodeId, out AkronReconstructionNode target) &&
                     call.DeclaringTypeName == target.TypeName &&
@@ -6326,7 +7071,7 @@ internal sealed class AkronReconstructionGraph {
             Dictionary<int, List<(AkronReconstructionNode Parent, AkronReconstructionField Field)>> aliases =
                 new Dictionary<int, List<(AkronReconstructionNode Parent, AkronReconstructionField Field)>>();
             foreach (AkronReconstructionNode parent in sourceDocument.Nodes) {
-                foreach (AkronReconstructionField field in parent.Fields ?? new List<AkronReconstructionField>()) {
+                foreach (AkronReconstructionField field in parent.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
                     if (field?.Value?.Kind != ReferenceValueKind) {
                         continue;
                     }
@@ -6348,7 +7093,7 @@ internal sealed class AkronReconstructionGraph {
             Dictionary<int, List<AkronReconstructionNode>> aliases =
                 new Dictionary<int, List<AkronReconstructionNode>>();
             foreach (AkronReconstructionNode parent in sourceDocument.Nodes.Where(node => node.Kind == ArrayKind)) {
-                foreach (AkronReconstructionValue item in parent.Items ?? new List<AkronReconstructionValue>()) {
+                foreach (AkronReconstructionValue item in parent.ItemsOrNull ?? Enumerable.Empty<AkronReconstructionValue>()) {
                     if (item?.Kind != ReferenceValueKind) {
                         continue;
                     }
@@ -6564,7 +7309,8 @@ internal sealed class AkronReconstructionGraph {
             }
 
             Dictionary<Type, List<int>> nodeIdsByType = new Dictionary<Type, List<int>>();
-            foreach (AkronReconstructionValue item in savedStorageNode.Items) {
+            foreach (AkronReconstructionValue item in
+                     savedStorageNode.ItemsOrNull ?? Enumerable.Empty<AkronReconstructionValue>()) {
                 if (item?.Kind != ReferenceValueKind ||
                     !nodes.TryGetValue(item.NodeId, out AkronReconstructionNode itemNode)) {
                     continue;
@@ -6604,9 +7350,9 @@ internal sealed class AkronReconstructionGraph {
                 !nodes.TryGetValue(sourceIdReference.NodeId, out AkronReconstructionNode sourceIdNode)) {
                 return false;
             }
-            AkronReconstructionField levelField = sourceIdNode.Fields?.FirstOrDefault(field =>
+            AkronReconstructionField levelField = sourceIdNode.FieldsOrNull?.FirstOrDefault(field =>
                 field.Name == nameof(EntityID.Level) && field.Value?.Kind == ScalarValueKind);
-            AkronReconstructionField idField = sourceIdNode.Fields?.FirstOrDefault(field =>
+            AkronReconstructionField idField = sourceIdNode.FieldsOrNull?.FirstOrDefault(field =>
                 field.Name == nameof(EntityID.ID) && field.Value?.Kind == ScalarValueKind);
             if (levelField == null || idField == null) {
                 return false;
@@ -6695,7 +7441,7 @@ internal sealed class AkronReconstructionGraph {
             AkronReconstructionNode node,
             string fieldName
         ) {
-            return (node.Fields ?? new List<AkronReconstructionField>())
+            return (node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>())
                 .FirstOrDefault(field =>
                     string.Equals(field.Name, fieldName, StringComparison.Ordinal) &&
                     field.Value?.Kind == ReferenceValueKind)
@@ -6706,10 +7452,10 @@ internal sealed class AkronReconstructionGraph {
             if (targetNode.ParentKind != "delegate" ||
                 !nodes.TryGetValue(targetNode.ParentNodeId, out AkronReconstructionNode delegateNode) ||
                 targetNode.ParentDelegateIndex < 0 ||
-                targetNode.ParentDelegateIndex >= delegateNode.DelegateCalls.Count) {
+                targetNode.ParentDelegateIndex >= (delegateNode.DelegateCallsOrNull?.Count ?? 0)) {
                 return false;
             }
-            AkronReconstructionDelegateCall call = delegateNode.DelegateCalls[targetNode.ParentDelegateIndex];
+            AkronReconstructionDelegateCall call = delegateNode.DelegateCallsOrNull[targetNode.ParentDelegateIndex];
             if (call?.Kind != MethodDelegateCallKind) {
                 return false;
             }
@@ -6790,8 +7536,8 @@ internal sealed class AkronReconstructionGraph {
             }
             if (candidate == null && delegateNode.ParentKind == "array" &&
                 Objects.TryGetValue(delegateNode.ParentNodeId, out object arrayParent) &&
-                arrayParent is Array array && HasArrayIndex(array, delegateNode.ParentArrayIndices)) {
-                candidate = array.GetValue(delegateNode.ParentArrayIndices.ToArray());
+                arrayParent is Array array && HasArrayIndex(array, delegateNode.ParentArrayIndicesOrNull)) {
+                candidate = array.GetValue(delegateNode.ParentArrayIndicesOrNull.ToArray());
             }
             if (candidate == null && delegateNode.ParentKind == "field" &&
                 Objects.TryGetValue(delegateNode.ParentNodeId, out object fieldParent)) {
@@ -6826,8 +7572,8 @@ internal sealed class AkronReconstructionGraph {
             }
 
             FieldInfo[] expectedFields = GetInstanceFields(type).ToArray();
-            if (node.Fields.Count != expectedFields.Length || expectedFields.Any(expected =>
-                    !node.Fields.Any(captured =>
+            if ((node.FieldsOrNull?.Count ?? 0) != expectedFields.Length || expectedFields.Any(expected =>
+                    node.FieldsOrNull == null || !node.FieldsOrNull.Any(captured =>
                         captured.Name == expected.Name &&
                         captured.DeclaringTypeName == TypeName(expected.DeclaringType)))) {
                 return false;
@@ -7252,7 +7998,7 @@ internal sealed class AkronReconstructionGraph {
                 } else if (step.Kind == "array") {
                     key.Append(wildcardListStorageIndices && IsCollectionStorageField(previous)
                         ? "[*]"
-                        : "[" + string.Join(",", step.ArrayIndices ?? new List<int>()) + "]");
+                        : "[" + string.Join(",", step.ArrayIndicesOrNull ?? Enumerable.Empty<int>()) + "]");
                 }
                 previous = step;
             }
@@ -7299,7 +8045,9 @@ internal sealed class AkronReconstructionGraph {
                     Kind = step.Kind,
                     DeclaringTypeName = step.DeclaringTypeName,
                     FieldName = step.FieldName,
-                    ArrayIndices = new List<int>(step.ArrayIndices ?? new List<int>())
+                    ArrayIndices = step.ArrayIndicesOrNull is { Count: > 0 }
+                        ? new List<int>(step.ArrayIndicesOrNull)
+                        : null
                 })
                 .ToList();
             appended.Add(next);
@@ -7320,7 +8068,8 @@ internal sealed class AkronReconstructionGraph {
                     continue;
                 }
 
-                foreach (AkronReconstructionField savedField in node.Fields) {
+                foreach (AkronReconstructionField savedField in
+                         node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
                     if (IsDerivedCollectionVersionField(target.GetType(), savedField.Name)) {
                         continue;
                     }
@@ -7360,14 +8109,16 @@ internal sealed class AkronReconstructionGraph {
                     node.PackedPrimitiveArrayBytes.Length));
                 return;
             }
-            if (target.LongLength != node.Items.Count) {
+            IReadOnlyList<AkronReconstructionValue> items =
+                node.ItemsOrNull ?? (IReadOnlyList<AkronReconstructionValue>) Array.Empty<AkronReconstructionValue>();
+            if (target.LongLength != items.Count) {
                 throw new AkronReconstructionException(node.Path, "array item count differs");
             }
 
             Type elementType = target.GetType().GetElementType();
             int[] itemIndices = GetInitialArrayIndices(target);
-            for (int index = 0; index < node.Items.Count; index++) {
-                AkronReconstructionValue savedItem = node.Items[index];
+            for (int index = 0; index < items.Count; index++) {
+                AkronReconstructionValue savedItem = items[index];
                 if (savedItem == null || savedItem.Kind == NullValueKind) {
                     if (elementType.IsValueType && Nullable.GetUnderlyingType(elementType) == null) {
                         throw new AkronReconstructionException(
@@ -7386,8 +8137,8 @@ internal sealed class AkronReconstructionGraph {
             }
             assignments.Add(() => {
                 int[] assignmentIndices = GetInitialArrayIndices(target);
-                for (int assignmentIndex = 0; assignmentIndex < node.Items.Count; assignmentIndex++) {
-                    target.SetValue(ResolveValue(node.Items[assignmentIndex], node.Path), assignmentIndices);
+                for (int assignmentIndex = 0; assignmentIndex < items.Count; assignmentIndex++) {
+                    target.SetValue(ResolveValue(items[assignmentIndex], node.Path), assignmentIndices);
                     IncrementArrayIndices(target, assignmentIndices);
                 }
             });
@@ -7563,7 +8314,7 @@ internal sealed class AkronReconstructionGraph {
             }
             savedStateSlotArrays = new Dictionary<int, AkronReconstructionNode>();
             foreach (AkronReconstructionNode machineNode in nodes.Values) {
-                foreach (AkronReconstructionField field in machineNode.Fields ?? new List<AkronReconstructionField>()) {
+                foreach (AkronReconstructionField field in machineNode.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
                     if (field?.Value?.Kind == ReferenceValueKind &&
                         string.Equals(field.DeclaringTypeName, StateMachineTypeName, StringComparison.Ordinal) &&
                         Array.IndexOf(StateMachineCallbackFieldNames, field.Name) >= 0) {
@@ -7579,10 +8330,11 @@ internal sealed class AkronReconstructionGraph {
             if (names == null ||
                 !nodes.TryGetValue(names.NodeId, out AkronReconstructionNode namesNode) ||
                 slot < 0 ||
-                slot >= namesNode.Items.Count) {
+                namesNode.ItemsOrNull == null ||
+                slot >= namesNode.ItemsOrNull.Count) {
                 return null;
             }
-            AkronReconstructionValue name = namesNode.Items[slot];
+            AkronReconstructionValue name = namesNode.ItemsOrNull[slot];
             return name?.Kind == ScalarValueKind ? name.Scalar : null;
         }
 
@@ -7609,11 +8361,12 @@ internal sealed class AkronReconstructionGraph {
                 if (callbacks != null &&
                     nodes.TryGetValue(callbacks.NodeId, out AkronReconstructionNode callbacksNode) &&
                     slot >= 0 &&
-                    slot < callbacksNode.Items.Count &&
-                    callbacksNode.Items[slot]?.Kind == ReferenceValueKind &&
-                    nodes.TryGetValue(callbacksNode.Items[slot].NodeId, out AkronReconstructionNode callbackNode)) {
+                    callbacksNode.ItemsOrNull != null &&
+                    slot < callbacksNode.ItemsOrNull.Count &&
+                    callbacksNode.ItemsOrNull[slot]?.Kind == ReferenceValueKind &&
+                    nodes.TryGetValue(callbacksNode.ItemsOrNull[slot].NodeId, out AkronReconstructionNode callbackNode)) {
                     foreach (AkronReconstructionDelegateCall call in
-                             callbackNode.DelegateCalls ?? new List<AkronReconstructionDelegateCall>()) {
+                             callbackNode.DelegateCallsOrNull ?? Enumerable.Empty<AkronReconstructionDelegateCall>()) {
                         driver.Append(call.DeclaringTypeName)
                             .Append('.')
                             .Append(call.MethodName)
@@ -7646,10 +8399,10 @@ internal sealed class AkronReconstructionGraph {
                     }
                     current = field.GetValue(current);
                 } else if (step.Kind == "array") {
-                    if (current is not Array array || !HasArrayIndex(array, step.ArrayIndices?.ToArray())) {
+                    if (current is not Array array || !HasArrayIndex(array, step.ArrayIndicesOrNull?.ToArray())) {
                         return null;
                     }
-                    current = array.GetValue(step.ArrayIndices.ToArray());
+                    current = array.GetValue(step.ArrayIndicesOrNull.ToArray());
                 } else {
                     throw new AkronReconstructionException(errorPath, "fresh path step is unsupported");
                 }
@@ -7658,8 +8411,8 @@ internal sealed class AkronReconstructionGraph {
         }
 
         private object ResolveFreshObject(AkronReconstructionNode node) {
-            if (node.FreshPath != null && node.FreshPath.Count > 0) {
-                return ResolveFreshPath(node.FreshPath, node.Path);
+            if (node.FreshPathOrNull != null && node.FreshPathOrNull.Count > 0) {
+                return ResolveFreshPath(node.FreshPathOrNull, node.Path);
             }
             if (node.ParentNodeId <= 0 || !Objects.TryGetValue(node.ParentNodeId, out object parent)) {
                 return null;
@@ -7675,8 +8428,8 @@ internal sealed class AkronReconstructionGraph {
                         : null;
                 }
                 case "array":
-                    return parent is Array array && HasArrayIndex(array, node.ParentArrayIndices)
-                        ? array.GetValue(node.ParentArrayIndices.ToArray())
+                    return parent is Array array && HasArrayIndex(array, node.ParentArrayIndicesOrNull)
+                        ? array.GetValue(node.ParentArrayIndicesOrNull.ToArray())
                         : null;
                 default:
                     // Delegate targets have no ordinary reflected owner edge.
@@ -7689,8 +8442,8 @@ internal sealed class AkronReconstructionGraph {
             List<AkronReconstructionPathStep> suffix = new List<AkronReconstructionPathStep>();
             AkronReconstructionNode current = node;
             while (current != null && current.Id != document.RootNodeId) {
-                if (current.FreshPath != null && current.FreshPath.Count > 0) {
-                    List<AkronReconstructionPathStep> path = ClonePathSteps(current.FreshPath);
+                if (current.FreshPathOrNull != null && current.FreshPathOrNull.Count > 0) {
+                    List<AkronReconstructionPathStep> path = ClonePathSteps(current.FreshPathOrNull);
                     suffix.Reverse();
                     path.AddRange(suffix);
                     return path;
@@ -7704,7 +8457,7 @@ internal sealed class AkronReconstructionGraph {
                 } else if (current.ParentKind == "array") {
                     suffix.Add(new AkronReconstructionPathStep {
                         Kind = "array",
-                        ArrayIndices = new List<int>(current.ParentArrayIndices ?? new List<int>())
+                        ArrayIndices = new List<int>(current.ParentArrayIndicesOrNull ?? Enumerable.Empty<int>())
                     });
                 } else {
                     return new List<AkronReconstructionPathStep>();
@@ -7730,7 +8483,7 @@ internal sealed class AkronReconstructionGraph {
                 } else if (current.ParentKind == "array") {
                     path.Add(new AkronReconstructionPathStep {
                         Kind = "array",
-                        ArrayIndices = new List<int>(current.ParentArrayIndices ?? new List<int>())
+                        ArrayIndices = new List<int>(current.ParentArrayIndicesOrNull ?? Enumerable.Empty<int>())
                     });
                 } else if (current.ParentKind == "delegate") {
                     // Delegate targets share their owning delegate's fresh
@@ -7754,16 +8507,20 @@ internal sealed class AkronReconstructionGraph {
                     Kind = step.Kind,
                     DeclaringTypeName = step.DeclaringTypeName,
                     FieldName = step.FieldName,
-                    ArrayIndices = new List<int>(step.ArrayIndices ?? new List<int>())
+                    ArrayIndices = step.ArrayIndicesOrNull is { Count: > 0 }
+                        ? new List<int>(step.ArrayIndicesOrNull)
+                        : null
                 })
                 .ToList();
         }
 
         private object CreateDelegate(AkronReconstructionNode node) {
             Type delegateType = ResolveType(node.TypeName, node.Path);
+            IReadOnlyList<AkronReconstructionDelegateCall> calls =
+                node.DelegateCallsOrNull ?? (IReadOnlyList<AkronReconstructionDelegateCall>) Array.Empty<AkronReconstructionDelegateCall>();
             Delegate combined = null;
-            for (int index = 0; index < node.DelegateCalls.Count; index++) {
-                AkronReconstructionDelegateCall call = node.DelegateCalls[index];
+            for (int index = 0; index < calls.Count; index++) {
+                AkronReconstructionDelegateCall call = calls[index];
                 MethodInfo method = ResolveMethod(call, node.Path);
                 object target;
                 if (call.Kind == DetourNextDelegateCallKind) {
@@ -7961,16 +8718,17 @@ internal sealed class AkronReconstructionGraph {
 
         private static Array CreateArray(Type arrayType, AkronReconstructionNode node, string path) {
             Type elementType = arrayType.GetElementType();
-            if (elementType == null || node.ArrayLengths.Count == 0 || node.ArrayLengths.Count != node.ArrayLowerBounds.Count) {
+            if (elementType == null || node.ArrayLengthsOrNull == null || node.ArrayLowerBoundsOrNull == null ||
+                node.ArrayLengthsOrNull.Count == 0 || node.ArrayLengthsOrNull.Count != node.ArrayLowerBoundsOrNull.Count) {
                 throw new AkronReconstructionException(path, "array shape is invalid");
             }
-            if (node.ArrayLengths.Count > MaxRestoredArrayRank || node.ArrayLengths.Count != arrayType.GetArrayRank()) {
+            if (node.ArrayLengthsOrNull.Count > MaxRestoredArrayRank || node.ArrayLengthsOrNull.Count != arrayType.GetArrayRank()) {
                 throw new AkronReconstructionException(path, "array rank exceeds the supported limit");
             }
             long elementCount = 1;
-            for (int dimension = 0; dimension < node.ArrayLengths.Count; dimension++) {
-                int length = node.ArrayLengths[dimension];
-                int lowerBound = node.ArrayLowerBounds[dimension];
+            for (int dimension = 0; dimension < node.ArrayLengthsOrNull.Count; dimension++) {
+                int length = node.ArrayLengthsOrNull[dimension];
+                int lowerBound = node.ArrayLowerBoundsOrNull[dimension];
                 long upperBound = (long) lowerBound + length - 1L;
                 if (length < 0 ||
                     length > 0 && (upperBound < int.MinValue || upperBound > int.MaxValue)) {
@@ -7988,7 +8746,7 @@ internal sealed class AkronReconstructionGraph {
                 }
                 elementCount *= length;
             }
-            if (node.PackedPrimitiveArrayBytes == null && elementCount != (node.Items?.Count ?? 0)) {
+            if (node.PackedPrimitiveArrayBytes == null && elementCount != (node.ItemsOrNull?.Count ?? 0)) {
                 throw new AkronReconstructionException(path, "array item count differs");
             }
             if (node.PackedPrimitiveArrayBytes != null) {
@@ -8004,7 +8762,7 @@ internal sealed class AkronReconstructionGraph {
             if (elementCount > 0 && elementSize > MaxRestoredArrayBytes / elementCount) {
                 throw new AkronReconstructionException(path, "array allocation exceeds the snapshot limit");
             }
-            return Array.CreateInstance(elementType, node.ArrayLengths.ToArray(), node.ArrayLowerBounds.ToArray());
+            return Array.CreateInstance(elementType, node.ArrayLengthsOrNull.ToArray(), node.ArrayLowerBoundsOrNull.ToArray());
         }
 
         private static long EstimateArrayElementSize(Type elementType) {
@@ -8021,12 +8779,13 @@ internal sealed class AkronReconstructionGraph {
         }
 
         private static bool ArrayShapeMatches(Array array, AkronReconstructionNode node) {
-            if (array == null || node.ArrayLengths.Count != array.Rank || node.ArrayLowerBounds.Count != array.Rank) {
+            if (array == null || node.ArrayLengthsOrNull == null || node.ArrayLowerBoundsOrNull == null ||
+                node.ArrayLengthsOrNull.Count != array.Rank || node.ArrayLowerBoundsOrNull.Count != array.Rank) {
                 return false;
             }
             for (int dimension = 0; dimension < array.Rank; dimension++) {
-                if (array.GetLength(dimension) != node.ArrayLengths[dimension] ||
-                    array.GetLowerBound(dimension) != node.ArrayLowerBounds[dimension]) {
+                if (array.GetLength(dimension) != node.ArrayLengthsOrNull[dimension] ||
+                    array.GetLowerBound(dimension) != node.ArrayLowerBoundsOrNull[dimension]) {
                     return false;
                 }
             }
@@ -8101,7 +8860,8 @@ internal sealed class AkronReconstructionGraph {
         }
 
         private void VerifyObject(AkronReconstructionNode node, object current) {
-            foreach (AkronReconstructionField savedField in node.Fields) {
+            foreach (AkronReconstructionField savedField in
+                     node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
                 if (IsMasked(savedField.Path)) {
                     continue;
                 }
@@ -8148,7 +8908,8 @@ internal sealed class AkronReconstructionGraph {
         }
 
         private static bool SavedHashEntryIsLive(AkronReconstructionNode node) {
-            foreach (AkronReconstructionField savedField in node.Fields) {
+            foreach (AkronReconstructionField savedField in
+                     node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
                 if (savedField.Name is "next" or "Next") {
                     return savedField.Value?.Kind == ScalarValueKind &&
                            int.TryParse(
@@ -8202,7 +8963,7 @@ internal sealed class AkronReconstructionGraph {
                         Buffer.ByteLength(current) != node.PackedPrimitiveArrayBytes.Length) {
                         throw new AkronReconstructionException(node.Path, "packed primitive array size differs");
                     }
-                } else if (current.LongLength != node.Items.Count) {
+                } else if (current.LongLength != (node.ItemsOrNull?.Count ?? 0)) {
                     throw new AkronReconstructionException(node.Path, "array item count differs");
                 }
                 return;
@@ -8219,12 +8980,14 @@ internal sealed class AkronReconstructionGraph {
                 }
                 return;
             }
-            if (current.LongLength != node.Items.Count) {
+            IReadOnlyList<AkronReconstructionValue> items =
+                node.ItemsOrNull ?? (IReadOnlyList<AkronReconstructionValue>) Array.Empty<AkronReconstructionValue>();
+            if (current.LongLength != items.Count) {
                 throw new AkronReconstructionException(node.Path, "array item count differs");
             }
             int[] itemIndices = GetInitialArrayIndices(current);
-            for (int index = 0; index < node.Items.Count; index++) {
-                AkronReconstructionValue expected = node.Items[index];
+            for (int index = 0; index < items.Count; index++) {
+                AkronReconstructionValue expected = items[index];
                 object actual = current.GetValue(itemIndices);
                 if ((expected == null || expected.Kind == NullValueKind) && actual == null) {
                     IncrementArrayIndices(current, itemIndices);
@@ -8244,21 +9007,23 @@ internal sealed class AkronReconstructionGraph {
             // that box strongly, so a collection between construction and this
             // check legitimately leaves the weak reference dead. Every other
             // target is a node object the restore still holds.
-            if (node.Items[0]?.Kind != ScalarValueKind || currentTarget != null) {
-                VerifyValue(node.Items[0], currentTarget, node.Path + ".<weak-target>");
+            if (node.ItemsOrNull[0]?.Kind != ScalarValueKind || currentTarget != null) {
+                VerifyValue(node.ItemsOrNull[0], currentTarget, node.Path + ".<weak-target>");
             }
-            if (current is WeakReference && currentTrackResurrection != (DecodeScalar(node.Items[1], node.Path) is true)) {
+            if (current is WeakReference && currentTrackResurrection != (DecodeScalar(node.ItemsOrNull[1], node.Path) is true)) {
                 throw new AkronReconstructionException(node.Path, "weak reference resurrection flag differs");
             }
         }
 
         private void VerifyDelegate(AkronReconstructionNode node, Delegate current) {
             Delegate[] calls = current.GetInvocationList();
-            if (calls.Length != node.DelegateCalls.Count) {
+            IReadOnlyList<AkronReconstructionDelegateCall> expectedCalls =
+                node.DelegateCallsOrNull ?? (IReadOnlyList<AkronReconstructionDelegateCall>) Array.Empty<AkronReconstructionDelegateCall>();
+            if (calls.Length != expectedCalls.Count) {
                 throw new AkronReconstructionException(node.Path, "delegate invocation count differs");
             }
             for (int index = 0; index < calls.Length; index++) {
-                AkronReconstructionDelegateCall expected = node.DelegateCalls[index];
+                AkronReconstructionDelegateCall expected = expectedCalls[index];
                 MethodInfo expectedMethod = ResolveMethod(expected, node.Path);
                 if (expected.Kind == DetourNextDelegateCallKind) {
                     MethodInfo hookTarget = ResolveHookTarget(expected, node.Path);
@@ -8321,7 +9086,8 @@ internal sealed class AkronReconstructionGraph {
         }
 
         private void VerifyInlineValueType(AkronReconstructionNode node, object current, string path) {
-            foreach (AkronReconstructionField savedField in node.Fields) {
+            foreach (AkronReconstructionField savedField in
+                     node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
                 FieldInfo field = ResolveField(savedField.DeclaringTypeName, savedField.Name, path);
                 if (IsRewrittenHashIndexField(node, current, field)) {
                     continue;
@@ -8345,9 +9111,15 @@ internal sealed class AkronReconstructionGraph {
     private static MethodInfo ResolveMethod(AkronReconstructionDelegateCall call, string path) {
         Type declaringType = ResolveType(call.DeclaringTypeName, path);
         Type returnType = ResolveType(call.ReturnTypeName, path);
-        Type[] parameterTypes = (call.ParameterTypeNames ?? new List<string>())
-            .Select(typeName => ResolveType(typeName, path))
-            .ToArray();
+        Type[] parameterTypes;
+        if (call.ParameterTypeNames == null || call.ParameterTypeNames.Count == 0) {
+            parameterTypes = Type.EmptyTypes;
+        } else {
+            parameterTypes = new Type[call.ParameterTypeNames.Count];
+            for (int index = 0; index < parameterTypes.Length; index++) {
+                parameterTypes[index] = ResolveType(call.ParameterTypeNames[index], path);
+            }
+        }
         MethodInfo method = declaringType.GetMethod(
             call.MethodName,
             BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
@@ -8398,7 +9170,7 @@ internal sealed class AkronReconstructionGraph {
             DeclaringTypeName = call.HookTargetDeclaringTypeName,
             MethodName = call.HookTargetMethodName,
             ReturnTypeName = call.HookTargetReturnTypeName,
-            ParameterTypeNames = call.HookTargetParameterTypeNames ?? new List<string>()
+            ParameterTypeNames = call.HookTargetParameterTypeNames
         }, path);
     }
 
@@ -9013,7 +9785,7 @@ internal static class AkronStartPosReconstruction {
                 // a different point during startup.
                 masks.Add(node.Path);
             }
-            foreach (AkronReconstructionField field in node.Fields ?? new List<AkronReconstructionField>()) {
+            foreach (AkronReconstructionField field in node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
                 Type declaringType = Type.GetType(field.DeclaringTypeName, throwOnError: false);
                 if (IsCumulativeStatField(declaringType, field.Name)) {
                     masks.Add(field.Path);
@@ -9063,10 +9835,12 @@ internal static class AkronStartPosReconstruction {
             document.Room = room ?? string.Empty;
             document.FileSlot = fileSlot;
             Directory.CreateDirectory(Path.GetDirectoryName(path));
+            byte[] serializedHash;
             using (FileStream file = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            using (GZipStream compressed = new GZipStream(file, CompressionLevel.Optimal, leaveOpen: false))
+            using (GZipStream compressed = new GZipStream(file, CompressionLevel.SmallestSize, leaveOpen: false))
             using (AkronPacedWriteStream paced = new AkronPacedWriteStream(compressed, maxDecompressedBytes)) {
                 CaptureGraph.Serialize(document, paced);
+                serializedHash = paced.GetHashAndReset();
             }
             // Read the file back through the same bounded reader before committing
             // it. The paced writer only caps bytes, but the reader also bounds
@@ -9074,8 +9848,12 @@ internal static class AkronStartPosReconstruction {
             // capture dense in tiny nodes can pass the byte cap yet trip a
             // structural ceiling, which would put back the unreadable-slot failure
             // this whole path exists to prevent. Verifying readability here makes a
-            // successful Set mean the slot loads, whatever ceiling is tightest, and
-            // catches a corrupt write as a bonus. CaptureGraph is safe to reuse:
+            // successful Set mean the slot loads, whatever ceiling is tightest. The
+            // document's exact indexed type/header/graph view was validated immediately
+            // before serialization; this pass streams the written JSON through every
+            // reader ceiling and requires its uncompressed SHA-256 to match every byte
+            // handed to gzip, catching corruption without building a discarded second
+            // object graph. CaptureGraph is safe to reuse:
             // the persistence worker runs one job at a time, so serialize and this
             // read never overlap on it. Same thread, so the read paces too; a
             // shutdown cancel surfaces as a cancellation rather than a save failure.
@@ -9083,7 +9861,12 @@ internal static class AkronStartPosReconstruction {
                 // verificationGraph is a test seam for driving the read ceilings with
                 // small caps; production passes null and verifies with CaptureGraph,
                 // whose default caps match the loader the slot will actually face.
-                if (!TryReadSnapshot(verificationGraph ?? CaptureGraph, verify, out _, out string readBackError, out _, out _, maxDecompressedBytes)) {
+                if (!TryValidateSnapshot(
+                        verificationGraph ?? CaptureGraph,
+                        verify,
+                        serializedHash,
+                        out string readBackError,
+                        maxDecompressedBytes)) {
                     if (AkronSnapshotPacing.Cancelled) {
                         throw new OperationCanceledException(AkronSnapshotPacing.CancelledMessage);
                     }
@@ -9221,6 +10004,42 @@ internal static class AkronStartPosReconstruction {
         }
     }
 
+    private static bool TryValidateSnapshot(
+        AkronReconstructionGraph graph,
+        Stream snapshotStream,
+        byte[] expectedHash,
+        out string error,
+        long maxDecompressedBytes
+    ) {
+        error = string.Empty;
+        if (snapshotStream == null || !snapshotStream.CanRead) {
+            error = "snapshot stream is unavailable";
+            return false;
+        }
+        if (expectedHash == null || expectedHash.Length == 0) {
+            error = "snapshot write hash is unavailable";
+            return false;
+        }
+
+        try {
+            using GZipStream compressed = new GZipStream(snapshotStream, CompressionMode.Decompress, leaveOpen: true);
+            using AkronBoundedReadStream bounded = new AkronBoundedReadStream(
+                compressed,
+                maxDecompressedBytes,
+                hashContents: true);
+            graph.ValidateSerializedDocument(bounded);
+            byte[] actualHash = bounded.GetHashAndReset();
+            if (!CryptographicOperations.FixedTimeEquals(expectedHash, actualHash)) {
+                error = "snapshot bytes differ after writing";
+                return false;
+            }
+            return true;
+        } catch (Exception exception) {
+            error = exception.GetType().Name + ": " + exception.Message;
+            return false;
+        }
+    }
+
     // Serializing a snapshot allocates roughly in proportion to the JSON it
     // emits, so the byte stream is the natural pacing point for the write half
     // of the job. Writes arrive here in whole buffer flushes, so each one is a
@@ -9234,6 +10053,7 @@ internal static class AkronStartPosReconstruction {
     private sealed class AkronPacedWriteStream : Stream {
         private readonly Stream destination;
         private readonly long maxBytes;
+        private readonly IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         private long bytesWritten;
 
         public AkronPacedWriteStream(Stream destination, long maxBytes) {
@@ -9261,18 +10081,27 @@ internal static class AkronStartPosReconstruction {
         public override void Write(byte[] buffer, int offset, int count) {
             AkronSnapshotPacing.Pace();
             RecordWrite(count);
+            hash.AppendData(buffer, offset, count);
             destination.Write(buffer, offset, count);
         }
 
         public override void Write(ReadOnlySpan<byte> buffer) {
             AkronSnapshotPacing.Pace();
             RecordWrite(buffer.Length);
+            hash.AppendData(buffer);
             destination.Write(buffer);
         }
 
         public override void WriteByte(byte value) {
             RecordWrite(1);
+            Span<byte> oneByte = stackalloc byte[1];
+            oneByte[0] = value;
+            hash.AppendData(oneByte);
             destination.WriteByte(value);
+        }
+
+        public byte[] GetHashAndReset() {
+            return hash.GetHashAndReset();
         }
 
         public override void Flush() {
@@ -9282,16 +10111,25 @@ internal static class AkronStartPosReconstruction {
         public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing) {
+            if (disposing) {
+                hash.Dispose();
+            }
+            base.Dispose(disposing);
+        }
     }
 
     private sealed class AkronBoundedReadStream : Stream {
         private readonly Stream source;
         private readonly long maxBytes;
+        private readonly IncrementalHash hash;
         private long bytesRead;
 
-        public AkronBoundedReadStream(Stream source, long maxBytes) {
+        public AkronBoundedReadStream(Stream source, long maxBytes, bool hashContents = false) {
             this.source = source ?? throw new ArgumentNullException(nameof(source));
             this.maxBytes = maxBytes >= 0 ? maxBytes : throw new ArgumentOutOfRangeException(nameof(maxBytes));
+            hash = hashContents ? IncrementalHash.CreateHash(HashAlgorithmName.SHA256) : null;
         }
 
         public override bool CanRead => true;
@@ -9314,6 +10152,7 @@ internal static class AkronStartPosReconstruction {
             AkronSnapshotPacing.Pace();
             int read = source.Read(buffer, offset, LimitReadCount(count));
             RecordRead(read);
+            hash?.AppendData(buffer, offset, read);
             return read;
         }
 
@@ -9321,6 +10160,7 @@ internal static class AkronStartPosReconstruction {
             AkronSnapshotPacing.Pace();
             int read = source.Read(buffer[..LimitReadCount(buffer.Length)]);
             RecordRead(read);
+            hash?.AppendData(buffer[..read]);
             return read;
         }
 
@@ -9332,8 +10172,20 @@ internal static class AkronStartPosReconstruction {
             int value = source.ReadByte();
             if (value >= 0) {
                 bytesRead++;
+                if (hash != null) {
+                    Span<byte> oneByte = stackalloc byte[1];
+                    oneByte[0] = (byte) value;
+                    hash.AppendData(oneByte);
+                }
             }
             return value;
+        }
+
+        public byte[] GetHashAndReset() {
+            if (hash == null) {
+                throw new InvalidOperationException("Snapshot hashing is not enabled.");
+            }
+            return hash.GetHashAndReset();
         }
 
         private int LimitReadCount(int requested) {
@@ -9359,6 +10211,13 @@ internal static class AkronStartPosReconstruction {
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing) {
+            if (disposing) {
+                hash?.Dispose();
+            }
+            base.Dispose(disposing);
+        }
     }
 
     // GetSnapshotPath is a pure function of (directory, slot name) but costs a SHA-256

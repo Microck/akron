@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Changed
+
+- Load and rewrite StartPos slots in substantially less memory, and write them smaller, without changing saved-state or slot compatibility.
+
 ### Fixed
 
 - Load StartPos slots set during hook-wrapped routines whose iterator captures a mod's singleton handler, including XaphanHelper's Lightning Dash.

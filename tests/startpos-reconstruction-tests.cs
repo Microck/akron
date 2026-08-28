@@ -464,7 +464,8 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
-    public void DeserializeRejectsAParentChainThatExceedsTheDepthLimit() {
+    public void SerializeAndDeserializeRejectAParentChainThatExceedsTheDepthLimit() {
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
         const int nodeCount = 1000;
         AkronReconstructionDocument document = new AkronReconstructionDocument { RootNodeId = 1 };
         for (int id = nodeCount; id >= 2; id--) {
@@ -497,16 +498,18 @@ public sealed class StartPosReconstructionTests {
             Value = new AkronReconstructionValue { Kind = AkronReconstructionGraph.ReferenceValueKind, NodeId = 2 }
         });
         document.Nodes.Add(root);
-        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
-        string json = graph.Serialize(document);
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => graph.Deserialize(json));
+        InvalidOperationException deserializeException = Assert.Throws<InvalidOperationException>(
+            () => graph.Deserialize(SerializeCraftedDocument(document)));
+        InvalidOperationException serializeException = Assert.Throws<InvalidOperationException>(
+            () => graph.Serialize(document));
 
-        Assert.Contains("parent depth exceeds", exception.Message);
+        Assert.Contains("parent depth exceeds", deserializeException.Message);
+        Assert.Contains("parent depth exceeds", serializeException.Message);
     }
 
     [Fact]
-    public void DeserializeRejectsDiagnosticPathsPastTheSizeLimit() {
+    public void SerializeAndDeserializeRejectDiagnosticPathsPastTheSizeLimit() {
         ChainNode saved = BuildChain(64, valueOffset: 1000);
         ChainNode baseline = BuildChain(64, valueOffset: 0);
         AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
@@ -521,11 +524,68 @@ public sealed class StartPosReconstructionTests {
             parentField.Name = longFieldName;
             child.ParentFieldName = longFieldName;
         }
-        string json = graph.Serialize(capture.Document);
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => graph.Deserialize(json));
+        InvalidOperationException deserializeException = Assert.Throws<InvalidOperationException>(
+            () => graph.Deserialize(SerializeCraftedDocument(capture.Document)));
+        InvalidOperationException serializeException = Assert.Throws<InvalidOperationException>(
+            () => graph.Serialize(capture.Document));
 
-        Assert.Contains("diagnostic path exceeds", exception.Message);
+        Assert.Contains("diagnostic path exceeds", deserializeException.Message);
+        Assert.Contains("diagnostic path exceeds", serializeException.Message);
+    }
+
+    [Fact]
+    public void DeserializeRejectsAFieldWithoutItsValue() {
+        TestNode savedChild = new TestNode();
+        TestNode baselineChild = new TestNode();
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(
+            new TestRoot { Primary = savedChild, Secondary = savedChild },
+            new TestRoot { Primary = baselineChild, Secondary = baselineChild });
+        Assert.True(capture.Success, capture.Error);
+
+        JObject json = JObject.Parse(graph.Serialize(capture.Document));
+        JObject root = json[nameof(AkronReconstructionDocument.Nodes)]!
+            .Children<JObject>()
+            .Single(node => node["i"]!.Value<int>() == capture.Document.RootNodeId);
+        JObject secondary = root[AkronReconstructionTags.Fields]!
+            .Children<JObject>()
+            .Single(field => field[AkronReconstructionTags.FieldName]!.Value<string>() == nameof(TestRoot.Secondary));
+        Assert.True(secondary.Remove("v"));
+
+        Newtonsoft.Json.JsonSerializationException exception =
+            Assert.Throws<Newtonsoft.Json.JsonSerializationException>(() =>
+                graph.Deserialize(json.ToString(Newtonsoft.Json.Formatting.None)));
+
+        Assert.Contains("Required property 'v'", exception.Message);
+    }
+
+    [Fact]
+    public void DeserializeRejectsADelegateCallWithoutItsTarget() {
+        TestNode savedChild = new TestNode();
+        TestNode baselineChild = new TestNode();
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(
+            new TestRoot { Primary = savedChild, Callback = savedChild.Increment },
+            new TestRoot { Primary = baselineChild, Callback = baselineChild.Increment });
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode delegateNode = Assert.Single(
+            capture.Document.Nodes,
+            node => node.DelegateCalls.Count > 0);
+
+        JObject json = JObject.Parse(graph.Serialize(capture.Document));
+        JObject serializedDelegate = json[nameof(AkronReconstructionDocument.Nodes)]!
+            .Children<JObject>()
+            .Single(node => node["i"]!.Value<int>() == delegateNode.Id);
+        JObject call = Assert.Single(
+            serializedDelegate[AkronReconstructionTags.DelegateCalls]!.Children<JObject>());
+        Assert.True(call.Remove("tg"));
+
+        Newtonsoft.Json.JsonSerializationException exception =
+            Assert.Throws<Newtonsoft.Json.JsonSerializationException>(() =>
+                graph.Deserialize(json.ToString(Newtonsoft.Json.Formatting.None)));
+
+        Assert.Contains("Required property 'tg'", exception.Message);
     }
 
     [Fact]
@@ -2594,7 +2654,7 @@ public sealed class StartPosReconstructionTests {
             maxJsonRecordCount: 3);
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            graph.Deserialize("{\"Nodes\":[{\"dc\":[{},{}]}]}"));
+            graph.Deserialize("{\"Nodes\":[{\"dc\":[{\"tg\":{}},{\"tg\":{}}]}]}"));
 
         Assert.Contains("record count exceeds", exception.Message);
     }
@@ -2612,7 +2672,7 @@ public sealed class StartPosReconstructionTests {
             maxJsonExpensiveRecordCount: 1);
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            graph.Deserialize("{\"Nodes\":[{\"dc\":[{},{}]}]}"));
+            graph.Deserialize("{\"Nodes\":[{\"dc\":[{\"tg\":{}},{\"tg\":{}}]}]}"));
 
         Assert.Contains("complex record count exceeds", exception.Message);
     }
