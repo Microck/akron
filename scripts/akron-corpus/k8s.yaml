@@ -1,0 +1,79 @@
+# Persistent sandbox for Akron StartPos corpus collection.
+#
+# The pod is intentionally long-lived so the Celeste/Wine/Steam/Everest install
+# and any collected snapshots survive pod recreation. All state lives on the
+# PVC mounted at /data:
+#   /data/home      - the container HOME (WINEPREFIX lives under it)
+#   /data/corpus    - collected snapshot run directories (default)
+#
+# Apply with: kubectl --context home-k8s -n sandboxes apply -f scripts/akron-corpus/k8s.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: akron-corpus-data
+  namespace: sandboxes
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 25Gi
+  storageClassName: local-path
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: akron-corpus
+  namespace: sandboxes
+  labels:
+    app: akron-corpus
+spec:
+  restartPolicy: Always
+  containers:
+    - name: akron-corpus
+      image: ubuntu:24.04
+      imagePullPolicy: IfNotPresent
+      # Long-lived interactive sandbox. The collector and any future harness
+      # commands are run against it via `kubectl exec`; the process just sleeps
+      # so the container stays Running.
+      #
+      # Privileged: Steam's pressure-vessel and browser (steamwebhelper)
+      # sandboxes need nested mount/user namespaces the default container lacks.
+      securityContext:
+        privileged: true
+      command: ["/bin/sleep", "infinity"]
+      stdin: true
+      tty: true
+      env:
+        - name: HOME
+          value: /data/home
+        - name: WINEPREFIX
+          value: /data/home/.wine
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: "6"
+          memory: 24Gi
+      volumeMounts:
+        - name: corpus-data
+          mountPath: /data
+        # Steam/CEF needs more shared memory than Kubernetes' default 64Mi.
+        - name: shared-memory
+          mountPath: /dev/shm
+      # Proves the PVC is bound and writable before the pod reports Ready.
+      readinessProbe:
+        exec:
+          command: ["/bin/sh", "-c", "test -d /data && touch /data/.akron-corpus-probe && rm -f /data/.akron-corpus-probe"]
+        initialDelaySeconds: 5
+        periodSeconds: 10
+        failureThreshold: 6
+  volumes:
+    - name: corpus-data
+      persistentVolumeClaim:
+        claimName: akron-corpus-data
+    - name: shared-memory
+      emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi
