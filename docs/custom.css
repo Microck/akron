@@ -8,3 +8,16 @@ h3 {
   border-bottom: none !important;
   text-decoration: none !important;
 }
+
+.github-contributor-list {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+h2:has(+ .github-contributor-list) {
+  margin-bottom: 0.5rem;
+}
+
+.github-contributor-list + h2 {
+  margin-top: 1rem;
+}

@@ -88,7 +88,7 @@ def render_contributors(contributors: list[dict[str, object]]) -> str:
     return "\n".join(
         [
             MARKER_START,
-            '<div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>',
+            '<div className="github-contributor-list" style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>',
             *entries,
             "</div>",
             MARKER_END,
