@@ -1127,6 +1127,7 @@ internal sealed class AkronReconstructionGraph {
         AkronStartPosReconstruction.MaxDecompressedSnapshotBytes / 64;
     private const int DefaultMaxJsonStringChars = 16 * 1024 * 1024;
     private const long DefaultMaxJsonBinaryBytes = 192L * 1024L * 1024L;
+    private const int JsonStreamBufferChars = 8 * 1024;
     private const string ObjectKind = "object";
     private const string ArrayKind = "array";
     private const string AnchorKind = "anchor";
@@ -1814,7 +1815,11 @@ internal sealed class AkronReconstructionGraph {
         }
 
         JsonSerializer serializer = JsonSerializer.Create(JsonSettings);
-        using StreamWriter streamWriter = new StreamWriter(stream, new UTF8Encoding(false), 65536, leaveOpen: true);
+        using StreamWriter streamWriter = new StreamWriter(
+            stream,
+            new UTF8Encoding(false),
+            JsonStreamBufferChars,
+            leaveOpen: true);
         using JsonTextWriter jsonWriter = new JsonTextWriter(streamWriter) {
             ArrayPool = JsonCharArrayPool,
             CloseOutput = false
@@ -1845,7 +1850,12 @@ internal sealed class AkronReconstructionGraph {
         }
 
         JsonSerializer serializer = JsonSerializer.Create(JsonSettings);
-        using StreamReader streamReader = new StreamReader(stream, Encoding.UTF8, true, 65536, leaveOpen: true);
+        using StreamReader streamReader = new StreamReader(
+            stream,
+            Encoding.UTF8,
+            true,
+            JsonStreamBufferChars,
+            leaveOpen: true);
         using AkronBoundedJsonTextReader jsonReader = CreateJsonReader(streamReader);
         AkronReconstructionDocument document = serializer.Deserialize<AkronReconstructionDocument>(jsonReader);
         ResolveTypeNames(document);
@@ -1864,7 +1874,12 @@ internal sealed class AkronReconstructionGraph {
             throw new InvalidOperationException("Reconstruction input stream is unavailable.");
         }
 
-        using StreamReader streamReader = new StreamReader(stream, Encoding.UTF8, true, 65536, leaveOpen: true);
+        using StreamReader streamReader = new StreamReader(
+            stream,
+            Encoding.UTF8,
+            true,
+            JsonStreamBufferChars,
+            leaveOpen: true);
         using AkronBoundedJsonTextReader jsonReader = CreateJsonReader(streamReader);
         bool readAny = false;
         while (jsonReader.Read()) {
