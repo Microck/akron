@@ -182,6 +182,13 @@ internal sealed class AkronReconstructionNode {
     internal int DiagnosticPathLength { get; private set; } = -1;
     internal bool DiagnosticPathReady { get; private set; }
 
+    internal void ResetDiagnosticPath() {
+        diagnosticPath = string.Empty;
+        DiagnosticPathParent = null;
+        DiagnosticPathLength = -1;
+        DiagnosticPathReady = false;
+    }
+
     internal void SetLazyDiagnosticPath(AkronReconstructionNode parent, int length) {
         diagnosticPath = string.Empty;
         DiagnosticPathParent = parent;
@@ -1832,6 +1839,15 @@ internal sealed class AkronReconstructionGraph {
         validationNodes.Clear();
         try {
             ValidateDocumentHeader(document, validationNodes);
+            // Capture holds eager diagnostic strings, while the wire format keeps
+            // only parent edges. Rebuild those ignored caches before writing so Set
+            // enforces the same path, aggregate-size and parent-depth ceilings that
+            // a later load will enforce, without allocating a second graph.
+            // Only JsonIgnore diagnostic caches are touched, so a document left
+            // partially reset by a validation exception here is disposable and
+            // must not be treated as unchanged; wire state is unaffected.
+            ResetDiagnosticPaths(document);
+            RestoreDiagnosticPaths(document, validationNodes);
         } finally {
             validationNodes.Clear();
         }
@@ -2381,6 +2397,15 @@ internal sealed class AkronReconstructionGraph {
     ) {
         long totalPathChars = 0;
         RestoreDiagnosticPaths(document, nodes, ref totalPathChars);
+    }
+
+    private static void ResetDiagnosticPaths(AkronReconstructionDocument document) {
+        foreach (AkronReconstructionNode node in document.Nodes) {
+            node.ResetDiagnosticPath();
+        }
+        if (document.ActionStateDocument != null) {
+            ResetDiagnosticPaths(document.ActionStateDocument);
+        }
     }
 
     private static void RestoreDiagnosticPaths(

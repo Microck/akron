@@ -464,7 +464,8 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
-    public void DeserializeRejectsAParentChainThatExceedsTheDepthLimit() {
+    public void SerializeAndDeserializeRejectAParentChainThatExceedsTheDepthLimit() {
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
         const int nodeCount = 1000;
         AkronReconstructionDocument document = new AkronReconstructionDocument { RootNodeId = 1 };
         for (int id = nodeCount; id >= 2; id--) {
@@ -497,16 +498,18 @@ public sealed class StartPosReconstructionTests {
             Value = new AkronReconstructionValue { Kind = AkronReconstructionGraph.ReferenceValueKind, NodeId = 2 }
         });
         document.Nodes.Add(root);
-        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
-        string json = graph.Serialize(document);
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => graph.Deserialize(json));
+        InvalidOperationException deserializeException = Assert.Throws<InvalidOperationException>(
+            () => graph.Deserialize(SerializeCraftedDocument(document)));
+        InvalidOperationException serializeException = Assert.Throws<InvalidOperationException>(
+            () => graph.Serialize(document));
 
-        Assert.Contains("parent depth exceeds", exception.Message);
+        Assert.Contains("parent depth exceeds", deserializeException.Message);
+        Assert.Contains("parent depth exceeds", serializeException.Message);
     }
 
     [Fact]
-    public void DeserializeRejectsDiagnosticPathsPastTheSizeLimit() {
+    public void SerializeAndDeserializeRejectDiagnosticPathsPastTheSizeLimit() {
         ChainNode saved = BuildChain(64, valueOffset: 1000);
         ChainNode baseline = BuildChain(64, valueOffset: 0);
         AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
@@ -521,11 +524,14 @@ public sealed class StartPosReconstructionTests {
             parentField.Name = longFieldName;
             child.ParentFieldName = longFieldName;
         }
-        string json = graph.Serialize(capture.Document);
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => graph.Deserialize(json));
+        InvalidOperationException deserializeException = Assert.Throws<InvalidOperationException>(
+            () => graph.Deserialize(SerializeCraftedDocument(capture.Document)));
+        InvalidOperationException serializeException = Assert.Throws<InvalidOperationException>(
+            () => graph.Serialize(capture.Document));
 
-        Assert.Contains("diagnostic path exceeds", exception.Message);
+        Assert.Contains("diagnostic path exceeds", deserializeException.Message);
+        Assert.Contains("diagnostic path exceeds", serializeException.Message);
     }
 
     [Fact]
