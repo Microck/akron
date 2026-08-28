@@ -2044,7 +2044,7 @@ internal sealed class AkronReconstructionGraph {
             throw new InvalidOperationException("Reconstruction document root node is missing.");
         }
         ValidateNodeKindContracts(document);
-        ValidateNodeParentEdges(document, nodes);
+        ValidateNodeParentEdges(document, nodes, validationParentFieldValues);
         ValidateNodeReachability(document, nodes);
         if (document.ActionStateDocument != null) {
             ValidateDocumentHeader(document.ActionStateDocument);
@@ -2223,9 +2223,11 @@ internal sealed class AkronReconstructionGraph {
             " in " + slot + ", which the restore never reads.");
     }
 
-    private void ValidateNodeParentEdges(
+    private static void ValidateNodeParentEdges(
         AkronReconstructionDocument document,
-        IReadOnlyDictionary<int, AkronReconstructionNode> nodes
+        IReadOnlyDictionary<int, AkronReconstructionNode> nodes,
+        Dictionary<(int ParentNodeId, string DeclaringTypeName, string FieldName), AkronReconstructionValue>
+            parentFieldValues
     ) {
         // Index each field once. Looking through every parent field for every
         // child makes a wide crafted snapshot quadratic to validate.
@@ -2233,15 +2235,15 @@ internal sealed class AkronReconstructionGraph {
         foreach (AkronReconstructionNode parent in document.Nodes) {
             fieldCount = checked(fieldCount + (parent.FieldsOrNull?.Count ?? 0));
         }
-        validationParentFieldValues.Clear();
-        validationParentFieldValues.EnsureCapacity(fieldCount);
+        parentFieldValues.Clear();
+        parentFieldValues.EnsureCapacity(fieldCount);
         try {
             foreach (AkronReconstructionNode parent in document.Nodes) {
                 foreach (AkronReconstructionField field in parent.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
                     if (field == null) {
                         continue;
                     }
-                    if (!validationParentFieldValues.TryAdd(
+                    if (!parentFieldValues.TryAdd(
                             (parent.Id, field.DeclaringTypeName, field.Name),
                             field.Value)) {
                         throw new InvalidOperationException(
@@ -2263,7 +2265,7 @@ internal sealed class AkronReconstructionGraph {
 
                 AkronReconstructionValue parentValue = null;
                 if (node.ParentKind == "field") {
-                    validationParentFieldValues.TryGetValue(
+                    parentFieldValues.TryGetValue(
                         (parent.Id, node.ParentDeclaringTypeName, node.ParentFieldName),
                         out parentValue);
                 } else if (node.ParentKind == "array" &&
@@ -2285,7 +2287,7 @@ internal sealed class AkronReconstructionGraph {
                 }
             }
         } finally {
-            validationParentFieldValues.Clear();
+            parentFieldValues.Clear();
         }
     }
 
@@ -3425,7 +3427,10 @@ internal sealed class AkronReconstructionGraph {
             Type containingType = null,
             string knownEventPath = null,
             AkronReconstructionNode parentNode = null,
-            AkronReconstructionPathStep parentStep = null,
+            string parentKind = null,
+            string parentDeclaringTypeName = null,
+            string parentFieldName = null,
+            IReadOnlyList<int> parentArrayIndices = null,
             int parentDelegateIndex = -1
         ) {
             if (savedValue == null) {
@@ -3558,10 +3563,10 @@ internal sealed class AkronReconstructionGraph {
                 TypeName = TypeName(savedType),
                 Path = path,
                 ParentNodeId = parentNode?.Id ?? 0,
-                ParentKind = parentStep?.Kind ?? (parentDelegateIndex >= 0 ? "delegate" : string.Empty),
-                ParentDeclaringTypeName = parentStep?.DeclaringTypeName ?? string.Empty,
-                ParentFieldName = parentStep?.FieldName ?? string.Empty,
-                ParentArrayIndices = parentStep?.ArrayIndicesOrNull is { Count: > 0 } parentArrayIndices
+                ParentKind = parentKind ?? (parentDelegateIndex >= 0 ? "delegate" : string.Empty),
+                ParentDeclaringTypeName = parentDeclaringTypeName ?? string.Empty,
+                ParentFieldName = parentFieldName ?? string.Empty,
+                ParentArrayIndicesOrNull = parentArrayIndices is { Count: > 0 }
                     ? new List<int>(parentArrayIndices)
                     : null,
                 ParentDelegateIndex = parentDelegateIndex,
@@ -3641,10 +3646,9 @@ internal sealed class AkronReconstructionGraph {
                 savedTarget,
                 freshTarget,
                 targetPath,
-                savedWeakReference.GetType(),
-                null,
-                node,
-                new AkronReconstructionPathStep { Kind = "weak-target" });
+                containingType: savedWeakReference.GetType(),
+                parentNode: node,
+                parentKind: "weak-target");
             // Weak-reference nodes are rebuilt in one ascending-id pass after every
             // other node, so a target that is itself a weak reference must have been
             // captured before this one to exist when this one is created. Capture
@@ -3680,15 +3684,11 @@ internal sealed class AkronReconstructionGraph {
                     continue;
                 }
                 string childPath = FieldPath(path, field.Name);
-                AkronReconstructionPathStep pathStep = new AkronReconstructionPathStep {
-                    Kind = "field",
-                    DeclaringTypeName = TypeName(field.DeclaringType),
-                    FieldName = field.Name
-                };
+                string declaringTypeName = TypeName(field.DeclaringType);
                 object freshFieldValue = freshObject == null ? null : field.GetValue(freshObject);
                 string knownEventPath = AkronEventInstanceUtils.GetOwnerEventPath(savedObject, field.Name);
                 (node.FieldsOrNull ??= new List<AkronReconstructionField>()).Add(new AkronReconstructionField {
-                    DeclaringTypeName = TypeName(field.DeclaringType),
+                    DeclaringTypeName = declaringTypeName,
                     Name = field.Name,
                     Path = childPath,
                     Value = CaptureValue(
@@ -3698,7 +3698,9 @@ internal sealed class AkronReconstructionGraph {
                         savedObject.GetType(),
                         knownEventPath,
                         node,
-                        pathStep)
+                        parentKind: "field",
+                        parentDeclaringTypeName: declaringTypeName,
+                        parentFieldName: field.Name)
                 });
             }
         }
@@ -3738,17 +3740,14 @@ internal sealed class AkronReconstructionGraph {
             }
             foreach (int[] indices in EnumerateArrayIndices(savedArray)) {
                 string childPath = ArrayPath(path, indices);
-                AkronReconstructionPathStep pathStep = new AkronReconstructionPathStep {
-                    Kind = "array",
-                    ArrayIndices = indices.ToList()
-                };
                 object freshItem = HasArrayIndex(freshArray, indices) ? freshArray.GetValue(indices) : null;
                 (node.ItemsOrNull ??= new List<AkronReconstructionValue>()).Add(CaptureValue(
                     savedArray.GetValue(indices),
                     freshItem,
                     childPath,
                     parentNode: node,
-                    parentStep: pathStep));
+                    parentKind: "array",
+                    parentArrayIndices: indices));
             }
         }
 
@@ -9813,7 +9812,7 @@ internal static class AkronStartPosReconstruction {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             byte[] serializedHash;
             using (FileStream file = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            using (GZipStream compressed = new GZipStream(file, CompressionLevel.Optimal, leaveOpen: false))
+            using (GZipStream compressed = new GZipStream(file, CompressionLevel.SmallestSize, leaveOpen: false))
             using (AkronPacedWriteStream paced = new AkronPacedWriteStream(compressed, maxDecompressedBytes)) {
                 CaptureGraph.Serialize(document, paced);
                 serializedHash = paced.GetHashAndReset();
