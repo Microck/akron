@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 73
+
 ### Changed
 
 - Load and rewrite StartPos slots in substantially less memory, and write them smaller, without changing saved-state or slot compatibility.
