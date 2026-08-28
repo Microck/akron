@@ -101,6 +101,7 @@ public sealed class AkronSaveLoadSlot {
     internal List<AkronGameplayBufferSnapshot> GameplayBuffers { get; set; } = new List<AkronGameplayBufferSnapshot>();
     internal IReadOnlyDictionary<object, AkronReconstructionResourcePayload> PersistentRenderTargets { get; set; } =
         new Dictionary<object, AkronReconstructionResourcePayload>();
+    internal IReadOnlyDictionary<object, string> HookOwnerRegistrations { get; set; }
     internal IReadOnlyList<AkronTrackedVirtualAssetRegistration> TrackedVirtualAssetRegistrations { get; set; } =
         Array.Empty<AkronTrackedVirtualAssetRegistration>();
     public Dictionary<string, EverestModuleSession> ModuleSessions { get; }

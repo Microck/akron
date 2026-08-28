@@ -5232,6 +5232,145 @@ public sealed class StartPosReconstructionTests {
         Assert.Same(liveCache, restoredCache);
     }
 
+    // XaphanHelper's LightningDash shape: HookGen owns one upgrade handler,
+    // while the active dash iterator captures a dormant clone of that handler
+    // in <>4__this. The clone reaches process-only hook and reflection state,
+    // so reconstruction must stop at the owner and rebind it to HookGen's exact
+    // registered delegate target.
+    [Fact]
+    public void AHookIteratorRebindsItsCapturedOwnerFromHookGensRegistry() {
+        AkronDeepClone.Initialize();
+        HookIteratorOwner liveOwner = new HookIteratorOwner();
+        HookIteratorOwner roomOwner = new HookIteratorOwner();
+        HookOwnerModule module = new HookOwnerModule();
+        module.Owners["lightning-dash"] = liveOwner;
+        module.RoomOwners["a-00"] = roomOwner;
+        EverestModule[] loadedModules = { module };
+        HookRoutine hook = liveOwner.RunHook;
+        HookRoutine roomHook = roomOwner.RunHook;
+        Type endpointManager = typeof(Hook).Assembly.GetType(
+            "MonoMod.RuntimeDetour.HookGen.HookEndpointManager",
+            throwOnError: true)!;
+        MethodInfo add = endpointManager.GetMethods(BindingFlags.Static | BindingFlags.Public)
+            .Single(method => method.Name == "Add" && !method.IsGenericMethod);
+        MethodInfo remove = endpointManager.GetMethods(BindingFlags.Static | BindingFlags.Public)
+            .Single(method => method.Name == "Remove" && !method.IsGenericMethod);
+        MethodInfo source = typeof(StartPosReconstructionTests).GetMethod(
+            nameof(HookRoutineSource),
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+        add.Invoke(null, new object[] { source, hook });
+        add.Invoke(null, new object[] { source, roomHook });
+        bool liveHookRegistered = true;
+        try {
+            AkronReconstructionGraph graph = CreateStartPosGraph();
+            IReadOnlyDictionary<object, string> setFrameRegistrations =
+                AkronStartPosReconstruction.CaptureHookOwnerRegistrations(
+                    loadedModules,
+                    (_, field) => field.Name == nameof(HookOwnerModule.Owners));
+            Assert.True(AkronStartPosReconstruction.AreHookOwnerRegistrationsCurrent(
+                setFrameRegistrations,
+                setFrameRegistrations));
+            HookIteratorOwner replacementOwner = new();
+            IReadOnlyDictionary<object, string> replacementRegistrations = new Dictionary<object, string>(
+                ReferenceEqualityComparer.Instance) {
+                [replacementOwner] = Assert.Single(setFrameRegistrations).Value
+            };
+            Assert.False(AkronStartPosReconstruction.AreHookOwnerRegistrationsCurrent(
+                setFrameRegistrations,
+                replacementRegistrations));
+            HookIteratorRoot saved;
+            using (AkronStartPosReconstruction.UseHookOwnerRegistrations(setFrameRegistrations)) {
+                HookIteratorRoot ordinary = (HookIteratorRoot) AkronSaveLoadService.DeepClone(
+                    CreateHookIteratorRoot(roomOwner, running: true));
+                IEnumerator ordinaryIterator = Assert.Single(
+                    GetRuntimeField<Stack<IEnumerator>>(ordinary.Routine, "enumerators"));
+                HookIteratorOwner clonedOrdinaryOwner = GetRuntimeField<HookIteratorOwner>(
+                    ordinaryIterator,
+                    "<>4__this");
+                Assert.NotSame(liveOwner, clonedOrdinaryOwner);
+                Assert.NotSame(roomOwner, clonedOrdinaryOwner);
+
+                saved = (HookIteratorRoot) AkronSaveLoadService.DeepClone(
+                    CreateHookIteratorRoot(liveOwner, running: true));
+                IEnumerator savedIterator = Assert.Single(
+                    GetRuntimeField<Stack<IEnumerator>>(saved.Routine, "enumerators"));
+                Assert.Same(liveOwner, GetRuntimeField<HookIteratorOwner>(savedIterator, "<>4__this"));
+            }
+            remove.Invoke(null, new object[] { source, hook });
+            liveHookRegistered = false;
+
+            // Persistence can run after Set on a worker. It must use the exact
+            // ownership snapshot that preserved the saved clone even if the mod
+            // has since removed or replaced its live hook.
+            HookIteratorRoot baseline = CreateHookIteratorRoot(null, running: false);
+            string serialized;
+            using (AkronStartPosReconstruction.UseHookOwnerRegistrations(setFrameRegistrations)) {
+                AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+                Assert.True(capture.Success, capture.Error);
+                AkronReconstructionNode ownerNode = Assert.Single(
+                    capture.Document.Nodes,
+                    node => node.TypeName == typeof(HookIteratorOwner).AssemblyQualifiedName);
+                Assert.Equal("anchor", ownerNode.Kind);
+                serialized = graph.Serialize(capture.Document);
+            }
+
+            // The snapshot is read before its fresh room has a chance to
+            // register room-scoped hooks. Its portable owner key is safe to
+            // validate now, but exact runtime resolution belongs to restore.
+            AkronReconstructionDocument document = graph.Deserialize(serialized);
+            add.Invoke(null, new object[] { source, hook });
+            liveHookRegistered = true;
+            HookIteratorRoot fresh = CreateHookIteratorRoot(null, running: false);
+
+            AkronReconstructionRestore restore;
+            IReadOnlyDictionary<object, string> restoreRegistrations =
+                AkronStartPosReconstruction.CaptureHookOwnerRegistrations(
+                    loadedModules,
+                    (_, field) => field.Name == nameof(HookOwnerModule.Owners));
+            using (AkronStartPosReconstruction.UseHookOwnerRegistrations(restoreRegistrations)) {
+                restore = graph.Restore(document, fresh);
+            }
+
+            Assert.True(restore.Success, restore.Error);
+            IEnumerator iterator = Assert.Single(GetRuntimeField<Stack<IEnumerator>>(fresh.Routine, "enumerators"));
+            Assert.Same(liveOwner, GetRuntimeField<HookIteratorOwner>(iterator, "<>4__this"));
+        } finally {
+            remove.Invoke(null, new object[] { source, roomHook });
+            if (liveHookRegistered) {
+                remove.Invoke(null, new object[] { source, hook });
+            }
+        }
+    }
+
+    private sealed class HookOwnerModule : EverestModule {
+        public readonly Dictionary<string, HookIteratorOwner> Owners =
+            new Dictionary<string, HookIteratorOwner>();
+        public readonly Dictionary<string, HookIteratorOwner> RoomOwners =
+            new Dictionary<string, HookIteratorOwner>();
+
+        public override void Load() {
+        }
+
+        public override void Unload() {
+        }
+    }
+
+    private static IEnumerator HookRoutineSource() {
+        yield break;
+    }
+
+    private static HookIteratorRoot CreateHookIteratorRoot(HookIteratorOwner? owner, bool running) {
+        Coroutine routine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+        Stack<IEnumerator> iterators = new Stack<IEnumerator>();
+        if (running) {
+            IEnumerator iterator = owner!.RunHook(null!);
+            Assert.True(iterator.MoveNext());
+            iterators.Push(iterator);
+        }
+        SetRuntimeField(routine, "enumerators", iterators);
+        return new HookIteratorRoot { Routine = routine };
+    }
+
     // Level.StartCutscene stores the skip callback and nothing in Celeste ever
     // clears it, so a slot set after any skipped cutscene dragged the finished
     // cutscene entity into the graph through a callback that can never fire
@@ -7380,7 +7519,9 @@ public sealed class StartPosReconstructionTests {
             hasPortableLiveResourceKey: acceptProbeModContext
                 ? HasPortableProbeModResourceKey
                 : AkronStartPosReconstruction.HasPortableLiveResourceKey,
-            getMapPlacedEntityIds: AkronStartPosReconstruction.GetMapPlacedEntityIds);
+            getMapPlacedEntityIds: AkronStartPosReconstruction.GetMapPlacedEntityIds,
+            isAdditionalLiveResource: AkronStartPosReconstruction.IsLiveHookOwner,
+            hasDeferredDetachedLiveResourceKey: AkronStartPosReconstruction.HasDeferredHookOwnerKey);
     }
 
     [Fact]
@@ -9098,6 +9239,25 @@ public sealed class StartPosReconstructionTests {
 
     private sealed class DynamicDataSubject {
         public int Exposed = 5;
+    }
+
+    private delegate IEnumerator HookRoutine(OrigHookRoutine orig);
+    private delegate IEnumerator OrigHookRoutine();
+
+    private sealed class HookIteratorRoot {
+        public Coroutine Routine = null!;
+    }
+
+    private sealed class HookIteratorOwner {
+        // The production repro reaches ILHook and FieldInfo instead. IntPtr is
+        // the smallest process-only value that proves capture did not walk the
+        // dormant clone after recognizing the owner anchor.
+        public IntPtr ProcessHandle = new IntPtr(1);
+
+        public IEnumerator RunHook(OrigHookRoutine orig) {
+            _ = ProcessHandle;
+            yield return null;
+        }
     }
 
     // LightningRenderer's shape: an entity builds nested plain objects in its

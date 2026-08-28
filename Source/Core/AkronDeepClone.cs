@@ -137,6 +137,14 @@ internal static class AkronDeepClone {
         }
 
         lock (source) {
+            if (AkronStartPosReconstruction.IsLiveHookOwner(source)) {
+                // The Set-frame hook-owner registry identifies this process
+                // singleton. Keeping its exact target here gives reconstruction
+                // identity evidence instead of asking it to infer ownership from
+                // a cloned iterator later.
+                return source;
+            }
+
             if (source is VirtualAsset virtualAsset) {
                 AkronVirtualAssetReloadTracker.Add(virtualAsset);
                 return virtualAsset;
