@@ -77,7 +77,7 @@ def render_contributors(contributors: list[dict[str, object]]) -> str:
         profile_url = html.escape(str(contributor["html_url"]), quote=True)
         avatar_url = html.escape(sized_avatar_url(str(contributor["avatar_url"])), quote=True)
         entries.append(
-            f'<a href="{profile_url}" style={{{{ textDecoration: "none", borderBottom: "none" }}}}>'
+            f'<a href="{profile_url}" className="github-contributor-avatar">'
             f'<img src="{avatar_url}" alt="{login}" '
             'width="48" height="48" style={{ borderRadius: "50%" }} /></a>'
         )
