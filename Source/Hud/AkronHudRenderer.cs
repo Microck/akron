@@ -174,7 +174,8 @@ public static partial class AkronHudRenderer {
             DrawText("Slot " + settings.ActiveSavestateSlot + ": saved", HudEdgePadding, ref y, Color.White);
         }
 
-        if (labelsVisible && settings.StartPosShowLabel) {
+        if (AkronPolicy.IsLabelFeatureActive(labelsVisible, settings.StartPosShowLabel) &&
+            AkronModule.TryUse(AkronFeatureKind.StartPosTools)) {
             RenderStartPosLabel(AkronActions.GetActiveStartPos(), HudEdgePadding, ref y);
         }
 

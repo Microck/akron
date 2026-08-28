@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Fixed
+
+- Keep enabled cheat-class labels from marking an attempt as Cheat while the master label visibility switch is off.
+
 ## Akron Beta 73
 
 ### Changed

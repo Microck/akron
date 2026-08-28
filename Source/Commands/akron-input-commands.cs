@@ -205,7 +205,8 @@ public static partial class AkronCommands {
             case "status":
                 break;
             case "on":
-                if (!AkronModule.TryUse(AkronFeatureKind.InputsPerSecondCounter)) {
+                if (AkronPolicy.IsLabelFeatureActive(AkronModule.Settings.LabelSystemVisible, labelEnabled: true) &&
+                    !AkronModule.TryUse(AkronFeatureKind.InputsPerSecondCounter)) {
                     Log("inputs-per-second: blocked");
                     return;
                 }
@@ -215,11 +216,13 @@ public static partial class AkronCommands {
                 AkronModule.Settings.InputsPerSecondCounter = false;
                 break;
             case "toggle":
-                if (!AkronModule.Settings.InputsPerSecondCounter && !AkronModule.TryUse(AkronFeatureKind.InputsPerSecondCounter)) {
+                bool next = !AkronModule.Settings.InputsPerSecondCounter;
+                if (AkronPolicy.IsLabelFeatureActive(AkronModule.Settings.LabelSystemVisible, next) &&
+                    !AkronModule.TryUse(AkronFeatureKind.InputsPerSecondCounter)) {
                     Log("inputs-per-second: blocked");
                     return;
                 }
-                AkronModule.Settings.InputsPerSecondCounter = !AkronModule.Settings.InputsPerSecondCounter;
+                AkronModule.Settings.InputsPerSecondCounter = next;
                 break;
             case "placement":
                 AkronModule.Settings.InputsPerSecondPlacement = NormalizeToken(value) == "right" ? AkronHudPlacement.Right : AkronHudPlacement.Left;

@@ -23,10 +23,10 @@ public sealed partial class AkronOverlay {
                 settings.InputViewer = value;
                 settings.InputHistoryPanel = value;
             }),
-            ["Inputs per second"] = LabelPolicyToggle("Inputs per second", AkronFeatureKind.InputsPerSecondCounter, () => settings.InputsPerSecondCounter, value => settings.InputsPerSecondCounter = value),
+            ["Inputs per second"] = LabelPolicyToggle("Inputs per second", AkronFeatureKind.InputsPerSecondCounter, () => settings.LabelSystemVisible, () => settings.InputsPerSecondCounter, value => settings.InputsPerSecondCounter = value),
             ["Dash Stats"] = LabelToggle("Dash Stats", () => settings.DashCountStats, value => settings.DashCountStats = value, "dash count", "stats"),
             ["Jump Stats"] = LabelToggle("Jump Stats", () => settings.JumpCount, value => settings.JumpCount = value, "jump count", "stats"),
-            ["StartPos HUD"] = LabelPolicyToggle("StartPos HUD", AkronFeatureKind.StartPosTools, () => settings.StartPosShowLabel, value => settings.StartPosShowLabel = value),
+            ["StartPos HUD"] = LabelPolicyToggle("StartPos HUD", AkronFeatureKind.StartPosTools, () => settings.LabelSystemVisible, () => settings.StartPosShowLabel, value => settings.StartPosShowLabel = value),
             ["Room Timer"] = LabelToggle("Room Timer", () => settings.RoomTimerWidget, value => settings.RoomTimerWidget = value),
             ["Room Stat Tracker"] = LabelToggle("Room Stat Tracker", () => settings.RoomStatTracker, value => settings.RoomStatTracker = value),
             ["Attempts"] = LabelToggle("Attempts", () => settings.TotalAttemptsWidget, value => settings.TotalAttemptsWidget = value),
@@ -87,14 +87,15 @@ public sealed partial class AkronOverlay {
             reorderable: true);
     }
 
-    private static OverlayEntry LabelPolicyToggle(string label, AkronFeatureKind featureKind, Func<bool> getter, Action<bool> setter, params string[] tags) {
+    private static OverlayEntry LabelPolicyToggle(string label, AkronFeatureKind featureKind, Func<bool> labelsVisible, Func<bool> getter, Action<bool> setter, params string[] tags) {
         return new OverlayEntry(
             label,
             () => true,
             () => getter() ? "On" : "Off",
             () => {
                 bool next = !getter();
-                if (next && !AkronModule.TryUse(featureKind)) {
+                if (AkronPolicy.IsLabelFeatureActive(labelsVisible(), next) &&
+                    !AkronModule.TryUse(featureKind)) {
                     return;
                 }
 
