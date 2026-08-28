@@ -222,13 +222,19 @@ public static partial class AkronSaveLoadService {
     // map of a pack takes the whole game down on another. A count cannot express that;
     // bytes can.
     //
-    // 1 GiB is chosen so the count ceiling still binds first everywhere it already fit:
+    // 1 GiB is the floor, so the count ceiling still binds first everywhere it already fit:
     // fifty warm slots measure 685 MB on vanilla and 874 MB on Ancient Engine, so
     // neither map reaches this and nothing about them changes. Heart of the Storm stops
     // adding warm clones at about thirteen instead of running the process out of memory
     // at thirty-six. The worst case this leaves is roughly 1 GB of Celeste and mods,
     // plus this 1 GiB, plus the read-ahead cache's own separate budget - measured at
     // 1.2 GiB when completely full - which is a little over 3 GiB of process.
+    //
+    // Warm-all raises that floor only as far as the managed-memory ceiling for the
+    // current machine allows. The ceiling reserves 40% of memory for Celeste's native
+    // allocations, other mods and the operating system. Unlike a larger fixed constant,
+    // that lets an 8 GB machine retain a measured 50-slot map without making the same
+    // promise on a 4 GB machine that cannot pay for it.
     //
     // This bounds the warm clones only. The prewarmed documents are a different
     // population under MaxPrewarmedSnapshotBytes, and prewarm already skips any slot
@@ -256,6 +262,98 @@ public static partial class AkronSaveLoadService {
     private static readonly Dictionary<string, WarmStartPosCost> WarmStartPosCosts =
         new Dictionary<string, WarmStartPosCost>(StringComparer.Ordinal);
     private static long nextWarmStartPosUseStamp;
+    private static HashSet<string> protectedWarmStartPosSlots;
+    private static long? activeWarmStartPosBudgetBytes;
+    private static long retainedWarmStartPosBudgetBytes = MaxWarmStartPosBytes;
+
+    // The batch protects every slot it promises to warm. If the measured population
+    // cannot fit, the next capture is refused instead of evicting an earlier slot and
+    // claiming success with a partly warm map.
+    internal sealed class WarmStartPosBatch : IDisposable {
+        private readonly HashSet<string> previousProtection;
+        private readonly long? previousBudgetBytes;
+        private bool disposed;
+        private bool committed;
+
+        internal WarmStartPosBatch(
+            HashSet<string> previousProtection,
+            long? previousBudgetBytes
+        ) {
+            this.previousProtection = previousProtection;
+            this.previousBudgetBytes = previousBudgetBytes;
+        }
+
+        public void Dispose() {
+            if (disposed) {
+                return;
+            }
+            disposed = true;
+            if (committed && activeWarmStartPosBudgetBytes.HasValue) {
+                retainedWarmStartPosBudgetBytes = activeWarmStartPosBudgetBytes.Value;
+            }
+            protectedWarmStartPosSlots = previousProtection;
+            activeWarmStartPosBudgetBytes = previousBudgetBytes;
+            if (!committed) {
+                // A failed batch can leave successful earlier reconstructions above the
+                // ordinary budget. Reconcile after removing this batch's protection.
+                TrimWarmStartPosSlots(out _);
+            }
+        }
+
+        internal void Commit() {
+            committed = true;
+        }
+    }
+
+    internal static WarmStartPosBatch BeginWarmStartPosBatch(IEnumerable<string> slotNames) {
+        HashSet<string> previousProtection = protectedWarmStartPosSlots;
+        long? previousBudgetBytes = activeWarmStartPosBudgetBytes;
+        protectedWarmStartPosSlots = new HashSet<string>(
+            (slotNames ?? Enumerable.Empty<string>())
+                .Where(slotName => !string.IsNullOrWhiteSpace(slotName))
+                .Select(NormalizeRuntimeSlotName),
+            StringComparer.Ordinal);
+        activeWarmStartPosBudgetBytes = CalculateAvailableWarmStartPosBudgetBytes();
+        return new WarmStartPosBatch(previousProtection, previousBudgetBytes);
+    }
+
+    internal static long WarmStartPosBudgetBytes {
+        get {
+            if (activeWarmStartPosBudgetBytes.HasValue) {
+                return activeWarmStartPosBudgetBytes.Value;
+            }
+
+            // The first warm-all batch can raise the retained ceiling. Recheck the
+            // process before later captures and trims so growth elsewhere in Celeste
+            // cannot turn that old allowance into an out-of-memory risk.
+            return Math.Min(
+                retainedWarmStartPosBudgetBytes,
+                CalculateAvailableWarmStartPosBudgetBytes());
+        }
+    }
+
+    private static long CalculateAvailableWarmStartPosBudgetBytes() {
+        long retainedOutsideWarmClones = Math.Max(
+            GC.GetTotalMemory(forceFullCollection: false) - WarmStartPosBytes,
+            0L);
+        return CalculateWarmStartPosBudgetBytes(
+            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes,
+            retainedOutsideWarmClones);
+    }
+
+    internal static long CalculateWarmStartPosBudgetBytes(
+        long totalAvailableMemoryBytes,
+        long retainedOutsideWarmClones
+    ) {
+        if (totalAvailableMemoryBytes <= 0L || totalAvailableMemoryBytes == long.MaxValue) {
+            return MaxWarmStartPosBytes;
+        }
+
+        long managedMemoryCeiling = totalAvailableMemoryBytes / 5L * 3L;
+        return Math.Max(
+            MaxWarmStartPosBytes,
+            managedMemoryCeiling - Math.Max(retainedOutsideWarmClones, 0L));
+    }
 
     public static string LastPersistentSnapshotError { get; private set; } = string.Empty;
 
@@ -337,6 +435,9 @@ public static partial class AkronSaveLoadService {
         RuntimeSlots.Clear();
         MarkRuntimeSlotsChanged();
         WarmStartPosCosts.Clear();
+        protectedWarmStartPosSlots = null;
+        activeWarmStartPosBudgetBytes = null;
+        retainedWarmStartPosBudgetBytes = MaxWarmStartPosBytes;
         CurrentSlotName = GetSlotName(1);
     }
 
@@ -892,7 +993,27 @@ public static partial class AkronSaveLoadService {
     // destroy the slot. That is also what keeps the slot just set: its own copy is
     // pending at this point, so it is never the one evicted.
     internal static int TrimWarmStartPosSlots(out long droppedBytes) {
-        return TrimWarmStartPosSlotsTo(MaxWarmStartPosBytes, out droppedBytes);
+        return TrimWarmStartPosSlotsTo(WarmStartPosBudgetBytes, out droppedBytes);
+    }
+
+    // A native StartPos clone contains one map's Level graph and cannot serve any
+    // other map. Once the active catalog changes, release restart-safe clones that
+    // are absent from it. Their disk snapshots remain canonical and can rebuild the
+    // whole map-scoped warm set when the player returns.
+    internal static int DiscardRestartSafeWarmStartPosSlotsExcept(IEnumerable<string> retainedSlotNames) {
+        HashSet<string> retained = new HashSet<string>(
+            (retainedSlotNames ?? Enumerable.Empty<string>())
+                .Where(slotName => !string.IsNullOrWhiteSpace(slotName))
+                .Select(NormalizeRuntimeSlotName),
+            StringComparer.Ordinal);
+        string[] discarded = WarmStartPosCosts.Keys
+            .Where(slotName => !retained.Contains(slotName) && CanDropWarmStartPosSlot(slotName))
+            .ToArray();
+        foreach (string slotName in discarded) {
+            ReleaseRuntimeStateMemory(slotName);
+            WarmStartPosCosts.Remove(slotName);
+        }
+        return discarded.Length;
     }
 
     private static int TrimWarmStartPosSlotsTo(long targetBytes, out long droppedBytes) {
@@ -919,7 +1040,7 @@ public static partial class AkronSaveLoadService {
             long coldestBytes = WarmStartPosCosts[coldest].Bytes;
             AkronLog.Info(nameof(AkronSaveLoadService),
                 "StartPos warm clone for " + coldest + " dropped to stay inside the " +
-                (MaxWarmStartPosBytes / (1024d * 1024d)).ToString("F0", CultureInfo.InvariantCulture) +
+                (WarmStartPosBudgetBytes / (1024d * 1024d)).ToString("F0", CultureInfo.InvariantCulture) +
                 " MB warm budget; it holds " +
                 (coldestBytes / (1024d * 1024d)).ToString("F1", CultureInfo.InvariantCulture) +
                 " MB and still loads from its restart copy.");
@@ -936,7 +1057,8 @@ public static partial class AkronSaveLoadService {
     }
 
     private static bool CanDropWarmStartPosSlot(string slotName) {
-        return !AkronActions.HasPendingStartPosState(slotName) &&
+        return (protectedWarmStartPosSlots == null || !protectedWarmStartPosSlots.Contains(slotName)) &&
+               !AkronActions.HasPendingStartPosState(slotName) &&
                AkronStartPosReconstruction.HasSnapshot(slotName);
     }
 
@@ -973,13 +1095,14 @@ public static partial class AkronSaveLoadService {
                 projectedCaptureBytes = Math.Max(projectedCaptureBytes, pair.Value.Bytes);
             }
         }
-        if (projectedCaptureBytes > MaxWarmStartPosBytes) {
+        long warmBudgetBytes = WarmStartPosBudgetBytes;
+        if (projectedCaptureBytes > warmBudgetBytes) {
             droppedSlots = 0;
             droppedBytes = 0;
             return false;
         }
 
-        long targetBytes = MaxWarmStartPosBytes - projectedCaptureBytes;
+        long targetBytes = warmBudgetBytes - projectedCaptureBytes;
         if (total <= targetBytes) {
             droppedSlots = 0;
             droppedBytes = 0;
@@ -1451,6 +1574,18 @@ public static partial class AkronSaveLoadService {
             RecordWarmStartPosCost(slotName, allocatedBeforeCapture);
             AkronStartPosPersistence.AttachRuntimeFreshBaseline(slotName, freshBaseline);
             AkronStartPosPersistence.UseRuntimeFreshBaseline(slotName);
+            if (protectedWarmStartPosSlots != null &&
+                WarmStartPosBytes > WarmStartPosBudgetBytes) {
+                // The restored level stays live. Release only its rejected cache clone;
+                // global ClearState callbacks would erase helper state from that level.
+                ReleaseRuntimeStateMemory(slotName);
+                LastPersistentSnapshotError =
+                    "warming every StartPos would exceed this machine's " +
+                    (WarmStartPosBudgetBytes / (1024d * 1024d))
+                        .ToString("F0", CultureInfo.InvariantCulture) +
+                    " MB warm-state budget";
+                return AkronSaveLoadResult.Failed;
+            }
             // The measured clone can exceed the projection used above. Reconcile against the exact cost before
             // returning; this slot has a restart copy, so it remains loadable even if it is the one dropped.
             TrimWarmStartPosSlots(out _);
@@ -1865,10 +2000,7 @@ public static partial class AkronSaveLoadService {
         string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
         AkronSpeedrunToolBroker.Clear(normalizedSlotName);
         AkronStartPosReconstruction.DeleteSnapshot(normalizedSlotName);
-        AkronStartPosPersistence.RemoveRuntimeFreshBaseline(normalizedSlotName);
-        if (RuntimeSlots.Remove(normalizedSlotName, out AkronSaveLoadSlotOwner removedSlot)) {
-            removedSlot.ReleaseOwnership();
-            MarkRuntimeSlotsChanged();
+        if (ReleaseRuntimeStateMemory(normalizedSlotName)) {
             RunClearStateActions();
         }
     }
@@ -1885,6 +2017,10 @@ public static partial class AkronSaveLoadService {
         if (RuntimeSlots.Remove(normalizedSlotName, out AkronSaveLoadSlotOwner removedSlot)) {
             removedSlot.ReleaseOwnership();
             MarkRuntimeSlotsChanged();
+            if (activeWarmStartPosBudgetBytes == null &&
+                WarmStartPosBytes <= MaxWarmStartPosBytes) {
+                retainedWarmStartPosBudgetBytes = MaxWarmStartPosBytes;
+            }
             return true;
         }
         return false;

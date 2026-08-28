@@ -206,4 +206,19 @@ internal static class AkronEngineGarbageCollection {
         Interlocked.Increment(ref paidCollections);
         return true;
     }
+
+    // Warming or releasing StartPos slots replaces several complete room graphs.
+    // The retained active-map slots are intentional, but discarded graphs and their
+    // finalizable graphics wrappers are not. Collect them before play resumes so a
+    // warm load cannot inherit gigabytes of stale graph data. A second collection
+    // reclaims objects whose finalizers just ran.
+    internal static void CollectStartPosGarbage() {
+        bool paidDebt = Interlocked.Exchange(ref collectionOwed, 0) != 0;
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        if (paidDebt) {
+            Interlocked.Increment(ref paidCollections);
+        }
+    }
 }
