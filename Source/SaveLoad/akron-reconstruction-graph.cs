@@ -647,9 +647,9 @@ internal sealed class AkronReconstructionDelegateCall {
     [System.ComponentModel.DefaultValue(-1)]
     public int ReturnTypeNameIndex { get; set; } = -1;
     [JsonIgnore]
-    public List<string> ParameterTypeNames { get; set; } = new List<string>();
+    public List<string> ParameterTypeNames { get; set; }
     [JsonProperty(AkronReconstructionTags.ParameterTypeNameIndexes)]
-    public List<int> ParameterTypeNameIndexes { get; set; } = new List<int>();
+    public List<int> ParameterTypeNameIndexes { get; set; }
     public bool ShouldSerializeParameterTypeNameIndexes() =>
         ParameterTypeNameIndexes != null && ParameterTypeNameIndexes.Count > 0;
     [JsonIgnore]
@@ -666,9 +666,9 @@ internal sealed class AkronReconstructionDelegateCall {
     [System.ComponentModel.DefaultValue(-1)]
     public int HookTargetReturnTypeNameIndex { get; set; } = -1;
     [JsonIgnore]
-    public List<string> HookTargetParameterTypeNames { get; set; } = new List<string>();
+    public List<string> HookTargetParameterTypeNames { get; set; }
     [JsonProperty(AkronReconstructionTags.HookTargetParameterTypeNameIndexes)]
-    public List<int> HookTargetParameterTypeNameIndexes { get; set; } = new List<int>();
+    public List<int> HookTargetParameterTypeNameIndexes { get; set; }
     public bool ShouldSerializeHookTargetParameterTypeNameIndexes() =>
         HookTargetParameterTypeNameIndexes != null && HookTargetParameterTypeNameIndexes.Count > 0;
 }
@@ -907,6 +907,7 @@ internal sealed class AkronBoundedJsonTextReader : JsonTextReader {
         if (TokenType == JsonToken.None) {
             return;
         }
+        string valuePropertyName = pendingPropertyName;
         RecordArrayKind recordArrayKind = TrackRecordArrayKind();
         tokenCount++;
         if (tokenCount > maxTokenCount) {
@@ -941,16 +942,41 @@ internal sealed class AkronBoundedJsonTextReader : JsonTextReader {
                 }
             }
         }
-        if (Value is string text && text.Length > maxStringChars) {
+        bool streamedBinary = TokenType == JsonToken.String &&
+                              IsBinaryProperty(valuePropertyName) &&
+                              Value is string;
+        if (streamedBinary) {
+            RecordBase64Bytes((string) Value);
+        } else if (Value is string text && text.Length > maxStringChars) {
             throw new InvalidOperationException(
                 $"Reconstruction JSON string length exceeds the supported limit of {maxStringChars:N0} characters.");
         }
         if (Value is byte[] bytes) {
-            binaryBytes = checked(binaryBytes + bytes.LongLength);
-            if (binaryBytes > maxBinaryBytes) {
-                throw new InvalidOperationException(
-                    $"Reconstruction JSON binary data exceeds the supported limit of {maxBinaryBytes:N0} bytes.");
-            }
+            RecordBinaryBytes(bytes.LongLength);
+        }
+    }
+
+    private static bool IsBinaryProperty(string propertyName) {
+        return propertyName == AkronReconstructionTags.PackedPrimitiveArrayBytes ||
+               propertyName == nameof(AkronReconstructionResourcePayload.Bytes);
+    }
+
+    private void RecordBase64Bytes(string encoded) {
+        if ((encoded.Length & 3) != 0) {
+            throw new InvalidOperationException("Reconstruction JSON binary data is invalid.");
+        }
+        int padding = encoded.Length > 0 && encoded[encoded.Length - 1] == '=' ? 1 : 0;
+        if (encoded.Length > 1 && encoded[encoded.Length - 2] == '=') {
+            padding++;
+        }
+        RecordBinaryBytes(checked((long) (encoded.Length / 4) * 3L - padding));
+    }
+
+    private void RecordBinaryBytes(long count) {
+        binaryBytes = checked(binaryBytes + count);
+        if (binaryBytes > maxBinaryBytes) {
+            throw new InvalidOperationException(
+                $"Reconstruction JSON binary data exceeds the supported limit of {maxBinaryBytes:N0} bytes.");
         }
     }
 
@@ -1303,6 +1329,28 @@ internal sealed class AkronReconstructionGraph {
         Func<string, int> toIndex,
         Func<int, string> toName
     ) {
+        List<int> MapNames(List<string> names) {
+            if (names == null || names.Count == 0) {
+                return null;
+            }
+            List<int> indexes = new List<int>(names.Count);
+            foreach (string name in names) {
+                indexes.Add(toIndex(name));
+            }
+            return indexes;
+        }
+
+        List<string> MapIndexes(List<int> indexes) {
+            if (indexes == null || indexes.Count == 0) {
+                return null;
+            }
+            List<string> names = new List<string>(indexes.Count);
+            foreach (int index in indexes) {
+                names.Add(toName(index));
+            }
+            return names;
+        }
+
         void MapValue(AkronReconstructionValue value) {
             if (value == null) {
                 return;
@@ -1360,21 +1408,17 @@ internal sealed class AkronReconstructionGraph {
                     if (build) {
                         call.DeclaringTypeNameIndex = toIndex(call.DeclaringTypeName);
                         call.ReturnTypeNameIndex = toIndex(call.ReturnTypeName);
-                        call.ParameterTypeNameIndexes =
-                            (call.ParameterTypeNames ?? new List<string>()).Select(toIndex).ToList();
+                        call.ParameterTypeNameIndexes = MapNames(call.ParameterTypeNames);
                         call.HookTargetDeclaringTypeNameIndex = toIndex(call.HookTargetDeclaringTypeName);
                         call.HookTargetReturnTypeNameIndex = toIndex(call.HookTargetReturnTypeName);
-                        call.HookTargetParameterTypeNameIndexes =
-                            (call.HookTargetParameterTypeNames ?? new List<string>()).Select(toIndex).ToList();
+                        call.HookTargetParameterTypeNameIndexes = MapNames(call.HookTargetParameterTypeNames);
                     } else {
                         call.DeclaringTypeName = toName(call.DeclaringTypeNameIndex);
                         call.ReturnTypeName = toName(call.ReturnTypeNameIndex);
-                        call.ParameterTypeNames =
-                            (call.ParameterTypeNameIndexes ?? new List<int>()).Select(toName).ToList();
+                        call.ParameterTypeNames = MapIndexes(call.ParameterTypeNameIndexes);
                         call.HookTargetDeclaringTypeName = toName(call.HookTargetDeclaringTypeNameIndex);
                         call.HookTargetReturnTypeName = toName(call.HookTargetReturnTypeNameIndex);
-                        call.HookTargetParameterTypeNames =
-                            (call.HookTargetParameterTypeNameIndexes ?? new List<int>()).Select(toName).ToList();
+                        call.HookTargetParameterTypeNames = MapIndexes(call.HookTargetParameterTypeNameIndexes);
                     }
                     MapValue(call.Target);
                 }
@@ -1425,8 +1469,7 @@ internal sealed class AkronReconstructionGraph {
     }
 
     public string Serialize(AkronReconstructionDocument document) {
-        ValidateDocumentHeader(document);
-        BuildTypeNameTable(document);
+        PrepareForSerialization(document);
         return JsonConvert.SerializeObject(document, JsonSettings);
     }
 
@@ -1446,8 +1489,7 @@ internal sealed class AkronReconstructionGraph {
     }
 
     public void Serialize(AkronReconstructionDocument document, Stream stream) {
-        ValidateDocumentHeader(document);
-        BuildTypeNameTable(document);
+        PrepareForSerialization(document);
         if (stream == null || !stream.CanWrite) {
             throw new InvalidOperationException("Reconstruction output stream is unavailable.");
         }
@@ -1457,6 +1499,16 @@ internal sealed class AkronReconstructionGraph {
         using JsonTextWriter jsonWriter = new JsonTextWriter(streamWriter) { CloseOutput = false };
         serializer.Serialize(jsonWriter, document);
         jsonWriter.Flush();
+    }
+
+    private void PrepareForSerialization(AkronReconstructionDocument document) {
+        ValidateDocumentHeader(document);
+        BuildTypeNameTable(document);
+        // Validate the exact indexed view that will go to disk, not only the
+        // pre-index strings. This retains the old read-back guarantee without
+        // constructing a second copy of the complete object graph.
+        ResolveTypeNames(document);
+        ValidateDocumentHeader(document);
     }
 
     public AkronReconstructionDocument Deserialize(Stream stream) {
@@ -1472,6 +1524,22 @@ internal sealed class AkronReconstructionGraph {
         ValidateDocumentHeader(document);
         RestoreDiagnosticPaths(document);
         return document;
+    }
+
+    internal void ValidateSerializedDocument(Stream stream) {
+        if (stream == null || !stream.CanRead) {
+            throw new InvalidOperationException("Reconstruction input stream is unavailable.");
+        }
+
+        using StreamReader streamReader = new StreamReader(stream, Encoding.UTF8, true, 65536, leaveOpen: true);
+        using AkronBoundedJsonTextReader jsonReader = CreateJsonReader(streamReader);
+        bool readAny = false;
+        while (jsonReader.Read()) {
+            readAny = true;
+        }
+        if (!readAny) {
+            throw new InvalidOperationException("Reconstruction document is empty.");
+        }
     }
 
     private AkronBoundedJsonTextReader CreateJsonReader(TextReader reader) {
@@ -3160,15 +3228,11 @@ internal sealed class AkronReconstructionGraph {
                         DeclaringTypeName = TypeName(sourceMethod.DeclaringType),
                         MethodName = sourceMethod.Name,
                         ReturnTypeName = TypeName(sourceMethod.ReturnType),
-                        ParameterTypeNames = sourceMethod.GetParameters()
-                            .Select(parameter => TypeName(parameter.ParameterType))
-                            .ToList(),
+                        ParameterTypeNames = GetParameterTypeNames(sourceMethod),
                         HookTargetDeclaringTypeName = TypeName(hookTarget.DeclaringType),
                         HookTargetMethodName = hookTarget.Name,
                         HookTargetReturnTypeName = TypeName(hookTarget.ReturnType),
-                        HookTargetParameterTypeNames = hookTarget.GetParameters()
-                            .Select(parameter => TypeName(parameter.ParameterType))
-                            .ToList()
+                        HookTargetParameterTypeNames = GetParameterTypeNames(hookTarget)
                     });
                     return;
                 }
@@ -3220,9 +3284,21 @@ internal sealed class AkronReconstructionGraph {
                     DeclaringTypeName = TypeName(method.DeclaringType),
                     MethodName = method.Name,
                     ReturnTypeName = TypeName(method.ReturnType),
-                    ParameterTypeNames = method.GetParameters().Select(parameter => TypeName(parameter.ParameterType)).ToList()
+                    ParameterTypeNames = GetParameterTypeNames(method)
                 });
             }
+        }
+
+        private List<string> GetParameterTypeNames(MethodBase method) {
+            ParameterInfo[] parameters = method.GetParameters();
+            if (parameters.Length == 0) {
+                return null;
+            }
+            List<string> names = new List<string>(parameters.Length);
+            foreach (ParameterInfo parameter in parameters) {
+                names.Add(TypeName(parameter.ParameterType));
+            }
+            return names;
         }
 
         private static bool TryDescribeDetourNext(
@@ -3326,7 +3402,9 @@ internal sealed class AkronReconstructionGraph {
                 Kind = step.Kind,
                 DeclaringTypeName = step.DeclaringTypeName,
                 FieldName = step.FieldName,
-                ArrayIndices = new List<int>(step.ArrayIndicesOrNull ?? new List<int>())
+                ArrayIndices = step.ArrayIndicesOrNull is { Count: > 0 }
+                    ? new List<int>(step.ArrayIndicesOrNull)
+                    : null
             }).ToList();
         }
     }
@@ -7353,7 +7431,7 @@ internal sealed class AkronReconstructionGraph {
                 } else if (step.Kind == "array") {
                     key.Append(wildcardListStorageIndices && IsCollectionStorageField(previous)
                         ? "[*]"
-                        : "[" + string.Join(",", step.ArrayIndicesOrNull ?? new List<int>()) + "]");
+                        : "[" + string.Join(",", step.ArrayIndicesOrNull ?? Enumerable.Empty<int>()) + "]");
                 }
                 previous = step;
             }
@@ -7400,7 +7478,9 @@ internal sealed class AkronReconstructionGraph {
                     Kind = step.Kind,
                     DeclaringTypeName = step.DeclaringTypeName,
                     FieldName = step.FieldName,
-                    ArrayIndices = new List<int>(step.ArrayIndicesOrNull ?? new List<int>())
+                    ArrayIndices = step.ArrayIndicesOrNull is { Count: > 0 }
+                        ? new List<int>(step.ArrayIndicesOrNull)
+                        : null
                 })
                 .ToList();
             appended.Add(next);
@@ -7860,7 +7940,9 @@ internal sealed class AkronReconstructionGraph {
                     Kind = step.Kind,
                     DeclaringTypeName = step.DeclaringTypeName,
                     FieldName = step.FieldName,
-                    ArrayIndices = new List<int>(step.ArrayIndicesOrNull ?? new List<int>())
+                    ArrayIndices = step.ArrayIndicesOrNull is { Count: > 0 }
+                        ? new List<int>(step.ArrayIndicesOrNull)
+                        : null
                 })
                 .ToList();
         }
@@ -8462,9 +8544,15 @@ internal sealed class AkronReconstructionGraph {
     private static MethodInfo ResolveMethod(AkronReconstructionDelegateCall call, string path) {
         Type declaringType = ResolveType(call.DeclaringTypeName, path);
         Type returnType = ResolveType(call.ReturnTypeName, path);
-        Type[] parameterTypes = (call.ParameterTypeNames ?? new List<string>())
-            .Select(typeName => ResolveType(typeName, path))
-            .ToArray();
+        Type[] parameterTypes;
+        if (call.ParameterTypeNames == null || call.ParameterTypeNames.Count == 0) {
+            parameterTypes = Type.EmptyTypes;
+        } else {
+            parameterTypes = new Type[call.ParameterTypeNames.Count];
+            for (int index = 0; index < parameterTypes.Length; index++) {
+                parameterTypes[index] = ResolveType(call.ParameterTypeNames[index], path);
+            }
+        }
         MethodInfo method = declaringType.GetMethod(
             call.MethodName,
             BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
@@ -8515,7 +8603,7 @@ internal sealed class AkronReconstructionGraph {
             DeclaringTypeName = call.HookTargetDeclaringTypeName,
             MethodName = call.HookTargetMethodName,
             ReturnTypeName = call.HookTargetReturnTypeName,
-            ParameterTypeNames = call.HookTargetParameterTypeNames ?? new List<string>()
+            ParameterTypeNames = call.HookTargetParameterTypeNames
         }, path);
     }
 
@@ -9180,10 +9268,12 @@ internal static class AkronStartPosReconstruction {
             document.Room = room ?? string.Empty;
             document.FileSlot = fileSlot;
             Directory.CreateDirectory(Path.GetDirectoryName(path));
+            byte[] serializedHash;
             using (FileStream file = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             using (GZipStream compressed = new GZipStream(file, CompressionLevel.Optimal, leaveOpen: false))
             using (AkronPacedWriteStream paced = new AkronPacedWriteStream(compressed, maxDecompressedBytes)) {
                 CaptureGraph.Serialize(document, paced);
+                serializedHash = paced.GetHashAndReset();
             }
             // Read the file back through the same bounded reader before committing
             // it. The paced writer only caps bytes, but the reader also bounds
@@ -9191,8 +9281,12 @@ internal static class AkronStartPosReconstruction {
             // capture dense in tiny nodes can pass the byte cap yet trip a
             // structural ceiling, which would put back the unreadable-slot failure
             // this whole path exists to prevent. Verifying readability here makes a
-            // successful Set mean the slot loads, whatever ceiling is tightest, and
-            // catches a corrupt write as a bonus. CaptureGraph is safe to reuse:
+            // successful Set mean the slot loads, whatever ceiling is tightest. The
+            // document's exact indexed type/header/graph view was validated immediately
+            // before serialization; this pass streams the written JSON through every
+            // reader ceiling and requires its uncompressed SHA-256 to match every byte
+            // handed to gzip, catching corruption without building a discarded second
+            // object graph. CaptureGraph is safe to reuse:
             // the persistence worker runs one job at a time, so serialize and this
             // read never overlap on it. Same thread, so the read paces too; a
             // shutdown cancel surfaces as a cancellation rather than a save failure.
@@ -9200,7 +9294,12 @@ internal static class AkronStartPosReconstruction {
                 // verificationGraph is a test seam for driving the read ceilings with
                 // small caps; production passes null and verifies with CaptureGraph,
                 // whose default caps match the loader the slot will actually face.
-                if (!TryReadSnapshot(verificationGraph ?? CaptureGraph, verify, out _, out string readBackError, out _, out _, maxDecompressedBytes)) {
+                if (!TryValidateSnapshot(
+                        verificationGraph ?? CaptureGraph,
+                        verify,
+                        serializedHash,
+                        out string readBackError,
+                        maxDecompressedBytes)) {
                     if (AkronSnapshotPacing.Cancelled) {
                         throw new OperationCanceledException(AkronSnapshotPacing.CancelledMessage);
                     }
@@ -9338,6 +9437,42 @@ internal static class AkronStartPosReconstruction {
         }
     }
 
+    private static bool TryValidateSnapshot(
+        AkronReconstructionGraph graph,
+        Stream snapshotStream,
+        byte[] expectedHash,
+        out string error,
+        long maxDecompressedBytes
+    ) {
+        error = string.Empty;
+        if (snapshotStream == null || !snapshotStream.CanRead) {
+            error = "snapshot stream is unavailable";
+            return false;
+        }
+        if (expectedHash == null || expectedHash.Length == 0) {
+            error = "snapshot write hash is unavailable";
+            return false;
+        }
+
+        try {
+            using GZipStream compressed = new GZipStream(snapshotStream, CompressionMode.Decompress, leaveOpen: true);
+            using AkronBoundedReadStream bounded = new AkronBoundedReadStream(
+                compressed,
+                maxDecompressedBytes,
+                hashContents: true);
+            graph.ValidateSerializedDocument(bounded);
+            byte[] actualHash = bounded.GetHashAndReset();
+            if (!CryptographicOperations.FixedTimeEquals(expectedHash, actualHash)) {
+                error = "snapshot bytes differ after writing";
+                return false;
+            }
+            return true;
+        } catch (Exception exception) {
+            error = exception.GetType().Name + ": " + exception.Message;
+            return false;
+        }
+    }
+
     // Serializing a snapshot allocates roughly in proportion to the JSON it
     // emits, so the byte stream is the natural pacing point for the write half
     // of the job. Writes arrive here in whole buffer flushes, so each one is a
@@ -9351,6 +9486,7 @@ internal static class AkronStartPosReconstruction {
     private sealed class AkronPacedWriteStream : Stream {
         private readonly Stream destination;
         private readonly long maxBytes;
+        private readonly IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         private long bytesWritten;
 
         public AkronPacedWriteStream(Stream destination, long maxBytes) {
@@ -9378,18 +9514,27 @@ internal static class AkronStartPosReconstruction {
         public override void Write(byte[] buffer, int offset, int count) {
             AkronSnapshotPacing.Pace();
             RecordWrite(count);
+            hash.AppendData(buffer, offset, count);
             destination.Write(buffer, offset, count);
         }
 
         public override void Write(ReadOnlySpan<byte> buffer) {
             AkronSnapshotPacing.Pace();
             RecordWrite(buffer.Length);
+            hash.AppendData(buffer);
             destination.Write(buffer);
         }
 
         public override void WriteByte(byte value) {
             RecordWrite(1);
+            Span<byte> oneByte = stackalloc byte[1];
+            oneByte[0] = value;
+            hash.AppendData(oneByte);
             destination.WriteByte(value);
+        }
+
+        public byte[] GetHashAndReset() {
+            return hash.GetHashAndReset();
         }
 
         public override void Flush() {
@@ -9399,16 +9544,25 @@ internal static class AkronStartPosReconstruction {
         public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing) {
+            if (disposing) {
+                hash.Dispose();
+            }
+            base.Dispose(disposing);
+        }
     }
 
     private sealed class AkronBoundedReadStream : Stream {
         private readonly Stream source;
         private readonly long maxBytes;
+        private readonly IncrementalHash hash;
         private long bytesRead;
 
-        public AkronBoundedReadStream(Stream source, long maxBytes) {
+        public AkronBoundedReadStream(Stream source, long maxBytes, bool hashContents = false) {
             this.source = source ?? throw new ArgumentNullException(nameof(source));
             this.maxBytes = maxBytes >= 0 ? maxBytes : throw new ArgumentOutOfRangeException(nameof(maxBytes));
+            hash = hashContents ? IncrementalHash.CreateHash(HashAlgorithmName.SHA256) : null;
         }
 
         public override bool CanRead => true;
@@ -9431,6 +9585,7 @@ internal static class AkronStartPosReconstruction {
             AkronSnapshotPacing.Pace();
             int read = source.Read(buffer, offset, LimitReadCount(count));
             RecordRead(read);
+            hash?.AppendData(buffer, offset, read);
             return read;
         }
 
@@ -9438,6 +9593,7 @@ internal static class AkronStartPosReconstruction {
             AkronSnapshotPacing.Pace();
             int read = source.Read(buffer[..LimitReadCount(buffer.Length)]);
             RecordRead(read);
+            hash?.AppendData(buffer[..read]);
             return read;
         }
 
@@ -9449,8 +9605,20 @@ internal static class AkronStartPosReconstruction {
             int value = source.ReadByte();
             if (value >= 0) {
                 bytesRead++;
+                if (hash != null) {
+                    Span<byte> oneByte = stackalloc byte[1];
+                    oneByte[0] = (byte) value;
+                    hash.AppendData(oneByte);
+                }
             }
             return value;
+        }
+
+        public byte[] GetHashAndReset() {
+            if (hash == null) {
+                throw new InvalidOperationException("Snapshot hashing is not enabled.");
+            }
+            return hash.GetHashAndReset();
         }
 
         private int LimitReadCount(int requested) {
@@ -9476,6 +9644,13 @@ internal static class AkronStartPosReconstruction {
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing) {
+            if (disposing) {
+                hash?.Dispose();
+            }
+            base.Dispose(disposing);
+        }
     }
 
     // GetSnapshotPath is a pure function of (directory, slot name) but costs a SHA-256
