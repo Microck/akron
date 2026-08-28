@@ -34,6 +34,8 @@ jobs:
           fetch-depth: 0
 
       - name: Generate contributor credits
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/update-github-contributors.py
 
       - name: Open pull request when changed

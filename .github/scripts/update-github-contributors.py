@@ -8,7 +8,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
@@ -31,12 +31,18 @@ def fetch_contributors() -> list[dict[str, object]]:
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    request = Request(contributor_url(), headers=headers)
-    with urlopen(request, timeout=30) as response:
-        contributors = json.load(response)
+    contributors = []
+    next_url = contributor_url()
+    while next_url:
+        request = Request(next_url, headers=headers)
+        with urlopen(request, timeout=30) as response:
+            page = json.load(response)
+            link_header = response.headers.get("Link", "")
 
-    if not isinstance(contributors, list):
-        raise ValueError("GitHub contributors response was not a list")
+        if not isinstance(page, list):
+            raise ValueError("GitHub contributors response was not a list")
+        contributors.extend(page)
+        next_url = next_link(link_header)
 
     return [
         contributor
@@ -47,6 +53,14 @@ def fetch_contributors() -> list[dict[str, object]]:
         and isinstance(contributor.get("html_url"), str)
         and isinstance(contributor.get("avatar_url"), str)
     ]
+
+
+def next_link(link_header: str) -> str | None:
+    for link in link_header.split(","):
+        url_part, _, relation_part = link.partition(";")
+        if 'rel="next"' in relation_part:
+            return urljoin("https://api.github.com", url_part.strip().strip("<>"))
+    return None
 
 
 def sized_avatar_url(avatar_url: str) -> str:
@@ -64,7 +78,7 @@ def render_contributors(contributors: list[dict[str, object]]) -> str:
         avatar_url = html.escape(sized_avatar_url(str(contributor["avatar_url"])), quote=True)
         entries.append(
             f'<a href="{profile_url}"><img src="{avatar_url}" alt="{login}" '
-            'width="48" height="48" style="border-radius: 50%;"></a>'
+            'width="48" height="48" style={{ borderRadius: "50%" }} /></a>'
         )
 
     if not entries:
@@ -73,7 +87,7 @@ def render_contributors(contributors: list[dict[str, object]]) -> str:
     return "\n".join(
         [
             MARKER_START,
-            '<div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">',
+            '<div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>',
             *entries,
             "</div>",
             MARKER_END,
