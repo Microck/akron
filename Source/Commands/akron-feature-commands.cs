@@ -87,7 +87,7 @@ public static partial class AkronCommands {
             "airjumps" => SetFeatureToggle(action, AkronFeatureKind.MovementStatMutation, () => AkronModule.Settings.JumpHack, value => AkronModule.Settings.JumpHack = value, "air-jumps"),
             "inputviewer" => SetFeatureToggle(action, AkronFeatureKind.InputViewer, () => AkronModule.Settings.InputViewer, value => AkronModule.Settings.InputViewer = value, "input-viewer"),
             "inputhistory" => SetFeatureToggle(action, AkronFeatureKind.InputHistory, () => AkronModule.Settings.InputHistoryPanel, value => AkronModule.Settings.InputHistoryPanel = value, "input-history"),
-            "inputspersecond" or "ips" => SetFeatureToggle(action, AkronFeatureKind.InputsPerSecondCounter, () => AkronModule.Settings.InputsPerSecondCounter, value => AkronModule.Settings.InputsPerSecondCounter = value, "inputs-per-second"),
+            "inputspersecond" or "ips" => SetLabelFeatureToggle(action, AkronFeatureKind.InputsPerSecondCounter, () => AkronModule.Settings.InputsPerSecondCounter, value => AkronModule.Settings.InputsPerSecondCounter = value, "inputs-per-second"),
             "resourcebars" => SetFeatureToggle(action, AkronFeatureKind.ResourceBars, () => AkronModule.Settings.StaminaBar || AkronModule.Settings.DashBar, value => { AkronModule.Settings.StaminaBar = value; AkronModule.Settings.DashBar = value; }, "resource-bars"),
             "staminabar" => SetFeatureToggle(action, AkronFeatureKind.ResourceBars, () => AkronModule.Settings.StaminaBar, value => AkronModule.Settings.StaminaBar = value, "stamina-bar"),
             "dashbar" => SetFeatureToggle(action, AkronFeatureKind.ResourceBars, () => AkronModule.Settings.DashBar, value => AkronModule.Settings.DashBar = value, "dash-bar"),
@@ -159,6 +159,18 @@ public static partial class AkronCommands {
     private static bool SetFeatureToggle(string action, AkronFeatureKind feature, Func<bool> getter, Action<bool> setter, string label) {
         return SetToggle(action, () => {
             if (!AkronModule.TryUse(feature)) {
+                return false;
+            }
+
+            setter(true);
+            return true;
+        }, () => setter(false), getter, label);
+    }
+
+    private static bool SetLabelFeatureToggle(string action, AkronFeatureKind feature, Func<bool> getter, Action<bool> setter, string label) {
+        return SetToggle(action, () => {
+            if (AkronPolicy.IsLabelFeatureActive(AkronModule.Settings.LabelSystemVisible, labelEnabled: true) &&
+                !AkronModule.TryUse(feature)) {
                 return false;
             }
 

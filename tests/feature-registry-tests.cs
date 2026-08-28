@@ -138,6 +138,19 @@ public sealed class FeatureRegistryTests
         Assert.Equal(expectedFlagged, AkronPolicy.IsMegaHackStyleCheatIndicatorFlagged(status));
     }
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public void LabelFeaturesAreActiveOnlyWhenTheirLabelAndMasterSwitchAreEnabled(
+        bool labelsVisible,
+        bool labelEnabled,
+        bool expectedActive)
+    {
+        Assert.Equal(expectedActive, AkronPolicy.IsLabelFeatureActive(labelsVisible, labelEnabled));
+    }
+
     [Fact]
     public void ExtendedVariantPolicyFlagsOnlyUserControlledVariantOptions()
     {

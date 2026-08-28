@@ -236,6 +236,11 @@ public static class AkronPolicy
         return status == AkronStatus.Cheat;
     }
 
+    internal static bool IsLabelFeatureActive(bool labelsVisible, bool labelEnabled)
+    {
+        return labelsVisible && labelEnabled;
+    }
+
     private static void AddIfCheat(List<AkronActiveCheatContributor> contributors, bool enabled, string label, AkronFeatureKind feature)
     {
         if (enabled && AkronFeatureRegistry.Classify(feature) == AkronStatus.Cheat)

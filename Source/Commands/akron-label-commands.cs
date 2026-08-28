@@ -14,7 +14,8 @@ public static partial class AkronCommands {
             case "status":
                 break;
             case "on":
-                if (!AkronModule.TryUse(AkronFeatureKind.CustomHudLabels)) {
+                if (AkronPolicy.IsLabelFeatureActive(AkronModule.Settings.LabelSystemVisible, labelEnabled: true) &&
+                    !AkronModule.TryUse(AkronFeatureKind.CustomHudLabels)) {
                     Log("custom-hud-labels: blocked");
                     return;
                 }
@@ -24,11 +25,13 @@ public static partial class AkronCommands {
                 AkronModule.Settings.CustomHudLabels = false;
                 break;
             case "toggle":
-                if (!AkronModule.Settings.CustomHudLabels && !AkronModule.TryUse(AkronFeatureKind.CustomHudLabels)) {
+                bool next = !AkronModule.Settings.CustomHudLabels;
+                if (AkronPolicy.IsLabelFeatureActive(AkronModule.Settings.LabelSystemVisible, next) &&
+                    !AkronModule.TryUse(AkronFeatureKind.CustomHudLabels)) {
                     Log("custom-hud-labels: blocked");
                     return;
                 }
-                AkronModule.Settings.CustomHudLabels = !AkronModule.Settings.CustomHudLabels;
+                AkronModule.Settings.CustomHudLabels = next;
                 break;
             case "outside":
                 if (!TryParseBoolean(value, out bool outside)) {
