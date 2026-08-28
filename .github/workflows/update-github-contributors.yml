@@ -1,0 +1,68 @@
+name: Update GitHub contributors
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/project/special-thanks.mdx"
+      - ".github/scripts/update-github-contributors.py"
+      - ".github/workflows/update-github-contributors.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-github-contributors
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update contributor credits
+    runs-on: ubuntu-24.04
+    env:
+      BRANCH: automation/update-github-contributors
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate contributor credits
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/update-github-contributors.py
+
+      - name: Open pull request when changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! git diff --quiet -- docs/project/special-thanks.mdx; then
+            if [ "$(gh pr list --head "$BRANCH" --state open --json number --jq 'length')" -ne 0 ]; then
+              echo "An update pull request is already open."
+              exit 0
+            fi
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git checkout -b "$BRANCH"
+            git add docs/project/special-thanks.mdx
+            git commit -m "docs: update GitHub contributor credits"
+            git push --set-upstream origin "$BRANCH"
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "docs: update GitHub contributor credits" \
+              --body "## Summary
+              - update the generated GitHub contributor avatars from the public contributors API
+              - keep the contributor list separate from playtesters and feature suggestions
+
+              This pull request was opened automatically by the scheduled contributor updater."
+          else
+            echo "Contributor credits are already current."
+          fi
