@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Concurrent;
@@ -1157,6 +1158,21 @@ internal sealed class AkronReconstructionGraph {
         ObjectCreationHandling = ObjectCreationHandling.Replace,
         TypeNameHandling = TypeNameHandling.None
     };
+    private static readonly Newtonsoft.Json.IArrayPool<char> JsonCharArrayPool = new SharedCharArrayPool();
+    private static readonly string[] KnownJsonPropertyNames = {
+        "Format", "TypeNames", "SlotName", "MapSid", "Room", "FileSlot",
+        "BerryProgress", "RootNodeId", "Nodes", "ActionStateDocument",
+        "RegisteredActionIds", "GameplayBuffers",
+        "i", "k", "t", "p", "pk", "pd", "pf", "pa", "pi", "uf", "rk",
+        "pr", "mp", "fp", "f", "it", "al", "ab", "pb", "dc", "ev", "rp",
+        "d", "n", "v", "s", "a", "tg", "m", "r", "pt", "hd", "hm", "hr", "hpt",
+        "Kind", "Name", "Width", "Height", "MultiSampleCount", "Depth", "Preserve",
+        "Bytes", "FieldName", "Payload", "Strawberries", "TotalStrawberries", "Level", "ID",
+        "Path", "Volume", "Pitch", "Has3DAttributes", "PositionX", "PositionY", "PositionZ",
+        "VelocityX", "VelocityY", "VelocityZ", "ForwardX", "ForwardY", "ForwardZ",
+        "UpX", "UpY", "UpZ", "HasListenerMask", "ListenerMask", "Parameters",
+        "TimelinePosition", "ShouldPlay", "Paused", "ManualClone"
+    };
     private static readonly ConcurrentDictionary<Type, string> TypeNames = new ConcurrentDictionary<Type, string>();
     private static readonly ConcurrentDictionary<string, Type> ResolvedTypes = new ConcurrentDictionary<string, Type>(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<(string DeclaringTypeName, string FieldName), FieldInfo> ResolvedFields =
@@ -1242,8 +1258,36 @@ internal sealed class AkronReconstructionGraph {
     private readonly long maxJsonNodeCount;
     private readonly long maxJsonRecordCount;
     private readonly long maxJsonExpensiveRecordCount;
+    private readonly DefaultJsonNameTable jsonPropertyNames = CreateJsonPropertyNameTable();
     private readonly HashSet<object> ownedPersistentResources =
         new HashSet<object>(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<(int ParentNodeId, string DeclaringTypeName, string FieldName), AkronReconstructionValue>
+        validationParentFieldValues =
+            new Dictionary<(int, string, string), AkronReconstructionValue>();
+    private readonly HashSet<int> validationReachedNodeIds = new HashSet<int>();
+    private readonly Stack<int> validationPendingNodeIds = new Stack<int>();
+    private readonly Dictionary<int, AkronReconstructionNode> validationNodes =
+        new Dictionary<int, AkronReconstructionNode>();
+
+    private static DefaultJsonNameTable CreateJsonPropertyNameTable() {
+        DefaultJsonNameTable table = new DefaultJsonNameTable();
+        foreach (string name in KnownJsonPropertyNames) {
+            table.Add(name);
+        }
+        return table;
+    }
+
+    private sealed class SharedCharArrayPool : Newtonsoft.Json.IArrayPool<char> {
+        public char[] Rent(int minimumLength) {
+            return ArrayPool<char>.Shared.Rent(minimumLength);
+        }
+
+        public void Return(char[] array) {
+            if (array != null) {
+                ArrayPool<char>.Shared.Return(array);
+            }
+        }
+    }
 
     private static void ValidateAndNormalizeDerivedMembershipSets(IEnumerable<object> values) {
         foreach (object value in values.Where(value => value != null).Distinct(ReferenceEqualityComparer.Instance)) {
@@ -1753,8 +1797,13 @@ internal sealed class AkronReconstructionGraph {
         using AkronBoundedJsonTextReader jsonReader = CreateJsonReader(stringReader);
         AkronReconstructionDocument document = serializer.Deserialize<AkronReconstructionDocument>(jsonReader);
         ResolveTypeNames(document);
-        IReadOnlyDictionary<int, AkronReconstructionNode> nodes = ValidateDocumentHeader(document);
-        RestoreDiagnosticPaths(document, nodes);
+        validationNodes.Clear();
+        try {
+            ValidateDocumentHeader(document, validationNodes);
+            RestoreDiagnosticPaths(document, validationNodes);
+        } finally {
+            validationNodes.Clear();
+        }
         return document;
     }
 
@@ -1766,13 +1815,21 @@ internal sealed class AkronReconstructionGraph {
 
         JsonSerializer serializer = JsonSerializer.Create(JsonSettings);
         using StreamWriter streamWriter = new StreamWriter(stream, new UTF8Encoding(false), 65536, leaveOpen: true);
-        using JsonTextWriter jsonWriter = new JsonTextWriter(streamWriter) { CloseOutput = false };
+        using JsonTextWriter jsonWriter = new JsonTextWriter(streamWriter) {
+            ArrayPool = JsonCharArrayPool,
+            CloseOutput = false
+        };
         serializer.Serialize(jsonWriter, document);
         jsonWriter.Flush();
     }
 
     private void PrepareForSerialization(AkronReconstructionDocument document) {
-        ValidateDocumentHeader(document);
+        validationNodes.Clear();
+        try {
+            ValidateDocumentHeader(document, validationNodes);
+        } finally {
+            validationNodes.Clear();
+        }
         if (!CanReuseTypeNameTable(document)) {
             BuildTypeNameTable(document);
         }
@@ -1792,8 +1849,13 @@ internal sealed class AkronReconstructionGraph {
         using AkronBoundedJsonTextReader jsonReader = CreateJsonReader(streamReader);
         AkronReconstructionDocument document = serializer.Deserialize<AkronReconstructionDocument>(jsonReader);
         ResolveTypeNames(document);
-        IReadOnlyDictionary<int, AkronReconstructionNode> nodes = ValidateDocumentHeader(document);
-        RestoreDiagnosticPaths(document, nodes);
+        validationNodes.Clear();
+        try {
+            ValidateDocumentHeader(document, validationNodes);
+            RestoreDiagnosticPaths(document, validationNodes);
+        } finally {
+            validationNodes.Clear();
+        }
         return document;
     }
 
@@ -1823,7 +1885,9 @@ internal sealed class AkronReconstructionGraph {
             maxJsonNodeCount,
             maxJsonRecordCount,
             maxJsonExpensiveRecordCount) {
-            CloseInput = false
+            ArrayPool = JsonCharArrayPool,
+            CloseInput = false,
+            PropertyNameTable = jsonPropertyNames
         };
     }
 
@@ -1925,7 +1989,8 @@ internal sealed class AkronReconstructionGraph {
     }
 
     private IReadOnlyDictionary<int, AkronReconstructionNode> ValidateDocumentHeader(
-        AkronReconstructionDocument document
+        AkronReconstructionDocument document,
+        Dictionary<int, AkronReconstructionNode> reusableNodes = null
     ) {
         if (document == null || !string.Equals(document.Format, AkronReconstructionDocument.CurrentFormat, StringComparison.Ordinal)) {
             // The one gate that decides whether a document may be read at all, so it is
@@ -1947,8 +2012,12 @@ internal sealed class AkronReconstructionGraph {
         if (document.RootNodeId <= 0 || document.Nodes == null || document.Nodes.Count == 0) {
             throw new InvalidOperationException("Reconstruction document has no root node.");
         }
-        Dictionary<int, AkronReconstructionNode> nodes =
+        Dictionary<int, AkronReconstructionNode> nodes = reusableNodes ??
             new Dictionary<int, AkronReconstructionNode>(document.Nodes.Count);
+        if (reusableNodes != null) {
+            nodes.Clear();
+            nodes.EnsureCapacity(document.Nodes.Count);
+        }
         bool rootFound = false;
         foreach (AkronReconstructionNode node in document.Nodes) {
             if (node == null || node.Id <= 0 || !nodes.TryAdd(node.Id, node)) {
@@ -2139,7 +2208,7 @@ internal sealed class AkronReconstructionGraph {
             " in " + slot + ", which the restore never reads.");
     }
 
-    private static void ValidateNodeParentEdges(
+    private void ValidateNodeParentEdges(
         AkronReconstructionDocument document,
         IReadOnlyDictionary<int, AkronReconstructionNode> nodes
     ) {
@@ -2149,55 +2218,59 @@ internal sealed class AkronReconstructionGraph {
         foreach (AkronReconstructionNode parent in document.Nodes) {
             fieldCount = checked(fieldCount + (parent.FieldsOrNull?.Count ?? 0));
         }
-        Dictionary<(int ParentNodeId, string DeclaringTypeName, string FieldName), AkronReconstructionValue>
-            parentFieldValues = new Dictionary<(int, string, string), AkronReconstructionValue>(fieldCount);
-        foreach (AkronReconstructionNode parent in document.Nodes) {
-            foreach (AkronReconstructionField field in parent.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
-                if (field == null) {
+        validationParentFieldValues.Clear();
+        validationParentFieldValues.EnsureCapacity(fieldCount);
+        try {
+            foreach (AkronReconstructionNode parent in document.Nodes) {
+                foreach (AkronReconstructionField field in parent.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
+                    if (field == null) {
+                        continue;
+                    }
+                    if (!validationParentFieldValues.TryAdd(
+                            (parent.Id, field.DeclaringTypeName, field.Name),
+                            field.Value)) {
+                        throw new InvalidOperationException(
+                            "Reconstruction document parent field identity is duplicated.");
+                    }
+                }
+            }
+
+            foreach (AkronReconstructionNode node in document.Nodes) {
+                if (node.Id == document.RootNodeId) {
+                    if (node.ParentNodeId != 0 || !string.IsNullOrEmpty(node.ParentKind)) {
+                        throw new InvalidOperationException("Reconstruction document root parent edge is invalid.");
+                    }
                     continue;
                 }
-                if (!parentFieldValues.TryAdd(
-                        (parent.Id, field.DeclaringTypeName, field.Name),
-                        field.Value)) {
-                    throw new InvalidOperationException(
-                        "Reconstruction document parent field identity is duplicated.");
+                if (!nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode parent)) {
+                    throw new InvalidOperationException("Reconstruction document node parent is missing.");
+                }
+
+                AkronReconstructionValue parentValue = null;
+                if (node.ParentKind == "field") {
+                    validationParentFieldValues.TryGetValue(
+                        (parent.Id, node.ParentDeclaringTypeName, node.ParentFieldName),
+                        out parentValue);
+                } else if (node.ParentKind == "array" &&
+                           TryGetFlatArrayIndex(parent, node.ParentArrayIndicesOrNull, out int itemIndex) &&
+                           parent.ItemsOrNull != null && itemIndex < parent.ItemsOrNull.Count) {
+                    parentValue = parent.ItemsOrNull[itemIndex];
+                } else if (node.ParentKind == "delegate" &&
+                           node.ParentDelegateIndex >= 0 &&
+                           parent.DelegateCallsOrNull != null &&
+                           node.ParentDelegateIndex < parent.DelegateCallsOrNull.Count) {
+                    parentValue = parent.DelegateCallsOrNull[node.ParentDelegateIndex]?.Target;
+                } else if (node.ParentKind == "weak-target" &&
+                           string.Equals(parent.Kind, WeakReferenceKind, StringComparison.Ordinal) &&
+                           parent.ItemsOrNull is { Count: > 0 }) {
+                    parentValue = parent.ItemsOrNull[0];
+                }
+                if (parentValue?.Kind != ReferenceValueKind || parentValue.NodeId != node.Id) {
+                    throw new InvalidOperationException("Reconstruction document node parent edge is invalid.");
                 }
             }
-        }
-
-        foreach (AkronReconstructionNode node in document.Nodes) {
-            if (node.Id == document.RootNodeId) {
-                if (node.ParentNodeId != 0 || !string.IsNullOrEmpty(node.ParentKind)) {
-                    throw new InvalidOperationException("Reconstruction document root parent edge is invalid.");
-                }
-                continue;
-            }
-            if (!nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode parent)) {
-                throw new InvalidOperationException("Reconstruction document node parent is missing.");
-            }
-
-            AkronReconstructionValue parentValue = null;
-            if (node.ParentKind == "field") {
-                parentFieldValues.TryGetValue(
-                    (parent.Id, node.ParentDeclaringTypeName, node.ParentFieldName),
-                    out parentValue);
-            } else if (node.ParentKind == "array" &&
-                       TryGetFlatArrayIndex(parent, node.ParentArrayIndicesOrNull, out int itemIndex) &&
-                       parent.ItemsOrNull != null && itemIndex < parent.ItemsOrNull.Count) {
-                parentValue = parent.ItemsOrNull[itemIndex];
-            } else if (node.ParentKind == "delegate" &&
-                       node.ParentDelegateIndex >= 0 &&
-                       parent.DelegateCallsOrNull != null &&
-                       node.ParentDelegateIndex < parent.DelegateCallsOrNull.Count) {
-                parentValue = parent.DelegateCallsOrNull[node.ParentDelegateIndex]?.Target;
-            } else if (node.ParentKind == "weak-target" &&
-                       string.Equals(parent.Kind, WeakReferenceKind, StringComparison.Ordinal) &&
-                       parent.ItemsOrNull is { Count: > 0 }) {
-                parentValue = parent.ItemsOrNull[0];
-            }
-            if (parentValue?.Kind != ReferenceValueKind || parentValue.NodeId != node.Id) {
-                throw new InvalidOperationException("Reconstruction document node parent edge is invalid.");
-            }
+        } finally {
+            validationParentFieldValues.Clear();
         }
     }
 
@@ -2230,37 +2303,44 @@ internal sealed class AkronReconstructionGraph {
         return true;
     }
 
-    private static void ValidateNodeReachability(
+    private void ValidateNodeReachability(
         AkronReconstructionDocument document,
         IReadOnlyDictionary<int, AkronReconstructionNode> nodes
     ) {
-        HashSet<int> reached = new HashSet<int>(document.Nodes.Count);
-        Stack<int> pending = new Stack<int>(document.Nodes.Count);
-        pending.Push(document.RootNodeId);
-        while (pending.Count > 0) {
-            int nodeId = pending.Pop();
-            if (!reached.Add(nodeId)) {
-                continue;
-            }
-            AkronReconstructionNode node = nodes[nodeId];
-            if (node.FieldsOrNull != null) {
-                foreach (AkronReconstructionField field in node.FieldsOrNull) {
-                    QueueReachableReference(field?.Value, nodes, pending);
+        validationReachedNodeIds.Clear();
+        validationReachedNodeIds.EnsureCapacity(document.Nodes.Count);
+        validationPendingNodeIds.Clear();
+        validationPendingNodeIds.EnsureCapacity(document.Nodes.Count);
+        try {
+            validationPendingNodeIds.Push(document.RootNodeId);
+            while (validationPendingNodeIds.Count > 0) {
+                int nodeId = validationPendingNodeIds.Pop();
+                if (!validationReachedNodeIds.Add(nodeId)) {
+                    continue;
+                }
+                AkronReconstructionNode node = nodes[nodeId];
+                if (node.FieldsOrNull != null) {
+                    foreach (AkronReconstructionField field in node.FieldsOrNull) {
+                        QueueReachableReference(field?.Value, nodes, validationPendingNodeIds);
+                    }
+                }
+                if (node.ItemsOrNull != null) {
+                    foreach (AkronReconstructionValue item in node.ItemsOrNull) {
+                        QueueReachableReference(item, nodes, validationPendingNodeIds);
+                    }
+                }
+                if (node.DelegateCallsOrNull != null) {
+                    foreach (AkronReconstructionDelegateCall call in node.DelegateCallsOrNull) {
+                        QueueReachableReference(call?.Target, nodes, validationPendingNodeIds);
+                    }
                 }
             }
-            if (node.ItemsOrNull != null) {
-                foreach (AkronReconstructionValue item in node.ItemsOrNull) {
-                    QueueReachableReference(item, nodes, pending);
-                }
+            if (validationReachedNodeIds.Count != nodes.Count) {
+                throw new InvalidOperationException("Reconstruction document contains nodes that are not reachable from its root.");
             }
-            if (node.DelegateCallsOrNull != null) {
-                foreach (AkronReconstructionDelegateCall call in node.DelegateCallsOrNull) {
-                    QueueReachableReference(call?.Target, nodes, pending);
-                }
-            }
-        }
-        if (reached.Count != nodes.Count) {
-            throw new InvalidOperationException("Reconstruction document contains nodes that are not reachable from its root.");
+        } finally {
+            validationReachedNodeIds.Clear();
+            validationPendingNodeIds.Clear();
         }
     }
 
