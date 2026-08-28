@@ -358,7 +358,7 @@ internal sealed class AkronReconstructionField {
         diagnosticPathChild = child;
         diagnosticPathReady = true;
     }
-    [JsonProperty("v")]
+    [JsonProperty("v", Required = Required.Always)]
     public AkronReconstructionValue Value { get; set; }
 }
 
@@ -699,7 +699,7 @@ internal sealed class AkronReconstructionPathStep {
 internal sealed class AkronReconstructionDelegateCall {
     [JsonProperty(AkronReconstructionTags.Kind)]
     public string Kind { get; set; } = "method";
-    [JsonProperty("tg")]
+    [JsonProperty("tg", Required = Required.Always)]
     public AkronReconstructionValue Target { get; set; }
     [JsonIgnore]
     public string DeclaringTypeName { get; set; } = string.Empty;
