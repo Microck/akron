@@ -43,28 +43,11 @@ public sealed class AkronToast : Entity {
         AkronSaveLoadService.IgnoreSaveState(this);
     }
 
-    // Takes the next sequence number for a message and keeps the message for read-back.
-    // One method because both are the same event, and the constructor needs the number it
-    // hands back for its own stacking order.
-    //
-    // A toast is how Akron says something to a player in passing, and every one of them
-    // comes through this constructor - prompts and popups are their own surfaces and are
-    // not covered here. Until now a toast existed only as pixels for a couple of seconds
-    // and no command could report one, so the refusal wording this branch reworked twice
-    // could not be asserted in a scripted check at all.
-    //
-    // An array store and an increment, and deliberately nothing more. Not every caller is
-    // once per player action: AkronModule.TryUse raises a toast whenever a policy check
-    // refuses a feature, and the HUD renderer asks it per frame, so a refused feature that
-    // stays refused reaches here once per frame. That is a defect of its own and an old
-    // one, but it is what decides what may hang off this method - a log write here would
-    // turn it into filesystem work at frame rate.
-    //
-    // Recorded when the message is raised rather than when a scene takes the entity,
-    // because the caller has already decided the player gets this sentence. So what this
-    // records is the message Akron raised, not proof of what reached the screen: a message
-    // raised with no scene to take it is recorded and never seen, and so is one raised
-    // while toast labels are off unless it was raised as one that shows regardless.
+    // Assign the sequence and buffer entry together so the sequence controls both
+    // read-back and stacking order. Keep this path to an array store and increment:
+    // policy checks and HUD rendering can raise messages per frame, so logging here
+    // would add filesystem work to the render path. Record messages when raised rather
+    // than displayed because some scenes cannot take a toast entity.
     internal static long RecordRaisedMessage(string message) {
         long raised = ++nextSequence;
         RecordedMessages[(int) ((raised - 1) & (RecordedMessageCount - 1))] = message ?? string.Empty;

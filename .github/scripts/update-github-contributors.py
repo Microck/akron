@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Update the generated GitHub contributor section in the special thanks page."""
-
 from __future__ import annotations
 
 import html

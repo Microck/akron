@@ -55,7 +55,6 @@ public sealed class LogTests {
 
     [Fact]
     public void EveryEntryPointIsSafeWithoutModuleSettings() {
-        // The whole point of the contract: no module instance, therefore no settings.
         Assert.Null(AkronModule.Instance);
         ResetAggregationState();
 

@@ -35,15 +35,8 @@ const GC_TYPE = ["Blocking", "Background", "Foreground"];
 const reasonName = (v) => GC_REASON[v] ?? `reason${v}`;
 const typeName = (v) => GC_TYPE[v] ?? `type${v}`;
 
-// Regression budgets, checked by --gate. Deliberately loose, set well above the
-// worst measured value on the reference box so that ordinary run-to-run noise
-// cannot fail the build.
-//
-// Two call-counter budgets used to sit here, encoding "HasSnapshot and the
-// snapshot SHA-256 must never run on a render path again" as a number. Nothing
-// in the mod ever wrote those counters, so both fields were absent from every
-// record and both checks passed against a defaulted zero. A check that cannot
-// fail is worse than no check, so they are gone with the counters themselves.
+// Regression budgets checked by --gate. They sit above the worst measured value
+// on the reference box so ordinary run-to-run noise does not fail the build.
 const BUDGETS = {
     p50Ms: 17.5,
     allocKbPerFrame: 200,

@@ -981,21 +981,9 @@ public static partial class AkronCommands {
         Log("qa-labels-visible: " + AkronModule.Settings.LabelSystemVisible.ToString().ToLowerInvariant());
     }
 
-    // Reads back the messages Akron raised for the player, most recently raised last.
-    //
-    // No command could report a message Akron raised by itself, which made the wording
-    // unassertable: an in-game gate could see that a load was refused but not what the
-    // refusal said, so the sentences this branch reworked twice were checked by reading the
-    // source instead of by reading the screen. akron_qa_toast_label echoes a message it was
-    // told to show, which answers a different question. This is the read-back, so a scripted check can assert the
-    // sentence. Some paths do write the sentence they show to the Akron log - a StartPos
-    // load refusal, a failed replacement, a removed slot - but most do not, and a log is
-    // not something an automation run can query.
-    //
-    // The count is reported as well as the lines. It counts every message Akron raises,
-    // not only the ones an action asked for, so a gate that reads it before and after an
-    // action learns how many messages appeared in between - which is what tells "the
-    // refusal I expected" from "an older message still in the buffer".
+    // Return raised toast messages, newest last, with a total count. The count lets
+    // automation distinguish messages raised by the action from older buffered messages;
+    // reading the buffer is the only way to assert wording for paths that do not log.
     [Command("akron_qa_messages", "report the most recent Akron messages raised for the player: [count]")]
     public static void QaMessages(string countText = "5") {
         if (!int.TryParse(countText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count) || count <= 0) {

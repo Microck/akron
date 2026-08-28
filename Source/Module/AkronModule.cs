@@ -671,7 +671,7 @@ public partial class AkronModule : EverestModule {
             try {
                 File.Delete(temporaryPath);
             } catch {
-                // Reported through the exception being rethrown.
+                // Preserve the original write exception; cleanup failure must not replace it.
             }
 
             throw;
@@ -713,23 +713,10 @@ public partial class AkronModule : EverestModule {
         }
     }
 
-    // Akron settings have to reach disk the moment the player changes one: the overlay is routinely
-    // still open when the game is killed, and a setting that only survives a clean exit is a setting
-    // the player loses.
-    //
-    // This used to reflect Everest's private _SaveSettings() coroutine and drain it with
-    // while (routine.MoveNext()) { } on the game thread. That coroutine does the work on a
-    // background thread and waits for it by yielding until a captured bool flips, so draining it in
-    // a tight loop stops the game loop and burns a core until the flag changes. It is not guaranteed
-    // to change: the assignment is the last statement of the background delegate, and an exception
-    // from any installed module's SaveSettings skips it - Everest leaves File.Delete and
-    // Directory.CreateDirectory outside its try/catch, so one sharing violation on one of thirty
-    // modsettings files is enough - after which the game thread spins on that flag forever. Saving
-    // one Akron toggle also deleted and rewrote every other installed mod's settings file.
-    //
-    // Akron's settings are one file, so write that one file here, on the calling thread, and leave
-    // Celeste's own settings to Celeste's own save routine, which is what the coroutine reached
-    // anyway and which does not block the caller.
+    // Save Akron settings when the player changes a toggle so killing the game with the
+    // overlay open does not lose the change. Draining Everest's background save coroutine
+    // on the game thread can spin while it waits for a worker and also rewrites every mod's
+    // settings. Write only Akron's file here and leave Celeste's settings to Celeste.
     internal static bool SaveAkronSettingsNow(string reason) {
         try {
             bool saved = Instance?.TrySaveSettings() == true;

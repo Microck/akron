@@ -266,7 +266,7 @@ public class AkronStartPosHashIndexTests {
         Assert.True(AkronHashIndex.IsDerivedIndexField(node, "_hashcode"));
         Assert.True(AkronHashIndex.IsDerivedIndexField(node, "_next"));
 
-        // What decides the contents is still verified.
+        // Entry payload and container state are not derived indexes; verification must still compare them.
         foreach (string kept in new[] { "_entries", "_count", "_freeList", "_freeCount", "_comparer", "_version" }) {
             Assert.False(AkronHashIndex.IsDerivedIndexField(typeof(HashSet<string>), kept), kept);
             Assert.False(AkronHashIndex.IsDerivedIndexField(typeof(Dictionary<string, int>), kept), kept);

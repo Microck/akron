@@ -167,10 +167,8 @@ public sealed class EngineGarbageCollectionTests {
 
             Assert.True(AkronEngineGarbageCollection.CollectDeferred());
             Assert.Equal(paidBefore + 1, AkronEngineGarbageCollection.PaidCollections);
-            // Forty deaths, one real full collection.
             Assert.True(GC.CollectionCount(2) > gen2Before);
 
-            // Nothing owed now, so a second load in a row costs the player nothing.
             Assert.False(AkronEngineGarbageCollection.CollectDeferred());
             Assert.Equal(paidBefore + 1, AkronEngineGarbageCollection.PaidCollections);
             Assert.False(AkronEngineGarbageCollection.CollectionOwed);
@@ -228,7 +226,6 @@ public sealed class EngineGarbageCollectionTests {
         int queued = source.IndexOf("PrewarmOtherStartPosSnapshots(Engine.Scene as Level ?? level", StringComparison.Ordinal);
         Assert.True(queued > payment, "the prewarm queue is filled before the deferred collection is paid");
 
-        // Akron installs the guard and takes it back out with the module.
         string module = ReadSource("Source/Module/AkronModule.cs");
         Assert.Contains("AkronEngineGarbageCollection.Load();", module, StringComparison.Ordinal);
         Assert.Contains("AkronEngineGarbageCollection.Unload();", module, StringComparison.Ordinal);

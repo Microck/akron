@@ -791,7 +791,8 @@ internal sealed class AkronReconstructionRestore {
     // the refusal names no object. Error carries the same name inside its flag text for
     // the log; this is the copy the player-facing message is built from.
     public string RefusedTypeName { get; }
-    // What the refusal is about, which decides which sentence the name above goes into.
+    // The refusal kind selects the player-facing explanation: saved-object refusals can
+    // name the owning mod, while changed-map refusals must not be attributed from the type.
     public AkronReconstructionRefusalKind RefusedKind { get; }
     internal Dictionary<int, object> Objects { get; }
 
@@ -4091,7 +4092,6 @@ internal sealed class AkronReconstructionGraph {
 
             foreach (AkronReconstructionNode node in document.Nodes.OrderBy(node => node.Id)) {
                 Type type = ResolveType(node.TypeName, node.Path);
-                // Before any resolver or authenticator sees this node. See the method.
                 RefuseMapEntityTheMapNoLongerPlaces(node, type);
                 object restoredObject;
                 if (node.Id == document.RootNodeId) {
@@ -5624,7 +5624,6 @@ internal sealed class AkronReconstructionGraph {
                         ";edge-field=" + (edgeField?.Name ?? "<array>"),
                         target.TypeName);
                 }
-                // The count admits this edge, so ask the one question it cannot.
                 RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps(
                     target,
                     targetType,
@@ -5718,7 +5717,6 @@ internal sealed class AkronReconstructionGraph {
                     ";edge-field=" + (edgeField?.Name ?? "<array>"),
                     target.TypeName);
             }
-            // The exact path admits this edge, so ask the one question it cannot.
             RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps(
                 target,
                 targetType,
