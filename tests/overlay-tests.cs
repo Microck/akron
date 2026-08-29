@@ -1987,6 +1987,24 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void SpeedrunToolSavestatesDoNotCloneAkronOverlay() {
+        string interopSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Interop/akron-interop.cs"));
+        string overlaySource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/AkronOverlay.cs"));
+        string playerRuntimeSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Module/akron-module-player-runtime.cs"));
+
+        Assert.Contains("new[] { typeof(Entity), typeof(bool) }", interopSource);
+        Assert.Contains("speedrunToolIgnoreSaveStateMethod.Invoke(null, new object[] { overlay, true });", interopSource);
+        Assert.Contains("SpeedrunToolIgnoreSaveLoadComponentTypeName", interopSource);
+        Assert.Equal(2, playerRuntimeSource.Split(
+            "AkronInterop.ExcludeAkronOverlayFromSpeedrunToolSavestates(Overlay);",
+            StringSplitOptions.None).Length - 1);
+
+        // Speedrun Tool gets its own exclusion component. Akron StartPos keeps
+        // its existing lifecycle-based exclusion contract on the same overlay.
+        Assert.Contains("Add(new AkronIgnoreSaveStateComponent(based: false));", overlaySource);
+    }
+
+    [Fact]
     public void NativeStartPosRestoresRebuildFrostHelperSpinnerRenderers() {
         string saveLoadSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/SaveLoad/AkronSaveLoad.cs"));
 

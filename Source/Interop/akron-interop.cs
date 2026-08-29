@@ -6,11 +6,16 @@ using Celeste;
 using Celeste.Mod;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
+using Monocle;
 using MonoMod.ModInterop;
 
 namespace Celeste.Mod.Akron;
 
 public static class AkronInterop {
+    private const string SpeedrunToolSaveLoadExportsTypeName =
+        "Celeste.Mod.SpeedrunTool.ModInterop.SaveLoadInterop+SaveLoadExports";
+    private const string SpeedrunToolIgnoreSaveLoadComponentTypeName =
+        "Celeste.Mod.SpeedrunTool.SaveLoad.Utils.IgnoreSaveLoadComponent";
     private static readonly EverestModuleMetadata SpeedrunToolMetadata = new EverestModuleMetadata { Name = "SpeedrunTool" };
     private static readonly EverestModuleMetadata CelesteTasMetadata = new EverestModuleMetadata { Name = "CelesteTAS" };
     private static readonly EverestModuleMetadata ExtendedVariantModeMetadata = new EverestModuleMetadata { Name = "ExtendedVariantMode" };
@@ -22,9 +27,12 @@ public static class AkronInterop {
     private static bool speedrunToolTabConflictMitigated;
     private static bool speedrunToolSaveLoadHooksRegistered;
     private static bool speedrunToolSaveLoadHookWarningLogged;
+    private static bool speedrunToolOverlayIgnoreWarningLogged;
     private static bool extendedCameraDynamicsWarningLogged;
     private static object speedrunToolSaveLoadHookRegistration;
     private static MethodInfo speedrunToolSaveLoadUnregisterMethod;
+    private static MethodInfo speedrunToolIgnoreSaveStateMethod;
+    private static AkronOverlay speedrunToolExcludedOverlay;
     private static Type extendedCameraZoomHooksType;
     private static PropertyInfo extendedCameraAutomaticZoomingProperty;
 
@@ -46,6 +54,8 @@ public static class AkronInterop {
 
         speedrunToolSaveLoadHookRegistration = null;
         speedrunToolSaveLoadUnregisterMethod = null;
+        speedrunToolIgnoreSaveStateMethod = null;
+        speedrunToolExcludedOverlay = null;
         speedrunToolSaveLoadHooksRegistered = false;
     }
 
@@ -192,10 +202,16 @@ public static class AkronInterop {
         try {
             Type saveLoadExportsType = AppDomain.CurrentDomain.GetAssemblies()
                 .Where(assembly => string.Equals(assembly.GetName().Name, "SpeedrunTool", StringComparison.OrdinalIgnoreCase))
-                .Select(assembly => assembly.GetType("Celeste.Mod.SpeedrunTool.ModInterop.SaveLoadInterop+SaveLoadExports"))
+                .Select(assembly => assembly.GetType(SpeedrunToolSaveLoadExportsTypeName))
                 .FirstOrDefault(type => type != null);
             MethodInfo registerMethod = saveLoadExportsType?.GetMethod("RegisterSaveLoadAction", BindingFlags.Public | BindingFlags.Static);
             speedrunToolSaveLoadUnregisterMethod = saveLoadExportsType?.GetMethod("Unregister", BindingFlags.Public | BindingFlags.Static);
+            speedrunToolIgnoreSaveStateMethod = saveLoadExportsType?.GetMethod(
+                "IgnoreSaveState",
+                BindingFlags.Public | BindingFlags.Static,
+                null,
+                new[] { typeof(Entity), typeof(bool) },
+                null);
             if (registerMethod == null) {
                 return;
             }
@@ -226,6 +242,35 @@ public static class AkronInterop {
             if (!speedrunToolSaveLoadHookWarningLogged) {
                 Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to register Speedrun Tool save-load render suppression: " + exception.Message);
                 speedrunToolSaveLoadHookWarningLogged = true;
+            }
+        }
+    }
+
+    internal static void ExcludeAkronOverlayFromSpeedrunToolSavestates(AkronOverlay overlay) {
+        if (overlay == null || speedrunToolIgnoreSaveStateMethod == null ||
+            ReferenceEquals(overlay, speedrunToolExcludedOverlay)) {
+            return;
+        }
+
+        if (overlay.Components.Any(component => string.Equals(
+            component?.GetType().FullName,
+            SpeedrunToolIgnoreSaveLoadComponentTypeName,
+            StringComparison.Ordinal))) {
+            speedrunToolExcludedOverlay = overlay;
+            return;
+        }
+
+        try {
+            // SRT otherwise deep-clones every Level entity again on its background
+            // preclone after a load. Akron's overlay is process UI, not gameplay state;
+            // keep the live instance outside that graph without running its lifecycle.
+            speedrunToolIgnoreSaveStateMethod.Invoke(null, new object[] { overlay, true });
+            speedrunToolExcludedOverlay = overlay;
+        } catch (Exception exception) {
+            if (!speedrunToolOverlayIgnoreWarningLogged) {
+                Logger.Log(LogLevel.Warn, nameof(AkronModule),
+                    "Failed to exclude Akron's overlay from Speedrun Tool savestates: " + exception.Message);
+                speedrunToolOverlayIgnoreWarningLogged = true;
             }
         }
     }
