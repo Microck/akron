@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 75
+
 ### Fixed
 
 - Restore StartPos slots that retain a delayed sound from their owning entity, such as a punched Kevin after leaving and re-entering the map.
