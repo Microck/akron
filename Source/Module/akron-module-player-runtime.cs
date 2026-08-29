@@ -300,6 +300,7 @@ public partial class AkronModule {
         }
 
         if (Overlay != null && Overlay.Scene == scene) {
+            AkronInterop.ExcludeAkronOverlayFromSpeedrunToolSavestates(Overlay);
             return;
         }
 
@@ -308,6 +309,7 @@ public partial class AkronModule {
             Overlay = new AkronOverlay();
             scene.Add(Overlay);
         }
+        AkronInterop.ExcludeAkronOverlayFromSpeedrunToolSavestates(Overlay);
     }
 
 

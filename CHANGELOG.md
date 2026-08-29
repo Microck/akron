@@ -10,6 +10,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 - Restore StartPos slots that retain a delayed sound from their owning entity, such as a punched Kevin after leaving and re-entering the map.
 - Give newly loaded StartPos placements Celeste's correct idle, ledge, or hanging pose before the first input.
+- Prevent a brief hitch after loading a Speedrun Tool savestate while Akron is enabled.
 - Build every saved StartPos into the native warm cache during the first disk-backed load, so later slot loads are instant when the machine can retain them.
 - Release native StartPos graphs after leaving their map, so warming another map cannot exhaust memory while every active-map slot stays instant.
 - Keep StartPos slots in modded rooms whose helpers replace shader IDs with registered live effects after rendering.
