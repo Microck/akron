@@ -5291,6 +5291,89 @@ public sealed class StartPosReconstructionTests {
         Assert.Same(liveCache, restoredCache);
     }
 
+    // Frost Helper's EntityBatcher starts with a shader id in its parameter
+    // dictionary, then replaces that value with the live Effect after the first
+    // render. A clean-room baseline therefore has null where the saved room has
+    // an Effect. The helper's own registry is the stable recipe that bridges
+    // that difference without copying native graphics handles.
+    [Fact]
+    public void ARegisteredEffectMissingFromTheFreshGraphIsResolvedByItsHelperRegistry() {
+        Effect effect = (Effect) RuntimeHelpers.GetUninitializedObject(typeof(Effect));
+        Effect preindexedEffect = (Effect) RuntimeHelpers.GetUninitializedObject(typeof(Effect));
+        RegisteredEffectFixture.Effects["tests/mask"] = effect;
+        RegisteredEffectFixture.Effects["tests/preindexed"] = preindexedEffect;
+        Assembly[] moduleAssemblies = { typeof(RegisteredEffectFixture).Assembly };
+        try {
+            AkronReconstructionGraph graph = new AkronReconstructionGraph(
+                type => typeof(Effect).IsAssignableFrom(type),
+                resource => AkronStartPosReconstruction.GetRegisteredEffectResourceKey(
+                    (Effect) resource,
+                    moduleAssemblies),
+                resolveDetachedLiveResource: (type, typedKey) =>
+                    AkronStartPosReconstruction.ResolveRegisteredEffect(
+                        type,
+                        typedKey.Substring(typedKey.IndexOf('|') + 1),
+                        moduleAssemblies),
+                hasPortableLiveResourceKey: _ => true);
+            RegisteredEffectRoot saved = new RegisteredEffectRoot { Effect = effect };
+            AkronReconstructionCapture capture = graph.Capture(
+                saved,
+                new RegisteredEffectRoot());
+
+            Assert.True(capture.Success, capture.Error);
+            AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+            RegisteredEffectRoot fresh = new RegisteredEffectRoot();
+
+            AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+            Assert.True(restore.Success, restore.Error);
+            Assert.Same(effect, fresh.Effect);
+            Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+
+            // The first registry scan indexes every Effect it sees. A second
+            // Effect must use that reverse index without enumerating the same
+            // registry again.
+            Dictionary<string, Effect> enumerableRegistry = new Dictionary<string, Effect>(
+                RegisteredEffectFixture.Effects);
+            RegisteredEffectFixture.Effects = new NonEnumerableEffectRegistry(enumerableRegistry);
+            Assert.NotEmpty(AkronStartPosReconstruction.GetRegisteredEffectResourceKey(
+                preindexedEffect,
+                moduleAssemblies));
+            RegisteredEffectFixture.Effects = enumerableRegistry;
+
+            // The field catalog is stable for the loaded mod set, but a helper
+            // can hot-reload one shader entry. A cached key must follow the live
+            // registry value rather than authenticating the replaced Effect.
+            Effect replacement = (Effect) RuntimeHelpers.GetUninitializedObject(typeof(Effect));
+            RegisteredEffectFixture.Effects["tests/mask"] = replacement;
+            Assert.Equal(
+                string.Empty,
+                AkronStartPosReconstruction.GetRegisteredEffectResourceKey(effect, moduleAssemblies));
+            string replacementKey = AkronStartPosReconstruction.GetRegisteredEffectResourceKey(
+                replacement,
+                moduleAssemblies);
+            Assert.NotEmpty(replacementKey);
+            Assert.Same(
+                replacement,
+                AkronStartPosReconstruction.ResolveRegisteredEffect(
+                    typeof(Effect),
+                    replacementKey,
+                    moduleAssemblies));
+            Assert.Same(
+                replacement,
+                AkronStartPosReconstruction.ResolveRegisteredEffect(
+                    typeof(Effect),
+                    replacementKey,
+                    EnumerateModuleAssemblyOnce()));
+        } finally {
+            RegisteredEffectFixture.Effects = new Dictionary<string, Effect>();
+        }
+
+        static IEnumerable<Assembly> EnumerateModuleAssemblyOnce() {
+            yield return typeof(RegisteredEffectFixture).Assembly;
+        }
+    }
+
     // XaphanHelper's LightningDash shape: HookGen owns one upgrade handler,
     // while the active dash iterator captures a dormant clone of that handler
     // in <>4__this. The clone reaches process-only hook and reflection state,
@@ -5471,6 +5554,30 @@ public sealed class StartPosReconstructionTests {
         Assert.True(restore.Success, restore.Error);
         Assert.Equal(3, freshOwner.Steps);
         Assert.Single(GetRuntimeField<Stack<IEnumerator>>(freshOwner.Routine!, "enumerators"));
+    }
+
+    [Fact]
+    public void IteratorClosureCanRetainARuntimeComponentOwnedByTheSameEntity() {
+        (SavedSceneRoot saved, _) = CreateClosureRoutineScene(midFlight: true, withOwnedComponent: true);
+        (SavedSceneRoot baseline, _) = CreateClosureRoutineScene(midFlight: false, withOwnedComponent: true);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode componentNode = capture.Document.Nodes.Single(node =>
+            node.TypeName == typeof(OwnedTestComponent).AssemblyQualifiedName);
+        Assert.True(componentNode.Path.Contains("<>8__", StringComparison.Ordinal), componentNode.Path);
+        (SavedSceneRoot fresh, ClosureRoutineEntity freshOwner) =
+            CreateClosureRoutineScene(midFlight: false, withOwnedComponent: true);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        IEnumerator iterator = GetRuntimeField<Stack<IEnumerator>>(
+            freshOwner.Routine!,
+            "enumerators").Peek();
+        object closure = GetRuntimeField<object>(iterator, "<>8__1");
+        OwnedTestComponent component = GetRuntimeField<OwnedTestComponent>(closure, "component");
+        Assert.Same(freshOwner, GetRuntimeField<Entity>(component, "<Entity>k__BackingField"));
     }
 
     // The containment side of the closure-lambda licence: a document that moves
@@ -6413,21 +6520,35 @@ public sealed class StartPosReconstructionTests {
         return (new SavedSceneRoot { Scene = scene, Entities = entityList }, owner, watchers.ToArray());
     }
 
-    private static (SavedSceneRoot Root, ClosureRoutineEntity Owner) CreateClosureRoutineScene(bool midFlight) {
+    private static (SavedSceneRoot Root, ClosureRoutineEntity Owner) CreateClosureRoutineScene(
+        bool midFlight,
+        bool withOwnedComponent = false
+    ) {
         Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
         EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
         ClosureRoutineEntity owner = CreateUninitializedEntity<ClosureRoutineEntity>();
-        InitializeEmptyComponentList(owner);
+        ComponentList components = CreateDetachedComponentList(owner);
         SetRuntimeField(owner, "<Scene>k__BackingField", scene);
         SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 9));
         Coroutine routine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+        SetRuntimeField(routine, "<Entity>k__BackingField", owner);
         Stack<IEnumerator> iterators = new Stack<IEnumerator>();
+        List<Component> orderedComponents = new List<Component> { routine };
         if (midFlight) {
+            OwnedTestComponent? ownedComponent = null;
+            if (withOwnedComponent) {
+                ownedComponent = new OwnedTestComponent();
+                SetRuntimeField(ownedComponent, "<Entity>k__BackingField", owner);
+                owner.PendingComponent = ownedComponent;
+            }
             IEnumerator iterator = owner.AttackSequence();
             Assert.True(iterator.MoveNext());
+            owner.PendingComponent = null;
             iterators.Push(iterator);
         }
         SetRuntimeField(routine, "enumerators", iterators);
+        SetRuntimeField(components, "components", orderedComponents);
+        SetRuntimeField(components, "current", new HashSet<Component>(orderedComponents));
         owner.Routine = routine;
         AddDetachedEntity(entityList, owner);
         return (new SavedSceneRoot { Scene = scene, Entities = entityList }, owner);
@@ -9274,11 +9395,18 @@ public sealed class StartPosReconstructionTests {
     // idle, so nothing structural vouches for the mid-flight closure.
     private sealed class ClosureRoutineEntity : Entity {
         public Coroutine? Routine;
+        public OwnedTestComponent? PendingComponent;
         public int Steps;
 
         public IEnumerator AttackSequence() {
+            OwnedTestComponent? component = PendingComponent;
             int steps = 0;
-            Action advance = () => steps++;
+            Action advance = () => {
+                steps++;
+                if (component != null) {
+                    component.Value++;
+                }
+            };
             while (true) {
                 advance();
                 Steps = steps;
@@ -9298,6 +9426,30 @@ public sealed class StartPosReconstructionTests {
 
     private sealed class DynamicDataSubject {
         public int Exposed = 5;
+    }
+
+    private sealed class RegisteredEffectRoot {
+        public Effect? Effect;
+    }
+
+    private static class RegisteredEffectFixture {
+        internal static IDictionary<string, Effect> Effects = new Dictionary<string, Effect>();
+    }
+
+    // Assembly.GetTypes returns this open definition. Its closed registry field shape
+    // looks valid, but FieldInfo.GetValue cannot read it without a concrete T.
+    private static class OpenGenericRegisteredEffectFixture<T> {
+        internal static IDictionary<string, Effect> Effects = new Dictionary<string, Effect>();
+    }
+
+    private sealed class NonEnumerableEffectRegistry : Dictionary<string, Effect>, IDictionary<string, Effect> {
+        internal NonEnumerableEffectRegistry(IEnumerable<KeyValuePair<string, Effect>> entries)
+            : base(entries.ToDictionary(entry => entry.Key, entry => entry.Value)) {
+        }
+
+        IEnumerator<KeyValuePair<string, Effect>> IEnumerable<KeyValuePair<string, Effect>>.GetEnumerator() {
+            throw new InvalidOperationException("The registry was enumerated more than once.");
+        }
     }
 
     private delegate IEnumerator HookRoutine(OrigHookRoutine orig);

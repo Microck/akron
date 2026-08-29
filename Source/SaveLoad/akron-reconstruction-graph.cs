@@ -4580,7 +4580,9 @@ internal sealed class AkronReconstructionGraph {
                 IsAuthenticatedFreshRendererOwnedRuntimeState(node, type) ||
                 IsAuthenticatedRuntimeEntityOwnedState(node, type) ||
                 IsAuthenticatedGeneratedEntityOwnedState(node, type);
-            bool authenticatedOwnedComponent = IsAuthenticatedReconstructedOwnedComponent(node, type);
+            bool authenticatedOwnedComponent =
+                IsAuthenticatedReconstructedOwnedComponent(node, type) ||
+                IsAuthenticatedIteratorClosureOwnedComponent(node, type);
             bool authenticatedFieldBuiltComponent = IsAuthenticatedLazilyBuiltFieldComponent(node, type);
             bool authenticatedDelegateTarget = IsStructurallyAuthenticDelegateTarget(node, type);
             bool authenticatedIteratorClosure = IsAuthenticatedIteratorClosure(node, type);
@@ -4898,6 +4900,30 @@ internal sealed class AkronReconstructionGraph {
             return localField.FieldType == type &&
                    typeof(IEnumerator).IsAssignableFrom(
                        ResolveType(iteratorNode.TypeName, iteratorNode.Path));
+        }
+
+        private bool IsAuthenticatedIteratorClosureOwnedComponent(
+            AkronReconstructionNode node,
+            Type type
+        ) {
+            if (!IsComponentTypeSafeToReconstruct(type) ||
+                node.ParentKind != "field" ||
+                !authenticatedIteratorClosureNodes.Contains(node.ParentNodeId) ||
+                !nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode closureNode) ||
+                !nodes.TryGetValue(closureNode.ParentNodeId, out AkronReconstructionNode iteratorNode) ||
+                deferredProvisionalIteratorIds.Contains(iteratorNode.Id)) {
+                return false;
+            }
+
+            // Component.RemoveSelf leaves Component.Entity intact. CrushBlock relies on
+            // that while its authenticated attack iterator's delayed-removal closure
+            // keeps the old SoundSource alive. The two independent back-references must
+            // name the same entity, so a closure cannot adopt another entity's component.
+            AkronReconstructionValue iteratorOwner = FindReferenceField(iteratorNode, "<>4__this");
+            AkronReconstructionValue componentOwner = FindReferenceField(node, "<Entity>k__BackingField");
+            return iteratorOwner != null &&
+                   componentOwner != null &&
+                   iteratorOwner.NodeId == componentOwner.NodeId;
         }
 
         // Everest wraps every coroutine frame in SwapImmediatelyExtension's
@@ -9429,6 +9455,13 @@ internal static class AkronStartPosReconstruction {
             // the owner that produced the saved iterator.
             return true;
         }
+        if (resource is Effect effect) {
+            // The helper-owned string entry is both the content id and the
+            // cross-process recipe for this native graphics resource.
+            return !string.IsNullOrWhiteSpace(GetRegisteredEffectResourceKey(
+                effect,
+                GetLoadedEverestModuleAssemblies()));
+        }
         if (resource is CompareInfo) {
             // A sort name. Every install derives the same one for the same
             // collation, and one it cannot open is a collation it does not have.
@@ -10823,6 +10856,7 @@ internal static class AkronStartPosReconstruction {
     // empty resource key means "this type has no key" to the graph. Prefix it
     // so every culture, the invariant one included, gets a resolvable key.
     private const string CompareInfoSortNameKeyPrefix = "sort-name=";
+    private const string EffectRegistryKeyPrefix = "effect-registry|";
 
     internal static bool IsLiveResourceType(Type type) {
         if (type == null) {
@@ -10901,6 +10935,12 @@ internal static class AkronStartPosReconstruction {
         }
         if (resourceKey.StartsWith(HookOwnerKeyPrefix, StringComparison.Ordinal)) {
             return ResolveHookOwner(resourceType, resourceKey);
+        }
+        if (typeof(Effect).IsAssignableFrom(resourceType)) {
+            return ResolveRegisteredEffect(
+                resourceType,
+                resourceKey,
+                GetLoadedEverestModuleAssemblies());
         }
         if (typeof(VirtualTexture).IsAssignableFrom(resourceType)) {
             // Randomized decals can select a different texture wrapper each
@@ -11418,6 +11458,266 @@ internal static class AkronStartPosReconstruction {
         return match;
     }
 
+    private static Assembly[] GetLoadedEverestModuleAssemblies() {
+        return Everest.Modules
+            .Select(module => module?.GetType().Assembly)
+            .Where(assembly => assembly != null)
+            .Distinct()
+            .ToArray();
+    }
+
+    private static readonly object EffectRegistryCatalogSync = new object();
+    private static Assembly[] effectRegistryCatalogAssemblies = Array.Empty<Assembly>();
+    private static FieldInfo[] effectRegistryCatalogFields = Array.Empty<FieldInfo>();
+    private static long effectRegistryCatalogGeneration;
+    private static readonly object RegisteredEffectKeyCacheSync = new object();
+    private static readonly ConditionalWeakTable<Effect, RegisteredEffectKey> RegisteredEffectKeys =
+        new ConditionalWeakTable<Effect, RegisteredEffectKey>();
+
+    private sealed class RegisteredEffectKey {
+        internal long CatalogGeneration;
+        internal FieldInfo Field;
+        internal string EntryKey;
+        internal string ResourceKey;
+    }
+
+    private static IEnumerable<Type> GetLoadableTypes(Assembly assembly) {
+        try {
+            return assembly.GetTypes();
+        } catch (ReflectionTypeLoadException exception) {
+            return exception.Types.Where(type => type != null);
+        } catch (Exception exception) when (IsAssemblyReflectionLoadFailure(exception)) {
+            // A loaded helper can still have an absent optional dependency. Its
+            // unrelated types remain usable in-game, but reflection cannot name
+            // them safely enough to authenticate an Effect registry.
+            return Array.Empty<Type>();
+        }
+    }
+
+    private static bool IsEffectRegistryField(FieldInfo field) {
+        try {
+            return field.IsStatic &&
+                   field.DeclaringType?.ContainsGenericParameters != true &&
+                   typeof(IDictionary<string, Effect>).IsAssignableFrom(field.FieldType);
+        } catch (Exception exception) when (IsAssemblyReflectionLoadFailure(exception)) {
+            return false;
+        }
+    }
+
+    private static FieldInfo[] GetDeclaredEffectRegistryFields(Type owner) {
+        try {
+            return owner.GetFields(
+                BindingFlags.Static |
+                BindingFlags.Public |
+                BindingFlags.NonPublic |
+                BindingFlags.DeclaredOnly);
+        } catch (Exception exception) when (IsAssemblyReflectionLoadFailure(exception)) {
+            return Array.Empty<FieldInfo>();
+        }
+    }
+
+    private static bool IsAssemblyReflectionLoadFailure(Exception exception) {
+        return exception is FileNotFoundException ||
+               exception is FileLoadException ||
+               exception is TypeLoadException ||
+               exception is BadImageFormatException;
+    }
+
+    // Discover registry fields once for the current mod set. A reconstruction
+    // can ask for one Effect key many times while it indexes, restores and
+    // verifies a graph; repeating Assembly.GetTypes for every question turns a
+    // native warm load into seconds or minutes on a large install. The catalog
+    // contains only FieldInfo. Registry contents stay live and are read below on
+    // every lookup, so helper content reloads do not stale the identity check.
+    private static FieldInfo[] GetEffectRegistryCatalog(
+        IEnumerable<Assembly> moduleAssemblies,
+        out long catalogGeneration
+    ) {
+        Assembly[] assemblies = moduleAssemblies
+            .Where(assembly => assembly != null)
+            .Distinct()
+            .OrderBy(assembly => assembly.FullName, StringComparer.Ordinal)
+            .ToArray();
+        lock (EffectRegistryCatalogSync) {
+            if (assemblies.Length == effectRegistryCatalogAssemblies.Length &&
+                assemblies.Zip(effectRegistryCatalogAssemblies, ReferenceEquals).All(same => same)) {
+                catalogGeneration = effectRegistryCatalogGeneration;
+                return effectRegistryCatalogFields;
+            }
+        }
+
+        FieldInfo[] fields = assemblies
+            .SelectMany(GetLoadableTypes)
+            .SelectMany(GetDeclaredEffectRegistryFields)
+            .Where(IsEffectRegistryField)
+            .OrderBy(field => field.DeclaringType?.AssemblyQualifiedName, StringComparer.Ordinal)
+            .ThenBy(field => field.Name, StringComparer.Ordinal)
+            .ToArray();
+        lock (EffectRegistryCatalogSync) {
+            effectRegistryCatalogAssemblies = assemblies;
+            effectRegistryCatalogFields = fields;
+            catalogGeneration = ++effectRegistryCatalogGeneration;
+            return effectRegistryCatalogFields;
+        }
+    }
+
+    private static bool IsRegisteredEffectKeyCurrent(Effect effect, RegisteredEffectKey cached) {
+        try {
+            return ReadEffectRegistry(cached.Field) is IDictionary<string, Effect> registry &&
+                   registry.TryGetValue(cached.EntryKey, out Effect registered) &&
+                   ReferenceEquals(registered, effect);
+        } catch (InvalidOperationException) {
+            return false;
+        }
+    }
+
+    private static IDictionary<string, Effect> ReadEffectRegistry(FieldInfo field) {
+        try {
+            return field.GetValue(null) as IDictionary<string, Effect>;
+        } catch (Exception exception) when (
+            exception is MemberAccessException ||
+            exception is TargetInvocationException ||
+            exception is TypeInitializationException ||
+            IsAssemblyReflectionLoadFailure(exception)) {
+            // A registry belongs to another mod. If that mod cannot expose its
+            // already-loaded registry, it cannot authenticate this Effect.
+            return null;
+        }
+    }
+
+    private static string EncodeEffectRegistrySegment(string value) {
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+    }
+
+    private static bool TryDecodeEffectRegistrySegment(string value, out string decoded) {
+        try {
+            decoded = Encoding.UTF8.GetString(Convert.FromBase64String(value));
+            return true;
+        } catch (FormatException) {
+            decoded = null;
+            return false;
+        }
+    }
+
+    // Some helpers turn a map-authored shader id into a live Effect on first
+    // render and keep that Effect in a process-wide string-keyed registry. The
+    // registry entry is the reconstruction recipe: the helper loads the same id
+    // in every process, while serializing Effect would retain native graphics
+    // handles. Limit discovery to assemblies that own loaded Everest modules so
+    // a snapshot cannot name arbitrary application statics.
+    internal static string GetRegisteredEffectResourceKey(
+        Effect effect,
+        IEnumerable<Assembly> moduleAssemblies
+    ) {
+        if (effect == null || moduleAssemblies == null) {
+            return string.Empty;
+        }
+
+        FieldInfo[] catalog = GetEffectRegistryCatalog(moduleAssemblies, out long catalogGeneration);
+        if (RegisteredEffectKeys.TryGetValue(effect, out RegisteredEffectKey cached) &&
+            cached.CatalogGeneration == catalogGeneration &&
+            IsRegisteredEffectKeyCurrent(effect, cached)) {
+            return cached.ResourceKey;
+        }
+
+        Dictionary<Effect, RegisteredEffectKey> discovered =
+            new Dictionary<Effect, RegisteredEffectKey>(ReferenceEqualityComparer.Instance);
+        foreach (FieldInfo field in catalog) {
+            if (ReadEffectRegistry(field) is not IDictionary<string, Effect> registry) {
+                continue;
+            }
+            try {
+                foreach (KeyValuePair<string, Effect> entry in registry) {
+                    if (entry.Key == null || entry.Value == null) {
+                        continue;
+                    }
+                    string ownerName = field.DeclaringType?.AssemblyQualifiedName;
+                    if (string.IsNullOrWhiteSpace(ownerName)) {
+                        continue;
+                    }
+                    string candidateKey = EffectRegistryKeyPrefix +
+                                          EncodeEffectRegistrySegment(ownerName) + "|" +
+                                          EncodeEffectRegistrySegment(field.Name) + "|" +
+                                          EncodeEffectRegistrySegment(entry.Key);
+                    if (!discovered.TryGetValue(entry.Value, out RegisteredEffectKey existing) ||
+                        string.CompareOrdinal(candidateKey, existing.ResourceKey) < 0) {
+                        discovered[entry.Value] = new RegisteredEffectKey {
+                            CatalogGeneration = catalogGeneration,
+                            Field = field,
+                            EntryKey = entry.Key,
+                            ResourceKey = candidateKey
+                        };
+                    }
+                }
+            } catch (InvalidOperationException) {
+                // A helper replaced an effect while its registry was being
+                // inspected. This entry cannot authenticate the saved value.
+            }
+        }
+        lock (RegisteredEffectKeyCacheSync) {
+            foreach (KeyValuePair<Effect, RegisteredEffectKey> entry in discovered) {
+                RegisteredEffectKeys.Remove(entry.Key);
+                RegisteredEffectKeys.Add(entry.Key, entry.Value);
+            }
+        }
+        return discovered.TryGetValue(effect, out RegisteredEffectKey found)
+            ? found.ResourceKey
+            : string.Empty;
+    }
+
+    internal static object ResolveRegisteredEffect(
+        Type resourceType,
+        string resourceKey,
+        IEnumerable<Assembly> moduleAssemblies
+    ) {
+        if (resourceType == null ||
+            !typeof(Effect).IsAssignableFrom(resourceType) ||
+            string.IsNullOrWhiteSpace(resourceKey) ||
+            !resourceKey.StartsWith(EffectRegistryKeyPrefix, StringComparison.Ordinal) ||
+            moduleAssemblies == null) {
+            return null;
+        }
+
+        Assembly[] assemblies = moduleAssemblies.ToArray();
+
+        string[] segments = resourceKey.Substring(EffectRegistryKeyPrefix.Length).Split('|');
+        if (segments.Length != 3 ||
+            !TryDecodeEffectRegistrySegment(segments[0], out string ownerName) ||
+            !TryDecodeEffectRegistrySegment(segments[1], out string fieldName) ||
+            !TryDecodeEffectRegistrySegment(segments[2], out string entryKey)) {
+            return null;
+        }
+
+        FieldInfo field = null;
+        foreach (FieldInfo candidate in GetEffectRegistryCatalog(assemblies, out _)) {
+            if (!string.Equals(
+                    candidate.DeclaringType?.AssemblyQualifiedName,
+                    ownerName,
+                    StringComparison.Ordinal) ||
+                !string.Equals(candidate.Name, fieldName, StringComparison.Ordinal)) {
+                continue;
+            }
+            if (field != null && !ReferenceEquals(field, candidate)) {
+                return null;
+            }
+            field = candidate;
+        }
+        if (field == null ||
+            ReadEffectRegistry(field) is not IDictionary<string, Effect> registry ||
+            !registry.TryGetValue(entryKey, out Effect effect) ||
+            effect == null ||
+            effect.GetType() != resourceType) {
+            return null;
+        }
+
+        return string.Equals(
+            GetRegisteredEffectResourceKey(effect, assemblies),
+            resourceKey,
+            StringComparison.Ordinal)
+            ? effect
+            : null;
+    }
+
     internal static string GetLiveResourceKey(object resource) {
         string hookOwnerKey = GetHookOwnerResourceKey(resource);
         if (!string.IsNullOrWhiteSpace(hookOwnerKey)) {
@@ -11453,6 +11753,9 @@ internal static class AkronStartPosReconstruction {
         if (resource is EverestModule || resource is EverestModuleSettings) {
             Type resourceType = resource.GetType();
             return resourceType.AssemblyQualifiedName ?? resourceType.FullName ?? resourceType.Name;
+        }
+        if (resource is Effect effect) {
+            return GetRegisteredEffectResourceKey(effect, GetLoadedEverestModuleAssemblies());
         }
         if (resource is Atlas atlas && !string.IsNullOrWhiteSpace(atlas.DataPath)) {
             return (atlas.DataMethod ?? string.Empty) + "|" + atlas.DataPath + "|" +

@@ -327,7 +327,7 @@ public static partial class AkronCommands {
         // allowed to hold. Without these a map that stops keeping slots warm looks
         // identical to one that never filled up.
         Log("startpos-warm-bytes: " + AkronSaveLoadService.WarmStartPosBytes.ToString(CultureInfo.InvariantCulture));
-        Log("startpos-warm-budget-bytes: " + AkronSaveLoadService.MaxWarmStartPosBytes.ToString(CultureInfo.InvariantCulture));
+        Log("startpos-warm-budget-bytes: " + AkronSaveLoadService.WarmStartPosBudgetBytes.ToString(CultureInfo.InvariantCulture));
         Log("startpos-last-loaded-slot: " + (AkronModule.Session?.LastLoadedStartPosSlot ?? 0).ToString(CultureInfo.InvariantCulture));
         Log("startpos-dashes: " + (startPos?.Dashes ?? AkronModule.Settings.StartPosConfiguredDashes).ToString(CultureInfo.InvariantCulture));
         Log("startpos-stamina: " + (startPos?.StaminaPercent ?? AkronModule.Settings.StartPosConfiguredStaminaPercent).ToString(CultureInfo.InvariantCulture));

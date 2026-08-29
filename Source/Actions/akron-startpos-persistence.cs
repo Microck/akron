@@ -1335,7 +1335,19 @@ internal static class AkronStartPosPersistence {
         string stateSlotName,
         AkronSaveLoadSlotLease baseline
     ) {
-        AkronSaveLoadSlotLease retainedBaseline = baseline.Retain();
+        string baselineKey = BuildBaselineKey(baseline.Slot);
+        AkronSaveLoadSlotLease sharedBaseline = RuntimeFreshBaselines
+            .Where(pair => !string.Equals(pair.Key, stateSlotName, StringComparison.Ordinal))
+            .Select(pair => pair.Value)
+            .FirstOrDefault(candidate =>
+                candidate?.Slot != null &&
+                string.Equals(BuildBaselineKey(candidate.Slot), baselineKey, StringComparison.Ordinal));
+        // Fresh-room baselines are identified by save file, map, room and registered
+        // action set. Slots in the same room can retain one immutable graph instead of
+        // one complete duplicate per StartPos. The caller's newly captured duplicate is
+        // released when its lease leaves CacheRestoredRuntimeState.
+        AkronSaveLoadSlotLease retainedBaseline =
+            (sharedBaseline ?? baseline).Retain();
         if (RuntimeFreshBaselines.Remove(stateSlotName, out AkronSaveLoadSlotLease previousBaseline)) {
             previousBaseline.Dispose();
         }

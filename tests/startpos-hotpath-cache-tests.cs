@@ -270,9 +270,10 @@ public sealed class StartPosHotPathCacheTests {
             Assert.True(mark >= 0 && mark < methodEnd, "RuntimeSlots.Remove at " + index);
             cursor = index + 1;
         }
-        // Four canonical-slot removals plus the three that park, restore and release the
-        // previous state of a slot while a Set is writing its restart copy.
-        Assert.Equal(7, removals);
+        // Three canonical-slot removals plus the three that park, restore and release the
+        // previous state of a slot while a Set is writing its restart copy. Clear by name
+        // now routes through ReleaseRuntimeStateMemory instead of duplicating its removal.
+        Assert.Equal(6, removals);
     }
 
     [Fact]
@@ -1072,53 +1073,51 @@ public sealed class StartPosHotPathCacheTests {
     }
 
     [Fact]
-    public void TheRequestedStartPosLoadQueuesNoPrewarmWorkOfItsOwn() {
+    public void TheFirstColdStartPosLoadBuildsEveryRuntimeSlotBeforeReturning() {
         string source = ActionsSource;
         int start = source.IndexOf("private static bool RestoreStartPosUnderPacingGate(", StringComparison.Ordinal);
         Assert.True(start >= 0);
-        int end = source.IndexOf("private static void ReportStartPosRestoreTiming(", start, StringComparison.Ordinal);
+        int end = source.IndexOf("private static AkronSaveLoadResult LoadStartPosRuntimeState(", start, StringComparison.Ordinal);
         Assert.True(end > start);
         string body = source.Substring(start, end - start);
 
         int cancel = body.IndexOf("AkronStartPosPersistence.CancelPrewarm();", StringComparison.Ordinal);
         int hold = body.IndexOf("AkronStartPosPersistence.HoldPacingGateOpen();", StringComparison.Ordinal);
-        int finish = body.IndexOf("AkronStartPosPersistence.FinishPendingRestartCopy(", StringComparison.Ordinal);
+        int beginBatch = body.IndexOf("AkronSaveLoadService.BeginWarmStartPosBatch(", StringComparison.Ordinal);
+        int requestedLoad = body.IndexOf("LoadStartPosRuntimeState(", beginBatch, StringComparison.Ordinal);
+        int warmEvery = body.IndexOf("WarmEveryStartPosRuntimeState(", requestedLoad, StringComparison.Ordinal);
 
         Assert.True(hold >= 0, "The load must hold the pacing gate open.");
-        // Cancelling before the gate opens is what stops a read parked since an earlier
-        // load from waking into competition with the restart copy this load blocks on.
         Assert.True(cancel >= 0 && cancel < hold, "Speculative reads must be abandoned before the gate opens.");
-        Assert.True(finish > hold, "The restart copy must be finished inside the gate hold.");
+        Assert.True(beginBatch > hold, "The adaptive budget must cover the whole load transaction.");
+        Assert.True(requestedLoad > beginBatch);
+        Assert.True(warmEvery > requestedLoad, "The requested state must load before the rest are warmed.");
 
-        // Nothing speculative may be queued inside the window the load freezes the game
-        // thread for. Measured in game: queueing the map's other slots in here took the
-        // first load on Forsaken City from 5222.5 +- 21.9 ms (n=4) to 8220.1 +- 669.5 ms
-        // (n=4), +57%, and the same build with nothing to queue landed at
-        // 5183.3 +- 9.1 ms (n=3), so the whole regression was the speculative reads
-        // competing with the load's own parse on a single workstation GC heap.
-        Assert.DoesNotContain("PrewarmOtherStartPosSnapshots", body);
-        Assert.DoesNotContain("AkronStartPosPersistence.PrewarmSnapshots(", body);
+        string warmAll = SliceMember(source, "private static bool WarmEveryStartPosRuntimeState(");
+        Assert.Contains("AkronSaveLoadService.WillRestoreFromRuntimeMemory", warmAll);
+        int attempted = warmAll.IndexOf("attemptedColdWarmup = true;", StringComparison.Ordinal);
+        int warmupLoad = warmAll.IndexOf("LoadStartPosRuntimeState(", attempted, StringComparison.Ordinal);
+        Assert.True(attempted >= 0 && warmupLoad > attempted);
+        Assert.DoesNotContain("attemptedColdWarmup |= warmResult ==", warmAll);
+        Assert.Contains("requestedStateSlotName", warmAll);
+        Assert.Contains("AkronEngineGarbageCollection.CollectStartPosGarbage();", warmAll);
+        Assert.Contains("StartPos warm-all prepared ", warmAll);
 
-        // It is queued after the load instead, where the gate is closed again and the
-        // worker parks until the player is out of control of the game.
+        // Reconstruction is unsafe after a refused requested load because each successful
+        // warm-up replaces the live room. Only that failure path keeps the read-only
+        // document prewarm fallback.
         string core = SliceMember(source, "private static bool RestoreStartPosCore(");
         int gatedLoad = core.IndexOf("RestoreStartPosUnderPacingGate(level, startPos", StringComparison.Ordinal);
         int collect = core.IndexOf("AkronEngineGarbageCollection.CollectDeferred();", StringComparison.Ordinal);
         int prewarm = core.IndexOf("PrewarmOtherStartPosSnapshots(", StringComparison.Ordinal);
         Assert.True(gatedLoad >= 0);
         Assert.True(collect > gatedLoad, "The deferred collection is paid after the load.");
-        Assert.True(prewarm > collect, "The prewarm queue must be filled after the load and its collection.");
-        // Definition plus exactly one call site, so a second queueing point cannot
-        // drift back into the load without this failing.
+        Assert.True(prewarm > collect);
+        Assert.Contains("if (!restored)", core[..prewarm]);
         Assert.Equal(2, CountOccurrences(source, "PrewarmOtherStartPosSnapshots("));
 
-        // The warm/cold word has to be the path the load actually took, reported out of
-        // LoadRuntimeState. Gating on a HasRuntimeStateInMemory check taken before the
-        // call reads "warm" for a stale slot left by a chapter re-entry, which then
-        // fails with SessionMismatch and rebuilds from the snapshot anyway. Measured on
-        // the test box: 4602 ms of snapshot rebuild logged as a warm restore.
-        Assert.Contains("out usedSnapshot);", body);
-        Assert.DoesNotContain("HasRuntimeStateInMemory", body);
+        string load = SliceMember(source, "private static AkronSaveLoadResult LoadStartPosRuntimeState(");
+        Assert.Contains("out usedSnapshot);", load);
         Assert.Contains("(usedSnapshot ? \"cold\" : \"warm\")", source);
     }
 
