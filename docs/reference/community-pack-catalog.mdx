@@ -113,7 +113,7 @@ Before adding archives to the catalog, ensure that:
 - The `downloadUrl` is a stable HTTPS URL for the `.akr` file.
 - Catalog metadata is updated whenever the pack changes.
 - The `.akr` is no larger than 512 MiB.
-- Optional catalog image sources are no larger than 100 MiB before optimization.
+- Optional catalog image sources submitted through Akron are no larger than 24 MiB before optimization.
 - The `images` list and legacy `imageUrls` list each declare no more than 16
   entries. The legacy `imageUrl` field can add one single preview. Akron removes
   duplicate URLs when it builds the preview list.
@@ -160,6 +160,8 @@ The official catalog separates unreviewed upload storage from public catalog sto
 In-game uploads go to the Upload Worker first. The Worker stores source `.akr` files and marked-room captures in a private quarantine bucket, records batch, submission, and object state in its database, and exposes signed bot-only endpoints for moderation. Nothing from quarantine is public.
 
 The Discord bot polls the Worker for queued jobs, posts moderation messages, handles attribution confirmation, and sends approve, reject, or request-changes actions back to the Worker. Moderation messages should attach every marked-room capture and expose next/previous controls when Discord-side pagination is needed. Approval is the only path that copies a pack into public catalog storage.
+
+The StartPos, Auto Kill, and Auto Deafen Discord forums are bot-authored showcases for approved catalog packs. Members can read and reply, but cannot create posts there. Keybind, HUD, audio, and recorder forums still accept direct member posts and remain outside the map catalog.
 
 When a submission is approved, the Worker writes the `.akr` archive to the public pack path, transforms each marked-room capture into an optimized catalog preview image, stores those previews at the public capture path, and rebuilds `catalog/index.json` with an `images` array. The public website serves branded Akron URLs and routes the reserved catalog and map asset paths to the public storage objects.
 

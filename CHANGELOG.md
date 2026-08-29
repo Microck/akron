@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Changed
+
+- Route StartPos, Auto Kill, and Auto Deafen community submissions through Akron's moderated Upload Pack flow, with Discord map forums reserved for approved showcases.
+
 ## Akron Beta 75
 
 ### Fixed

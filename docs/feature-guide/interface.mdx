@@ -13,7 +13,7 @@ The Interface tab controls the Akron overlay itself and the public `.akr` pack w
 | Export Setup | Action | Export the selected Whole, StartPos, Keybinds, Auto Kill, Auto Deafen, Recorder, Audio, or HUD setup scope as a `.akr` setup pack. | Normal clear |
 | Import Setup | Action | Open a file browser to import a selected `.akr` setup pack using the selected setup scope. | Normal clear |
 | Community Packs | Action | Search map-linked community `.akr` packs from the configured community pack index. | Normal clear |
-| Upload Pack | Action | Open the community pack submission form for the active map. | Goldberry/Hardlist clear |
+| Upload Pack | Action | Submit the active map's StartPos, Auto Kill, or Auto Deafen setup through the moderated community catalog flow. | Goldberry/Hardlist clear |
 | Pause While Open | Toggle | When enabled, opening the Akron menu stops gameplay updates until the menu closes. | Normal clear |
 | Streamer Mode | Toggle | Replace full local filesystem paths with filenames. | Normal clear |
 | Logging | Toggle | Write local Akron diagnostic logs to `Saves/AkronLogs`. | Goldberry/Hardlist clear |
@@ -86,3 +86,9 @@ Clicking **Community Packs** opens a standalone browser window. Use it to search
 | Category | Filter packs by setup scope: All, StartPos, Auto Kill, or Auto Deafen. | Normal clear |
 | Refresh | Connect to the index URL and reload available packs. | Normal clear |
 | Import Selected | Download and import the highlighted community setup pack. | Normal clear |
+
+## Upload Pack
+
+**Upload Pack** is the only public submission path for map-linked StartPos, Auto Kill, and Auto Deafen packs. Akron exports the selected section, captures at least one marked room, and sends the batch to private moderation storage. Staff approval publishes the pack to the catalog and creates its Discord showcase post.
+
+Keybind, HUD, audio, and recorder packs are not map catalog entries. Post those exports in their matching Discord pack forums.
