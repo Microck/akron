@@ -295,6 +295,19 @@ public static partial class AkronActions {
         StartPosPlayerSnapshot playerSnapshot = null;
         Vector2? originalRespawnPoint = level.Session.RespawnPoint;
         Vector2 clampedPosition = ClampToRoom(level, position);
+        AkronStartPos startPos = new AkronStartPos {
+            Position = clampedPosition,
+            Room = level.Session.Level,
+            AreaSid = areaSid,
+            UsesSpawnConfig = useSpawnConfig,
+            Dashes = useSpawnConfig ? AkronModuleSettings.ClampStartPosDashes(AkronModule.Settings.StartPosConfiguredDashes) : -1,
+            StaminaPercent = useSpawnConfig ? AkronModuleSettings.ClampStartPosStaminaPercent(AkronModule.Settings.StartPosConfiguredStaminaPercent) : -1,
+            Facing = useSpawnConfig ? AkronModule.Settings.StartPosConfiguredFacing : AkronStartPosFacing.Current,
+            Idle = useSpawnConfig && AkronModule.Settings.StartPosConfiguredIdle,
+            Grab = useSpawnConfig && AkronModule.Settings.StartPosConfiguredGrab,
+            ProfileId = GetCurrentStartPosProfileId(),
+            StateSlotName = stateSlotName
+        };
 
         // Park whatever this slot already holds before the capture overwrites it. Every
         // exit below either commits the replacement or restores what was parked.
@@ -312,7 +325,7 @@ public static partial class AkronActions {
         try {
             if (useSpawnConfig && level.Tracker.GetEntity<Player>() is Player player) {
                 playerSnapshot = StartPosPlayerSnapshot.Capture(player);
-                ApplyPlacedStartPosBeforeCapture(level, player, clampedPosition);
+                ApplyStartPosPlayerConfiguration(level, player, startPos);
                 level.Session.RespawnPoint = clampedPosition;
             }
 
@@ -357,19 +370,6 @@ public static partial class AkronActions {
             "StartPos warm capture finished in " +
             captureTimer.Elapsed.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture) + " ms.");
 
-        AkronStartPos startPos = new AkronStartPos {
-            Position = clampedPosition,
-            Room = level.Session.Level,
-            AreaSid = areaSid,
-            UsesSpawnConfig = useSpawnConfig,
-            Dashes = useSpawnConfig ? AkronModuleSettings.ClampStartPosDashes(AkronModule.Settings.StartPosConfiguredDashes) : -1,
-            StaminaPercent = useSpawnConfig ? AkronModuleSettings.ClampStartPosStaminaPercent(AkronModule.Settings.StartPosConfiguredStaminaPercent) : -1,
-            Facing = useSpawnConfig ? AkronModule.Settings.StartPosConfiguredFacing : AkronStartPosFacing.Current,
-            Idle = useSpawnConfig && AkronModule.Settings.StartPosConfiguredIdle,
-            Grab = useSpawnConfig && AkronModule.Settings.StartPosConfiguredGrab,
-            ProfileId = GetCurrentStartPosProfileId(),
-            StateSlotName = stateSlotName
-        };
         long persistenceGeneration;
         try {
             PublishPendingStartPos(fileSlot, slot, startPos);
@@ -712,48 +712,55 @@ public static partial class AkronActions {
         startPosCaptureInProgress = false;
     }
 
-    private static void ApplyPlacedStartPosBeforeCapture(Level level, Player player, Vector2 position) {
-        player.Position = ClampToRoom(level, position);
+    private static void ApplyStartPosPlayerConfiguration(
+        Level level,
+        Player player,
+        AkronStartPos startPos
+    ) {
+        player.Position = ClampToRoom(level, startPos.Position);
         player.Dead = false;
         player.Collidable = true;
         player.Active = true;
         player.Visible = true;
         player.Depth = Depths.Player;
 
-        if (AkronModule.Settings.StartPosConfiguredIdle) {
+        if (startPos.Idle) {
             player.Speed = Vector2.Zero;
             player.StateMachine.ForceState(Player.StNormal);
         }
 
-        int configuredDashes = AkronModuleSettings.ClampStartPosDashes(AkronModule.Settings.StartPosConfiguredDashes);
-        if (configuredDashes >= 0) {
-            player.Dashes = configuredDashes;
+        if (startPos.Dashes >= 0) {
+            player.Dashes = startPos.Dashes;
         }
 
-        int configuredStamina = AkronModuleSettings.ClampStartPosStaminaPercent(AkronModule.Settings.StartPosConfiguredStaminaPercent);
-        if (configuredStamina >= 0) {
-            player.Stamina = 110f * configuredStamina / 100f;
+        if (startPos.StaminaPercent >= 0) {
+            player.Stamina = 110f * startPos.StaminaPercent / 100f;
         }
 
-        if (AkronModule.Settings.StartPosConfiguredFacing == AkronStartPosFacing.Left) {
+        if (startPos.Facing == AkronStartPosFacing.Left) {
             player.Facing = Facings.Left;
-        } else if (AkronModule.Settings.StartPosConfiguredFacing == AkronStartPosFacing.Right) {
+        } else if (startPos.Facing == AkronStartPosFacing.Right) {
             player.Facing = Facings.Right;
         }
 
-        if (AkronModule.Settings.StartPosConfiguredGrab) {
+        if (startPos.Grab) {
             player.Stamina = 110f;
             player.StateMachine.ForceState(Player.StClimb);
         }
 
-        if (AkronModule.Settings.StartPosConfiguredIdle || AkronModule.Settings.StartPosConfiguredGrab) {
-            // Placement changes collision context without running Player.Update. Refresh
-            // the two derived inputs UpdateSprite reads, then let Celeste choose edge,
-            // edgeBack, dangling, or the ordinary idle pose for the placed position.
-            player.onGround = player.OnGround();
+        RefreshStartPosPlayerPose(player, startPos.Idle || startPos.Grab);
+    }
+
+    private static void RefreshStartPosPlayerPose(Player player, bool clearMovementInput) {
+        // Placement and an old persisted slot can both change collision context without
+        // running Player.Update. Refresh the derived ground input, then let Celeste
+        // choose edge, edgeBack, dangling, falling, or the ordinary idle pose before
+        // the restored room renders its first frame.
+        player.onGround = player.OnGround();
+        if (clearMovementInput) {
             player.moveX = 0;
-            player.UpdateSprite();
         }
+        player.UpdateSprite();
     }
 
     // Every StartPos slot set before the snapshot format was bumped disappears from the
@@ -1236,7 +1243,7 @@ public static partial class AkronActions {
         }
         AkronSaveLoadResult restored = LoadStartPosRuntimeState(
             level,
-            startPos.StateSlotName,
+            startPos,
             currentStartPositionsByMap);
         if (restored != AkronSaveLoadResult.Success) {
             ReportStartPosLoadFailure(
@@ -1250,7 +1257,7 @@ public static partial class AkronActions {
         if (!WarmEveryStartPosRuntimeState(
                 level,
                 startPositionsToWarm,
-                startPos.StateSlotName,
+                startPos,
                 currentStartPositionsByMap,
                 out string warmFailure)) {
             ReportStartPosLoadFailure(
@@ -1290,15 +1297,15 @@ public static partial class AkronActions {
 
     private static AkronSaveLoadResult LoadStartPosRuntimeState(
         Level level,
-        string stateSlotName,
+        AkronStartPos startPos,
         Dictionary<string, AkronPersistedStartPosMap> currentStartPositionsByMap
     ) {
         Level currentLevel = Engine.Scene as Level ?? level;
         // A cold slot needs its restart copy, whose worker is normally parked while the
         // player controls a level. This transaction is the wait the player requested,
         // so finish that exact copy while the pacing gate is open.
-        if (!AkronSaveLoadService.WillRestoreFromRuntimeMemory(currentLevel, stateSlotName)) {
-            AkronStartPosPersistence.FinishPendingRestartCopy(stateSlotName);
+        if (!AkronSaveLoadService.WillRestoreFromRuntimeMemory(currentLevel, startPos.StateSlotName)) {
+            AkronStartPosPersistence.FinishPendingRestartCopy(startPos.StateSlotName);
         }
 
         long prewarmHitsBeforeLoad = AkronStartPosReconstruction.PrewarmedSnapshotHits;
@@ -1308,7 +1315,7 @@ public static partial class AkronActions {
         try {
             restored = AkronSaveLoadService.LoadRuntimeState(
                 currentLevel,
-                stateSlotName,
+                startPos.StateSlotName,
                 allowDeadPlayer: true,
                 out usedSnapshot);
         } finally {
@@ -1321,6 +1328,19 @@ public static partial class AkronActions {
         }
         restoreTimer.Stop();
         if (restored == AkronSaveLoadResult.Success) {
+            Level restoredLevel = Engine.Scene as Level ?? currentLevel;
+            if (restoredLevel.Tracker.GetEntity<Player>() is Player player) {
+                // Position is part of every StartPos entry, so it remains the load-boundary
+                // contract even for snapshots written before placement pose refresh existed.
+                // Spawn configuration is metadata too: applying it after every cold or warm
+                // restore prevents a stale saved animation from reaching the first render.
+                if (startPos.UsesSpawnConfig) {
+                    ApplyStartPosPlayerConfiguration(restoredLevel, player, startPos);
+                } else {
+                    player.Position = ClampToRoom(restoredLevel, startPos.Position);
+                    RefreshStartPosPlayerPose(player, clearMovementInput: false);
+                }
+            }
             ReportStartPosRestoreTiming(restoreTimer.Elapsed, usedSnapshot, prewarmHitsBeforeLoad);
         }
         return restored;
@@ -1329,18 +1349,23 @@ public static partial class AkronActions {
     private static bool WarmEveryStartPosRuntimeState(
         Level level,
         IReadOnlyList<KeyValuePair<int, AkronStartPos>> startPositions,
-        string requestedStateSlotName,
+        AkronStartPos requestedStartPos,
         Dictionary<string, AkronPersistedStartPosMap> currentStartPositionsByMap,
         out string warmFailure
     ) {
         warmFailure = string.Empty;
         bool attemptedColdWarmup = false;
         int warmedSlots = 0;
+        List<string> failedSlots = new List<string>();
         Stopwatch warmTimer = Stopwatch.StartNew();
+
+        string WithEarlierFailures(string failure) => failedSlots.Count == 0
+            ? failure
+            : string.Join("; ", failedSlots) + "; " + failure;
 
         if (!AkronSaveLoadService.WillRestoreFromRuntimeMemory(
                 Engine.Scene as Level ?? level,
-                requestedStateSlotName)) {
+                requestedStartPos.StateSlotName)) {
             warmFailure = "the requested StartPos could not be kept warm: " +
                           AkronSaveLoadService.LastPersistentSnapshotError;
             return true;
@@ -1349,25 +1374,64 @@ public static partial class AkronActions {
         foreach (KeyValuePair<int, AkronStartPos> pair in startPositions) {
             string stateSlotName = pair.Value.StateSlotName;
             Level currentLevel = Engine.Scene as Level ?? level;
-            if (string.Equals(stateSlotName, requestedStateSlotName, StringComparison.Ordinal) ||
+            if (string.Equals(stateSlotName, requestedStartPos.StateSlotName, StringComparison.Ordinal) ||
                 AkronSaveLoadService.WillRestoreFromRuntimeMemory(currentLevel, stateSlotName)) {
                 continue;
             }
 
             // A cold attempt rebuilds the live room before its outcome is known, and
-            // its rollback can fail. Always restore the requested slot afterward.
+            // Level.LoadLevel does not recreate helper entities that are added only by
+            // LevelLoader. Restore the original native room baseline first so one slot
+            // cannot remove a global helper entity that a later slot needs. Always put
+            // the requested slot back afterward as well.
             attemptedColdWarmup = true;
-            AkronSaveLoadResult warmResult = LoadStartPosRuntimeState(
+            AkronSaveLoadResult baselineResult = AkronSaveLoadService.RestoreRuntimeFreshBaseline(
                 currentLevel,
-                stateSlotName,
+                requestedStartPos.StateSlotName);
+            if (baselineResult != AkronSaveLoadResult.Success) {
+                string baselineFailure = DescribeRestoreFailure(baselineResult);
+                AkronSaveLoadResult recovery = LoadStartPosRuntimeState(
+                    Engine.Scene as Level ?? currentLevel,
+                    requestedStartPos,
+                    currentStartPositionsByMap);
+                string terminalFailure =
+                    "the fresh-room baseline could not be restored before warming StartPos " +
+                    pair.Key.ToString(CultureInfo.InvariantCulture) + ": " +
+                    baselineFailure;
+                if (recovery != AkronSaveLoadResult.Success) {
+                    terminalFailure += "; the requested StartPos could not be restored: " +
+                                       DescribeRestoreFailure(recovery);
+                }
+                warmFailure = WithEarlierFailures(terminalFailure);
+                return recovery == AkronSaveLoadResult.Success;
+            }
+            AkronSaveLoadResult warmResult = LoadStartPosRuntimeState(
+                Engine.Scene as Level ?? currentLevel,
+                pair.Value,
                 currentStartPositionsByMap);
             if (warmResult != AkronSaveLoadResult.Success ||
                 !AkronSaveLoadService.WillRestoreFromRuntimeMemory(
                     Engine.Scene as Level ?? currentLevel,
                     stateSlotName)) {
-                warmFailure = "StartPos " + pair.Key.ToString(CultureInfo.InvariantCulture) +
-                              " could not be kept warm: " + DescribeRestoreFailure(warmResult);
-                break;
+                failedSlots.Add(
+                    "StartPos " + pair.Key.ToString(CultureInfo.InvariantCulture) +
+                    " could not be kept warm: " + DescribeRestoreFailure(warmResult));
+
+                // A failed cold rebuild can leave the live scene between states even
+                // when its rollback reports success. Reapply the known-good requested
+                // clone before trying the next slot so one bad snapshot cannot prevent
+                // unrelated slots later in the map from becoming instant.
+                AkronSaveLoadResult recovery = LoadStartPosRuntimeState(
+                    Engine.Scene as Level ?? currentLevel,
+                    requestedStartPos,
+                    currentStartPositionsByMap);
+                if (recovery != AkronSaveLoadResult.Success) {
+                    warmFailure = WithEarlierFailures(
+                        "the requested StartPos could not be restored before warming continued: " +
+                        DescribeRestoreFailure(recovery));
+                    return false;
+                }
+                continue;
             }
             warmedSlots++;
         }
@@ -1377,7 +1441,7 @@ public static partial class AkronActions {
         if (attemptedColdWarmup) {
             AkronSaveLoadResult finalRestore = LoadStartPosRuntimeState(
                 Engine.Scene as Level ?? level,
-                requestedStateSlotName,
+                requestedStartPos,
                 currentStartPositionsByMap);
             // Reconstructing every cold slot creates far more short-lived graph data
             // than the native states retain. Reclaim it before returning control;
@@ -1385,10 +1449,15 @@ public static partial class AkronActions {
             // supposedly warm load even though every retained slot fits the budget.
             AkronEngineGarbageCollection.CollectStartPosGarbage();
             if (finalRestore != AkronSaveLoadResult.Success) {
-                warmFailure = "the requested StartPos could not be restored after warming the map: " +
-                              DescribeRestoreFailure(finalRestore);
+                warmFailure = WithEarlierFailures(
+                    "the requested StartPos could not be restored after warming the map: " +
+                    DescribeRestoreFailure(finalRestore));
                 return false;
             }
+        }
+
+        if (failedSlots.Count > 0) {
+            warmFailure = string.Join("; ", failedSlots);
         }
 
         warmTimer.Stop();

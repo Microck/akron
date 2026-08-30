@@ -35,6 +35,10 @@ public sealed class StartPosPersistenceTests {
         "<RendererList>k__BackingField",
         BindingFlags.Instance | BindingFlags.NonPublic
     ) ?? throw new InvalidOperationException("Monocle.Scene.RendererList backing field is unavailable.");
+    private static readonly FieldInfo PlayerTempField = typeof(Player).GetField(
+        "temp",
+        BindingFlags.Instance | BindingFlags.NonPublic
+    ) ?? throw new InvalidOperationException("Celeste.Player.temp field is unavailable.");
 
     [Fact]
     public void FreshRoomDrainFinishesEntitiesAddedDuringAwake() {
@@ -1060,6 +1064,45 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
+    public void SharedFreshBaselineCaptureDoesNotSpendProtectedWarmCapacity() {
+        string mapSid = "Tests/SharedBaselineCapacity" + Guid.NewGuid().ToString("N");
+        List<string> installed = new List<string>();
+        try {
+            for (int slot = 1; slot <= 4; slot++) {
+                installed.Add(AddWarmStartPosSlotWithSnapshot(mapSid, slot, 1L));
+            }
+
+            using (AkronSaveLoadService.BeginWarmStartPosBatch(installed)) {
+                long slotBytes = AkronSaveLoadService.WarmStartPosBudgetBytes / installed.Count;
+                foreach (string stateSlotName in installed) {
+                    AkronSaveLoadService.AddWarmStartPosSlotForTests(
+                        stateSlotName,
+                        mapSid,
+                        slotBytes);
+                }
+
+                Assert.False(AkronSaveLoadService.PrepareWarmStartPosCapture(
+                    mapSid,
+                    out _,
+                    out _));
+                Assert.True(AkronSaveLoadService.PrepareFreshRuntimeBaselineCapture(
+                    mapSid,
+                    retainedBaselineAlreadyExists: true,
+                    out int droppedSlots,
+                    out long droppedBytes));
+                Assert.Equal(0, droppedSlots);
+                Assert.Equal(0L, droppedBytes);
+                Assert.All(installed, stateSlotName =>
+                    Assert.True(AkronSaveLoadService.HasRuntimeStateInMemory(stateSlotName)));
+            }
+        } finally {
+            foreach (string stateSlotName in installed) {
+                AkronSaveLoadService.ClearRuntimeState(stateSlotName);
+            }
+        }
+    }
+
+    [Fact]
     public void CompletedWarmAllBatchKeepsItsAdaptiveBudgetUntilThePopulationIsGone() {
         string mapSid = "Tests/WarmAllCommitted" + Guid.NewGuid().ToString("N");
         List<string> installed = new List<string>();
@@ -1387,7 +1430,7 @@ public sealed class StartPosPersistenceTests {
         string actionsSource = File.ReadAllText(GetActionsSourcePath());
         string persistenceSource = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
         int completion = actionsSource.IndexOf("internal static void CompletePersistentStartPosCapture", StringComparison.Ordinal);
-        int completionEnd = actionsSource.IndexOf("private static void ApplyPlacedStartPosBeforeCapture", completion, StringComparison.Ordinal);
+        int completionEnd = actionsSource.IndexOf("private static void ApplyStartPosPlayerConfiguration", completion, StringComparison.Ordinal);
         string completionPath = SourceSlice(actionsSource, completion, completionEnd - completion);
 
         Assert.Contains("IsOriginatingSaveFileActive(fileSlot, profileId)", completionPath);
@@ -1511,7 +1554,7 @@ public sealed class StartPosPersistenceTests {
         string source = File.ReadAllText(GetActionsSourcePath());
 
         int capture = source.IndexOf("private static void CaptureStartPos", StringComparison.Ordinal);
-        int captureEnd = source.IndexOf("private static void ApplyPlacedStartPosBeforeCapture", capture, StringComparison.Ordinal);
+        int captureEnd = source.IndexOf("private static void ApplyStartPosPlayerConfiguration", capture, StringComparison.Ordinal);
         string capturePath = SourceSlice(source, capture, captureEnd - capture);
 
         Assert.Contains("AkronStartPosPersistence.Enqueue", capturePath);
@@ -1560,7 +1603,7 @@ public sealed class StartPosPersistenceTests {
     public void SuccessfulStartPosCaptureRetainsItsWarmRuntimeStateAfterDiskCommit() {
         string actionsSource = File.ReadAllText(GetActionsSourcePath());
         int completion = actionsSource.IndexOf("internal static void CompletePersistentStartPosCapture", StringComparison.Ordinal);
-        int completionEnd = actionsSource.IndexOf("private static void ApplyPlacedStartPosBeforeCapture", completion, StringComparison.Ordinal);
+        int completionEnd = actionsSource.IndexOf("private static void ApplyStartPosPlayerConfiguration", completion, StringComparison.Ordinal);
         string completionPath = SourceSlice(actionsSource, completion, completionEnd - completion);
 
         Assert.True(completion >= 0);
@@ -1596,10 +1639,12 @@ public sealed class StartPosPersistenceTests {
         string firstName = "Akron StartPos shared-baseline-" + Guid.NewGuid().ToString("N");
         string secondName = "Akron StartPos shared-baseline-" + Guid.NewGuid().ToString("N");
         AkronSaveLoadSlot firstSlot = new AkronSaveLoadSlot(firstName, "room", "Tests/Shared", false) {
-            FileSlot = 3
+            FileSlot = 3,
+            SessionNonce = "same-session"
         };
         AkronSaveLoadSlot secondSlot = new AkronSaveLoadSlot(secondName, "room", "Tests/Shared", false) {
-            FileSlot = 3
+            FileSlot = 3,
+            SessionNonce = "same-session"
         };
         AkronSaveLoadSlotOwner firstOwner = new AkronSaveLoadSlotOwner(firstSlot, _ => { });
         AkronSaveLoadSlotOwner secondOwner = new AkronSaveLoadSlotOwner(secondSlot, _ => { });
@@ -1609,7 +1654,11 @@ public sealed class StartPosPersistenceTests {
         secondOwner.ReleaseOwnership();
         try {
             AkronStartPosPersistence.AttachRuntimeFreshBaseline(firstName, firstLease);
-            AkronStartPosPersistence.AttachRuntimeFreshBaseline(secondName, secondLease);
+            using AkronSaveLoadSlotLease deduplicatedBaseline =
+                AkronStartPosPersistence.DeduplicateRuntimeFreshBaseline(secondName, secondLease);
+            Assert.Same(firstLease.Slot, deduplicatedBaseline.Slot);
+            Assert.Null(secondLease.Slot);
+            AkronStartPosPersistence.AttachRuntimeFreshBaseline(secondName, deduplicatedBaseline);
 
             FieldInfo field = typeof(AkronStartPosPersistence).GetField(
                 "RuntimeFreshBaselines",
@@ -1617,10 +1666,139 @@ public sealed class StartPosPersistenceTests {
             Dictionary<string, AkronSaveLoadSlotLease> baselines =
                 (Dictionary<string, AkronSaveLoadSlotLease>) field.GetValue(null)!;
             Assert.Same(baselines[firstName].Slot, baselines[secondName].Slot);
+            using AkronSaveLoadSlotLease retainedBaseline =
+                AkronStartPosPersistence.RetainRuntimeFreshBaseline(firstName);
+            Assert.Same(baselines[firstName].Slot, retainedBaseline.Slot);
+            AkronStartPosPersistence.RemoveRuntimeFreshBaseline(firstName);
+            Assert.NotNull(retainedBaseline.Slot);
         } finally {
             AkronStartPosPersistence.RemoveRuntimeFreshBaseline(firstName);
             AkronStartPosPersistence.RemoveRuntimeFreshBaseline(secondName);
         }
+    }
+
+    [Fact]
+    public void WarmStartPosBaselinesFromDifferentSessionsDoNotShare() {
+        string firstName = "Akron StartPos old-session-baseline-" + Guid.NewGuid().ToString("N");
+        string secondName = "Akron StartPos current-session-baseline-" + Guid.NewGuid().ToString("N");
+        AkronSaveLoadSlot oldSessionSlot = new AkronSaveLoadSlot(
+            firstName,
+            "room",
+            "Tests/Shared",
+            false) {
+            FileSlot = 3,
+            SessionNonce = "old-session"
+        };
+        AkronSaveLoadSlot currentSessionSlot = new AkronSaveLoadSlot(
+            secondName,
+            "room",
+            "Tests/Shared",
+            false) {
+            FileSlot = 3,
+            SessionNonce = "current-session"
+        };
+        AkronSaveLoadSlotOwner oldSessionOwner = new AkronSaveLoadSlotOwner(oldSessionSlot, _ => { });
+        AkronSaveLoadSlotOwner currentSessionOwner = new AkronSaveLoadSlotOwner(currentSessionSlot, _ => { });
+        using AkronSaveLoadSlotLease oldSessionLease = oldSessionOwner.Retain();
+        using AkronSaveLoadSlotLease currentSessionLease = currentSessionOwner.Retain();
+        oldSessionOwner.ReleaseOwnership();
+        currentSessionOwner.ReleaseOwnership();
+        try {
+            AkronStartPosPersistence.AttachRuntimeFreshBaseline(firstName, oldSessionLease);
+
+            AkronSaveLoadSlotLease distinctBaseline =
+                AkronStartPosPersistence.DeduplicateRuntimeFreshBaseline(
+                    secondName,
+                    currentSessionLease);
+
+            Assert.Same(currentSessionLease, distinctBaseline);
+            Assert.Same(currentSessionSlot, distinctBaseline.Slot);
+        } finally {
+            AkronStartPosPersistence.RemoveRuntimeFreshBaseline(firstName);
+            AkronStartPosPersistence.RemoveRuntimeFreshBaseline(secondName);
+        }
+    }
+
+    [Fact]
+    public void FreshBaselineSharingUsesTheCurrentSessionNonce() {
+        string source = File.ReadAllText(
+            GetSourcePath("Actions", "akron-startpos-persistence.cs"));
+        int levelKey = source.IndexOf(
+            "private static string BuildBaselineKey(Level level)",
+            StringComparison.Ordinal);
+        int slotKey = source.IndexOf(
+            "private static string BuildBaselineKey(AkronSaveLoadSlot slot)",
+            levelKey,
+            StringComparison.Ordinal);
+        string levelKeyPath = SourceSlice(source, levelKey, slotKey - levelKey);
+        string slotKeyPath = SourceSlice(source, slotKey, 700);
+
+        Assert.Contains("AkronModule.Session?.CurrentSessionNonce", levelKeyPath);
+        Assert.Contains("slot?.SessionNonce", slotKeyPath);
+    }
+
+    [Fact]
+    public void ColdCacheDeduplicatesTheFreshBaselineBeforeBudgetAdmission() {
+        string source = File.ReadAllText(GetSaveLoadSourcePath());
+        int capture = source.IndexOf(
+            "internal static AkronSaveLoadSlotLease CaptureFreshRuntimeState(",
+            StringComparison.Ordinal);
+        int captureEnd = source.IndexOf(
+            "private static DetachedScreenWipes",
+            capture,
+            StringComparison.Ordinal);
+        string capturePath = SourceSlice(source, capture, captureEnd - capture);
+        int restoreCore = source.IndexOf(
+            "private static AkronSaveLoadResult RestorePersistentRuntimeStateCore(",
+            StringComparison.Ordinal);
+        int restoreCoreEnd = source.IndexOf(
+            "private static AkronSaveLoadResult RestorePersistentRuntimeStateAfterActionState(",
+            restoreCore,
+            StringComparison.Ordinal);
+        string restoreCorePath = SourceSlice(source, restoreCore, restoreCoreEnd - restoreCore);
+        int deduplicate = capturePath.IndexOf(
+            "lease = AkronStartPosPersistence.DeduplicateRuntimeFreshBaseline(",
+            StringComparison.Ordinal);
+        int sharedBaseline = capturePath.IndexOf(
+            "AkronStartPosPersistence.HasSharedRuntimeFreshBaseline(",
+            StringComparison.Ordinal);
+        int reserve = capturePath.IndexOf(
+            "PrepareFreshRuntimeBaselineCapture(",
+            StringComparison.Ordinal);
+        int exactBudgetCheck = capturePath.IndexOf(
+            "if (WarmStartPosBytes > WarmStartPosBudgetBytes)",
+            StringComparison.Ordinal);
+
+        Assert.True(sharedBaseline >= 0 && reserve > sharedBaseline);
+        Assert.True(deduplicate > reserve && exactBudgetCheck > deduplicate);
+        Assert.Contains("document.SlotName);", restoreCorePath);
+    }
+
+    [Fact]
+    public void FreshBaselinesArePreparedForNativeWarmupRestores() {
+        string source = File.ReadAllText(GetSaveLoadSourcePath());
+        int capture = source.IndexOf(
+            "internal static AkronSaveLoadSlotLease CaptureFreshRuntimeState",
+            StringComparison.Ordinal);
+        int captureEnd = source.IndexOf("private static DetachedScreenWipes", capture, StringComparison.Ordinal);
+        string capturePath = SourceSlice(source, capture, captureEnd - capture);
+        int build = source.IndexOf(
+            "private static AkronSaveLoadSlot BuildPersistentBaselineSlot",
+            StringComparison.Ordinal);
+        int buildEnd = source.IndexOf("private static void PrepareSlotPreClone", build, StringComparison.Ordinal);
+        string buildPath = SourceSlice(source, build, buildEnd - build);
+
+        int reserve = capturePath.IndexOf("PrepareFreshRuntimeBaselineCapture(", StringComparison.Ordinal);
+        int allocationStart = capturePath.IndexOf("GC.GetAllocatedBytesForCurrentThread()", StringComparison.Ordinal);
+        int prepare = capturePath.IndexOf("PrepareSlotPreClone(saveSlot);", StringComparison.Ordinal);
+        int account = capturePath.IndexOf("Interlocked.Add(ref retainedFreshBaselineBytes", StringComparison.Ordinal);
+
+        Assert.True(reserve >= 0 && allocationStart > reserve && prepare > allocationStart && account > prepare);
+        Assert.Contains("ReleaseFreshRuntimeBaseline(slot, capturedBytes)", capturePath);
+        Assert.Contains("Interlocked.Read(ref retainedFreshBaselineBytes)", source);
+        Assert.Contains("saveSlot.SessionNonce = AkronModule.Session.CurrentSessionNonce;", buildPath);
+        Assert.Contains("saveSlot.LevelTimeActive = level.TimeActive;", buildPath);
+        Assert.Contains("saveSlot.LevelRawTimeActive = level.RawTimeActive;", buildPath);
     }
 
     [Fact]
@@ -1725,7 +1903,9 @@ public sealed class StartPosPersistenceTests {
 
         Assert.Contains("RuntimeFreshBaselines", persistenceSource);
         Assert.Contains("AttachRuntimeFreshBaselineLocked(job.StateSlotName", persistenceSource);
-        Assert.Contains("UseRuntimeFreshBaseline(saveSlot.SlotName)", restorePath);
+        Assert.Contains("string freshBaselineStateSlotName", restorePath);
+        Assert.Contains("UseRuntimeFreshBaseline(freshBaselineStateSlotName)", restorePath);
+        Assert.Contains("freshBaselineStateSlotName: normalizedStateSlotName", restorePath);
         Assert.Contains("RemoveRuntimeFreshBaseline(slotName)", saveLoadSource);
     }
 
@@ -2561,7 +2741,7 @@ public sealed class StartPosPersistenceTests {
     public void StartPosCaptureOnlyBlocksDuringTheNativeSetBoundary() {
         string source = File.ReadAllText(GetActionsSourcePath());
         int captureStart = source.IndexOf("private static void CaptureStartPos", StringComparison.Ordinal);
-        int captureEnd = source.IndexOf("private static void ApplyPlacedStartPosBeforeCapture", captureStart, StringComparison.Ordinal);
+        int captureEnd = source.IndexOf("private static void ApplyStartPosPlayerConfiguration", captureStart, StringComparison.Ordinal);
         string captureMethod = SourceSlice(source, captureStart, captureEnd - captureStart);
         int busyCheck = captureMethod.IndexOf("if (startPosCaptureInProgress)", StringComparison.Ordinal);
         int begin = captureMethod.IndexOf("startPosCaptureInProgress = true;", busyCheck, StringComparison.Ordinal);
@@ -2575,16 +2755,39 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
-    public void PlacedStartPosRefreshesTheNativePoseAndRestoresTheLiveAnimation() {
+    public void EveryStartPosRefreshesTheNativePoseAtCaptureOrLoadBoundary() {
         string source = File.ReadAllText(GetActionsSourcePath());
         string placement = SourceSlice(
             source,
-            source.IndexOf("private static void ApplyPlacedStartPosBeforeCapture", StringComparison.Ordinal),
+            source.IndexOf("private static void ApplyStartPosPlayerConfiguration", StringComparison.Ordinal),
             2400);
-        int onGround = placement.IndexOf("player.onGround = player.OnGround();", StringComparison.Ordinal);
-        int updateSprite = placement.IndexOf("player.UpdateSprite();", StringComparison.Ordinal);
+        string refresh = SourceSlice(
+            source,
+            source.IndexOf("private static void RefreshStartPosPlayerPose", StringComparison.Ordinal),
+            900);
+        int onGround = refresh.IndexOf("player.onGround = player.OnGround();", StringComparison.Ordinal);
+        int updateSprite = refresh.IndexOf("player.UpdateSprite();", StringComparison.Ordinal);
 
         Assert.True(onGround >= 0 && updateSprite > onGround);
+        Assert.Contains("RefreshStartPosPlayerPose(player, startPos.Idle || startPos.Grab);", placement);
+        Assert.Contains("startPos.Position", placement);
+        Assert.Contains("startPos.Dashes", placement);
+        Assert.Contains("startPos.StaminaPercent", placement);
+        Assert.Contains("startPos.Facing", placement);
+        Assert.Contains("startPos.Idle", placement);
+        Assert.Contains("startPos.Grab", placement);
+
+        int loadStart = source.IndexOf("private static AkronSaveLoadResult LoadStartPosRuntimeState", StringComparison.Ordinal);
+        int loadEnd = source.IndexOf("private static bool WarmEveryStartPosRuntimeState", loadStart, StringComparison.Ordinal);
+        string load = SourceSlice(source, loadStart, loadEnd - loadStart);
+        int successfulRestore = load.IndexOf("if (restored == AkronSaveLoadResult.Success)", StringComparison.Ordinal);
+        int applyConfiguration = load.IndexOf("ApplyStartPosPlayerConfiguration(", successfulRestore, StringComparison.Ordinal);
+        int timingReport = load.IndexOf("ReportStartPosRestoreTiming(", applyConfiguration, StringComparison.Ordinal);
+
+        Assert.True(successfulRestore >= 0 && applyConfiguration > successfulRestore && timingReport > applyConfiguration);
+        Assert.Contains("ApplyStartPosPlayerConfiguration(restoredLevel, player, startPos);", load);
+        Assert.Contains("RefreshStartPosPlayerPose(player, clearMovementInput: false);", load);
+        Assert.Contains("startPos.Position", load);
 
         string playerSnapshot = SourceSlice(
             source,
@@ -2597,6 +2800,132 @@ public sealed class StartPosPersistenceTests {
         Assert.Contains("player.Sprite.CurrentAnimationID = animation;", playerSnapshot);
         Assert.Contains("player.Sprite.animationTimer = animationTimer;", playerSnapshot);
         Assert.DoesNotContain("player.Sprite.Play(animation);", playerSnapshot);
+    }
+
+    [Fact]
+    public void PlayerCollisionScratchNeverBecomesSavedState() {
+        Assert.True(AkronReconstructionGraph.IsTransientRuntimeField(typeof(Player), PlayerTempField));
+
+        string source = File.ReadAllText(GetSourcePath("SaveLoad", "akron-reconstruction-graph.cs"));
+        int captureFreshIndex = source.IndexOf("private void IndexFreshValue(", StringComparison.Ordinal);
+        int captureObject = source.IndexOf("private void CaptureObject(", captureFreshIndex, StringComparison.Ordinal);
+        int restoreFreshIndex = source.IndexOf("private void IndexFreshResources(", captureObject, StringComparison.Ordinal);
+
+        Assert.Contains(
+            "IsTransientRuntimeField(type, field)",
+            SourceSlice(source, captureFreshIndex, captureObject - captureFreshIndex));
+        Assert.Contains(
+            "IsTransientRuntimeField(savedObject.GetType(), field)",
+            SourceSlice(source, captureObject, restoreFreshIndex - captureObject));
+        Assert.Contains(
+            "IsTransientRuntimeField(type, field)",
+            SourceTail(source, restoreFreshIndex));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExistingCurrentFormatSnapshotsDropPlayerCollisionScratchAndKeepRealAliases(
+        bool derivedPlayer
+    ) {
+        string rootTypeName = typeof(StartPosPlayerAliasRoot).AssemblyQualifiedName!;
+        string playerTypeName = (derivedPlayer ? typeof(StartPosDerivedPlayer) : typeof(Player))
+            .AssemblyQualifiedName!;
+        string playerFieldDeclaringTypeName = typeof(Player).AssemblyQualifiedName!;
+        string entityTypeName = typeof(Entity).AssemblyQualifiedName!;
+        AkronReconstructionDocument document = new AkronReconstructionDocument {
+            RootNodeId = 1,
+            Nodes = new List<AkronReconstructionNode> {
+                new AkronReconstructionNode {
+                    Id = 1,
+                    Kind = "object",
+                    TypeName = rootTypeName,
+                    Fields = new List<AkronReconstructionField> {
+                        ReferenceField(rootTypeName, nameof(StartPosPlayerAliasRoot.Player), 2),
+                        ReferenceField(rootTypeName, nameof(StartPosPlayerAliasRoot.Alias), 4)
+                    }
+                },
+                new AkronReconstructionNode {
+                    Id = 2,
+                    Kind = "object",
+                    TypeName = playerTypeName,
+                    ParentNodeId = 1,
+                    ParentKind = "field",
+                    ParentDeclaringTypeName = rootTypeName,
+                    ParentFieldName = nameof(StartPosPlayerAliasRoot.Player),
+                    Fields = new List<AkronReconstructionField> {
+                        ReferenceField(playerFieldDeclaringTypeName, "temp", 3)
+                    }
+                },
+                new AkronReconstructionNode {
+                    Id = 3,
+                    Kind = "array",
+                    TypeName = typeof(Entity[]).AssemblyQualifiedName!,
+                    ParentNodeId = 2,
+                    ParentKind = "field",
+                    ParentDeclaringTypeName = playerFieldDeclaringTypeName,
+                    ParentFieldName = "temp",
+                    Items = new List<AkronReconstructionValue> { ReferenceValue(4) },
+                    ArrayLengths = new List<int> { 1 },
+                    ArrayLowerBounds = new List<int> { 0 }
+                },
+                new AkronReconstructionNode {
+                    Id = 4,
+                    Kind = "object",
+                    TypeName = entityTypeName,
+                    ParentNodeId = 3,
+                    ParentKind = "array",
+                    ParentArrayIndices = new List<int> { 0 }
+                }
+            }
+        };
+
+        AkronReconstructionGraph.NormalizeTransientRuntimeFields(document);
+
+        Assert.Equal(new[] { 1, 2, 3 }, document.Nodes.Select(node => node.Id));
+        Assert.DoesNotContain(document.Nodes, node => node.TypeName == typeof(Entity[]).AssemblyQualifiedName);
+        AkronReconstructionNode playerNode = document.Nodes.Single(node => node.TypeName == playerTypeName);
+        Assert.DoesNotContain(playerNode.Fields, field => field.Name == "temp");
+        AkronReconstructionField alias = document.Nodes[0].Fields.Single(field =>
+            field.Name == nameof(StartPosPlayerAliasRoot.Alias));
+        Assert.Equal(3, alias.Value.NodeId);
+        AkronReconstructionNode entityNode = document.Nodes[2];
+        Assert.Equal(1, entityNode.ParentNodeId);
+        Assert.Equal("field", entityNode.ParentKind);
+        Assert.Equal(rootTypeName, entityNode.ParentDeclaringTypeName);
+        Assert.Equal(nameof(StartPosPlayerAliasRoot.Alias), entityNode.ParentFieldName);
+        Assert.Empty(entityNode.ParentArrayIndices);
+    }
+
+    [Fact]
+    public void WarmAllAttemptsLaterSlotsAfterOneSnapshotFails() {
+        string source = File.ReadAllText(GetActionsSourcePath());
+        int warmStart = source.IndexOf("private static bool WarmEveryStartPosRuntimeState", StringComparison.Ordinal);
+        int warmEnd = source.IndexOf("private static void ReportStartPosRestoreTiming", warmStart, StringComparison.Ordinal);
+        string warm = SourceSlice(source, warmStart, warmEnd - warmStart);
+        int failedSlot = warm.IndexOf("failedSlots.Add(", StringComparison.Ordinal);
+        int recovery = warm.IndexOf("AkronSaveLoadResult recovery = LoadStartPosRuntimeState(", failedSlot, StringComparison.Ordinal);
+        int continueWarmup = warm.IndexOf("continue;", recovery, StringComparison.Ordinal);
+
+        Assert.True(failedSlot >= 0 && recovery > failedSlot && continueWarmup > recovery);
+        Assert.DoesNotContain("break;", warm);
+        Assert.Contains("string WithEarlierFailures(string failure)", warm);
+        Assert.Equal(
+            3,
+            warm.Split(new[] { "warmFailure = WithEarlierFailures(" }, StringSplitOptions.None).Length - 1);
+        Assert.Contains("warmFailure = string.Join(\"; \", failedSlots);", warm);
+        int baselineFailure = warm.IndexOf(
+            "if (baselineResult != AkronSaveLoadResult.Success)",
+            StringComparison.Ordinal);
+        int baselineFailureEnd = warm.IndexOf(
+            "AkronSaveLoadResult warmResult = LoadStartPosRuntimeState(",
+            baselineFailure,
+            StringComparison.Ordinal);
+        string baselineFailurePath = SourceSlice(
+            warm,
+            baselineFailure,
+            baselineFailureEnd - baselineFailure);
+        Assert.Contains("return recovery == AkronSaveLoadResult.Success;", baselineFailurePath);
     }
 
     [Fact]
@@ -4377,8 +4706,9 @@ public sealed class StartPosPersistenceTests {
         Assert.True(finish > memoryCheck);
         Assert.True(catalog > finish);
 
-        string loadPath = SourceSlice(actionsSource, restoreEnd, 2600);
-        Assert.Contains("AkronStartPosPersistence.FinishPendingRestartCopy(stateSlotName)", loadPath);
+        int loadEnd = actionsSource.IndexOf("private static bool WarmEveryStartPosRuntimeState(", restoreEnd, StringComparison.Ordinal);
+        string loadPath = SourceSlice(actionsSource, restoreEnd, loadEnd - restoreEnd);
+        Assert.Contains("AkronStartPosPersistence.FinishPendingRestartCopy(startPos.StateSlotName)", loadPath);
         Assert.Contains("AkronSaveLoadService.LoadRuntimeState(", loadPath);
         Assert.Contains("RestoreStartPosCatalog(", loadPath);
     }
@@ -4474,6 +4804,25 @@ public sealed class StartPosPersistenceTests {
         Assert.Contains("AkronStartPosReconstruction.HasSnapshot(stateSlotName)", beginPath);
         Assert.Contains("AkronSaveLoadService.ParkRuntimeState(stateSlotName)", beginPath);
         Assert.Contains("AkronStartPosPersistence.ParkRuntimeFreshBaseline(stateSlotName)", beginPath);
+    }
+
+    private static AkronReconstructionField ReferenceField(
+        string declaringTypeName,
+        string name,
+        int nodeId
+    ) {
+        return new AkronReconstructionField {
+            DeclaringTypeName = declaringTypeName,
+            Name = name,
+            Value = ReferenceValue(nodeId)
+        };
+    }
+
+    private static AkronReconstructionValue ReferenceValue(int nodeId) {
+        return new AkronReconstructionValue {
+            Kind = AkronReconstructionGraph.ReferenceValueKind,
+            NodeId = nodeId
+        };
     }
 
     private static AkronReconstructionDocument MinimalReconstructionDocument() {
@@ -4894,6 +5243,16 @@ public sealed class StartPosPersistenceTests {
         }
 
         public void Clear() {
+        }
+    }
+
+    private sealed class StartPosPlayerAliasRoot {
+        public Player Player = null!;
+        public Entity Alias = null!;
+    }
+
+    private sealed class StartPosDerivedPlayer : Player {
+        private StartPosDerivedPlayer() : base(Vector2.Zero, PlayerSpriteMode.Madeline) {
         }
     }
 

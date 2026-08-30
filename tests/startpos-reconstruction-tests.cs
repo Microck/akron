@@ -1359,6 +1359,93 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void FreshDecalCanPointBackToItsFreshScene() {
+        (SavedSceneRoot saved, Decal savedDecal) = CreateSourceDecalScene(visible: false);
+        (SavedSceneRoot baseline, _) = CreateSourceDecalScene(visible: true);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            AkronStartPosReconstruction.IsLiveResourceType,
+            resource => ((Type) resource).AssemblyQualifiedName!,
+            null,
+            AkronStartPosReconstruction.ResolveDetachedLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        (SavedSceneRoot fresh, Decal freshDecal) = CreateSourceDecalScene(visible: true);
+        // The scene can be temporarily absent while a fresh entity is being
+        // reattached. Its exact fresh EntityList slot still proves this standard
+        // Entity.Scene back-reference.
+        SetRuntimeField(freshDecal, "<Scene>k__BackingField", null);
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.NotSame(savedDecal, freshDecal);
+        Assert.Same(freshDecal, Assert.Single(GetEntityListContents(fresh.Entities)));
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(freshDecal, "<Scene>k__BackingField"));
+        Assert.False(freshDecal.Visible);
+    }
+
+    [Fact]
+    public void FreshNestedEntityOwnedBySceneEntityCanRestoreItsLazySceneBackReference() {
+        (SavedSceneRoot saved, _) = CreateNestedDecalScene(
+            includeDecal: true,
+            sceneAssigned: true,
+            visible: false);
+        (SavedSceneRoot baseline, _) = CreateNestedDecalScene(
+            includeDecal: true,
+            sceneAssigned: false,
+            visible: true);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            AkronStartPosReconstruction.IsLiveResourceType,
+            resource => ((Type) resource).AssemblyQualifiedName!,
+            null,
+            AkronStartPosReconstruction.ResolveDetachedLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        (SavedSceneRoot fresh, NestedDecalOwner freshOwner) = CreateNestedDecalScene(
+            includeDecal: true,
+            sceneAssigned: false,
+            visible: true);
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Decal freshDecal = Assert.Single(freshOwner.Parallax.Decals).Decal;
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(freshDecal, "<Scene>k__BackingField"));
+        Assert.False(freshDecal.Visible);
+    }
+
+    [Fact]
+    public void SavedOnlyNestedEntityOwnedBySceneEntityCanRestoreItsSceneBackReference() {
+        (SavedSceneRoot saved, _) = CreateNestedDecalScene(
+            includeDecal: true,
+            sceneAssigned: true,
+            visible: false);
+        (SavedSceneRoot baseline, _) = CreateNestedDecalScene(
+            includeDecal: false,
+            sceneAssigned: false,
+            visible: true);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            AkronStartPosReconstruction.IsLiveResourceType,
+            resource => ((Type) resource).AssemblyQualifiedName!,
+            null,
+            AkronStartPosReconstruction.ResolveDetachedLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        (SavedSceneRoot fresh, NestedDecalOwner freshOwner) = CreateNestedDecalScene(
+            includeDecal: false,
+            sceneAssigned: false,
+            visible: true);
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Decal freshDecal = Assert.Single(freshOwner.Parallax.Decals).Decal;
+        Assert.NotNull(freshDecal);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(freshDecal, "<Scene>k__BackingField"));
+        Assert.False(freshDecal.Visible);
+    }
+
+    [Fact]
     public void SavedOnlyBuiltInRuntimeEntityRestoresThroughItsFreshSceneOwnership() {
         Scene savedScene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
         EntityList savedEntities = LinkSceneEntities(savedScene, CreateDetachedEntityList());
@@ -1386,6 +1473,78 @@ public sealed class StartPosReconstructionTests {
         SlashFx restoredSlash = Assert.IsType<SlashFx>(Assert.Single(GetEntityListContents(fresh.Entities)));
         Assert.Same(freshScene, GetRuntimeField<Scene>(restoredSlash, "<Scene>k__BackingField"));
         Assert.NotNull(GetRuntimeField<ComponentList>(restoredSlash, "<Components>k__BackingField"));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Theory]
+    [InlineData("a01", "a40", true)]
+    [InlineData("a40", "a40", false)]
+    public void ASourceIdOnlyMakesABuiltInRuntimeEntityMapIdentifiedInItsCurrentRoom(
+        string sourceRoom,
+        string currentRoom,
+        bool shouldRestore
+    ) {
+        Scene savedScene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList savedEntities = LinkSceneEntities(savedScene, CreateDetachedEntityList());
+        SlashFx savedSlash = CreateUninitializedEntity<SlashFx>();
+        InitializeEmptyComponentList(savedSlash);
+        SetRuntimeField(savedSlash, "<Scene>k__BackingField", savedScene);
+        SetRuntimeField(savedSlash, "<SourceId>k__BackingField", CreateEntityId(sourceRoom, 31));
+        LevelData sourceLevel = (LevelData) RuntimeHelpers.GetUninitializedObject(typeof(LevelData));
+        EntityData sourceData = new EntityData {
+            ID = 31,
+            Name = "cassetteBlock",
+            Level = sourceLevel,
+            Nodes = Array.Empty<Vector2>(),
+            Values = new Dictionary<string, object>()
+        };
+        EntityData sourceSibling = new EntityData {
+            ID = 103,
+            Name = "spinner",
+            Level = sourceLevel,
+            Nodes = Array.Empty<Vector2>(),
+            Values = new Dictionary<string, object>()
+        };
+        sourceLevel.Name = sourceRoom;
+        sourceLevel.Entities = new List<EntityData> { sourceData, sourceSibling };
+        sourceLevel.Triggers = new List<EntityData>();
+        SetRuntimeField(savedSlash, "_sourceData", sourceData);
+        AddDetachedEntity(savedEntities, savedSlash);
+
+        Scene baselineScene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList baselineEntities = LinkSceneEntities(baselineScene, CreateDetachedEntityList());
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(
+            new SavedSceneRoot { Scene = savedScene, Entities = savedEntities },
+            new SavedSceneRoot { Scene = baselineScene, Entities = baselineEntities });
+        Assert.True(capture.Success, capture.Error);
+        capture.Document.Room = currentRoom;
+
+        Scene freshScene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList freshEntities = LinkSceneEntities(freshScene, CreateDetachedEntityList());
+        SavedSceneRoot fresh = new SavedSceneRoot { Scene = freshScene, Entities = freshEntities };
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        if (!shouldRestore) {
+            Assert.False(restore.Success);
+            Assert.Contains("reconstructed type is not authentic", restore.Error);
+            Assert.Empty(GetEntityListContents(fresh.Entities));
+            return;
+        }
+        Assert.True(restore.Success, restore.Error);
+        SlashFx restoredSlash = Assert.IsType<SlashFx>(Assert.Single(GetEntityListContents(fresh.Entities)));
+        Assert.Equal(sourceRoom, GetRuntimeField<EntityID>(
+            restoredSlash,
+            "<SourceId>k__BackingField").Level);
+        EntityData restoredSource = GetRuntimeField<EntityData>(restoredSlash, "_sourceData");
+        Assert.Collection(
+            restoredSource.Level.Entities,
+            restoredEntry => Assert.Same(restoredSource, restoredEntry),
+            restoredEntry => {
+                Assert.Equal(103, restoredEntry.ID);
+                Assert.Equal("spinner", restoredEntry.Name);
+                Assert.Same(restoredSource.Level, restoredEntry.Level);
+            });
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
 
@@ -3436,6 +3595,30 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void DeserializedScalarFieldPathsDoNotStayMaterialized() {
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(
+            BuildChain(2, valueOffset: 10),
+            BuildChain(2, valueOffset: 0));
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        AkronReconstructionField valueField = document.Nodes
+            .Single(node => node.Id == document.RootNodeId)
+            .Fields.Single(field => field.Name == nameof(ChainNode.Value));
+        FieldInfo retainedPath = typeof(AkronReconstructionField).GetField(
+            "diagnosticPath",
+            RuntimeInstanceFields)!;
+
+        string first = valueField.Path;
+        string second = valueField.Path;
+
+        Assert.Equal("$.Value", first);
+        Assert.Equal(first, second);
+        Assert.NotSame(first, second);
+        Assert.Equal(string.Empty, retainedPath.GetValue(valueField));
+    }
+
+    [Fact]
     public void FrameworkValueStructsStayInlineAndRestoreExactBits() {
         float negativeZero = BitConverter.Int32BitsToSingle(unchecked((int) 0x80000000));
         FrameworkValueRoot saved = new FrameworkValueRoot {
@@ -5231,6 +5414,56 @@ public sealed class StartPosReconstructionTests {
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
 
+    // A running room can first expose Player through a mod iterator. That makes
+    // the iterator path canonical even though the same Player and StateMachine
+    // occur later in their normal EntityList and ComponentList. The clean room
+    // has no early alias, but its StateMachine still owns an eagerly constructed
+    // currentCoroutine and base-typed collider that restore must recognize as
+    // state owned by that authenticated Player instead of treating as detached.
+    [Fact]
+    public void AnAliasFirstRuntimeEntityRestoresItsEagerCoroutineAndBaseTypedCollider() {
+        AliasFirstStateMachineRoot saved = CreateAliasFirstStateMachineRoot(withEarlyAlias: true);
+        AliasFirstStateMachineRoot baseline = CreateAliasFirstStateMachineRoot(withEarlyAlias: false);
+        StateMachine savedMachine = GetAliasFirstStateMachine(saved);
+        Hitbox savedCollider = GetRuntimeField<Hitbox>(GetAliasFirstStateMachineOwner(saved), "collider");
+        SetRuntimeField(GetRuntimeField<Coroutine>(savedMachine, "currentCoroutine"), "Active", true);
+        SetRuntimeField(savedCollider, "width", 37f);
+        SetRuntimeField(savedCollider, "<Width>k__BackingField", 37f);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode coroutineNode = capture.Document.Nodes.Single(node =>
+            node.ParentFieldName == "currentCoroutine" &&
+            node.TypeName == typeof(Coroutine).AssemblyQualifiedName);
+        Assert.False(coroutineNode.UseFreshObject);
+        AliasFirstStateMachineRoot fresh = CreateAliasFirstStateMachineRoot(withEarlyAlias: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        StateMachine restoredMachine = GetAliasFirstStateMachine(fresh);
+        Coroutine restoredCoroutine = GetRuntimeField<Coroutine>(restoredMachine, "currentCoroutine");
+        Hitbox restoredCollider = GetRuntimeField<Hitbox>(GetAliasFirstStateMachineOwner(fresh), "collider");
+        Assert.True(GetRuntimeField<bool>(restoredCoroutine, "Active"));
+        // Read the field directly. CI uses the game assembly, whose modded
+        // property body cannot be executed safely inside the .NET test host.
+        Assert.Equal(37f, GetRuntimeField<float>(restoredCollider, "width"));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void ADetachedCoroutineInAnUnownedFieldRemainsRefused() {
+        DetachedCoroutineRoot saved = new DetachedCoroutineRoot { Current = CreateDetachedCoroutine() };
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, new DetachedCoroutineRoot());
+        Assert.True(capture.Success, capture.Error);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, new DetachedCoroutineRoot());
+
+        Assert.False(restore.Success);
+        Assert.Contains("reconstructed type is not authentic", restore.Error);
+    }
+
     // DustGraphic.Eyeballs' shape: the room builds an extra entity on first
     // render and hands it the component that built it. The surplus watcher the
     // fresh room did not build must keep its reference to the fresh component.
@@ -5706,6 +5939,70 @@ public sealed class StartPosReconstructionTests {
         Assert.True(restore.Success, restore.Error);
         Assert.Same(freshLight, GetLightingRendererLights(fresh.Renderer)[5]);
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void FreshEntityCanRestoreIntoItsSceneRendererDerivedCache() {
+        RendererEntityCacheRoot saved = CreateRendererEntityCacheRoot(includeEntityInRenderer: true);
+        RendererEntityCacheRoot baseline = CreateRendererEntityCacheRoot(
+            includeEntityInRenderer: false,
+            rendererPendingInScene: true);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        RendererEntityCacheRoot fresh = CreateRendererEntityCacheRoot(
+            includeEntityInRenderer: false,
+            rendererPendingInScene: true);
+        EntityCacheRenderer freshRenderer = GetEntityCacheRenderer(fresh);
+        SourceIdentifiedEntity freshEntity = Assert.IsType<SourceIdentifiedEntity>(
+            Assert.Single(GetEntityListContents(fresh.Entities)));
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(freshEntity, Assert.Single(freshRenderer.Entities["mask"]));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void RendererDerivedCacheMustBelongToTheSceneRendererList() {
+        RendererEntityCacheRoot saved = CreateRendererEntityCacheRoot(
+            includeEntityInRenderer: true,
+            rendererInScene: false);
+        RendererEntityCacheRoot baseline = CreateRendererEntityCacheRoot(
+            includeEntityInRenderer: false,
+            rendererInScene: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        RendererEntityCacheRoot fresh = CreateRendererEntityCacheRoot(
+            includeEntityInRenderer: false,
+            rendererInScene: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("not authentic", restore.Error);
+    }
+
+    [Fact]
+    public void SceneRendererMatchingRefusesAnAmbiguousConcreteTypePopulation() {
+        RendererEntityCacheRoot saved = CreateRendererEntityCacheRoot(includeEntityInRenderer: true);
+        RendererEntityCacheRoot baseline = CreateRendererEntityCacheRoot(
+            includeEntityInRenderer: false,
+            rendererPendingInScene: true);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        RendererEntityCacheRoot fresh = CreateRendererEntityCacheRoot(
+            includeEntityInRenderer: false,
+            rendererPendingInScene: true,
+            extraRendererInScene: true);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("not authentic", restore.Error);
     }
 
     [Fact]
@@ -8445,6 +8742,18 @@ public sealed class StartPosReconstructionTests {
         public int Value;
     }
 
+    private sealed class NestedDecalOwner : Entity {
+        public NestedParallaxState Parallax = null!;
+    }
+
+    private sealed class NestedParallaxState {
+        public List<NestedDecalInfo> Decals = new List<NestedDecalInfo>();
+    }
+
+    private sealed class NestedDecalInfo {
+        public Decal Decal = null!;
+    }
+
     private sealed class PeerTargetEntity : Entity {
     }
 
@@ -8530,6 +8839,19 @@ public sealed class StartPosReconstructionTests {
         public Scene Scene = null!;
         public Entity Entity = null!;
         public LightingRenderer Renderer = null!;
+    }
+
+    private sealed class RendererEntityCacheRoot {
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+        public EntityCacheRenderer? DetachedRenderer;
+    }
+
+    // Strawberry Jam's StylegroundMaskRenderer caches Tracker results as
+    // Dictionary<string, List<StylegroundMask>> after the first render.
+    private sealed class EntityCacheRenderer : Renderer {
+        public Dictionary<string, List<SourceIdentifiedEntity>> Entities =
+            new Dictionary<string, List<SourceIdentifiedEntity>>();
     }
 
     private sealed class TrailPlaybackRoot {
@@ -8997,19 +9319,7 @@ public sealed class StartPosReconstructionTests {
     private static RendererComponentIndexRoot CreateRendererComponentIndexRoot(bool includeLightInRenderer) {
         Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
         EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
-        RendererList renderers = (RendererList) Activator.CreateInstance(
-            typeof(RendererList),
-            BindingFlags.Instance | BindingFlags.NonPublic,
-            binder: null,
-            args: new object?[] { scene },
-            culture: null
-        )!;
-        renderers.Renderers = new List<Renderer>();
-        SetRuntimeField(renderers, "adding", new List<Renderer>());
-        SetRuntimeField(renderers, "removing", new List<Renderer>());
-        SetRuntimeField(renderers, "scene", scene);
-        typeof(Scene).GetField("<RendererList>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(scene, renderers);
+        RendererList renderers = LinkSceneRenderers(scene);
 
         Entity entity = CreateUninitializedEntity<Entity>();
         InitializeEmptyComponentList(entity);
@@ -9033,6 +9343,65 @@ public sealed class StartPosReconstructionTests {
             .SetValue(renderer, lights);
         renderers.Renderers.Add(renderer);
         return new RendererComponentIndexRoot { Scene = scene, Entity = entity, Renderer = renderer };
+    }
+
+    private static RendererEntityCacheRoot CreateRendererEntityCacheRoot(
+        bool includeEntityInRenderer,
+        bool rendererInScene = true,
+        bool rendererPendingInScene = false,
+        bool extraRendererInScene = false
+    ) {
+        Scene rendererScene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entities = LinkSceneEntities(rendererScene, CreateDetachedEntityList());
+        RendererList renderers = LinkSceneRenderers(rendererScene);
+
+        SourceIdentifiedEntity entity = CreateSourceIdentifiedEntity("GM-main", 10, 0);
+        InitializeEmptyComponentList(entity);
+        SetRuntimeField(entity, "<Scene>k__BackingField", rendererScene);
+        AddDetachedEntity(entities, entity);
+
+        EntityCacheRenderer renderer = new EntityCacheRenderer();
+        if (includeEntityInRenderer) {
+            renderer.Entities["mask"] = new List<SourceIdentifiedEntity> { entity };
+        }
+        if (rendererInScene) {
+            List<Renderer> sceneRenderers = rendererPendingInScene
+                ? GetRuntimeField<List<Renderer>>(renderers, "adding")
+                : renderers.Renderers;
+            sceneRenderers.Add(renderer);
+            if (extraRendererInScene) {
+                sceneRenderers.Add(new EntityCacheRenderer());
+            }
+        }
+        return new RendererEntityCacheRoot {
+            Scene = rendererScene,
+            Entities = entities,
+            DetachedRenderer = rendererInScene ? null : renderer
+        };
+    }
+
+    private static EntityCacheRenderer GetEntityCacheRenderer(RendererEntityCacheRoot root) {
+        RendererList renderers = GetRuntimeField<RendererList>(root.Scene, "<RendererList>k__BackingField");
+        return renderers.Renderers
+            .Concat(GetRuntimeField<List<Renderer>>(renderers, "adding"))
+            .OfType<EntityCacheRenderer>()
+            .Single();
+    }
+
+    private static RendererList LinkSceneRenderers(Scene scene) {
+        RendererList renderers = (RendererList) Activator.CreateInstance(
+            typeof(RendererList),
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            args: new object?[] { scene },
+            culture: null
+        )!;
+        renderers.Renderers = new List<Renderer>();
+        SetRuntimeField(renderers, "adding", new List<Renderer>());
+        SetRuntimeField(renderers, "removing", new List<Renderer>());
+        SetRuntimeField(renderers, "scene", scene);
+        SetRuntimeField(scene, "<RendererList>k__BackingField", renderers);
+        return renderers;
     }
 
     private static SeekerBarrierRenderer CreateSeekerBarrierRenderer(int edgeCount) {
@@ -9272,6 +9641,41 @@ public sealed class StartPosReconstructionTests {
         return (new SavedSceneRoot { Scene = scene, Entities = entities }, entity);
     }
 
+    private static (SavedSceneRoot Root, Decal Decal) CreateSourceDecalScene(bool visible) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        Decal decal = CreateUninitializedEntity<Decal>();
+        InitializeEmptyComponentList(decal);
+        SetRuntimeField(decal, "<SourceId>k__BackingField", CreateEntityId("GM-main", 10));
+        SetRuntimeField(decal, "<Scene>k__BackingField", scene);
+        decal.Visible = visible;
+        AddDetachedEntity(entities, decal);
+        return (new SavedSceneRoot { Scene = scene, Entities = entities }, decal);
+    }
+
+    private static (SavedSceneRoot Root, NestedDecalOwner Owner) CreateNestedDecalScene(
+        bool includeDecal,
+        bool sceneAssigned,
+        bool visible
+    ) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(DerivedTrackedScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        NestedDecalOwner owner = CreateUninitializedEntity<NestedDecalOwner>();
+        InitializeEmptyComponentList(owner);
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+
+        owner.Parallax = new NestedParallaxState();
+        if (includeDecal) {
+            Decal decal = CreateUninitializedEntity<Decal>();
+            InitializeEmptyComponentList(decal);
+            SetRuntimeField(decal, "<Scene>k__BackingField", sceneAssigned ? scene : null);
+            decal.Visible = visible;
+            owner.Parallax.Decals.Add(new NestedDecalInfo { Decal = decal });
+        }
+        AddDetachedEntity(entities, owner);
+        return (new SavedSceneRoot { Scene = scene, Entities = entities }, owner);
+    }
+
     private static (SavedSceneRoot Root, SourceIdentifiedEntity Entity) CreateTaggedSourceEntityScene(
         bool includeTagEntry
     ) {
@@ -9323,6 +9727,19 @@ public sealed class StartPosReconstructionTests {
     private sealed class ComponentOwnerRoot {
         public OwnedComponentEntity Owner = null!;
         public Component? UnrelatedAlias;
+    }
+
+    private sealed class AliasFirstStateMachineRoot {
+        public Scene Scene = null!;
+        public EntityList Entities = null!;
+    }
+
+    private sealed class EntityAliasHolder : Entity {
+        public Entity? Alias;
+    }
+
+    private sealed class DetachedCoroutineRoot {
+        public Component? Current;
     }
 
     // DustGraphic's shape: a component the room pairs fresh builds a Coroutine
@@ -10403,17 +10820,22 @@ public sealed class StartPosReconstructionTests {
 
         Assert.True(restore.Success, restore.Error);
 
-        // Being accepted is not enough. The fresh state machine has to keep its
-        // identity, the rebuilt array has to be the saved room's shape, and the
-        // slot has to come back holding the callback the saved room ran.
+        // Being accepted is not enough. The fresh state machine and its arrays
+        // have to keep their identity, the saved slot has to come back holding
+        // the callback it ran, and the state registered only by the newer fresh
+        // room must remain available.
         StateMachine machine = (StateMachine) GetComponentListContents(
             GetEntityListContents(fresh.Entities)[1]).Single(component => component is StateMachine);
         Assert.Same(machineBeforeRestore, machine);
         Action[] ends = GetRuntimeField<Action[]>(machine, "ends");
-        Assert.Equal(4, ends.Length);
+        Assert.Equal(5, ends.Length);
         Action restored = Assert.IsType<Action>(ends[1]);
         Assert.Equal(SampleTimerMod.Callback.Method, restored.Method);
         Assert.Equal(SampleTimerMod.Callback.Target!.GetType(), restored.Target!.GetType());
+        Assert.Equal("mod-state", GetRuntimeField<string[]>(machine, "names")[4]);
+        Assert.Equal(
+            nameof(SharedCallbackEntity.RunModState),
+            GetRuntimeField<Func<int>[]>(machine, "updates")[4]!.Method.Name);
 
         // The timer really is gone from the restored room: the saved frame had
         // no alarm, so the entity that carried one in the fresh room comes back
@@ -10575,41 +10997,12 @@ public sealed class StartPosReconstructionTests {
 
         return new SharedCallbackSceneRoot { Scene = scene, Entities = entityList };
     }
-    // W16 proved a saved document that asks for a callback at
-    // StateMachine.ends[2] while the fresh room runs it at ends[1] is accepted,
-    // and that the restore then writes it into slot 2 of the fresh machine's
-    // own array and leaves slot 1 empty. W21 proved an exact index cannot be
-    // the fix, because a mod calling the public SetCallbacks during play to
-    // move that same callback from one state to another produces a document
-    // byte for byte identical to the one that has to be refused.
-    //
-    // The first two tests are that pair. They restore the same saved room
-    // against two fresh rooms that differ in exactly one array - names - and in
-    // nothing else. The callback sits at ends[1] in both fresh rooms and at
-    // ends[2] in both documents, so whatever separates them is the names array.
-    // That is the point: a state's identity is its name and not its id, because
-    // Monocle's AddState hands ids out in whatever order the installed mods add
-    // states.
-    //
-    // Both mod states share one update method on purpose. That leaves the end
-    // callback's slot, and what names says that slot is, as the only thing that
-    // differs between the rooms.
-
-    // The wrong restore. Two mods each add a state; in the loading session they
-    // ran in the other order, so "second-mod-state" came back as id 1 instead
-    // of id 2. The document's ends[2] is that state in the saved room and
-    // "first-mod-state" in the fresh one, so the callback would land on a state
-    // this room never runs it for.
-    //
-    // Swapping two states makes BOTH their slots disagree, and there is no
-    // carve-out for a write that happens to change nothing, so the refusal
-    // lands on the first slot the document writes into rather than on the end
-    // callback: the shared update at slot 1. That is the whole machine being
-    // refused as misaligned, which is what it is. The end callback W16 measured
-    // being misplaced is covered below by the fresh room's own ends array
-    // coming through untouched.
+    // AddState ids follow registration order, but the name is stable. The saved
+    // room calls "first-mod-state" state 1 and "second-mod-state" state 2;
+    // the fresh room uses the opposite ids. Restore must keep the fresh machine
+    // and arrays, move each saved slot by name, and translate its current id.
     [Fact]
-    public void RestoreRefusesACallbackWhoseStateSlotTheFreshRoomReadsAsAnotherState() {
+    public void RestoreRemapsNamedStatesWhenRegistrationOrderChanges() {
         StateSlotSceneRoot fresh = CreateStateSlotScene(
             true, ("second-mod-state", true), ("first-mod-state", false));
         StateMachine machineBeforeRestore = GetStateSlotMachine(fresh);
@@ -10617,19 +11010,211 @@ public sealed class StartPosReconstructionTests {
 
         AkronReconstructionRestore restore = RestoreStateSlotScene(fresh, true, movedDuringPlay: false);
 
-        Assert.False(restore.Success);
-        Assert.Contains("saved state slot is a different state in the fresh room", restore.Error);
-        Assert.Contains("state=first-mod-state", restore.Error);
-        Assert.Contains("slot=1", restore.Error);
-        Assert.Contains("updates[1]", restore.Error);
-
-        // The refused restore leaves the fresh room's own slot alone, which is
-        // the half W16 measured going wrong: the callback stays where a clean
-        // load of this room puts it instead of moving to the saved id.
-        Assert.Same(machineBeforeRestore, GetStateSlotMachine(fresh));
-        Assert.Same(endsBeforeRestore, GetRuntimeField<Action[]>(machineBeforeRestore, "ends"));
+        Assert.True(restore.Success, restore.Error);
+        StateMachine machine = GetStateSlotMachine(fresh);
+        Assert.Same(machineBeforeRestore, machine);
+        Assert.Same(endsBeforeRestore, GetRuntimeField<Action[]>(machine, "ends"));
         Assert.Equal(SampleTimerMod.Callback.Method, endsBeforeRestore[1]!.Method);
         Assert.Null(endsBeforeRestore[2]);
+        Assert.Equal(2, GetRuntimeField<int>(machine, "state"));
+        string[] names = GetRuntimeField<string[]>(machine, "names");
+        Assert.Null(names[0]);
+        Assert.Equal("second-mod-state", names[1]);
+        Assert.Equal("first-mod-state", names[2]);
+    }
+
+    [Fact]
+    public void ReapplyKeepsTheStatePermutationFromTheInitialRestore() {
+        StateSlotSceneRoot saved = CreateStateSlotScene(
+            true, ("first-mod-state", false), ("second-mod-state", true));
+        StateSlotSceneRoot baseline = CreateStateSlotScene(
+            true, ("first-mod-state", false), ("second-mod-state", true));
+        StateSlotSceneRoot fresh = CreateStateSlotScene(
+            true, ("second-mod-state", true), ("first-mod-state", false));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+        Assert.True(restore.Success, restore.Error);
+
+        AkronReconstructionVerification reapply = graph.Reapply(capture.Document, restore);
+
+        Assert.True(reapply.Success, reapply.Error);
+        StateMachine machine = GetStateSlotMachine(fresh);
+        Action[] ends = GetRuntimeField<Action[]>(machine, "ends");
+        Assert.Equal(SampleTimerMod.Callback.Method, ends[1]!.Method);
+        Assert.Null(ends[2]);
+        Assert.Equal(2, GetRuntimeField<int>(machine, "state"));
+        Assert.Equal(
+            new[] { null, "second-mod-state", "first-mod-state" },
+            GetRuntimeField<string[]>(machine, "names"));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void RestoreAndReapplyPreserveAStateRegisteredOnlyInTheFreshRoom() {
+        StateSlotSceneRoot saved = CreateStateSlotScene(
+            true, ("first-mod-state", false), ("second-mod-state", true));
+        StateSlotSceneRoot baseline = CreateStateSlotScene(
+            true, ("first-mod-state", false), ("second-mod-state", true));
+        StateSlotSceneRoot fresh = CreateStateSlotScene(
+            true,
+            ("second-mod-state", true),
+            ("first-mod-state", false),
+            ("new-mod-state", true));
+        StateMachine machine = GetStateSlotMachine(fresh);
+        Action[] freshEnds = GetRuntimeField<Action[]>(machine, "ends");
+        Action freshOnlyEnd = freshEnds[3];
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(freshEnds, GetRuntimeField<Action[]>(machine, "ends"));
+        Assert.Same(freshOnlyEnd, freshEnds[3]);
+        Assert.Equal(
+            new[] { null, "second-mod-state", "first-mod-state", "new-mod-state" },
+            GetRuntimeField<string[]>(machine, "names"));
+        Assert.Equal(2, GetRuntimeField<int>(machine, "state"));
+
+        AkronReconstructionVerification reapply = graph.Reapply(capture.Document, restore);
+
+        Assert.True(reapply.Success, reapply.Error);
+        Assert.Same(freshOnlyEnd, freshEnds[3]);
+        Assert.Equal("new-mod-state", GetRuntimeField<string[]>(machine, "names")[3]);
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Fact]
+    public void RestoreRefusesDuplicateStateNamesEvenWhenOneKeepsItsNumericSlot() {
+        StateSlotSceneRoot saved = CreateStateSlotScene(
+            true, ("duplicate-state", true), ("duplicate-state", false));
+        StateSlotSceneRoot baseline = CreateStateSlotScene(
+            true, ("duplicate-state", true), ("duplicate-state", false));
+        StateSlotSceneRoot fresh = CreateStateSlotScene(
+            true, ("duplicate-state", false), ("duplicate-state", true));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved state matches multiple fresh slots", restore.Error);
+    }
+
+    [Fact]
+    public void RestoreRefusesDuplicateUnnamedStateDriversAtTheSavedSlot() {
+        StateSlotSceneRoot saved = CreateUnnamedStateSlotScene(
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave),
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave));
+        StateSlotSceneRoot baseline = CreateUnnamedStateSlotScene(
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave),
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave));
+        StateSlotSceneRoot fresh = CreateUnnamedStateSlotScene(
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave),
+            (ProbeHelperModA.Drive, ProbeHelperModA.Leave));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved state matches multiple fresh slots", restore.Error);
+    }
+
+    // Some helpers put every callback through one generated wrapper method. The
+    // outer update method is identical for all of those states, while the update
+    // delegate held by each wrapper still says which state it drives. VivHelper's
+    // AddState extension uses this exact shape for its player states.
+    [Fact]
+    public void RestoreRemapsWrappedUnnamedStatesByTheirInnerDriver() {
+        StateSlotSceneRoot saved = CreateWrappedUnnamedStateSlotScene(
+            (ProbeHelperModA.DriveWithArgument, ProbeHelperModA.Leave),
+            (ProbeHelperModB.DriveWithArgument, ProbeHelperModB.Leave));
+        StateSlotSceneRoot baseline = CreateWrappedUnnamedStateSlotScene(
+            (ProbeHelperModA.DriveWithArgument, ProbeHelperModA.Leave),
+            (ProbeHelperModB.DriveWithArgument, ProbeHelperModB.Leave));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        StateSlotSceneRoot fresh = CreateWrappedUnnamedStateSlotScene(
+            (ProbeHelperModB.DriveWithArgument, ProbeHelperModB.Leave),
+            (ProbeHelperModA.DriveWithArgument, ProbeHelperModA.Leave));
+        StateMachine freshMachine = GetStateSlotMachine(fresh);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(2, GetRuntimeField<int>(freshMachine, "state"));
+        Assert.Equal(
+            new[] { "<null>", nameof(ProbeHelperModB), nameof(ProbeHelperModA) },
+            UnnamedSceneEndMethodNames(fresh));
+    }
+
+    [Fact]
+    public void RestoreStillRefusesDuplicateWrappedUnnamedStateDrivers() {
+        StateSlotSceneRoot saved = CreateWrappedUnnamedStateSlotScene(
+            (ProbeHelperModA.DriveWithArgument, ProbeHelperModA.Leave),
+            (ProbeHelperModA.DriveWithArgument, ProbeHelperModA.Leave));
+        StateSlotSceneRoot baseline = CreateWrappedUnnamedStateSlotScene(
+            (ProbeHelperModA.DriveWithArgument, ProbeHelperModA.Leave),
+            (ProbeHelperModA.DriveWithArgument, ProbeHelperModA.Leave));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        StateSlotSceneRoot fresh = CreateWrappedUnnamedStateSlotScene(
+            (ProbeHelperModA.DriveWithArgument, ProbeHelperModA.Leave),
+            (ProbeHelperModA.DriveWithArgument, ProbeHelperModA.Leave));
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved state matches multiple fresh slots", restore.Error);
+    }
+
+    [Fact]
+    public void RestoreDoesNotTreatEndOnlyUnnamedStatesAsInertPlaceholders() {
+        StateSlotSceneRoot saved = CreateUnnamedStateSlotScene(
+            (null!, ProbeHelperModA.Leave),
+            (null!, ProbeHelperModB.Leave));
+        StateSlotSceneRoot baseline = CreateUnnamedStateSlotScene(
+            (null!, ProbeHelperModA.Leave),
+            (null!, ProbeHelperModB.Leave));
+        StateSlotSceneRoot fresh = CreateUnnamedStateSlotScene(
+            (null!, ProbeHelperModB.Leave),
+            (null!, ProbeHelperModA.Leave));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved state matches multiple fresh slots", restore.Error);
+    }
+
+    [Fact]
+    public void RestoreRefusesANamedStateMissingFromTheFreshRoom() {
+        StateSlotSceneRoot fresh = CreateStateSlotScene(
+            true, ("replacement-state", true), ("first-mod-state", false));
+        StateMachine machine = GetStateSlotMachine(fresh);
+        Action[] endsBeforeRestore = GetRuntimeField<Action[]>(machine, "ends");
+
+        AkronReconstructionRestore restore = RestoreStateSlotScene(fresh, true, movedDuringPlay: false);
+
+        Assert.False(restore.Success);
+        Assert.Contains("saved state is missing from the fresh room", restore.Error);
+        Assert.Contains("state=second-mod-state", restore.Error);
+        Assert.Equal(SampleTimerMod.Callback.Method, endsBeforeRestore[1]!.Method);
+        Assert.Null(endsBeforeRestore[2]);
+        Assert.Equal(1, GetRuntimeField<int>(machine, "state"));
     }
 
     // The valid frame, and the one an exact index got wrong. Same two mods in
@@ -10661,16 +11246,10 @@ public sealed class StartPosReconstructionTests {
         Assert.Equal(SampleTimerMod.Callback.Target!.GetType(), restored.Target!.GetType());
     }
 
-    // The same pair again over the callback shape Celeste's own states use: a
-    // method group on the entity rather than a mod's cached lambda. It takes a
-    // different route through the gate - the target is an object the fresh room
-    // already has, so it authenticates against that object's method set, which
-    // carries no path at all - and the first version of this fix left that route
-    // open. Both halves are here because closing a route is only right if the
-    // valid frame still goes through it - the first half of this test restores
-    // the in-play move over the same callback shape and asserts it lands.
+    // Entity method groups take a different authentication route than cached mod
+    // closures. They still use the same state-name permutation.
     [Fact]
-    public void RestoreRefusesAnEntityMethodCallbackWhoseStateSlotTheFreshRoomReadsAsAnotherState() {
+    public void RestoreRemapsEntityMethodCallbacksWhenRegistrationOrderChanges() {
         StateSlotSceneRoot moved = CreateStateSlotScene(
             false, ("first-mod-state", true), ("second-mod-state", false));
         AkronReconstructionRestore inPlay = RestoreStateSlotScene(moved, false, movedDuringPlay: true);
@@ -10681,15 +11260,15 @@ public sealed class StartPosReconstructionTests {
 
         StateSlotSceneRoot fresh = CreateStateSlotScene(
             false, ("second-mod-state", true), ("first-mod-state", false));
-        Action[] endsBeforeRestore = GetRuntimeField<Action[]>(GetStateSlotMachine(fresh), "ends");
+        StateMachine machine = GetStateSlotMachine(fresh);
+        Action[] endsBeforeRestore = GetRuntimeField<Action[]>(machine, "ends");
 
         AkronReconstructionRestore restore = RestoreStateSlotScene(fresh, false, movedDuringPlay: false);
 
-        Assert.False(restore.Success);
-        Assert.Contains("saved state slot is a different state in the fresh room", restore.Error);
-        Assert.Contains("state=first-mod-state", restore.Error);
+        Assert.True(restore.Success, restore.Error);
         Assert.Equal(nameof(StateSlotEntity.EndState), endsBeforeRestore[1]!.Method.Name);
         Assert.Null(endsBeforeRestore[2]);
+        Assert.Equal(2, GetRuntimeField<int>(machine, "state"));
     }
 
     // The other valid frame, and the one the first version of this fix got
@@ -10724,16 +11303,11 @@ public sealed class StartPosReconstructionTests {
         Assert.Equal(SampleTimerMod.Callback.Method, ends[2]!.Method);
     }
 
-    // The same wrong restore reached through the shape that made the first
-    // version of this fix miss it. Celeste and its mods routinely hold one
-    // callback object in more than one place, and a document records only the
-    // first place its capture walked to a node from. Here that first place is a
-    // plain field, so the delegate's own owner edge says "field" and says
-    // nothing about the state slot the array also puts it in. The check has to
-    // sit on the array element for this to be refused, and this test is the
-    // reason it does.
+    // A cached callback can reach its delegate through an ordinary field before
+    // the state array. Slot remapping must use the machine's field references,
+    // not the delegate node's first-owner edge.
     [Fact]
-    public void RestoreRefusesAWrongStateSlotForACallbackAFieldReachedFirst() {
+    public void RestoreRemapsAStateCallbackReachedThroughAFieldFirst() {
         CachedCallbackSceneRoot saved = CreateCachedCallbackScene(
             ("first-mod-state", false), ("second-mod-state", true));
         CachedCallbackSceneRoot baseline = CreateCachedCallbackScene(
@@ -10742,8 +11316,6 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionCapture capture = graph.Capture(saved, baseline);
         Assert.True(capture.Success, capture.Error);
 
-        // The premise: the shared callback really is recorded under the field,
-        // so nothing about the delegate node names the state slot.
         AkronReconstructionNode delegateNode = capture.Document.Nodes.Single(candidate =>
             candidate.DelegateCalls.Count == 1 &&
             candidate.DelegateCalls[0].MethodName.Contains("b__", StringComparison.Ordinal));
@@ -10758,11 +11330,10 @@ public sealed class StartPosReconstructionTests {
 
         AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
 
-        Assert.False(restore.Success);
-        Assert.Contains("saved state slot is a different state in the fresh room", restore.Error);
-        Assert.Contains("state=first-mod-state", restore.Error);
+        Assert.True(restore.Success, restore.Error);
         Assert.Equal(SampleTimerMod.Callback.Method, endsBeforeRestore[1]!.Method);
         Assert.Null(endsBeforeRestore[2]);
+        Assert.Equal(2, GetRuntimeField<int>(freshMachine, "state"));
     }
 
     // A root that holds the shared callback in an ordinary field declared
@@ -10834,6 +11405,44 @@ public sealed class StartPosReconstructionTests {
             .Single(component => component is StateMachine);
     }
 
+    private static AliasFirstStateMachineRoot CreateAliasFirstStateMachineRoot(bool withEarlyAlias) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entityList = LinkSceneEntities(scene, CreateDetachedEntityList());
+        EntityAliasHolder aliasHolder = CreateUninitializedEntity<EntityAliasHolder>();
+        InitializeEmptyComponentList(aliasHolder);
+        SetRuntimeField(aliasHolder, "<Scene>k__BackingField", scene);
+        SetRuntimeField(aliasHolder, "<SourceId>k__BackingField", CreateEntityId("a00", 1));
+        Entity owner = CreateUninitializedEntity<Entity>();
+        ComponentList components = CreateDetachedComponentList(owner);
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId(string.Empty, 0));
+        Hitbox hitbox = (Hitbox) RuntimeHelpers.GetUninitializedObject(typeof(Hitbox));
+        SetRuntimeField(hitbox, "width", 8f);
+        SetRuntimeField(hitbox, "height", 8f);
+        SetRuntimeField(hitbox, "<Width>k__BackingField", 8f);
+        SetRuntimeField(hitbox, "<Height>k__BackingField", 8f);
+        SetRuntimeField(owner, "collider", hitbox);
+        StateMachine machine = CreateDetachedStateMachine(owner, 1);
+        SetRuntimeField(components, "components", new List<Component> { machine });
+        SetRuntimeField(components, "current", new HashSet<Component> { machine });
+        aliasHolder.Alias = withEarlyAlias ? owner : null;
+        AddDetachedEntity(entityList, aliasHolder);
+        AddDetachedEntity(entityList, owner);
+        return new AliasFirstStateMachineRoot {
+            Scene = scene,
+            Entities = entityList
+        };
+    }
+
+    private static StateMachine GetAliasFirstStateMachine(AliasFirstStateMachineRoot room) {
+        return (StateMachine) GetComponentListContents(GetEntityListContents(room.Entities)[1])
+            .Single(component => component is StateMachine);
+    }
+
+    private static Entity GetAliasFirstStateMachineOwner(AliasFirstStateMachineRoot room) {
+        return Assert.IsType<Entity>(GetEntityListContents(room.Entities)[1]);
+    }
+
     private sealed class StateSlotSceneRoot {
         public Scene Scene = null!;
         public EntityList Entities = null!;
@@ -10848,19 +11457,11 @@ public sealed class StartPosReconstructionTests {
         }
     }
 
-    // The unnamed half of the state-slot defect. Nine popular helpers still add
-    // states with the pre-2023 reflection idiom, which resizes the four callback
-    // arrays and never names, so both sides of the restore read the added slot as
-    // unnamed and a name comparison reads that as agreement. The two rooms below
-    // are the same population - one base state, mod A's state and mod B's state -
-    // and differ only in the order the two mods ran, which is what a mod install
-    // or removal changes between setting a slot and loading it.
-    //
-    // Both tests build the machine through Monocle's own SetCallbacks and assert
-    // on the machine's own ends array afterwards, so the callbacks the rooms
-    // actually run are what is measured.
+    // Older helpers resize the callback arrays without naming their states. The
+    // update and coroutine methods are the stable coordinate in that case, so
+    // registration-order changes still get a semantic permutation.
     [Fact]
-    public void ARestoreRefusesAnUnnamedStateSlotTheFreshRoomBuiltForAnotherMod() {
+    public void RestoreRemapsUnnamedStatesWhenRegistrationOrderChanges() {
         StateSlotSceneRoot saved = CreateUnnamedStateSlotScene(
             (ProbeHelperModA.Drive, ProbeHelperModA.Leave),
             (ProbeHelperModB.Drive, ProbeHelperModB.Leave));
@@ -10875,26 +11476,18 @@ public sealed class StartPosReconstructionTests {
             (ProbeHelperModB.Drive, ProbeHelperModB.Leave),
             (ProbeHelperModA.Drive, ProbeHelperModA.Leave));
         StateMachine freshMachine = GetStateSlotMachine(fresh);
-        // The premise: the machine really is short-named, so nothing in names
-        // separates slot 1 from slot 2 in either room.
         Assert.Single(GetRuntimeField<string[]>(freshMachine, "names"));
-        Assert.Equal(3, GetRuntimeField<Action[]>(freshMachine, "ends").Length);
         Assert.Equal(
             new[] { "<null>", nameof(ProbeHelperModB), nameof(ProbeHelperModA) },
             UnnamedSceneEndMethodNames(fresh));
 
         AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
 
-        Assert.False(restore.Success);
-        Assert.Contains("saved state slot is a different state in the fresh room", restore.Error);
-        // The refused restore leaves this room running its own arrangement: mod
-        // B's state is still the one this session numbered 1. Without the fix the
-        // restore reports success and both arrays come back in the saved order,
-        // [<null>,ProbeHelperModA,ProbeHelperModB], while this session's mods go
-        // on holding the ids a clean load handed them.
+        Assert.True(restore.Success, restore.Error);
         Assert.Equal(
             new[] { "<null>", nameof(ProbeHelperModB), nameof(ProbeHelperModA) },
             UnnamedSceneEndMethodNames(fresh));
+        Assert.Equal(2, GetRuntimeField<int>(freshMachine, "state"));
     }
 
     // The control, and the reason an unnamed slot cannot simply be refused. Every
@@ -11034,10 +11627,14 @@ public sealed class StartPosReconstructionTests {
 
         // StateMachine owns this coroutine without adding it to an Entity. Match
         // `new Coroutine(false)`: inactive, not removable, and with an empty stack.
-        Coroutine currentCoroutine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
-        SetRuntimeField(currentCoroutine, "enumerators", new Stack<IEnumerator>());
-        SetRuntimeField(machine, "currentCoroutine", currentCoroutine);
+        SetRuntimeField(machine, "currentCoroutine", CreateDetachedCoroutine());
         return machine;
+    }
+
+    private static Coroutine CreateDetachedCoroutine() {
+        Coroutine coroutine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+        SetRuntimeField(coroutine, "enumerators", new Stack<IEnumerator>());
+        return coroutine;
     }
 
     private static void SetStateCallbacks(
@@ -11091,6 +11688,21 @@ public sealed class StartPosReconstructionTests {
         });
     }
 
+    private static StateSlotSceneRoot CreateWrappedUnnamedStateSlotScene(
+        params (Func<int, int> Update, Action End)[] modStates
+    ) {
+        return CreateStateSlotScene((machine, _) => {
+            foreach ((Func<int, int> update, Action end) in modStates) {
+                // This captured lambda is the same generated adapter shape used
+                // by helper AddState extensions: every outer Method is equal, its
+                // signature omits the owner argument, and the captured delegate is
+                // the state-specific driver.
+                Func<int> wrappedUpdate = () => update(0);
+                AddUnnamedState(machine, wrappedUpdate, end);
+            }
+        });
+    }
+
     private static string[] UnnamedSceneEndMethodNames(StateSlotSceneRoot room) {
         return GetRuntimeField<Action[]>(GetStateSlotMachine(room), "ends")
             .Select(callback => callback?.Method.DeclaringType?.Name ?? "<null>")
@@ -11129,12 +11741,20 @@ internal static class ProbeHelperModA {
         return 1;
     }
 
+    internal static int DriveWithArgument(int _) {
+        return 1;
+    }
+
     internal static void Leave() {
     }
 }
 
 internal static class ProbeHelperModB {
     internal static int Drive() {
+        return 1;
+    }
+
+    internal static int DriveWithArgument(int _) {
         return 1;
     }
 
