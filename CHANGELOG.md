@@ -10,6 +10,14 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 - Route StartPos, Auto Kill, and Auto Deafen community submissions through Akron's moderated Upload Pack flow, with Discord map forums reserved for approved showcases.
 
+### Fixed
+
+- Restore saved StartPos positions and ledge, idle, or hanging poses before the first frame, including slots created before pose refresh was added.
+- Keep Celeste's collision-query scratch data out of StartPos snapshots, repair affected v10 snapshots, and continue warming later slots when one slot fails.
+- Restore StartPos slots when mods renumber named player states or wrap distinct unnamed states in one helper callback after relaunching Celeste.
+- Load large modded-room StartPos snapshots without counting short-lived diagnostic field paths against the retained-memory limit.
+- Restore StartPos slots in rooms whose mods retain nested decals or lazily cache room entities in scene renderers.
+
 ## Akron Beta 75
 
 ### Fixed

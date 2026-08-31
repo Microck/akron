@@ -1215,7 +1215,7 @@ public sealed class OverlayTests {
     public void CapturingStartPosKeepsCapturedSlotActive() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Actions/akron-startpos-actions.cs"));
         int methodStart = source.IndexOf("private static void CaptureStartPos", StringComparison.Ordinal);
-        int nextMethod = source.IndexOf("private static void ApplyPlacedStartPosBeforeCapture", methodStart, StringComparison.Ordinal);
+        int nextMethod = source.IndexOf("private static void ApplyStartPosPlayerConfiguration", methodStart, StringComparison.Ordinal);
 
         Assert.True(methodStart >= 0);
         Assert.True(nextMethod > methodStart);

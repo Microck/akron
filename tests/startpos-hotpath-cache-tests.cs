@@ -1096,10 +1096,17 @@ public sealed class StartPosHotPathCacheTests {
         string warmAll = SliceMember(source, "private static bool WarmEveryStartPosRuntimeState(");
         Assert.Contains("AkronSaveLoadService.WillRestoreFromRuntimeMemory", warmAll);
         int attempted = warmAll.IndexOf("attemptedColdWarmup = true;", StringComparison.Ordinal);
+        int restoreFreshBaseline = warmAll.IndexOf(
+            "AkronSaveLoadService.RestoreRuntimeFreshBaseline(",
+            attempted,
+            StringComparison.Ordinal);
         int warmupLoad = warmAll.IndexOf("LoadStartPosRuntimeState(", attempted, StringComparison.Ordinal);
-        Assert.True(attempted >= 0 && warmupLoad > attempted);
+        Assert.True(attempted >= 0 && restoreFreshBaseline > attempted);
+        Assert.True(
+            warmupLoad > restoreFreshBaseline,
+            "Every cold slot must start from the requested load's genuine fresh-room baseline.");
         Assert.DoesNotContain("attemptedColdWarmup |= warmResult ==", warmAll);
-        Assert.Contains("requestedStateSlotName", warmAll);
+        Assert.Contains("requestedStartPos.StateSlotName", warmAll);
         Assert.Contains("AkronEngineGarbageCollection.CollectStartPosGarbage();", warmAll);
         Assert.Contains("StartPos warm-all prepared ", warmAll);
 

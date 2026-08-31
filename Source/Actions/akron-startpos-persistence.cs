@@ -448,6 +448,42 @@ internal static class AkronStartPosPersistence {
         }
     }
 
+    public static AkronSaveLoadSlotLease DeduplicateRuntimeFreshBaseline(
+        string stateSlotName,
+        AkronSaveLoadSlotLease baseline
+    ) {
+        if (string.IsNullOrWhiteSpace(stateSlotName) || baseline?.Slot == null) {
+            return baseline;
+        }
+
+        AkronSaveLoadSlotLease retainedSharedBaseline;
+        lock (Sync) {
+            retainedSharedBaseline =
+                FindSharedRuntimeFreshBaselineLocked(
+                    stateSlotName,
+                    BuildBaselineKey(baseline.Slot))?.Retain();
+        }
+        if (retainedSharedBaseline == null) {
+            return baseline;
+        }
+
+        // Transfer the caller's lease before cache admission. Holding the newly
+        // captured duplicate until Attach would temporarily charge two complete
+        // room graphs and could reject a population whose final shared form fits.
+        baseline.Dispose();
+        return retainedSharedBaseline;
+    }
+
+    internal static bool HasSharedRuntimeFreshBaseline(string stateSlotName, Level level) {
+        if (string.IsNullOrWhiteSpace(stateSlotName) || level == null) {
+            return false;
+        }
+        string baselineKey = BuildBaselineKey(level);
+        lock (Sync) {
+            return FindSharedRuntimeFreshBaselineLocked(stateSlotName, baselineKey) != null;
+        }
+    }
+
     public static void UseRuntimeFreshBaseline(string stateSlotName) {
         if (string.IsNullOrWhiteSpace(stateSlotName)) {
             return;
@@ -472,6 +508,25 @@ internal static class AkronStartPosPersistence {
                 "the room changed before its fresh-room baseline was ready");
             QueueWaitingJobsForBaselineLocked(baselineKey, currentBaseline);
             StartWorkerLocked();
+        }
+    }
+
+    // Warming another persisted slot must start from the real room-load state, not
+    // from the requested StartPos that was just reconstructed. Retain a lease so the
+    // runtime-slot cache can change while the baseline restore is in progress without
+    // disposing the native graph underneath it.
+    internal static AkronSaveLoadSlotLease RetainRuntimeFreshBaseline(string stateSlotName) {
+        if (string.IsNullOrWhiteSpace(stateSlotName)) {
+            return null;
+        }
+        lock (Sync) {
+            if (!RuntimeFreshBaselines.TryGetValue(
+                    stateSlotName,
+                    out AkronSaveLoadSlotLease baseline) ||
+                baseline?.Slot == null) {
+                return null;
+            }
+            return baseline.Retain();
         }
     }
 
@@ -1335,23 +1390,32 @@ internal static class AkronStartPosPersistence {
         string stateSlotName,
         AkronSaveLoadSlotLease baseline
     ) {
-        string baselineKey = BuildBaselineKey(baseline.Slot);
-        AkronSaveLoadSlotLease sharedBaseline = RuntimeFreshBaselines
-            .Where(pair => !string.Equals(pair.Key, stateSlotName, StringComparison.Ordinal))
-            .Select(pair => pair.Value)
-            .FirstOrDefault(candidate =>
-                candidate?.Slot != null &&
-                string.Equals(BuildBaselineKey(candidate.Slot), baselineKey, StringComparison.Ordinal));
-        // Fresh-room baselines are identified by save file, map, room and registered
-        // action set. Slots in the same room can retain one immutable graph instead of
-        // one complete duplicate per StartPos. The caller's newly captured duplicate is
-        // released when its lease leaves CacheRestoredRuntimeState.
+        AkronSaveLoadSlotLease sharedBaseline =
+            FindSharedRuntimeFreshBaselineLocked(
+                stateSlotName,
+                BuildBaselineKey(baseline.Slot));
+        // Fresh-room baselines are identified by save file, chapter session, map, room
+        // and registered action set. Slots in the same room can retain one immutable
+        // graph instead of one complete duplicate per StartPos. The caller's newly
+        // captured duplicate is released when its lease leaves CacheRestoredRuntimeState.
         AkronSaveLoadSlotLease retainedBaseline =
             (sharedBaseline ?? baseline).Retain();
         if (RuntimeFreshBaselines.Remove(stateSlotName, out AkronSaveLoadSlotLease previousBaseline)) {
             previousBaseline.Dispose();
         }
         RuntimeFreshBaselines[stateSlotName] = retainedBaseline;
+    }
+
+    private static AkronSaveLoadSlotLease FindSharedRuntimeFreshBaselineLocked(
+        string stateSlotName,
+        string baselineKey
+    ) {
+        return RuntimeFreshBaselines
+            .Where(pair => !string.Equals(pair.Key, stateSlotName, StringComparison.Ordinal))
+            .Select(pair => pair.Value)
+            .FirstOrDefault(candidate =>
+                candidate?.Slot != null &&
+                string.Equals(BuildBaselineKey(candidate.Slot), baselineKey, StringComparison.Ordinal));
     }
 
     private static void FailWaitingJobsForBaselineLocked(string baselineKey, string error) {
@@ -1524,6 +1588,7 @@ internal static class AkronStartPosPersistence {
 
     private static string BuildBaselineKey(Level level) {
         return (SaveData.Instance?.FileSlot ?? -1).ToString(CultureInfo.InvariantCulture) + "|" +
+               (AkronModule.Session?.CurrentSessionNonce ?? string.Empty) + "|" +
                (level?.Session?.Area.GetSID() ?? string.Empty) + "|" +
                (level?.Session?.Level ?? string.Empty) + "|" +
                string.Join("\n", AkronSaveLoadService.GetRegisteredActionIdsForPersistence());
@@ -1531,6 +1596,7 @@ internal static class AkronStartPosPersistence {
 
     private static string BuildBaselineKey(AkronSaveLoadSlot slot) {
         return (slot?.FileSlot ?? -1).ToString(CultureInfo.InvariantCulture) + "|" +
+               (slot?.SessionNonce ?? string.Empty) + "|" +
                (slot?.MapSid ?? string.Empty) + "|" +
                (slot?.LevelName ?? string.Empty) + "|" +
                string.Join("\n", slot?.ActionState.Keys.OrderBy(id => id, StringComparer.Ordinal) ?? Enumerable.Empty<string>());

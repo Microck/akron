@@ -261,6 +261,7 @@ public static partial class AkronSaveLoadService {
 
     private static readonly Dictionary<string, WarmStartPosCost> WarmStartPosCosts =
         new Dictionary<string, WarmStartPosCost>(StringComparer.Ordinal);
+    private static long retainedFreshBaselineBytes;
     private static long nextWarmStartPosUseStamp;
     private static HashSet<string> protectedWarmStartPosSlots;
     private static long? activeWarmStartPosBudgetBytes;
@@ -952,7 +953,9 @@ public static partial class AkronSaveLoadService {
     // this only runs when a slot is set or when a status line is built.
     internal static long WarmStartPosBytes {
         get {
-            long total = 0;
+            // A fresh-room baseline can be shared by every slot in its room, so its
+            // owner records the allocation once while leases only extend its lifetime.
+            long total = Interlocked.Read(ref retainedFreshBaselineBytes);
             List<string> gone = null;
             foreach (KeyValuePair<string, WarmStartPosCost> pair in WarmStartPosCosts) {
                 if (RuntimeSlots.ContainsKey(pair.Key)) {
@@ -1125,6 +1128,25 @@ public static partial class AkronSaveLoadService {
         return true;
     }
 
+    internal static bool PrepareFreshRuntimeBaselineCapture(
+        string mapSid,
+        bool retainedBaselineAlreadyExists,
+        out int droppedSlots,
+        out long droppedBytes
+    ) {
+        if (!retainedBaselineAlreadyExists) {
+            return PrepareWarmStartPosCapture(mapSid, out droppedSlots, out droppedBytes);
+        }
+
+        // The current room still has to be captured: arbitrary mod session and save
+        // data can change its fresh graph. The new owner is released immediately after
+        // that capture proves it shares the retained baseline key, so this allocation
+        // is temporary and must not evict one of warm-all's protected native slots.
+        droppedSlots = 0;
+        droppedBytes = 0;
+        return true;
+    }
+
     private static void StoreRuntimeSlot(string slotName, AkronSaveLoadSlot saveSlot) {
         AkronStartPosPersistence.RemoveRuntimeFreshBaseline(slotName);
         AkronSaveLoadSlotOwner owner = new AkronSaveLoadSlotOwner(saveSlot, ReleaseRuntimeSlotResources);
@@ -1135,11 +1157,27 @@ public static partial class AkronSaveLoadService {
         MarkRuntimeSlotsChanged();
     }
 
-    internal static AkronSaveLoadSlotLease CaptureFreshRuntimeState(Level level, string slotName) {
+    internal static AkronSaveLoadSlotLease CaptureFreshRuntimeState(
+        Level level,
+        string slotName,
+        string runtimeStateSlotName = null
+    ) {
         if (level == null) {
             return null;
         }
+        bool retainedBaselineAlreadyExists =
+            AkronStartPosPersistence.HasSharedRuntimeFreshBaseline(runtimeStateSlotName, level);
+        if (!PrepareFreshRuntimeBaselineCapture(
+                level.Session.Area.GetSID(),
+                retainedBaselineAlreadyExists,
+                out _,
+                out _)) {
+            LastPersistentSnapshotError =
+                "fresh-room baseline could not be captured inside the warm memory limit";
+            return null;
+        }
 
+        long allocatedBeforeCapture = GC.GetAllocatedBytesForCurrentThread();
         CurrentSlotName = string.IsNullOrWhiteSpace(slotName) ? "fresh baseline" : slotName;
         AkronLevelRenderState renderState = AkronLevelRenderState.Capture(level);
         int virtualAssetMarker = AkronVirtualAssetReloadTracker.Mark();
@@ -1155,6 +1193,10 @@ public static partial class AkronSaveLoadService {
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 CaptureRegisteredActionState(saveSlot, action, level);
             }
+            // Warm-all restores this retained graph before every additional cold slot.
+            // Prepare it like a normal native runtime slot so the first restore is
+            // valid and later restores can refresh the consumed pre-clone state.
+            PrepareSlotPreClone(saveSlot);
         } catch {
             ReleaseDormantEventInstances(saveSlot);
             throw;
@@ -1165,9 +1207,25 @@ public static partial class AkronSaveLoadService {
             RestoreTransientScreenWipes(level, entryWipes);
         }
 
-        AkronSaveLoadSlotOwner owner = new AkronSaveLoadSlotOwner(saveSlot, ReleaseDormantEventInstances);
+        long capturedBytes = Math.Max(
+            GC.GetAllocatedBytesForCurrentThread() - allocatedBeforeCapture,
+            0L);
+        Interlocked.Add(ref retainedFreshBaselineBytes, capturedBytes);
+        AkronSaveLoadSlotOwner owner = new AkronSaveLoadSlotOwner(
+            saveSlot,
+            slot => ReleaseFreshRuntimeBaseline(slot, capturedBytes));
         AkronSaveLoadSlotLease lease = owner.Retain();
         owner.ReleaseOwnership();
+        lease = AkronStartPosPersistence.DeduplicateRuntimeFreshBaseline(
+            runtimeStateSlotName,
+            lease);
+        TrimWarmStartPosSlots(out _);
+        if (WarmStartPosBytes > WarmStartPosBudgetBytes) {
+            lease.Dispose();
+            LastPersistentSnapshotError =
+                "fresh-room baseline exceeded the warm memory limit after capture";
+            return null;
+        }
         return lease;
     }
 
@@ -1265,7 +1323,24 @@ public static partial class AkronSaveLoadService {
         return AkronSaveLoadResult.Success;
     }
 
-    public static AkronSaveLoadResult RestoreRuntimeState(Level level, AkronSaveLoadSlot saveSlot, bool allowDeadPlayer = false) {
+    public static AkronSaveLoadResult RestoreRuntimeState(
+        Level level,
+        AkronSaveLoadSlot saveSlot,
+        bool allowDeadPlayer = false
+    ) {
+        return RestoreRuntimeState(
+            level,
+            saveSlot,
+            allowDeadPlayer,
+            saveSlot?.SlotName);
+    }
+
+    private static AkronSaveLoadResult RestoreRuntimeState(
+        Level level,
+        AkronSaveLoadSlot saveSlot,
+        bool allowDeadPlayer,
+        string freshBaselineStateSlotName
+    ) {
         if (level == null || saveSlot == null) {
             return AkronSaveLoadResult.NoState;
         }
@@ -1328,7 +1403,7 @@ public static partial class AkronSaveLoadService {
                 AkronGameplayBufferState.RestoreBestEffort(saveSlot.GameplayBuffers);
             }
             PrepareRuntimeSlotPreClone(saveSlot);
-            AkronStartPosPersistence.UseRuntimeFreshBaseline(saveSlot.SlotName);
+            AkronStartPosPersistence.UseRuntimeFreshBaseline(freshBaselineStateSlotName);
             // Berry progress is persistent save data. Apply it only after the
             // remaining restore work can no longer report a normal failure.
             if (saveSlot.BerryProgress != null &&
@@ -1350,6 +1425,34 @@ public static partial class AkronSaveLoadService {
         }
 
         return AkronSaveLoadResult.Success;
+    }
+
+    internal static AkronSaveLoadResult RestoreRuntimeFreshBaseline(
+        Level level,
+        string stateSlotName
+    ) {
+        if (level == null) {
+            LastPersistentSnapshotError = "the requested StartPos fresh-room baseline is unavailable";
+            return AkronSaveLoadResult.NoState;
+        }
+        string normalizedStateSlotName = NormalizeRuntimeSlotName(stateSlotName);
+        using AkronSaveLoadSlotLease baseline =
+            AkronStartPosPersistence.RetainRuntimeFreshBaseline(normalizedStateSlotName);
+        if (baseline?.Slot == null) {
+            LastPersistentSnapshotError = "the requested StartPos fresh-room baseline is unavailable";
+            return AkronSaveLoadResult.NoState;
+        }
+
+        AkronSaveLoadResult restore = RestoreRuntimeState(
+            level,
+            baseline.Slot,
+            allowDeadPlayer: true,
+            freshBaselineStateSlotName: normalizedStateSlotName);
+        if (restore != AkronSaveLoadResult.Success) {
+            LastPersistentSnapshotError =
+                "the requested StartPos fresh-room baseline could not be restored: " + restore;
+        }
+        return restore;
     }
 
     // usedSnapshot reports which path actually ran. The caller cannot work this out
@@ -1614,7 +1717,8 @@ public static partial class AkronSaveLoadService {
 
         freshBaseline = CaptureFreshRuntimeState(
             level,
-            "Akron restored fresh-room baseline " + document.MapSid + "|" + document.Room);
+            "Akron restored fresh-room baseline " + document.MapSid + "|" + document.Room,
+            document.SlotName);
         if (freshBaseline?.Slot == null) {
             freshBaseline?.Dispose();
             freshBaseline = null;
@@ -2250,10 +2354,13 @@ public static partial class AkronSaveLoadService {
             level.Session.Area.GetSID(),
             saveTimeAndDeaths: true);
         try {
+            saveSlot.SessionNonce = AkronModule.Session.CurrentSessionNonce;
             saveSlot.SavedLevel = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
             saveSlot.SavedLevelEventInstances = AkronDeepClone.CopyIntoDormant(level, saveSlot.SavedLevel);
             ClearDeadCutsceneSkipCallback(saveSlot.SavedLevel);
             saveSlot.FileSlot = SaveData.Instance?.FileSlot ?? -1;
+            saveSlot.LevelTimeActive = level.TimeActive;
+            saveSlot.LevelRawTimeActive = level.RawTimeActive;
             saveSlot.GrabMode = Settings.Instance.GrabMode;
             saveSlot.CrouchDashMode = Settings.Instance.CrouchDashMode;
 #pragma warning disable CS0618
@@ -2571,6 +2678,17 @@ public static partial class AkronSaveLoadService {
         AkronVirtualAssetReloadTracker.Remove(saveSlot.TrackedVirtualAssetRegistrations);
         saveSlot.TrackedVirtualAssetRegistrations = Array.Empty<AkronTrackedVirtualAssetRegistration>();
         ReleaseDormantEventInstances(saveSlot);
+    }
+
+    private static void ReleaseFreshRuntimeBaseline(
+        AkronSaveLoadSlot saveSlot,
+        long capturedBytes
+    ) {
+        try {
+            ReleaseDormantEventInstances(saveSlot);
+        } finally {
+            Interlocked.Add(ref retainedFreshBaselineBytes, -capturedBytes);
+        }
     }
 
     internal static int RemoveClonedDustEdges(Level level) {

@@ -332,10 +332,13 @@ internal sealed class AkronReconstructionField {
             if (!diagnosticPathReady || !string.IsNullOrWhiteSpace(diagnosticPath)) {
                 return diagnosticPath;
             }
-            diagnosticPath = diagnosticPathChild != null
+            // Most fields hold scalars, so retaining every derived field path
+            // expands a large room document far beyond its JSON size. Keep the
+            // compact parent link and materialize the text only for the call that
+            // needs it. Node paths stay cached because they are shared prefixes.
+            return diagnosticPathChild != null
                 ? diagnosticPathChild.Path
                 : AkronReconstructionGraph.BuildFieldDiagnosticPath(diagnosticPathParent?.Path, Name);
-            return diagnosticPath;
         }
         set {
             diagnosticPath = value;
@@ -767,6 +770,22 @@ internal sealed class AkronReconstructionCapture {
     }
 }
 
+// Restore computes this while the fresh StateMachine still has its launch-time
+// registration order. Reapply receives objects whose callback arrays have already
+// been written, so it must reuse this derived mapping instead of reading them again.
+internal sealed class AkronStateSlotPermutation {
+    public AkronStateSlotPermutation(
+        IReadOnlyDictionary<int, int[]> byMachine,
+        IReadOnlyDictionary<int, int[]> byArray
+    ) {
+        ByMachine = byMachine;
+        ByArray = byArray;
+    }
+
+    public IReadOnlyDictionary<int, int[]> ByMachine { get; }
+    public IReadOnlyDictionary<int, int[]> ByArray { get; }
+}
+
 internal sealed class AkronReconstructionRestore {
     private AkronReconstructionRestore(
         bool success,
@@ -774,7 +793,8 @@ internal sealed class AkronReconstructionRestore {
         string error,
         string refusedTypeName,
         AkronReconstructionRefusalKind refusedKind,
-        Dictionary<int, object> objects
+        Dictionary<int, object> objects,
+        AkronStateSlotPermutation stateSlotPermutation
     ) {
         Success = success;
         ErrorPath = errorPath ?? string.Empty;
@@ -782,6 +802,7 @@ internal sealed class AkronReconstructionRestore {
         RefusedTypeName = refusedTypeName ?? string.Empty;
         RefusedKind = refusedKind;
         Objects = objects;
+        StateSlotPermutation = stateSlotPermutation;
     }
 
     public bool Success { get; }
@@ -795,15 +816,20 @@ internal sealed class AkronReconstructionRestore {
     // name the owning mod, while changed-map refusals must not be attributed from the type.
     public AkronReconstructionRefusalKind RefusedKind { get; }
     internal Dictionary<int, object> Objects { get; }
+    internal AkronStateSlotPermutation StateSlotPermutation { get; }
 
-    public static AkronReconstructionRestore Succeeded(Dictionary<int, object> objects) {
+    public static AkronReconstructionRestore Succeeded(
+        Dictionary<int, object> objects,
+        AkronStateSlotPermutation stateSlotPermutation
+    ) {
         return new AkronReconstructionRestore(
             true,
             string.Empty,
             string.Empty,
             string.Empty,
             AkronReconstructionRefusalKind.SavedObject,
-            objects);
+            objects,
+            stateSlotPermutation);
     }
 
     public static AkronReconstructionRestore Failed(
@@ -819,6 +845,7 @@ internal sealed class AkronReconstructionRestore {
             normalizedPath + ": " + error,
             refusedTypeName,
             refusedKind,
+            null,
             null);
     }
 }
@@ -1150,6 +1177,7 @@ internal sealed class AkronReconstructionGraph {
     // resurrection flag, and the restore builds a new WeakReference around the
     // restored target - the same shape AkronDeepClone gives a warm copy.
     private const string WeakReferenceKind = "weak-reference";
+    private const string PlayerCollisionScratchFieldName = "temp";
     // The value kinds are one character because a real snapshot writes them
     // hundreds of thousands of times ("reference" alone was 325,000 uses and
     // 3.4 MB on a measured Farewell document). Node kinds above appear once per
@@ -1205,11 +1233,19 @@ internal sealed class AkronReconstructionGraph {
         typeof(EntityList).GetField("entities", RuntimeInstanceFields);
     private static readonly FieldInfo ComponentListComponentsField =
         typeof(ComponentList).GetField("components", RuntimeInstanceFields);
+    private static readonly FieldInfo RendererListAddingField =
+        typeof(RendererList).GetField("adding", RuntimeInstanceFields);
+    private static readonly FieldInfo RendererListRemovingField =
+        typeof(RendererList).GetField("removing", RuntimeInstanceFields);
     // Monocle.StateMachine addresses its four callback arrays by state id and
     // keeps a parallel names array saying which state each id is. Everest's
     // AddState writes a name; the base SetCallbacks leaves the slot unnamed.
     private static readonly string StateMachineTypeName = TypeName(typeof(StateMachine));
     private static readonly string[] StateMachineCallbackFieldNames = { "begins", "updates", "ends", "coroutines" };
+    private static readonly string[] StateMachineSlotArrayFieldNames =
+        StateMachineCallbackFieldNames.Concat(new[] { "names" }).ToArray();
+    private static readonly string[] StateMachineCurrentStateFieldNames =
+        { "state", "<PreviousState>k__BackingField" };
     private static readonly FieldInfo[] StateMachineCallbackFields = StateMachineCallbackFieldNames
         .Select(name => typeof(StateMachine).GetField(name, RuntimeInstanceFields))
         .ToArray();
@@ -1218,8 +1254,8 @@ internal sealed class AkronReconstructionGraph {
     // coroutines[state], so between them they are the code a state runs. begins
     // and ends are deliberately left out - a mod is free to rewire the edges of a
     // state it already owns while the room is played, and that is a move
-    // ValidateStateSlotAssignment must not refuse. The two sides of the
-    // comparison read this same list in this same order.
+    // semantic slot remapping must preserve. The saved and fresh coordinate
+    // builders read this same list in this same order.
     private static readonly string[] StateMachineDriverFieldNames = { "updates", "coroutines" };
     private static readonly FieldInfo[] StateMachineDriverFields = StateMachineDriverFieldNames
         .Select(name => typeof(StateMachine).GetField(name, RuntimeInstanceFields))
@@ -1791,6 +1827,209 @@ internal sealed class AkronReconstructionGraph {
         });
     }
 
+    // Current-format snapshots written before Player.temp became an explicit
+    // non-persistent field can contain the collision query that ran while placement
+    // pose was refreshed. Remove that edge, then rebuild the document's first-owner
+    // tree from the remaining graph. A room entity first reached through temp can also
+    // be reached through the EntityList that owns it; that later edge must become its
+    // canonical path, while scratch-only objects must disappear.
+    internal static void NormalizeTransientRuntimeFields(AkronReconstructionDocument document) {
+        if (document == null) {
+            return;
+        }
+
+        bool removedField = false;
+        string playerTypeName = TypeName(typeof(Player));
+        foreach (AkronReconstructionNode node in document.Nodes ?? new List<AkronReconstructionNode>()) {
+            Type nodeType = string.IsNullOrWhiteSpace(node?.TypeName)
+                ? null
+                : Type.GetType(node.TypeName, throwOnError: false);
+            if (nodeType == null || !typeof(Player).IsAssignableFrom(nodeType) ||
+                node.FieldsOrNull == null) {
+                continue;
+            }
+            removedField |= node.FieldsOrNull.RemoveAll(field =>
+                field != null &&
+                string.Equals(field.DeclaringTypeName, playerTypeName, StringComparison.Ordinal) &&
+                string.Equals(field.Name, PlayerCollisionScratchFieldName, StringComparison.Ordinal)) > 0;
+        }
+
+        if (removedField) {
+            RebuildDocumentFirstOwnerTree(document);
+        }
+        NormalizeTransientRuntimeFields(document.ActionStateDocument);
+    }
+
+    private static void RebuildDocumentFirstOwnerTree(AkronReconstructionDocument document) {
+        Dictionary<int, AkronReconstructionNode> nodes = new Dictionary<int, AkronReconstructionNode>();
+        foreach (AkronReconstructionNode node in document.Nodes) {
+            if (node == null || node.Id <= 0 || !nodes.TryAdd(node.Id, node)) {
+                throw new InvalidOperationException("Reconstruction document has invalid node IDs.");
+            }
+        }
+        if (!nodes.TryGetValue(document.RootNodeId, out AkronReconstructionNode root)) {
+            throw new InvalidOperationException("Reconstruction root node is missing.");
+        }
+
+        List<AkronReconstructionNode> ordered = new List<AkronReconstructionNode>(nodes.Count);
+        HashSet<int> visited = new HashSet<int>();
+
+        void VisitReference(
+            AkronReconstructionValue value,
+            AkronReconstructionNode parent,
+            string parentKind,
+            string parentDeclaringTypeName,
+            string parentFieldName,
+            IReadOnlyList<int> parentArrayIndices,
+            int parentDelegateIndex,
+            int depth
+        ) {
+            if (value?.Kind == ReferenceValueKind &&
+                nodes.TryGetValue(value.NodeId, out AkronReconstructionNode child)) {
+                Visit(
+                    child,
+                    parent,
+                    parentKind,
+                    parentDeclaringTypeName,
+                    parentFieldName,
+                    parentArrayIndices,
+                    parentDelegateIndex,
+                    depth);
+            }
+        }
+
+        void Visit(
+            AkronReconstructionNode node,
+            AkronReconstructionNode parent,
+            string parentKind,
+            string parentDeclaringTypeName,
+            string parentFieldName,
+            IReadOnlyList<int> parentArrayIndices,
+            int parentDelegateIndex,
+            int depth
+        ) {
+            if (node == null || !visited.Add(node.Id)) {
+                return;
+            }
+            if (depth > MaxParentChainDepth) {
+                throw new InvalidOperationException(
+                    "Reconstruction node parent depth exceeds the supported limit.");
+            }
+
+            node.ParentNodeId = parent?.Id ?? 0;
+            node.ParentKind = parentKind ?? string.Empty;
+            node.ParentDeclaringTypeName = parentDeclaringTypeName ?? string.Empty;
+            node.ParentFieldName = parentFieldName ?? string.Empty;
+            node.ParentArrayIndicesOrNull = parentArrayIndices is { Count: > 0 }
+                ? new List<int>(parentArrayIndices)
+                : null;
+            node.ParentDelegateIndex = parentDelegateIndex;
+            ordered.Add(node);
+
+            foreach (AkronReconstructionField field in
+                     node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
+                VisitReference(
+                    field?.Value,
+                    node,
+                    "field",
+                    field?.DeclaringTypeName,
+                    field?.Name,
+                    null,
+                    -1,
+                    depth + 1);
+            }
+            IReadOnlyList<AkronReconstructionValue> items =
+                node.ItemsOrNull ?? (IReadOnlyList<AkronReconstructionValue>) Array.Empty<AkronReconstructionValue>();
+            for (int index = 0; index < items.Count; index++) {
+                bool weakTarget = string.Equals(node.Kind, WeakReferenceKind, StringComparison.Ordinal) && index == 0;
+                VisitReference(
+                    items[index],
+                    node,
+                    weakTarget ? "weak-target" : "array",
+                    null,
+                    null,
+                    weakTarget ? null : GetSavedArrayIndicesAtFlatIndex(node, index),
+                    -1,
+                    depth + 1);
+            }
+            IReadOnlyList<AkronReconstructionDelegateCall> calls =
+                node.DelegateCallsOrNull ??
+                (IReadOnlyList<AkronReconstructionDelegateCall>) Array.Empty<AkronReconstructionDelegateCall>();
+            for (int index = 0; index < calls.Count; index++) {
+                VisitReference(
+                    calls[index]?.Target,
+                    node,
+                    "delegate",
+                    null,
+                    null,
+                    null,
+                    index,
+                    depth + 1);
+            }
+        }
+
+        Visit(root, null, string.Empty, null, null, null, -1, 0);
+
+        Dictionary<int, int> newIds = ordered
+            .Select((node, index) => (node.Id, NewId: index + 1))
+            .ToDictionary(pair => pair.Id, pair => pair.NewId);
+        foreach (AkronReconstructionNode node in ordered) {
+            int oldId = node.Id;
+            node.Id = newIds[oldId];
+            node.ParentNodeId = node.ParentNodeId > 0 && newIds.TryGetValue(node.ParentNodeId, out int parentId)
+                ? parentId
+                : 0;
+            RewriteReferences(node, newIds);
+        }
+        document.RootNodeId = newIds[document.RootNodeId];
+        document.Nodes = ordered;
+    }
+
+    private static List<int> GetSavedArrayIndicesAtFlatIndex(
+        AkronReconstructionNode node,
+        int flatIndex
+    ) {
+        if (node.ArrayLengthsOrNull == null || node.ArrayLowerBoundsOrNull == null ||
+            node.ArrayLengthsOrNull.Count == 0 ||
+            node.ArrayLengthsOrNull.Count != node.ArrayLowerBoundsOrNull.Count) {
+            return null;
+        }
+        int[] indices = new int[node.ArrayLengthsOrNull.Count];
+        for (int dimension = indices.Length - 1; dimension >= 0; dimension--) {
+            int length = node.ArrayLengthsOrNull[dimension];
+            if (length <= 0) {
+                return null;
+            }
+            indices[dimension] = node.ArrayLowerBoundsOrNull[dimension] + flatIndex % length;
+            flatIndex /= length;
+        }
+        return indices.ToList();
+    }
+
+    private static void RewriteReferences(
+        AkronReconstructionNode node,
+        IReadOnlyDictionary<int, int> newIds
+    ) {
+        void Rewrite(AkronReconstructionValue value) {
+            if (value?.Kind == ReferenceValueKind && newIds.TryGetValue(value.NodeId, out int newId)) {
+                value.NodeId = newId;
+            }
+        }
+
+        foreach (AkronReconstructionField field in
+                 node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
+            Rewrite(field?.Value);
+        }
+        foreach (AkronReconstructionValue item in
+                 node.ItemsOrNull ?? Enumerable.Empty<AkronReconstructionValue>()) {
+            Rewrite(item);
+        }
+        foreach (AkronReconstructionDelegateCall call in
+                 node.DelegateCallsOrNull ?? Enumerable.Empty<AkronReconstructionDelegateCall>()) {
+            Rewrite(call?.Target);
+        }
+    }
+
     public string Serialize(AkronReconstructionDocument document) {
         PrepareForSerialization(document);
         return JsonConvert.SerializeObject(document, JsonSettings);
@@ -1806,6 +2045,7 @@ internal sealed class AkronReconstructionGraph {
         using AkronBoundedJsonTextReader jsonReader = CreateJsonReader(stringReader);
         AkronReconstructionDocument document = serializer.Deserialize<AkronReconstructionDocument>(jsonReader);
         ResolveTypeNames(document);
+        NormalizeTransientRuntimeFields(document);
         validationNodes.Clear();
         try {
             ValidateDocumentHeader(document, validationNodes);
@@ -1876,6 +2116,7 @@ internal sealed class AkronReconstructionGraph {
         using AkronBoundedJsonTextReader jsonReader = CreateJsonReader(streamReader);
         AkronReconstructionDocument document = serializer.Deserialize<AkronReconstructionDocument>(jsonReader);
         ResolveTypeNames(document);
+        NormalizeTransientRuntimeFields(document);
         validationNodes.Clear();
         try {
             ValidateDocumentHeader(document, validationNodes);
@@ -1937,7 +2178,9 @@ internal sealed class AkronReconstructionGraph {
             context.ApplyAssignments();
             context.ReleaseDisplacedEventInstances();
             context.CommitPersistentResources();
-            return AkronReconstructionRestore.Succeeded(context.Objects);
+            return AkronReconstructionRestore.Succeeded(
+                context.Objects,
+                context.StateSlotPermutation);
         } catch (AkronReconstructionException exception) {
             context?.ReleaseCreatedPersistentResources();
             AkronEventInstanceUtils.ReleaseDormantEventInstances(context?.Objects.Values.OfType<EventInstance>());
@@ -1978,7 +2221,11 @@ internal sealed class AkronReconstructionGraph {
 
         try {
             ValidateDocumentHeader(document);
-            RestoreContext context = new RestoreContext(this, document, restore.Objects);
+            RestoreContext context = new RestoreContext(
+                this,
+                document,
+                restore.Objects,
+                restore.StateSlotPermutation);
             context.ValidateAssignments();
             context.ApplyAssignments();
             context.ReleaseDisplacedEventInstances();
@@ -2006,7 +2253,12 @@ internal sealed class AkronReconstructionGraph {
         try {
             ValidateDocumentHeader(document);
             HashSet<string> masks = new HashSet<string>(maskedPaths ?? Array.Empty<string>(), StringComparer.Ordinal);
-            VerificationContext context = new VerificationContext(this, document, restore.Objects, masks);
+            VerificationContext context = new VerificationContext(
+                this,
+                document,
+                restore.Objects,
+                restore.StateSlotPermutation,
+                masks);
             context.Verify();
             return AkronReconstructionVerification.Succeeded();
         } catch (AkronReconstructionException exception) {
@@ -2428,7 +2680,6 @@ internal sealed class AkronReconstructionGraph {
         }
         foreach (AkronReconstructionNode node in document.Nodes) {
             foreach (AkronReconstructionField field in node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
-                int pathLength;
                 if (field.Value?.Kind == ReferenceValueKind &&
                     nodes.TryGetValue(field.Value.NodeId, out AkronReconstructionNode child) &&
                     child.ParentNodeId == node.Id &&
@@ -2436,12 +2687,13 @@ internal sealed class AkronReconstructionGraph {
                     string.Equals(child.ParentDeclaringTypeName, field.DeclaringTypeName, StringComparison.Ordinal) &&
                     string.Equals(child.ParentFieldName, field.Name, StringComparison.Ordinal)) {
                     field.SetLazyChildDiagnosticPath(child);
-                    pathLength = child.DiagnosticPathLength;
                 } else {
                     field.SetLazyParentDiagnosticPath(node);
-                    pathLength = GetFieldDiagnosticPathLength(node.DiagnosticPathLength, field.Name);
+                    // Validate the individual path now, but do not add it to the
+                    // retained-path budget. Field paths are deliberately ephemeral;
+                    // only node prefixes are cached by Path.
+                    _ = GetFieldDiagnosticPathLength(node.DiagnosticPathLength, field.Name);
                 }
-                AddDiagnosticPathChars(pathLength, ref totalPathChars);
             }
         }
         if (document.ActionStateDocument != null) {
@@ -2666,6 +2918,19 @@ internal sealed class AkronReconstructionGraph {
 
     private static IEnumerable<FieldInfo> GetInstanceFields(Type type) {
         return InstanceFields.GetOrAdd(type, BuildInstanceFields);
+    }
+
+    internal static bool IsTransientRuntimeField(Type ownerType, FieldInfo field) {
+        // Player.temp is scratch storage for collision queries. Player.OnGround and
+        // UpdateSprite can fill it while a placed StartPos pose is derived, but the
+        // contents do not belong to Player state and are rebuilt by the next query.
+        // Persisting the list can make one of its borrowed entities the graph's first
+        // owner, hiding that entity's real room path and making a later cold restore
+        // fail authenticity checks against a different query result.
+        return field != null &&
+               typeof(Player).IsAssignableFrom(ownerType) &&
+               field.DeclaringType == typeof(Player) &&
+               string.Equals(field.Name, PlayerCollisionScratchFieldName, StringComparison.Ordinal);
     }
 
     private static FieldInfo[] BuildInstanceFields(Type type) {
@@ -3351,6 +3616,9 @@ internal sealed class AkronReconstructionGraph {
             }
 
             foreach (FieldInfo field in GetInstanceFields(type)) {
+                if (IsTransientRuntimeField(type, field)) {
+                    continue;
+                }
                 path.Add(new AkronReconstructionPathStep {
                     Kind = "field",
                     DeclaringTypeName = TypeName(field.DeclaringType),
@@ -3706,7 +3974,8 @@ internal sealed class AkronReconstructionGraph {
             string path
         ) {
             foreach (FieldInfo field in GetInstanceFields(savedObject.GetType())) {
-                if (IsDerivedCollectionVersionField(savedObject.GetType(), field.Name)) {
+                if (IsDerivedCollectionVersionField(savedObject.GetType(), field.Name) ||
+                    IsTransientRuntimeField(savedObject.GetType(), field)) {
                     continue;
                 }
                 string childPath = FieldPath(path, field.Name);
@@ -3997,6 +4266,11 @@ internal sealed class AkronReconstructionGraph {
             new Dictionary<int, (int Ordinal, int Count)>();
         private readonly Dictionary<int, Dictionary<Type, List<Entity>>> freshEntityTypesByEntityList =
             new Dictionary<int, Dictionary<Type, List<Entity>>>();
+        private readonly HashSet<int> indexedRendererListTypeOrdinals = new HashSet<int>();
+        private readonly Dictionary<int, (int Ordinal, int Count)> rendererListTypeOrdinals =
+            new Dictionary<int, (int Ordinal, int Count)>();
+        private readonly Dictionary<int, Dictionary<Type, List<Renderer>>> freshRendererTypesByRendererList =
+            new Dictionary<int, Dictionary<Type, List<Renderer>>>();
         private readonly Dictionary<object, int> freshFieldAliasReservations =
             new Dictionary<object, int>(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<int, object> freshFieldAliasesByNode = new Dictionary<int, object>();
@@ -4013,11 +4287,13 @@ internal sealed class AkronReconstructionGraph {
         // What each state slot of every fresh Monocle.StateMachine means, keyed
         // by the machine itself so two machines of one type in one room cannot
         // lend each other a state name. Name is what the machine calls the slot
-        // and Driver is the code it runs there; see ValidateStateSlotAssignment
-        // for which of the two decides a write and why.
+        // and Driver is the code an unnamed state runs there. Both feed the
+        // semantic slot permutation built before assignments are applied.
         private readonly Dictionary<object, (string Name, string Driver)[]> freshStateSlots =
             new Dictionary<object, (string Name, string Driver)[]>(ReferenceEqualityComparer.Instance);
-        private Dictionary<int, AkronReconstructionNode> savedStateSlotArrays;
+        private Dictionary<int, List<AkronReconstructionNode>> savedStateSlotArrayOwners;
+        private readonly Dictionary<int, int[]> savedStateSlotTargetsByMachine = new Dictionary<int, int[]>();
+        private readonly Dictionary<int, int[]> savedStateSlotTargetsByArray = new Dictionary<int, int[]>();
         private readonly Dictionary<object, HashSet<string>> freshInstanceDelegateMethods =
             new Dictionary<object, HashSet<string>>(ReferenceEqualityComparer.Instance);
         private readonly HashSet<object> activeFreshSafeObjects = new HashSet<object>(ReferenceEqualityComparer.Instance);
@@ -4029,6 +4305,7 @@ internal sealed class AkronReconstructionGraph {
 
         private readonly HashSet<int> authenticatedRuntimeStateNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedRuntimeEntityNodes = new HashSet<int>();
+        private readonly HashSet<int> authenticatedOwnedNestedEntityNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedOwnedNestedStateNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedOwnedComponentNodes = new HashSet<int>();
         private readonly HashSet<int> authenticatedDelegateTargetNodes = new HashSet<int>();
@@ -4064,7 +4341,8 @@ internal sealed class AkronReconstructionGraph {
         public RestoreContext(
             AkronReconstructionGraph owner,
             AkronReconstructionDocument document,
-            Dictionary<int, object> objects
+            Dictionary<int, object> objects,
+            AkronStateSlotPermutation stateSlotPermutation
         ) {
             this.owner = owner;
             this.document = document;
@@ -4074,9 +4352,20 @@ internal sealed class AkronReconstructionGraph {
             savedArrayAliases = IndexSavedArrayAliases(document);
             savedDelegateTargetAliases = IndexSavedDelegateTargetAliases(document, nodes);
             Objects = objects;
+            if (stateSlotPermutation != null) {
+                foreach (KeyValuePair<int, int[]> pair in stateSlotPermutation.ByMachine) {
+                    savedStateSlotTargetsByMachine[pair.Key] = pair.Value;
+                }
+                foreach (KeyValuePair<int, int[]> pair in stateSlotPermutation.ByArray) {
+                    savedStateSlotTargetsByArray[pair.Key] = pair.Value;
+                }
+            }
         }
 
         public Dictionary<int, object> Objects { get; }
+        public AkronStateSlotPermutation StateSlotPermutation => new AkronStateSlotPermutation(
+            savedStateSlotTargetsByMachine,
+            savedStateSlotTargetsByArray);
 
         public void ResolveObjects() {
             AkronReconstructionNode rootNode = nodes[document.RootNodeId];
@@ -4152,7 +4441,8 @@ internal sealed class AkronReconstructionGraph {
                          !string.Equals(node.ResourceKey, owner.GetTypedResourceKey(restoredObject), StringComparison.Ordinal))) {
                         restoredObject = FindFreshResource(node, type, out resourceMatchedByDynamicOwnerPath);
                     }
-                    if (node.Kind == ArrayKind && restoredObject is Array freshArray && !ArrayShapeMatches(freshArray, node)) {
+                    if (node.Kind == ArrayKind && restoredObject is Array freshArray &&
+                        !CanReuseFreshArray(freshArray, node)) {
                         restoredObject = null;
                     }
                     if (node.Kind != AnchorKind && restoredObject != null && freshOwners.ContainsKey(restoredObject)) {
@@ -4176,6 +4466,10 @@ internal sealed class AkronReconstructionGraph {
                     if ((restoredObject == null || restoredObject.GetType() != type) &&
                         TryResolveFreshFieldAlias(node, type, out object fieldAlias)) {
                         restoredObject = fieldAlias;
+                    }
+                    if ((restoredObject == null || restoredObject.GetType() != type) &&
+                        TryResolveFreshSceneRenderer(node, type, out Renderer sceneRenderer)) {
+                        restoredObject = sceneRenderer;
                     }
                     if ((restoredObject == null || restoredObject.GetType() != type) && node.Kind == AnchorKind) {
                         throw new AkronReconstructionException(node.Path, "fresh object is missing or has a different type");
@@ -4203,6 +4497,9 @@ internal sealed class AkronReconstructionGraph {
                     resolvedFreshObjectNodes.Add(node.Id);
                 } else if (TryResolveFreshOwnedEntity(node, type, out Entity lateOwnedEntity)) {
                     restoredObject = lateOwnedEntity;
+                    resolvedFreshObjectNodes.Add(node.Id);
+                } else if (TryResolveFreshSceneRenderer(node, type, out Renderer lateSceneRenderer)) {
+                    restoredObject = lateSceneRenderer;
                     resolvedFreshObjectNodes.Add(node.Id);
                 } else if (node.Kind == DelegateKind || node.Kind == EventInstanceKind ||
                            node.Kind == WeakReferenceKind) {
@@ -4423,6 +4720,9 @@ internal sealed class AkronReconstructionGraph {
                 }
 
                 foreach (FieldInfo field in GetInstanceFields(type)) {
+                    if (IsTransientRuntimeField(type, field)) {
+                        continue;
+                    }
                     object fieldValue = field.GetValue(value);
                     if (!ShouldIndexFreshEdge(fieldValue, visited)) {
                         continue;
@@ -4477,6 +4777,7 @@ internal sealed class AkronReconstructionGraph {
         // ordinary case.
         private static string FreshStateSlotDriver(StateMachine machine, int slot) {
             StringBuilder driver = new StringBuilder();
+            HashSet<object> activeTargets = new HashSet<object>(ReferenceEqualityComparer.Instance);
             // Walked by name rather than by FieldInfo, the same way SavedStateSlotDriver
             // walks it, because the two strings are compared: a field Monocle no longer
             // has must leave the same empty "<name>=;" on both sides rather than an NRE
@@ -4488,16 +4789,52 @@ internal sealed class AkronReconstructionGraph {
                 if (StateMachineDriverFields[index]?.GetValue(machine) is Array callbacks &&
                     slot < callbacks.Length &&
                     callbacks.GetValue(slot) is Delegate callback) {
-                    foreach (Delegate call in callback.GetInvocationList()) {
-                        driver.Append(TypeName(call.Method.DeclaringType))
-                            .Append('.')
-                            .Append(call.Method.Name)
-                            .Append('+');
-                    }
+                    AppendFreshStateDelegateIdentity(driver, callback, activeTargets);
                 }
                 driver.Append(';');
             }
             return driver.ToString();
+        }
+
+        // Helper AddState extensions often adapt every state through one captured
+        // lambda. The outer generated method then identifies the adapter, not the
+        // state. Follow delegate fields with the same return type on generated
+        // targets until the state-specific method is visible. The signature can
+        // gain an owner parameter inside an adapter, as VivHelper's Func<int>
+        // wrapper around Func<Player, int> does. Ordinary entity method groups
+        // keep the old method-only identity, so mutable gameplay fields cannot
+        // become slot coordinates.
+        private static void AppendFreshStateDelegateIdentity(
+            StringBuilder identity,
+            Delegate callback,
+            HashSet<object> activeTargets
+        ) {
+            foreach (Delegate call in callback.GetInvocationList()) {
+                identity.Append(TypeName(call.Method.DeclaringType))
+                    .Append('.')
+                    .Append(call.Method.Name);
+                object target = call.Target;
+                Type targetType = target?.GetType();
+                if (target != null &&
+                    targetType.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) &&
+                    activeTargets.Add(target)) {
+                    foreach (FieldInfo field in GetInstanceFields(targetType)) {
+                        if (field.GetValue(target) is not Delegate nestedCallback ||
+                            nestedCallback.Method.ReturnType != call.Method.ReturnType) {
+                            continue;
+                        }
+                        identity.Append('[')
+                            .Append(TypeName(field.DeclaringType))
+                            .Append('.')
+                            .Append(field.Name)
+                            .Append('=');
+                        AppendFreshStateDelegateIdentity(identity, nestedCallback, activeTargets);
+                        identity.Append(']');
+                    }
+                    activeTargets.Remove(target);
+                }
+                identity.Append('+');
+            }
         }
 
         private bool ShouldIndexFreshEdge(object value, HashSet<object> visited) {
@@ -4575,11 +4912,14 @@ internal sealed class AkronReconstructionGraph {
             bool authenticatedRuntimeEntity =
                 IsAuthenticatedBuiltInRuntimeEntity(node, type) ||
                 IsAuthenticatedGeneratedRuntimeEntity(node, type);
+            bool authenticatedOwnedNestedEntity =
+                IsAuthenticatedFreshEntityOwnedNestedEntity(node, type);
             bool authenticatedOwnedNestedState =
                 IsAuthenticatedFreshEntityOwnedNestedState(node, type) ||
                 IsAuthenticatedFreshRendererOwnedRuntimeState(node, type) ||
                 IsAuthenticatedRuntimeEntityOwnedState(node, type) ||
-                IsAuthenticatedGeneratedEntityOwnedState(node, type);
+                IsAuthenticatedGeneratedEntityOwnedState(node, type) ||
+                IsAuthenticatedRuntimeEntitySourceMetadataState(node, type);
             bool authenticatedOwnedComponent =
                 IsAuthenticatedReconstructedOwnedComponent(node, type) ||
                 IsAuthenticatedIteratorClosureOwnedComponent(node, type);
@@ -4615,6 +4955,9 @@ internal sealed class AkronReconstructionGraph {
             }
             if (authenticatedRuntimeEntity) {
                 authenticatedRuntimeEntityNodes.Add(node.Id);
+            }
+            if (authenticatedOwnedNestedEntity) {
+                authenticatedOwnedNestedEntityNodes.Add(node.Id);
             }
             if (authenticatedOwnedNestedState) {
                 authenticatedOwnedNestedStateNodes.Add(node.Id);
@@ -4656,6 +4999,7 @@ internal sealed class AkronReconstructionGraph {
             bool authenticWithoutTheOwnerProof =
                 IsExplicitlySafeReconstructionType(type) ||
                 authenticatedRuntimeEntity ||
+                authenticatedOwnedNestedEntity ||
                 authenticatedOwnedNestedState ||
                 authenticatedOwnedComponent ||
                 authenticatedFieldBuiltComponent ||
@@ -5173,7 +5517,8 @@ internal sealed class AkronReconstructionGraph {
         ) {
             matchedObject = null;
             if (typeof(Entity).IsAssignableFrom(type) ||
-                typeof(Component).IsAssignableFrom(type) ||
+                (typeof(Component).IsAssignableFrom(type) &&
+                 !IsAuthenticatedFieldComponentOwnership(node, type, out _, out _)) ||
                 !Objects.TryGetValue(node.ParentNodeId, out object parentObject)) {
                 return false;
             }
@@ -5295,6 +5640,12 @@ internal sealed class AkronReconstructionGraph {
                 targetType,
                 edgeParent,
                 edgeField);
+            bool freshRendererEntityCacheAlias = IsAuthenticatedFreshRendererEntityCacheAlias(
+                target,
+                targetType,
+                edgeParent,
+                edgeField,
+                out string freshRendererEntityCacheReason);
             Type edgeParentType = ResolveType(edgeParent.TypeName, edgeParent.Path);
             bool authenticatedEdgeParentOwnedComponent =
                 authenticatedOwnedComponentNodes.Contains(edgeParent.Id) ||
@@ -5381,11 +5732,30 @@ internal sealed class AkronReconstructionGraph {
                 targetType,
                 edgeParent,
                 edgeField);
+            bool runtimeEntitySourceDataListAlias =
+                IsAuthenticatedRuntimeEntitySourceDataListAlias(
+                    target,
+                    targetType,
+                    edgeParent,
+                    edgeParentType,
+                    edgeField);
+            bool runtimeEntitySourceMetadataLevelAlias =
+                IsAuthenticatedRuntimeEntitySourceMetadataLevelAlias(
+                    target,
+                    targetType,
+                    edgeParent,
+                    edgeParentType,
+                    edgeField);
             bool freshOwnedNestedState =
                 authenticatedOwnedNestedStateNodes.Contains(target.Id) &&
                 target.ParentNodeId == edgeParent.Id &&
                 (target.ParentKind == "field" ||
                  (target.ParentKind == "array" && edgeField == null));
+            bool ownedNestedEntityOwnerEdge =
+                authenticatedOwnedNestedEntityNodes.Contains(target.Id) &&
+                savedOwnerEdge &&
+                target.ParentNodeId == edgeParent.Id &&
+                (target.ParentKind == "field" || target.ParentKind == "array");
             bool reconstructedOwnedComponentAlias =
                 authenticatedOwnedComponent &&
                 IsAuthenticatedOwnedComponentAlias(target, edgeParent);
@@ -5412,6 +5782,7 @@ internal sealed class AkronReconstructionGraph {
                 edgeParent,
                 edgeField);
             bool freshSceneEntityAlias = IsAuthenticatedFreshSceneEntityAlias(
+                target,
                 targetType,
                 edgeParent,
                 edgeField,
@@ -5513,6 +5884,7 @@ internal sealed class AkronReconstructionGraph {
             bool authenticatedTarget = resolvedFreshObjectNodes.Contains(target.Id) ||
                                        authenticatedRuntimeStateNodes.Contains(target.Id) ||
                                        authenticatedRuntimeEntityNodes.Contains(target.Id) ||
+                                       authenticatedOwnedNestedEntityNodes.Contains(target.Id) ||
                                        authenticatedOwnedNestedStateNodes.Contains(target.Id) ||
                                        authenticatedScreenWipeNodes.Contains(target.Id) ||
                                        authenticatedOwnedComponent;
@@ -5536,12 +5908,14 @@ internal sealed class AkronReconstructionGraph {
                                   authenticatedOwnedComponentTrackerAlias ||
                                   authenticatedRuntimeEntityTrackerAlias || authenticatedRuntimeEntityTagListAlias ||
                                   freshArrayMembershipAlias || screenWipeRendererListAlias ||
-                                  freshRendererComponentIndexAlias ||
+                                  freshRendererComponentIndexAlias || freshRendererEntityCacheAlias ||
                                   freshEntityListAlias || freshEntityPeerLink ||
+                                  runtimeEntitySourceDataListAlias || runtimeEntitySourceMetadataLevelAlias ||
                                   freshComponentCapturedFreshEdge ||
                                   runtimeEntityCapturedFreshEdge ||
                                   entityOwnedCollectionAlias ||
-                                  freshOwnedNestedState || reconstructedOwnedComponentAlias || freshFieldAlias ||
+                                  freshOwnedNestedState || ownedNestedEntityOwnerEdge ||
+                                  reconstructedOwnedComponentAlias || freshFieldAlias ||
                                   lazilyBuiltFieldComponentEdge ||
                                   reconstructedOwnedComponentOwnerEdge ||
                                   freshOwnerAliasMerge ||
@@ -5616,6 +5990,8 @@ internal sealed class AkronReconstructionGraph {
                         ";fresh-array-membership-alias=" + freshArrayMembershipAlias.ToString().ToLowerInvariant() +
                         ";screen-wipe-renderer-list-alias=" + screenWipeRendererListAlias.ToString().ToLowerInvariant() +
                         ";fresh-renderer-component-index-alias=" + freshRendererComponentIndexAlias.ToString().ToLowerInvariant() +
+                        ";fresh-renderer-entity-cache-alias=" + freshRendererEntityCacheAlias.ToString().ToLowerInvariant() +
+                        ";fresh-renderer-entity-cache-reason=" + freshRendererEntityCacheReason +
                         ";fresh-component-captured-fresh-edge=" + freshComponentCapturedFreshEdge.ToString().ToLowerInvariant() +
                         ";runtime-entity-captured-fresh-edge=" + runtimeEntityCapturedFreshEdge.ToString().ToLowerInvariant() +
                         ";trail-snapshot-player-component-alias=" + trailSnapshotPlayerComponentAlias.ToString().ToLowerInvariant() +
@@ -5623,6 +5999,8 @@ internal sealed class AkronReconstructionGraph {
                         ";authenticated-built-in-runtime-entity=" + authenticatedBuiltInRuntimeEntity.ToString().ToLowerInvariant() +
                         ";fresh-entity-list-alias=" + freshEntityListAlias.ToString().ToLowerInvariant() +
                         ";fresh-entity-peer-link=" + freshEntityPeerLink.ToString().ToLowerInvariant() +
+                        ";runtime-entity-source-data-list-alias=" + runtimeEntitySourceDataListAlias.ToString().ToLowerInvariant() +
+                        ";runtime-entity-source-metadata-level-alias=" + runtimeEntitySourceMetadataLevelAlias.ToString().ToLowerInvariant() +
                         ";entity-owned-collection-alias=" + entityOwnedCollectionAlias.ToString().ToLowerInvariant() +
                         ";fresh-owned-nested-state=" + freshOwnedNestedState.ToString().ToLowerInvariant() +
                         ";reconstructed-owned-component-alias=" + reconstructedOwnedComponentAlias.ToString().ToLowerInvariant() +
@@ -5709,6 +6087,8 @@ internal sealed class AkronReconstructionGraph {
                     ";fresh-array-membership-alias=" + freshArrayMembershipAlias.ToString().ToLowerInvariant() +
                     ";screen-wipe-renderer-list-alias=" + screenWipeRendererListAlias.ToString().ToLowerInvariant() +
                     ";fresh-renderer-component-index-alias=" + freshRendererComponentIndexAlias.ToString().ToLowerInvariant() +
+                    ";fresh-renderer-entity-cache-alias=" + freshRendererEntityCacheAlias.ToString().ToLowerInvariant() +
+                    ";fresh-renderer-entity-cache-reason=" + freshRendererEntityCacheReason +
                     ";fresh-component-captured-fresh-edge=" + freshComponentCapturedFreshEdge.ToString().ToLowerInvariant() +
                     ";runtime-entity-captured-fresh-edge=" + runtimeEntityCapturedFreshEdge.ToString().ToLowerInvariant() +
                     ";trail-snapshot-player-component-alias=" + trailSnapshotPlayerComponentAlias.ToString().ToLowerInvariant() +
@@ -5716,6 +6096,8 @@ internal sealed class AkronReconstructionGraph {
                     ";authenticated-built-in-runtime-entity=" + authenticatedBuiltInRuntimeEntity.ToString().ToLowerInvariant() +
                     ";fresh-entity-list-alias=" + freshEntityListAlias.ToString().ToLowerInvariant() +
                     ";fresh-entity-peer-link=" + freshEntityPeerLink.ToString().ToLowerInvariant() +
+                    ";runtime-entity-source-data-list-alias=" + runtimeEntitySourceDataListAlias.ToString().ToLowerInvariant() +
+                    ";runtime-entity-source-metadata-level-alias=" + runtimeEntitySourceMetadataLevelAlias.ToString().ToLowerInvariant() +
                     ";entity-owned-collection-alias=" + entityOwnedCollectionAlias.ToString().ToLowerInvariant() +
                     ";fresh-owned-nested-state=" + freshOwnedNestedState.ToString().ToLowerInvariant() +
                     ";reconstructed-owned-component-alias=" + reconstructedOwnedComponentAlias.ToString().ToLowerInvariant() +
@@ -5965,33 +6347,56 @@ internal sealed class AkronReconstructionGraph {
         // displaced. IsComponentTypeSafeToReconstruct carries the same
         // hostile-surface limit the list-owned licence holds.
         private bool IsAuthenticatedLazilyBuiltFieldComponent(AkronReconstructionNode target, Type targetType) {
-            if (!IsComponentTypeSafeToReconstruct(targetType) ||
-                target.ParentKind != "field" ||
-                !nodes.TryGetValue(target.ParentNodeId, out AkronReconstructionNode ownerNode)) {
+            if (!IsAuthenticatedFieldComponentOwnership(
+                    target,
+                    targetType,
+                    out AkronReconstructionNode ownerNode,
+                    out FieldInfo field)) {
                 return false;
             }
-            Type ownerType = ResolveType(ownerNode.TypeName, ownerNode.Path);
             bool ownerIsFresh = resolvedFreshObjectNodes.Contains(ownerNode.Id);
-            if (!ownerIsFresh &&
-                !authenticatedOwnedComponentNodes.Contains(ownerNode.Id) &&
-                !authenticatedOwnedNestedStateNodes.Contains(ownerNode.Id) &&
-                !authenticatedRuntimeEntityNodes.Contains(ownerNode.Id) &&
-                !IsAuthenticatedReconstructedOwnedComponent(ownerNode, ownerType)) {
-                return false;
-            }
-            FieldInfo field = ResolveField(
-                target.ParentDeclaringTypeName,
-                target.ParentFieldName,
-                target.Path);
-            if (field.FieldType != targetType || !field.DeclaringType.IsAssignableFrom(ownerType)) {
-                return false;
-            }
             if (!ownerIsFresh) {
                 return true;
             }
             return Objects.TryGetValue(ownerNode.Id, out object ownerObject) &&
                    field.DeclaringType.IsInstanceOfType(ownerObject) &&
                    field.GetValue(ownerObject) == null;
+        }
+
+        // An exact concrete Component field is also an ownership edge when its
+        // parent has already proved itself. Most such fields are lazy and are
+        // empty after a clean room load, but StateMachine eagerly constructs its
+        // private currentCoroutine. If the saved entity was first reached through
+        // a running iterator, capture cannot give that Coroutine its normal fresh
+        // path even though the clean StateMachine owns the exact counterpart.
+        // Keep the proof independent of whether the field is currently empty so
+        // restore can either pair the eager object or rebuild the lazy one.
+        private bool IsAuthenticatedFieldComponentOwnership(
+            AkronReconstructionNode target,
+            Type targetType,
+            out AkronReconstructionNode ownerNode,
+            out FieldInfo field
+        ) {
+            ownerNode = null;
+            field = null;
+            if (!IsComponentTypeSafeToReconstruct(targetType) ||
+                target.ParentKind != "field" ||
+                !nodes.TryGetValue(target.ParentNodeId, out ownerNode)) {
+                return false;
+            }
+            Type ownerType = ResolveType(ownerNode.TypeName, ownerNode.Path);
+            if (!resolvedFreshObjectNodes.Contains(ownerNode.Id) &&
+                !authenticatedOwnedComponentNodes.Contains(ownerNode.Id) &&
+                !authenticatedOwnedNestedStateNodes.Contains(ownerNode.Id) &&
+                !authenticatedRuntimeEntityNodes.Contains(ownerNode.Id) &&
+                !IsAuthenticatedReconstructedOwnedComponent(ownerNode, ownerType)) {
+                return false;
+            }
+            field = ResolveField(
+                target.ParentDeclaringTypeName,
+                target.ParentFieldName,
+                target.Path);
+            return field.FieldType == targetType && field.DeclaringType.IsAssignableFrom(ownerType);
         }
 
         private bool IsAuthenticatedOwnedComponentAlias(
@@ -6263,10 +6668,7 @@ internal sealed class AkronReconstructionGraph {
                 !resolvedFreshObjectNodes.Contains(rendererNode.Id) ||
                 !Objects.TryGetValue(rendererNode.Id, out object rendererObject) ||
                 !rendererType.IsInstanceOfType(rendererObject) ||
-                rendererNode.ParentKind != "array" ||
-                !TryGetFieldParent(rendererNode.ParentNodeId, "_items", out AkronReconstructionNode rendererStorageList) ||
-                !TryGetFieldParent(rendererStorageList.Id, "Renderers", out AkronReconstructionNode rendererListNode) ||
-                ResolveType(rendererListNode.TypeName, rendererListNode.Path) != typeof(RendererList)) {
+                !TryGetRendererListOwnerNode(rendererNode, out AkronReconstructionNode rendererListNode)) {
                 return false;
             }
 
@@ -6286,6 +6688,165 @@ internal sealed class AkronReconstructionGraph {
                    ReferenceEquals(rendererField.GetValue(rendererObject), freshArray) &&
                    entityScene?.NodeId != 0 &&
                    entityScene.NodeId == rendererScene?.NodeId;
+        }
+
+        private bool IsAuthenticatedFreshRendererEntityCacheAlias(
+            AkronReconstructionNode target,
+            Type targetType,
+            AkronReconstructionNode edgeParent,
+            AkronReconstructionField edgeField,
+            out string reason
+        ) {
+            reason = "not-an-entity-array-edge";
+            if (edgeField != null || !typeof(Entity).IsAssignableFrom(targetType)) {
+                return false;
+            }
+
+            reason = "target-is-not-fresh";
+            if (!resolvedFreshObjectNodes.Contains(target.Id) ||
+                !Objects.TryGetValue(target.Id, out object targetObject) || targetObject is not Entity targetEntity) {
+                return false;
+            }
+
+            reason = "target-has-no-scene-entity-list";
+            if (!TryGetEntityListOwnerNode(target, out AkronReconstructionNode entityListNode) ||
+                !Objects.TryGetValue(entityListNode.Id, out object entityListObject) ||
+                entityListObject is not EntityList entityList) {
+                return false;
+            }
+
+            reason = "target-is-not-in-fresh-entity-list";
+            if (!GetEntityListEntities(entityList).Any(candidate => ReferenceEquals(candidate, targetEntity))) {
+                return false;
+            }
+
+            reason = "edge-parent-is-not-exact-entity-array";
+            Type storageType = ResolveType(edgeParent.TypeName, edgeParent.Path);
+            if (!storageType.IsArray || storageType.GetElementType() != targetType) {
+                return false;
+            }
+
+            AkronReconstructionNode child = edgeParent;
+            AkronReconstructionNode current = nodes.TryGetValue(
+                edgeParent.ParentNodeId,
+                out AkronReconstructionNode parent)
+                ? parent
+                : null;
+            int depth = 0;
+            while (current != null && depth++ <= MaxParentChainDepth) {
+                Type currentType = ResolveType(current.TypeName, current.Path);
+                if (typeof(Renderer).IsAssignableFrom(currentType)) {
+                    reason = "renderer-is-not-fresh";
+                    if (!resolvedFreshObjectNodes.Contains(current.Id) ||
+                        !Objects.TryGetValue(current.Id, out object rendererObject) ||
+                        rendererObject is not Renderer renderer) {
+                        return false;
+                    }
+                    reason = "cache-is-not-a-renderer-field";
+                    if (child.ParentNodeId != current.Id || child.ParentKind != "field") {
+                        return false;
+                    }
+
+                    FieldInfo cacheField = ResolveField(
+                        child.ParentDeclaringTypeName,
+                        child.ParentFieldName,
+                        child.Path);
+                    reason = "cache-field-does-not-belong-to-renderer";
+                    if (!cacheField.DeclaringType.IsAssignableFrom(currentType)) {
+                        return false;
+                    }
+                    reason = "cache-field-type-does-not-match-node";
+                    if (cacheField.FieldType != ResolveType(child.TypeName, child.Path)) {
+                        return false;
+                    }
+                    reason = "cache-field-does-not-contain-exact-entity-type";
+                    if (!CollectionTypeContainsExactType(cacheField.FieldType, targetType)) {
+                        return false;
+                    }
+                    reason = "renderer-has-no-scene-renderer-list";
+                    if (!TryGetRendererListOwnerNode(current, out AkronReconstructionNode rendererListNode) ||
+                        !Objects.TryGetValue(rendererListNode.Id, out object rendererListObject) ||
+                        rendererListObject is not RendererList rendererList) {
+                        return false;
+                    }
+                    reason = "renderer-is-not-active-or-pending";
+                    if (!RendererListOwnsActiveOrPendingRenderer(rendererListNode, rendererList, renderer)) {
+                        return false;
+                    }
+
+                    AkronReconstructionValue entityScene = FindReferenceField(
+                        entityListNode,
+                        "<Scene>k__BackingField");
+                    AkronReconstructionValue rendererScene = FindReferenceField(rendererListNode, "scene");
+                    reason = "renderer-and-entity-list-scenes-differ";
+                    if (entityScene?.NodeId == 0 || entityScene.NodeId != rendererScene?.NodeId) {
+                        return false;
+                    }
+                    reason = "authenticated";
+                    return true;
+                }
+
+                if (!currentType.IsArray && !IsSupportedCollectionType(currentType) &&
+                    !IsCoreCollectionStorageType(currentType)) {
+                    reason = "cache-chain-has-unsupported-parent";
+                    return false;
+                }
+                child = current;
+                current = nodes.TryGetValue(current.ParentNodeId, out parent) ? parent : null;
+            }
+            reason = "cache-chain-has-no-renderer";
+            return false;
+        }
+
+        private bool RendererListOwnsActiveOrPendingRenderer(
+            AkronReconstructionNode rendererListNode,
+            RendererList rendererList,
+            Renderer renderer
+        ) {
+            // Scene.Add queues a renderer until RendererList.UpdateLists runs. A
+            // clean room can therefore own a valid renderer through `adding`
+            // while the saved frame already owns it through Renderers. The shared
+            // index uses those two exact runtime collections and excludes
+            // `removing`, because that renderer is leaving the scene.
+            return GetFreshRendererTypes(rendererListNode, rendererList)
+                .Values
+                .SelectMany(renderers => renderers)
+                .Any(candidate => ReferenceEquals(candidate, renderer));
+        }
+
+        private bool TryGetRendererListOwnerNode(
+            AkronReconstructionNode rendererNode,
+            out AkronReconstructionNode rendererListNode
+        ) {
+            rendererListNode = null;
+            List<AkronReconstructionNode> arrayParents = new List<AkronReconstructionNode>();
+            if (rendererNode.ParentKind == "array" &&
+                nodes.TryGetValue(rendererNode.ParentNodeId, out AkronReconstructionNode canonicalArray)) {
+                arrayParents.Add(canonicalArray);
+            }
+            if (savedArrayAliases.TryGetValue(
+                    rendererNode.Id,
+                    out List<AkronReconstructionNode> aliases)) {
+                arrayParents.AddRange(aliases);
+            }
+            foreach (AkronReconstructionNode arrayParent in arrayParents.Distinct()) {
+                if (TryGetFieldParent(arrayParent.Id, "_items", out AkronReconstructionNode rendererStorage) &&
+                    TryGetFieldParent(rendererStorage.Id, "Renderers", out AkronReconstructionNode candidate) &&
+                    ResolveType(candidate.TypeName, candidate.Path) == typeof(RendererList)) {
+                    rendererListNode = candidate;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool CollectionTypeContainsExactType(Type collectionType, Type targetType) {
+            if (collectionType.IsArray) {
+                return collectionType.GetElementType() == targetType;
+            }
+            return IsSupportedCollectionType(collectionType) &&
+                   collectionType.GetGenericArguments().Any(argument =>
+                       argument == targetType || CollectionTypeContainsExactType(argument, targetType));
         }
 
         private bool IsAuthenticatedTrailSnapshotPlayerComponentAlias(
@@ -6365,15 +6926,20 @@ internal sealed class AkronReconstructionGraph {
                 type.GetMethod(
                     "Finalize",
                     BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly) != null ||
-                TryGetSavedEntityId(node, out _) ||
+                HasCurrentRoomSourceId(node) ||
                 !HasAuthenticatedEntityListSceneOwnership(node, out _)) {
                 return false;
             }
 
-            // Runtime effects have no map EntityID, so a clean room cannot
-            // create them. Authenticate the built-in type through the saved
-            // Entity <-> EntityList <-> Scene ownership loop and the exact
-            // fresh Scene/List pair instead of trusting a type name alone.
+            // Runtime effects have no map identity in the current room, so a
+            // clean room cannot create them. Everest can still stamp a global
+            // side effect with the ambient SourceId of the map entity that
+            // created it. That inherited id keeps its original room while the
+            // entity moves on, just like a carried berry, and does not identify
+            // an entity in the room this document rebuilds. Authenticate the
+            // built-in type through the saved Entity <-> EntityList <-> Scene
+            // ownership loop and the exact fresh Scene/List pair instead of
+            // trusting a type name alone.
             return true;
         }
 
@@ -6387,7 +6953,7 @@ internal sealed class AkronReconstructionGraph {
                 type.GetMethod(
                     "Finalize",
                     BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly) != null ||
-                TryGetSavedEntityId(node, out _) ||
+                HasCurrentRoomSourceId(node) ||
                 !HasAuthenticatedEntityListSceneOwnership(
                     node,
                     out (AkronReconstructionNode Node, EntityList List) entityList)) {
@@ -6402,6 +6968,11 @@ internal sealed class AkronReconstructionGraph {
             // the saved population. A type absent from the fresh room remains
             // rejected.
             return GetFreshEntityTypes(entityList.Node, entityList.List).ContainsKey(type);
+        }
+
+        private bool HasCurrentRoomSourceId(AkronReconstructionNode node) {
+            return TryGetSavedEntityId(node, out EntityID sourceId) &&
+                   string.Equals(sourceId.Level, document.Room, StringComparison.Ordinal);
         }
 
         private bool HasAuthenticatedEntityListSceneOwnership(
@@ -6428,6 +6999,167 @@ internal sealed class AkronReconstructionGraph {
                 return false;
             }
             ownerList = (entityListNode, liveList);
+            return true;
+        }
+
+        // Everest assigns SourceData while it constructs a map entity. An
+        // entity created as a side effect of that constructor can inherit the
+        // same metadata even when it later persists into another room. The
+        // EntityData then has two legitimate paths in the saved graph: the
+        // runtime entity's exact _sourceData field and its original
+        // LevelData.Entities or Triggers list. The first path owns the node;
+        // this authenticates only the second alias, using the SourceId fields
+        // that Everest derived from that same map entry.
+        private bool IsAuthenticatedRuntimeEntitySourceDataListAlias(
+            AkronReconstructionNode target,
+            Type targetType,
+            AkronReconstructionNode edgeParent,
+            Type edgeParentType,
+            AkronReconstructionField edgeField
+        ) {
+            if (targetType != typeof(EntityData) || edgeParentType != typeof(EntityData[]) ||
+                edgeField != null ||
+                FindReferenceField(target, nameof(EntityData.Level)) is not AkronReconstructionValue levelReference ||
+                !nodes.TryGetValue(levelReference.NodeId, out AkronReconstructionNode sourceLevel) ||
+                !TryGetAuthenticatedRuntimeEntitySourceMetadata(
+                    target,
+                    sourceLevel,
+                    out EntityID sourceId,
+                    out int sourceDataId,
+                    out string sourceRoom)) {
+                return false;
+            }
+
+            if (!TryGetFieldParent(edgeParent.Id, "_items", out AkronReconstructionNode sourceList) ||
+                sourceList.ParentKind != "field" || sourceList.ParentNodeId <= 0 ||
+                sourceList.ParentNodeId != sourceLevel.Id ||
+                !(edgeParent.ItemsOrNull ?? Enumerable.Empty<AkronReconstructionValue>())
+                    .Any(item => item?.Kind == ReferenceValueKind && item.NodeId == target.Id)) {
+                return false;
+            }
+
+            bool isTrigger = sourceList.ParentFieldName == nameof(LevelData.Triggers);
+            if (!isTrigger && sourceList.ParentFieldName != nameof(LevelData.Entities)) {
+                return false;
+            }
+
+            int expectedSourceId = isTrigger
+                ? sourceDataId + AkronStartPosReconstruction.TriggerEntityIdOffset
+                : sourceDataId;
+            if (!string.Equals(sourceId.Level, sourceRoom, StringComparison.Ordinal) ||
+                sourceId.ID != expectedSourceId) {
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool IsAuthenticatedRuntimeEntitySourceMetadataLevelAlias(
+            AkronReconstructionNode target,
+            Type targetType,
+            AkronReconstructionNode edgeParent,
+            Type edgeParentType,
+            AkronReconstructionField edgeField
+        ) {
+            if (targetType != typeof(LevelData) || edgeParentType != typeof(EntityData) ||
+                edgeField?.Name != nameof(EntityData.Level) ||
+                FindReferenceField(edgeParent, nameof(EntityData.Level))?.NodeId != target.Id) {
+                return false;
+            }
+
+            FieldInfo field = ResolveField(
+                edgeField.DeclaringTypeName,
+                edgeField.Name,
+                edgeField.Path);
+            if (field.DeclaringType != typeof(EntityData) || field.FieldType != typeof(LevelData)) {
+                return false;
+            }
+
+            bool authenticatedLevel = authenticatedOwnedNestedStateNodes.Contains(target.Id) ||
+                                      IsAuthenticatedRuntimeEntitySourceMetadataState(target, targetType);
+            bool authenticatedEntry = authenticatedOwnedNestedStateNodes.Contains(edgeParent.Id) ||
+                                      IsAuthenticatedRuntimeEntitySourceMetadataState(edgeParent, edgeParentType);
+            return authenticatedLevel && authenticatedEntry;
+        }
+
+        private bool IsAuthenticatedRuntimeEntitySourceMetadataState(
+            AkronReconstructionNode node,
+            Type type
+        ) {
+            if (type == typeof(EntityData)) {
+                // A proved source LevelData owns every exact record in its
+                // Entities and Triggers lists, not only the record aliased by
+                // Entity._sourceData. The remaining records are passive map
+                // metadata, but reconstructing the LevelData requires their
+                // original order and their back-references to that same level.
+                if (node.ParentKind != "array" ||
+                    !TryGetFieldParent(node.ParentNodeId, "_items", out AkronReconstructionNode sourceList) ||
+                    sourceList.ParentKind != "field" || sourceList.ParentNodeId <= 0 ||
+                    (sourceList.ParentFieldName != nameof(LevelData.Entities) &&
+                     sourceList.ParentFieldName != nameof(LevelData.Triggers)) ||
+                    !nodes.TryGetValue(sourceList.ParentNodeId, out AkronReconstructionNode sourceLevel) ||
+                    FindReferenceField(node, nameof(EntityData.Level))?.NodeId != sourceLevel.Id) {
+                    return false;
+                }
+                return authenticatedOwnedNestedStateNodes.Contains(sourceLevel.Id) ||
+                       IsAuthenticatedRuntimeEntitySourceMetadataState(sourceLevel, typeof(LevelData));
+            }
+
+            if (type != typeof(LevelData) ||
+                !nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode sourceData)) {
+                return false;
+            }
+            return TryGetAuthenticatedRuntimeEntitySourceMetadata(
+                sourceData,
+                node,
+                out EntityID sourceId,
+                out int sourceDataId,
+                out string sourceRoom) &&
+                string.Equals(sourceId.Level, sourceRoom, StringComparison.Ordinal) &&
+                (sourceId.ID == sourceDataId ||
+                 sourceId.ID == sourceDataId + AkronStartPosReconstruction.TriggerEntityIdOffset);
+        }
+
+        private bool TryGetAuthenticatedRuntimeEntitySourceMetadata(
+            AkronReconstructionNode sourceData,
+            AkronReconstructionNode sourceLevel,
+            out EntityID sourceId,
+            out int sourceDataId,
+            out string sourceRoom
+        ) {
+            sourceId = default;
+            sourceDataId = 0;
+            sourceRoom = null;
+            if (ResolveType(sourceData.TypeName, sourceData.Path) != typeof(EntityData) ||
+                ResolveType(sourceLevel.TypeName, sourceLevel.Path) != typeof(LevelData) ||
+                sourceData.ParentKind != "field" || sourceData.ParentFieldName != "_sourceData" ||
+                sourceLevel.ParentKind != "field" ||
+                sourceLevel.ParentFieldName != nameof(EntityData.Level) ||
+                sourceLevel.ParentNodeId != sourceData.Id ||
+                !nodes.TryGetValue(sourceData.ParentNodeId, out AkronReconstructionNode ownerNode) ||
+                FindReferenceField(ownerNode, "_sourceData")?.NodeId != sourceData.Id ||
+                FindReferenceField(sourceData, nameof(EntityData.Level))?.NodeId != sourceLevel.Id) {
+                return false;
+            }
+
+            Type ownerType = ResolveType(ownerNode.TypeName, ownerNode.Path);
+            bool authenticatedOwner = authenticatedRuntimeEntityNodes.Contains(ownerNode.Id) ||
+                                      IsAuthenticatedBuiltInRuntimeEntity(ownerNode, ownerType) ||
+                                      IsAuthenticatedGeneratedRuntimeEntity(ownerNode, ownerType);
+            AkronReconstructionField roomField = sourceLevel.FieldsOrNull?.FirstOrDefault(field =>
+                field.Name == nameof(LevelData.Name) && field.Value?.Kind == ScalarValueKind);
+            AkronReconstructionField idField = sourceData.FieldsOrNull?.FirstOrDefault(field =>
+                field.Name == nameof(EntityData.ID) && field.Value?.Kind == ScalarValueKind);
+            if (!authenticatedOwner || !TryGetSavedEntityId(ownerNode, out sourceId) ||
+                roomField == null || idField == null ||
+                DecodeScalar(roomField.Value, roomField.Path) is not string decodedRoom ||
+                DecodeScalar(idField.Value, idField.Path) is not int decodedId) {
+                return false;
+            }
+
+            authenticatedRuntimeEntityNodes.Add(ownerNode.Id);
+            sourceRoom = decodedRoom;
+            sourceDataId = decodedId;
             return true;
         }
 
@@ -6494,6 +7226,98 @@ internal sealed class AkronReconstructionGraph {
             IEnumerable<Entity> freshEntities = GetEntityListEntities(entityList);
             return (!targetIsFresh || freshEntities.Any(candidate => ReferenceEquals(candidate, targetEntity))) &&
                    (!ownerIsFresh || freshEntities.Any(candidate => ReferenceEquals(candidate, ownerEntity)));
+        }
+
+        private bool IsAuthenticatedFreshEntityOwnedNestedEntity(
+            AkronReconstructionNode node,
+            Type type
+        ) {
+            return !type.IsAbstract &&
+                   !type.IsGenericType &&
+                   typeof(Entity).IsAssignableFrom(type) &&
+                   !typeof(IDisposable).IsAssignableFrom(type) &&
+                   !TryGetEntityListOwnerNode(node, out _) &&
+                   TryGetFreshEntityOwnedNestedEntityRoot(node, out _);
+        }
+
+        // Some helpers remove an Entity from the Scene and retain it as render state
+        // beneath a normal scene Entity. Its canonical owner path is still exact: each
+        // field or array slot has the child's concrete type, and the outer owner is an
+        // exact fresh EntityList member. That ownership authenticates a saved-only
+        // nested entity without treating arbitrary Component or Renderer references
+        // as ownership. FrostHelper's parallax decals use this shape.
+        private bool TryGetFreshEntityOwnedNestedEntityRoot(
+            AkronReconstructionNode nestedEntityNode,
+            out AkronReconstructionNode ownerEntityListNode
+        ) {
+            ownerEntityListNode = null;
+            AkronReconstructionNode child = nestedEntityNode;
+            AkronReconstructionNode current = nodes.TryGetValue(
+                child.ParentNodeId,
+                out AkronReconstructionNode parent)
+                ? parent
+                : null;
+            int depth = 0;
+            while (current != null && depth++ <= MaxParentChainDepth) {
+                Type ownerType = ResolveType(current.TypeName, current.Path);
+                if (!IsExactNestedOwnershipShape(child, current)) {
+                    return false;
+                }
+
+                if (typeof(Entity).IsAssignableFrom(ownerType)) {
+                    bool ownerIsFresh = resolvedFreshObjectNodes.Contains(current.Id);
+                    bool ownerIsAuthenticatedRuntime =
+                        authenticatedRuntimeEntityNodes.Contains(current.Id);
+                    if ((!ownerIsFresh && !ownerIsAuthenticatedRuntime) ||
+                        !Objects.TryGetValue(current.Id, out object ownerObject) ||
+                        ownerObject is not Entity ownerEntity ||
+                        !TryGetEntityListOwnerNode(current, out ownerEntityListNode) ||
+                        !Objects.TryGetValue(ownerEntityListNode.Id, out object listObject) ||
+                        listObject is not EntityList entityList ||
+                        (ownerIsFresh && !GetEntityListEntities(entityList)
+                            .Any(candidate => ReferenceEquals(candidate, ownerEntity)))) {
+                        ownerEntityListNode = null;
+                        return false;
+                    }
+                    return true;
+                }
+
+                if (typeof(Component).IsAssignableFrom(ownerType) ||
+                    typeof(Renderer).IsAssignableFrom(ownerType) ||
+                    typeof(Scene).IsAssignableFrom(ownerType) ||
+                    typeof(Delegate).IsAssignableFrom(ownerType) ||
+                    typeof(IDisposable).IsAssignableFrom(ownerType)) {
+                    return false;
+                }
+
+                child = current;
+                current = nodes.TryGetValue(current.ParentNodeId, out parent) ? parent : null;
+            }
+            return false;
+        }
+
+        private bool IsExactNestedOwnershipShape(
+            AkronReconstructionNode child,
+            AkronReconstructionNode parent
+        ) {
+            if (child.ParentNodeId != parent.Id) {
+                return false;
+            }
+
+            Type childType = ResolveType(child.TypeName, child.Path);
+            Type parentType = ResolveType(parent.TypeName, parent.Path);
+            if (child.ParentKind == "field") {
+                FieldInfo field = ResolveField(
+                    child.ParentDeclaringTypeName,
+                    child.ParentFieldName,
+                    child.Path);
+                return field.DeclaringType.IsAssignableFrom(parentType) &&
+                       field.FieldType == childType;
+            }
+            return child.ParentKind == "array" &&
+                   parentType.IsArray &&
+                   parentType.GetElementType() == childType &&
+                   child.ParentArrayIndicesOrNull?.Count == parentType.GetArrayRank();
         }
 
         private bool IsAuthenticatedFreshEntityOwnedNestedState(
@@ -6604,7 +7428,8 @@ internal sealed class AkronReconstructionGraph {
             if (node.ParentKind != "field" ||
                 node.ParentFieldName != "<Components>k__BackingField" ||
                 type != typeof(ComponentList) ||
-                !authenticatedRuntimeEntityNodes.Contains(node.ParentNodeId) ||
+                (!authenticatedRuntimeEntityNodes.Contains(node.ParentNodeId) &&
+                 !authenticatedOwnedNestedEntityNodes.Contains(node.ParentNodeId)) ||
                 !Objects.TryGetValue(node.ParentNodeId, out object parentObject) ||
                 parentObject is not Entity) {
                 return false;
@@ -6629,8 +7454,6 @@ internal sealed class AkronReconstructionGraph {
                 type.GetMethod(
                     "Finalize",
                     BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly) != null ||
-                (!resolvedFreshObjectNodes.Contains(node.ParentNodeId) &&
-                 !authenticatedRuntimeEntityNodes.Contains(node.ParentNodeId)) ||
                 !nodes.TryGetValue(node.ParentNodeId, out AkronReconstructionNode ownerNode) ||
                 !Objects.TryGetValue(ownerNode.Id, out object ownerObject) || ownerObject is not Entity ownerEntity ||
                 !TryGetEntityListOwnerNode(ownerNode, out AkronReconstructionNode entityListNode) ||
@@ -6639,8 +7462,22 @@ internal sealed class AkronReconstructionGraph {
             }
 
             Type ownerType = ResolveType(ownerNode.TypeName, ownerNode.Path);
+            bool ownerIsFresh = resolvedFreshObjectNodes.Contains(ownerNode.Id);
+            bool ownerIsAuthenticatedRuntime = authenticatedRuntimeEntityNodes.Contains(ownerNode.Id) ||
+                                               IsAuthenticatedBuiltInRuntimeEntity(ownerNode, ownerType) ||
+                                               IsAuthenticatedGeneratedRuntimeEntity(ownerNode, ownerType);
+            if (!ownerIsFresh && !ownerIsAuthenticatedRuntime) {
+                return false;
+            }
+            if (ownerIsAuthenticatedRuntime) {
+                // An alias-first entity can be admitted on fresh structural
+                // evidence before its EntityList alias is available to that
+                // node's first check. The complete document is indexed now, so
+                // retain the ownership proof for its later children and edges.
+                authenticatedRuntimeEntityNodes.Add(ownerNode.Id);
+            }
             if (ownerType.Assembly == typeof(Entity).Assembly &&
-                !authenticatedRuntimeEntityNodes.Contains(ownerNode.Id)) {
+                !ownerIsAuthenticatedRuntime) {
                 // A vanilla map-placed entity pairs by EntityID and its owned
                 // state aliases the fresh object, so the population evidence
                 // below is only for owners a clean load cannot recreate
@@ -6663,12 +7500,22 @@ internal sealed class AkronReconstructionGraph {
                 return false;
             }
 
+            // Once the runtime entity itself is proven, an exact concrete
+            // field is its ownership boundary. Entity._sourceData is one such
+            // field: Everest can assign it to an entity created as a side
+            // effect even when no fresh entity of that runtime type exists.
+            // Base-typed fields still need the fresh concrete-type evidence
+            // below.
+            if (ownerIsAuthenticatedRuntime && field.FieldType == type) {
+                return true;
+            }
+
             // A generated mod entity can own a constructor-created object
             // through a base-typed field, such as Entity.Collider -> Hitbox.
             // Authenticate that concrete child from the exact fresh owner when
             // available, or from the same field on another fresh entity of the
             // same generated type when the saved owner was reconstructed.
-            if (resolvedFreshObjectNodes.Contains(ownerNode.Id)) {
+            if (ownerIsFresh) {
                 return field.GetValue(ownerEntity)?.GetType() == type;
             }
             return GetFreshEntityTypes(entityListNode, entityList)
@@ -6753,20 +7600,66 @@ internal sealed class AkronReconstructionGraph {
         }
 
         private bool IsAuthenticatedFreshSceneEntityAlias(
+            AkronReconstructionNode target,
             Type targetType,
             AkronReconstructionNode edgeParent,
             AkronReconstructionField edgeField,
             bool exactParentSlot
         ) {
-            if (!exactParentSlot || edgeField == null ||
-                !typeof(Entity).IsAssignableFrom(targetType) ||
-                !resolvedFreshObjectNodes.Contains(edgeParent.Id) ||
+            Type entityType = ResolveType(edgeParent.TypeName, edgeParent.Path);
+            if (edgeField?.Name != "<Scene>k__BackingField" ||
+                !typeof(Scene).IsAssignableFrom(targetType) ||
+                !typeof(Entity).IsAssignableFrom(entityType) ||
+                !resolvedFreshObjectNodes.Contains(target.Id) ||
+                !Objects.TryGetValue(target.Id, out object sceneObject) ||
+                sceneObject is not Scene ||
                 !Objects.TryGetValue(edgeParent.Id, out object parentObject) ||
-                parentObject is not Scene) {
+                parentObject is not Entity entity) {
                 return false;
             }
+
             FieldInfo field = ResolveField(edgeField.DeclaringTypeName, edgeField.Name, edgeField.Path);
-            return field.FieldType == targetType && field.DeclaringType.IsInstanceOfType(parentObject);
+            if (!field.DeclaringType.IsAssignableFrom(entityType) ||
+                !field.FieldType.IsAssignableFrom(targetType)) {
+                return false;
+            }
+            if (exactParentSlot && ReferenceEquals(field.GetValue(entity), sceneObject)) {
+                return true;
+            }
+
+            // A fresh entity can be between removal and reattachment while the graph
+            // is validated. In that case its live Scene field is temporarily null, so
+            // the exact fresh EntityList membership proves the same ownership loop.
+            if (TryGetEntityListOwnerNode(edgeParent, out AkronReconstructionNode entityListNode) &&
+                Objects.TryGetValue(entityListNode.Id, out object entityListObject) &&
+                entityListObject is EntityList entityList) {
+                AkronReconstructionValue listScene = FindReferenceField(
+                    entityListNode,
+                    "<Scene>k__BackingField");
+                if (listScene?.NodeId == target.Id &&
+                    GetEntityListEntities(entityList).Any(candidate => ReferenceEquals(candidate, entity))) {
+                    return true;
+                }
+            }
+
+            return IsAuthenticatedFreshNestedEntitySceneOwner(
+                target,
+                edgeParent);
+        }
+
+        private bool IsAuthenticatedFreshNestedEntitySceneOwner(
+            AkronReconstructionNode sceneNode,
+            AkronReconstructionNode nestedEntityNode
+        ) {
+            if (!TryGetFreshEntityOwnedNestedEntityRoot(
+                    nestedEntityNode,
+                    out AkronReconstructionNode ownerEntityList)) {
+                return false;
+            }
+            AkronReconstructionValue listScene = FindReferenceField(
+                ownerEntityList,
+                "<Scene>k__BackingField");
+            return listScene?.NodeId == sceneNode.Id;
         }
 
         private bool IsAuthenticatedEntityComponentListBackReference(
@@ -6776,7 +7669,9 @@ internal sealed class AkronReconstructionGraph {
             AkronReconstructionField edgeField,
             bool exactParentSlot
         ) {
-            if ((!exactParentSlot && !authenticatedRuntimeEntityNodes.Contains(target.Id)) ||
+            if ((!exactParentSlot &&
+                 !authenticatedRuntimeEntityNodes.Contains(target.Id) &&
+                 !authenticatedOwnedNestedEntityNodes.Contains(target.Id)) ||
                 edgeField?.Name != "<Entity>k__BackingField" ||
                 !typeof(Entity).IsAssignableFrom(targetType) ||
                 ResolveType(edgeParent.TypeName, edgeParent.Path) != typeof(ComponentList) ||
@@ -6906,7 +7801,7 @@ internal sealed class AkronReconstructionGraph {
             if (freshFieldAliasesByNode.TryGetValue(target.Id, out object reservedAlias) &&
                 reservedAlias.GetType() == targetType && !freshOwners.ContainsKey(reservedAlias) &&
                 (target.Kind != ArrayKind ||
-                 reservedAlias is Array reservedArray && ArrayShapeMatches(reservedArray, target))) {
+                 reservedAlias is Array reservedArray && CanReuseFreshArray(reservedArray, target))) {
                 matchedAlias = reservedAlias;
                 exactTypedAlias = freshFieldAliasSourcesByNode.TryGetValue(
                         target.Id,
@@ -6936,7 +7831,7 @@ internal sealed class AkronReconstructionGraph {
                     continue;
                 }
                 if (target.Kind == ArrayKind &&
-                    (candidate is not Array candidateArray || !ArrayShapeMatches(candidateArray, target))) {
+                    (candidate is not Array candidateArray || !CanReuseFreshArray(candidateArray, target))) {
                     continue;
                 }
                 int candidatePriority = field.FieldType == targetType ? 1 : 0;
@@ -7221,6 +8116,118 @@ internal sealed class AkronReconstructionGraph {
                 return true;
             }
             return false;
+        }
+
+        private bool TryResolveFreshSceneRenderer(
+            AkronReconstructionNode target,
+            Type targetType,
+            out Renderer matchedRenderer
+        ) {
+            matchedRenderer = null;
+            if (!typeof(Renderer).IsAssignableFrom(targetType) ||
+                !TryGetRendererListOwnerNode(target, out AkronReconstructionNode rendererListNode)) {
+                return false;
+            }
+            object rendererListObject = Objects.TryGetValue(rendererListNode.Id, out object restoredRendererList)
+                ? restoredRendererList
+                : ResolveFreshObject(rendererListNode);
+            if (rendererListObject is not RendererList rendererList) {
+                return false;
+            }
+
+            IndexRendererListTypeOrdinals(rendererListNode);
+            if (!rendererListTypeOrdinals.TryGetValue(
+                    target.Id,
+                    out (int Ordinal, int Count) savedTypeOrdinal)) {
+                return false;
+            }
+            Dictionary<Type, List<Renderer>> freshTypes = GetFreshRendererTypes(rendererListNode, rendererList);
+            if (!freshTypes.TryGetValue(targetType, out List<Renderer> freshTypeRenderers) ||
+                freshTypeRenderers.Count != savedTypeOrdinal.Count) {
+                return false;
+            }
+
+            // RendererList order can shift when optional mod renderers are absent
+            // from a clean room. Match the ordinal among the same concrete type,
+            // and only when the saved and fresh populations agree, so a runtime
+            // addition cannot silently shift identity.
+            Renderer candidate = freshTypeRenderers[savedTypeOrdinal.Ordinal];
+            if (freshOwners.ContainsKey(candidate) ||
+                (freshFieldAliasReservations.TryGetValue(candidate, out int reservedNodeId) &&
+                 reservedNodeId != target.Id)) {
+                return false;
+            }
+            matchedRenderer = candidate;
+            return true;
+        }
+
+        private Dictionary<Type, List<Renderer>> GetFreshRendererTypes(
+            AkronReconstructionNode rendererListNode,
+            RendererList rendererList
+        ) {
+            if (freshRendererTypesByRendererList.TryGetValue(
+                    rendererListNode.Id,
+                    out Dictionary<Type, List<Renderer>> freshTypes)) {
+                return freshTypes;
+            }
+
+            IEnumerable<Renderer> pending = RendererListAddingField?.GetValue(rendererList) as IEnumerable<Renderer> ??
+                                            Enumerable.Empty<Renderer>();
+            IEnumerable<Renderer> removing = RendererListRemovingField?.GetValue(rendererList) as IEnumerable<Renderer> ??
+                                             Enumerable.Empty<Renderer>();
+            HashSet<Renderer> removingSet = new HashSet<Renderer>(removing, ReferenceEqualityComparer.Instance);
+            HashSet<Renderer> seen = new HashSet<Renderer>(ReferenceEqualityComparer.Instance);
+            freshTypes = rendererList.Renderers
+                .Concat(pending)
+                .Where(candidate => candidate != null && !removingSet.Contains(candidate) && seen.Add(candidate))
+                .GroupBy(candidate => candidate.GetType())
+                .ToDictionary(group => group.Key, group => group.ToList());
+            freshRendererTypesByRendererList[rendererListNode.Id] = freshTypes;
+            return freshTypes;
+        }
+
+        private void IndexRendererListTypeOrdinals(AkronReconstructionNode rendererListNode) {
+            if (!indexedRendererListTypeOrdinals.Add(rendererListNode.Id)) {
+                return;
+            }
+            AkronReconstructionValue savedRenderersReference = FindReferenceField(rendererListNode, "Renderers");
+            if (savedRenderersReference == null ||
+                !nodes.TryGetValue(savedRenderersReference.NodeId, out AkronReconstructionNode savedRenderersNode)) {
+                return;
+            }
+            AkronReconstructionValue savedStorageReference = FindReferenceField(savedRenderersNode, "_items");
+            if (savedStorageReference == null ||
+                !nodes.TryGetValue(savedStorageReference.NodeId, out AkronReconstructionNode savedStorageNode) ||
+                savedStorageNode.Kind != ArrayKind) {
+                return;
+            }
+
+            Dictionary<Type, List<int>> nodeIdsByType = new Dictionary<Type, List<int>>();
+            foreach (AkronReconstructionValue item in
+                     savedStorageNode.ItemsOrNull ?? Enumerable.Empty<AkronReconstructionValue>()) {
+                if (item?.Kind != ReferenceValueKind ||
+                    !nodes.TryGetValue(item.NodeId, out AkronReconstructionNode itemNode)) {
+                    continue;
+                }
+                Type itemType = ResolveType(itemNode.TypeName, itemNode.Path);
+                if (!typeof(Renderer).IsAssignableFrom(itemType)) {
+                    continue;
+                }
+                if (!nodeIdsByType.TryGetValue(itemType, out List<int> typeNodeIds)) {
+                    typeNodeIds = new List<int>();
+                    nodeIdsByType[itemType] = typeNodeIds;
+                }
+                typeNodeIds.Add(item.NodeId);
+            }
+
+            foreach (List<int> typeNodeIds in nodeIdsByType.Values) {
+                if (typeNodeIds.Distinct().Count() != typeNodeIds.Count) {
+                    continue;
+                }
+                for (int ordinal = 0; ordinal < typeNodeIds.Count; ordinal++) {
+                    rendererListTypeOrdinals[typeNodeIds[ordinal]] = (ordinal, typeNodeIds.Count);
+                }
+            }
         }
 
         private bool TryResolveFreshOwnedEntity(
@@ -7822,64 +8829,14 @@ internal sealed class AkronReconstructionGraph {
         // document whose slot or owner no longer matches the fresh room is
         // accepted rather than refused.
         //
-        // Keeping exact indices for StateMachine.ends and its three siblings
-        // has been proposed twice as the one safe place to close that, on the
-        // grounds that a state id is the slot's identity and no reload moves
-        // it. It was built and measured, and it does not work. The document a
-        // mod-set shift produces - saved ends[2] against fresh ends[1] - is
-        // byte for byte the document a mod produces by calling the public
-        // SetCallbacks during play to move that same callback from state 1 to
-        // state 2. Refusing is right for the first and a false refusal for the
-        // second, and the index alone cannot tell them apart, so an exact index
-        // trades one silent wrong restore for one silent refusal of a valid
-        // frame. An array index is not evidence of identity one level up
-        // either, because Celeste hands out the first free slot in
-        // TrailManager.snapshots and LightingRenderer.lights,
-        // ColliderList.colliders compacts on removal, and Dictionary, Queue and
-        // HashSet all move entries inside their backing arrays.
-        //
-        // The sibling names array is the coordinate that does tell those two
-        // documents apart, and that is where the fix went. It is in
-        // ValidateStateSlotAssignment below, not here. Four things it settled,
-        // so nobody re-derives them:
-        //
-        // - The name cannot go in this key. This index records where the fresh
-        //   room HAS the callback and a document asks where it WANTS it, and in
-        //   both stories those are different slots. Rendering each side's own
-        //   name accepts the shift and refuses the valid frame, which is
-        //   backwards; rendering the fresh room's name at the document's index
-        //   is the exact index again. The test that works is a comparison of
-        //   the document's names[i] against the fresh room's names[i], at the
-        //   one slot being written, beside this key rather than inside it. So
-        //   this key stays wildcarded: a callback is allowed to have moved
-        //   between slots both rooms agree about.
-        // - It must sit on the array ELEMENT, not on the delegate. A document
-        //   keeps one owner edge per node, so a callback object held both in a
-        //   state slot and in an ordinary field - a cached mod lambda - records
-        //   the field, and a check reading the delegate's own edge never sees
-        //   the slot. Measured: that document restores into the wrong slot with
-        //   a delegate-side check in place.
-        // - Celeste publishes the coordinate everywhere it matters. Player,
-        //   Seeker and AngryOshiro are the only StateMachines in the game and
-        //   all three name every state through SetStateName at construction,
-        //   immediately before mods add theirs through AddState.
-        // - A name is mutable through the public SetStateName, so "names differ
-        //   at slot i" cannot on its own tell a relabelled slot from a
-        //   reinterpreted one. Two attempts to excuse the relabel with a
-        //   delegate-equality test failed in opposite directions. What settled
-        //   it was measurement rather than a third test: no published mod
-        //   relabels after construction, so there is no carve-out and the rule
-        //   refuses a relabel too. ValidateStateSlotAssignment carries the
-        //   census and what it still leaves open.
-        //
-        // Two more omissions, which are unfinished rather than load-bearing:
-        // the invocation count and the delegate's own runtime type. Neither can
-        // make a restore wrong on its own, because both come from the document
-        // rather than from this key, and CreateDelegate below rejects a method
-        // the saved delegate type cannot bind. Constraining either one here is
-        // not free: an invocation list grows while a room is played, and the
-        // static and instance method evidence would still authenticate the same
-        // call without consulting this key.
+        // Exact callback indices cannot distinguish a fresh registration
+        // reorder from a valid callback move made while the room was played.
+        // Keep this key independent of the array index. At assignment time,
+        // StateMachine names and unnamed callback drivers establish the saved
+        // to fresh slot permutation. The StateMachine field references also
+        // associate shared callback arrays when a delegate's first owner edge
+        // happens to be an ordinary field. Missing or ambiguous semantic states
+        // refuse the restore instead of guessing.
         private static string StructuralDelegateCallKey(
             IEnumerable<AkronReconstructionPathStep> delegatePath,
             Type targetType,
@@ -8097,12 +9054,14 @@ internal sealed class AkronReconstructionGraph {
                     if (IsDerivedCollectionVersionField(target.GetType(), savedField.Name)) {
                         continue;
                     }
-                    FieldInfo field = ResolveField(savedField.DeclaringTypeName, savedField.Name, savedField.Path);
+                    string fieldPath = savedField.Path;
+                    FieldInfo field = ResolveField(savedField.DeclaringTypeName, savedField.Name, fieldPath);
                     if (!field.DeclaringType.IsInstanceOfType(target)) {
-                        throw new AkronReconstructionException(savedField.Path, "field does not belong to the restored object");
+                        throw new AkronReconstructionException(fieldPath, "field does not belong to the restored object");
                     }
-                    object fieldValue = ResolveValue(savedField.Value, savedField.Path);
-                    ValidateAssignable(field.FieldType, fieldValue, savedField.Path);
+                    object fieldValue = ResolveValue(savedField.Value, fieldPath);
+                    fieldValue = RemapStateMachineStateField(node, target, savedField, fieldValue, fieldPath);
+                    ValidateAssignable(field.FieldType, fieldValue, fieldPath);
                     TrackDisplacedEventInstance(field.GetValue(target), fieldValue);
                     assignments.Add(() => field.SetValue(target, fieldValue));
                 }
@@ -8135,8 +9094,15 @@ internal sealed class AkronReconstructionGraph {
             }
             IReadOnlyList<AkronReconstructionValue> items =
                 node.ItemsOrNull ?? (IReadOnlyList<AkronReconstructionValue>) Array.Empty<AkronReconstructionValue>();
-            if (target.LongLength != items.Count) {
-                throw new AkronReconstructionException(node.Path, "array item count differs");
+            int[] stateTargetSlots = RestoredStateSlotTargets(node);
+            if (stateTargetSlots == null) {
+                if (target.LongLength != items.Count) {
+                    throw new AkronReconstructionException(node.Path, "array item count differs");
+                }
+            } else if (target.Rank != 1 || target.GetLowerBound(0) != 0 ||
+                       stateTargetSlots.Length != items.Count ||
+                       stateTargetSlots.Any(slot => slot < 0 || slot >= target.Length)) {
+                throw new AkronReconstructionException(node.Path, "state slot array shape differs");
             }
 
             Type elementType = target.GetType().GetElementType();
@@ -8155,198 +9121,234 @@ internal sealed class AkronReconstructionGraph {
                 string itemPath = ArrayPath(node.Path, itemIndices);
                 object itemValue = ResolveValue(savedItem, itemPath);
                 ValidateAssignable(elementType, itemValue, itemPath);
-                ValidateStateSlotAssignment(node, index, itemValue, itemPath);
-                TrackDisplacedEventInstance(target.GetValue(itemIndices), itemValue);
+                object displacedValue = stateTargetSlots == null
+                    ? target.GetValue(itemIndices)
+                    : target.GetValue(stateTargetSlots[index]);
+                TrackDisplacedEventInstance(displacedValue, itemValue);
                 IncrementArrayIndices(target, itemIndices);
             }
             assignments.Add(() => {
                 int[] assignmentIndices = GetInitialArrayIndices(target);
                 for (int assignmentIndex = 0; assignmentIndex < items.Count; assignmentIndex++) {
-                    target.SetValue(ResolveValue(items[assignmentIndex], node.Path), assignmentIndices);
+                    object itemValue = ResolveValue(items[assignmentIndex], node.Path);
+                    if (stateTargetSlots == null) {
+                        target.SetValue(itemValue, assignmentIndices);
+                    } else {
+                        target.SetValue(itemValue, stateTargetSlots[assignmentIndex]);
+                    }
                     IncrementArrayIndices(target, assignmentIndices);
                 }
             });
         }
 
-        // Monocle.StateMachine addresses its four callback arrays by state id,
-        // and a state id is handed out by AddState in whatever order the
-        // installed mods add states rather than declared, so the same state can
-        // sit at a different id in two sessions. Writing a saved callback into
-        // slot i of a freshly loaded machine is only faithful if slot i is the
-        // same state in both rooms, and that is checkable because the machine
-        // says so: the sibling names array names the state each slot belongs to.
+        // AddState assigns numeric ids in registration order, and that order can
+        // differ between two clean launches of the same mod set. Restore each
+        // callback and name by the state's semantic coordinate instead: its name,
+        // or its update/coroutine driver when an older helper left it unnamed.
+        // The machine's current and previous state ids use this same permutation.
         //
-        // This is the pair two earlier passes could not separate with the index
-        // alone, and it is why the structural delegate key above stays
-        // wildcarded rather than keeping exact indices:
-        //
-        // - A mod set whose AddState order changed moves a state to another id.
-        //   The document's slot then reads as a different state in the fresh
-        //   room and the callback would land where this room never runs it. The
-        //   names disagree at that slot, so it is refused.
-        // - A mod calling the public SetCallbacks during play moves a callback
-        //   between two slots both rooms agree about. The names agree, so it is
-        //   accepted. An exact index refused this, on a document byte for byte
-        //   identical to the first.
-        //
-        // Two writes are deliberately not refused, because neither can misplace
-        // anything:
-        //
-        // - A slot the fresh machine does not have at all. A mod that calls
-        //   AddState during play leaves the saved frame holding a state a clean
-        //   load has not added yet; it is adding a state, not renaming one.
-        // - Every other array in the game. Nothing else says what its slots
-        //   mean, so there is nothing to check and the wildcard stands.
-        //
-        // There is deliberately no third case for a write that changes nothing.
-        // An earlier version carried one, to spare a state a mod had merely
-        // relabelled mid-play through the public SetStateName while its
-        // callbacks stayed put. Deciding "this write changes nothing" needs an
-        // equality test over two delegates whose targets the restore rebuilt,
-        // and there is none that is both sound and complete: by reference it
-        // refuses an ordinary mod closure, and by target type and method it
-        // admits a shifted slot whenever the fresh slot already runs that method
-        // on that type. Both were reproduced. The carve-out is gone because the
-        // mutation it protected does not occur: a census of all 6,015 mods in
-        // Everest's published database on 2026-08-15 read every shipped
-        // assembly and found exactly one caller of SetStateName - Aqua, inside
-        // an On.Celeste.Player.ctor hook, which is construction - and Celeste's
-        // own Player, Seeker and AngryOshiro name their states in constructors
-        // and never again. The only post-construction relabel found anywhere is
-        // Magedeline's unpublished Desolo Zantas (MaggyHelper, ontalkend), whose
-        // sole release asset has zero downloads and which is absent from
-        // everest_update.yaml. If it or anything like it ships, this rule
-        // refuses those frames rather than restoring them wrong.
-        //
-        // Every frame this can refuse wrongly has one shape: a state whose name
-        // differs between the two sessions while its callbacks never moved. A
-        // name comes from construction - the maxStates the constructor was
-        // given, the AddState arguments, and SetStateName - so on an install
-        // whose game and mod binaries did not change between setting the slot
-        // and loading it, both sessions build the same names and this refuses
-        // nothing. It bites when a mod update renames a state, or migrates one
-        // from the unnamed reflection idiom to AddState, and it would bite if a
-        // mod named a state from something that varies per run. Of the 66 mod
-        // repositories read for the census, every named AddState passes a string
-        // literal or a method returning one, so the per-run case was not found;
-        // it is unmeasured for published mods with no source. Across an update a
-        // rename and a reinterpretation are genuinely indistinguishable, and a
-        // reinterpretation is the silent wrong restore this exists to stop, so
-        // refusing is the conservative call rather than an accident.
-        //
-        // The check sits on the array element rather than on the delegate,
-        // because a document keeps one canonical owner edge per node: one
-        // callback object held both in a state slot and in an ordinary field -
-        // which is what a cached mod lambda is - records the field, and a check
-        // reading the delegate's own edge would never see the slot.
-        //
-        // A slot neither side names has no name to compare, and a name
-        // comparison alone reads that as agreement. The pre-2023 reflection
-        // idiom produces exactly that: a mod-local extension method resizes
-        // begins, updates, ends and coroutines and never names, so the state it
-        // adds is unnamed in both sessions and a shift among such slots used to
-        // be accepted silently. Everest's own patch expects unnamed slots -
-        // GetStateName hands back the state id as a string for one - and the
-        // idiom is still shipped by XaphanHelper, BrokemiaHelper, JackalHelper,
-        // IsaGrabBag and PrismaticHelper among others, so refusing every write
-        // into an unnamed slot would cost all of their players every slot on
-        // every load, shift or no shift.
-        //
-        // So an unnamed slot falls back to the only other thing the machine says
-        // about it: the code it runs there, updates[slot] and coroutines[slot],
-        // taken by declaring type and method name. A shift moves the slot from
-        // one mod's state to another's and those differ; a mod set that did not
-        // change wires the same methods in both sessions and this refuses
-        // nothing. The condition is "neither side names this slot" rather than
-        // the shorter names array those helpers leave behind, because the two
-        // are not the same set: Seeker asks for ten states and names eight,
-        // AngryOshiro asks for ten and names six, so a machine can have unnamed
-        // slots inside a names array of full length, and a mod that fills one of
-        // those through the public SetCallbacks has the same defect with no
-        // short names to show for it.
-        //
-        // What the fallback costs: a mod that changes an unnamed state's own
-        // update or coroutine while the room is played is refused, because
-        // without a name there is nothing to tell that change from the slot
-        // having become another mod's state, and the second is the silent wrong
-        // restore. Rewiring begins and ends is not affected, and neither is
-        // moving one of them between two unnamed slots - that is the same in-play
-        // move the named half accepts above, and the drivers still pin both
-        // slots while it happens.
-        //
-        // Three wrong restores stay open, none reachable through any published
-        // mod. Two were reproduced when the named half landed. A slot whose four
-        // saved callbacks are all null is never checked, because the check only
-        // runs where a value is written, so a machine that lost a state like
-        // that can still take a callback at the wrong id - and no driver reaches
-        // it either, for the same reason. And SavedStateSlotArrays below keeps
-        // one owner per array node, so two machines sharing one callback array -
-        // which needs reflection, the public API cannot do it - let the later
-        // one lend the earlier one its coordinates; keeping every owner and
-        // refusing when any disagrees is the fix if a mod is ever seen to alias
-        // them. The third is this fallback's own floor and is reasoned rather
-        // than reproduced: two unnamed slots that both hold no update and no
-        // coroutine have the same empty driver, so a shift between them is
-        // accepted and their begin and end callbacks swap. A state like that
-        // runs nothing while it is current and never advances out of itself.
-        private void ValidateStateSlotAssignment(
-            AkronReconstructionNode arrayNode,
-            int slot,
-            object restoredValue,
-            string itemPath
-        ) {
-            if (!SavedStateSlotArrays().TryGetValue(arrayNode.Id, out AkronReconstructionNode machineNode) ||
-                !Objects.TryGetValue(machineNode.Id, out object freshMachine) ||
-                !freshStateSlots.TryGetValue(freshMachine, out (string Name, string Driver)[] freshSlots) ||
-                slot >= freshSlots.Length) {
-                return;
+        // A state that exists only past the fresh machine's end was added while
+        // the saved room was running, so it keeps an unused appended slot. A
+        // state that exists only in the fresh room belongs to newer mod code, so
+        // its fresh slot and callbacks remain untouched. A missing, renamed or
+        // ambiguous saved state is refused; guessing there would put callbacks
+        // on a different state. Every owner of an aliased array must also produce
+        // the same permutation.
+        private int[] RestoredStateSlotTargets(AkronReconstructionNode arrayNode) {
+            if (savedStateSlotTargetsByArray.TryGetValue(arrayNode.Id, out int[] cachedTargets)) {
+                return cachedTargets;
             }
-            string savedName = SavedStateSlotName(machineNode, slot);
-            string freshName = freshSlots[slot].Name;
-            if (freshName == null && savedName == null) {
-                if (string.Equals(
-                        freshSlots[slot].Driver,
-                        SavedStateSlotDriver(machineNode, slot),
-                        StringComparison.Ordinal)) {
-                    return;
-                }
-            } else if (string.Equals(freshName, savedName, StringComparison.Ordinal)) {
-                return;
+            if (!SavedStateSlotArrayOwners().TryGetValue(
+                    arrayNode.Id,
+                    out List<AkronReconstructionNode> machineNodes)) {
+                return null;
             }
-            // Name the mod the same way a refused callback does, from the type
-            // that declares the method, so the load message can still say whose
-            // state this was.
-            string refusedTypeName = restoredValue is Delegate refusedCall
-                ? refusedCall.Method?.DeclaringType?.AssemblyQualifiedName ?? string.Empty
-                : string.Empty;
-            throw new AkronReconstructionException(
-                itemPath,
-                "saved state slot is a different state in the fresh room" +
-                ";state=" + (savedName ?? "<unnamed>") +
-                ";slot=" + slot.ToString(CultureInfo.InvariantCulture),
-                refusedTypeName);
-        }
 
-        // Which document nodes are a state machine's callback array, and which
-        // machine owns each. Built from the machine's own field references
-        // rather than from the array node's owner edge, for the same reason the
-        // check above sits on the element: an owner edge records only the first
-        // place the capture reached a node from.
-        private Dictionary<int, AkronReconstructionNode> SavedStateSlotArrays() {
-            if (savedStateSlotArrays != null) {
-                return savedStateSlotArrays;
-            }
-            savedStateSlotArrays = new Dictionary<int, AkronReconstructionNode>();
-            foreach (AkronReconstructionNode machineNode in nodes.Values) {
-                foreach (AkronReconstructionField field in machineNode.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
-                    if (field?.Value?.Kind == ReferenceValueKind &&
-                        string.Equals(field.DeclaringTypeName, StateMachineTypeName, StringComparison.Ordinal) &&
-                        Array.IndexOf(StateMachineCallbackFieldNames, field.Name) >= 0) {
-                        savedStateSlotArrays[field.Value.NodeId] = machineNode;
+            int savedArraySlots = arrayNode.ItemsOrNull?.Count ??
+                                  arrayNode.ArrayLengthsOrNull?.FirstOrDefault() ??
+                                  0;
+            int[] targets = null;
+            foreach (AkronReconstructionNode machineNode in machineNodes) {
+                int[] machineTargets = RestoredStateSlotTargets(machineNode, arrayNode.Path);
+                if (savedArraySlots > machineTargets.Length) {
+                    throw new AkronReconstructionException(
+                        arrayNode.Path,
+                        "state slot array is longer than its state machine");
+                }
+                if (targets == null) {
+                    targets = machineTargets.Take(savedArraySlots).ToArray();
+                    continue;
+                }
+                for (int slot = 0; slot < savedArraySlots; slot++) {
+                    if (targets[slot] != machineTargets[slot]) {
+                        throw new AkronReconstructionException(
+                            ArrayPath(arrayNode.Path, new[] { slot }),
+                            "shared state slot array has incompatible owners");
                     }
                 }
             }
-            return savedStateSlotArrays;
+
+            targets ??= Array.Empty<int>();
+            savedStateSlotTargetsByArray[arrayNode.Id] = targets;
+            return targets;
+        }
+
+        private int[] RestoredStateSlotTargets(
+            AkronReconstructionNode machineNode,
+            string itemPath
+        ) {
+            if (savedStateSlotTargetsByMachine.TryGetValue(machineNode.Id, out int[] cachedTargets)) {
+                return cachedTargets;
+            }
+
+            int savedSlotCount = SavedStateSlotCount(machineNode);
+            int[] targets = Enumerable.Range(0, savedSlotCount).ToArray();
+            if (!Objects.TryGetValue(machineNode.Id, out object freshMachine) ||
+                !freshStateSlots.TryGetValue(freshMachine, out (string Name, string Driver)[] freshSlots)) {
+                savedStateSlotTargetsByMachine[machineNode.Id] = targets;
+                return targets;
+            }
+            Array.Fill(targets, -1);
+            int targetSlotCount = Math.Max(savedSlotCount, freshSlots.Length);
+            bool[] usedTargets = new bool[targetSlotCount];
+            for (int savedSlot = 0; savedSlot < savedSlotCount; savedSlot++) {
+                string savedName = SavedStateSlotName(machineNode, savedSlot);
+                string savedDriver = savedName == null
+                    ? SavedStateSlotDriver(machineNode, savedSlot)
+                    : null;
+                List<int> candidates = new List<int>();
+                for (int freshSlot = 0; freshSlot < freshSlots.Length; freshSlot++) {
+                    bool sameState = savedName == null
+                        ? freshSlots[freshSlot].Name == null &&
+                          string.Equals(freshSlots[freshSlot].Driver, savedDriver, StringComparison.Ordinal)
+                        : string.Equals(freshSlots[freshSlot].Name, savedName, StringComparison.Ordinal);
+                    if (sameState && !usedTargets[freshSlot]) {
+                        candidates.Add(freshSlot);
+                    }
+                }
+
+                // Several unnamed, callback-free slots are inert placeholders in
+                // Monocle's fixed base arrays. They are semantically identical, so
+                // retain their numeric slot. Any named state or unnamed state with
+                // code needs one unique match; its old number cannot break a tie.
+                bool inertUnnamedSlot = savedName == null &&
+                                         !SavedStateSlotHasAnyCallback(machineNode, savedSlot) &&
+                                         freshMachine is StateMachine freshStateMachine &&
+                                         candidates.All(candidate =>
+                                             !FreshStateSlotHasAnyCallback(freshStateMachine, candidate));
+                int targetSlot = candidates.Count == 1
+                    ? candidates[0]
+                    : inertUnnamedSlot && candidates.Contains(savedSlot)
+                        ? savedSlot
+                        : -1;
+                if (targetSlot < 0 && candidates.Count == 0 && savedSlot >= freshSlots.Length) {
+                    targetSlot = Enumerable.Range(freshSlots.Length, targetSlotCount - freshSlots.Length)
+                        .FirstOrDefault(candidate => !usedTargets[candidate], -1);
+                }
+                if (targetSlot < 0) {
+                    string reason = candidates.Count == 0
+                        ? "saved state is missing from the fresh room"
+                        : "saved state matches multiple fresh slots";
+                    throw new AkronReconstructionException(
+                        itemPath,
+                        reason +
+                        ";state=" + (savedName ?? "<unnamed>") +
+                        ";slot=" + savedSlot.ToString(CultureInfo.InvariantCulture));
+                }
+
+                targets[savedSlot] = targetSlot;
+                usedTargets[targetSlot] = true;
+            }
+
+            if (freshSlots.Length <= savedSlotCount) {
+                for (int freshSlot = 0; freshSlot < freshSlots.Length; freshSlot++) {
+                    if (usedTargets[freshSlot]) {
+                        continue;
+                    }
+                    throw new AkronReconstructionException(
+                        itemPath,
+                        "fresh state is missing from the saved room" +
+                        ";state=" + (freshSlots[freshSlot].Name ?? "<unnamed>") +
+                        ";slot=" + freshSlot.ToString(CultureInfo.InvariantCulture));
+                }
+            }
+
+            savedStateSlotTargetsByMachine[machineNode.Id] = targets;
+            return targets;
+        }
+
+        private object RemapStateMachineStateField(
+            AkronReconstructionNode machineNode,
+            object target,
+            AkronReconstructionField savedField,
+            object fieldValue,
+            string fieldPath
+        ) {
+            if (target is not StateMachine ||
+                fieldValue is not int savedState ||
+                savedState < 0 ||
+                !string.Equals(savedField.DeclaringTypeName, StateMachineTypeName, StringComparison.Ordinal) ||
+                Array.IndexOf(StateMachineCurrentStateFieldNames, savedField.Name) < 0) {
+                return fieldValue;
+            }
+
+            int[] targets = RestoredStateSlotTargets(machineNode, fieldPath);
+            if (targets.Length == 0) {
+                return fieldValue;
+            }
+            if (savedState >= targets.Length) {
+                throw new AkronReconstructionException(
+                    fieldPath,
+                    "saved current state is outside the state machine");
+            }
+            return targets[savedState];
+        }
+
+        private int SavedStateSlotCount(AkronReconstructionNode machineNode) {
+            int slots = 0;
+            foreach (string fieldName in StateMachineSlotArrayFieldNames) {
+                AkronReconstructionValue array = FindReferenceField(machineNode, fieldName);
+                if (array == null || !nodes.TryGetValue(array.NodeId, out AkronReconstructionNode arrayNode)) {
+                    continue;
+                }
+                int arraySlots = arrayNode.ItemsOrNull?.Count ??
+                                 arrayNode.ArrayLengthsOrNull?.FirstOrDefault() ??
+                                 0;
+                slots = Math.Max(slots, arraySlots);
+            }
+            return slots;
+        }
+
+        // Read ownership from the machine fields, not a node's first-owner edge:
+        // cached callbacks often reach their delegate through an ordinary field
+        // first. Keep every owner so reflected array sharing cannot borrow one
+        // machine's state coordinates for another.
+        private Dictionary<int, List<AkronReconstructionNode>> SavedStateSlotArrayOwners() {
+            if (savedStateSlotArrayOwners != null) {
+                return savedStateSlotArrayOwners;
+            }
+
+            savedStateSlotArrayOwners = new Dictionary<int, List<AkronReconstructionNode>>();
+            foreach (AkronReconstructionNode machineNode in nodes.Values) {
+                foreach (AkronReconstructionField field in
+                         machineNode.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
+                    if (field?.Value?.Kind != ReferenceValueKind ||
+                        !string.Equals(field.DeclaringTypeName, StateMachineTypeName, StringComparison.Ordinal) ||
+                        Array.IndexOf(StateMachineSlotArrayFieldNames, field.Name) < 0) {
+                        continue;
+                    }
+                    if (!savedStateSlotArrayOwners.TryGetValue(
+                            field.Value.NodeId,
+                            out List<AkronReconstructionNode> owners)) {
+                        owners = new List<AkronReconstructionNode>();
+                        savedStateSlotArrayOwners[field.Value.NodeId] = owners;
+                    }
+                    if (!owners.Contains(machineNode)) {
+                        owners.Add(machineNode);
+                    }
+                }
+            }
+            return savedStateSlotArrayOwners;
         }
 
         private string SavedStateSlotName(AkronReconstructionNode machineNode, int slot) {
@@ -8379,6 +9381,7 @@ internal sealed class AkronReconstructionGraph {
         // refusing is the direction this rule is for.
         private string SavedStateSlotDriver(AkronReconstructionNode machineNode, int slot) {
             StringBuilder driver = new StringBuilder();
+            HashSet<int> activeTargets = new HashSet<int>();
             foreach (string driverFieldName in StateMachineDriverFieldNames) {
                 driver.Append(driverFieldName).Append('=');
                 AkronReconstructionValue callbacks = FindReferenceField(machineNode, driverFieldName);
@@ -8389,17 +9392,86 @@ internal sealed class AkronReconstructionGraph {
                     slot < callbacksNode.ItemsOrNull.Count &&
                     callbacksNode.ItemsOrNull[slot]?.Kind == ReferenceValueKind &&
                     nodes.TryGetValue(callbacksNode.ItemsOrNull[slot].NodeId, out AkronReconstructionNode callbackNode)) {
-                    foreach (AkronReconstructionDelegateCall call in
-                             callbackNode.DelegateCallsOrNull ?? Enumerable.Empty<AkronReconstructionDelegateCall>()) {
-                        driver.Append(call.DeclaringTypeName)
-                            .Append('.')
-                            .Append(call.MethodName)
-                            .Append('+');
-                    }
+                    AppendSavedStateDelegateIdentity(driver, callbackNode, activeTargets);
                 }
                 driver.Append(';');
             }
             return driver.ToString();
+        }
+
+        // Saved-side twin of AppendFreshStateDelegateIdentity. Field names and
+        // delegate return types are read from the document, while the generated
+        // marker comes from the loaded type. Both sides therefore spell the same
+        // adapter chain without depending on object ids or state registration order.
+        private void AppendSavedStateDelegateIdentity(
+            StringBuilder identity,
+            AkronReconstructionNode callbackNode,
+            HashSet<int> activeTargets
+        ) {
+            foreach (AkronReconstructionDelegateCall call in
+                     callbackNode.DelegateCallsOrNull ?? Enumerable.Empty<AkronReconstructionDelegateCall>()) {
+                identity.Append(call.DeclaringTypeName)
+                    .Append('.')
+                    .Append(call.MethodName);
+                if (call.Target?.Kind == ReferenceValueKind &&
+                    nodes.TryGetValue(call.Target.NodeId, out AkronReconstructionNode targetNode) &&
+                    ResolveType(targetNode.TypeName, targetNode.Path)
+                        .IsDefined(typeof(CompilerGeneratedAttribute), inherit: false) &&
+                    activeTargets.Add(targetNode.Id)) {
+                    foreach (AkronReconstructionField field in
+                             targetNode.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
+                        if (field?.Value?.Kind != ReferenceValueKind ||
+                            !nodes.TryGetValue(field.Value.NodeId, out AkronReconstructionNode nestedCallback) ||
+                            nestedCallback.Kind != DelegateKind ||
+                            !(nestedCallback.DelegateCallsOrNull ?? Enumerable.Empty<AkronReconstructionDelegateCall>())
+                                .Any(nestedCall => string.Equals(
+                                    nestedCall.ReturnTypeName,
+                                    call.ReturnTypeName,
+                                    StringComparison.Ordinal))) {
+                            continue;
+                        }
+                        identity.Append('[')
+                            .Append(field.DeclaringTypeName)
+                            .Append('.')
+                            .Append(field.Name)
+                            .Append('=');
+                        AppendSavedStateDelegateIdentity(identity, nestedCallback, activeTargets);
+                        identity.Append(']');
+                    }
+                    activeTargets.Remove(targetNode.Id);
+                }
+                identity.Append('+');
+            }
+        }
+
+        private bool SavedStateSlotHasAnyCallback(
+            AkronReconstructionNode machineNode,
+            int slot
+        ) {
+            foreach (string callbackFieldName in StateMachineCallbackFieldNames) {
+                AkronReconstructionValue callbacks = FindReferenceField(machineNode, callbackFieldName);
+                if (callbacks != null &&
+                    nodes.TryGetValue(callbacks.NodeId, out AkronReconstructionNode callbacksNode) &&
+                    slot >= 0 &&
+                    callbacksNode.ItemsOrNull != null &&
+                    slot < callbacksNode.ItemsOrNull.Count &&
+                    callbacksNode.ItemsOrNull[slot]?.Kind != NullValueKind) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool FreshStateSlotHasAnyCallback(StateMachine machine, int slot) {
+            foreach (FieldInfo callbackField in StateMachineCallbackFields) {
+                if (callbackField?.GetValue(machine) is Array callbacks &&
+                    slot >= 0 &&
+                    slot < callbacks.Length &&
+                    callbacks.GetValue(slot) is Delegate) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void TrackDisplacedEventInstance(object currentValue, object restoredValue) {
@@ -8816,6 +9888,21 @@ internal sealed class AkronReconstructionGraph {
             return true;
         }
 
+        private bool CanReuseFreshArray(Array array, AkronReconstructionNode node) {
+            if (ArrayShapeMatches(array, node)) {
+                return true;
+            }
+            IReadOnlyList<AkronReconstructionValue> items =
+                node.ItemsOrNull ?? (IReadOnlyList<AkronReconstructionValue>) Array.Empty<AkronReconstructionValue>();
+            if (array.Rank != 1 || array.GetLowerBound(0) != 0 || array.LongLength <= items.Count) {
+                return false;
+            }
+            int[] stateTargetSlots = RestoredStateSlotTargets(node);
+            return stateTargetSlots != null &&
+                   stateTargetSlots.Length == items.Count &&
+                   stateTargetSlots.All(slot => slot >= 0 && slot < array.Length);
+        }
+
         private static void ValidateAssignable(Type targetType, object value, string path) {
             if (value == null) {
                 if (targetType.IsValueType && Nullable.GetUnderlyingType(targetType) == null) {
@@ -8834,18 +9921,21 @@ internal sealed class AkronReconstructionGraph {
         private readonly AkronReconstructionDocument document;
         private readonly Dictionary<int, object> objects;
         private readonly Dictionary<int, AkronReconstructionNode> nodes;
+        private readonly AkronStateSlotPermutation stateSlotPermutation;
         private readonly HashSet<string> masks;
 
         public VerificationContext(
             AkronReconstructionGraph owner,
             AkronReconstructionDocument document,
             Dictionary<int, object> objects,
+            AkronStateSlotPermutation stateSlotPermutation,
             HashSet<string> masks
         ) {
             this.owner = owner;
             this.document = document;
             this.objects = objects;
             nodes = document.Nodes.ToDictionary(node => node.Id);
+            this.stateSlotPermutation = stateSlotPermutation;
             this.masks = masks;
         }
 
@@ -8886,7 +9976,8 @@ internal sealed class AkronReconstructionGraph {
         private void VerifyObject(AkronReconstructionNode node, object current) {
             foreach (AkronReconstructionField savedField in
                      node.FieldsOrNull ?? Enumerable.Empty<AkronReconstructionField>()) {
-                if (IsMasked(savedField.Path)) {
+                string fieldPath = savedField.Path;
+                if (IsMasked(fieldPath)) {
                     continue;
                 }
                 if (IsDerivedMembershipField(current.GetType(), savedField.Name)) {
@@ -8895,12 +9986,44 @@ internal sealed class AkronReconstructionGraph {
                 if (IsDerivedCollectionVersionField(current.GetType(), savedField.Name)) {
                     continue;
                 }
-                FieldInfo field = ResolveField(savedField.DeclaringTypeName, savedField.Name, savedField.Path);
+                FieldInfo field = ResolveField(savedField.DeclaringTypeName, savedField.Name, fieldPath);
                 if (IsRewrittenHashIndexField(node, current, field)) {
                     continue;
                 }
-                VerifyValue(savedField.Value, field.GetValue(current), savedField.Path);
+                object actual = field.GetValue(current);
+                if (VerifyRemappedStateMachineField(node, current, savedField, actual, fieldPath)) {
+                    continue;
+                }
+                VerifyValue(savedField.Value, actual, fieldPath);
             }
+        }
+
+        private bool VerifyRemappedStateMachineField(
+            AkronReconstructionNode machineNode,
+            object current,
+            AkronReconstructionField savedField,
+            object actual,
+            string fieldPath
+        ) {
+            if (current is not StateMachine ||
+                savedField.Value?.Kind != ScalarValueKind ||
+                DecodeScalar(savedField.Value, fieldPath) is not int savedState ||
+                savedState < 0 ||
+                !string.Equals(savedField.DeclaringTypeName, StateMachineTypeName, StringComparison.Ordinal) ||
+                Array.IndexOf(StateMachineCurrentStateFieldNames, savedField.Name) < 0 ||
+                stateSlotPermutation == null ||
+                !stateSlotPermutation.ByMachine.TryGetValue(machineNode.Id, out int[] targets)) {
+                return false;
+            }
+            if (savedState >= targets.Length) {
+                throw new AkronReconstructionException(
+                    fieldPath,
+                    "saved current state is outside the state machine");
+            }
+            if (actual is not int actualState || actualState != targets[savedState]) {
+                throw new AkronReconstructionException(fieldPath, "restored state slot differs");
+            }
+            return true;
         }
 
         // The scalar fields AkronHashIndex.Rebuild wrote, and only those. An
@@ -9006,13 +10129,23 @@ internal sealed class AkronReconstructionGraph {
             }
             IReadOnlyList<AkronReconstructionValue> items =
                 node.ItemsOrNull ?? (IReadOnlyList<AkronReconstructionValue>) Array.Empty<AkronReconstructionValue>();
-            if (current.LongLength != items.Count) {
-                throw new AkronReconstructionException(node.Path, "array item count differs");
+            int[] stateTargetSlots = null;
+            stateSlotPermutation?.ByArray.TryGetValue(node.Id, out stateTargetSlots);
+            if (stateTargetSlots == null) {
+                if (current.LongLength != items.Count) {
+                    throw new AkronReconstructionException(node.Path, "array item count differs");
+                }
+            } else if (current.Rank != 1 || current.GetLowerBound(0) != 0 ||
+                       stateTargetSlots.Length != items.Count ||
+                       stateTargetSlots.Any(slot => slot < 0 || slot >= current.Length)) {
+                throw new AkronReconstructionException(node.Path, "state slot array shape differs");
             }
             int[] itemIndices = GetInitialArrayIndices(current);
             for (int index = 0; index < items.Count; index++) {
                 AkronReconstructionValue expected = items[index];
-                object actual = current.GetValue(itemIndices);
+                object actual = stateTargetSlots == null
+                    ? current.GetValue(itemIndices)
+                    : current.GetValue(stateTargetSlots[index]);
                 if ((expected == null || expected.Kind == NullValueKind) && actual == null) {
                     IncrementArrayIndices(current, itemIndices);
                     continue;
@@ -9711,7 +10844,7 @@ internal static class AkronStartPosReconstruction {
     // no protection for triggers - and worse, an entity whose id the map dropped
     // would still be found through a trigger that happens to carry the same raw
     // number, which is common because the two lists number independently.
-    private const int TriggerEntityIdOffset = 10000000;
+    internal const int TriggerEntityIdOffset = 10000000;
 
     internal static bool AreEquivalentLiveResources(Type type) {
         // A VirtualTexture key includes its source path and dimensions. A
