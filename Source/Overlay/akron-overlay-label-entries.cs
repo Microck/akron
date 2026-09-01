@@ -14,22 +14,25 @@ public sealed partial class AkronOverlay {
         }
 
         Dictionary<string, OverlayEntry> rows = new Dictionary<string, OverlayEntry>(StringComparer.OrdinalIgnoreCase) {
-            ["Death Stats"] = LabelToggle("Death Stats", () => settings.DeathStatsWidget, value => settings.DeathStatsWidget = value),
-            ["Room"] = LabelToggle("Room", () => settings.RoomLabels, value => settings.RoomLabels = value),
-            ["Status"] = LabelToggle("Status", () => settings.StatusLabelsWidget, value => settings.StatusLabelsWidget = value),
+            ["Stamina Widget"] = LabelPolicyToggle("Stamina Widget", AkronFeatureKind.StaminaWidget, () => settings.LabelSystemVisible, () => settings.StaminaWidget, value => settings.StaminaWidget = value),
+            ["Speed Widget"] = LabelPolicyToggle("Speed Widget", AkronFeatureKind.SpeedWidget, () => settings.LabelSystemVisible, () => settings.SpeedWidget, value => settings.SpeedWidget = value),
+            ["Dash Widget"] = LabelPolicyToggle("Dash Widget", AkronFeatureKind.DashWidget, () => settings.LabelSystemVisible, () => settings.DashWidget, value => settings.DashWidget = value),
+            ["Death Stats"] = LabelPolicyToggle("Death Stats", AkronFeatureKind.DeathStats, () => settings.LabelSystemVisible, () => settings.DeathStatsWidget, value => settings.DeathStatsWidget = value),
+            ["Room"] = LabelPolicyToggle("Room", AkronFeatureKind.RoomLabelOverlay, () => settings.LabelSystemVisible, () => settings.RoomLabels, value => settings.RoomLabels = value),
+            ["Status"] = LabelPolicyToggle("Status", AkronFeatureKind.StatusLabels, () => settings.LabelSystemVisible, () => settings.StatusLabelsWidget, value => settings.StatusLabelsWidget = value),
             ["Toasts"] = LabelToggle("Toasts", () => settings.ToastLabels, value => settings.ToastLabels = value, "toast", "notification", "option feedback"),
             ["Cheat Indicator"] = LabelToggle("Cheat Indicator", () => settings.HudCheatIndicator, value => settings.HudCheatIndicator = value),
-            ["Input History"] = LabelToggle("Input History", () => settings.InputViewer || settings.InputHistoryPanel, value => {
+            ["Input History"] = LabelPolicyToggle("Input History", AkronFeatureKind.InputHistory, () => settings.LabelSystemVisible, () => settings.InputViewer || settings.InputHistoryPanel, value => {
                 settings.InputViewer = value;
                 settings.InputHistoryPanel = value;
             }),
             ["Inputs per second"] = LabelPolicyToggle("Inputs per second", AkronFeatureKind.InputsPerSecondCounter, () => settings.LabelSystemVisible, () => settings.InputsPerSecondCounter, value => settings.InputsPerSecondCounter = value),
-            ["Dash Stats"] = LabelToggle("Dash Stats", () => settings.DashCountStats, value => settings.DashCountStats = value, "dash count", "stats"),
-            ["Jump Stats"] = LabelToggle("Jump Stats", () => settings.JumpCount, value => settings.JumpCount = value, "jump count", "stats"),
+            ["Dash Stats"] = LabelPolicyToggle("Dash Stats", AkronFeatureKind.PracticeCounters, () => settings.LabelSystemVisible, () => settings.DashCountStats, value => settings.DashCountStats = value, "dash count", "stats"),
+            ["Jump Stats"] = LabelPolicyToggle("Jump Stats", AkronFeatureKind.PracticeCounters, () => settings.LabelSystemVisible, () => settings.JumpCount, value => settings.JumpCount = value, "jump count", "stats"),
             ["StartPos HUD"] = LabelPolicyToggle("StartPos HUD", AkronFeatureKind.StartPosTools, () => settings.LabelSystemVisible, () => settings.StartPosShowLabel, value => settings.StartPosShowLabel = value),
-            ["Room Timer"] = LabelToggle("Room Timer", () => settings.RoomTimerWidget, value => settings.RoomTimerWidget = value),
-            ["Room Stat Tracker"] = LabelToggle("Room Stat Tracker", () => settings.RoomStatTracker, value => settings.RoomStatTracker = value),
-            ["Attempts"] = LabelToggle("Attempts", () => settings.TotalAttemptsWidget, value => settings.TotalAttemptsWidget = value),
+            ["Room Timer"] = LabelPolicyToggle("Room Timer", AkronFeatureKind.RoomTimer, () => settings.LabelSystemVisible, () => settings.RoomTimerWidget, value => settings.RoomTimerWidget = value),
+            ["Room Stat Tracker"] = LabelPolicyToggle("Room Stat Tracker", AkronFeatureKind.RoomStatTracker, () => settings.LabelSystemVisible, () => settings.RoomStatTracker, value => settings.RoomStatTracker = value),
+            ["Attempts"] = LabelPolicyToggle("Attempts", AkronFeatureKind.AttemptsLabel, () => settings.LabelSystemVisible, () => settings.TotalAttemptsWidget, value => settings.TotalAttemptsWidget = value),
             ["No Short Numbers"] = LabelToggle("No Short Numbers", () => settings.NoShortNumbers, value => settings.NoShortNumbers = value)
         };
 

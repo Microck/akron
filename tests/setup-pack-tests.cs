@@ -15,6 +15,27 @@ namespace Celeste.Mod.Akron.Tests;
 [Collection(AkronSharedStateCollection.Name)]
 public sealed class SetupPackTests {
     [Fact]
+    public void ImportingBindingsWithoutAUsableOverlayToggleRestoresTheDefault() {
+        // A pack exported with Open Menu unbound must not strand the recipient outside the overlay.
+        AkronModuleSettings target = new AkronModuleSettings();
+        AkronSetupPack pack = new AkronSetupPack {
+            Section = AkronSetupSection.Keybinds,
+            State = new AkronSetupState(),
+            ButtonBindings = new Dictionary<string, AkronButtonBindingPack> {
+                [nameof(AkronModuleSettings.ToggleOverlay)] = new AkronButtonBindingPack()
+            }
+        };
+
+        // The reference ButtonBinding used by the tests cannot run its getters, so the
+        // decision is asserted through the pack-level check Apply uses, and Apply itself
+        // only has to complete.
+        Assert.True(AkronSetupPacks.PackOverlayToggleNeedsDefault(pack.ButtonBindings[nameof(AkronModuleSettings.ToggleOverlay)]));
+        Assert.False(AkronSetupPacks.PackOverlayToggleNeedsDefault(new AkronButtonBindingPack { Keys = new List<string> { "F8" } }));
+        AkronSetupPacks.Apply(target, new AkronModuleSession(), pack);
+        Assert.NotNull(target.ToggleOverlay);
+    }
+
+    [Fact]
     public void WholeArchiveRoundTripPreservesPortableMenuBindingsAndCurrentMapStartPositions() {
         const string areaSid = "Tests/WholeArchiveRoundTrip";
         string directory = Path.Combine(Path.GetTempPath(), "akron-whole-setup-" + Guid.NewGuid().ToString("N"));

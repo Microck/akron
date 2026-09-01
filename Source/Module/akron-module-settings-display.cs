@@ -200,17 +200,4 @@ public partial class AkronModuleSettings {
                 .Trim() ?? string.Empty
         };
     }
-
-    public void CreateCurrentMapCompatibilityEntry(TextMenu menu, bool inGame) {
-        menu.Add(new TextMenu.SubHeader("Current Map Compatibility"));
-        if (!inGame || Engine.Scene is not Level level) {
-            menu.Add(new TextMenu.Button("Open a map in-game to edit per-map compatibility overrides.") { Selectable = false });
-            return;
-        }
-
-        menu.Add(new TextMenu.Button("Map: " + level.Session.Area.GetSID()) { Selectable = false });
-        menu.Add(new TextMenu.Button("Always Use Broker: " + (AkronMapOverrides.ShouldForceBroker(level) ? "On" : "Off")).Pressed(() => AkronActions.ToggleForceBroker(level)));
-        menu.Add(new TextMenu.Button("Allow Unsafe StartPos Restore: " + (AkronMapOverrides.ShouldAllowUnsafeSavestates(level) ? "On" : "Off")).Pressed(() => AkronActions.ToggleUnsafeNativeOverride(level)));
-        menu.Add(new TextMenu.Button("Disable Everest-safe Block: " + (AkronMapOverrides.ShouldDisableEverestSafeBlock(level) ? "On" : "Off")).Pressed(() => AkronActions.ToggleEverestSafeBypass(level)));
-    }
 }

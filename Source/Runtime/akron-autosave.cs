@@ -62,6 +62,10 @@ public static class AkronAutosave {
             return;
         }
 
+        if (!AkronModule.TryUse(AkronFeatureKind.Autosave)) {
+            return;
+        }
+
         AkronModule.Session.AkronAutosaveTimer = 0f;
         AkronModule.Session.AkronAutosaveCooldown = AkronModuleSettings.ClampAutosaveMinimumDelaySeconds(AkronModule.Settings.AutosaveMinimumDelaySeconds);
         UserIO.SaveHandler(true, AkronModule.Settings.AutosaveSaveSettings);

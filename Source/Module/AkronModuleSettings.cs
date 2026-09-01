@@ -95,7 +95,6 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public AkronOverlayThemePreset OverlayThemePreset { get; set; } = AkronOverlayThemePreset.Default;
     public int OverlayScale { get; set; } = 100;
     public int OverlayBlur { get; set; }
-    public int OverlayAnimationMs { get; set; } = 80;
     public bool Logging { get; set; } = true;
     public AkronLoggingLevel LoggingLevel { get; set; } = AkronLoggingLevel.Diagnostic;
     public bool LoggingMirrorWarningsToEverest { get; set; } = true;
@@ -123,11 +122,6 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int CustomOverlayTextColor { get; set; } = 0xFFFFFF;
     public int CustomOverlayMutedColor { get; set; } = 0x7D8080;
     public int CustomOverlayDisabledColor { get; set; } = 0x909090;
-    public bool FloatingButton { get; set; }
-    public int FloatingButtonOpacity { get; set; } = 70;
-    public int FloatingButtonScale { get; set; } = 100;
-    public bool FloatingButtonInLevels { get; set; } = true;
-    public bool FloatingButtonInMenus { get; set; }
     public bool SearchAutofocus { get; set; }
     public List<string> CollapsedOverlaySections { get; set; } = new List<string> {
         "Speedrun Tool",
@@ -697,7 +691,6 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public bool SpeedrunToolBrokerWarnings { get; set; } = true;
     public bool EverestSafeAutoBlock { get; set; } = true;
     public bool SaveTimeAndDeaths { get; set; }
-    public bool UnsafeSavestateOverride { get; set; }
     public int ScreenshotScale { get; set; } = 1;
     public bool ScreenshotStatus { get; set; }
     public string ScreenshotScannerExportPath { get; set; } = DefaultScreenshotScannerExportPath;
@@ -725,7 +718,6 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int AutosaveIntervalSeconds { get; set; } = 600;
     public int AutosaveMinimumDelaySeconds { get; set; } = 60;
     public bool AutosaveHideSavingIcon { get; set; }
-    public bool DeloadSpinners { get; set; }
     public float DeloadSpinnerDelaySeconds { get; set; }
     public bool DashCountStats { get; set; }
     public AkronCounterDisplayMode DashCountStatsMode { get; set; } = AkronCounterDisplayMode.Session;
@@ -782,7 +774,6 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int ActiveStartPosSlot { get; set; } = 1;
     public string EditableFlagName { get; set; } = "akron-debug-flag";
     public string TasFilePath { get; set; } = string.Empty;
-    public Dictionary<string, AkronMapOverride> MapOverrides { get; set; } = new Dictionary<string, AkronMapOverride>();
     public Dictionary<string, string> MenuActionBindings { get; set; } = new Dictionary<string, string>();
     public Dictionary<string, string> ExtendedVariantConfiguredValues { get; set; } = new Dictionary<string, string>();
 }

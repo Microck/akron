@@ -138,10 +138,11 @@ public sealed class OverlayTests {
         Assert.Contains("DrawPopupActionBindingContext(\"StartPos\", \"Respawn\"", startPosSource);
         Assert.Contains("Wait for input after load##", startPosSource);
         Assert.Contains("AkronModule.Settings.StartPosWaitForInput = waitForInput", startPosSource);
-        Assert.Contains("entry.OptionsPopupKey, \"StartPos Snapshot Slot\"", popupSource);
-        Assert.Contains("DrawSavestateSlotPopupControls(popupId);", popupSource);
+        Assert.Contains("entry.OptionsPopupKey, \"StartPos Actions\"", popupSource);
         Assert.Contains("DrawStartPosPopupControls(popupId);", popupSource);
-        Assert.DoesNotContain("entry.Label, \"StartPos Snapshot Slot\"", popupSource);
+        // The Speedrun Tool slot stepper lives on the SRT Slot row, not inside StartPos.
+        Assert.Contains("entry.Label, \"SRT Slot\"", popupSource);
+        Assert.Contains("DrawSavestateSlotPopupControls(popupId);", popupSource);
     }
 
     [Fact]
@@ -1204,11 +1205,12 @@ public sealed class OverlayTests {
     }
 
     [Fact]
-    public void StartPosRowUsesSnapshotSlotPopupKey() {
+    public void StartPosRowUsesStartPosActionsPopupKey() {
         Dictionary<string, string> popupKeys = BuildOverlayEntryOptionsPopupKeys("StartPos");
 
-        Assert.Equal("StartPos Snapshot Slot", popupKeys["StartPos"]);
-        Assert.True(HasOverlayOptionsPopup("StartPos Snapshot Slot"));
+        Assert.Equal("StartPos Actions", popupKeys["StartPos"]);
+        Assert.True(HasOverlayOptionsPopup("StartPos Actions"));
+        Assert.True(HasOverlayOptionsPopup("SRT Slot"));
     }
 
     [Fact]
@@ -1867,7 +1869,7 @@ public sealed class OverlayTests {
         Assert.Contains("IsEntityInspectorCursorHoldActive()", moduleInputSource);
         Assert.Contains("IsButtonBindingHeld(AkronModuleSettings.ResolveEntityInspectorCursorHoldBinding(Settings))", moduleInputSource);
         Assert.Contains("ShouldShowEntityInspectorCursor()", moduleInputSource);
-        Assert.Contains("AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed", inspectorSource);
+        Assert.Contains("AkronModule.TryUse(AkronFeatureKind.EntityInspector)", inspectorSource);
         int updateStart = inspectorSource.IndexOf("public static void UpdateInspectorPin", StringComparison.Ordinal);
         int previewStart = inspectorSource.IndexOf("private static void UpdateInspectorPinHoverPreview", StringComparison.Ordinal);
         Assert.True(updateStart >= 0);

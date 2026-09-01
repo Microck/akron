@@ -173,7 +173,8 @@ public sealed partial class AkronOverlay {
                string.Equals(label, "Import Setup", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Upload Pack", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Confirm Actions", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(label, "StartPos Snapshot Slot", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "StartPos Actions", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(label, "SRT Slot", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Grab Mode", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Noclip", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Hazard Accuracy", StringComparison.OrdinalIgnoreCase) ||
@@ -306,7 +307,11 @@ public sealed partial class AkronOverlay {
             return session == null ? "Unavailable" : session.TimescaleMultiplier.ToString("0.0x");
         }
 
-        if (string.Equals(label, "StartPos Snapshot Slot", StringComparison.OrdinalIgnoreCase)) {
+        if (string.Equals(label, "StartPos Actions", StringComparison.OrdinalIgnoreCase)) {
+            return "Slot " + AkronModule.Settings.ActiveStartPosSlot;
+        }
+
+        if (string.Equals(label, "SRT Slot", StringComparison.OrdinalIgnoreCase)) {
             return "Slot " + AkronModule.Settings.ActiveSavestateSlot;
         }
 
@@ -400,10 +405,6 @@ public sealed partial class AkronOverlay {
 
         if (string.Equals(label, "FPS Bypass", StringComparison.OrdinalIgnoreCase)) {
             return AkronRuntimeOptions.DescribeFpsBypass();
-        }
-
-        if (string.Equals(label, "TPS Bypass", StringComparison.OrdinalIgnoreCase)) {
-            return AkronRuntimeOptions.DescribeTpsBypass();
         }
 
         if (string.Equals(label, "Safe Mode", StringComparison.OrdinalIgnoreCase)) {
@@ -684,9 +685,14 @@ public sealed partial class AkronOverlay {
             return;
         }
 
-        if (string.Equals(label, "StartPos Snapshot Slot", StringComparison.OrdinalIgnoreCase)) {
+        if (string.Equals(label, "StartPos Actions", StringComparison.OrdinalIgnoreCase)) {
+            AkronActions.ShiftStartPosSlot(delta);
+            return;
+        }
+
+        if (string.Equals(label, "SRT Slot", StringComparison.OrdinalIgnoreCase)) {
             AkronModule.SetActiveSavestateSlot(AkronModule.Settings.ActiveSavestateSlot + delta);
-            Engine.Scene?.Add(new AkronToast("Active StartPos snapshot slot: " + AkronModule.Settings.ActiveSavestateSlot));
+            Engine.Scene?.Add(new AkronToast("Active Speedrun Tool slot: " + AkronModule.Settings.ActiveSavestateSlot));
             return;
         }
 
@@ -750,11 +756,6 @@ public sealed partial class AkronOverlay {
 
         if (string.Equals(label, "FPS Bypass", StringComparison.OrdinalIgnoreCase)) {
             AkronModule.Settings.FpsBypassTarget = AkronModuleSettings.ClampFpsTarget(AkronModule.Settings.FpsBypassTarget + delta * 10);
-            return;
-        }
-
-        if (string.Equals(label, "TPS Bypass", StringComparison.OrdinalIgnoreCase)) {
-            AkronModule.Settings.TpsBypassTarget = AkronModuleSettings.ClampTpsTarget(AkronModule.Settings.TpsBypassTarget + delta * 10);
             return;
         }
 

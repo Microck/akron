@@ -13,6 +13,7 @@ public partial class AkronModule {
     private const string CelesteJournalOuiTypeName = "Celeste.OuiJournal";
     private static KeyboardState previousOverlayToggleKeyboard;
     private static KeyboardState previousStartPosHotkeyKeyboard;
+    private static KeyboardState previousGlobalFrameBypassKeyboard;
     private static bool cursorVisibilityCaptured;
     private static bool previousMouseVisible;
 
@@ -61,94 +62,97 @@ public partial class AkronModule {
             return;
         }
 
-        if (Settings.Retry?.Pressed ?? false) {
+        // One keyboard snapshot for every binding below. Everest's ButtonBinding.Pressed fires
+        // on any one of a binding's keys, so a chord such as Ctrl+R would fire on bare R; the
+        // chord read here needs every key held and one of them newly pressed, like Open Menu.
+        KeyboardState keyboard = Keyboard.GetState();
+        KeyboardState previousKeyboard = previousStartPosHotkeyKeyboard;
+        previousStartPosHotkeyKeyboard = keyboard;
+
+        if (IsBindingPressed(Settings.Retry, keyboard, previousKeyboard)) {
             Retry(level);
         }
 
-        if (Settings.ReloadRoom?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.ReloadRoom, keyboard, previousKeyboard)) {
             ReloadRoom(level);
         }
 
-        if (Settings.OpenDebugMap?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.OpenDebugMap, keyboard, previousKeyboard)) {
             OpenDebugMap(level);
         }
 
-        if (Settings.ReloadChapter?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.ReloadChapter, keyboard, previousKeyboard)) {
             ReloadChapter(level);
         }
 
-        if (Settings.SaveState?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.SaveState, keyboard, previousKeyboard)) {
             SaveState(level);
         }
 
-        if (Settings.LoadState?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.LoadState, keyboard, previousKeyboard)) {
             LoadState(level);
         }
 
-        if (Settings.PreviousSlot?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.PreviousSlot, keyboard, previousKeyboard)) {
             ShiftSavestateSlot(-1);
         }
 
-        if (Settings.NextSlot?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.NextSlot, keyboard, previousKeyboard)) {
             ShiftSavestateSlot(1);
         }
 
-        if (Settings.CycleGrabMode?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.CycleGrabMode, keyboard, previousKeyboard)) {
             AkronActions.CycleGrabMode();
         }
 
-        if (Settings.FreezeGameplay?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.FreezeGameplay, keyboard, previousKeyboard)) {
             AkronActions.ToggleFreeze();
         }
 
-        if (Settings.StepFrame?.Pressed ?? false && Settings.FrameStepper && Session.FreezeGameplay) {
+        if (IsBindingPressed(Settings.StepFrame, keyboard, previousKeyboard) && Settings.FrameStepper && Session.FreezeGameplay) {
             Session.StepFrameRequested = true;
         }
 
-        UpdateStepHoldRepeat();
+        UpdateStepHoldRepeat(keyboard, previousKeyboard);
 
-        if (Settings.DecreaseTimescale?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.DecreaseTimescale, keyboard, previousKeyboard)) {
             AkronActions.AdjustTimescale(-0.1f);
         }
 
-        if (Settings.IncreaseTimescale?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.IncreaseTimescale, keyboard, previousKeyboard)) {
             AkronActions.AdjustTimescale(0.1f);
         }
 
-        HandleFrameBypassBindings();
+        HandleFrameBypassBindings(keyboard, previousKeyboard);
 
-        KeyboardState startPosKeyboard = Keyboard.GetState();
-        KeyboardState previousStartPosKeyboard = previousStartPosHotkeyKeyboard;
-        previousStartPosHotkeyKeyboard = startPosKeyboard;
-
-        if (IsStartPosBindingPressed(Settings.SetStartPos, startPosKeyboard, previousStartPosKeyboard)) {
+        if (IsBindingPressed(Settings.SetStartPos, keyboard, previousKeyboard)) {
             AkronActions.SetStartPos(level);
         }
 
-        if (IsStartPosBindingPressed(Settings.LoadStartPos, startPosKeyboard, previousStartPosKeyboard)) {
+        if (IsBindingPressed(Settings.LoadStartPos, keyboard, previousKeyboard)) {
             AkronActions.LoadStartPos(level);
         }
 
-        if (IsStartPosBindingPressed(Settings.ClearStartPos, startPosKeyboard, previousStartPosKeyboard)) {
+        if (IsBindingPressed(Settings.ClearStartPos, keyboard, previousKeyboard)) {
             AkronActions.ClearActiveStartPos();
         }
 
-        if (IsStartPosBindingPressed(Settings.PreviousStartPos, startPosKeyboard, previousStartPosKeyboard)) {
+        if (IsBindingPressed(Settings.PreviousStartPos, keyboard, previousKeyboard)) {
             AkronActions.ShiftStartPos(level, -1);
         }
 
-        if (IsStartPosBindingPressed(Settings.NextStartPos, startPosKeyboard, previousStartPosKeyboard)) {
+        if (IsBindingPressed(Settings.NextStartPos, keyboard, previousKeyboard)) {
             AkronActions.ShiftStartPos(level, 1);
         }
 
         for (int slot = 1; slot <= 9; slot++) {
-            if (IsStartPosBindingPressed(GetStartPosSlotBinding(slot), startPosKeyboard, previousStartPosKeyboard)) {
+            if (IsBindingPressed(GetStartPosSlotBinding(slot), keyboard, previousKeyboard)) {
                 AkronActions.LoadStartPosSlot(level, slot);
                 break;
             }
         }
 
-        if (Settings.ToggleHitboxes?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.ToggleHitboxes, keyboard, previousKeyboard)) {
             bool next = !Settings.HitboxViewer;
             if (next && !TryUse(AkronFeatureKind.HitboxViewer)) {
                 return;
@@ -157,7 +161,7 @@ public partial class AkronModule {
             Settings.HitboxViewer = next;
         }
 
-        if (Settings.ToggleEntityInspector?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.ToggleEntityInspector, keyboard, previousKeyboard)) {
             bool next = !Settings.EntityInspector;
             if (next && !TryUse(AkronFeatureKind.EntityInspector)) {
                 return;
@@ -170,11 +174,15 @@ public partial class AkronModule {
     }
 
     internal static bool CanExecuteLevelActionBindings(Level level) {
-        return level != null &&
-               CanExecuteLevelActionBindings(
-                   Overlay?.Visible == true,
-                   level.Paused,
-                   Settings.AllowPauseBuffering);
+        if (level == null ||
+            !CanExecuteLevelActionBindings(Overlay?.Visible == true, level.Paused, Settings.AllowPauseBuffering)) {
+            return false;
+        }
+
+        // The setting is a Cheat only at the moment it does something: a binding read while
+        // Celeste is paused. Recording here rather than on the toggle keeps an attempt that
+        // never paused with it on unmarked, and re-marks every attempt that used it.
+        return !level.Paused || TryUse(AkronFeatureKind.PauseBuffering);
     }
 
     internal static bool CanExecuteLevelActionBindings(
@@ -184,12 +192,12 @@ public partial class AkronModule {
         return !overlayVisible && (!levelPaused || allowPauseBuffering);
     }
 
-    private static void HandleFrameBypassBindings() {
+    private static void HandleFrameBypassBindings(KeyboardState keyboard, KeyboardState previousKeyboard) {
         if (!AkronMotionSmoothingInterop.Loaded) {
             return;
         }
 
-        if (Settings.ToggleFrameBypass?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.ToggleFrameBypass, keyboard, previousKeyboard)) {
             bool next = !AkronRuntimeOptions.ResolveCurrentFrameBypassRates().Active;
             if (next && !TryUse(AkronFeatureKind.FpsBypass)) {
                 return;
@@ -201,7 +209,7 @@ public partial class AkronModule {
             }
 
             Engine.Scene?.Add(new AkronToast(next ? "Frame bypass enabled." : "Frame bypass disabled."));
-        } else if (Settings.CycleFrameBypassCameraSmoothing?.Pressed ?? false) {
+        } else if (IsBindingPressed(Settings.CycleFrameBypassCameraSmoothing, keyboard, previousKeyboard)) {
             if (!AkronRuntimeOptions.ResolveCurrentFrameBypassRates().Active) {
                 return;
             }
@@ -255,7 +263,9 @@ public partial class AkronModule {
         }
 
         if (scene is not Level) {
-            HandleFrameBypassBindings();
+            KeyboardState keyboard = Keyboard.GetState();
+            HandleFrameBypassBindings(keyboard, previousGlobalFrameBypassKeyboard);
+            previousGlobalFrameBypassKeyboard = keyboard;
         }
     }
 
@@ -341,7 +351,7 @@ public partial class AkronModule {
         previousOverlayToggleKeyboard = Keyboard.GetState();
     }
 
-    private static void UpdateStepHoldRepeat() {
+    private static void UpdateStepHoldRepeat(KeyboardState keyboard, KeyboardState previousKeyboard) {
         if (!Settings.FrameStepper || !Session.FreezeGameplay || !Settings.StepHoldRepeat || !IsKeyboardBindingHeld(Settings.StepFrame?.Keys)) {
             Session.StepFrameHoldFrames = 0;
             Session.StepFrameRepeatCountdown = 0;
@@ -349,7 +359,7 @@ public partial class AkronModule {
         }
 
         Session.StepFrameHoldFrames++;
-        if (Settings.StepFrame?.Pressed ?? false) {
+        if (IsBindingPressed(Settings.StepFrame, keyboard, previousKeyboard)) {
             Session.StepFrameRepeatCountdown = Calc.Clamp(Settings.StepHoldDelayFrames, 1, 120);
             return;
         }
@@ -628,13 +638,23 @@ public partial class AkronModule {
         return normalizedKeys.Count > 0 && normalizedKeys.All(key => keyboard.IsKeyDown(key));
     }
 
-    private static bool IsStartPosBindingPressed(ButtonBinding binding, KeyboardState keyboard, KeyboardState previousKeyboard) {
+    // Keys are a chord: all held, one newly pressed. Gamepad and mouse buttons fire on any one
+    // of them, which is what a controller binding means.
+    private static bool IsBindingPressed(ButtonBinding binding, KeyboardState keyboard, KeyboardState previousKeyboard) {
         if (binding == null) {
             return false;
         }
 
         if (IsKeyboardBindingPressed(binding.Keys, keyboard, previousKeyboard)) {
             return true;
+        }
+
+        if (binding.MouseButtons != null) {
+            foreach (MInput.MouseData.MouseButtons button in binding.MouseButtons) {
+                if (IsMouseButtonPressed(button)) {
+                    return true;
+                }
+            }
         }
 
         if (binding.Buttons != null &&
@@ -648,6 +668,19 @@ public partial class AkronModule {
         }
 
         return false;
+    }
+
+    private static bool IsMouseButtonPressed(MInput.MouseData.MouseButtons button) {
+        MouseState current = MInput.Mouse.CurrentState;
+        MouseState previous = MInput.Mouse.PreviousState;
+        return button switch {
+            MInput.MouseData.MouseButtons.Left => current.LeftButton == ButtonState.Pressed && previous.LeftButton == ButtonState.Released,
+            MInput.MouseData.MouseButtons.Right => current.RightButton == ButtonState.Pressed && previous.RightButton == ButtonState.Released,
+            MInput.MouseData.MouseButtons.Middle => current.MiddleButton == ButtonState.Pressed && previous.MiddleButton == ButtonState.Released,
+            MInput.MouseData.MouseButtons.XButton1 => current.XButton1 == ButtonState.Pressed && previous.XButton1 == ButtonState.Released,
+            MInput.MouseData.MouseButtons.XButton2 => current.XButton2 == ButtonState.Pressed && previous.XButton2 == ButtonState.Released,
+            _ => false
+        };
     }
 
     private static ButtonBinding GetStartPosSlotBinding(int slot) {

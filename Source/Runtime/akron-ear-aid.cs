@@ -105,7 +105,7 @@ public static class AkronEarAid {
             return;
         }
 
-        if (OverrideEnabled(sound.Key)) {
+        if (OverrideEnabled(sound.Key) && AkronModule.TryUse(AkronFeatureKind.SoundVolumeOverride)) {
             int volume = VolumeFor(sound.Key);
             instance.setVolume(volume / 100f);
         }

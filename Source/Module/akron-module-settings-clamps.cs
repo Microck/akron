@@ -79,10 +79,6 @@ public partial class AkronModuleSettings {
         return ClampValue(blur, 0, 100);
     }
 
-    public static int ClampOverlayAnimationMs(int milliseconds) {
-        return ClampValue(milliseconds, 0, 500);
-    }
-
     public static AkronLoggingLevel NormalizeLoggingLevel(AkronLoggingLevel level) {
         return Enum.IsDefined(typeof(AkronLoggingLevel), level) ? level : AkronLoggingLevel.Diagnostic;
     }
@@ -99,17 +95,6 @@ public partial class AkronModuleSettings {
 
     public static int ClampLoggingRetainedFiles(int files) {
         return ClampValue(files < 0 ? 5 : files, 0, 20);
-    }
-
-    public static void ClearOneShotRuntimeActions(AkronModuleSettings settings) {
-        if (settings == null) {
-            return;
-        }
-
-        // Deload simulation mutates timers immediately. It must not survive a
-        // settings reload, otherwise opening a room after restart replays the
-        // simulation and corrupts journal time.
-        settings.DeloadSpinners = false;
     }
 
     public static int ClampPercent(int value, int minimum = 10, int maximum = 300) {
@@ -156,8 +141,10 @@ public partial class AkronModuleSettings {
             : AkronCursorToolsClickAction.ClickTeleport;
     }
 
+    // 0 is a real value: a fully transparent berry. The property default already covers a
+    // fresh install.
     public static int ClampGoldenTransparencyOpacity(int opacity) {
-        return ClampOpacity(opacity <= 0 ? 55 : opacity);
+        return ClampOpacity(opacity);
     }
 
     public static int ClampLagPauserThresholdMs(int thresholdMs) {
@@ -426,8 +413,10 @@ public partial class AkronModuleSettings {
         return rate <= 0 ? 1 : ClampValue(rate, 1, 12);
     }
 
+    // 100% would be vanilla shake with the row still reading On, so the top of the range is
+    // the last value that changes anything.
     public static int ClampScreenshakeIntensity(int intensity) {
-        return ClampValue(intensity, 0, 100);
+        return ClampValue(intensity, 0, 90);
     }
 
     public static int ClampLightLevelPercent(int percent) {

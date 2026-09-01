@@ -7,15 +7,17 @@ The Labels tab controls label-style HUD surfaces. It includes a master visibilit
 
 While **Visible** is off, enabling an individual label only saves its setting and does not affect the attempt classification. When **Visible** is on, enabled labels apply their listed classification when Akron uses them.
 
+A row's classification is the classification of the feature it controls, and Akron records that classification every frame the feature is active in a level. Rows marked None are controls with no attempt impact of their own, such as the label system's master switch and styling.
+
 | Option | Control | What it does | Classification |
 |---|---|---|---|
-| Visible | Toggle | Master visibility gate for label-style HUD surfaces. Individual label options keep their enabled state while this is off. | Normal clear |
-| Player Overlap | Toggle | Fade or move HUD labels when Madeline overlaps them. | Normal clear |
+| Visible | Toggle | Master visibility gate for label-style HUD surfaces. Individual label options keep their enabled state while this is off. | None |
+| Player Overlap | Toggle | Fade or move HUD labels when Madeline overlaps them. | None |
 | Death Stats | Toggle | Show a configurable death counter in the Akron HUD with visibility controls. | Goldberry/Hardlist clear |
 | Room | Toggle | Show the current room name in the Akron HUD. | Normal clear |
 | Status | Toggle | Show compact HUD labels for presentation overlays and attempt status. | Normal clear |
-| Toasts | Toggle | Show option feedback messages as plain label-style text instead of a centered background panel. | Normal clear |
-| Cheat Indicator | Toggle | Configure the dedicated attempt-status indicator alignment, scale, opacity, and only-flagged behavior. | Normal clear |
+| Toasts | Toggle | Show Akron's feedback messages, such as results and refusals, as label text. On by default and not affected by the Visible gate. | None |
+| Cheat Indicator | Toggle | Configure the dedicated attempt-status indicator alignment, scale, opacity, and only-flagged behavior. | None |
 | Input History | Toggle | Show the current input chord and an optional plain-text input history panel. | Goldberry/Hardlist clear |
 | Inputs per second | Toggle | Display rolling input presses per second, total presses, and max rate. | Normal clear |
 | Dash Stats | Toggle | Show dash-count statistics in the label system. | Normal clear |
@@ -24,7 +26,10 @@ While **Visible** is off, enabling an individual label only saves its setting an
 | Room Timer | Toggle | Show current room timing information in the Akron HUD. | Normal clear |
 | Room Stat Tracker | Toggle | Show configurable room name, deaths, timer, berry count, and alive-time lines in the label HUD. | Normal clear |
 | Attempts | Toggle | Show total attempt count in the label system. | Goldberry/Hardlist clear |
-| No Short Numbers | Toggle | Show full HUD numbers instead of compact K/M formatting. | Goldberry/Hardlist clear |
+| Stamina Widget | Toggle | Show Madeline's current stamina as a text line in the label stack. | Cheat |
+| Speed Widget | Toggle | Show Madeline's current speed as a text line in the label stack. | Cheat |
+| Dash Widget | Toggle | Show Madeline's current dash count as a text line in the label stack. | Cheat |
+| No Short Numbers | Toggle | Show full HUD numbers instead of compact K/M formatting. | None |
 | + Custom | Action | Add a new custom HUD label row. | Cheat |
 
 ## Option menus
@@ -35,31 +40,31 @@ Rows with a triangle expose the controls listed below.
 
 | Option | Menu control | What it changes | Classification |
 |---|---|---|---|
-| Visible | Offset X | Bulk-edit horizontal offset for every label row. | Normal clear |
-| Visible | Offset Y | Bulk-edit vertical offset for every label row. | Normal clear |
-| Visible | Scale | Bulk-edit text scale for every label row. | Normal clear |
-| Visible | Opacity | Bulk-edit opacity for every label row. | Normal clear |
-| Visible | Line spacing | Bulk-edit multiline spacing for every label row. | Normal clear |
-| Visible | Shadow | Bulk-edit shadow visibility for every label row. | Normal clear |
-| Visible | Shadow opacity | Bulk-edit shadow opacity for every label row. | Normal clear |
-| Visible | Shadow X | Bulk-edit shadow horizontal offset for every label row. | Normal clear |
-| Visible | Shadow Y | Bulk-edit shadow vertical offset for every label row. | Normal clear |
-| Visible | Shadow color | Bulk-edit shadow color for every label row. | Normal clear |
-| Player Overlap | Mode: Fade/Move | Choose whether overlapped labels fade or move away from Madeline. | Normal clear |
-| Player Overlap | Only current label | Apply overlap behavior only to the label Madeline overlaps. | Normal clear |
-| Player Overlap | Padding | Add extra HUD pixels around each text label for overlap detection. | Normal clear |
-| Player Overlap | Opacity | Set label opacity while Madeline overlaps it in Fade mode. | Normal clear |
-| Player Overlap | Top left | Move overlapped labels to the top-left anchor in Move mode. | Normal clear |
-| Player Overlap | Top center | Move overlapped labels to the top-center anchor in Move mode. | Normal clear |
-| Player Overlap | Top right | Move overlapped labels to the top-right anchor in Move mode. | Normal clear |
-| Player Overlap | Middle left | Move overlapped labels to the middle-left anchor in Move mode. | Normal clear |
-| Player Overlap | Center | Move overlapped labels to the center anchor in Move mode. | Normal clear |
-| Player Overlap | Middle right | Move overlapped labels to the middle-right anchor in Move mode. | Normal clear |
-| Player Overlap | Bottom left | Move overlapped labels to the bottom-left anchor in Move mode. | Normal clear |
-| Player Overlap | Bottom center | Move overlapped labels to the bottom-center anchor in Move mode. | Normal clear |
-| Player Overlap | Bottom right | Move overlapped labels to the bottom-right anchor in Move mode. | Normal clear |
-| Player Overlap | Offset X | Set horizontal offset from the move anchor. | Normal clear |
-| Player Overlap | Offset Y | Set vertical offset from the move anchor. | Normal clear |
+| Visible | Offset X | Bulk-edit horizontal offset for every label row. | None |
+| Visible | Offset Y | Bulk-edit vertical offset for every label row. | None |
+| Visible | Scale | Bulk-edit text scale for every label row. | None |
+| Visible | Opacity | Bulk-edit opacity for every label row. | None |
+| Visible | Line spacing | Bulk-edit multiline spacing for every label row. | None |
+| Visible | Shadow | Bulk-edit shadow visibility for every label row. | None |
+| Visible | Shadow opacity | Bulk-edit shadow opacity for every label row. | None |
+| Visible | Shadow X | Bulk-edit shadow horizontal offset for every label row. | None |
+| Visible | Shadow Y | Bulk-edit shadow vertical offset for every label row. | None |
+| Visible | Shadow color | Bulk-edit shadow color for every label row. | None |
+| Player Overlap | Mode: Fade/Move | Choose whether overlapped labels fade or move away from Madeline. | None |
+| Player Overlap | Only current label | Apply overlap behavior only to the label Madeline overlaps. | None |
+| Player Overlap | Padding | Add extra HUD pixels around each text label for overlap detection. | None |
+| Player Overlap | Opacity | Set label opacity while Madeline overlaps it in Fade mode. | None |
+| Player Overlap | Top left | Move overlapped labels to the top-left anchor in Move mode. | None |
+| Player Overlap | Top center | Move overlapped labels to the top-center anchor in Move mode. | None |
+| Player Overlap | Top right | Move overlapped labels to the top-right anchor in Move mode. | None |
+| Player Overlap | Middle left | Move overlapped labels to the middle-left anchor in Move mode. | None |
+| Player Overlap | Center | Move overlapped labels to the center anchor in Move mode. | None |
+| Player Overlap | Middle right | Move overlapped labels to the middle-right anchor in Move mode. | None |
+| Player Overlap | Bottom left | Move overlapped labels to the bottom-left anchor in Move mode. | None |
+| Player Overlap | Bottom center | Move overlapped labels to the bottom-center anchor in Move mode. | None |
+| Player Overlap | Bottom right | Move overlapped labels to the bottom-right anchor in Move mode. | None |
+| Player Overlap | Offset X | Set horizontal offset from the move anchor. | None |
+| Player Overlap | Offset Y | Set vertical offset from the move anchor. | None |
 | Death Stats | Format | Configure death-stat text tokens. | Goldberry/Hardlist clear |
 | Death Stats | Disabled | Hide the death-stat label. | Goldberry/Hardlist clear |
 | Death Stats | After death | Show death stats after death. | Goldberry/Hardlist clear |
@@ -101,23 +106,23 @@ Rows with a triangle expose the controls listed below.
 | Status | Shadow X | Set status label shadow horizontal offset. | Normal clear |
 | Status | Shadow Y | Set status label shadow vertical offset. | Normal clear |
 | Status | Shadow color | Set status label shadow color. | Normal clear |
-| Toasts | Color | Set toast text color. | Normal clear |
-| Toasts | Anchor | Choose the screen position for option feedback messages. | Normal clear |
-| Toasts | Offset X | Move toast messages horizontally from their anchor. | Normal clear |
-| Toasts | Offset Y | Move toast messages vertically from their anchor. | Normal clear |
-| Toasts | Scale | Set toast text scale. | Normal clear |
-| Toasts | Opacity | Set toast opacity. | Normal clear |
-| Toasts | Line spacing | Set toast multiline spacing. | Normal clear |
-| Toasts | Shadow | Draw a black outline plus offset shadow behind toasts. | Normal clear |
-| Toasts | Shadow opacity | Set toast shadow opacity. | Normal clear |
-| Toasts | Shadow X | Set toast shadow horizontal offset. | Normal clear |
-| Toasts | Shadow Y | Set toast shadow vertical offset. | Normal clear |
-| Toasts | Shadow color | Set toast shadow color. | Normal clear |
-| Cheat Indicator | Only cheating | For text style, hide the indicator while the attempt is Unclassified or Goldberry/Hardlist clear. For dot style, show it only for Cheat. | Normal clear |
-| Cheat Indicator | Anchor | Choose the nine-way screen alignment for the status indicator. | Normal clear |
-| Cheat Indicator | Style: Text/Dot | Choose text badge or single status dot. | Normal clear |
-| Cheat Indicator | Scale | Set indicator scale percentage. | Normal clear |
-| Cheat Indicator | Opacity | Set indicator opacity percentage. | Normal clear |
+| Toasts | Color | Set toast text color. | None |
+| Toasts | Anchor | Choose the screen position for option feedback messages. | None |
+| Toasts | Offset X | Move toast messages horizontally from their anchor. | None |
+| Toasts | Offset Y | Move toast messages vertically from their anchor. | None |
+| Toasts | Scale | Set toast text scale. | None |
+| Toasts | Opacity | Set toast opacity. | None |
+| Toasts | Line spacing | Set toast multiline spacing. | None |
+| Toasts | Shadow | Draw a black outline plus offset shadow behind toasts. | None |
+| Toasts | Shadow opacity | Set toast shadow opacity. | None |
+| Toasts | Shadow X | Set toast shadow horizontal offset. | None |
+| Toasts | Shadow Y | Set toast shadow vertical offset. | None |
+| Toasts | Shadow color | Set toast shadow color. | None |
+| Cheat Indicator | Only cheating | For text style, hide the indicator while the attempt is Unclassified or Goldberry/Hardlist clear. For dot style, show it only for Cheat. | None |
+| Cheat Indicator | Anchor | Choose the nine-way screen alignment for the status indicator. | None |
+| Cheat Indicator | Style: Text/Dot | Choose text badge or single status dot. | None |
+| Cheat Indicator | Scale | Set indicator scale percentage. | None |
+| Cheat Indicator | Opacity | Set indicator opacity percentage. | None |
 | Input History | Current inputs | Show the current movement, jump, dash, and grab input chord. | Goldberry/Hardlist clear |
 | Input History | Input history | Show a rolling list of recent input chords and held-frame counts. | Goldberry/Hardlist clear |
 | Input History | Rows | Set how many input-history rows to keep visible. | Goldberry/Hardlist clear |

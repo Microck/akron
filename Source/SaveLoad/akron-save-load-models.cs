@@ -19,7 +19,6 @@ public enum AkronSaveLoadResult {
 }
 
 public delegate void AkronInteropSaveLoadAction(Dictionary<Type, Dictionary<string, object>> savedValues, Level level);
-public delegate bool AkronSaveLoadRiskHandler(Level level, int slot, out string reason);
 
 internal sealed class AkronRegisteredSaveLoadAction {
     public AkronRegisteredSaveLoadAction(

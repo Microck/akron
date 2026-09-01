@@ -130,7 +130,6 @@ public partial class AkronModule : EverestModule {
     public override void Load() {
         renderedStartPosFrameGeneration = AkronActions.StartPosFrameGeneration;
         AkronModuleSettings.EnsureCurrentKeybindDefaults(Settings);
-        AkronModuleSettings.ClearOneShotRuntimeActions(Settings);
         AkronLog.Normal(nameof(AkronModule), "load start; " + AkronLog.DescribeSettings());
         AkronAudioSplitter.Load();
         try {
@@ -207,6 +206,7 @@ public partial class AkronModule : EverestModule {
         On.FMOD.Studio.EventDescription.createInstance += EventDescriptionOnCreateInstance;
         Everest.Events.Level.OnPause += LevelOnPause;
         Everest.Events.Level.OnUnpause += LevelOnUnpause;
+        Everest.Events.Level.OnExit += LevelOnExit;
         AkronEntityInspector.LoadInspectorPin();
         MethodInfo dashCoroutineMethod = ResolvePlayerDashCoroutineMethod();
         if (dashCoroutineMethod != null) {
@@ -349,6 +349,7 @@ public partial class AkronModule : EverestModule {
         On.FMOD.Studio.EventDescription.createInstance -= EventDescriptionOnCreateInstance;
         Everest.Events.Level.OnPause -= LevelOnPause;
         Everest.Events.Level.OnUnpause -= LevelOnUnpause;
+        Everest.Events.Level.OnExit -= LevelOnExit;
         AkronEntityInspector.UnloadInspectorPin();
         dashCoroutineHook?.Dispose();
         dashCoroutineHook = null;
@@ -366,6 +367,7 @@ public partial class AkronModule : EverestModule {
         AkronActions.RestoreAutoDeafen();
         AkronActions.RestoreLowVolumeBypass();
         AkronRuntimeOptions.Reset();
+        AkronOverlayBlur.Unload();
         deferredScreenWipeAction = null;
         ClearDeathWipeRenderSuppression();
         if (AkronInternalRecorder.IsRecording) {
@@ -382,6 +384,11 @@ public partial class AkronModule : EverestModule {
     private static void EngineOnExiting(object sender, EventArgs eventArgs) {
         AkronStartPosPersistence.Shutdown();
         AkronActions.ClearPendingStartPosState();
+        // Unload does not run on a normal quit, and an FFmpeg process that is killed with the
+        // game leaves a file with no index, no remux and no audio. Finalize it first.
+        if (AkronInternalRecorder.IsRecording) {
+            AkronInternalRecorder.Stop();
+        }
     }
 
     internal static void ApplyMotionSmoothingSettings() {
@@ -431,7 +438,16 @@ public partial class AkronModule : EverestModule {
     private static void LevelOnEnd(On.Celeste.Level.orig_End orig, Level self) {
         AkronGameplayBufferState.ResetLevelPresentation();
         AkronActions.ClearStartPosInputWait();
+        // Both of these reach outside the level: Discord stays deafened through the
+        // overworld, and the Assist flags would ride into the save file. A restart re-applies
+        // them from the first frame of the next level, so restoring here costs nothing.
+        RestoreNativeAssistInvincibility();
+        AkronActions.RestoreAutoDeafen();
         orig(self);
+    }
+
+    private static void LevelOnExit(Level level, LevelExit levelExit, LevelExit.Mode mode, Session session, HiresSnow hiresSnow) {
+        AkronInternalRecorder.NotifyLevelExit(mode);
     }
 
     private static void LevelOnUpdate(On.Celeste.Level.orig_Update orig, Level self) {
@@ -541,13 +557,26 @@ public partial class AkronModule : EverestModule {
             return;
         }
         Session.StepFrameRequested = false;
-        orig(self);
+        // MInput.Disabled makes every virtual input read as released for this update, so the
+        // level still runs (timers, entities) while Madeline gets no input behind the open
+        // overlay. The overlay itself read the keyboard and mouse directly before this point.
+        bool blockGameplayInput = overlayUpdated && Overlay?.Visible == true && Settings.ConsumeGameplayInputInMenu;
+        bool previousInputDisabled = MInput.Disabled;
+        if (blockGameplayInput) {
+            MInput.Disabled = true;
+        }
+        try {
+            orig(self);
+        } finally {
+            if (blockGameplayInput) {
+                MInput.Disabled = previousInputDisabled;
+            }
+        }
         RememberNativeFreezeFrameForLagPauser();
         AkronRuntimeOptions.ApplyScreenshakeAfterLevelUpdate(self);
         ApplyJumpHackAfterPlayerUpdate(self);
         ClearLastDeathHitboxAfterRespawn(self);
         AkronPracticeStats.OnLevelUpdate(self);
-        AkronInternalRecorder.Update(self);
         UpdateProofRecorderGuard(self);
     }
 
@@ -636,6 +665,14 @@ public partial class AkronModule : EverestModule {
     private static void UserIOOnSaveHandler(On.Celeste.UserIO.orig_SaveHandler orig, bool file, bool settings) {
         if (AkronBackupActions.ShouldBackupBeforeSave(file, settings)) {
             AkronBackupActions.CreateBackup(settings && !file ? "settings-save" : "save");
+        }
+
+        // Native invincibility borrows Celeste's Assist Mode and Invincible flags. Celeste
+        // serializes SaveData on its save routine's next step, before the level updates again,
+        // so putting the player's own values back here keeps them out of the file; the next
+        // level update re-applies the override.
+        if (file) {
+            RestoreNativeAssistInvincibility();
         }
 
         orig(file, settings);
@@ -768,6 +805,9 @@ public partial class AkronModule : EverestModule {
         // update including everything Akron itself adds to the frame.
         AkronPerformanceTelemetry.RecordUpdateFrame();
         AkronStartPosPersistence.Update();
+        // Engine-level rather than Level.Update: completion clips and the endscreen auto-stop
+        // come due after the level has stopped updating.
+        AkronInternalRecorder.Update(Engine.Scene);
         RunDeferredScreenWipeAction();
         UpdateDeathWipeRenderSuppression();
         AkronAudioSplitter.Update();
@@ -918,6 +958,10 @@ public partial class AkronModule : EverestModule {
 
         cursor.Emit(OpCodes.Ldarg_0);
         cursor.EmitDelegate<Action<Level>>(AkronGameplayBufferState.PresentArmedLevelBuffer);
+        // Same point: the room buffer is complete and unbound, and is about to be drawn to the
+        // screen. Blurring it here keeps the overlay's background blur out of Celeste's HUD.
+        cursor.Emit(OpCodes.Ldarg_0);
+        cursor.EmitDelegate<Action<Level>>(AkronOverlayBlur.ApplyToLevelBuffer);
     }
 
     private static bool IsDustEdgesBeforeRenderCrash(Exception ex) {
@@ -1603,7 +1647,7 @@ public partial class AkronModule : EverestModule {
                     Draw.SpriteBatch.End();
                 }
             }
-        } else if (inspectorPinVisible) {
+        } else if (inspectorPinVisible && TryUse(AkronFeatureKind.EntityInspector)) {
             AkronEntityInspector.RenderInspectorPinImGui(inspectorPinLevel);
         }
     }

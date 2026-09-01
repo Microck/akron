@@ -41,15 +41,6 @@ public static class AkronPolicy
     {
         AkronModuleSettings settings = AkronModule.Settings;
 
-        // Safe mode only redacts clean-legitimacy surfaces. It should not turn into a
-        // global gameplay lock that blocks local state-changing features by itself.
-        if (feature == AkronFeatureKind.UnsafeNativeSavestateOverride &&
-            !settings.UnsafeSavestateOverride &&
-            !AkronMapOverrides.ShouldAllowUnsafeSavestates(Engine.Scene as Level))
-        {
-            return new AkronPolicyDecision(false, "Unsafe StartPos restore override is disabled in settings.");
-        }
-
         return new AkronPolicyDecision(true, AkronFeatureRegistry.Get(feature).Reason);
     }
 
@@ -70,11 +61,6 @@ public static class AkronPolicy
         if (feature == AkronFeatureKind.BrokeredSavestates)
         {
             AkronModule.Session.UsedBrokeredSavestate = true;
-        }
-
-        if (feature == AkronFeatureKind.UnsafeNativeSavestateOverride)
-        {
-            AkronModule.Session.UsedUnsafeSavestateOverride = true;
         }
     }
 
@@ -101,7 +87,6 @@ public static class AkronPolicy
             ? "No Akron attempt classification has been selected or earned yet."
             : reason;
         AkronModule.Session.UsedBrokeredSavestate = false;
-        AkronModule.Session.UsedUnsafeSavestateOverride = false;
     }
 
     public static bool CanExposeCleanLegitimacy()
@@ -175,6 +160,7 @@ public static class AkronPolicy
         }
 
         AddIfCheat(contributors, settings.AutoKill, "Auto Kill", AkronFeatureKind.AutoKill);
+        AddIfCheat(contributors, settings.AllowPauseBuffering, "Pause Buffering", AkronFeatureKind.PauseBuffering);
         AddIfCheat(contributors, settings.CursorZoom, "Cursor Zoom", AkronFeatureKind.CursorZoom);
         AddIfCheat(contributors, settings.CursorTools, "Cursor Tools", AkronFeatureKind.CursorTools);
         AddIfCheat(contributors, settings.ClickTeleport, "Click Teleport", AkronFeatureKind.ClickTeleport);
@@ -205,13 +191,13 @@ public static class AkronPolicy
         AddIfCheat(contributors, settings.NoDeathWipe, "No Death Wipe", AkronFeatureKind.DeathVisuals);
         AddIfCheat(contributors, settings.NoRespawnAnimation, "No Respawn Animation", AkronFeatureKind.RespawnAnimation);
         AddIfCheat(contributors, settings.NoFreezeFrames, "No Freeze Frames", AkronFeatureKind.FreezeFrames);
-        AddIfCheat(contributors, settings.GroundRefillRules, "Ground Refills", AkronFeatureKind.GroundRefillRules);
+        // With both refills allowed the rule changes nothing, and the runtime returns before recording it.
+        AddIfCheat(contributors, settings.GroundRefillRules && !(settings.GroundDashRefill && settings.GroundStaminaRefill), "Ground Refills", AkronFeatureKind.GroundRefillRules);
         AddIfCheat(contributors, settings.DashRedirectEnabled, "Dash Redirect", AkronFeatureKind.InputAssistShortcut);
         AddIfCheat(contributors, settings.InfiniteDash, "Infinite Dash", AkronFeatureKind.InfiniteDash);
         AddIfCheat(contributors, settings.InfiniteStamina, "Infinite Stamina", AkronFeatureKind.InfiniteStamina);
         AddIfCheat(contributors, settings.DashCountOverride, "Dash Count", AkronFeatureKind.DashCountOverride);
         AddIfCheat(contributors, settings.GrabModeOverrideEnabled, "Grab Mode", AkronFeatureKind.GrabModeHotkey);
-        AddIfCheat(contributors, settings.DeloadSpinners, "Deload Spinners", AkronFeatureKind.DeloadSimulation);
         AddIfCheat(contributors, settings.HidePauseMenu, "Hide Pause Menu", AkronFeatureKind.PauseMenuVisibility);
         AddIfCheat(contributors, settings.PauseCountdown, "Pause Timer", AkronFeatureKind.PauseCountdown);
         AddIfCheat(contributors, settings.HitboxViewer, "Show Hitboxes", AkronFeatureKind.HitboxViewer);

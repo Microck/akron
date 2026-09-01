@@ -21,9 +21,6 @@ public static partial class AkronHudRenderer {
     private const float PlayerDefaultHitboxWidth = 8f;
     private const float PlayerDefaultHitboxHeight = 11f;
     private const float HudEdgePadding = 5f;
-    private static readonly Color IndicatorGoldberryHardlistCleanColor = ColorFromRgb(AkronPolicy.GoldberryHardlistCleanColorRgb);
-    private static readonly Color IndicatorCleanColor = ColorFromRgb(AkronPolicy.RegularCleanColorRgb);
-    private static readonly Color IndicatorCheatColor = ColorFromRgb(AkronPolicy.CheatColorRgb);
     private static AkronHudRect? currentLabelPlayerHudRect;
     private static bool currentAnyHudLabelObstructed;
 
@@ -69,27 +66,17 @@ public static partial class AkronHudRenderer {
 
         float y = labelStartY;
         bool labelsVisible = settings.LabelSystemVisible;
-        if (labelsVisible && settings.RoomLabels) {
-            DrawText("Room: " + level.Session.Level, HudEdgePadding, ref y, ColorFromRgb(settings.RoomLabelColor), settings.RoomLabelStyle);
-        }
-
-        if (player != null && labelsVisible && settings.StaminaWidget) {
-            DrawText("Stamina: " + player.Stamina.ToString("0"), HudEdgePadding, ref y, Color.White);
-        }
-
-        if (player != null && labelsVisible && settings.SpeedWidget) {
-            DrawText("Speed: " + player.Speed.Length().ToString("0.0"), HudEdgePadding, ref y, Color.White);
-        }
-
-        if (player != null && labelsVisible && settings.DashWidget) {
-            DrawText("Dashes: " + player.Dashes, HudEdgePadding, ref y, Color.White);
-        }
-
-        if (player != null && (settings.StaminaBar || settings.ResourceBars && settings.ResourceStaminaBar)) {
+        // Every element below checks its setting before TryUse: TryUse records, so it must not
+        // run for an element that is switched off. See the DashNumber comment further down. The
+        // bars and numbers have no Labels-tab row and keep a fixed place above the ordered
+        // stack, which WalkLabelStack draws in the player's row order.
+        if (player != null && (settings.StaminaBar || settings.ResourceBars && settings.ResourceStaminaBar) &&
+            AkronModule.TryUse(AkronFeatureKind.ResourceBars)) {
             RenderStaminaBars(level, player, HudEdgePadding, ref y);
         }
 
-        if (player != null && (settings.DashBar || settings.ResourceBars && settings.ResourceDashPips)) {
+        if (player != null && (settings.DashBar || settings.ResourceBars && settings.ResourceDashPips) &&
+            AkronModule.TryUse(AkronFeatureKind.ResourceBars)) {
             RenderDashBar(level, player, HudEdgePadding, ref y);
         }
 
@@ -110,81 +97,20 @@ public static partial class AkronHudRenderer {
             RenderSpeedNumber(level, player);
         }
 
-        if (labelsVisible && settings.InputViewer) {
-            DrawText("Inputs: " + AkronInputHistory.FormatCurrentChord(), HudEdgePadding, ref y, ColorFromRgb(settings.InputHistoryTextColor), settings.InputHistoryLabelStyle);
-        }
-
         if (settings.ShowTaps && AkronModule.TryUse(AkronFeatureKind.ShowTaps)) {
             RenderTapDisplay(ref y);
         }
 
-        if (labelsVisible && settings.InputsPerSecondCounter && AkronModule.TryUse(AkronFeatureKind.InputsPerSecondCounter)) {
-            RenderInputsPerSecondCounter(ref y);
-        }
-
-        if (labelsVisible && settings.RoomTimerWidget) {
-            long mapTime = AkronPracticeStats.GetCurrentMapTime(level);
-            long roomTime = AkronPracticeStats.GetCurrentRoomTime(level);
-            Color timerColor = ColorFromRgb(settings.RoomTimerColor);
-            DrawText("Map Time: " + FormatHudTicks(mapTime), HudEdgePadding, ref y, timerColor, settings.RoomTimerLabelStyle);
-            DrawText("Room Time: " + FormatHudTicks(roomTime), HudEdgePadding, ref y, timerColor, settings.RoomTimerLabelStyle);
-            long? bestRoom = AkronPracticeStats.GetBestRoomTime(level);
-            if (bestRoom.HasValue) {
-                DrawText("Room PB: " + FormatHudTicks(bestRoom.Value), HudEdgePadding, ref y, timerColor, settings.RoomTimerLabelStyle);
-            }
-        }
-
-        if (labelsVisible && settings.RoomStatTracker && ShouldRenderRoomStatTracker(level)) {
-            foreach (string line in FormatRoomStatTracker(level)) {
-                DrawText(line, HudEdgePadding, ref y, ColorFromRgb(settings.RoomStatTrackerColor), settings.RoomTimerLabelStyle);
-            }
-        }
-
-        if (labelsVisible && settings.DeathStatsWidget) {
-            string deathStats = FormatCurrentDeathStats(level);
-            if (!string.IsNullOrWhiteSpace(deathStats) && ShouldShowDeathStats(level)) {
-                DrawText(deathStats, HudEdgePadding, ref y, ColorFromRgb(settings.DeathStatsColor), settings.DeathStatsLabelStyle);
-            }
-        }
-
-        if (labelsVisible && settings.TotalAttemptsWidget) {
-            DrawText("Attempts: " + FormatHudNumber(GetCurrentMapDeathTotal(level) + 1), HudEdgePadding, ref y, ColorFromRgb(settings.TotalAttemptsColor), settings.TotalAttemptsLabelStyle);
-        }
-
-        if (labelsVisible && settings.StatusLabelsWidget) {
-            Color statusColor = ColorFromRgb(settings.StatusLabelsColor);
-            DrawText("Overlays: " + settings.DescribePresentationOverlays(), HudEdgePadding, ref y, statusColor, settings.StatusLabelsLabelStyle);
-            DrawText(
-                "Attempt: " + AkronPolicy.GetLegitimacySensitiveStatusLabel(AkronModule.Session.AttemptStatus),
-                HudEdgePadding,
-                ref y,
-                statusColor,
-                settings.StatusLabelsLabelStyle);
-        }
-
-        if (labelsVisible && settings.DashCountStats && settings.DashCountStatsMode != AkronCounterDisplayMode.Off) {
-            DrawText(AkronPracticeCounters.FormatDashCount(level), HudEdgePadding, ref y, ColorFromRgb(settings.StatusLabelsColor), settings.StatusLabelsLabelStyle);
-        }
-
-        if (labelsVisible && settings.JumpCount && settings.JumpCountMode != AkronCounterDisplayMode.Off) {
-            DrawText(AkronPracticeCounters.FormatJumpCount(), HudEdgePadding, ref y, ColorFromRgb(settings.StatusLabelsColor), settings.StatusLabelsLabelStyle);
+        if (labelsVisible) {
+            WalkLabelStack(level, player, settings, AkronModule.TryUse, new DrawLabelStackSink(level, player), ref y);
         }
 
         if (labelsVisible && AkronSaveLoadService.HasSlot(settings.ActiveSavestateSlot)) {
-            DrawText("Slot " + settings.ActiveSavestateSlot + ": saved", HudEdgePadding, ref y, Color.White);
+            DrawText("SRT slot " + settings.ActiveSavestateSlot + ": saved", HudEdgePadding, ref y, Color.White);
         }
 
-        if (AkronPolicy.IsLabelFeatureActive(labelsVisible, settings.StartPosShowLabel) &&
-            AkronModule.TryUse(AkronFeatureKind.StartPosTools)) {
-            RenderStartPosLabel(AkronActions.GetActiveStartPos(), HudEdgePadding, ref y);
-        }
-
-        if (labelsVisible && settings.EntityInspector) {
+        if (labelsVisible && settings.EntityInspector && AkronModule.TryUse(AkronFeatureKind.EntityInspector)) {
             DrawText("Entity: " + AkronEntityInspector.Describe(level), HudEdgePadding, ref y, Color.White);
-        }
-
-        if (labelsVisible) {
-            AkronCustomHudLabels.Render(level, player, ref y, anyHudLabelObstructed: currentAnyHudLabelObstructed);
         }
 
         if (labelsVisible &&
@@ -318,24 +244,10 @@ public static partial class AkronHudRenderer {
         ActiveFont.DrawOutline(text, textPosition, Vector2.Zero, Vector2.One * scale, color * opacity, 2f, Color.Black * opacity);
     }
 
+    // One palette for both styles. The dot used to map everything but the two clean states to
+    // red, which painted a fresh Unclassified attempt as flagged and ignored Safe Mode.
     private static Color GetIndicatorColor(AkronStatus status, bool safeModeRedactsCleanStatus) {
-        if (AkronModule.Settings.HudCheatIndicatorStyle == AkronHudCheatIndicatorStyle.Dot) {
-            return GetMegaHackStyleDotColor(status);
-        }
-
         return ColorFromRgb(AkronPolicy.GetStatusColorRgb(status, safeModeRedactsCleanStatus));
-    }
-
-    private static Color GetMegaHackStyleDotColor(AkronStatus status) {
-        if (status == AkronStatus.GoldberryHardlistClean) {
-            return IndicatorGoldberryHardlistCleanColor;
-        }
-
-        if (status == AkronStatus.RegularClean) {
-            return IndicatorCleanColor;
-        }
-
-        return IndicatorCheatColor;
     }
 
     private static void RenderIndicatorDot(Color color, float opacity, float configuredScale) {

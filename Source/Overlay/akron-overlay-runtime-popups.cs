@@ -397,7 +397,7 @@ public sealed partial class AkronOverlay {
         if (ImGui.Checkbox("Freeze time##" + popupId, ref freeze)) {
             AkronModule.Settings.ScreenshotScannerFreezeTime = freeze;
         }
-        DrawPopupTooltip("Keep level timers pinned while capture camera positions settle.", "Freeze timers");
+        DrawPopupTooltip("Keep level timers pinned while capture camera positions settle.", "Freeze time");
 
         bool suppressMadeline = AkronModule.Settings.ScreenshotScannerNoclipHideMadeline;
         if (ImGui.Checkbox("Noclip + hide Madeline##" + popupId, ref suppressMadeline)) {
@@ -449,7 +449,7 @@ public sealed partial class AkronOverlay {
     private void DrawAutosavePopupControls(string popupId) {
         DrawIntStepperRow("Interval", () => AkronModule.Settings.AutosaveIntervalSeconds, value => AkronModule.Settings.AutosaveIntervalSeconds = AkronModuleSettings.ClampAutosaveIntervalSeconds(value), -5, 5, 1, 600, popupId, "Seconds between automatic save attempts.");
         DrawIntStepperRow("Minimum delay", () => AkronModule.Settings.AutosaveMinimumDelaySeconds, value => AkronModule.Settings.AutosaveMinimumDelaySeconds = AkronModuleSettings.ClampAutosaveMinimumDelaySeconds(value), -5, 5, 0, 3600, popupId, "Cooldown before another automatic save can run.");
-        DrawAutosaveCheckbox("Room load", () => AkronModule.Settings.AutosaveOnRoomLoad, value => AkronModule.Settings.AutosaveOnRoomLoad = value, popupId);
+        DrawAutosaveCheckbox("Level load", () => AkronModule.Settings.AutosaveOnRoomLoad, value => AkronModule.Settings.AutosaveOnRoomLoad = value, popupId);
         DrawAutosaveCheckbox("Spawn update", () => AkronModule.Settings.AutosaveOnSpawnUpdate, value => AkronModule.Settings.AutosaveOnSpawnUpdate = value, popupId);
         DrawAutosaveCheckbox("Respawn", () => AkronModule.Settings.AutosaveOnRespawn, value => AkronModule.Settings.AutosaveOnRespawn = value, popupId);
         DrawAutosaveCheckbox("Pause", () => AkronModule.Settings.AutosaveOnPause, value => AkronModule.Settings.AutosaveOnPause = value, popupId);

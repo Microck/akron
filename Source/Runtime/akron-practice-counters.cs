@@ -4,10 +4,6 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public static class AkronPracticeCounters {
-    private static int fileJumpCount;
-
-    public static int FileJumpCount => fileJumpCount;
-
     public static void OnLevelBegin(Level level) {
         if (level?.Session == null || AkronModule.Session == null) {
             return;
@@ -23,7 +19,6 @@ public static class AkronPracticeCounters {
         }
 
         AkronModule.Session.AkronJumpCount++;
-        fileJumpCount++;
     }
 
     public static void OnRespawn(Level level) {
@@ -49,7 +44,9 @@ public static class AkronPracticeCounters {
     }
 
     public static string FormatJumpCount() {
-        return Format("Jumps", AkronModule.Settings.JumpCountMode, AkronModule.Session?.AkronJumpCount ?? 0, AkronModule.Session?.AkronJumpCountAtLevelStart ?? 0, fileJumpCount);
+        // File mode reads Celeste's own per-file jump total, the same way Dash Stats reads
+        // TotalDashes, so it persists and follows the open save file.
+        return Format("Jumps", AkronModule.Settings.JumpCountMode, AkronModule.Session?.AkronJumpCount ?? 0, AkronModule.Session?.AkronJumpCountAtLevelStart ?? 0, SaveData.Instance?.TotalJumps ?? 0);
     }
 
     private static string Format(string label, AkronCounterDisplayMode mode, int session, int levelStart, int file) {

@@ -145,6 +145,24 @@ public static partial class AkronInternalRecorder {
         }
     }
 
+    // Frames are fed only while the scene is a Level, so a recording that outlives the level
+    // is FFmpeg waiting on a pipe and a video that splices across the gap. Restarts get a new
+    // level within a wipe and keep recording. A completion keeps recording only while the
+    // endscreen auto-stop is armed, which NotifyAreaComplete does whenever a recording is live.
+    public static void NotifyLevelExit(LevelExit.Mode mode) {
+        if (mode is LevelExit.Mode.Restart or LevelExit.Mode.GoldenBerryRestart) {
+            return;
+        }
+
+        lock (Sync) {
+            if (ffmpegProcess == null || autoStopAtSeconds >= 0d) {
+                return;
+            }
+        }
+
+        Stop();
+    }
+
     public static void Stop() {
         Process process;
         Stream input;
@@ -268,8 +286,8 @@ public static partial class AkronInternalRecorder {
         }
     }
 
-    public static void Update(Level level) {
-        if (level == null) {
+    public static void Update(Scene scene) {
+        if (scene == null) {
             return;
         }
 
@@ -295,7 +313,7 @@ public static partial class AkronInternalRecorder {
         }
 
         foreach (PendingClipSave save in due) {
-            SaveReplayWindow(level, save.StartUtc, save.EndUtc, save.Kind);
+            SaveReplayWindow(scene, save.StartUtc, save.EndUtc, save.Kind);
         }
     }
 

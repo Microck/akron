@@ -99,14 +99,14 @@ public sealed partial class AkronOverlay {
             Engine.Scene?.Add(new AkronToast("Timescale reset."));
         });
 
-        yield return new BindableAction(PopupActionKey("StartPos Snapshot Slot", "Previous"), "StartPos Snapshot Slot / Previous", () => ApplyOptionsPopupDelta("StartPos Snapshot Slot", -1));
-        yield return new BindableAction(PopupActionKey("StartPos Snapshot Slot", "Next"), "StartPos Snapshot Slot / Next", () => ApplyOptionsPopupDelta("StartPos Snapshot Slot", 1));
-        yield return new BindableAction(PopupActionKey("StartPos Snapshot Slot", "Capture"), "StartPos Snapshot Slot / Capture", () => {
+        yield return new BindableAction(PopupActionKey("SRT Slot", "Previous"), "SRT Slot / Previous", () => ApplyOptionsPopupDelta("SRT Slot", -1));
+        yield return new BindableAction(PopupActionKey("SRT Slot", "Next"), "SRT Slot / Next", () => ApplyOptionsPopupDelta("SRT Slot", 1));
+        yield return new BindableAction(PopupActionKey("SRT Slot", "Capture"), "SRT Slot / Capture", () => {
             if (level != null) {
                 AkronModule.PerformSaveState(level);
             }
         });
-        yield return new BindableAction(PopupActionKey("StartPos Snapshot Slot", "Restore"), "StartPos Snapshot Slot / Restore", () => {
+        yield return new BindableAction(PopupActionKey("SRT Slot", "Restore"), "SRT Slot / Restore", () => {
             if (level != null) {
                 AkronModule.PerformLoadState(level);
             }
@@ -280,9 +280,9 @@ public sealed partial class AkronOverlay {
         AkronModuleSettings settings = AkronModule.Settings;
         return label switch {
             "Retry" => AkronModuleSettings.DescribeBinding(settings.Retry),
-            "Capture StartPos State" => AkronModuleSettings.DescribeBinding(settings.SaveState),
-            "Restore StartPos State" => AkronModuleSettings.DescribeBinding(settings.LoadState),
-            "StartPos Snapshot Slot" => AkronModuleSettings.DescribeBinding(settings.PreviousSlot) + " / " + AkronModuleSettings.DescribeBinding(settings.NextSlot),
+            "Speedrun Tool Capture State" => AkronModuleSettings.DescribeBinding(settings.SaveState),
+            "Speedrun Tool Restore State" => AkronModuleSettings.DescribeBinding(settings.LoadState),
+            "SRT Slot" => AkronModuleSettings.DescribeBinding(settings.PreviousSlot) + " / " + AkronModuleSettings.DescribeBinding(settings.NextSlot),
             "Grab Mode" => AkronModuleSettings.DescribeBinding(settings.CycleGrabMode),
             "Freeze Gameplay" => AkronModuleSettings.DescribeBinding(settings.FreezeGameplay),
             "Frame Stepper" => AkronModuleSettings.DescribeBinding(settings.StepFrame),
@@ -397,6 +397,10 @@ public sealed partial class AkronOverlay {
             return IsModifierKey(key)
                 ? new MenuBinding(modifiers)
                 : new MenuBinding(modifiers.Concat(new[] { key }));
+        }
+
+        public static MenuBinding FromKeys(IEnumerable<Keys> keys) {
+            return new MenuBinding(keys);
         }
 
         public static MenuBinding FromButton(Buttons button) {
@@ -591,26 +595,42 @@ public sealed partial class AkronOverlay {
             return true;
         }
 
-        Keys key = pressedKeys.FirstOrDefault(IsBindableKey);
+        // The chord completes on its non-modifier key, with whatever modifiers are held. Taking
+        // the first key in code order instead bound bare LeftControl for Ctrl+. (punctuation
+        // sorts above the modifiers) and could not wait for the second key of Ctrl+R.
+        Keys key = pressedKeys.FirstOrDefault(candidate => IsBindableKey(candidate) && !IsModifierKey(candidate));
         if (key != Keys.None) {
             if (bindingCaptureAutoDeafenHotkey) {
                 if (AkronHotkey.TryFromKeyboardState(pressedKeys, out AkronHotkey hotkey)) {
                     AkronActions.SetAutoDeafenHotkey(hotkey.ToStorageString(), out _);
                 }
             } else {
-                MenuBinding binding = MenuBinding.FromKeyboardState(key, pressedKeys);
-                if (bindingCaptureOverlayToggle) {
-                    SetOverlayToggleBinding(binding);
-                } else if (bindingCaptureButtonBindingSetter != null) {
-                    SetCapturedButtonBinding(ToButtonBinding(binding));
-                } else {
-                    SetMenuBinding(bindingCaptureActionKey, binding);
-                }
+                ApplyCapturedKeyboardBinding(MenuBinding.FromKeyboardState(key, pressedKeys));
             }
+            CancelBindingCapture();
+            return true;
+        }
+
+        // Modifiers alone are a valid binding (a hold bind on LeftAlt, say). They bind when the
+        // player lets go, so a modifier pressed on the way to a chord is not taken early.
+        bindingCaptureHeldModifiers ??= new HashSet<Keys>();
+        bindingCaptureHeldModifiers.UnionWith(pressedKeys.Where(IsModifierKey));
+        if (pressedKeys.Length == 0 && bindingCaptureHeldModifiers.Count > 0 && !bindingCaptureAutoDeafenHotkey) {
+            ApplyCapturedKeyboardBinding(MenuBinding.FromKeys(bindingCaptureHeldModifiers));
             CancelBindingCapture();
         }
 
         return true;
+    }
+
+    private void ApplyCapturedKeyboardBinding(MenuBinding binding) {
+        if (bindingCaptureOverlayToggle) {
+            SetOverlayToggleBinding(binding);
+        } else if (bindingCaptureButtonBindingSetter != null) {
+            SetCapturedButtonBinding(ToButtonBinding(binding));
+        } else {
+            SetMenuBinding(bindingCaptureActionKey, binding);
+        }
     }
 
     private void StartBindingCapture(ActionEntry entry) {
@@ -625,6 +645,7 @@ public sealed partial class AkronOverlay {
         bindingCaptureButtonBindingSetter = null;
         bindingCaptureClearsMenuBinding = false;
         bindingCaptureWaitingForRelease = true;
+        bindingCaptureHeldModifiers?.Clear();
     }
 
     private void StartOverlayToggleBindingCapture() {
@@ -634,6 +655,7 @@ public sealed partial class AkronOverlay {
         bindingCaptureButtonBindingSetter = null;
         bindingCaptureClearsMenuBinding = false;
         bindingCaptureWaitingForRelease = true;
+        bindingCaptureHeldModifiers?.Clear();
     }
 
     private void StartAutoDeafenHotkeyCapture() {
@@ -644,6 +666,7 @@ public sealed partial class AkronOverlay {
         bindingCaptureButtonBindingSetter = null;
         bindingCaptureClearsMenuBinding = false;
         bindingCaptureWaitingForRelease = true;
+        bindingCaptureHeldModifiers?.Clear();
     }
 
     private void StartButtonBindingCapture(string actionKey, string displayName, Action<ButtonBinding> setter, bool clearMenuBinding = true) {
@@ -654,6 +677,7 @@ public sealed partial class AkronOverlay {
         bindingCaptureButtonBindingSetter = setter;
         bindingCaptureClearsMenuBinding = clearMenuBinding;
         bindingCaptureWaitingForRelease = true;
+        bindingCaptureHeldModifiers?.Clear();
     }
 
     private void CancelBindingCapture() {
@@ -664,6 +688,7 @@ public sealed partial class AkronOverlay {
         bindingCaptureButtonBindingSetter = null;
         bindingCaptureClearsMenuBinding = false;
         bindingCaptureWaitingForRelease = false;
+        bindingCaptureHeldModifiers?.Clear();
     }
 
     private void StartBindingCaptureForEntry(ActionEntry entry) {

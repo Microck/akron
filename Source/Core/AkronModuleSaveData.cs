@@ -52,7 +52,6 @@ public class AkronModuleSaveData : EverestModuleSaveData {
     // profile receives a different value even when it occupies the same slot.
     public string ProfileId { get; set; } = Guid.NewGuid().ToString("N");
     public Dictionary<string, long> BestRoomTimes { get; set; } = new Dictionary<string, long>();
-    public Dictionary<string, long> BestSegmentTimes { get; set; } = new Dictionary<string, long>();
     public Dictionary<string, AkronRoomStatRecord> RoomStats { get; set; } = new Dictionary<string, AkronRoomStatRecord>();
     public Dictionary<string, AkronPersistedStartPosMap> StartPositionsByMap { get; set; } = new Dictionary<string, AkronPersistedStartPosMap>();
 }

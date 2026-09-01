@@ -227,7 +227,7 @@ public static partial class AkronEntityInspector {
         player ??= FindPlayer(level);
 
         try {
-            bool deathHitboxVisible = settings.HitboxShowLastDeath && HasVisibleLastDeathObjectHitbox(AkronModule.Session);
+            bool deathHitboxVisible = settings.HitboxShowLastDeath && HasVisibleLastDeathObjectHitbox(AkronModule.Session) && AkronModule.TryUse(AkronFeatureKind.DeathHitboxes);
             if (ShouldRenderLiveHitboxes(settings.HitboxViewer, deathHitboxVisible, settings.HitboxShowAllOnDeath)) {
                 if (settings.HitboxShowSolids) {
                     DrawVisibleSolidTiles(level);
@@ -265,7 +265,7 @@ public static partial class AkronEntityInspector {
                 }
             }
 
-            if (settings.HitboxShowLastDeath && HasVisibleLastDeathHitbox()) {
+            if (settings.HitboxShowLastDeath && HasVisibleLastDeathHitbox() && AkronModule.TryUse(AkronFeatureKind.DeathHitboxes)) {
                 if (!settings.HitboxShowAllOnDeath) {
                     Color deathColor = ColorFromRgb(settings.HitboxDeathColor);
                     if (CanRenderDeathColliderSnapshot(

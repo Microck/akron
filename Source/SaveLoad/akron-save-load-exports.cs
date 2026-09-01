@@ -42,11 +42,6 @@ public static class AkronSaveLoadExports {
         return AkronSaveLoadService.RegisterStaticTypes(type, memberNames);
     }
 
-    public static object RegisterRiskHandler(AkronSaveLoadRiskHandler handler) {
-        AkronSaveLoadService.RegisterRiskHandler(handler);
-        return handler;
-    }
-
     public static void Unregister(object obj) {
         AkronSaveLoadService.Unregister(obj);
     }

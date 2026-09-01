@@ -49,7 +49,7 @@ Template expressions are case-insensitive for variable lookup.
 | `inputs` | Current input chord. |
 | `hazard_accuracy` | Current noclip hazard accuracy percentage. |
 | `hazard_invalid` | Current noclip invalid-entry count. |
-| `savestate_slot` | Active Akron savestate slot. |
+| `savestate_slot` | Active Speedrun Tool savestate slot. |
 | `tas` | `CelesteTAS` when CelesteTAS is loaded, otherwise `No TAS`. |
 | `speedrun_tool` | `Speedrun Tool` when Speedrun Tool is loaded, otherwise `No SRT`. |
 | `clock` | Local clock in `HH:mm:ss` format. |
@@ -100,7 +100,7 @@ Each custom label has an **Event** setting that controls when the row is visible
 | `Always` | Show whenever the label is enabled and the scene can render it. |
 | `OnDeath` | Show after the latest recorded death marker, using the label's Delay and Duration values. |
 | `OnButtonHold` | Show while jump, dash, or grab is held. |
-| `OnNoclipDeath` | Show while the latest visible death marker was recorded as a noclip death. |
+| `OnNoclipDeath` | Show while the latest visible death marker comes from a death that happened with Noclip on. |
 
 Enable **Event style override** when the event state should temporarily use a different scale, color, or opacity.
 

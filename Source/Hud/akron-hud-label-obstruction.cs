@@ -78,17 +78,17 @@ public static partial class AkronHudRenderer {
             return true;
         }
 
-        foreach (HudLabelObstructionPlan plan in BuildHudLabelObstructionPlans(level, player, settings, ref y)) {
+        PlanLabelStackSink sink = new PlanLabelStackSink(level, player);
+        foreach (HudLabelObstructionPlan plan in BuildHudLabelObstructionPlans(level, player, settings, sink, ref y)) {
             if (LabelPlanIntersectsPlayer(plan)) {
                 return true;
             }
         }
 
-        if (AkronCustomHudLabels.AnyRenderedLabelIntersectsPlayer(level, player, y)) {
+        if (sink.CustomLabelIntersectsPlayer) {
             return true;
         }
 
-        y = AkronCustomHudLabels.CalculateRenderedBottomY(level, player, y);
         HudLabelObstructionPlan inputHistoryPlan = BuildInputHistoryPlan(settings, ref y);
         return inputHistoryPlan != null && LabelPlanIntersectsPlayer(inputHistoryPlan);
     }
@@ -112,82 +112,15 @@ public static partial class AkronHudRenderer {
         return new HudLabelObstructionPlan(AnchorBoxPosition(settings.HudCheatIndicatorAnchor, boxSize), boxSize);
     }
 
-    private static List<HudLabelObstructionPlan> BuildHudLabelObstructionPlans(Level level, Player player, AkronModuleSettings settings, ref float y) {
-        List<HudLabelObstructionPlan> plans = new List<HudLabelObstructionPlan>();
-        if (settings.RoomLabels) {
-            plans.Add(BuildTextPlan("Room: " + level.Session.Level, HudEdgePadding, ref y, settings.RoomLabelStyle));
-        }
-
-        if (player != null && settings.StaminaWidget) {
-            plans.Add(BuildTextPlan("Stamina: " + player.Stamina.ToString("0"), HudEdgePadding, ref y, null));
-        }
-
-        if (player != null && settings.SpeedWidget) {
-            plans.Add(BuildTextPlan("Speed: " + player.Speed.Length().ToString("0.0"), HudEdgePadding, ref y, null));
-        }
-
-        if (player != null && settings.DashWidget) {
-            plans.Add(BuildTextPlan("Dashes: " + player.Dashes, HudEdgePadding, ref y, null));
-        }
-
-        if (settings.InputViewer) {
-            plans.Add(BuildTextPlan("Inputs: " + AkronInputHistory.FormatCurrentChord(), HudEdgePadding, ref y, settings.InputHistoryLabelStyle));
-        }
-
-        if (settings.InputsPerSecondCounter && AkronPolicy.CanUse(AkronFeatureKind.InputsPerSecondCounter).Allowed) {
-            HudLabelObstructionPlan inputsPerSecondPlan = BuildInputsPerSecondPlan(settings, ref y);
-            if (inputsPerSecondPlan != null) {
-                plans.Add(inputsPerSecondPlan);
-            }
-        }
-
-        if (settings.RoomTimerWidget) {
-            long mapTime = AkronPracticeStats.GetCurrentMapTime(level);
-            long roomTime = AkronPracticeStats.GetCurrentRoomTime(level);
-            plans.Add(BuildTextPlan("Map Time: " + FormatHudTicks(mapTime), HudEdgePadding, ref y, settings.RoomTimerLabelStyle));
-            plans.Add(BuildTextPlan("Room Time: " + FormatHudTicks(roomTime), HudEdgePadding, ref y, settings.RoomTimerLabelStyle));
-            long? bestRoom = AkronPracticeStats.GetBestRoomTime(level);
-            if (bestRoom.HasValue) {
-                plans.Add(BuildTextPlan("Room PB: " + FormatHudTicks(bestRoom.Value), HudEdgePadding, ref y, settings.RoomTimerLabelStyle));
-            }
-        }
-
-        if (settings.RoomStatTracker && ShouldRenderRoomStatTracker(level)) {
-            foreach (string line in FormatRoomStatTracker(level)) {
-                plans.Add(BuildTextPlan(line, HudEdgePadding, ref y, settings.RoomTimerLabelStyle));
-            }
-        }
-
-        if (settings.DeathStatsWidget) {
-            string deathStats = FormatCurrentDeathStats(level);
-            if (!string.IsNullOrWhiteSpace(deathStats) && ShouldShowDeathStats(level)) {
-                plans.Add(BuildTextPlan(deathStats, HudEdgePadding, ref y, settings.DeathStatsLabelStyle));
-            }
-        }
-
-        if (settings.TotalAttemptsWidget) {
-            plans.Add(BuildTextPlan("Attempts: " + FormatHudNumber(GetCurrentMapDeathTotal(level) + 1), HudEdgePadding, ref y, settings.TotalAttemptsLabelStyle));
-        }
-
-        if (settings.StatusLabelsWidget) {
-            plans.Add(BuildTextPlan("Overlays: " + settings.DescribePresentationOverlays(), HudEdgePadding, ref y, settings.StatusLabelsLabelStyle));
-            plans.Add(BuildTextPlan("Attempt: " + AkronPolicy.GetLegitimacySensitiveStatusLabel(AkronModule.Session.AttemptStatus), HudEdgePadding, ref y, settings.StatusLabelsLabelStyle));
-        }
-
-        if (settings.DashCountStats && settings.DashCountStatsMode != AkronCounterDisplayMode.Off) {
-            plans.Add(BuildTextPlan(AkronPracticeCounters.FormatDashCount(level), HudEdgePadding, ref y, settings.StatusLabelsLabelStyle));
-        }
-
-        if (settings.JumpCount && settings.JumpCountMode != AkronCounterDisplayMode.Off) {
-            plans.Add(BuildTextPlan(AkronPracticeCounters.FormatJumpCount(), HudEdgePadding, ref y, settings.StatusLabelsLabelStyle));
-        }
+    // Mirrors AkronHudRenderer.Render: the ordered row stack through the shared walk, then
+    // the fixed trailing lines. Measuring must not record a use, so the
+    // walk gets a CanUse gate here.
+    private static List<HudLabelObstructionPlan> BuildHudLabelObstructionPlans(Level level, Player player, AkronModuleSettings settings, PlanLabelStackSink sink, ref float y) {
+        List<HudLabelObstructionPlan> plans = sink.Plans;
+        WalkLabelStack(level, player, settings, kind => AkronPolicy.CanUse(kind).Allowed, sink, ref y);
 
         if (AkronSaveLoadService.HasSlot(settings.ActiveSavestateSlot)) {
-            plans.Add(BuildTextPlan("Slot " + settings.ActiveSavestateSlot + ": saved", HudEdgePadding, ref y, null));
-        }
-
-        if (settings.StartPosShowLabel) {
-            plans.AddRange(BuildStartPosLabelPlans(AkronActions.GetActiveStartPos(), HudEdgePadding, ref y));
+            plans.Add(BuildTextPlan("SRT slot " + settings.ActiveSavestateSlot + ": saved", HudEdgePadding, ref y, null));
         }
 
         if (settings.EntityInspector) {

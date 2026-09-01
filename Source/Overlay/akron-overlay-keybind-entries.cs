@@ -41,8 +41,8 @@ public sealed partial class AkronOverlay {
         yield return new KeybindOverviewSpec("Retry", BuildActionKey("Shortcuts", "Retry"), "restart", "practice");
         yield return new KeybindOverviewSpec("Reload Room", BuildActionKey("Shortcuts", "Reload Room"), "restart", "room");
         yield return new KeybindOverviewSpec("Reload Chapter", BuildActionKey("Shortcuts", "Reload Chapter"), "restart", "chapter");
-        yield return new KeybindOverviewSpec("Capture StartPos State", BuildActionKey("StartPos", "Capture State"), "startpos");
-        yield return new KeybindOverviewSpec("Restore StartPos State", BuildActionKey("StartPos", "Restore State"), "startpos");
+        yield return new KeybindOverviewSpec("Speedrun Tool Capture State", BuildActionKey("StartPos", "Capture State"), "speedrun tool", "savestate");
+        yield return new KeybindOverviewSpec("Speedrun Tool Restore State", BuildActionKey("StartPos", "Restore State"), "speedrun tool", "savestate");
         yield return new KeybindOverviewSpec("Show Hitboxes", BuildActionKey("Level", "Show Hitboxes"), "hitboxes");
         yield return new KeybindOverviewSpec("Freeze Gameplay", BuildActionKey("Level", "Freeze Gameplay"), "pause", "step");
         yield return new KeybindOverviewSpec("Cursor Zoom", BuildActionKey("Creator", "Cursor Zoom"), "cursor", "zoom");

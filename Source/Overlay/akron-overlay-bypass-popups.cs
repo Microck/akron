@@ -361,20 +361,6 @@ public sealed partial class AkronOverlay
         DrawPopupTooltip("Apply the experimental smoothing preset that Motion Smoothing recommends avoiding in real gameplay.");
     }
 
-    private void DrawTpsBypassPopupControls(string popupId)
-    {
-        DrawIntStepperRow(
-            "Target TPS",
-            () => AkronModule.Settings.TpsBypassTarget,
-            value => AkronModule.Settings.TpsBypassTarget = AkronModuleSettings.ClampTpsTarget(value),
-            -10,
-            10,
-            30,
-            480,
-            popupId,
-            "Simulation update target while TPS Bypass is enabled. Unlike FPS Bypass, this changes physics cadence.");
-    }
-
     private void DrawSafeModePopupControls(string popupId)
     {
         bool freezeAttempts = AkronModule.Settings.SafeModeFreezeAttempts;

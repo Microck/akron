@@ -59,8 +59,8 @@ manifest size limit is 16 KiB.
 
 | Kind | Payload entry | Payload format | Payload limit | Default directory |
 |---|---|---|---|---|
-| `setup` | `setup.json` | `akron-setup-v7` | 2 MiB, plus declared StartPos attachments | `Saves/AkronSetups` |
-| `theme` | `theme.json` | `akron-overlay-theme-v1` | 64 KiB | `Saves/AkronThemes` |
+| `setup` | `setup.json` | `akron-setup-v8` | 2 MiB, plus declared StartPos attachments | `Saves/AkronSetups` |
+| `theme` | `theme.json` | `akron-overlay-theme-v2` | 64 KiB | `Saves/AkronThemes` |
 | `hud-labels` | `hud-labels.json` | `akron-hud-labels-v1` | 256 KiB | `Saves/AkronHudLabels` |
 | `control-display` | `control-display.json` | `akron-control-display-v1` | 256 KiB | `Saves/AkronControlDisplay` |
 
@@ -76,7 +76,7 @@ The `setup` payload contract and the StartPos snapshot contract move together:
 
 | Setup payload | StartPos snapshot document | StartPos attachment name | Snapshot file on disk |
 |---|---|---|---|
-| `akron-setup-v7` | `akron-reconstruction-v10` | `startpos/<slot>.v10.json.gz` | `Saves/AkronStartPos/v10-<digest>.json.gz` |
+| `akron-setup-v8` | `akron-reconstruction-v10` | `startpos/<slot>.v10.json.gz` | `Saves/AkronStartPos/v10-<digest>.json.gz` |
 
 A StartPos snapshot addresses each object by its position in a clean reload of the room
 rather than by an identifier of its own. That makes a snapshot meaningful only against
@@ -99,9 +99,11 @@ refused by the reader, before the reconstruction path sees it.
 
 | Change | Effect on existing data |
 |---|---|
-| `akron-setup-v6` -> `akron-setup-v7` | Every `.akr` setup pack made by an earlier build must be exported again. |
+| `akron-setup-v7` -> `akron-setup-v8` | Every `.akr` setup pack made by an earlier build must be exported again. The overlay animation duration, floating button, and Deload Spinners flag left the setup state. |
+| `akron-overlay-theme-v1` -> `akron-overlay-theme-v2` | Every `.akr` theme pack made by an earlier build must be exported again. The animation duration left the theme. |
+| `akron-setup-v6` -> `akron-setup-v8` | Every `.akr` setup pack made by an earlier build must be exported again. |
 | `akron-reconstruction-v9` -> `akron-reconstruction-v10` | Every StartPos slot set by an earlier build must be set again. The saved state carries the same content in less than half the bytes: type names live in a per-document table, property names are short, and empty values are omitted. Slot positions, spawn settings and keybinds are unaffected; only the saved room state behind each slot is. |
-| `akron-setup-v4` -> `akron-setup-v7` | Every `.akr` setup pack made by an earlier build must be exported again. |
+| `akron-setup-v4` -> `akron-setup-v8` | Every `.akr` setup pack made by an earlier build must be exported again. |
 | `akron-reconstruction-v7` -> `akron-reconstruction-v10` | Every StartPos slot set by an earlier build must be set again. Slot positions, spawn settings and keybinds are unaffected; only the saved room state behind each slot is. |
 
 ## Setup payload
@@ -111,7 +113,7 @@ Setup packs use the `setup` archive contract:
 ```text
 kind: setup
 Payload entry: setup.json
-Payload format: akron-setup-v7
+Payload format: akron-setup-v8
 Directory: Saves/AkronSetups
 ```
 
@@ -120,7 +122,7 @@ It is not an importable payload because `state` omits its required fields:
 
 ```json
 {
-  "format": "akron-setup-v7",
+  "format": "akron-setup-v8",
   "name": "Whole Setup",
   "createdUtc": "2026-05-14T00:00:00.0000000Z",
   "section": "Whole",
@@ -247,7 +249,7 @@ flowchart TD
   payloadCheck -->|Yes| apply["Apply section"]
 ```
 
-Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats. Setup packs created before `akron-setup-v7` cannot be imported. Recreate the setup and its StartPos slots in the current build, then export a new pack.
+Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats. Setup packs created before `akron-setup-v8` cannot be imported. Recreate the setup and its StartPos slots in the current build, then export a new pack.
 
 For each StartPos attachment, Akron verifies the declared checksum, map, and
 room before applying the setup. It then binds the snapshot to the recipient's

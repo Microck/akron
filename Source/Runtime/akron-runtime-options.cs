@@ -129,6 +129,12 @@ public static class AkronRuntimeOptions {
     }
 
     public static string DescribeSafeModeStats() {
+        // The guards only run while Safe Mode is on, so counting them while it is off would
+        // describe something that is not happening.
+        if (!AkronModule.Settings.SafeMode) {
+            return "Off";
+        }
+
         int enabled = (AkronModule.Settings.SafeModeFreezeAttempts ? 1 : 0) +
                       (AkronModule.Settings.SafeModeFreezeJumps ? 1 : 0) +
                       (AkronModule.Settings.SafeModeFreezeBestRun ? 1 : 0);
@@ -259,7 +265,9 @@ public static class AkronRuntimeOptions {
         }
 
         foreach (Entity entity in level.Entities) {
-            if (entity is not TextMenu menu) {
+            // The prompt is Akron's own modal surface; ShouldSuppressPauseHud exempts it for
+            // the same reason. Hidden, it would still block and take input.
+            if (entity is not TextMenu menu || AkronPromptMenu.IsPromptMenu(menu)) {
                 continue;
             }
 

@@ -136,7 +136,9 @@ public partial class AkronModuleSettings {
     public int TotalAttemptsColor { get; set; } = 0xFFFFFF;
     public bool StatusLabelsWidget { get; set; }
     public int StatusLabelsColor { get; set; } = 0xFFFFFF;
-    public bool ToastLabels { get; set; }
+    // On by default: toasts carry every refusal and result message, and a factory install
+    // that swallowed them would look like the action silently did nothing.
+    public bool ToastLabels { get; set; } = true;
     public int ToastLabelColor { get; set; } = 0xFFFFFF;
     public AkronHudAnchor ToastLabelAnchor { get; set; } = AkronHudAnchor.BottomLeft;
     public bool NoShortNumbers { get; set; }

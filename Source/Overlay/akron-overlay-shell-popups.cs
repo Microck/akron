@@ -64,29 +64,7 @@ public sealed partial class AkronOverlay {
             popupId,
             "Scale ImGui overlay windows for DPI and distance readability.");
 
-        DrawIntStepperRow("Blur", () => AkronModule.Settings.OverlayBlur, value => AkronModule.Settings.OverlayBlur = AkronModuleSettings.ClampOverlayBlur(value), -5, 5, 0, 100, popupId, "Stored blur amount for overlay presentation. SpriteBatch fallback stays unblurred.");
-        DrawIntStepperRow("Anim ms", () => AkronModule.Settings.OverlayAnimationMs, value => AkronModule.Settings.OverlayAnimationMs = AkronModuleSettings.ClampOverlayAnimationMs(value), -20, 20, 0, 500, popupId, "Stored animation duration for overlay presentation polish.");
-
-        bool floating = AkronModule.Settings.FloatingButton;
-        if (ImGui.Checkbox("Floating button##" + popupId, ref floating)) {
-            AkronModule.Settings.FloatingButton = floating;
-        }
-        DrawPopupTooltip("Enable floating activation-button settings for non-keyboard workflows.");
-
-        DrawIntStepperRow("Button %", () => AkronModule.Settings.FloatingButtonScale, value => AkronModule.Settings.FloatingButtonScale = AkronModuleSettings.ClampPercent(value, 50, 250), -5, 5, 50, 250, popupId, "Floating activation button scale.");
-        DrawIntStepperRow("Button alpha", () => AkronModule.Settings.FloatingButtonOpacity, value => AkronModule.Settings.FloatingButtonOpacity = AkronModuleSettings.ClampOpacity(value), -5, 5, 0, 100, popupId, "Floating activation button opacity.");
-
-        bool buttonLevels = AkronModule.Settings.FloatingButtonInLevels;
-        if (ImGui.Checkbox("Button in levels##" + popupId, ref buttonLevels)) {
-            AkronModule.Settings.FloatingButtonInLevels = buttonLevels;
-        }
-        DrawPopupTooltip("Allow the floating activation button in active levels.");
-
-        bool buttonMenus = AkronModule.Settings.FloatingButtonInMenus;
-        if (ImGui.Checkbox("Button in menus##" + popupId, ref buttonMenus)) {
-            AkronModule.Settings.FloatingButtonInMenus = buttonMenus;
-        }
-        DrawPopupTooltip("Allow the floating activation button outside active levels.");
+        DrawIntStepperRow("Blur", () => AkronModule.Settings.OverlayBlur, value => AkronModule.Settings.OverlayBlur = AkronModuleSettings.ClampOverlayBlur(value), -5, 5, 0, 100, popupId, "Blur the room behind the overlay while it is open. 0 leaves the room sharp.");
 
         bool autofocus = AkronModule.Settings.SearchAutofocus;
         if (ImGui.Checkbox("Search autofocus##" + popupId, ref autofocus)) {

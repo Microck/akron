@@ -79,10 +79,15 @@ public sealed class AkronToast : Entity {
         }
     }
 
+    // Toasts are Akron's only channel for telling the player why an action was refused or
+    // what it did, so they are not behind the label system's Visible gate: that gate hides
+    // HUD labels, and a player who never opened the Labels tab still needs to see refusals.
+    // The Toasts row alone turns them off, and forceVisible bypasses even that for the few
+    // messages that must reach the screen.
     public override void Render() {
         if (AkronCapture.IsCapturingGameFrame ||
             AkronModule.ShouldHideAkronRenderSurfaces() ||
-            (!forceVisible && (!AkronModule.Settings.LabelSystemVisible || !AkronModule.Settings.ToastLabels))) {
+            (!forceVisible && !AkronModule.Settings.ToastLabels)) {
             return;
         }
 

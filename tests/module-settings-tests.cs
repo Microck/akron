@@ -292,7 +292,8 @@ public sealed class ModuleSettingsTests
         Assert.False(settings.SafeMode);
         Assert.False(settings.RoomLabels);
         Assert.False(settings.LabelSystemVisible);
-        Assert.False(settings.ToastLabels);
+        // Toasts are the feedback channel, so they are the one label row that starts on.
+        Assert.True(settings.ToastLabels);
         Assert.False(settings.HudCheatIndicator);
         Assert.False(settings.RespawnAtStartPos);
         Assert.False(settings.StartPosShowLabel);
@@ -2057,7 +2058,7 @@ public sealed class ModuleSettingsTests
         Assert.Equal(0xFFFFFF, settings.StatusLabelsColor);
         Assert.Equal(0xFFFFFF, settings.StartPosLabelColor);
         Assert.Equal(0xFFFFFF, settings.SpeedNumberColor);
-        Assert.False(settings.ToastLabels);
+        Assert.True(settings.ToastLabels);
         Assert.Equal(0xFFFFFF, settings.ToastLabelColor);
         Assert.Equal(AkronHudAnchor.BottomLeft, settings.ToastLabelAnchor);
         Assert.True(settings.ToastLabelStyle.Shadow);
@@ -2211,9 +2212,9 @@ public sealed class ModuleSettingsTests
         Assert.DoesNotContain("Bird Squawk", soundLabels);
         Assert.DoesNotContain("Zip Mover", soundLabels);
         Assert.DoesNotContain("Ear Aid", soundLabels);
-        Assert.DoesNotContain("StartPos Snapshot Slot", soundLabels);
-        Assert.DoesNotContain("Capture StartPos State", soundLabels);
-        Assert.DoesNotContain("Restore StartPos State", soundLabels);
+        Assert.DoesNotContain("StartPos Actions", soundLabels);
+        Assert.DoesNotContain("Speedrun Tool Capture State", soundLabels);
+        Assert.DoesNotContain("Speedrun Tool Restore State", soundLabels);
     }
 
     [Fact]
@@ -2348,9 +2349,8 @@ public sealed class ModuleSettingsTests
         Dictionary<string, string> interfaceControls = BuildOverlayEntryControls("Interface");
 
         Assert.Equal("Action", interfaceControls["Upload Pack"]);
-        Assert.Equal(AkronFeatureKind.ScreenshotTool, BuildOverlayEntryFeatureKind("Interface", "Upload Pack"));
-        Assert.True(AkronFeatureRegistry.TryClassifyUiLabel("Upload Pack", out AkronStatus status));
-        Assert.Equal(AkronStatus.GoldberryHardlistClean, status);
+        // Opening the submission form changes nothing about the attempt, so the row carries no class.
+        Assert.Null(BuildOverlayEntryFeatureKind("Interface", "Upload Pack"));
         Assert.True(HasOverlayOptionsPopup("Upload Pack"));
         Assert.False(HasOverlayStepperPopup("Upload Pack"));
     }
@@ -3054,9 +3054,9 @@ public sealed class ModuleSettingsTests
 
         Assert.Equal(
             new[] {
-                "Core Mode", "Freeze Gameplay", "Confirm Restart", "Confirm Full Reset", "Skip Intro",
+                "Core Mode", "Freeze Gameplay", "Confirm Actions", "Skip Intro",
                 "Skip Postcards", "Auto Kill", "Respawn Time", "Pause Timer", "Pause Tracker", "Lag Pauser",
-                "Freeze Timer While Paused", "Hide Pause Menu", "Auto Deafen", "Deload Spinners",
+                "Freeze Timer While Paused", "Hide Pause Menu", "Hide Vanilla HUD", "Hide Akron HUD", "Auto Deafen", "Deload Spinners",
                 "Show Hitboxes", "Fix Hitbox Pixels", "Show Hitbox Trail", "Show Hitboxes On Death",
                 "Show Triggers", "Refill Clarity", "Screenshake", "Light Level", "Bloom Level", "Screen Tint",
                 "Reduced Visual Noise", "No Particles", "No Glitch", "No Anxiety", "No Distortion", "Hide Snow",
@@ -3072,7 +3072,7 @@ public sealed class ModuleSettingsTests
                 "Dash Redirect", "Hazard Accuracy", "Fast Lookout", "Golden Start", "Show Trajectory",
                 "Control Display", "Dash Bar", "Dash Number", "Stamina Bar", "Speed Number", "Hide Player",
                 "Golden Transparency", "Madeline Colors", "Madeline Hair Length", "Madeline Effect Sync",
-                "Custom Trail", "Always Show Trail", "No Ghost Trail", "No Trails", "No Stamina Flash",
+                "Custom Trail", "Trail Visibility", "No Trails", "No Stamina Flash",
                 "Death Particles", "No Death Effect", "No Respawn Animation"
             },
             BuildOverlayEntryLabels("Player"));
@@ -3080,7 +3080,7 @@ public sealed class ModuleSettingsTests
         Assert.Equal(
             new[] {
                 "Theme", "UI Scale", "Opacity", "Export Setup", "Import Setup", "Community Packs",
-                "Upload Pack", "Pause While Open", "Streamer Mode", "Logging", "Search Autofocus", "Search"
+                "Upload Pack", "Pause While Open", "Block Gameplay Input", "Streamer Mode", "Logging", "Search Autofocus", "Search"
             },
             BuildOverlayEntryLabels("Interface"));
     }
@@ -3421,7 +3421,7 @@ public sealed class ModuleSettingsTests
 
         Assert.Equal("Keybind", controls["Open Menu"]);
         Assert.Equal("Keybind", controls["Retry"]);
-        Assert.Equal("Keybind", controls["Capture StartPos State"]);
+        Assert.Equal("Keybind", controls["Speedrun Tool Capture State"]);
     }
 
     [Fact]
@@ -6016,21 +6016,6 @@ public sealed class ModuleSettingsTests
         AkronModuleSettings settings = new AkronModuleSettings();
 
         Assert.Equal("/tmp/akron/proof/clear.json", settings.FormatPathForDisplay("/tmp/akron/proof/clear.json"));
-    }
-
-    [Fact]
-    public void OneShotRuntimeActionsAreClearedOnSettingsLoad()
-    {
-        AkronModuleSettings settings = new AkronModuleSettings
-        {
-            DeloadSpinners = true,
-            DeloadSpinnerDelaySeconds = 3f
-        };
-
-        AkronModuleSettings.ClearOneShotRuntimeActions(settings);
-
-        Assert.False(settings.DeloadSpinners);
-        Assert.Equal(3f, settings.DeloadSpinnerDelaySeconds);
     }
 
     [Fact]

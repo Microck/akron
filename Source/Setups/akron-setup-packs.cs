@@ -102,7 +102,7 @@ public static partial class AkronSetupPacks {
     // whether a saved resource's key names it, and, for the room half of a snapshot,
     // whether the map laid a saved entity's id out - so the v8 snapshots inside a v5
     // pack cannot be rebuilt here either.
-    public const string SetupPackFormat = "akron-setup-v7";
+    public const string SetupPackFormat = "akron-setup-v8";
 
     public const int MaxStartPositions = 99;
     public const int MaxAutoKillAreas = 128;
@@ -561,13 +561,29 @@ public static partial class AkronSetupPacks {
             Engine.Scene?.Add(new AkronToast(ex.Message));
             return false;
         }
-        catch (Exception ex) when (ex is InvalidDataException || ex is JsonException || ex is IOException || ex is UnauthorizedAccessException) {
+        // Every InvalidDataException raised while reading a pack is a sentence written for the
+        // player (checksum, wrong map, too many areas, bad binding), so it is shown as is.
+        catch (InvalidDataException ex) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to import Akron setup archive: " + ex.Message);
-            Engine.Scene?.Add(new AkronToast("Unsupported setup pack."));
+            Engine.Scene?.Add(new AkronToast(ex.Message));
+            return false;
+        }
+        catch (JsonException ex) {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to import Akron setup archive: " + ex.Message);
+            Engine.Scene?.Add(new AkronToast("Setup pack is not valid JSON."));
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to import Akron setup archive: " + ex.Message);
+            Engine.Scene?.Add(new AkronToast("Could not read setup pack: " + ex.Message));
             return false;
         }
 
-        Engine.Scene?.Add(new AkronToast("Imported " + FormatSection(NormalizeSection(section ?? pack.Section)) + " setup " + pack.Name + "."));
+        AkronSetupSection imported = NormalizeSection(section ?? pack.Section);
+        Engine.Scene?.Add(new AkronToast("Imported " + FormatSection(imported) + " setup " + pack.Name + "."));
+        if (PackOverlayToggleWasReplaced(pack, imported)) {
+            Engine.Scene?.Add(new AkronToast("The pack had no usable Open Menu binding, so Tab was restored."));
+        }
         return true;
     }
 
@@ -1584,6 +1600,32 @@ public static partial class AkronSetupPacks {
                 property.SetValue(settings, BuildButtonBinding(binding));
             }
         }
+
+        // A pack exported with Open Menu unbound would otherwise leave the recipient with no
+        // keyboard way into the overlay. Load re-seeds the same default; Import tells the player.
+        if (bindings.TryGetValue(nameof(AkronModuleSettings.ToggleOverlay), out AkronButtonBindingPack toggle) &&
+            PackOverlayToggleNeedsDefault(toggle)) {
+            settings.ToggleOverlay = AkronModuleSettings.CreateDefaultOverlayToggleBinding();
+        }
+    }
+
+    // Decided from the pack's own key and button names, not from a built ButtonBinding: the
+    // test reference assemblies cannot run ButtonBinding's getters (see IsUninitializedButtonBinding).
+    internal static bool PackOverlayToggleNeedsDefault(AkronButtonBindingPack toggle) {
+        return AkronModuleSettings.ShouldUseDefaultOverlayToggleBinding(
+            ParseEnumList<Keys>(toggle?.Keys).Where(key => key != Keys.None).ToList(),
+            ParseEnumList<Buttons>(toggle?.Buttons).Where(button => button != 0).ToList());
+    }
+
+    // Whether applying the pack's bindings replaced its Open Menu binding with the default.
+    private static bool PackOverlayToggleWasReplaced(AkronSetupPack pack, AkronSetupSection section) {
+        if (section is not AkronSetupSection.Keybinds and not AkronSetupSection.Whole ||
+            pack.ButtonBindings == null ||
+            !pack.ButtonBindings.TryGetValue(nameof(AkronModuleSettings.ToggleOverlay), out AkronButtonBindingPack toggle)) {
+            return false;
+        }
+
+        return PackOverlayToggleNeedsDefault(toggle);
     }
 
     private static ButtonBinding BuildButtonBinding(AkronButtonBindingPack pack) {

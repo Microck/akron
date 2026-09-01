@@ -13,9 +13,9 @@ public sealed partial class AkronOverlay {
             -10,
             10,
             0,
-            100,
+            90,
             popupId,
-            "Screenshake override intensity. 0 disables native Celeste camera shake while Screenshake is enabled.");
+            "Screenshake override intensity. 0 disables native Celeste camera shake while Screenshake is enabled; 90 is the lightest reduction.");
     }
 
     private void DrawLightLevelPopupControls(string popupId) {

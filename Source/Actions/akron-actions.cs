@@ -295,6 +295,10 @@ public static partial class AkronActions {
             return;
         }
 
+        if (!AkronModule.TryUse(AkronFeatureKind.EntitySpawn)) {
+            return;
+        }
+
         level.Add(new Glider(player.Position, false, false));
         Engine.Scene?.Add(new AkronToast("Spawned jelly."));
     }
@@ -302,6 +306,10 @@ public static partial class AkronActions {
     public static void SpawnTheo(Level level) {
         if (level?.Tracker.GetEntity<Player>() is not Player player) {
             Engine.Scene?.Add(new AkronToast("Spawn Theo is unavailable without Madeline."));
+            return;
+        }
+
+        if (!AkronModule.TryUse(AkronFeatureKind.EntitySpawn)) {
             return;
         }
 
@@ -504,29 +512,37 @@ public static partial class AkronActions {
     }
 
     public static void NeutralDrop() {
+        if (!AkronModule.TryUse(AkronFeatureKind.InputAssistShortcut)) {
+            return;
+        }
+
         Player player = (Engine.Scene as Level)?.Tracker.GetEntity<Player>();
         if (!CanThrowHeldObject(player)) {
             Engine.Scene?.Add(new AkronToast("Neutral Drop needs a throwable held item."));
             return;
         }
 
-        if (!AkronModule.TryUse(AkronFeatureKind.InputAssistShortcut)) {
-            return;
-        }
-
+        // Player.Throw reads MoveY synchronously to decide between a drop and a throw. The
+        // value is put back at once: row bindings run before the level update, so leaving it
+        // at 1 would make Madeline duck or fast-fall on the same frame as the drop.
+        int previousMoveY = Input.MoveY.Value;
         Input.MoveY.Value = 1;
-        player.Throw();
+        try {
+            player.Throw();
+        } finally {
+            Input.MoveY.Value = previousMoveY;
+        }
         Engine.Scene?.Add(new AkronToast("Neutral Drop."));
     }
 
     public static void Backboost() {
-        Player player = (Engine.Scene as Level)?.Tracker.GetEntity<Player>();
-        if (!CanThrowHeldObject(player)) {
-            Engine.Scene?.Add(new AkronToast("Backboost needs a throwable held item."));
+        if (!AkronModule.TryUse(AkronFeatureKind.InputAssistShortcut)) {
             return;
         }
 
-        if (!AkronModule.TryUse(AkronFeatureKind.InputAssistShortcut)) {
+        Player player = (Engine.Scene as Level)?.Tracker.GetEntity<Player>();
+        if (!CanThrowHeldObject(player)) {
+            Engine.Scene?.Add(new AkronToast("Backboost needs a throwable held item."));
             return;
         }
 
@@ -918,70 +934,29 @@ public static partial class AkronActions {
             return;
         }
 
-        level.SkippingCutscene = true;
+        if (!AkronModule.TryUse(AkronFeatureKind.CutsceneSkip)) {
+            return;
+        }
+
+        // Celeste clears SkippingCutscene when the cutscene ends, and only a skip callback
+        // ends one. With no callback stored there is nothing to end, so the flag is left
+        // alone: set, it would keep the level in a skip that nothing finishes.
         FieldInfo onCutsceneSkipField = typeof(Level).GetField("onCutsceneSkip", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         object onCutsceneSkipValue = onCutsceneSkipField?.GetValue(level);
         if (onCutsceneSkipValue is Action<Level> onCutsceneSkipWithLevel) {
+            level.SkippingCutscene = true;
             onCutsceneSkipWithLevel(level);
+            // Nulled after firing: vanilla leaves the callback behind, see AkronSaveLoad.
             onCutsceneSkipField.SetValue(level, null);
         } else if (onCutsceneSkipValue is Action onCutsceneSkip) {
+            level.SkippingCutscene = true;
             onCutsceneSkip();
             onCutsceneSkipField.SetValue(level, null);
+        } else {
+            Engine.Scene?.Add(new AkronToast("This cutscene has no skip to run."));
+            return;
         }
         Engine.Scene?.Add(new AkronToast("Cutscene skip requested."));
-    }
-
-    public static void ToggleForceBroker(Level level) {
-        AkronMapOverrides.ToggleForceBroker(level);
-        Engine.Scene?.Add(new AkronToast("Force broker for this map: " + (AkronMapOverrides.ShouldForceBroker(level) ? "On" : "Off")));
-    }
-
-    public static void ToggleUnsafeNativeOverride(Level level) {
-        if (level == null) {
-            return;
-        }
-
-        if (AkronMapOverrides.ShouldAllowUnsafeSavestates(level)) {
-            AkronMapOverrides.ToggleAllowUnsafe(level);
-            Engine.Scene?.Add(new AkronToast("Unsafe StartPos restore disabled for this map."));
-            return;
-        }
-
-        AkronPromptMenu.Show(
-            level,
-            "UNSAFE STARTPOS RESTORE",
-            "This bypasses Akron's native StartPos restore risk block for the current map.\n" +
-            "Use this only if you accept desync risk and Cheat escalation.",
-            new AkronPromptOption("Keep Blocked", () => { }),
-            new AkronPromptOption("Allow On This Map", () => {
-                AkronMapOverrides.ToggleAllowUnsafe(level);
-                Engine.Scene?.Add(new AkronToast("Unsafe StartPos restore enabled for this map."));
-            })
-        );
-    }
-
-    public static void ToggleEverestSafeBypass(Level level) {
-        if (level == null) {
-            return;
-        }
-
-        if (AkronMapOverrides.ShouldDisableEverestSafeBlock(level)) {
-            AkronMapOverrides.ToggleEverestSafeBlock(level);
-            Engine.Scene?.Add(new AkronToast("Everest-safe native block restored for this map."));
-            return;
-        }
-
-        AkronPromptMenu.Show(
-            level,
-            "EVEREST-SAFE BYPASS",
-            "This disables the conservative native StartPos restore block for this map while Everest-safe is active.\n" +
-            "Proceed only if you trust the map's runtime behavior.",
-            new AkronPromptOption("Keep Blocked", () => { }),
-            new AkronPromptOption("Disable Block On This Map", () => {
-                AkronMapOverrides.ToggleEverestSafeBlock(level);
-                Engine.Scene?.Add(new AkronToast("Everest-safe native block disabled for this map."));
-            })
-        );
     }
 
     private static void WarpToRoom(Level level, string roomName) {
@@ -998,6 +973,7 @@ public static partial class AkronActions {
 
             Vector2 probe = new Vector2(levelData.Bounds.Left, levelData.Bounds.Bottom);
             level.Session.Level = roomName;
+            AkronPracticeStats.NotifyRoomWarp(level);
             level.Session.RespawnPoint = level.Session.GetSpawnPoint(probe);
             level.StartPosition = null;
             level.Tracker.GetEntitiesCopy<Player>().ForEach(entity => entity.RemoveSelf());

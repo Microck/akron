@@ -407,9 +407,6 @@ public static partial class AkronCommands {
             Log("selected-flag: " + DescribeSelectedFlag(level));
             Log("editable-flag: " + AkronModule.Settings.EditableFlagName);
             Log("editable-flag-enabled: " + level.Session.GetFlag(AkronModule.Settings.EditableFlagName).ToString().ToLowerInvariant());
-            Log("force-broker-override: " + AkronMapOverrides.ShouldForceBroker(level).ToString().ToLowerInvariant());
-            Log("unsafe-native-override: " + AkronMapOverrides.ShouldAllowUnsafeSavestates(level).ToString().ToLowerInvariant());
-            Log("everest-safe-override: " + AkronMapOverrides.ShouldDisableEverestSafeBlock(level).ToString().ToLowerInvariant());
         }
 
         if (player != null) {

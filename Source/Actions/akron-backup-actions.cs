@@ -750,6 +750,7 @@ public static class AkronBackupActions {
                     ReleaseFilesAkronHoldsInSaves);
 
                 bool reloaded = TryReloadOpenSaveData(out string reloadMessage);
+                ReloadAkronSettingsFromDisk();
 
                 // The overworld is rebuilt either way. A new Overworld builds a new OuiFileSelect, and
                 // that is what reads the restored files off disk, so it is how the restore becomes
@@ -1226,6 +1227,22 @@ public static class AkronBackupActions {
     // sessions behind their back. The stale slot is therefore the open one, not the backup's metadata slot;
     // those differ when a backup from one profile is restored while another profile is open. FileSlot -1 is
     // Celeste's real debug save rather than a no-save sentinel, which is why the check is on the instance.
+    // The restore just replaced modsettings-Akron.celeste on disk, and the running module still
+    // holds the settings it had before. Left alone it writes those back at the next settings
+    // save, an overlay close included, and the restored file is gone again. Everest's
+    // LoadSettings is the same path a boot takes, so it also rebuilds the binding objects; the
+    // keybind re-seed is what Load runs after it. The overworld the caller builds next creates a
+    // fresh overlay, whose rows bind to the new settings instance.
+    private static void ReloadAkronSettingsFromDisk() {
+        AkronModule module = AkronModule.Instance;
+        if (module == null) {
+            return;
+        }
+
+        module.LoadSettings();
+        AkronModuleSettings.EnsureCurrentKeybindDefaults(AkronModule.Settings);
+    }
+
     internal static bool TryReloadOpenSaveData(out string message) {
         SaveData open = SaveData.Instance;
         if (open == null) {

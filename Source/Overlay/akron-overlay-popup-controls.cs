@@ -13,18 +13,19 @@ namespace Celeste.Mod.Akron;
 public sealed partial class AkronOverlay {
     private void DrawImGuiOptionsPopupContent(ActionEntry entry, string popupId) {
         string previousOptionsPopupLabel = activeOptionsPopupLabel;
+        AkronFeatureKind? previousOptionsPopupFeatureKind = activeOptionsPopupFeatureKind;
         activeOptionsPopupLabel = entry.Label;
+        activeOptionsPopupFeatureKind = entry.FeatureKind;
         try {
             if (entry.IsCustomHudLabelRow) {
                 SelectCustomHudLabel(entry.CustomHudLabelId);
                 DrawCustomHudLabelsPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Timescale", StringComparison.OrdinalIgnoreCase)) {
                 DrawTimescalePopupControls(popupId);
-            } else if (string.Equals(entry.OptionsPopupKey, "StartPos Snapshot Slot", StringComparison.OrdinalIgnoreCase)) {
-                DrawSavestateSlotPopupControls(popupId);
-                ImGui.Separator();
-                ImGui.TextUnformatted("StartPos actions");
+            } else if (string.Equals(entry.OptionsPopupKey, "StartPos Actions", StringComparison.OrdinalIgnoreCase)) {
                 DrawStartPosPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "SRT Slot", StringComparison.OrdinalIgnoreCase)) {
+                DrawSavestateSlotPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Grab Mode", StringComparison.OrdinalIgnoreCase)) {
                 DrawGrabModePopupControls(popupId);
             } else if (string.Equals(entry.Label, "Overlay Appearance", StringComparison.OrdinalIgnoreCase) ||
@@ -73,8 +74,6 @@ public sealed partial class AkronOverlay {
                 DrawPitchShiftPopupControls(popupId);
             } else if (string.Equals(entry.Label, "FPS Bypass", StringComparison.OrdinalIgnoreCase)) {
                 DrawFpsBypassPopupControls(popupId);
-            } else if (string.Equals(entry.Label, "TPS Bypass", StringComparison.OrdinalIgnoreCase)) {
-                DrawTpsBypassPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Safe Mode", StringComparison.OrdinalIgnoreCase)) {
                 DrawSafeModePopupControls(popupId);
             } else if (string.Equals(entry.Label, "Screenshake", StringComparison.OrdinalIgnoreCase)) {
@@ -229,6 +228,7 @@ public sealed partial class AkronOverlay {
         }
         finally {
             activeOptionsPopupLabel = previousOptionsPopupLabel;
+            activeOptionsPopupFeatureKind = previousOptionsPopupFeatureKind;
         }
     }
 
@@ -290,7 +290,7 @@ public sealed partial class AkronOverlay {
         }, -1, 1, 0, 20, popupId, "Keep this many rotated Akron log files.");
         ImGui.Separator();
         if (ImGui.Button("Write test entry##" + popupId)) {
-            AkronLog.Trace(nameof(AkronOverlay), "test log entry from Logging popup");
+            AkronLog.Normal(nameof(AkronOverlay), "test log entry from Logging popup");
         }
         ImGui.TextWrapped("Path: " + AkronModule.Settings.FormatPathForDisplay(AkronLog.GetCurrentLogPath()));
     }
@@ -918,21 +918,19 @@ public sealed partial class AkronOverlay {
             return AkronModuleSettings.FormatStatus(suboptionStatus);
         }
 
+        if (activeOptionsPopupFeatureKind.HasValue) {
+            return AkronModuleSettings.FormatStatus(AkronFeatureRegistry.Classify(activeOptionsPopupFeatureKind.Value));
+        }
+
         return TryClassifyOverlayUiLabel(activeOptionsPopupLabel, out AkronStatus parentStatus)
             ? AkronModuleSettings.FormatStatus(parentStatus)
             : string.Empty;
     }
 
+    // Rows classify through their feature kind. The one exception is Extended Variant Mode's
+    // option rows, which are built from the other mod's option list and record as Cheat through
+    // RecordVariantCheatUseIfUserControlled rather than through a kind of their own.
     private static bool TryClassifyOverlayUiLabel(string label, out AkronStatus status) {
-        if (AkronFeatureRegistry.TryClassifyUiLabel(label, out status)) {
-            return true;
-        }
-
-        if (IsSoundVolumeEntryLabel(label)) {
-            status = AkronStatus.RegularClean;
-            return true;
-        }
-
         if (IsExtendedVariantEntryLabel(label)) {
             status = AkronStatus.Cheat;
             return true;

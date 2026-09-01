@@ -24,7 +24,7 @@ flowchart TD
 
 | Boundary | Responsibility |
 |---|---|
-| Overlay | Presents rows, actions, popups, search, policy badges, and feature-specific browsers. Large surfaces live in focused feature files or overlay partials. |
+| Overlay | Presents rows, actions, popups, search, classification tooltips, and feature-specific browsers. Large surfaces live in focused feature files or overlay partials. |
 | Settings | Stores user-configurable values and persisted setup state. Setup capture, setup application, HUD settings, defaults, clamps, display helpers, and recorder settings live in focused partials. |
 | Policy | Classifies features and records or blocks use under active policy. |
 | Runtime | Applies gameplay, visual, capture, interop, proof behavior, and module lifecycle hooks. Feature-family runtime, command, HUD, save/load, recorder, and inspector logic should live beside that feature family instead of in the core module file. |
@@ -37,6 +37,6 @@ Use the policy system according to intent:
 
 - Use `TryUse` when behavior should count as feature use.
 - Use `CanUse` when code only needs to decide whether a surface should render or be available.
-- Use registry lookups for tooltip badges and static policy display.
+- Use the row's feature kind for its classification tooltip and static policy display.
 
 For detailed source ownership, see [Implementation boundaries](/contributing/implementation-boundaries).

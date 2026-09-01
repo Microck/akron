@@ -407,8 +407,8 @@ public sealed partial class AkronOverlay {
                string.Equals(entry.Label, "Backboost", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Skip Cutscene", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Export Proof JSON", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(entry.Label, "Capture StartPos State", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(entry.Label, "Restore StartPos State", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(entry.Label, "Speedrun Tool Capture State", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(entry.Label, "Speedrun Tool Restore State", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Open Options", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Start Recording", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(entry.Label, "Stop Recording", StringComparison.OrdinalIgnoreCase) ||

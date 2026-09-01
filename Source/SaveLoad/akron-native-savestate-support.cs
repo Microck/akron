@@ -162,7 +162,6 @@ internal static class AkronNativeSavestateSupport {
         AkronEventInstanceUtils.Initialize();
         RegisterCoreRuntimeSupport();
         RegisterThirdPartySupport();
-        AkronSavestateRiskAnalyzer.Initialize();
     }
 
     public static void Reset() {

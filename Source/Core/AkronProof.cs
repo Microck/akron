@@ -32,7 +32,6 @@ public static class AkronProof {
     public static string BuildSummaryJson(Level level, string eventName) {
         AkronModuleSettings settings = AkronModule.Settings;
         AkronModuleSession session = AkronModule.Session;
-        AkronMapOverride mapOverride = AkronMapOverrides.Get(level);
         List<string> overlays = new List<string>();
         if (settings.StreamerMode) overlays.Add("Streamer Mode");
         if (settings.ProofModeOverlay) overlays.Add("Proof-mode");
@@ -60,10 +59,7 @@ public static class AkronProof {
         AppendJson(builder, "replayBufferActive", AkronInternalRecorder.IsReplayBuffering.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "endScreenHelper", settings.EndScreenHelper.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "recordingEndscreenDurationSeconds", settings.RecordingEndscreenDurationSeconds.ToString("0.00"), true, true);
-        AppendJson(builder, "cleanLegitimacyAvailable", AkronPolicy.CanExposeCleanLegitimacy().ToString().ToLowerInvariant(), true, true);
-        AppendJson(builder, "forceBrokerForMap", (mapOverride?.AlwaysUseBroker ?? false).ToString().ToLowerInvariant(), true, true);
-        AppendJson(builder, "allowUnsafeStartPosRestoreForMap", (mapOverride?.AllowUnsafeSavestates ?? false).ToString().ToLowerInvariant(), true, true);
-        AppendJson(builder, "disableEverestSafeBlockForMap", (mapOverride?.DisableEverestSafeBlock ?? false).ToString().ToLowerInvariant(), false, true);
+        AppendJson(builder, "cleanLegitimacyAvailable", AkronPolicy.CanExposeCleanLegitimacy().ToString().ToLowerInvariant(), false, true);
         builder.AppendLine("  },");
         builder.AppendLine("  \"activeFeatures\": {");
         AppendJson(builder, "roomLabels", settings.RoomLabels.ToString().ToLowerInvariant(), true, true);
@@ -103,7 +99,6 @@ public static class AkronProof {
         AppendJson(builder, "respawnAtStartPos", settings.RespawnAtStartPos.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "tasFileConfigured", (!string.IsNullOrWhiteSpace(settings.TasFilePath)).ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "brokeredStartPosState", session.UsedBrokeredSavestate.ToString().ToLowerInvariant(), true, true);
-        AppendJson(builder, "unsafeStartPosRestoreOverride", session.UsedUnsafeSavestateOverride.ToString().ToLowerInvariant(), false, true);
         builder.AppendLine("  },");
         builder.AppendLine("  \"proofTelemetry\": {");
         AppendJson(builder, "pauseTrackerEnabled", settings.PauseTracker.ToString().ToLowerInvariant(), true, true);
@@ -207,12 +202,8 @@ public static class AkronProof {
         if (session.TimescaleEnabled && session.TimescaleMultiplier != 1f) yield return "Timescale";
         if (settings.RespawnAtStartPos) yield return "StartPosRespawn";
         if (session.UsedBrokeredSavestate) yield return "BrokeredStartPosState";
-        if (session.UsedUnsafeSavestateOverride) yield return "UnsafeStartPosRestoreOverride";
         if (!string.IsNullOrWhiteSpace(settings.TasFilePath)) yield return "TasHandoff";
         if (!string.IsNullOrWhiteSpace(session.LastScreenshotPath)) yield return "ScreenshotTool";
-        if (AkronMapOverrides.ShouldForceBroker(level)) yield return "MapOverrideForceBroker";
-        if (AkronMapOverrides.ShouldAllowUnsafeSavestates(level)) yield return "MapOverrideAllowUnsafe";
-        if (AkronMapOverrides.ShouldDisableEverestSafeBlock(level)) yield return "MapOverrideDisableEverestSafe";
     }
 
     private static string BuildLoadedModuleStamp() {
