@@ -10,41 +10,21 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Changed
 
-- Turn toasts on by default and draw them independently of the Labels tab's Visible gate, so refusals and results reach the screen on a fresh install (#160).
-- Classify every overlay row through the feature kind that records it, and drop the separate label table that let a row show a class its feature never recorded. Rows with no attempt impact, such as overlay appearance, setup packs, and label styling, now show no classification (#158).
-- Record ongoing classified surfaces on every frame they are active: HUD labels, Show Trajectory, the Entity Inspector, Madeline Colors, the scenery suppressors, and Motion Smoothing's bypasses and cheat options. An attempt that starts with one of them already on no longer reads Unclassified (#159).
-- Give Spawn Jelly, Spawn Theo, Skip Cutscene, Pause Buffering, Room and Map Capture with their Freeze time and Noclip options, Autosave, Show Hitboxes On Death, and sound volume overrides real recording paths (#158).
+- Turn toasts on by default and improve attempt classifications, including ongoing HUD and overlay features.
+- Add recording support for more actions and settings, including spawning, cutscene skips, captures, autosave, hitboxes, and sound overrides.
+- Add clearer overlay controls for HUD labels, trails, input blocking, confirmation actions, theme blur, and Speedrun Tool slots.
 
 ### Fixed
 
-- Restore Auto Deafen and Native-mode invincibility's Assist flags when a level ends, keep the Assist flags out of save files, and finalize an internal recording when the level or the game exits (#162).
-- Reload Akron's settings after restoring a backup, so the restored configuration takes effect without a restart (#177).
-- Restore the default Tab overlay binding when an imported setup pack carries no usable Open Menu binding (#176).
-- Skip Cutscene only marks the level as skipping when a cutscene skip actually runs, so a cutscene with no skip callback no longer leaves the level stuck mid-skip (#184).
-- Correct the Hazard Accuracy Defaults tooltip, the Toasts tooltip, the Safe Mode summary while Safe Mode is off, the Logging test entry's level, the Autosave "Level load" trigger name, and the capture "Freeze time" name; show the specific reason a setup pack import was refused; color an Unclassified attempt gray in the dot Cheat Indicator and honor Safe Mode there; make the OnNoclipDeath label event fire for deaths with Noclip on; read Jump Stats' File mode from the save file; and describe Retry as the forced death it is (#183).
-- Docs: drop the StartPos snapshot controls that do not exist, show None instead of a classification for rows that carry none, and describe classifications as the tooltip line they are rather than as badges (#183).
-- Restore the movement input Neutral Drop synthesizes as soon as the throw runs, so the drop no longer ducks or fast-falls Madeline on the same frame (#166).
-- Keep Akron's confirmation prompts visible while Hide Pause Menu is on (#170).
-- Close the pause accounting when a prompt opened over the pause menu closes, so Pause Tracker no longer bills the following gameplay as paused time; stacked prompts keep the overlay restore (#169).
-- Stop warps from banking a partial room as a visit and best time, reset the per-room death count on every room change, and make Export Room Stats read-only (#163).
-- Drain completion clips and the endscreen auto-stop from the engine update, so area-clear clips are written after the level stops updating (#172).
-- Add the Confirm Actions row to the Level tab, which is where Confirm Restart, Confirm Full Reset, Reload room, and Restore StartPos State now live (#168).
-- Draw the HUD label stack in the order arranged on the Labels tab (#167).
-- Read every Akron keyboard binding as a chord, so a binding such as Ctrl+R no longer fires on bare R, and capture chords by their non-modifier key, so Ctrl+. no longer stores bare Ctrl (#165).
-- Persist a panel collapse made by clicking its header, the same as the console toggle (#178).
-- Expand collapsed tab windows while a search has matches inside them, and restore their collapse state when the search clears (#179).
-- Let Golden Transparency reach 0% opacity, cap Screenshake at 90% so the row cannot read On while doing nothing, let the replay Buffer stepper return to 0, make Dash Bar's Always visible option do something, and stop Ground Refills from counting as an active cheat while both refills are allowed (#180).
-- Build a room capture's collage from the tiles that scan wrote, not from every tile file in the room folder (#182).
-- Add Level tab rows for Hide Vanilla HUD and Hide Akron HUD, Labels rows for the stamina, speed, and dash text widgets, a Trail Visibility selector with its mode and cut rate popup, and an Interface row for Block Gameplay Input, which now keeps gameplay input from Madeline while the overlay is open. The redundant TPS Bypass popup is gone; the target is edited on the row (#161).
-- Make the Theme popup's Blur option blur the room behind the overlay while it is open (#161).
-- Remove the broker risk prompt, the Current Map Compatibility overrides, and the unsafe restore override. They belonged to Akron's abandoned native savestate engine; every numbered savestate is Speedrun Tool's and always was. The `akron_broker_prompt`, `akron_toggle_force_broker`, and `akron_toggle_unsafe_native_override` commands and the risk handler ModInterop export are gone with them (#181).
-- Stop calling Speedrun Tool slots StartPos: the bindings are now Speedrun Tool Capture State and Speedrun Tool Restore State, the slot stepper lives in the SRT Slot row's popup instead of the StartPos popup, and the HUD line reads "SRT slot N: saved" (#181).
+- Restore settings, bindings, Assist flags, and recording state correctly after level ends, backups, imports, and game exit.
+- Fix cutscene skipping, Neutral Drop input, pause tracking, warps, room captures, completion recordings, and room statistics.
+- Fix keyboard chord bindings, panel collapse and search behavior, several option values, cheat indicators, and setup-pack error messages.
+- Update the docs and tooltips to match the current overlay and classification behavior.
 
 ### Removed
 
-- The overlay animation duration, the floating activation button, and the Deload Spinners flag, none of which anything drew or read. Setup packs move to `akron-setup-v8` and theme packs to `akron-overlay-theme-v2`; packs from earlier builds must be exported again (#161).
-- Best segment times, which were written to the save file and never read, and two unused marked-room capture helpers (#161).
-- The unreachable native numbered-savestate branches in Akron's save/load service. Numbered slots have always been forwarded to Speedrun Tool on every shipped build; Akron's own clone machinery stays, because StartPos uses it (#181).
+- Remove unused overlay controls, best segment times, marked-room helpers, and Akron's unreachable native numbered-savestate code.
+- Setup packs now use `akron-setup-v8` and theme packs use `akron-overlay-theme-v2`; older packs must be exported again.
 
 ## Akron Beta 76
 
