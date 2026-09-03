@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 77
+
 ### Changed
 
 - Turn toasts on by default and draw them independently of the Labels tab's Visible gate, so refusals and results reach the screen on a fresh install (#160).
