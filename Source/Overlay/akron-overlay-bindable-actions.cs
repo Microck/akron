@@ -612,9 +612,14 @@ public sealed partial class AkronOverlay {
         }
 
         // Modifiers alone are a valid binding (a hold bind on LeftAlt, say). They bind when the
-        // player lets go, so a modifier pressed on the way to a chord is not taken early.
+        // player lets go, so a modifier pressed on the way to a chord is not taken early. The set
+        // mirrors what is held right now, so rolling from one modifier to another binds the last
+        // one held, not both.
         bindingCaptureHeldModifiers ??= new HashSet<Keys>();
-        bindingCaptureHeldModifiers.UnionWith(pressedKeys.Where(IsModifierKey));
+        if (pressedKeys.Length > 0) {
+            bindingCaptureHeldModifiers.Clear();
+            bindingCaptureHeldModifiers.UnionWith(pressedKeys.Where(IsModifierKey));
+        }
         if (pressedKeys.Length == 0 && bindingCaptureHeldModifiers.Count > 0 && !bindingCaptureAutoDeafenHotkey) {
             ApplyCapturedKeyboardBinding(MenuBinding.FromKeys(bindingCaptureHeldModifiers));
             CancelBindingCapture();

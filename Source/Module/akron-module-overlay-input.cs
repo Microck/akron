@@ -18,6 +18,14 @@ public partial class AkronModule {
     private static bool previousMouseVisible;
 
     private static void HandleHotkeys(Level level) {
+        // One keyboard snapshot for every binding below, taken before any early return so a key
+        // held through the overlay or a pause is already "held" when bindings run again. Everest's
+        // ButtonBinding.Pressed fires on any one of a binding's keys, so a chord such as Ctrl+R
+        // would fire on bare R; the chord read here needs every key held and one newly pressed.
+        KeyboardState keyboard = Keyboard.GetState();
+        KeyboardState previousKeyboard = previousStartPosHotkeyKeyboard;
+        previousStartPosHotkeyKeyboard = keyboard;
+
         if (Overlay?.IsTransientMouseUiActive == true && IsOverlayTogglePressed()) {
             Overlay.CancelTransientMouseUiForOverlayToggle();
             Overlay.PrewarmLayout(level);
@@ -61,13 +69,6 @@ public partial class AkronModule {
         if (!CanExecuteLevelActionBindings(level)) {
             return;
         }
-
-        // One keyboard snapshot for every binding below. Everest's ButtonBinding.Pressed fires
-        // on any one of a binding's keys, so a chord such as Ctrl+R would fire on bare R; the
-        // chord read here needs every key held and one of them newly pressed, like Open Menu.
-        KeyboardState keyboard = Keyboard.GetState();
-        KeyboardState previousKeyboard = previousStartPosHotkeyKeyboard;
-        previousStartPosHotkeyKeyboard = keyboard;
 
         if (IsBindingPressed(Settings.Retry, keyboard, previousKeyboard)) {
             Retry(level);
@@ -224,6 +225,11 @@ public partial class AkronModule {
     }
 
     private static void HandleGlobalOverlayHotkeys(Scene scene) {
+        // Snapshot before the early returns for the same reason as HandleHotkeys.
+        KeyboardState keyboard = Keyboard.GetState();
+        KeyboardState previousKeyboard = previousGlobalFrameBypassKeyboard;
+        previousGlobalFrameBypassKeyboard = keyboard;
+
         if (Overlay?.IsTransientMouseUiActive == true && IsOverlayTogglePressed()) {
             Overlay.CancelTransientMouseUiForOverlayToggle();
             Overlay.PrewarmLayout(scene as Level);
@@ -263,9 +269,7 @@ public partial class AkronModule {
         }
 
         if (scene is not Level) {
-            KeyboardState keyboard = Keyboard.GetState();
-            HandleFrameBypassBindings(keyboard, previousGlobalFrameBypassKeyboard);
-            previousGlobalFrameBypassKeyboard = keyboard;
+            HandleFrameBypassBindings(keyboard, previousKeyboard);
         }
     }
 
@@ -352,7 +356,7 @@ public partial class AkronModule {
     }
 
     private static void UpdateStepHoldRepeat(KeyboardState keyboard, KeyboardState previousKeyboard) {
-        if (!Settings.FrameStepper || !Session.FreezeGameplay || !Settings.StepHoldRepeat || !IsKeyboardBindingHeld(Settings.StepFrame?.Keys)) {
+        if (!Settings.FrameStepper || !Session.FreezeGameplay || !Settings.StepHoldRepeat || !TryGetButtonBindingKeys(Settings.StepFrame, out IReadOnlyCollection<Keys> stepKeys) || !IsKeyboardBindingHeld(stepKeys)) {
             Session.StepFrameHoldFrames = 0;
             Session.StepFrameRepeatCountdown = 0;
             return;
@@ -537,6 +541,16 @@ public partial class AkronModule {
         }
     }
 
+    private static bool TryGetButtonBindingMouseButtons(ButtonBinding binding, out IReadOnlyCollection<MInput.MouseData.MouseButtons> mouseButtons) {
+        try {
+            mouseButtons = binding.MouseButtons;
+            return true;
+        } catch (InvalidProgramException) {
+            mouseButtons = null;
+            return false;
+        }
+    }
+
     private static bool IsGamepadBindingHeld(IReadOnlyCollection<Buttons> buttons) {
         if (buttons == null ||
             Input.Gamepad < 0 ||
@@ -645,22 +659,25 @@ public partial class AkronModule {
             return false;
         }
 
-        if (IsKeyboardBindingPressed(binding.Keys, keyboard, previousKeyboard)) {
+        if (TryGetButtonBindingKeys(binding, out IReadOnlyCollection<Keys> keys) &&
+            IsKeyboardBindingPressed(keys, keyboard, previousKeyboard)) {
             return true;
         }
 
-        if (binding.MouseButtons != null) {
-            foreach (MInput.MouseData.MouseButtons button in binding.MouseButtons) {
+        if (TryGetButtonBindingMouseButtons(binding, out IReadOnlyCollection<MInput.MouseData.MouseButtons> mouseButtons) &&
+            mouseButtons != null) {
+            foreach (MInput.MouseData.MouseButtons button in mouseButtons) {
                 if (IsMouseButtonPressed(button)) {
                     return true;
                 }
             }
         }
 
-        if (binding.Buttons != null &&
+        if (TryGetButtonBindingButtons(binding, out IReadOnlyCollection<Buttons> buttons) &&
+            buttons != null &&
             Input.Gamepad >= 0 &&
             Input.Gamepad < MInput.GamePads.Length) {
-            foreach (Buttons button in binding.Buttons) {
+            foreach (Buttons button in buttons) {
                 if (MInput.GamePads[Input.Gamepad].Pressed(button)) {
                     return true;
                 }

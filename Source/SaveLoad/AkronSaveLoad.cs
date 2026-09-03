@@ -1993,9 +1993,10 @@ public static partial class AkronSaveLoadService {
         return AkronSpeedrunToolBroker.IsSaved(slot);
     }
 
-    // Kept for the ModInterop export. Akron holds no numbered slots of its own, so there is
-    // nothing here to clear; Speedrun Tool owns the slot and its own clear action.
+    // ModInterop export. Akron holds no numbered slots of its own; the slot is Speedrun
+    // Tool's, so clearing it means asking Speedrun Tool to clear it.
     public static void ClearSlot(int slot) {
+        AkronSpeedrunToolBroker.Clear(GetSlotName(slot));
     }
 
     public static string GetSlotName(int slot) {

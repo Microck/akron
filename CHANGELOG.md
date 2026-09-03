@@ -16,6 +16,9 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Restore Auto Deafen and Native-mode invincibility's Assist flags when a level ends, keep the Assist flags out of save files, and finalize an internal recording when the level or the game exits (#162).
+- Reload Akron's settings after restoring a backup, so the restored configuration takes effect without a restart (#177).
+- Restore the default Tab overlay binding when an imported setup pack carries no usable Open Menu binding (#176).
 - Skip Cutscene only marks the level as skipping when a cutscene skip actually runs, so a cutscene with no skip callback no longer leaves the level stuck mid-skip (#184).
 - Correct the Hazard Accuracy Defaults tooltip, the Toasts tooltip, the Safe Mode summary while Safe Mode is off, the Logging test entry's level, the Autosave "Level load" trigger name, and the capture "Freeze time" name; show the specific reason a setup pack import was refused; color an Unclassified attempt gray in the dot Cheat Indicator and honor Safe Mode there; make the OnNoclipDeath label event fire for deaths with Noclip on; read Jump Stats' File mode from the save file; and describe Retry as the forced death it is (#183).
 - Docs: drop the StartPos snapshot controls that do not exist, show None instead of a classification for rows that carry none, and describe classifications as the tooltip line they are rather than as badges (#183).
@@ -41,9 +44,6 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 - The overlay animation duration, the floating activation button, and the Deload Spinners flag, none of which anything drew or read. Setup packs move to `akron-setup-v8` and theme packs to `akron-overlay-theme-v2`; packs from earlier builds must be exported again (#161).
 - Best segment times, which were written to the save file and never read, and two unused marked-room capture helpers (#161).
 - The unreachable native numbered-savestate branches in Akron's save/load service. Numbered slots have always been forwarded to Speedrun Tool on every shipped build; Akron's own clone machinery stays, because StartPos uses it (#181).
-- Restore Auto Deafen and Native-mode invincibility's Assist flags when a level ends, keep the Assist flags out of save files, and finalize an internal recording when the level or the game exits (#162).
-- Reload Akron's settings after restoring a backup, so the restored configuration takes effect without a restart (#177).
-- Restore the default Tab overlay binding when an imported setup pack carries no usable Open Menu binding (#176).
 
 ## Akron Beta 75
 

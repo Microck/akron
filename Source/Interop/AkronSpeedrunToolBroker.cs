@@ -10,6 +10,7 @@ public static class AkronSpeedrunToolBroker {
     private static MethodInfo reflectedSaveStateTas;
     private static MethodInfo reflectedLoadStateTas;
     private static MethodInfo reflectedIsSaved;
+    private static MethodInfo reflectedClearState;
     private static Type reflectedRoomTimerType;
     private static PropertyInfo reflectedSettingsInstance;
     private static PropertyInfo reflectedEnabledProperty;
@@ -83,7 +84,13 @@ public static class AkronSpeedrunToolBroker {
             return;
         }
 
-        SpeedrunToolTasImports.ClearState?.Invoke(slotName);
+        if (SpeedrunToolTasImports.ClearState != null) {
+            SpeedrunToolTasImports.ClearState.Invoke(slotName);
+            return;
+        }
+
+        // Same fallback as Save and Load: without the ModInterop import, call Speedrun Tool directly.
+        reflectedClearState?.Invoke(null, new object[] { slotName });
     }
 
     internal static object SuppressRoomTimerHudForCapture() {
@@ -150,6 +157,7 @@ public static class AkronSpeedrunToolBroker {
         reflectedSaveStateTas = saveSlotsManagerType.GetMethod("SaveStateTas", BindingFlags.Public | BindingFlags.Static);
         reflectedLoadStateTas = saveSlotsManagerType.GetMethod("LoadStateTas", BindingFlags.Public | BindingFlags.Static);
         reflectedIsSaved = saveSlotsManagerType.GetMethod("IsSaved", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(string) }, null);
+        reflectedClearState = saveSlotsManagerType.GetMethod("ClearState", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(string) }, null);
     }
 
     private static bool TryEnsureRoomTimerReflection() {

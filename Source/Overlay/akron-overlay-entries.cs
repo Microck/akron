@@ -127,10 +127,10 @@ public sealed partial class AkronOverlay {
                 return new List<OverlayEntry> {
                     StartPosRow(level),
                     PlaceStartPosRow(),
-                    Toggle("Smart StartPos", AkronFeatureKind.StartPosTools, () => AkronModule.Settings.SmartStartPos, value => AkronModule.Settings.SmartStartPos = value, "smart", "nearest", "respawn"),
+                    PolicyToggle("Smart StartPos", AkronFeatureKind.StartPosTools, () => AkronModule.Settings.SmartStartPos, value => AkronModule.Settings.SmartStartPos = value, "smart", "nearest", "respawn"),
                     StartPosSwitcherRow(level),
                     SelectorDropdown("StartPos Slot", () => true, () => "Slot " + AkronModule.Settings.ActiveStartPosSlot, () => AkronActions.ShiftStartPosSlot(1), BuildStartPosSlotChoices, AkronFeatureKind.StartPosTools, "slot", "selected", "dropdown"),
-                    Toggle("Respawn at StartPos", AkronFeatureKind.StartPosTools, () => AkronModule.Settings.RespawnAtStartPos, value => AkronModule.Settings.RespawnAtStartPos = value, "respawn", "death", "practice")
+                    PolicyToggle("Respawn at StartPos", AkronFeatureKind.StartPosTools, () => AkronModule.Settings.RespawnAtStartPos, value => AkronModule.Settings.RespawnAtStartPos = value, "respawn", "death", "practice")
                 };
             case "Backups":
                 return new List<OverlayEntry> {

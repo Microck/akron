@@ -575,7 +575,7 @@ public static partial class AkronSetupPacks {
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to import Akron setup archive: " + ex.Message);
-            Engine.Scene?.Add(new AkronToast("Could not read setup pack: " + ex.Message));
+            Engine.Scene?.Add(new AkronToast("Could not read setup pack."));
             return false;
         }
 

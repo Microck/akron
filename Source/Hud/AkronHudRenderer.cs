@@ -124,8 +124,10 @@ public static partial class AkronHudRenderer {
         }
     }
 
+    // Pure visibility check: the label stack walk records the use, and the obstruction
+    // planner calls this too, where nothing may be recorded.
     private static bool ShouldRenderRoomStatTracker(Level level) {
-        if (level == null || !AkronModule.TryUse(AkronFeatureKind.RoomTimer)) {
+        if (level == null) {
             return false;
         }
 

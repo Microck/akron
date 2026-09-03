@@ -166,13 +166,18 @@ public static partial class AkronEntityInspector
         }
 
         if (ShouldIgnoreInspectorPinGameplayClick(level) ||
-            !AkronModule.ShouldShowEntityInspectorCursor() ||
-            !AkronModule.TryUse(AkronFeatureKind.EntityInspector))
+            !AkronModule.ShouldShowEntityInspectorCursor())
         {
             return;
         }
 
         if (!IsInsideGameplayViewport(screenPoint))
+        {
+            return;
+        }
+
+        // Recorded only for a click that lands on the room, not on the letterbox.
+        if (!AkronModule.TryUse(AkronFeatureKind.EntityInspector))
         {
             return;
         }
