@@ -6,11 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
-## Akron Beta 76
-
 ### Changed
 
-- Route StartPos, Auto Kill, and Auto Deafen community submissions through Akron's moderated Upload Pack flow, with Discord map forums reserved for approved showcases.
 - Turn toasts on by default and draw them independently of the Labels tab's Visible gate, so refusals and results reach the screen on a fresh install (#160).
 - Classify every overlay row through the feature kind that records it, and drop the separate label table that let a row show a class its feature never recorded. Rows with no attempt impact, such as overlay appearance, setup packs, and label styling, now show no classification (#158).
 - Record ongoing classified surfaces on every frame they are active: HUD labels, Show Trajectory, the Entity Inspector, Madeline Colors, the scenery suppressors, and Motion Smoothing's bypasses and cheat options. An attempt that starts with one of them already on no longer reads Unclassified (#159).
@@ -46,6 +43,12 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 - The overlay animation duration, the floating activation button, and the Deload Spinners flag, none of which anything drew or read. Setup packs move to `akron-setup-v8` and theme packs to `akron-overlay-theme-v2`; packs from earlier builds must be exported again (#161).
 - Best segment times, which were written to the save file and never read, and two unused marked-room capture helpers (#161).
 - The unreachable native numbered-savestate branches in Akron's save/load service. Numbered slots have always been forwarded to Speedrun Tool on every shipped build; Akron's own clone machinery stays, because StartPos uses it (#181).
+
+## Akron Beta 76
+
+### Changed
+
+- Route StartPos, Auto Kill, and Auto Deafen community submissions through Akron's moderated Upload Pack flow, with Discord map forums reserved for approved showcases.
 
 ### Fixed
 
