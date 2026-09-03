@@ -971,14 +971,12 @@ public static partial class AkronCommands {
             duration = 8f;
         }
 
-        AkronModule.Settings.LabelSystemVisible = true;
         AkronModule.Settings.ToastLabels = true;
         Engine.Scene?.Add(new AkronToast(string.IsNullOrWhiteSpace(message) ? "QA_TOAST" : message, durationSeconds: duration));
         Log("qa-toast-label: shown");
         Log("qa-toast-label-message: " + (string.IsNullOrWhiteSpace(message) ? "QA_TOAST" : message));
         Log("qa-toast-label-duration: " + Math.Max(0.1f, duration).ToString("0.###", CultureInfo.InvariantCulture));
         Log("qa-toast-labels-enabled: " + AkronModule.Settings.ToastLabels.ToString().ToLowerInvariant());
-        Log("qa-labels-visible: " + AkronModule.Settings.LabelSystemVisible.ToString().ToLowerInvariant());
     }
 
     // Return raised toast messages, newest last, with a total count. The count lets
@@ -1010,10 +1008,27 @@ public static partial class AkronCommands {
         Log("qa-enter-debug-map: requested");
     }
 
-    [Command("akron_qa_cutscene_state", "prepare a controlled active cutscene state for Skip Cutscene QA")]
+    [Command("akron_qa_cutscene_state", "prepare a controlled cutscene state for Skip Cutscene QA: active|no-skip|stale|clear|status")]
     public static void QaCutsceneState(string action = "active") {
         Level level = RequireLevel();
         if (level == null) {
+            return;
+        }
+
+        if (NormalizeToken(action) == "status") {
+            FieldInfo callbackField = typeof(Level).GetField("onCutsceneSkip", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            Log("qa-cutscene-state: in-cutscene=" + level.InCutscene +
+                ";skipping=" + level.SkippingCutscene +
+                ";skip-callback=" + (callbackField?.GetValue(level) != null));
+            return;
+        }
+
+        if (NormalizeToken(action) == "noskip") {
+            // A cutscene flag with nothing stored to end it, the state Skip Cutscene must leave alone.
+            level.InCutscene = true;
+            level.SkippingCutscene = false;
+            SetQaCutsceneSkipCallback(level, null);
+            Log("qa-cutscene-state: no-skip");
             return;
         }
 
@@ -1169,6 +1184,8 @@ public static partial class AkronCommands {
 
             Vector2 probe = new Vector2(room.Bounds.Left, room.Bounds.Bottom);
             level.Session.Level = room.Name;
+            // Same rule as Warp Selected Room: a warp is not a visit for the room statistics.
+            AkronPracticeStats.NotifyRoomWarp(level);
             level.Session.RespawnPoint = level.Session.GetSpawnPoint(probe);
             level.StartPosition = null;
             level.Tracker.GetEntitiesCopy<Player>().ForEach(player => player.RemoveSelf());

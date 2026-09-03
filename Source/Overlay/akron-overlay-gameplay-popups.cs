@@ -13,28 +13,28 @@ public sealed partial class AkronOverlay {
             () => AkronModule.Settings.ActiveSavestateSlot,
             value => {
                 AkronModule.SetActiveSavestateSlot(value);
-                Engine.Scene?.Add(new AkronToast("Active StartPos snapshot slot: " + AkronModule.Settings.ActiveSavestateSlot));
+                Engine.Scene?.Add(new AkronToast("Active Speedrun Tool slot: " + AkronModule.Settings.ActiveSavestateSlot));
             },
             -1,
             1,
             1,
             9,
             popupId,
-            "StartPos snapshot slots store full Akron room snapshots, not just coordinates.",
-            "StartPos Snapshot Slot", "Previous", "Next");
+            "The Speedrun Tool savestate slot that Capture, Restore, and Clear State use.",
+            "SRT Slot", "Previous", "Next");
 
         if (ImGui.Button("Save##" + popupId) && Engine.Scene is Level saveLevel) {
             AkronModule.PerformSaveState(saveLevel);
         }
-        DrawPopupActionBindingContext("StartPos Snapshot Slot", "Capture");
-        DrawPopupTooltip("Capture the current full room state into this slot.");
+        DrawPopupActionBindingContext("SRT Slot", "Capture");
+        DrawPopupTooltip("Save the current state into this Speedrun Tool slot.");
 
         ImGui.SameLine();
         if (ImGui.Button("Load##" + popupId) && Engine.Scene is Level loadLevel) {
             AkronModule.PerformLoadState(loadLevel);
         }
-        DrawPopupActionBindingContext("StartPos Snapshot Slot", "Restore");
-        DrawPopupTooltip("Restore the full room state from this slot.");
+        DrawPopupActionBindingContext("SRT Slot", "Restore");
+        DrawPopupTooltip("Load this Speedrun Tool slot.");
 
         ImGui.TextUnformatted("Built-ins: " +
                               AkronModuleSettings.DescribeBinding(AkronModule.Settings.PreviousSlot) +
@@ -70,7 +70,7 @@ public sealed partial class AkronOverlay {
         DrawConfirmToggle("Confirm Restart", () => AkronModule.Settings.ConfirmRestart, value => AkronModule.Settings.ConfirmRestart = value, popupId);
         DrawConfirmToggle("Confirm Full Reset", () => AkronModule.Settings.ConfirmFullReset, value => AkronModule.Settings.ConfirmFullReset = value, popupId);
         DrawConfirmToggle("Reload room", () => AkronModule.Settings.ConfirmReloadRoom, value => AkronModule.Settings.ConfirmReloadRoom = value, popupId);
-        DrawConfirmToggle("Restore StartPos State", () => AkronModule.Settings.ConfirmLoadState, value => AkronModule.Settings.ConfirmLoadState = value, popupId);
+        DrawConfirmToggle("Restore Speedrun Tool State", () => AkronModule.Settings.ConfirmLoadState, value => AkronModule.Settings.ConfirmLoadState = value, popupId);
     }
 
     private void DrawConfirmToggle(string label, Func<bool> getter, Action<bool> setter, string popupId) {

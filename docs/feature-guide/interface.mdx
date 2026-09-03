@@ -7,18 +7,19 @@ The Interface tab controls the Akron overlay itself and the public `.akr` pack w
 
 | Option | Control | What it does | Classification |
 |---|---|---|---|
-| Theme | Selector | Select the Akron overlay color theme. | Normal clear |
-| UI Scale | Number | Scale Akron overlay text and controls. | Normal clear |
-| Opacity | Number | Set Akron overlay background opacity. | Normal clear |
-| Export Setup | Action | Export the selected Whole, StartPos, Keybinds, Auto Kill, Auto Deafen, Recorder, Audio, or HUD setup scope as a `.akr` setup pack. | Normal clear |
-| Import Setup | Action | Open a file browser to import a selected `.akr` setup pack using the selected setup scope. | Normal clear |
-| Community Packs | Action | Search map-linked community `.akr` packs from the configured community pack index. | Normal clear |
-| Upload Pack | Action | Submit the active map's StartPos, Auto Kill, or Auto Deafen setup through the moderated community catalog flow. | Goldberry/Hardlist clear |
-| Pause While Open | Toggle | When enabled, opening the Akron menu stops gameplay updates until the menu closes. | Normal clear |
-| Streamer Mode | Toggle | Replace full local filesystem paths with filenames. | Normal clear |
+| Theme | Selector | Select the Akron overlay color theme. | None |
+| UI Scale | Number | Scale Akron overlay text and controls. | None |
+| Opacity | Number | Set Akron overlay background opacity. | None |
+| Export Setup | Action | Export the selected Whole, StartPos, Keybinds, Auto Kill, Auto Deafen, Recorder, Audio, or HUD setup scope as a `.akr` setup pack. | None |
+| Import Setup | Action | Open a file browser to import a selected `.akr` setup pack using the selected setup scope. | None |
+| Community Packs | Action | Search map-linked community `.akr` packs from the configured community pack index. | None |
+| Upload Pack | Action | Submit the active map's StartPos, Auto Kill, or Auto Deafen setup through the moderated community catalog flow. | None |
+| Pause While Open | Toggle | When enabled, opening the Akron menu stops gameplay updates until the menu closes. | None |
+| Block Gameplay Input | Toggle | Keep gameplay input from reaching Madeline while the overlay is open. On by default. | None |
+| Streamer Mode | Toggle | Replace full local filesystem paths with filenames. | None |
 | Logging | Toggle | Write local Akron diagnostic logs to `Saves/AkronLogs`. | Goldberry/Hardlist clear |
-| Search Autofocus | Toggle | Focus Akron search automatically when the overlay opens. | Normal clear |
-| Search | Text input | Filter visible Akron rows by label or search alias. | Normal clear |
+| Search Autofocus | Toggle | Focus Akron search automatically when the overlay opens. | None |
+| Search | Text input | Filter visible Akron rows by label or search alias. | None |
 
 ## Option menus
 
@@ -26,28 +27,26 @@ Rows with a triangle expose the controls listed below.
 
 | Option | Menu control | What it changes | Classification |
 |---|---|---|---|
-| Theme | Theme | Cycle Akron's built-in themes and the custom theme slot. | Normal clear |
-| Theme | Copy to Custom | Copy the current theme colors and presentation values into the editable Custom slot. | Normal clear |
-| Theme | Export .akr | Export the current overlay theme as a single-purpose `.akr` theme pack. | Normal clear |
-| Theme | Import Latest .akr | Import the newest `.akr` theme pack from Saves/AkronThemes. | Normal clear |
-| Theme | Custom name | Set the name shown for the custom theme and exported theme pack. | Normal clear |
-| Theme | Window | Set the custom theme window/background color. | Normal clear |
-| Theme | Header | Set the custom theme header color. | Normal clear |
-| Theme | Header hover | Set the custom theme hovered header and active UI color. | Normal clear |
-| Theme | Frame | Set the custom theme input/value box color. | Normal clear |
-| Theme | Text | Set the custom theme main text color. | Normal clear |
-| Theme | Muted | Set the custom theme inactive indicator color. | Normal clear |
-| Theme | Disabled | Set the custom theme disabled-row text color. | Normal clear |
-| Theme | Opacity | Set overlay background opacity. | Normal clear |
-| Theme | UI scale | Scale ImGui overlay windows for DPI and readability. | Normal clear |
-| Theme | Blur | Store the overlay blur presentation amount. | Normal clear |
-| Theme | Anim ms | Set stored overlay animation duration. | Normal clear |
-| Theme | Floating button | Enable floating activation-button settings for non-keyboard workflows. | Normal clear |
-| Theme | Button % | Set the floating activation button scale. | Normal clear |
-| Theme | Button alpha | Set the floating activation button opacity. | Normal clear |
-| Theme | Button in levels | Allow the floating activation button in active levels. | Normal clear |
-| Theme | Button in menus | Allow the floating activation button outside active levels. | Normal clear |
-| Theme | Search autofocus | Focus Akron search automatically when the overlay opens. | Normal clear |
+| Theme | Theme | Cycle Akron's built-in themes and the custom theme slot. | None |
+| Theme | Copy to Custom | Copy the current theme colors and presentation values into the editable Custom slot. | None |
+| Theme | Export .akr | Export the current overlay theme as a single-purpose `.akr` theme pack. | None |
+| Theme | Import Latest .akr | Import the newest `.akr` theme pack from Saves/AkronThemes. | None |
+| Theme | Custom name | Set the name shown for the custom theme and exported theme pack. | None |
+| Theme | Window | Set the custom theme window/background color. | None |
+| Theme | Header | Set the custom theme header color. | None |
+| Theme | Header hover | Set the custom theme hovered header and active UI color. | None |
+| Theme | Frame | Set the custom theme input/value box color. | None |
+| Theme | Text | Set the custom theme main text color. | None |
+| Theme | Muted | Set the custom theme inactive indicator color. | None |
+| Theme | Disabled | Set the custom theme disabled-row text color. | None |
+| Theme | Opacity | Set overlay background opacity. | None |
+| Theme | UI scale | Scale ImGui overlay windows for DPI and readability. | None |
+| Theme | Blur | Blur the room behind the overlay while it is open. 0 leaves the room sharp. | None |
+| Theme | Button % | Set the floating activation button scale. | None |
+| Theme | Button alpha | Set the floating activation button opacity. | None |
+| Theme | Button in levels | Allow the floating activation button in active levels. | None |
+| Theme | Button in menus | Allow the floating activation button outside active levels. | None |
+| Theme | Search autofocus | Focus Akron search automatically when the overlay opens. | None |
 | Logging | Normal | Record normal events only. Quietest level. | Goldberry/Hardlist clear |
 | Logging | Diagnostic | Record normal events plus one 60-second summary line counting feature uses and policy checks. The default. | Goldberry/Hardlist clear |
 | Logging | Verbose | Record one line per feature use instead of the 60-second summary. Louder than Diagnostic. | Goldberry/Hardlist clear |
@@ -56,24 +55,24 @@ Rows with a triangle expose the controls listed below.
 | Logging | Max MB | Rotate the active Akron log file after the configured file size. | Goldberry/Hardlist clear |
 | Logging | Retained | Keep the configured number of rotated Akron log files. | Goldberry/Hardlist clear |
 | Logging | Write test entry | Write a trace entry to the current Akron log file. | Goldberry/Hardlist clear |
-| Upload Pack | Discord ID | Set the saved Discord user ID used when Upload Pack uses Discord attribution. | Goldberry/Hardlist clear |
-| Export Setup | Name | Set the exported `.akr` setup pack name. | Normal clear |
-| Export Setup | Whole | Export all portable setup state into one `.akr` setup pack. Machine-local paths, device choices, recording colorspace arguments, and the Auto Deafen hotkey stay local. | Normal clear |
-| Export Setup | StartPos | Export only StartPos setup data into the `.akr` setup pack. | Normal clear |
-| Export Setup | Keybinds | Export Everest `ButtonBinding` properties and Akron menu action bindings into the `.akr` setup pack. | Normal clear |
-| Export Setup | Auto Kill | Export only Auto Kill setup data into the `.akr` setup pack. | Normal clear |
-| Export Setup | Auto Deafen | Export only Auto Deafen setup data into the `.akr` setup pack. | Normal clear |
-| Export Setup | Recorder | Export only Internal Recorder setup data into the `.akr` setup pack. | Normal clear |
-| Export Setup | Audio | Export only audio setup data into the `.akr` setup pack. | Normal clear |
-| Export Setup | HUD | Export only HUD setup data into the `.akr` setup pack. | Normal clear |
-| Import Setup | Whole | Import all portable setup state from the selected `.akr` setup pack while preserving machine-local values. | Normal clear |
-| Import Setup | StartPos | Import only StartPos setup data from the selected `.akr` setup pack. | Normal clear |
-| Import Setup | Keybinds | Import Everest `ButtonBinding` properties and Akron menu action bindings from the selected `.akr` setup pack. | Normal clear |
-| Import Setup | Auto Kill | Import only Auto Kill setup data from the selected `.akr` setup pack. | Normal clear |
-| Import Setup | Auto Deafen | Import only Auto Deafen setup data from the selected `.akr` setup pack. | Normal clear |
-| Import Setup | Recorder | Import only Internal Recorder setup data from the selected `.akr` setup pack. | Normal clear |
-| Import Setup | Audio | Import only audio setup data from the selected `.akr` setup pack. | Normal clear |
-| Import Setup | HUD | Import only HUD setup data from the selected `.akr` setup pack. | Normal clear |
+| Upload Pack | Discord ID | Set the saved Discord user ID used when Upload Pack uses Discord attribution. | None |
+| Export Setup | Name | Set the exported `.akr` setup pack name. | None |
+| Export Setup | Whole | Export all portable setup state into one `.akr` setup pack. Machine-local paths, device choices, recording colorspace arguments, and the Auto Deafen hotkey stay local. | None |
+| Export Setup | StartPos | Export only StartPos setup data into the `.akr` setup pack. | None |
+| Export Setup | Keybinds | Export Everest `ButtonBinding` properties and Akron menu action bindings into the `.akr` setup pack. | None |
+| Export Setup | Auto Kill | Export only Auto Kill setup data into the `.akr` setup pack. | None |
+| Export Setup | Auto Deafen | Export only Auto Deafen setup data into the `.akr` setup pack. | None |
+| Export Setup | Recorder | Export only Internal Recorder setup data into the `.akr` setup pack. | None |
+| Export Setup | Audio | Export only audio setup data into the `.akr` setup pack. | None |
+| Export Setup | HUD | Export only HUD setup data into the `.akr` setup pack. | None |
+| Import Setup | Whole | Import all portable setup state from the selected `.akr` setup pack while preserving machine-local values. | None |
+| Import Setup | StartPos | Import only StartPos setup data from the selected `.akr` setup pack. | None |
+| Import Setup | Keybinds | Import Everest `ButtonBinding` properties and Akron menu action bindings from the selected `.akr` setup pack. | None |
+| Import Setup | Auto Kill | Import only Auto Kill setup data from the selected `.akr` setup pack. | None |
+| Import Setup | Auto Deafen | Import only Auto Deafen setup data from the selected `.akr` setup pack. | None |
+| Import Setup | Recorder | Import only Internal Recorder setup data from the selected `.akr` setup pack. | None |
+| Import Setup | Audio | Import only audio setup data from the selected `.akr` setup pack. | None |
+| Import Setup | HUD | Import only HUD setup data from the selected `.akr` setup pack. | None |
 
 ## Community packs browser
 
@@ -82,7 +81,7 @@ Clicking **Community Packs** opens a standalone browser window. Use it to search
 | Control | What it does | Classification |
 |---|---|---|
 | Index URL | The catalog JSON URL (default is `https://akron.micr.dev/catalog/index.json`). | Normal clear |
-| Search | Filter the catalog by title, description, author, map URL, section label, or tag. | Normal clear |
+| Search | Filter the catalog by title, description, author, map URL, section label, or tag. | None |
 | Category | Filter packs by setup scope: All, StartPos, Auto Kill, or Auto Deafen. | Normal clear |
 | Refresh | Connect to the index URL and reload available packs. | Normal clear |
 | Import Selected | Download and import the highlighted community setup pack. | Normal clear |

@@ -44,7 +44,7 @@ Akron gameplay tools help with routing, learning, and map inspection. Using many
 
 StartPos is Akron's built-in workflow for saving and restoring room positions. Each StartPos snapshot stores the player coordinates and runtime room state. Loading it restores room state but does not rewind cumulative time or death statistics.
 
-If persistent StartPos Load is unavailable, wait for capture to finish and check the current map and save-file slot, snapshot presence and integrity, and runtime or mod-set compatibility. Current Map Compatibility broker and unsafe-native settings apply only to the separate Capture/Restore StartPos State savestate bindings. The saved room is the restore destination, so the current room can differ.
+If StartPos Load is unavailable, wait for capture to finish and check the current map and save-file slot, snapshot presence and integrity, and runtime or mod-set compatibility. The saved room is the restore destination, so the current room can differ.
 
 See [StartPos recovery](/troubleshooting/startpos-recovery) for recovery guidance.
 

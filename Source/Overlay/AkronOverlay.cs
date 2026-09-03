@@ -129,6 +129,8 @@ public sealed partial class AkronOverlay : Entity {
     private static readonly Dictionary<(string Text, int Width), string> imguiTextTruncationCache = new Dictionary<(string Text, int Width), string>();
     private static readonly List<BindableAction> bindableActionCache = new List<BindableAction>();
     private static string activeOptionsPopupLabel = string.Empty;
+    // The opened row's feature kind, so popup tooltips classify by the same rule as the row.
+    private static AkronFeatureKind? activeOptionsPopupFeatureKind;
     private static Level bindableActionCacheLevel;
     private static int menuBindingRevision;
     private static int bindableActionCacheRevision = -1;
@@ -158,6 +160,10 @@ public sealed partial class AkronOverlay : Entity {
     private bool bindingCaptureOverlayToggle;
     private bool bindingCaptureAutoDeafenHotkey;
     private bool bindingCaptureWaitingForRelease;
+    // Modifiers seen during a capture, so a modifier-only chord binds when they are released.
+    private HashSet<Keys> bindingCaptureHeldModifiers;
+    // True while the last frame had a search query; clearing it re-collapses the windows the search opened.
+    private bool searchExpandedWindowsLastFrame;
     internal bool HasActiveBindingCapture => !string.IsNullOrWhiteSpace(bindingCaptureActionKey);
     private bool internalRecorderExperimentalWarningDontShowAgain;
     private bool imguiPopupBlockedRowsLastFrame;

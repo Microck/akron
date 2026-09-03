@@ -24,13 +24,12 @@ public sealed class AkronOverlayThemeDefinition {
     public int Opacity { get; set; } = 96;
     public int Scale { get; set; } = 100;
     public int Blur { get; set; }
-    public int AnimationMs { get; set; } = 80;
 }
 
 public static class AkronOverlayThemes {
     public const string ThemeArchiveKind = "theme";
     public const string ThemeArchivePayload = "theme.json";
-    public const string ThemePackFormat = "akron-overlay-theme-v1";
+    public const string ThemePackFormat = "akron-overlay-theme-v2";
     private const int MaxThemePayloadBytes = 64 * 1024;
 
     private static readonly JsonSerializerOptions ThemeJsonOptions = new JsonSerializerOptions {
@@ -313,7 +312,6 @@ public static class AkronOverlayThemes {
         definition.Opacity = AkronModuleSettings.ClampOverlayOpacity(AkronModule.Settings.OverlayOpacity);
         definition.Scale = AkronModuleSettings.ClampOverlayScale(AkronModule.Settings.OverlayScale);
         definition.Blur = AkronModuleSettings.ClampOverlayBlur(AkronModule.Settings.OverlayBlur);
-        definition.AnimationMs = AkronModuleSettings.ClampOverlayAnimationMs(AkronModule.Settings.OverlayAnimationMs);
         return definition;
     }
 
@@ -329,8 +327,7 @@ public static class AkronOverlayThemes {
             DisabledColor = AkronModuleSettings.ClampRgb(AkronModule.Settings.CustomOverlayDisabledColor),
             Opacity = AkronModuleSettings.ClampOverlayOpacity(AkronModule.Settings.OverlayOpacity),
             Scale = AkronModuleSettings.ClampOverlayScale(AkronModule.Settings.OverlayScale),
-            Blur = AkronModuleSettings.ClampOverlayBlur(AkronModule.Settings.OverlayBlur),
-            AnimationMs = AkronModuleSettings.ClampOverlayAnimationMs(AkronModule.Settings.OverlayAnimationMs)
+            Blur = AkronModuleSettings.ClampOverlayBlur(AkronModule.Settings.OverlayBlur)
         };
     }
 
@@ -346,7 +343,6 @@ public static class AkronOverlayThemes {
         AkronModule.Settings.OverlayOpacity = AkronModuleSettings.ClampOverlayOpacity(definition.Opacity);
         AkronModule.Settings.OverlayScale = AkronModuleSettings.ClampOverlayScale(definition.Scale);
         AkronModule.Settings.OverlayBlur = AkronModuleSettings.ClampOverlayBlur(definition.Blur);
-        AkronModule.Settings.OverlayAnimationMs = AkronModuleSettings.ClampOverlayAnimationMs(definition.AnimationMs);
         AkronModule.Settings.OverlayThemePreset = AkronOverlayThemePreset.Custom;
     }
 
@@ -363,8 +359,7 @@ public static class AkronOverlayThemes {
             DisabledColor = definition.DisabledColor,
             Opacity = definition.Opacity,
             Scale = definition.Scale,
-            Blur = definition.Blur,
-            AnimationMs = definition.AnimationMs
+            Blur = definition.Blur
         };
     }
 

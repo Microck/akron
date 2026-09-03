@@ -164,66 +164,6 @@ public static partial class AkronCommands {
         Log("broker-warnings: " + AkronModule.Settings.SpeedrunToolBrokerWarnings.ToString().ToLowerInvariant());
     }
 
-    // Command-only prompt automation. Users normally reach prompts by using the
-    // relevant overlay action; this exists for tests and live verification.
-    [Command("akron_broker_prompt", "show Akron broker prompt for save or load automation: save|load")]
-    public static void BrokerPrompt(string action = "save") {
-        Level level = RequireLevel();
-        if (level == null) {
-            return;
-        }
-
-        bool load;
-        switch ((action ?? string.Empty).Trim().ToLowerInvariant()) {
-            case "":
-            case "save":
-                load = false;
-                break;
-            case "load":
-                load = true;
-                break;
-            default:
-                Log("unknown broker prompt action: " + action);
-                return;
-        }
-
-        AkronModule.PerformBrokerPromptForAutomation(level, load);
-        Log("prompt: " + AkronPromptMenu.DescribeState());
-    }
-
-    [Command("akron_toggle_force_broker", "toggle Akron per-map force-broker override")]
-    public static void ToggleForceBroker(string _ = "") {
-        Level level = RequireLevel();
-        if (level == null) {
-            return;
-        }
-
-        AkronActions.ToggleForceBroker(level);
-        Log("force-broker-override: " + AkronMapOverrides.ShouldForceBroker(level).ToString().ToLowerInvariant());
-    }
-
-    [Command("akron_toggle_unsafe_native_override", "toggle Akron unsafe native StartPos restore override for this map")]
-    public static void ToggleUnsafeNativeOverride(string _ = "") {
-        Level level = RequireLevel();
-        if (level == null) {
-            return;
-        }
-
-        AkronActions.ToggleUnsafeNativeOverride(level);
-        Log("unsafe-native-override: " + AkronMapOverrides.ShouldAllowUnsafeSavestates(level).ToString().ToLowerInvariant());
-    }
-
-    [Command("akron_toggle_everest_safe_override", "toggle Akron Everest-safe override for this map")]
-    public static void ToggleEverestSafeOverride(string _ = "") {
-        Level level = RequireLevel();
-        if (level == null) {
-            return;
-        }
-
-        AkronActions.ToggleEverestSafeBypass(level);
-        Log("everest-safe-override: " + AkronMapOverrides.ShouldDisableEverestSafeBlock(level).ToString().ToLowerInvariant());
-    }
-
     [Command("akron_prompt_state", "show Akron prompt state for automation")]
     public static void PromptState(string _ = "") {
         Log("prompt: " + AkronPromptMenu.DescribeState());

@@ -25,7 +25,6 @@ public sealed class AkronSetupState {
     public AkronOverlayThemePreset OverlayThemePreset { get; set; } = AkronOverlayThemePreset.Default;
     public int OverlayScale { get; set; } = 100;
     public int OverlayBlur { get; set; }
-    public int OverlayAnimationMs { get; set; } = 80;
     public string CustomOverlayThemeName { get; set; } = "Custom";
     public int CustomOverlayWindowColor { get; set; } = 0x292929;
     public int CustomOverlayHeaderColor { get; set; } = 0xC42A30;
@@ -34,11 +33,6 @@ public sealed class AkronSetupState {
     public int CustomOverlayTextColor { get; set; } = 0xFFFFFF;
     public int CustomOverlayMutedColor { get; set; } = 0x7D8080;
     public int CustomOverlayDisabledColor { get; set; } = 0x909090;
-    public bool FloatingButton { get; set; }
-    public int FloatingButtonOpacity { get; set; } = 70;
-    public int FloatingButtonScale { get; set; } = 100;
-    public bool FloatingButtonInLevels { get; set; } = true;
-    public bool FloatingButtonInMenus { get; set; }
     public bool SearchAutofocus { get; set; }
     public bool MenuBindingsInGameOnly { get; set; } = true;
     public bool ConfirmRestart { get; set; }
@@ -435,7 +429,6 @@ public sealed class AkronSetupState {
     public bool ClickTeleport { get; set; }
     public bool EverestSafeAutoBlock { get; set; }
     public bool SaveTimeAndDeaths { get; set; }
-    public bool UnsafeSavestateOverride { get; set; }
     public int ScreenshotScale { get; set; } = 1;
     public bool ScreenshotStatus { get; set; }
     public string ScreenshotScannerExportPath { get; set; } = AkronModuleSettings.DefaultScreenshotScannerExportPath;
@@ -462,7 +455,6 @@ public sealed class AkronSetupState {
     public int AutosaveIntervalSeconds { get; set; } = 600;
     public int AutosaveMinimumDelaySeconds { get; set; } = 60;
     public bool AutosaveHideSavingIcon { get; set; }
-    public bool DeloadSpinners { get; set; }
     public float DeloadSpinnerDelaySeconds { get; set; }
     public bool DashCountStats { get; set; }
     public AkronCounterDisplayMode DashCountStatsMode { get; set; } = AkronCounterDisplayMode.Session;

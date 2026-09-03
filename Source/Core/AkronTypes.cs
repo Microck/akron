@@ -659,8 +659,8 @@ public enum AkronFeatureKind {
     CameraOffset,
     CursorTools,
     CursorZoom,
-    UnsafeNativeSavestateOverride,
-    SubmissionMode,
+    // 89 was UnsafeNativeSavestateOverride; retired, so the proof feature IDs keep their values.
+    SubmissionMode = 90,
     ProofRecorderGuard,
     EndScreenHelper,
     PauseTracker,
@@ -671,7 +671,19 @@ public enum AkronFeatureKind {
     Logging,
     JournalSnapshotCompare,
     Backups,
-    DisablePlayback
+    DisablePlayback,
+    EntitySpawn,
+    PauseBuffering,
+    CutsceneSkip,
+    MadelineColors,
+    AttemptsLabel,
+    StatusLabels,
+    PracticeCounters,
+    RoomStatTracker,
+    CaptureCheatOptions,
+    Autosave,
+    DeathHitboxes,
+    SoundVolumeOverride
 }
 
 public readonly struct FeatureDefinition {

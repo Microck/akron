@@ -919,13 +919,11 @@ public sealed class StartPosHotPathCacheTests {
         Assert.True(restored > core, "the catalog is not put back after the restore");
         Assert.Contains("} finally {", load);
 
-        // Both restore paths have to be inside that hold. The brokered path is the one
-        // every shipped build takes - ShouldBrokerSavestatesInsteadOfNative returns
-        // true on net8.0 - and SpeedrunTool assigns _Session and _SaveData itself, so
-        // there is nowhere inside Akron's own native path to fix this.
+        // The restore has to be inside that hold: numbered slots are Speedrun Tool's, and
+        // SpeedrunTool assigns _Session and _SaveData itself, so there is nowhere inside
+        // Akron to fix this.
         string core_ = SliceMember(saveLoad, "private static AkronSaveLoadResult LoadCore(Level level, int slot)");
         Assert.Contains("TryBrokerLoad(level, slot)", core_);
-        Assert.Contains("RestoreNativeSlot(level, saveSlot)", core_);
 
         // And the in-session view is rebuilt from the metadata, because the session
         // object itself was replaced and the view has to land on the new one.

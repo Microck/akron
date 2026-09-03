@@ -16,7 +16,6 @@ public sealed class PerformanceTestCollection {
 [Collection("Performance")]
 public sealed class PerformanceTests {
     private const int FeatureClassificationIterations = 20_000;
-    private const int UiLabelClassificationIterations = 10_000;
     private const int ContributorScanIterations = 25_000;
 
     // Two of the guards below used to be wall-clock budgets in milliseconds,
@@ -77,93 +76,6 @@ public sealed class PerformanceTests {
     }
 
     [Fact]
-    public void UiLabelClassificationStaysConstantTimeForOverlayRows() {
-        string[] labels = {
-            "Safe Mode",
-            "Pause Buffering",
-            "Death Stats",
-            "Input History",
-            "Stamina Bar",
-            "Dash Number",
-            "Reduced Visual Noise",
-            "Fix Hitbox Pixels",
-            "Show Hitboxes On Death",
-            "Room Timer",
-            "Extended Variants Master",
-            "Submission Mode",
-            "Proof Recorder Guard",
-            "Lag Pauser",
-            "Journal Snapshot / Compare",
-            // Recorder rows are included in the lookup set, but this is only a
-            // dictionary classification guard rather than a runtime recording budget.
-            "Start Recording",
-            "Stop Recording",
-            "Build Clear Video"
-        };
-
-        // The reference: the same loop over the same labels against a plain
-        // dictionary with the comparer the registry uses. That is what a
-        // constant-time classification costs, so the registry has to stay
-        // within a small multiple of it.
-        Dictionary<string, int> referenceLookup = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < labels.Length; i++) {
-            referenceLookup[labels[i]] = i;
-        }
-
-        for (int i = 0; i < 1_000; i++) {
-            foreach (string label in labels) {
-                AkronFeatureRegistry.TryClassifyUiLabel(label, out _);
-                referenceLookup.TryGetValue(label, out _);
-            }
-        }
-
-        List<(double Ratio, double ClassificationMs, double ReferenceMs)> samples =
-            new List<(double Ratio, double ClassificationMs, double ReferenceMs)>();
-        for (int repetition = 0; repetition < MeasurementRepetitions; repetition++) {
-            // Back to back, so both loops meet the same machine and the ratio
-            // is of one moment rather than of two.
-            TimeSpan classificationSample = Measure(() => {
-                int classified = 0;
-                for (int i = 0; i < UiLabelClassificationIterations; i++) {
-                    foreach (string label in labels) {
-                        if (AkronFeatureRegistry.TryClassifyUiLabel(label, out AkronStatus status)) {
-                            classified += (int) status + 1;
-                        }
-                    }
-                }
-
-                Assert.True(classified > labels.Length);
-            });
-            TimeSpan referenceSample = Measure(() => {
-                int found = 0;
-                for (int i = 0; i < UiLabelClassificationIterations; i++) {
-                    foreach (string label in labels) {
-                        if (referenceLookup.TryGetValue(label, out int index)) {
-                            found += index + 1;
-                        }
-                    }
-                }
-
-                Assert.True(found > labels.Length);
-            });
-
-            samples.Add((
-                classificationSample.TotalMilliseconds / referenceSample.TotalMilliseconds,
-                classificationSample.TotalMilliseconds,
-                referenceSample.TotalMilliseconds));
-        }
-
-        (double ratio, double classificationMs, double referenceMs) =
-            samples.OrderBy(sample => sample.Ratio).ElementAt(samples.Count / 2);
-
-        Assert.True(
-            ratio <= UiLabelClassificationBudgetRatio,
-            $"Classifying overlay labels {UiLabelClassificationIterations} times took " +
-            $"{classificationMs:0.0}ms against {referenceMs:0.0}ms for the same number of plain " +
-            $"dictionary lookups, a median ratio of {ratio:0.00}.");
-    }
-
-    [Fact]
     public void ActiveCheatContributorScanStaysCheapWithManyEnabledOptions() {
         AkronModuleSettings settings = new AkronModuleSettings {
             AutoKill = true,
@@ -192,7 +104,6 @@ public sealed class PerformanceTests {
             InfiniteDash = true,
             InfiniteStamina = true,
             DashCountOverride = true,
-            DeloadSpinners = true,
             PauseCountdown = true,
             HitboxViewer = true,
             ShowTriggers = true,

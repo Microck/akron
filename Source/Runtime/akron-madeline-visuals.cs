@@ -68,7 +68,7 @@ public partial class AkronModule {
     }
 
     private static void ApplyMadelineColors(Player player) {
-        if (player == null || !Settings.MadelineColors) {
+        if (player == null || !Settings.MadelineColors || !TryUse(AkronFeatureKind.MadelineColors)) {
             return;
         }
 
@@ -148,7 +148,7 @@ public partial class AkronModule {
             return false;
         }
 
-        if (Settings.MadelineColors && TryResolveMadelineConfiguredColor(player, out color)) {
+        if (Settings.MadelineColors && TryUse(AkronFeatureKind.MadelineColors) && TryResolveMadelineConfiguredColor(player, out color)) {
             return true;
         }
 

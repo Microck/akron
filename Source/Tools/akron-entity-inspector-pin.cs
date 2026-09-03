@@ -166,13 +166,18 @@ public static partial class AkronEntityInspector
         }
 
         if (ShouldIgnoreInspectorPinGameplayClick(level) ||
-            !AkronModule.ShouldShowEntityInspectorCursor() ||
-            !AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed)
+            !AkronModule.ShouldShowEntityInspectorCursor())
         {
             return;
         }
 
         if (!IsInsideGameplayViewport(screenPoint))
+        {
+            return;
+        }
+
+        // Recorded only for a click that lands on the room, not on the letterbox.
+        if (!AkronModule.TryUse(AkronFeatureKind.EntityInspector))
         {
             return;
         }
@@ -729,7 +734,7 @@ public static partial class AkronEntityInspector
     {
         if (!AkronModule.Settings.EntityInspectorPinHoverPreview ||
             !AkronModule.ShouldShowEntityInspectorCursor() ||
-            !AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed)
+            !AkronModule.TryUse(AkronFeatureKind.EntityInspector))
         {
             ClearInspectorPinPreview();
             return;

@@ -40,6 +40,12 @@ public partial class AkronModule {
         Session.PauseTrackerCurrentPauseStartedAt = now;
     }
 
+    // Everest raises OnUnpause only from Celeste's own pause menu. When an Akron prompt has
+    // replaced that menu, the prompt's close is the unpause and reports it here.
+    internal static void NotifyPromptClosedPause(Level level) {
+        LevelOnUnpause(level);
+    }
+
     private static void LevelOnUnpause(Level level) {
         AkronAutosave.NotifyPause();
         if (lagPauserRepeatCooldownPending) {

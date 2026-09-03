@@ -211,7 +211,7 @@ public sealed partial class AkronOverlay {
             value => AkronModule.Settings.RecordingReplayBufferSeconds = AkronModuleSettings.ClampRecordingReplayBufferSeconds(value),
             -5,
             5,
-            5,
+            0,
             600,
             popupId,
             "Seconds of rolling FFmpeg segments kept available for manual replay saves.");

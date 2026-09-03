@@ -25,11 +25,9 @@ If persistent StartPos Load fails:
 3. Check whether the snapshot is missing, damaged, or from a different runtime or mod set.
 4. See [StartPos recovery](/troubleshooting/startpos-recovery) for the complete persistent-snapshot checks.
 
-## Savestate map compatibility
+## Speedrun Tool savestates
 
-The separate **Capture StartPos State** and **Restore StartPos State** bindings use the active 1-9 savestate slot. Per-map overrides apply to this savestate path.
-
-Find **Always Use Broker** and **Allow Unsafe StartPos Restore** under `Current Map Compatibility` in Everest's Akron options. Use the unsafe restore option only for controlled testing in a non-submission setup.
+The **Speedrun Tool Capture State** and **Speedrun Tool Restore State** bindings drive Speedrun Tool's active 1-9 savestate slot. They are Speedrun Tool's feature; Akron only forwards to it, and they have nothing to do with Akron's StartPos.
 
 ## External tool compatibility
 

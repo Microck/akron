@@ -42,6 +42,13 @@ public sealed partial class AkronOverlay {
         }
 
         string[] visibleTabs = GetVisibleTabs();
+        bool searchActive = !string.IsNullOrWhiteSpace(searchQuery);
+        if (searchExpandedWindowsLastFrame && !searchActive) {
+            foreach (string toggleableTitle in GetToggleableSections()) {
+                pendingImGuiCollapseSync.Add(toggleableTitle);
+            }
+        }
+        searchExpandedWindowsLastFrame = searchActive;
         Dictionary<string, List<ActionEntry>> actionEntriesByTab = BuildVisibleTabActionEntries(visibleTabs, level);
         ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, actionEntriesByTab, columnXPositions.Count, menuTop, displayHeight);
         List<float> columnBottoms = columnXPositions.Select(_ => menuTop).ToList();
@@ -177,7 +184,14 @@ public sealed partial class AkronOverlay {
         ImGui.SetNextWindowPos(new NumericsVector2(x * scale, y * scale), ImGuiCond.Always);
         ImGui.SetNextWindowSize(new NumericsVector2(width * scale, height * scale), ImGuiCond.Always);
         ImGui.SetNextWindowBgAlpha(AkronModuleSettings.ClampOverlayOpacity(AkronModule.Settings.OverlayOpacity) / 100f);
-        if (pendingImGuiCollapseSync.Remove(title)) {
+        // A search shows its matches: a window that is collapsed stays collapsed in the stored
+        // state, but is drawn open while the query is active. The stored state is not read back
+        // from ImGui during a search, so the forced expansion is never persisted.
+        bool searching = !string.IsNullOrWhiteSpace(searchQuery);
+        if (searching) {
+            pendingImGuiCollapseSync.Remove(title);
+            ImGui.SetNextWindowCollapsed(false, ImGuiCond.Always);
+        } else if (pendingImGuiCollapseSync.Remove(title)) {
             ImGui.SetNextWindowCollapsed(collapsedWindowTitles.Contains(title), ImGuiCond.Always);
         }
 
@@ -195,10 +209,13 @@ public sealed partial class AkronOverlay {
             title + "##akron_window_" + title,
             flags);
 
-        if (ImGui.IsWindowCollapsed()) {
-            collapsedWindowTitles.Add(title);
-        } else {
-            collapsedWindowTitles.Remove(title);
+        // Clicking the header is the other way a window collapses, next to ToggleWindowCollapse.
+        // Both persist, so a header click survives a scene change and a restart.
+        if (!searching) {
+            bool changed = ImGui.IsWindowCollapsed() ? collapsedWindowTitles.Add(title) : collapsedWindowTitles.Remove(title);
+            if (changed) {
+                PersistWindowCollapseState();
+            }
         }
 
         return visible;

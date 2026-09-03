@@ -6,7 +6,7 @@ description: Recover persistent StartPos snapshots and active savestate slots wi
 Akron has two separate state-restore workflows:
 
 - The `StartPos` tab's **Set** and **Load** actions use Akron's persistent StartPos snapshot for the selected StartPos slot.
-- The **Capture StartPos State** and **Restore StartPos State** bindings use the active 1-9 savestate slot. This path can use Speedrun Tool brokering and current-map compatibility overrides.
+- The **Speedrun Tool Capture State** and **Speedrun Tool Restore State** bindings drive Speedrun Tool's active 1-9 savestate slot and are unrelated to StartPos.
 
 ## StartPos capabilities
 
@@ -68,15 +68,9 @@ A StartPos snapshot records where each room object sits in a clean reload of tha
 
 Slot positions, spawn settings, keybinds and every other setting survive a format change. The saved room state behind each slot does not, and has to be captured again with Set. `.akr` setup packs carry the same snapshots, so a pack made before the change has to be exported again as well.
 
-## Capture and Restore StartPos State savestates
+## Speedrun Tool savestates
 
-The similarly named **Capture StartPos State** and **Restore StartPos State** bindings do not use the persistent StartPos slot above. They save or load the active savestate slot from 1-9.
-
-This savestate path owns Speedrun Tool brokering and native-restore risk checks. `Current Map Compatibility` exposes **Always Use Broker** and **Allow Unsafe StartPos Restore** for this path. If capture or restore is blocked, check the active savestate slot, Speedrun Tool availability, and those current-map settings.
-
-<Warning>
-  Unsafe native savestate overrides bypass risk blocking and are Cheat. Use them only for controlled testing in a non-submission setup. They do not repair a missing or damaged persistent StartPos snapshot.
-</Warning>
+The **Speedrun Tool Capture State** and **Speedrun Tool Restore State** bindings do not touch StartPos. They save or load Speedrun Tool's active savestate slot from 1-9; if they are blocked, check that Speedrun Tool is loaded and the slot has a state.
 
 ## Safe Mode stat guards
 

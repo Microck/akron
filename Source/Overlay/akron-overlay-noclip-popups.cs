@@ -126,7 +126,7 @@ public sealed partial class AkronOverlay {
             AkronModule.Settings.ResetHazardAccuracyDefaults();
             AkronModule.ResetNoclipAccuracy();
         }
-        DrawPopupTooltip("Restore default tint settings: tint off, red, 90% opacity, and 0 ms duration.");
+        DrawPopupTooltip("Restore the default tint settings: tint on, While touching, red, 30% opacity, 250 ms duration, and no invalid-contact limit.");
     }
 
     private void DrawNoclipAccuracyTintModeChoice(string label, AkronNoclipAccuracyTintMode mode, string popupId) {

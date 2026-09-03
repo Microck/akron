@@ -22,10 +22,6 @@ public partial class AkronModule {
         menu.Add(new TextMenu.SubHeader("Safety"));
         menu.Add(new TextMenu.OnOff("Streamer Mode", Settings.StreamerMode).Change(value => Settings.StreamerMode = value));
         menu.Add(new TextMenu.OnOff("Safe Mode", Settings.SafeMode).Change(value => Settings.SafeMode = value));
-
-        if (inGame) {
-            Settings.CreateCurrentMapCompatibilityEntry(menu, inGame);
-        }
     }
 
     private void OpenKeyboardConfig(TextMenu menu) {

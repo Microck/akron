@@ -21,16 +21,30 @@ public static class AkronPromptMenu {
     private static string currentTitle = string.Empty;
     private static AkronPromptOption[] currentOptions = Array.Empty<AkronPromptOption>();
     private static bool restoreOverlayOnClose;
+    // Whether the level was already paused when the prompt opened. The pause-menu Retry and
+    // Restart buttons open prompts over a real pause, and Celeste raises its unpause event only
+    // from its own pause menu, which the prompt has replaced by then.
+    private static bool pausedBeforeShow;
 
     public static bool IsOpen => currentMenu != null && currentLevel != null && currentMenu.Scene != null;
+
+    public static bool IsPromptMenu(TextMenu menu) => menu != null && ReferenceEquals(menu, currentMenu);
 
     public static void Show(Level level, string title, string message, params AkronPromptOption[] options) {
         if (level == null) {
             return;
         }
 
+        bool replacingOwnPrompt = IsOpen && ReferenceEquals(currentLevel, level);
         if (level.Entities.FirstOrDefault(entity => entity is TextMenu) is TextMenu existingMenu) {
             existingMenu.Close();
+        }
+
+        // A prompt replacing another prompt inherits its pause state and overlay restore; the
+        // first prompt already hid the overlay, so reading visibility again would lose it.
+        if (!replacingOwnPrompt) {
+            pausedBeforeShow = level.Paused;
+            restoreOverlayOnClose = AkronModule.IsOverlayVisible;
         }
 
         level.wasPaused = true;
@@ -43,7 +57,6 @@ public static class AkronPromptMenu {
 
         // Akron prompts should own the screen while they are open. Hiding the
         // overlay avoids stacked UI and stale hover state behind modal prompts.
-        restoreOverlayOnClose = AkronModule.IsOverlayVisible;
         if (restoreOverlayOnClose) {
             AkronModule.SetOverlayVisible(level, false);
         }
@@ -126,6 +139,14 @@ public static class AkronPromptMenu {
             if (restoreOverlayOnClose) {
                 AkronModule.SetOverlayVisible(level, true);
                 restoreOverlayOnClose = false;
+            }
+
+            // Closing the prompt is what ends the real pause it sat on, so run the same
+            // unpause handling Celeste's menu would have triggered. A pause the prompt
+            // started itself never raised the pause event, so it gets no unpause either.
+            if (pausedBeforeShow) {
+                pausedBeforeShow = false;
+                AkronModule.NotifyPromptClosedPause(level);
             }
         }
     }

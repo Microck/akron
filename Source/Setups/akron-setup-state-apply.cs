@@ -25,7 +25,6 @@ public partial class AkronModuleSettings {
         OverlayThemePreset = resolved.OverlayThemePreset;
         OverlayScale = ClampOverlayScale(resolved.OverlayScale);
         OverlayBlur = ClampOverlayBlur(resolved.OverlayBlur);
-        OverlayAnimationMs = ClampOverlayAnimationMs(resolved.OverlayAnimationMs);
         CustomOverlayThemeName = string.IsNullOrWhiteSpace(resolved.CustomOverlayThemeName) ? "Custom" : resolved.CustomOverlayThemeName.Trim();
         CustomOverlayWindowColor = ClampRgb(resolved.CustomOverlayWindowColor);
         CustomOverlayHeaderColor = ClampRgb(resolved.CustomOverlayHeaderColor);
@@ -34,11 +33,6 @@ public partial class AkronModuleSettings {
         CustomOverlayTextColor = ClampRgb(resolved.CustomOverlayTextColor);
         CustomOverlayMutedColor = ClampRgb(resolved.CustomOverlayMutedColor);
         CustomOverlayDisabledColor = ClampRgb(resolved.CustomOverlayDisabledColor);
-        FloatingButton = resolved.FloatingButton;
-        FloatingButtonOpacity = ClampOpacity(resolved.FloatingButtonOpacity);
-        FloatingButtonScale = ClampPercent(resolved.FloatingButtonScale, 50, 250);
-        FloatingButtonInLevels = resolved.FloatingButtonInLevels;
-        FloatingButtonInMenus = resolved.FloatingButtonInMenus;
         SearchAutofocus = resolved.SearchAutofocus;
         MenuBindingsInGameOnly = resolved.MenuBindingsInGameOnly;
         ConfirmRestart = resolved.ConfirmRestart;
@@ -437,7 +431,6 @@ public partial class AkronModuleSettings {
         ClickTeleport = resolved.ClickTeleport;
         EverestSafeAutoBlock = resolved.EverestSafeAutoBlock;
         SaveTimeAndDeaths = resolved.SaveTimeAndDeaths;
-        UnsafeSavestateOverride = resolved.UnsafeSavestateOverride;
         ScreenshotScale = ClampScreenshotScale(resolved.ScreenshotScale);
         ScreenshotStatus = resolved.ScreenshotStatus;
         ScreenshotScannerExportPath = NormalizeScreenshotScannerExportPath(resolved.ScreenshotScannerExportPath);
@@ -464,7 +457,6 @@ public partial class AkronModuleSettings {
         AutosaveIntervalSeconds = ClampAutosaveIntervalSeconds(resolved.AutosaveIntervalSeconds);
         AutosaveMinimumDelaySeconds = ClampAutosaveMinimumDelaySeconds(resolved.AutosaveMinimumDelaySeconds);
         AutosaveHideSavingIcon = resolved.AutosaveHideSavingIcon;
-        DeloadSpinners = false;
         DeloadSpinnerDelaySeconds = AkronDeloadSimulator.ClampDelaySeconds(resolved.DeloadSpinnerDelaySeconds);
         DashCountStats = resolved.DashCountStats;
         DashCountStatsMode = resolved.DashCountStatsMode;

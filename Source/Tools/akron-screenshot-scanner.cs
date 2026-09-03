@@ -451,6 +451,10 @@ public static class AkronScreenshotScanner {
             return false;
         }
 
+        if (!AkronModule.TryUse(AkronFeatureKind.ScreenshotTool)) {
+            return false;
+        }
+
         isScanning = true;
         scanCancelled = false;
         lastScanCompletedSuccessfully = false;
@@ -774,6 +778,15 @@ public static class AkronScreenshotScanner {
         bool suppressMadeline = AkronModule.Settings.ScreenshotScannerNoclipHideMadeline;
         bool freezeTime = AkronModule.Settings.ScreenshotScannerFreezeTime;
         Entity timeStopEntity = null;
+        // The collage is built from these tiles only. The room folder can still hold tiles
+        // from an earlier scan at other offsets, and those must not be blended in.
+        List<string> writtenTiles = new List<string>();
+        // Both options change what the level does while the scan runs, which is what the
+        // Cheat class on their checkboxes promises to record.
+        if ((suppressMadeline || freezeTime) && !AkronModule.TryUse(AkronFeatureKind.CaptureCheatOptions)) {
+            suppressMadeline = false;
+            freezeTime = false;
+        }
 
         try {
             // Keep capture suppression local. Reusing global Hide Player/Noclip
@@ -836,9 +849,10 @@ public static class AkronScreenshotScanner {
                 // Drawing markers into each camera screenshot makes large room
                 // or map collages resample 5px borders down to subpixel noise.
                 AkronCapture.CaptureToPath(level, lastExportPath);
+                writtenTiles.Add(lastExportPath);
             }
 
-            if (isScanning && !scanCancelled && TryWriteMergedRoomImage(level, bounds, cameraWidth, cameraHeight, viewportWidth, viewportHeight, out AkronScreenshotMergedRoom mergedRoom)) {
+            if (isScanning && !scanCancelled && TryWriteMergedRoomImage(level, writtenTiles, bounds, cameraWidth, cameraHeight, viewportWidth, viewportHeight, out AkronScreenshotMergedRoom mergedRoom)) {
                 mergedRooms?.Add(mergedRoom);
                 if (markedRoomCaptures != null && !string.IsNullOrWhiteSpace(markedRoomOutputDirectory)) {
                     string markedRoomPath = Path.Combine(markedRoomOutputDirectory, BuildMarkedRoomFileName(markedRoomCaptures.Count + 1, mergedRoom.RoomName));
@@ -1059,42 +1073,6 @@ public static class AkronScreenshotScanner {
         return value.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
     }
 
-    private static string BuildMarkedRoomOutputDirectory(Level level) {
-        string runId = DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ", System.Globalization.CultureInfo.InvariantCulture);
-        string directory = BuildSidePath(level, Path.Combine("marked-rooms", runId, ".keep"));
-        directory = Path.GetDirectoryName(directory) ?? ".";
-        Directory.CreateDirectory(directory);
-        return directory;
-    }
-
-    private static bool TryWriteMarkedRoomCapture(AkronScreenshotMergedRoom mergedRoom, string outputDirectory, out AkronScreenshotRoomCapture capture) {
-        capture = default;
-        if (string.IsNullOrWhiteSpace(outputDirectory) || string.IsNullOrWhiteSpace(mergedRoom.ImagePath) || !File.Exists(mergedRoom.ImagePath)) {
-            return false;
-        }
-
-        try {
-            string outputPath = Path.Combine(outputDirectory, SanitizeRoomCaptureFileName(mergedRoom.RoomName) + ImageExtension());
-            File.Copy(mergedRoom.ImagePath, outputPath, overwrite: true);
-            lastExportPath = outputPath;
-            capture = new AkronScreenshotRoomCapture(mergedRoom.RoomName, outputPath);
-            return true;
-        } catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is ArgumentException) {
-            AkronLog.Warn(nameof(AkronScreenshotScanner), "Could not export marked-room capture for '" + mergedRoom.RoomName + "': " + e.Message);
-            return false;
-        }
-    }
-
-    private static string SanitizeRoomCaptureFileName(string roomName) {
-        string fileName = string.IsNullOrWhiteSpace(roomName) ? "room" : roomName.Trim();
-        foreach (char invalid in Path.GetInvalidFileNameChars()) {
-            fileName = fileName.Replace(invalid, '-');
-        }
-
-        fileName = fileName.Replace('/', '-').Replace('\\', '-');
-        return string.IsNullOrWhiteSpace(fileName) ? "room" : fileName;
-    }
-
     private static void WriteMetadata(Level level, Rectangle bounds, float cameraWidth, float cameraHeight, int viewportWidth, int viewportHeight) {
         string path = BuildPath(level, "room.json");
         File.WriteAllText(path, BuildRoomMetadataJson(bounds, cameraWidth, cameraHeight, viewportWidth, viewportHeight));
@@ -1215,13 +1193,13 @@ public static class AkronScreenshotScanner {
         return AkronModuleSettings.NormalizeScreenshotScannerImageFormat(AkronModule.Settings.ScreenshotScannerImageFormat) == AkronScreenshotImageFormat.Png;
     }
 
-    private static bool TryWriteMergedRoomImage(Level level, Rectangle bounds, float cameraWidth, float cameraHeight, int viewportWidth, int viewportHeight, out AkronScreenshotMergedRoom mergedRoom) {
+    private static bool TryWriteMergedRoomImage(Level level, IReadOnlyList<string> scanTiles, Rectangle bounds, float cameraWidth, float cameraHeight, int viewportWidth, int viewportHeight, out AkronScreenshotMergedRoom mergedRoom) {
         mergedRoom = default;
         string outputPath = BuildPath(level, "merged" + ImageExtension());
         string roomDirectory = Path.GetDirectoryName(outputPath) ?? ".";
         try {
-            List<string> tileFiles = Directory.EnumerateFiles(roomDirectory, "*" + ImageExtension())
-                .Where(file => TryParseScanTileFileName(Path.GetFileName(file), out _, out _))
+            List<string> tileFiles = scanTiles
+                .Where(File.Exists)
                 .OrderBy(Path.GetFileName, StringComparer.Ordinal)
                 .ToList();
             if (tileFiles.Count == 0) {

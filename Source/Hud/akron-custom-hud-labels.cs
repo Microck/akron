@@ -67,11 +67,13 @@ public static partial class AkronCustomHudLabels {
         y = Math.Max(y, layout.TopLeftY);
     }
 
+    // Measurement only, used by the obstruction planner before Render: checks the policy
+    // without recording a use. Render records.
     internal static bool AnyRenderedLabelIntersectsPlayer(Level level, Player player, float y, float? screenWidth = null, float? screenHeight = null) {
         if (!AkronModule.Settings.LabelSystemVisible ||
             !AkronModule.Settings.CustomHudLabels ||
             AkronModule.IsOverlayVisible ||
-            !AkronModule.TryUse(AkronFeatureKind.CustomHudLabels)) {
+            !AkronPolicy.CanUse(AkronFeatureKind.CustomHudLabels).Allowed) {
             return false;
         }
 
@@ -91,7 +93,7 @@ public static partial class AkronCustomHudLabels {
         if (!AkronModule.Settings.LabelSystemVisible ||
             !AkronModule.Settings.CustomHudLabels ||
             AkronModule.IsOverlayVisible ||
-            !AkronModule.TryUse(AkronFeatureKind.CustomHudLabels)) {
+            !AkronPolicy.CanUse(AkronFeatureKind.CustomHudLabels).Allowed) {
             return y;
         }
 
@@ -161,7 +163,7 @@ public static partial class AkronCustomHudLabels {
             : (Engine.FrameCounter - AkronModule.Session.LastDeathHitboxRecordedFrame) / 60f;
         return label.EventMode switch {
             AkronLabelEventMode.OnDeath => AkronEntityInspector.HasVisibleLastDeathHitbox() && age >= label.EventDelaySeconds && age <= label.EventDelaySeconds + label.EventDurationSeconds,
-            AkronLabelEventMode.OnNoclipDeath => AkronEntityInspector.HasVisibleLastDeathHitbox() && string.Equals(AkronModule.Session?.LastDeathEntityType, "Noclip", StringComparison.OrdinalIgnoreCase),
+            AkronLabelEventMode.OnNoclipDeath => AkronEntityInspector.HasVisibleLastDeathHitbox() && AkronModule.Session?.LastDeathDuringNoclip == true,
             AkronLabelEventMode.OnButtonHold => Input.Jump.Check || Input.Dash.Check || Input.Grab.Check,
             _ => true
         };
@@ -543,7 +545,7 @@ public static partial class AkronCustomHudLabels {
             : (Engine.FrameCounter - AkronModule.Session.LastDeathHitboxRecordedFrame) / 60f;
         return label.EventMode switch {
             AkronLabelEventMode.OnDeath => AkronEntityInspector.HasVisibleLastDeathHitbox() && age >= label.EventDelaySeconds && age <= label.EventDelaySeconds + label.EventDurationSeconds,
-            AkronLabelEventMode.OnNoclipDeath => AkronEntityInspector.HasVisibleLastDeathHitbox() && string.Equals(AkronModule.Session?.LastDeathEntityType, "Noclip", StringComparison.OrdinalIgnoreCase),
+            AkronLabelEventMode.OnNoclipDeath => AkronEntityInspector.HasVisibleLastDeathHitbox() && AkronModule.Session?.LastDeathDuringNoclip == true,
             AkronLabelEventMode.OnButtonHold => Input.Jump.Check || Input.Dash.Check || Input.Grab.Check,
             _ => false
         };

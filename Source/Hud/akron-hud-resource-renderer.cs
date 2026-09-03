@@ -188,7 +188,9 @@ public static partial class AkronHudRenderer {
         }
 
         int maxDashes = EffectiveDashSlots(player);
-        bool shouldShow = settings.DashBarAlwaysVisible || player.Dashes < maxDashes || player.Dashes > 0;
+        // Without Always visible the bar shows only while a dash is missing; the old test also
+        // passed whenever any dash was held, which made the option inert.
+        bool shouldShow = settings.DashBarAlwaysVisible || player.Dashes < maxDashes;
         if (!shouldShow || player.Dead) {
             return;
         }

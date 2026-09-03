@@ -13,7 +13,9 @@ public static class AkronPracticeStats {
             return string.Empty;
         }
 
-        FinalizeCurrentRoom(level);
+        // Read-only: committing the current room here and again on leaving it doubled visits,
+        // deaths, and berries for anyone exporting mid-room. The current room lands in the
+        // stats when the player leaves it.
         string directory = Path.Combine(Everest.PathGame, "Saves", "AkronRoomStats");
         Directory.CreateDirectory(directory);
         string sid = SanitizeFilename(level.Session.Area.GetSID());
@@ -60,8 +62,26 @@ public static class AkronPracticeStats {
         }
 
         FinalizeRoom(level, AkronModule.Session.TrackedRoom);
+        BeginTrackingRoom(level);
+    }
+
+    // A warp is not a visit: the room was left part way, so its time is not a best-time
+    // candidate and its deaths belong to nobody. Tracking moves to the target without a
+    // commit, so OnLevelUpdate does not bank the partial room when it sees the new name.
+    public static void NotifyRoomWarp(Level level) {
+        if (level?.Session == null || AkronModule.Session == null) {
+            return;
+        }
+
+        BeginTrackingRoom(level);
+    }
+
+    // Deaths reset here rather than only in Player.OnTransition, so deaths from a room left
+    // by any other route (warp, reload) cannot be counted into the next room committed.
+    private static void BeginTrackingRoom(Level level) {
         AkronModule.Session.TrackedRoom = level.Session.Level;
         AkronModule.Session.RoomEnteredAt = level.Session.Time;
+        AkronModule.Session.DeathsSinceRoomTransition = 0;
         ResetRoomStatTracker(level.Session.Time);
     }
 
@@ -105,21 +125,8 @@ public static class AkronPracticeStats {
         return AkronModule.SaveData.BestRoomTimes.TryGetValue(key, out long best) ? best : null;
     }
 
-    public static long? GetBestSegmentTime(Level level) {
-        string key = BuildKey(level.Session.Area.GetSID(), level.Session.Level);
-        return AkronModule.SaveData.BestSegmentTimes.TryGetValue(key, out long best) ? best : null;
-    }
-
     public static void ResetAttemptTimer(Level level) {
         AkronModule.Session.AttemptStartedAt = level.Session.Time;
-    }
-
-    public static void FinalizeCurrentRoom(Level level) {
-        if (level == null || AkronModule.Session == null) {
-            return;
-        }
-
-        FinalizeRoom(level, AkronModule.Session.TrackedRoom);
     }
 
     private static void FinalizeRoom(Level level, string roomName) {
@@ -142,11 +149,6 @@ public static class AkronPracticeStats {
 
         if (!AkronModule.SaveData.BestRoomTimes.TryGetValue(key, out long bestRoom) || roomTime < bestRoom) {
             AkronModule.SaveData.BestRoomTimes[key] = roomTime;
-        }
-
-        long segmentTime = level.Session.Time - AkronModule.Session.AttemptStartedAt;
-        if (segmentTime > 0 && (!AkronModule.SaveData.BestSegmentTimes.TryGetValue(key, out long bestSegment) || segmentTime < bestSegment)) {
-            AkronModule.SaveData.BestSegmentTimes[key] = segmentTime;
         }
     }
 

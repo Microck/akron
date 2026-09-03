@@ -12,7 +12,7 @@ public sealed partial class AkronOverlay {
         return new List<OverlayEntry> {
             Action("SRT Status", () => true, DescribeSpeedrunToolStatus, () => { }, "speedrun tool", "status", "broker", "room timer"),
             Action("SRT Slot", () => true, () => AkronModule.Settings.ActiveSavestateSlot.ToString(CultureInfo.InvariantCulture), () => AkronModule.SetActiveSavestateSlot(AkronModule.Settings.ActiveSavestateSlot % 9 + 1), "speedrun tool", "slot", "state"),
-            Action("SRT Capture State", () => level != null && AkronSpeedrunToolBroker.Available, () => AkronSpeedrunToolBroker.IsSaved(AkronModule.Settings.ActiveSavestateSlot) ? "Overwrite" : "Empty", () => {
+            Action("SRT Capture State", AkronFeatureKind.BrokeredSavestates, () => level != null && AkronSpeedrunToolBroker.Available, () => AkronSpeedrunToolBroker.IsSaved(AkronModule.Settings.ActiveSavestateSlot) ? "Overwrite" : "Empty", () => {
                 if (level == null || !AkronModule.TryUse(AkronFeatureKind.BrokeredSavestates)) {
                     return;
                 }
@@ -20,7 +20,7 @@ public sealed partial class AkronOverlay {
                 AkronSaveLoadResult result = AkronSpeedrunToolBroker.Save(AkronModule.Settings.ActiveSavestateSlot);
                 Engine.Scene?.Add(new AkronToast(AkronModule.DescribeSavestateResult("Save", result, AkronModule.Settings.ActiveSavestateSlot)));
             }, "speedrun tool", "capture", "state"),
-            Action("SRT Restore State", () => level != null && AkronSpeedrunToolBroker.Available, () => AkronSpeedrunToolBroker.IsSaved(AkronModule.Settings.ActiveSavestateSlot) ? "Ready" : "Empty", () => {
+            Action("SRT Restore State", AkronFeatureKind.BrokeredSavestates, () => level != null && AkronSpeedrunToolBroker.Available, () => AkronSpeedrunToolBroker.IsSaved(AkronModule.Settings.ActiveSavestateSlot) ? "Ready" : "Empty", () => {
                 if (level == null || !AkronModule.TryUse(AkronFeatureKind.BrokeredSavestates)) {
                     return;
                 }
@@ -28,7 +28,7 @@ public sealed partial class AkronOverlay {
                 AkronSaveLoadResult result = AkronSpeedrunToolBroker.Load(AkronModule.Settings.ActiveSavestateSlot);
                 Engine.Scene?.Add(new AkronToast(AkronModule.DescribeSavestateResult("Load", result, AkronModule.Settings.ActiveSavestateSlot)));
             }, "speedrun tool", "restore", "state"),
-            Action("SRT Clear State", () => AkronSpeedrunToolBroker.Available, () => AkronSpeedrunToolBroker.IsSaved(AkronModule.Settings.ActiveSavestateSlot) ? "Saved" : "Empty", () => {
+            Action("SRT Clear State", AkronFeatureKind.BrokeredSavestates, () => AkronSpeedrunToolBroker.Available, () => AkronSpeedrunToolBroker.IsSaved(AkronModule.Settings.ActiveSavestateSlot) ? "Saved" : "Empty", () => {
                 if (!AkronModule.TryUse(AkronFeatureKind.BrokeredSavestates)) {
                     return;
                 }
@@ -37,7 +37,7 @@ public sealed partial class AkronOverlay {
                 Engine.Scene?.Add(new AkronToast("Cleared Speedrun Tool slot " + AkronModule.Settings.ActiveSavestateSlot + "."));
             }, "speedrun tool", "clear", "state"),
             Action("SRT Room Time", () => AkronInterop.RoomTimerAvailable, DescribeSpeedrunToolRoomTime, () => { }, "speedrun tool", "room timer", "time"),
-            Action("Export Room Times", () => AkronInterop.SpeedrunToolLoaded, () => AkronInterop.RoomTimerAvailable ? "Speedrun Tool" : "Unavailable", AkronActions.ExportRoomTimes, "splits", "room timer", "export")
+            Action("Export Room Times", AkronFeatureKind.SplitHelper, () => AkronInterop.SpeedrunToolLoaded, () => AkronInterop.RoomTimerAvailable ? "Speedrun Tool" : "Unavailable", AkronActions.ExportRoomTimes, "splits", "room timer", "export")
         };
     }
 
@@ -45,7 +45,7 @@ public sealed partial class AkronOverlay {
         return new List<OverlayEntry> {
             Action("TAS Status", () => true, DescribeCelesteTasStatus, () => { }, "celestetas", "tas", "status"),
             Action("Configured TAS File", () => true, DescribeConfiguredTasFile, () => { }, "celestetas", "tas", "file", "path"),
-            Action("Play Configured TAS", () => AkronInterop.CelesteTasLoaded, () => AkronInterop.IsTasRunning() ? "Running" : "Ready", AkronActions.LaunchTas, "celestetas", "tas", "play", "handoff")
+            Action("Play Configured TAS", AkronFeatureKind.TasHandoff, () => AkronInterop.CelesteTasLoaded, () => AkronInterop.IsTasRunning() ? "Running" : "Ready", AkronActions.LaunchTas, "celestetas", "tas", "play", "handoff")
         };
     }
 
@@ -148,7 +148,9 @@ public sealed partial class AkronOverlay {
                     Engine.Scene?.Add(new AkronToast("Extended Variants " + (next ? "on" : "off")));
                 },
                 BuildSearchTerms("Extended Variants Master", new[] { "extended variant mode", "master switch" }),
-                true),
+                true,
+                OverlayEntryControl.Toggle,
+                AkronFeatureKind.ExtendedVariantMode),
             new OverlayEntry(
                 "Extended Variants Randomizer",
                 () => AkronExtendedVariants.Available,

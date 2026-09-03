@@ -204,10 +204,8 @@ public static partial class AkronSaveLoadService {
         nameof(Level.Wipe),
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
     ) ?? throw new MissingMemberException(typeof(Level).FullName, nameof(Level.Wipe));
-    private static readonly Dictionary<int, AkronSaveLoadSlot> Slots = new Dictionary<int, AkronSaveLoadSlot>();
     private static readonly Dictionary<string, AkronSaveLoadSlotOwner> RuntimeSlots = new Dictionary<string, AkronSaveLoadSlotOwner>(StringComparer.Ordinal);
     private static readonly List<AkronRegisteredSaveLoadAction> RegisteredActions = new List<AkronRegisteredSaveLoadAction>();
-    private static readonly List<AkronSaveLoadRiskHandler> RiskHandlers = new List<AkronSaveLoadRiskHandler>();
     private static readonly List<Func<Type, bool>> ReturnSameObjectPredicates = new List<Func<Type, bool>>();
     private static readonly List<Func<object, object>> CustomCloneProcessors = new List<Func<object, object>>();
 
@@ -419,9 +417,6 @@ public static partial class AkronSaveLoadService {
         AkronStartPosReconstruction.ReleaseOwnedResources();
         AkronStartPosPersistence.ClearRuntimeFreshBaselines();
         RunClearStateActions();
-        foreach (AkronSaveLoadSlot saveSlot in Slots.Values.Distinct()) {
-            ReleaseDormantEventInstances(saveSlot);
-        }
         foreach (AkronSaveLoadSlotOwner runtimeSlot in RuntimeSlots.Values.Distinct()) {
             runtimeSlot.ReleaseOwnership();
         }
@@ -429,10 +424,8 @@ public static partial class AkronSaveLoadService {
         // clears any stale generation left after a live asset reload.
         AkronVirtualAssetReloadTracker.Clear();
         RegisteredActions.Clear();
-        RiskHandlers.Clear();
         ReturnSameObjectPredicates.Clear();
         CustomCloneProcessors.Clear();
-        Slots.Clear();
         RuntimeSlots.Clear();
         MarkRuntimeSlotsChanged();
         WarmStartPosCosts.Clear();
@@ -574,8 +567,6 @@ public static partial class AkronSaveLoadService {
     public static void Unregister(object obj) {
         if (obj is AkronRegisteredSaveLoadAction action) {
             RegisteredActions.Remove(action);
-        } else if (obj is AkronSaveLoadRiskHandler handler) {
-            RiskHandlers.Remove(handler);
         }
     }
 
@@ -654,53 +645,9 @@ public static partial class AkronSaveLoadService {
             return AkronSaveLoadResult.Blocked;
         }
 
-        if (ShouldBrokerSavestatesInsteadOfNative()) {
-            return TryBrokerSave(slot);
-        }
-
-        if (!CanAccessNativeState(level, out _)) {
-            return AkronSaveLoadResult.Blocked;
-        }
-
-        bool isRisky = IsRisky(level, slot, out _);
-        bool usedUnsafeNativeOverride = isRisky && TryUseUnsafeNativeOverride(level);
-        if (isRisky && !usedUnsafeNativeOverride) {
-            return TryBrokerSave(slot);
-        }
-
-        AkronIgnoreSaveStateComponent.RemoveAll(level);
-        AkronSaveLoadSlot capturedSlot = null;
-        try {
-            foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
-                action.BeforeSaveState?.Invoke(level);
-                action.PreCloneEntities?.Invoke();
-            }
-
-            capturedSlot = BuildNativeSlot(level, GetSlotName(slot), AkronModule.Settings.SaveTimeAndDeaths);
-            foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
-                CaptureRegisteredActionState(capturedSlot, action, level);
-            }
-            PrepareSlotPreClone(capturedSlot);
-            if (Slots.TryGetValue(slot, out AkronSaveLoadSlot previousSlot)) {
-                ReleaseDormantEventInstances(previousSlot);
-            }
-            Slots[slot] = capturedSlot;
-            capturedSlot = null;
-        } catch {
-            ReleaseDormantEventInstances(capturedSlot);
-            throw;
-        } finally {
-            AkronDeepClone.ClearSharedState();
-            AkronIgnoreSaveStateComponent.ReAddAll(level);
-        }
-
-        if (!usedUnsafeNativeOverride) {
-            AkronPolicy.RecordFeatureUse(AkronFeatureKind.Savestates);
-        }
-        if (AkronModule.Settings.ProofModeOverlay) {
-            AkronProof.WriteSidecar(level, "startpos-capture");
-        }
-        return AkronSaveLoadResult.Success;
+        // Numbered savestates belong to Speedrun Tool; Akron only forwards them. Akron's own
+        // clone machinery below serves StartPos slots (see SaveRuntimeState), not these.
+        return TryBrokerSave(slot);
     }
 
     public static AkronSaveLoadResult Load(Level level, int slot) {
@@ -733,60 +680,7 @@ public static partial class AkronSaveLoadService {
     }
 
     private static AkronSaveLoadResult LoadCore(Level level, int slot) {
-        if (ShouldBrokerSavestatesInsteadOfNative()) {
-            return TryBrokerLoad(level, slot);
-        }
-
-        if (!Slots.TryGetValue(slot, out AkronSaveLoadSlot saveSlot)) {
-            return AkronSaveLoadResult.NoState;
-        }
-
-        AkronPolicyDecision policy = AkronPolicy.CanUse(AkronFeatureKind.Savestates);
-        if (!policy.Allowed) {
-            return AkronSaveLoadResult.Blocked;
-        }
-
-        if (!CanAccessNativeState(level, out _)) {
-            return AkronSaveLoadResult.Blocked;
-        }
-        if (!MatchesCurrentNativeSession(level, saveSlot)) {
-            return AkronSaveLoadResult.SessionMismatch;
-        }
-
-        bool isRisky = IsRisky(level, slot, out _);
-        bool usedUnsafeNativeOverride = isRisky && TryUseUnsafeNativeOverride(level);
-        if (isRisky && !usedUnsafeNativeOverride) {
-            return TryBrokerLoad(level, slot);
-        }
-
-        AkronIgnoreSaveStateComponent.RemoveAll(level);
-        try {
-            foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
-                action.BeforeLoadState?.Invoke(level);
-            }
-
-            if (!RestoreNativeSlot(level, saveSlot)) {
-                return AkronSaveLoadResult.SessionMismatch;
-            }
-
-            foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
-                if (saveSlot.ActionState.TryGetValue(action.Id, out Dictionary<Type, Dictionary<string, object>> savedValues)) {
-                    action.LoadState?.Invoke((Dictionary<Type, Dictionary<string, object>>) DeepClone(savedValues), level);
-                }
-            }
-            PrepareSlotPreClone(saveSlot);
-        } finally {
-            AkronDeepClone.ClearSharedState();
-            AkronIgnoreSaveStateComponent.ReAddAll(level);
-        }
-
-        if (!usedUnsafeNativeOverride) {
-            AkronPolicy.RecordFeatureUse(AkronFeatureKind.Savestates);
-        }
-        if (AkronModule.Settings.ProofModeOverlay) {
-            AkronProof.WriteSidecar(level, "startpos-restore");
-        }
-        return AkronSaveLoadResult.Success;
+        return TryBrokerLoad(level, slot);
     }
 
     public static AkronSaveLoadSlot CaptureRuntimeState(
@@ -2200,18 +2094,13 @@ public static partial class AkronSaveLoadService {
     }
 
     public static bool HasSlot(int slot) {
-        if (ShouldBrokerSavestatesInsteadOfNative()) {
-            return AkronSpeedrunToolBroker.IsSaved(slot);
-        }
-
-        return Slots.ContainsKey(slot);
+        return AkronSpeedrunToolBroker.IsSaved(slot);
     }
 
+    // ModInterop export. Akron holds no numbered slots of its own; the slot is Speedrun
+    // Tool's, so clearing it means asking Speedrun Tool to clear it.
     public static void ClearSlot(int slot) {
-        if (Slots.Remove(slot, out AkronSaveLoadSlot removedSlot)) {
-            ReleaseDormantEventInstances(removedSlot);
-            RunClearStateActions();
-        }
+        AkronSpeedrunToolBroker.Clear(GetSlotName(slot));
     }
 
     public static string GetSlotName(int slot) {
@@ -2227,16 +2116,9 @@ public static partial class AkronSaveLoadService {
         // live scene after load so later room transitions rebuild gameplay
         // renderers normally. The Speedrun Tool TAS broker is stable for ordinary
         // savestates, but its freeze/wipe path can leave StartPos loads with stale
-        // visual state on the next room warp. Keep StartPos on Akron's native
-        // runtime clone path while preserving broker behavior for normal slots.
-        return ShouldBrokerSavestatesInsteadOfNative() &&
-               !slotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal);
-    }
-
-    public static void RegisterRiskHandler(AkronSaveLoadRiskHandler handler) {
-        if (handler != null && !RiskHandlers.Contains(handler)) {
-            RiskHandlers.Add(handler);
-        }
+        // visual state on the next room warp. Keep StartPos on Akron's own
+        // runtime clone path; every other slot is Speedrun Tool's.
+        return !slotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal);
     }
 
     internal static void SaveStaticMembers(Dictionary<Type, Dictionary<string, object>> savedValues, Type type, params string[] memberNames) {
@@ -2251,29 +2133,6 @@ public static partial class AkronSaveLoadService {
         foreach (KeyValuePair<Type, Dictionary<string, object>> pair in savedValues) {
             LoadStaticMemberValues(savedValues, pair.Key, pair.Value.Keys.ToArray());
         }
-    }
-
-    public static bool ShouldPromptForBroker(Level level, int slot, out string reason) {
-        if (level == null || !AkronSpeedrunToolBroker.Available) {
-            reason = string.Empty;
-            return false;
-        }
-
-        if (!CanAccessNativeState(level, out reason)) {
-            return false;
-        }
-
-        if (!AkronModule.Settings.SpeedrunToolBrokerWarnings || AkronMapOverrides.ShouldForceBroker(level)) {
-            reason = string.Empty;
-            return false;
-        }
-
-        if (IsUnsafeNativeOverrideEnabled(level) && CanUseUnsafeNativeOverride(level)) {
-            reason = string.Empty;
-            return false;
-        }
-
-        return IsRisky(level, slot, out reason);
     }
 
     private static AkronSaveLoadSlot BuildNativeSlot(Level level, string slotName, bool saveTimeAndDeaths, bool includeLevelSnapshot = true) {

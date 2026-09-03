@@ -192,21 +192,13 @@ public partial class AkronModule {
     }
 
     private static void SaveState(Level level) {
-        if (TryPromptForBroker(level, load: false)) {
-            return;
-        }
-
         AkronSaveLoadResult result = AkronSaveLoadService.Save(level, Settings.ActiveSavestateSlot);
         Engine.Scene?.Add(new AkronToast(DescribeSaveLoadResult("Save", result, Settings.ActiveSavestateSlot)));
     }
 
     private static void LoadState(Level level, bool confirmed = false) {
         if (Settings.ConfirmLoadState && !confirmed) {
-            ShowConfirmPrompt(level, "CONFIRM STARTPOS RESTORE", "Restore Akron StartPos snapshot slot " + Settings.ActiveSavestateSlot + "?", () => LoadState(level, confirmed: true));
-            return;
-        }
-
-        if (TryPromptForBroker(level, load: true)) {
+            ShowConfirmPrompt(level, "CONFIRM SPEEDRUN TOOL RESTORE", "Restore Speedrun Tool slot " + Settings.ActiveSavestateSlot + "?", () => LoadState(level, confirmed: true));
             return;
         }
 
@@ -221,7 +213,7 @@ public partial class AkronModule {
         }
 
         Settings.ActiveSavestateSlot = nextSlot;
-        Engine.Scene?.Add(new AkronToast("Active StartPos snapshot slot: " + nextSlot));
+        Engine.Scene?.Add(new AkronToast("Active Speedrun Tool slot: " + nextSlot));
     }
 
     private static string DescribeSaveLoadResult(string verb, AkronSaveLoadResult result, int slot) {
@@ -233,7 +225,7 @@ public partial class AkronModule {
             case AkronSaveLoadResult.SessionMismatch:
                 return "Slot " + slot + " belongs to a different save file or map session.";
             case AkronSaveLoadResult.Blocked:
-                return verb + " blocked by StartPos restore safety check.";
+                return verb + " blocked by Akron policy.";
             case AkronSaveLoadResult.BrokerUnavailable:
                 return "Speedrun Tool broker is unavailable.";
             default:
@@ -251,45 +243,6 @@ public partial class AkronModule {
         AkronPolicy.RecordFeatureUse(feature);
         AkronLog.RecordFeatureUse(feature);
         return true;
-    }
-
-    private static bool TryPromptForBroker(Level level, bool load) {
-        int slot = Settings.ActiveSavestateSlot;
-        if (!AkronSaveLoadService.ShouldPromptForBroker(level, slot, out string reason)) {
-            return false;
-        }
-
-        ShowBrokerPrompt(level, load, reason);
-        return true;
-    }
-
-    private static void ShowBrokerPrompt(Level level, bool load, string reason) {
-        int slot = Settings.ActiveSavestateSlot;
-        string actionNoun = load ? "load" : "save";
-        string mapSid = level.Session.Area.GetSID();
-        AkronPromptMenu.Show(
-            level,
-            "BROKERED SAVESTATE",
-            "Native Akron " + actionNoun + " is blocked on this map.\n" +
-            reason + "\n" +
-            "Akron can hand this off to Speedrun Tool for slot " + slot + " on " + mapSid + ".",
-            new AkronPromptOption("Use Broker Once", () => FinishBrokerPromptAction(level, load)),
-            new AkronPromptOption("Always Use Broker On This Map", () => {
-                AkronMapOverrides.GetOrCreate(level).AlwaysUseBroker = true;
-                FinishBrokerPromptAction(level, load);
-            }),
-            new AkronPromptOption("Disable Broker Warnings Globally", () => {
-                Settings.SpeedrunToolBrokerWarnings = false;
-                FinishBrokerPromptAction(level, load);
-            })
-        );
-    }
-
-    private static void FinishBrokerPromptAction(Level level, bool load) {
-        AkronSaveLoadResult result = load
-            ? AkronSaveLoadService.Load(level, Settings.ActiveSavestateSlot)
-            : AkronSaveLoadService.Save(level, Settings.ActiveSavestateSlot);
-        Engine.Scene?.Add(new AkronToast(DescribeSaveLoadResult(load ? "Load" : "Save", result, Settings.ActiveSavestateSlot)));
     }
 
     private static void ShowConfirmPrompt(Level level, string title, string body, Action confirmedAction) {
@@ -315,14 +268,6 @@ public partial class AkronModule {
     public static void PerformReloadChapter(Level level) => ReloadChapter(level);
     public static void PerformSaveState(Level level) => SaveState(level);
     public static void PerformLoadState(Level level) => LoadState(level);
-    public static void PerformBrokerPromptForAutomation(Level level, bool load, string reason = "Automation broker prompt exercise.") {
-        if (level == null) {
-            return;
-        }
-
-        ShowBrokerPrompt(level, load, string.IsNullOrWhiteSpace(reason) ? "Automation broker prompt exercise." : reason);
-    }
-
     public static string DescribeSavestateResult(string verb, AkronSaveLoadResult result, int slot) {
         return DescribeSaveLoadResult(verb, result, slot);
     }

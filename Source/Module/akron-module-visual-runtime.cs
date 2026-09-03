@@ -455,10 +455,10 @@ public partial class AkronModule {
 
         ApplyPlayerVisibilityOverride(player);
 
-        if (Settings.TrailVisibility == AkronTrailVisibility.Hidden) {
+        if (Settings.TrailVisibility == AkronTrailVisibility.Hidden && TryUse(AkronFeatureKind.CustomTrail)) {
             forcedTrailFrame = 0;
             TrailManager.Clear();
-        } else if (Settings.TrailVisibility == AkronTrailVisibility.Always || Settings.CustomTrail && TryUse(AkronFeatureKind.CustomTrail)) {
+        } else if ((Settings.TrailVisibility == AkronTrailVisibility.Always || Settings.CustomTrail) && TryUse(AkronFeatureKind.CustomTrail)) {
             int cuttingRate = AkronModuleSettings.ClampTrailCuttingRate(Settings.TrailCuttingRate);
             forcedTrailFrame = (forcedTrailFrame + 1) % cuttingRate;
             if (forcedTrailFrame == 0) {

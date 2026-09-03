@@ -132,6 +132,7 @@ public partial class AkronModule {
                 } else {
                     AkronEntityInspector.RecordLastDeath(level, deathPosition, deathHazard);
                 }
+                Session.LastDeathDuringNoclip = Settings.Noclip;
                 AkronPracticeStats.ResetAttemptTimer(level);
             }
         }
@@ -327,6 +328,7 @@ public partial class AkronModule {
         Player player = level.Tracker.GetEntity<Player>();
         CaptureClickTeleportTargetBeforeCameraMovement(level, player);
         AkronRuntimeOptions.Apply(level, player);
+        RecordActiveFrameBypassUse();
         if (player == null) {
             return;
         }
@@ -373,6 +375,39 @@ public partial class AkronModule {
 
         if (ShouldApplyAnyVisualNoiseSuppression() && TryUse(AkronFeatureKind.ReducedVisualNoise)) {
             ApplyReducedVisualNoise(level);
+        }
+    }
+
+    // The bypass toggles and the popup's cheat checkboxes used to record only when switched
+    // on, so an attempt begun with them already on read Unclassified. They change every frame
+    // they are active, so they record every frame, like noclip and timescale.
+    private static void RecordActiveFrameBypassUse() {
+        if (!AkronMotionSmoothingInterop.Loaded) {
+            return;
+        }
+
+        if (Settings.FpsBypass) {
+            TryUse(AkronFeatureKind.FpsBypass);
+        }
+
+        if (Settings.TpsBypass) {
+            TryUse(AkronFeatureKind.TpsBypass);
+        }
+
+        if (!Settings.FpsBypass) {
+            return;
+        }
+
+        if (Settings.FrameBypassObjectSmoothing == AkronObjectSmoothingMode.Interpolate) {
+            AkronPolicy.RecordCheatUse("Motion Smoothing object interpolation was enabled.");
+        }
+
+        if (Settings.FrameBypassTasMode) {
+            AkronPolicy.RecordCheatUse("Motion Smoothing TAS mode was enabled.");
+        }
+
+        if (Settings.FrameBypassSillyMode) {
+            AkronPolicy.RecordCheatUse("Motion Smoothing Nasty mode was enabled.");
         }
     }
 

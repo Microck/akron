@@ -22,7 +22,6 @@ public class AkronModuleSession : EverestModuleSession {
     public AkronStatus AttemptStatus { get; set; } = AkronStatus.Unclassified;
     public string AttemptReason { get; set; } = "No Akron attempt classification has been selected or earned yet.";
     public bool UsedBrokeredSavestate { get; set; }
-    public bool UsedUnsafeSavestateOverride { get; set; }
     public string TrackedRoom { get; set; } = string.Empty;
     public long RoomEnteredAt { get; set; }
     public long LastRoomTime { get; set; }
@@ -70,6 +69,8 @@ public class AkronModuleSession : EverestModuleSession {
     public bool LastDeathHitboxSawDeathState { get; set; }
     public ulong LastDeathHitboxRecordedFrame { get; set; }
     public string LastDeathEntityType { get; set; } = string.Empty;
+    // Whether Noclip was on when the last death marker was recorded; the OnNoclipDeath label event reads it.
+    public bool LastDeathDuringNoclip { get; set; }
     public string LastScreenshotPath { get; set; } = string.Empty;
     public int AkronDashCountAtLevelStart { get; set; }
     public int AkronJumpCount { get; set; }

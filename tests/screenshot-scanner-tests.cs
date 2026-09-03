@@ -382,7 +382,7 @@ public sealed class ScreenshotScannerTests {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Tools/akron-screenshot-scanner.cs"));
 
         int tileCaptureIndex = source.IndexOf("AkronCapture.CaptureToPath(level, lastExportPath);", StringComparison.Ordinal);
-        int mergeIndex = source.IndexOf("TryWriteMergedRoomImage(level, bounds, cameraWidth, cameraHeight, viewportWidth, viewportHeight", StringComparison.Ordinal);
+        int mergeIndex = source.IndexOf("TryWriteMergedRoomImage(level, writtenTiles, bounds, cameraWidth, cameraHeight, viewportWidth, viewportHeight", StringComparison.Ordinal);
         int mapMergeIndex = source.IndexOf("TryWriteMergedChapterImage(current ?? Engine.Scene as Level, mergedRooms);", StringComparison.Ordinal);
 
         Assert.True(tileCaptureIndex >= 0);

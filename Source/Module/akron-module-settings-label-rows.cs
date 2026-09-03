@@ -24,7 +24,10 @@ public partial class AkronModuleSettings {
         "Room Timer",
         "Room Stat Tracker",
         "Attempts",
-        "No Short Numbers"
+        "No Short Numbers",
+        "Stamina Widget",
+        "Speed Widget",
+        "Dash Widget"
     };
 
     public static ButtonBinding CreateDefaultOverlayToggleBinding() {
@@ -72,15 +75,20 @@ public partial class AkronModuleSettings {
         }
     }
 
-    public static void EnsureCurrentOverlayToggleDefault(AkronModuleSettings settings) {
+    // Returns whether the binding was replaced, so an import can tell the player that the
+    // pack's Open Menu binding was not kept.
+    public static bool EnsureCurrentOverlayToggleDefault(AkronModuleSettings settings) {
         if (settings == null) {
-            return;
+            return false;
         }
 
         ButtonBinding binding = settings.ToggleOverlay;
-        if (ShouldUseDefaultOverlayToggleBinding(binding?.Keys, binding?.Buttons)) {
-            settings.ToggleOverlay = CreateDefaultOverlayToggleBinding();
+        if (!ShouldUseDefaultOverlayToggleBinding(binding?.Keys, binding?.Buttons)) {
+            return false;
         }
+
+        settings.ToggleOverlay = CreateDefaultOverlayToggleBinding();
+        return true;
     }
 
     internal static bool ShouldUseDefaultOverlayToggleBinding(IReadOnlyCollection<Keys> keys, IReadOnlyCollection<Buttons> buttons) {

@@ -13,7 +13,7 @@ public static partial class AkronHudRenderer {
             player.Dead ||
             AkronRuntimeOptions.IsFreeCameraActive(level) ||
             !AkronModule.Settings.ShowTrajectory ||
-            !AkronPolicy.CanUse(AkronFeatureKind.ShowTrajectory).Allowed) {
+            !AkronModule.TryUse(AkronFeatureKind.ShowTrajectory)) {
             return;
         }
 

@@ -65,10 +65,8 @@ public static partial class AkronCommands {
                     Log("deload-spinners: already used in this level");
                     return;
                 }
-                AkronModule.Settings.DeloadSpinners = false;
                 break;
             case "off":
-                AkronModule.Settings.DeloadSpinners = false;
                 break;
             case "toggle":
                 if (!AkronModule.TryUse(AkronFeatureKind.DeloadSimulation)) {
@@ -79,7 +77,6 @@ public static partial class AkronCommands {
                     Log("deload-spinners: already used in this level");
                     return;
                 }
-                AkronModule.Settings.DeloadSpinners = false;
                 break;
             case "now":
                 if (!AkronModule.TryUse(AkronFeatureKind.DeloadSimulation)) {
@@ -90,7 +87,6 @@ public static partial class AkronCommands {
                     Log("deload-spinners: already used in this level");
                     return;
                 }
-                AkronModule.Settings.DeloadSpinners = false;
                 break;
             case "delay":
                 if (!float.TryParse(secondsBeforeDeload, NumberStyles.Float, CultureInfo.InvariantCulture, out delay)) {
@@ -110,7 +106,6 @@ public static partial class AkronCommands {
                 break;
         }
 
-        Log("deload-spinners: " + AkronModule.Settings.DeloadSpinners.ToString().ToLowerInvariant());
         Log("deload-spinners-delay: " + delay.ToString("0.###", CultureInfo.InvariantCulture));
         Log("deload-spinners-steps: " + steps.ToString(CultureInfo.InvariantCulture));
         Log("level-time-active: " + level.TimeActive.ToString("0.000", CultureInfo.InvariantCulture));
