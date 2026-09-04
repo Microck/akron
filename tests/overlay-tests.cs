@@ -1989,6 +1989,27 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void SpeedrunToolKeepsAkronProcessStateLiveAcrossSavestates() {
+        // SRT deep-clones every EverestModule static field typed as an Entity and every
+        // module's _SaveData on each save and each load. The overlay is process UI and
+        // the save data is per-profile statistics that grow with play; cloning either on
+        // the game thread was the hitch in #153, and restoring the clones rewound them.
+        Assert.True(AkronInterop.IsSpeedrunToolLiveObjectType(typeof(AkronOverlay)));
+        Assert.True(AkronInterop.IsSpeedrunToolLiveObjectType(typeof(AkronModuleSaveData)));
+        Assert.False(AkronInterop.IsSpeedrunToolLiveObjectType(typeof(AkronModuleSession)));
+        Assert.False(AkronInterop.IsSpeedrunToolLiveObjectType(typeof(AkronToast)));
+
+        string interopSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Interop/akron-interop.cs"));
+        Assert.Contains("\"AddReturnSameObjectProcessor\"", interopSource);
+        Assert.Contains("\"RemoveReturnSameObjectProcessor\"", interopSource);
+        Assert.Contains("speedrunToolReturnSameObjectProcessor = IsSpeedrunToolLiveObjectType;", interopSource);
+        string unregister = interopSource.Substring(
+            interopSource.IndexOf("public static void UnregisterSpeedrunToolSaveLoadHooks()", StringComparison.Ordinal));
+        unregister = unregister.Substring(0, unregister.IndexOf("speedrunToolSaveLoadHooksRegistered = false;", StringComparison.Ordinal));
+        Assert.Contains("speedrunToolRemoveReturnSameObjectProcessorMethod.Invoke(null, new object[] { speedrunToolReturnSameObjectProcessor });", unregister);
+    }
+
+    [Fact]
     public void SpeedrunToolSavestatesDoNotCloneAkronOverlay() {
         string interopSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Interop/akron-interop.cs"));
         string overlaySource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/AkronOverlay.cs"));

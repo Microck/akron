@@ -658,11 +658,13 @@ public static partial class AkronSaveLoadService {
         CurrentSlotName = GetSlotName(slot);
 
         // A savestate rewinds gameplay. It must not rewind the list of StartPos slots
-        // the player has set, which lives in Akron's module save data and session and
-        // is replaced wholesale by both restore paths. Held here rather than inside
-        // either path because the brokered path is the one every shipped build takes:
-        // SpeedrunTool restores _Session and _SaveData itself and Akron never sees the
-        // assignment. See AkronActions.RestoreStartPosCatalogAfterStateLoad.
+        // the player has set, which lives in Akron's module save data and session.
+        // SpeedrunTool keeps the save data object live (AkronInterop.
+        // IsSpeedrunToolLiveObjectType), so putting the catalog back is a no-op there
+        // and only guards a Speedrun Tool build that ignores that registration. It
+        // still replaces _Session wholesale, and Akron never sees that assignment, so
+        // the in-session view has to be rebuilt here either way. See
+        // AkronActions.RestoreStartPosCatalogAfterStateLoad.
         //
         // Unconditional rather than only on Success. A load can be refused before it
         // touches anything, but it can also fail or throw after the module state has

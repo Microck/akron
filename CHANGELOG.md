@@ -16,6 +16,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Loading a Speedrun Tool savestate no longer hitches because of Akron. Speedrun Tool deep-cloned Akron's overlay and Akron's per-profile statistics on every save and load, and the statistics grow with every room ever played, so the load frame got slower the longer Akron had been in use. Both now stay live, which also means a savestate no longer rewinds room stats or StartPos metadata (#153).
 - The Core Mode override covers the room it was applied in. It ends when the room changes or a StartPos slot is restored, so turning it off cannot write back a core mode captured somewhere else, and the row can no longer read On with nothing to restore after a restart. Cycle click behavior now cycles Hot, Cold, and off, so the row can turn the override off (#171).
 - Proof sidecars are valid JSON again. Removing the unsafe restore override in the previous release left a trailing comma in the active-feature block, so every sidecar written since then failed to parse (#174).
 - The Submission Mode recorder warning arms again whenever the recorder does, so disarming the recorder later in the same level warns again (#174).
