@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using Celeste;
 using Microsoft.Xna.Framework;
@@ -265,6 +266,12 @@ public static partial class AkronCommands {
         Log("auto-kill: " + AkronModule.Settings.AutoKill.ToString().ToLowerInvariant());
         Log("auto-kill-timer: " + AkronModule.Settings.AutoKillTimer.ToString().ToLowerInvariant());
         Log("auto-kill-seconds: " + AkronModule.Settings.AutoKillSeconds.ToString(CultureInfo.InvariantCulture));
+
+        // Timer mode is judged against the current attempt, so the attempt clock and the
+        // once-per-attempt latch are what explain whether it is about to fire.
+        Log("auto-kill-attempt-seconds: " + (AkronModule.Session?.AttemptElapsedSeconds ?? 0f).ToString("0.00", CultureInfo.InvariantCulture));
+        Log("auto-kill-timer-fired: " + (AkronModule.Session?.AutoKillTimerFired ?? false).ToString().ToLowerInvariant());
+        Log("auto-kill-map: " + (AkronModule.CurrentAreaMapSid() is { Length: > 0 } autoKillMapSid ? autoKillMapSid : "unavailable"));
         bool hasSelectedAutoKillArea = AkronModule.TryGetSelectedAutoKillArea(out AkronAutoKillAreaData selectedAutoKillArea);
         int selectedAutoKillAreaNumber = hasSelectedAutoKillArea ? AkronModule.GetSelectedAutoKillAreaIndex() + 1 : 0;
         Rectangle autoKillArea = hasSelectedAutoKillArea ? AkronModule.GetSelectedAutoKillArea() : AkronModule.GetAutoKillArea();

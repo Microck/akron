@@ -301,7 +301,8 @@ public static class AkronCommunityPackUploads {
                 X = area.X,
                 Y = area.Y,
                 Width = area.Width,
-                Height = area.Height
+                Height = area.Height,
+                MapSid = area.MapSid ?? string.Empty
             })
             .ToList();
     }
@@ -319,6 +320,7 @@ public static class AkronCommunityPackUploads {
             Y = area.Y,
             Width = area.Width,
             Height = area.Height,
+            MapSid = area.MapSid ?? string.Empty,
             SpeedCondition = area.SpeedCondition,
             MinSpeed = area.MinSpeed,
             MaxSpeed = area.MaxSpeed,

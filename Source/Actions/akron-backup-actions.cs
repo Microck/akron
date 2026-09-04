@@ -1241,6 +1241,7 @@ public static class AkronBackupActions {
 
         module.LoadSettings();
         AkronModuleSettings.EnsureCurrentKeybindDefaults(AkronModule.Settings);
+        AkronModuleSettings.DropUnkeyedAutomationAreas(AkronModule.Settings);
     }
 
     internal static bool TryReloadOpenSaveData(out string message) {

@@ -108,7 +108,7 @@ public partial class AkronModule {
         Audio.SetMusic(null);
         Audio.BusStopAll("bus:/gameplay_sfx", true);
         AkronPolicy.ResetAttempt("Vanilla pause-menu chapter restart ended the previous attempt.");
-        AkronPracticeStats.ResetAttemptTimer(level);
+        AkronPracticeStats.ResetAttemptTimer();
         level.OnEndOfFrame += () => {
             if (Engine.Scene == level) {
                 Engine.Scene = new LevelLoader(level.Session.Restart());
@@ -155,7 +155,7 @@ public partial class AkronModule {
             }
 
             AkronPolicy.ResetAttempt("Room reload ended the previous attempt.");
-            AkronPracticeStats.ResetAttemptTimer(level);
+            AkronPracticeStats.ResetAttemptTimer();
             level.Session.RespawnPoint = level.GetSpawnPoint(level.Camera.Position);
             level.Reload();
         };
@@ -185,7 +185,7 @@ public partial class AkronModule {
         }
 
         AkronPolicy.ResetAttempt("Chapter reload ended the previous attempt.");
-        AkronPracticeStats.ResetAttemptTimer(level);
+        AkronPracticeStats.ResetAttemptTimer();
         level.OnEndOfFrame += () => {
             Engine.Scene = new LevelLoader(level.Session.Restart());
         };

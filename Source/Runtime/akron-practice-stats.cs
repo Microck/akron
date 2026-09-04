@@ -48,7 +48,7 @@ public static class AkronPracticeStats {
         AkronDeloadSimulator.BeginLevel(level);
         AkronModule.Session.TrackedRoom = level.Session.Level;
         AkronModule.Session.RoomEnteredAt = level.Session.Time;
-        AkronModule.Session.AttemptStartedAt = level.Session.Time;
+        ResetAttemptTimer();
         ResetRoomStatTracker(level.Session.Time);
         AkronModule.Session.LastRoomTime = 0;
         AkronModule.Session.DeathPbLossPromptShown = false;
@@ -56,6 +56,10 @@ public static class AkronPracticeStats {
 
     public static void OnLevelUpdate(Level level) {
         UpdateRoomStatFreeze(level);
+
+        // Engine.DeltaTime is zero while the game is paused or frozen, so this measures time
+        // actually played on the attempt and only ever moves forward.
+        AkronModule.Session.AttemptElapsedSeconds += Engine.DeltaTime;
 
         if (AkronModule.Session.TrackedRoom == level.Session.Level) {
             return;
@@ -93,10 +97,6 @@ public static class AkronPracticeStats {
         return level.Session.Time;
     }
 
-    public static long GetCurrentSegmentTime(Level level) {
-        return level.Session.Time - AkronModule.Session.AttemptStartedAt;
-    }
-
     public static long GetCurrentAliveTime(Level level) {
         return level.Session.Time - AkronModule.Session.RoomStatAliveStartedAt;
     }
@@ -125,8 +125,10 @@ public static class AkronPracticeStats {
         return AkronModule.SaveData.BestRoomTimes.TryGetValue(key, out long best) ? best : null;
     }
 
-    public static void ResetAttemptTimer(Level level) {
-        AkronModule.Session.AttemptStartedAt = level.Session.Time;
+    // Called on level begin and on every death: those are the boundaries of an attempt.
+    public static void ResetAttemptTimer() {
+        AkronModule.Session.AttemptElapsedSeconds = 0f;
+        AkronModule.Session.AutoKillTimerFired = false;
     }
 
     private static void FinalizeRoom(Level level, string roomName) {

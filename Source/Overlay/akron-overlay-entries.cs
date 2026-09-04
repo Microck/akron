@@ -37,16 +37,7 @@ public sealed partial class AkronOverlay {
 
         entries.Add(Toggle("Safe Mode", () => AkronModule.Settings.SafeMode, value => AkronModule.Settings.SafeMode = value, "safe", "freeze attempts", "indicator"));
         entries.Add(PolicyToggle("Freeze Attempts", AkronFeatureKind.SafeModeStats, () => AkronModule.Settings.SafeModeFreezeAttempts, value => AkronModule.Settings.SafeModeFreezeAttempts = value));
-        entries.Add(PolicyToggle("Submission Mode", AkronFeatureKind.SubmissionMode, () => AkronModule.Settings.SubmissionMode, value => {
-            AkronModule.Settings.SubmissionMode = value;
-            if (value) {
-                AkronModule.Settings.ProofModeOverlay = true;
-                AkronModule.Settings.ProofRecorderGuard = true;
-                AkronModule.Settings.EndScreenHelper = true;
-                AkronModule.Settings.PauseTracker = true;
-                AkronModule.Settings.MapVersionStamp = true;
-            }
-        }, "proof", "submission", "goldberry", "hardlist"));
+        entries.Add(PolicyToggle("Submission Mode", AkronFeatureKind.SubmissionMode, () => AkronModule.Settings.SubmissionMode, value => AkronModule.Settings.ApplySubmissionMode(value), "proof", "submission", "goldberry", "hardlist"));
         entries.Add(PolicyToggle("Pause Buffering", AkronFeatureKind.PauseBuffering, () => AkronModule.Settings.AllowPauseBuffering, value => AkronModule.Settings.AllowPauseBuffering = value));
         entries.Add(PolicyToggle("Autosave", AkronFeatureKind.Autosave, () => AkronModule.Settings.Autosave, value => AkronModule.Settings.Autosave = value, "save", "room load", "respawn"));
         entries.Add(Toggle("Defer Engine GC", () => AkronModule.Settings.DeferEngineGarbageCollection, value => AkronModule.Settings.DeferEngineGarbageCollection = value, "gc", "garbage", "stutter", "lag spike", "death", "reload"));
@@ -59,7 +50,7 @@ public sealed partial class AkronOverlay {
                 return BuildGlobalEntries(AkronInterop.MotionSmoothingLoaded);
             case "Level":
                 return new List<OverlayEntry> {
-                    Action("Core Mode", AkronFeatureKind.MovementStatMutation, () => level != null, () => AkronActions.DescribeCoreMode(level), () => AkronActions.ToggleCoreMode(level), () => AkronModule.Settings.CoreModeOverrideEnabled, "core", "hot", "cold", "cycle"),
+                    Action("Core Mode", AkronFeatureKind.MovementStatMutation, () => level != null, () => AkronActions.DescribeCoreMode(level), () => AkronActions.ToggleCoreMode(level), () => AkronActions.IsCoreModeOverrideActive(level), "core", "hot", "cold", "cycle"),
                     Action("Freeze Gameplay", AkronFeatureKind.Freeze, () => AkronModule.Session != null, () => AkronModule.Session == null ? "Unavailable" : AkronModule.Session.FreezeGameplay ? "On" : "Off", AkronActions.ToggleFreeze, () => AkronModule.Session?.FreezeGameplay == true),
                     Action("Confirm Actions", () => true, DescribeConfirmActionsValue, () => ApplyOptionsPopupDelta("Confirm Actions", 1)),
                     PolicyToggle("Skip Intro", AkronFeatureKind.LevelEnterSkip, () => AkronModule.Settings.SkipIntro, value => AkronModule.Settings.SkipIntro = value),

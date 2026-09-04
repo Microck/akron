@@ -7,12 +7,12 @@ The Level tab focuses on the current level scene. Several rows are useful for ro
 
 | Option | Control | What it does | Classification |
 |---|---|---|---|
-| Core Mode | Action | Apply the configured Hot or Cold Core Mode override, or cycle directly between Hot and Cold. | Cheat |
+| Core Mode | Action | Apply the configured Hot or Cold Core Mode override, or cycle Hot, Cold, and off. The override covers the room it was applied in and ends when the room changes or a StartPos slot is restored. | Cheat |
 | Freeze Gameplay | Action | Freeze gameplay updates until toggled off or advanced by the frame stepper. | Cheat |
 | Confirm Actions | Action | Open the confirmation prompts for actions that restart, reload, or overwrite state. | None |
 | Skip Intro | Toggle | Hold confirm on repeated B-side intro title screens to enter the map. | Normal clear |
 | Skip Postcards | Toggle | Hold confirm on level-entry postcards to jump straight into the map. | Normal clear |
-| Auto Kill | Toggle | Automatically kill the player after a configured map-time threshold or inside selected regions. | Cheat |
+| Auto Kill | Toggle | Automatically kill the player after a configured time on the current attempt, or inside selected regions. | Cheat |
 | Respawn Time | Toggle | Open respawn timing controls, including whether speedhack affects the delay. | Normal clear |
 | Pause Timer | Toggle | Delay resumed gameplay after unpausing and show a center countdown. | Cheat |
 | Pause Tracker | Toggle | Record pause count, rapid pauses, and paused time. | Goldberry/Hardlist clear |
@@ -21,7 +21,7 @@ The Level tab focuses on the current level scene. Several rows are useful for ro
 | Hide Pause Menu | Toggle | Hide Celeste's pause menu while the game remains paused. | Normal clear |
 | Hide Vanilla HUD | Toggle | Hide Celeste's own HUD, such as the speedrun timer and strawberry tracker, without changing gameplay. | Normal clear |
 | Hide Akron HUD | Toggle | Hide every Akron label and indicator while keeping their settings. | Normal clear |
-| Auto Deafen | Toggle | Press the configured Discord Toggle Deafen hotkey after entering a selected region until death or reset. | Normal clear |
+| Auto Deafen | Toggle | Press the configured Discord Toggle Deafen hotkey after entering a selected region until death or reset. Areas belong to the map they were drawn on. | Normal clear |
 | Deload Spinners | Action | Simulate spinner deload timing with the configured delay. | Cheat |
 | Show Hitboxes | Toggle | Open live hitbox controls for collision boxes, filters, colors, opacity, thickness, and style. | Cheat |
 | Fix Hitbox Pixels | Toggle | Render circular hitboxes as sampled collision pixels instead of a smooth approximate outline. | None |
@@ -62,14 +62,14 @@ Rows with a triangle expose the controls listed below.
 | Confirm Actions | Reload room | Require a confirmation prompt before reloading the current room. | None |
 | Confirm Actions | Restore Speedrun Tool State | Require a confirmation prompt before restoring a Speedrun Tool slot from Akron's binding. | None |
 | Core Mode | Mode | Choose the Hot or Cold override. | Cheat |
-| Core Mode | Click | Choose whether clicking the row toggles the configured override or cycles directly between Hot and Cold. | Cheat |
+| Core Mode | Click | Choose whether clicking the row toggles the configured override or cycles through Hot, Cold, and off. | Cheat |
 | Auto Kill | Method | Choose Timer or Area mode. | Cheat |
-| Auto Kill | Seconds | Kill the attempt when current map time reaches the configured threshold. | Cheat |
+| Auto Kill | Seconds | Kill the attempt when it has run for the configured time. Timer mode fires once per attempt and re-arms on the next one. | Cheat |
 | Auto Kill | Show area | Draw the selected Auto Kill rectangle in the game viewport. | Cheat |
 | Auto Kill | Show on death hitboxes | Show Auto Kill rectangles during Show Hitboxes On Death. | Cheat |
 | Auto Kill | Default conditions for new areas | Configure the conditions copied into each new Auto Kill area. | Cheat |
 | Auto Kill | Select Area | Enter rectangle selection for Auto Kill areas. | Cheat |
-| Auto Kill | Clear | Remove all selected Auto Kill rectangles. | Cheat |
+| Auto Kill | Clear | Remove this map's Auto Kill rectangles. It does not change the Method or turn Auto Kill off. | Cheat |
 | Auto Kill | Previous | Select the previous Auto Kill area for editing. | Cheat |
 | Auto Kill | Next | Select the next Auto Kill area for editing. | Cheat |
 | Auto Kill | Clear Selected | Remove only the selected Auto Kill area. | Cheat |

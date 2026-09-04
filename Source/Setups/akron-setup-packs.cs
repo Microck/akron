@@ -102,7 +102,7 @@ public static partial class AkronSetupPacks {
     // whether a saved resource's key names it, and, for the room half of a snapshot,
     // whether the map laid a saved entity's id out - so the v8 snapshots inside a v5
     // pack cannot be rebuilt here either.
-    public const string SetupPackFormat = "akron-setup-v8";
+    public const string SetupPackFormat = "akron-setup-v9";
 
     public const int MaxStartPositions = 99;
     public const int MaxAutoKillAreas = 128;
@@ -114,15 +114,17 @@ public static partial class AkronSetupPacks {
     public const int MaxBindingInputs = 16;
     public const int MaxMenuActionBindings = 256;
     public const int MaxAudioDictionaryEntries = 64;
-    public const int MaxPortableRecordingWidth = 3840;
-    public const int MaxPortableRecordingHeight = 2160;
-    public const long MaxPortableRecordingPixels = 3840L * 2160L;
-    public const int MaxPortableRecordingFramerate = 120;
-    public const int MaxPortableRecordingBitrateMbps = 200;
-    public const int MaxPortableReplayBufferSeconds = 300;
-    public const int MaxPortableClipSeconds = 30;
-    public const int MaxPortableKeyframeSeconds = 10;
-    public const float MaxPortableEndscreenSeconds = 15f;
+    // The recorder's own clamps are the contract: a value Akron accepts must survive a
+    // Recorder pack round trip, so these mirror AkronModuleSettings.ClampRecording*.
+    public const int MaxPortableRecordingWidth = 15360;
+    public const int MaxPortableRecordingHeight = 8640;
+    public const long MaxPortableRecordingPixels = 15360L * 8640L;
+    public const int MaxPortableRecordingFramerate = 360;
+    public const int MaxPortableRecordingBitrateMbps = 1000;
+    public const int MaxPortableReplayBufferSeconds = 600;
+    public const int MaxPortableClipSeconds = 120;
+    public const int MaxPortableKeyframeSeconds = 20;
+    public const float MaxPortableEndscreenSeconds = 30f;
     public const float MaxPortableStartPosCoordinate = 16_777_216f;
 
     private const int MaxSetupPayloadBytes = 2 * 1024 * 1024;
@@ -1441,8 +1443,8 @@ public static partial class AkronSetupPacks {
     }
 
     private static void ValidateRecorderState(AkronSetupState state) {
-        if (state.RecordingResolutionX < 320 || state.RecordingResolutionX > MaxPortableRecordingWidth ||
-            state.RecordingResolutionY < 180 || state.RecordingResolutionY > MaxPortableRecordingHeight ||
+        if (state.RecordingResolutionX < 1 || state.RecordingResolutionX > MaxPortableRecordingWidth ||
+            state.RecordingResolutionY < 1 || state.RecordingResolutionY > MaxPortableRecordingHeight ||
             (long)state.RecordingResolutionX * state.RecordingResolutionY > MaxPortableRecordingPixels ||
             state.RecordingFramerate < 1 || state.RecordingFramerate > MaxPortableRecordingFramerate ||
             state.RecordingBitrateMbps < 1 || state.RecordingBitrateMbps > MaxPortableRecordingBitrateMbps ||
@@ -1513,6 +1515,8 @@ public static partial class AkronSetupPacks {
             if (area == null || area.Width < 0 || area.Height < 0) {
                 throw new InvalidDataException("Setup pack has an invalid Auto Kill area.");
             }
+
+            ValidateLength(area.MapSid, 256, "Auto Kill area map SID");
         }
     }
 
@@ -1521,6 +1525,8 @@ public static partial class AkronSetupPacks {
             if (area == null || area.Width < 0 || area.Height < 0) {
                 throw new InvalidDataException("Setup pack has an invalid " + label + " area.");
             }
+
+            ValidateLength(area.MapSid, 256, label + " area map SID");
         }
     }
 
@@ -1548,7 +1554,8 @@ public static partial class AkronSetupPacks {
                 X = rectangle.X,
                 Y = rectangle.Y,
                 Width = rectangle.Width,
-                Height = rectangle.Height
+                Height = rectangle.Height,
+                MapSid = rectangle.MapSid ?? string.Empty
             })
             .ToList();
     }

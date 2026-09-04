@@ -130,6 +130,7 @@ public partial class AkronModule : EverestModule {
     public override void Load() {
         renderedStartPosFrameGeneration = AkronActions.StartPosFrameGeneration;
         AkronModuleSettings.EnsureCurrentKeybindDefaults(Settings);
+        AkronModuleSettings.DropUnkeyedAutomationAreas(Settings);
         AkronLog.Normal(nameof(AkronModule), "load start; " + AkronLog.DescribeSettings());
         AkronAudioSplitter.Load();
         try {
@@ -1667,8 +1668,19 @@ public partial class AkronModule : EverestModule {
         AkronScreenProjection.Attach(self);
         AkronInternalRecorder.NotifyAreaComplete(self);
         AkronActions.RestoreAutoDeafen();
+        // Every completion gets a sidecar: it is the record of what the run was played with, and
+        // that is worth having whether or not a proof helper happened to be on. The panel stays a
+        // helper surface, so it only appears when a helper is on or the attempt is not clean.
+        // A completion must survive a disk that refuses the write, so the panel still shows and
+        // the chapter still ends; the log carries the reason.
+        string path = string.Empty;
+        try {
+            path = AkronProof.WriteSidecar(self, "area-complete");
+        } catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) {
+            AkronLog.Normal(nameof(AkronModule), "proof sidecar write failed: " + exception.Message);
+        }
+
         if (Settings.ProofModeOverlay || Settings.EndScreenHelper || Session.AttemptStatus != AkronStatus.GoldberryHardlistClean) {
-            string path = AkronProof.WriteSidecar(self, "area-complete");
             AkronProof.ShowProofPanel(self, "area-complete", path);
         }
     }

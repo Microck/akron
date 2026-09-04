@@ -8,7 +8,14 @@ public partial class AkronModuleSettings {
         SafeMode = resolved.SafeMode;
         StreamerMode = resolved.StreamerMode;
         ProofModeOverlay = resolved.ProofModeOverlay;
+        // A pack that states the mode also states the five values a later "off" would restore,
+        // so the snapshot from before the import is meaningless. An import that leaves the mode
+        // where it was, which every scoped section does, leaves the snapshot alone.
+        bool submissionModeChanged = SubmissionMode != resolved.SubmissionMode;
         SubmissionMode = resolved.SubmissionMode;
+        if (submissionModeChanged) {
+            SubmissionModeRestore = null;
+        }
         ProofRecorderGuard = resolved.ProofRecorderGuard;
         EndScreenHelper = resolved.EndScreenHelper;
         PauseTracker = resolved.PauseTracker;
@@ -275,12 +282,11 @@ public partial class AkronModuleSettings {
         AutoDeafenHotkey = resolved.AutoDeafenHotkey ?? DefaultAutoDeafenHotkey;
         AutoDeafenArea = resolved.AutoDeafenArea;
         AutoDeafenShowArea = resolved.AutoDeafenShowArea;
-        AutoDeafenAreas = CopyAutoAreasWithLatest(resolved.AutoDeafenAreas, resolved.AutoDeafenAreaX, resolved.AutoDeafenAreaY, resolved.AutoDeafenAreaWidth, resolved.AutoDeafenAreaHeight);
+        AutoDeafenAreas = CopyAutoDeafenAreas(resolved.AutoDeafenAreas);
         AutoDeafenAreaX = resolved.AutoDeafenAreaX;
         AutoDeafenAreaY = resolved.AutoDeafenAreaY;
         AutoDeafenAreaWidth = ClampAutoKillAreaSize(resolved.AutoDeafenAreaWidth);
         AutoDeafenAreaHeight = ClampAutoKillAreaSize(resolved.AutoDeafenAreaHeight);
-        CoreModeOverrideEnabled = resolved.CoreModeOverrideEnabled;
         CoreModeOverride = NormalizeCoreModeOverride(resolved.CoreModeOverride);
         CoreModeClickBehavior = NormalizeCoreModeClickBehavior(resolved.CoreModeClickBehavior);
         TransitionSpeedEnabled = resolved.TransitionSpeedEnabled;

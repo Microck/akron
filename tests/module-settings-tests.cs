@@ -6264,6 +6264,68 @@ public sealed class ModuleSettingsTests
         }
     }
 
+    // Issue #174: the bundle used to be one-way. Turning it off puts back exactly what the five
+    // proof settings were before it armed them.
+    [Fact]
+    public void SubmissionModeRestoresTheProofSettingsItArmed() {
+        AkronModuleSettings settings = new AkronModuleSettings {
+            ProofModeOverlay = false,
+            ProofRecorderGuard = true,
+            EndScreenHelper = false,
+            PauseTracker = false,
+            MapVersionStamp = true
+        };
+
+        settings.ApplySubmissionMode(true);
+        Assert.True(settings.ProofModeOverlay);
+        Assert.True(settings.EndScreenHelper);
+        Assert.True(settings.PauseTracker);
+
+        settings.ApplySubmissionMode(false);
+        Assert.False(settings.SubmissionMode);
+        Assert.Null(settings.SubmissionModeRestore);
+        Assert.False(settings.ProofModeOverlay);
+        Assert.True(settings.ProofRecorderGuard);
+        Assert.False(settings.EndScreenHelper);
+        Assert.False(settings.PauseTracker);
+        Assert.True(settings.MapVersionStamp);
+    }
+
+    // Enabling a mode that is already on changes nothing, so the kept values stay the ones
+    // from before it armed.
+    [Fact]
+    public void SubmissionModeRestoreIgnoresAnEnableItAlreadyApplied() {
+        AkronModuleSettings settings = new AkronModuleSettings { PauseTracker = false };
+        settings.ApplySubmissionMode(true);
+        AkronSubmissionModeSnapshot armed = settings.SubmissionModeRestore;
+
+        settings.ApplySubmissionMode(true);
+
+        Assert.Same(armed, settings.SubmissionModeRestore);
+        Assert.False(armed.PauseTracker);
+    }
+
+    // Issue #175: an area is world pixels plus the map it was drawn on. Areas from before the
+    // map key are dropped, because there is no map to give them.
+    [Fact]
+    public void UnkeyedAutomationAreasAreDroppedRatherThanKeptGlobal() {
+        AkronModuleSettings settings = new AkronModuleSettings {
+            AutoKillAreas = new List<AkronAutoKillAreaData> {
+                new AkronAutoKillAreaData { X = 1, Y = 1, Width = 8, Height = 8 },
+                new AkronAutoKillAreaData { X = 2, Y = 2, Width = 8, Height = 8, MapSid = "Tests/KeyedMap" }
+            },
+            AutoDeafenAreas = new List<AkronRectangleData> {
+                new AkronRectangleData { X = 3, Y = 3, Width = 8, Height = 8 },
+                new AkronRectangleData { X = 4, Y = 4, Width = 8, Height = 8, MapSid = "Tests/KeyedMap" }
+            }
+        };
+
+        AkronModuleSettings.DropUnkeyedAutomationAreas(settings);
+
+        Assert.Equal("Tests/KeyedMap", Assert.Single(settings.AutoKillAreas).MapSid);
+        Assert.Equal("Tests/KeyedMap", Assert.Single(settings.AutoDeafenAreas).MapSid);
+    }
+
     [Fact]
     public void SetupPackArchiveRoundTripsListedSetupSystems()
     {
@@ -6295,6 +6357,7 @@ public sealed class ModuleSettingsTests
                         Y = 2,
                         Width = 30,
                         Height = 40,
+                        MapSid = "Tests/AreaMap",
                         SpeedCondition = true,
                         MinSpeed = 120,
                         MaxSpeed = 240,
@@ -6456,6 +6519,7 @@ public sealed class ModuleSettingsTests
                     Y = 2,
                     Width = 30,
                     Height = 40,
+                    MapSid = "Tests/AreaMap",
                     SpeedCondition = true,
                     MinSpeed = 120,
                     MaxSpeed = 240,

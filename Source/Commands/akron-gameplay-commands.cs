@@ -364,7 +364,7 @@ public static partial class AkronCommands {
     private static void LogCoreModeSettings(Level level) {
         Log("core-mode-mode: " + AkronActions.FormatCoreMode(AkronModule.Settings.CoreModeOverride));
         Log("core-mode-click: " + AkronActions.FormatCoreModeClickBehavior(AkronModule.Settings.CoreModeClickBehavior));
-        Log("core-mode-enabled: " + AkronModule.Settings.CoreModeOverrideEnabled.ToString().ToLowerInvariant());
+        Log("core-mode-enabled: " + AkronActions.IsCoreModeOverrideActive(level).ToString().ToLowerInvariant());
         Log("core-mode-level: " + (level == null ? "unavailable" : level.CoreMode.ToString()));
         Log("core-mode-restore-armed: " + (AkronModule.Session?.CoreModeRestoreSnapshot != null).ToString().ToLowerInvariant());
     }

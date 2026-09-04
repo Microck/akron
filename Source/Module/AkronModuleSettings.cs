@@ -61,6 +61,48 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     // first-case player setting.
     public bool ProofModeOverlay { get; set; }
     public bool SubmissionMode { get; set; }
+
+    // Null while Submission Mode is off. Persisted with the mode: the mode survives a restart,
+    // so what it has to restore must survive one too.
+    public AkronSubmissionModeSnapshot SubmissionModeRestore { get; set; }
+
+    // Submission Mode is a reversible bundle. Enabling it arms five proof settings and keeps
+    // what they were; disabling it puts those exact values back, so the bundle is not one-way.
+    // Every surface that flips the mode calls this, so there is one behaviour to reason about.
+    public void ApplySubmissionMode(bool enabled) {
+        if (enabled == SubmissionMode) {
+            return;
+        }
+
+        SubmissionMode = enabled;
+        if (enabled) {
+            SubmissionModeRestore = new AkronSubmissionModeSnapshot {
+                ProofModeOverlay = ProofModeOverlay,
+                ProofRecorderGuard = ProofRecorderGuard,
+                EndScreenHelper = EndScreenHelper,
+                PauseTracker = PauseTracker,
+                MapVersionStamp = MapVersionStamp
+            };
+            ProofModeOverlay = true;
+            ProofRecorderGuard = true;
+            EndScreenHelper = true;
+            PauseTracker = true;
+            MapVersionStamp = true;
+            return;
+        }
+
+        AkronSubmissionModeSnapshot restore = SubmissionModeRestore;
+        SubmissionModeRestore = null;
+        if (restore == null) {
+            return;
+        }
+
+        ProofModeOverlay = restore.ProofModeOverlay;
+        ProofRecorderGuard = restore.ProofRecorderGuard;
+        EndScreenHelper = restore.EndScreenHelper;
+        PauseTracker = restore.PauseTracker;
+        MapVersionStamp = restore.MapVersionStamp;
+    }
     public bool ProofRecorderGuard { get; set; }
     public bool EndScreenHelper { get; set; }
     public bool PauseTracker { get; set; }
@@ -373,7 +415,6 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int AutoDeafenAreaY { get; set; }
     public int AutoDeafenAreaWidth { get; set; }
     public int AutoDeafenAreaHeight { get; set; }
-    public bool CoreModeOverrideEnabled { get; set; }
     public AkronCoreModeOverride CoreModeOverride { get; set; } = AkronCoreModeOverride.Hot;
     public AkronCoreModeClickBehavior CoreModeClickBehavior { get; set; } = AkronCoreModeClickBehavior.Toggle;
     public bool TransitionSpeedEnabled { get; set; }

@@ -10,6 +10,44 @@ using Xunit;
 namespace Celeste.Mod.Akron.Tests;
 
 public sealed class ValueObjectTests {
+    // The proof sidecar is hand-written JSON where each entry says whether a comma follows it,
+    // so deleting the last entry of a block leaves a trailing comma and the file stops parsing.
+    // That happened once already, when the unsafe restore override left the feature block.
+    [Fact]
+    public void ProofSidecarBlocksEndWithoutATrailingComma() {
+        string[] lines = File.ReadAllLines(FindSourceFile("Core", "AkronProof.cs"));
+        for (int index = 1; index < lines.Length; index++) {
+            if (!lines[index].TrimEnd().EndsWith("\"  },\");", StringComparison.Ordinal) &&
+                !lines[index].TrimEnd().EndsWith("\"  }\");", StringComparison.Ordinal)) {
+                continue;
+            }
+
+            string previous = lines[index - 1].Trim();
+            if (!previous.StartsWith("AppendJson(", StringComparison.Ordinal)) {
+                continue;
+            }
+
+            Assert.True(
+                previous.Contains(", false,", StringComparison.Ordinal) ||
+                previous.Contains(", false)", StringComparison.Ordinal),
+                "The last entry before line " + (index + 1) + " of AkronProof.cs still writes a comma: " + previous);
+        }
+    }
+
+    private static string FindSourceFile(string directoryName, string fileName) {
+        DirectoryInfo? directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null) {
+            string candidate = Path.Combine(directory.FullName, "Source", directoryName, fileName);
+            if (File.Exists(candidate)) {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate Akron repository root.");
+    }
+
     [Fact]
     public void StaticMemberRestoreSkipsReadonlyAndLiteralFields() {
         StaticMemberProbe.Mutable = "changed";

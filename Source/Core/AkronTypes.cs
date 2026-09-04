@@ -128,20 +128,35 @@ public readonly struct AkronFrameBypassRates {
     }
 }
 
+// What the five proof settings were before Submission Mode armed them, so turning the mode
+// off puts them back instead of leaving the bundle applied forever.
+public sealed class AkronSubmissionModeSnapshot {
+    public bool ProofModeOverlay { get; set; }
+    public bool ProofRecorderGuard { get; set; }
+    public bool EndScreenHelper { get; set; }
+    public bool PauseTracker { get; set; }
+    public bool MapVersionStamp { get; set; }
+}
+
 public sealed class AkronRectangleData {
     public int X { get; set; }
     public int Y { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
 
+    // The map the area was drawn on. World pixels repeat across chapters, so an area with no
+    // map behind it fired anywhere the same coordinates existed.
+    public string MapSid { get; set; } = string.Empty;
+
     public AkronRectangleData() {
     }
 
-    public AkronRectangleData(Rectangle rectangle) {
+    public AkronRectangleData(Rectangle rectangle, string mapSid = "") {
         X = rectangle.X;
         Y = rectangle.Y;
         Width = rectangle.Width;
         Height = rectangle.Height;
+        MapSid = mapSid ?? string.Empty;
     }
 
     public Rectangle ToRectangle() {
@@ -154,6 +169,9 @@ public sealed class AkronAutoKillAreaData {
     public int Y { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
+
+    // See AkronRectangleData.MapSid: the area belongs to the map it was drawn on.
+    public string MapSid { get; set; } = string.Empty;
     public bool SpeedCondition { get; set; }
     public int MinSpeed { get; set; }
     public int MaxSpeed { get; set; } = 1000;
@@ -191,6 +209,7 @@ public sealed class AkronAutoKillAreaData {
         Y = source.Y;
         Width = source.Width;
         Height = source.Height;
+        MapSid = source.MapSid ?? string.Empty;
         SpeedCondition = source.SpeedCondition;
         MinSpeed = source.MinSpeed;
         MaxSpeed = source.MaxSpeed;

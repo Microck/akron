@@ -2405,6 +2405,10 @@ public static partial class AkronSaveLoadService {
             // tracked type keys first, including keys registered after Set.
             Tracker.Refresh(level, force: true);
 
+            // Both restore branches above have written the session's core mode, so a Core Mode
+            // override captured before the restore has nothing left to put back.
+            AkronActions.ClearCoreModeRestoreSnapshot(AkronModule.TryGetSession());
+
             return true;
         } catch {
             AkronEventInstanceUtils.ReleaseDormantEventInstances(restoredEventInstances);
