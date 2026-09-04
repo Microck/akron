@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 78
+
 ### Changed
 
 - Auto Kill's timer mode measures the current attempt instead of cumulative chapter time, fires at most once per attempt, and re-arms on the next one. Enabling it in a chapter already past the threshold no longer kills on every respawn. Clear Areas now only clears this map's areas: it no longer switches the Method to Timer or leaves Auto Kill armed. The Auto Kill toast is raised only when the death actually happens, so Celeste's own Assist invincibility no longer produces a message with nothing dying (#164).
