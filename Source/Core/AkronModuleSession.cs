@@ -25,7 +25,14 @@ public class AkronModuleSession : EverestModuleSession {
     public string TrackedRoom { get; set; } = string.Empty;
     public long RoomEnteredAt { get; set; }
     public long LastRoomTime { get; set; }
-    public long AttemptStartedAt { get; set; }
+    // Seconds of play on the current attempt, accumulated frame by frame. Celeste's session
+    // clock cannot stand in for this: a restored state carries a session time with it, so the
+    // clock can move backwards and a difference against it can read negative.
+    public float AttemptElapsedSeconds { get; set; }
+
+    // Timer-mode Auto Kill fires once per attempt. The attempt clock owns this flag: it is
+    // cleared wherever the clock restarts, so the next attempt re-arms.
+    public bool AutoKillTimerFired { get; set; }
     public long RoomStatAliveStartedAt { get; set; }
     public long RoomStatFrozenStartedAt { get; set; } = -1;
     public long RoomStatFrozenDuration { get; set; }
@@ -57,7 +64,11 @@ public class AkronModuleSession : EverestModuleSession {
     public int StepFrameHoldFrames { get; set; }
     public int StepFrameRepeatCountdown { get; set; }
     public AkronSetInventorySnapshot SetInventoryRestoreSnapshot { get; set; }
+    // The core mode the room had before the override wrote over it, plus the room it was taken
+    // in. Rooms in a Core chapter set their own mode on entry, so a snapshot from another room is
+    // not something "off" may write back; the room name is what makes a stale snapshot visible.
     public Session.CoreModes? CoreModeRestoreSnapshot { get; set; }
+    public string CoreModeRestoreRoom { get; set; } = string.Empty;
     public bool TimescaleEnabled { get; set; }
     public float TimescaleMultiplier { get; set; } = 1f;
     public int EditableFlagIndex { get; set; }

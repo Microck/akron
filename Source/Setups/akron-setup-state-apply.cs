@@ -9,6 +9,11 @@ public partial class AkronModuleSettings {
         StreamerMode = resolved.StreamerMode;
         ProofModeOverlay = resolved.ProofModeOverlay;
         SubmissionMode = resolved.SubmissionMode;
+
+        // A pack states all six proof values outright, so the bundle overrode nothing here and
+        // there is nothing for a later "off" to put back. Keeping the old snapshot would restore
+        // values from before the import.
+        SubmissionModeRestore = null;
         ProofRecorderGuard = resolved.ProofRecorderGuard;
         EndScreenHelper = resolved.EndScreenHelper;
         PauseTracker = resolved.PauseTracker;
@@ -275,12 +280,11 @@ public partial class AkronModuleSettings {
         AutoDeafenHotkey = resolved.AutoDeafenHotkey ?? DefaultAutoDeafenHotkey;
         AutoDeafenArea = resolved.AutoDeafenArea;
         AutoDeafenShowArea = resolved.AutoDeafenShowArea;
-        AutoDeafenAreas = CopyAutoAreasWithLatest(resolved.AutoDeafenAreas, resolved.AutoDeafenAreaX, resolved.AutoDeafenAreaY, resolved.AutoDeafenAreaWidth, resolved.AutoDeafenAreaHeight);
+        AutoDeafenAreas = CopyAutoDeafenAreas(resolved.AutoDeafenAreas);
         AutoDeafenAreaX = resolved.AutoDeafenAreaX;
         AutoDeafenAreaY = resolved.AutoDeafenAreaY;
         AutoDeafenAreaWidth = ClampAutoKillAreaSize(resolved.AutoDeafenAreaWidth);
         AutoDeafenAreaHeight = ClampAutoKillAreaSize(resolved.AutoDeafenAreaHeight);
-        CoreModeOverrideEnabled = resolved.CoreModeOverrideEnabled;
         CoreModeOverride = NormalizeCoreModeOverride(resolved.CoreModeOverride);
         CoreModeClickBehavior = NormalizeCoreModeClickBehavior(resolved.CoreModeClickBehavior);
         TransitionSpeedEnabled = resolved.TransitionSpeedEnabled;

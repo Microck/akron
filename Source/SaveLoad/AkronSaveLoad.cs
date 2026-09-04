@@ -2493,6 +2493,10 @@ public static partial class AkronSaveLoadService {
         session.StartCheckpoint = saveSlot.SessionStartCheckpoint ?? string.Empty;
         session.FurthestSeenLevel = saveSlot.SessionFurthestSeenLevel ?? string.Empty;
         session.CoreMode = saveSlot.SessionCoreMode;
+
+        // The restored state owns the core mode now, so a Core Mode override captured before the
+        // restore has nothing left to put back.
+        AkronActions.ClearCoreModeRestoreSnapshot(AkronModule.Session);
     }
 
     private static void RepairClonedSoundSources(Level level) {

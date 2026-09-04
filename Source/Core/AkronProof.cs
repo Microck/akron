@@ -98,7 +98,8 @@ public static class AkronProof {
         AppendJson(builder, "timescaleMultiplier", session.TimescaleMultiplier.ToString("0.0"), true, true);
         AppendJson(builder, "respawnAtStartPos", settings.RespawnAtStartPos.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "tasFileConfigured", (!string.IsNullOrWhiteSpace(settings.TasFilePath)).ToString().ToLowerInvariant(), true, true);
-        AppendJson(builder, "brokeredStartPosState", session.UsedBrokeredSavestate.ToString().ToLowerInvariant(), true, true);
+        // Last entry in the block, so no trailing comma: the sidecar has to parse as JSON.
+        AppendJson(builder, "brokeredStartPosState", session.UsedBrokeredSavestate.ToString().ToLowerInvariant(), false, true);
         builder.AppendLine("  },");
         builder.AppendLine("  \"proofTelemetry\": {");
         AppendJson(builder, "pauseTrackerEnabled", settings.PauseTracker.ToString().ToLowerInvariant(), true, true);
@@ -139,8 +140,21 @@ public static class AkronProof {
     public static string WriteSidecar(Level level, string eventName) {
         string directory = Path.Combine(Everest.PathGame, "Saves", "AkronProof");
         Directory.CreateDirectory(directory);
-        string path = Path.Combine(directory, "akron-proof-" + System.DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + ".json");
+        string path = BuildSidecarPath(directory);
         File.WriteAllText(path, BuildSummaryJson(level, eventName));
+        return path;
+    }
+
+    // Two sidecars in the same second used to land on the same name, and the second one erased
+    // the first. The QA proof overlay writes one per StartPos capture and restore, so that is
+    // reachable. Milliseconds separate them, and a suffix covers the same millisecond.
+    private static string BuildSidecarPath(string directory) {
+        string stamp = System.DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff");
+        string path = Path.Combine(directory, "akron-proof-" + stamp + ".json");
+        for (int suffix = 2; File.Exists(path) && suffix <= 1000; suffix++) {
+            path = Path.Combine(directory, "akron-proof-" + stamp + "-" + suffix.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".json");
+        }
+
         return path;
     }
 
@@ -200,6 +214,11 @@ public static class AkronProof {
         if (settings.Invincibility) yield return "Invincibility";
         if (session.FreezeGameplay) yield return "FreezeGameplay";
         if (session.TimescaleEnabled && session.TimescaleMultiplier != 1f) yield return "Timescale";
+        if (settings.DisablePlayback) yield return "DisablePlayback";
+        if (settings.NoStaminaFlash) yield return "NoStaminaFlash";
+        if (settings.JumpHack) yield return "AirJumps";
+        if (settings.DashRedirectEnabled) yield return "DashRedirect";
+        if (settings.GrabModeOverrideEnabled) yield return "GrabMode";
         if (settings.RespawnAtStartPos) yield return "StartPosRespawn";
         if (session.UsedBrokeredSavestate) yield return "BrokeredStartPosState";
         if (!string.IsNullOrWhiteSpace(settings.TasFilePath)) yield return "TasHandoff";

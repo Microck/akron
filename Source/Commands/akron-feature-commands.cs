@@ -192,18 +192,7 @@ public static partial class AkronCommands {
     }
 
     private static void SetSubmissionMode(bool enabled) {
-        AkronModule.Settings.SubmissionMode = enabled;
-        if (!enabled) {
-            return;
-        }
-
-        // Submission mode is a convenience bundle for proof-safe guardrails. Each
-        // child feature stays independently toggleable after the bundle is enabled.
-        AkronModule.Settings.ProofModeOverlay = true;
-        AkronModule.Settings.ProofRecorderGuard = true;
-        AkronModule.Settings.EndScreenHelper = true;
-        AkronModule.Settings.PauseTracker = true;
-        AkronModule.Settings.MapVersionStamp = true;
+        AkronModule.Settings.ApplySubmissionMode(enabled);
     }
 
     private static bool SetToggle(string action, Func<bool> enable, Action disable, Func<bool> getter, string label) {

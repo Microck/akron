@@ -68,9 +68,9 @@ Akron exposes developer-facing console commands through Everest's debug console 
 | `akron_core_mode <status\|apply\|toggle\|mode <hot\|cold>\|click <toggle\|cycle>>` | Control Core Mode. |
 | `akron_set_inventory <status\|apply\|dashes <0-5>\|jumps <0-99>\|restore <on\|off>>` | Configure and apply player inventory values. |
 | `akron_dash_redirect <disabled\|down\|down-diagonal\|horizontal\|up\|up-diagonal\|diagonal\|all\|toggle\|status>` | Control Dash Redirect directions. Individual directions such as `up-left` also work for automation. |
-| `akron_auto_deafen <on\|off\|status\|hotkey <combo>\|hotkey-clear\|test\|area <x,y,w,h>\|area-add <x,y,w,h>\|area-clear\|show-area <on\|off>\|restore>` | Control Auto Deafen and its configured regions. |
+| `akron_auto_deafen <on\|off\|status\|hotkey <combo>\|hotkey-clear\|test\|area <x,y,w,h>\|area-add <x,y,w,h>\|area-clear\|show-area <on\|off>\|restore>` | Control Auto Deafen and the current map's configured regions. A map must be open to place an area. |
 | `akron_auto_kill <on\|off\|toggle\|status\|timer <on\|off>\|seconds <n>\|show-area <on\|off>\|show-on-death <on\|off>>` | Control Auto Kill, its timer, and area visibility. |
-| `akron_auto_kill area <x,y,w,h>`, `area-add <x,y,w,h>`, `area-select <n>`, `area-clear-selected`, `area-clear` | Replace, add, select, remove, or clear Auto Kill areas. Area numbers are one-based. |
+| `akron_auto_kill area <x,y,w,h>`, `area-add <x,y,w,h>`, `area-select <n>`, `area-clear-selected`, `area-clear` | Replace, add, select, remove, or clear the current map's Auto Kill areas. Area numbers are one-based, and a map must be open to place an area. |
 | `akron_auto_kill default <condition-action>`, `default-from-selected` | Edit the default condition template copied into newly placed Auto Kill areas, or copy the selected area's conditions into that template. |
 | `akron_auto_kill speed <on\|off>`, `min-speed <n>`, `max-speed <n>` | Require a total speed range for the selected Auto Kill area. |
 | `akron_auto_kill h-speed <on\|off>`, `min-h-speed <n>`, `max-h-speed <n>` | Require a horizontal speed range for the selected Auto Kill area. |

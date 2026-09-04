@@ -347,7 +347,7 @@ public sealed class SetupPackTests {
         AkronSetupPack pack = new AkronSetupPack {
             Section = AkronSetupSection.Recorder,
             State = new AkronSetupState {
-                RecordingFramerate = 121,
+                RecordingFramerate = 361,
                 RecordingResolutionX = 3840,
                 RecordingResolutionY = 2160
             }
@@ -1192,6 +1192,52 @@ public sealed class SetupPackTests {
             CreatedAt = pack.CreatedUtc,
             Target = new AkronArchiveTarget { Game = "Celeste", MapSid = pack.ArchiveMapSid }
         };
+    }
+
+    // Issue #173: a value the recorder UI accepts has to survive a Recorder pack, or the
+    // exported pack cannot be imported back.
+    [Fact]
+    public void RecorderPacksAcceptEveryValueTheRecorderItselfAccepts() {
+        AkronModuleSettings source = new AkronModuleSettings {
+            RecordingResolutionX = AkronModuleSettings.ClampRecordingResolutionX(int.MaxValue),
+            RecordingResolutionY = AkronModuleSettings.ClampRecordingResolutionY(int.MaxValue),
+            RecordingFramerate = AkronModuleSettings.ClampRecordingFramerate(int.MaxValue),
+            RecordingBitrateMbps = AkronModuleSettings.ClampRecordingBitrateMbps(int.MaxValue),
+            RecordingReplayBufferSeconds = AkronModuleSettings.ClampRecordingReplayBufferSeconds(int.MaxValue),
+            RecordingPreRollSeconds = AkronModuleSettings.ClampRecordingClipSeconds(int.MaxValue),
+            RecordingPostRollSeconds = AkronModuleSettings.ClampRecordingClipSeconds(int.MaxValue),
+            RecordingKeyframeIntervalSeconds = AkronModuleSettings.ClampRecordingKeyframeIntervalSeconds(int.MaxValue),
+            RecordingEndscreenDurationSeconds = AkronModuleSettings.ClampRecordingEndscreenDurationSeconds(float.MaxValue)
+        };
+        AkronSetupPack pack = new AkronSetupPack {
+            Section = AkronSetupSection.Recorder,
+            State = source.CaptureSetupPackState()
+        };
+
+        AkronModuleSettings target = new AkronModuleSettings();
+        AkronSetupPacks.Apply(target, session: null, pack, AkronSetupSection.Recorder);
+
+        Assert.Equal(source.RecordingResolutionX, target.RecordingResolutionX);
+        Assert.Equal(source.RecordingResolutionY, target.RecordingResolutionY);
+        Assert.Equal(source.RecordingFramerate, target.RecordingFramerate);
+        Assert.Equal(source.RecordingBitrateMbps, target.RecordingBitrateMbps);
+        Assert.Equal(source.RecordingKeyframeIntervalSeconds, target.RecordingKeyframeIntervalSeconds);
+    }
+
+    // Issue #175: an area with no map behind it is refused rather than imported as a rectangle
+    // that would arm on whatever chapter shares those coordinates.
+    [Fact]
+    public void AreaPacksRequireEveryAreaToNameItsMap() {
+        AkronSetupPack pack = new AkronSetupPack {
+            Section = AkronSetupSection.AutoKill,
+            State = new AkronSetupState {
+                AutoKillAreas = new List<AkronAutoKillAreaData> {
+                    new AkronAutoKillAreaData { X = 8, Y = 8, Width = 16, Height = 16 }
+                }
+            }
+        };
+
+        Assert.Throws<InvalidDataException>(() => AkronSetupPacks.Apply(new AkronModuleSettings(), null, pack));
     }
 
     private static string SavePackSnapshot(string areaSid, string room, int slot) {

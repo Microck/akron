@@ -15,7 +15,7 @@ The Internal Recorder is experimental and requires an FFmpeg executable. Akron c
 | Arm Completion Clips | Action | Configure Akron to keep a rolling replay buffer and save clear-style clips during long play sessions. | Goldberry/Hardlist clear |
 | Flag Completion | Action | Save the current replay-buffer window as a completion clip for the final clear video. | Goldberry/Hardlist clear |
 | Build Clear Video | Action | Stitch saved room-clear, checkpoint-clear, area-clear, and completion-flag clips for the current map into one video. | Goldberry/Hardlist clear |
-| Proof Recorder Guard | Toggle | Warn when Submission Mode is active but recording or replay buffering is not armed. | Goldberry/Hardlist clear |
+| Proof Recorder Guard | Toggle | Warn when Submission Mode is active but recording or replay buffering is not armed. The warning arms again whenever the recorder does, so stopping it again warns again. | Goldberry/Hardlist clear |
 | End Screen Helper | Toggle | Include end-screen metadata and sidecar output after area completion. | Goldberry/Hardlist clear |
 | Map Version Stamp | Toggle | Include map, room, mode, and loaded module versions in sidecar output. | Goldberry/Hardlist clear |
 | Journal Snapshot / Compare | Action | Write a save-file journal snapshot and compare it with the previous Akron snapshot. | Goldberry/Hardlist clear |

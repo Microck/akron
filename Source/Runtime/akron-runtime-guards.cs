@@ -221,12 +221,20 @@ public partial class AkronModule {
     }
 
     private static void UpdateProofRecorderGuard(Level level) {
-        if (level == null ||
-            proofRecorderGuardWarningShown ||
+        if (level == null) {
+            return;
+        }
+
+        // An armed recorder re-arms the warning, so disarming it again mid-level warns again.
+        // Level entry is not the only moment the recorder can stop being armed.
+        if (AkronInternalRecorder.IsRecording || AkronInternalRecorder.IsReplayBuffering) {
+            proofRecorderGuardWarningShown = false;
+            return;
+        }
+
+        if (proofRecorderGuardWarningShown ||
             !Settings.ProofRecorderGuard ||
             !Settings.SubmissionMode ||
-            AkronInternalRecorder.IsRecording ||
-            AkronInternalRecorder.IsReplayBuffering ||
             !AkronPolicy.CanUse(AkronFeatureKind.ProofRecorderGuard).Allowed) {
             return;
         }

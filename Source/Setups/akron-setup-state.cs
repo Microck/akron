@@ -279,7 +279,6 @@ public sealed class AkronSetupState {
     public int AutoDeafenAreaY { get; set; }
     public int AutoDeafenAreaWidth { get; set; }
     public int AutoDeafenAreaHeight { get; set; }
-    public bool CoreModeOverrideEnabled { get; set; }
     public AkronCoreModeOverride CoreModeOverride { get; set; } = AkronCoreModeOverride.Hot;
     public AkronCoreModeClickBehavior CoreModeClickBehavior { get; set; } = AkronCoreModeClickBehavior.Toggle;
     public bool TransitionSpeedEnabled { get; set; }

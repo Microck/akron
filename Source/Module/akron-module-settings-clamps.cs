@@ -482,6 +482,7 @@ public partial class AkronModuleSettings {
             Y = area.Y,
             Width = ClampAutoKillAreaSize(area.Width),
             Height = ClampAutoKillAreaSize(area.Height),
+            MapSid = area.MapSid ?? string.Empty,
             SpeedCondition = area.SpeedCondition,
             MinSpeed = minSpeed,
             MaxSpeed = Math.Max(minSpeed, maxSpeed),
@@ -502,28 +503,25 @@ public partial class AkronModuleSettings {
         };
     }
 
-    private static List<AkronRectangleData> CopyAutoAreasWithLatest(IEnumerable<AkronRectangleData> areas, int x, int y, int width, int height) {
-        List<AkronRectangleData> copied = (areas ?? Enumerable.Empty<AkronRectangleData>())
+    // The latest-rectangle scalars are a display mirror of the last area touched, not a source
+    // of areas: an area rebuilt from them would carry no map and could never fire.
+    private static List<AkronRectangleData> CopyAutoDeafenAreas(IEnumerable<AkronRectangleData> areas) {
+        return (areas ?? Enumerable.Empty<AkronRectangleData>())
             .Where(area => area != null && area.Width > 0 && area.Height > 0)
             .Select(area => new AkronRectangleData {
                 X = area.X,
                 Y = area.Y,
                 Width = ClampAutoKillAreaSize(area.Width),
-                Height = ClampAutoKillAreaSize(area.Height)
+                Height = ClampAutoKillAreaSize(area.Height),
+                MapSid = area.MapSid ?? string.Empty
             })
             .ToList();
-        // The latest rectangle fields are updated with every GUI/command area
-        // selection. Keep them authoritative enough to restore one usable area
-        // if a setup snapshot has scalar area data but an empty list.
-        if (copied.Count == 0 && width > 0 && height > 0) {
-            copied.Add(new AkronRectangleData {
-                X = x,
-                Y = y,
-                Width = ClampAutoKillAreaSize(width),
-                Height = ClampAutoKillAreaSize(height)
-            });
-        }
+    }
 
-        return copied;
+    // Areas with no map behind them are dropped rather than migrated: a world rectangle without
+    // a map cannot be placed, and guessing a map for it would arm it on the wrong chapter.
+    public static void DropUnkeyedAutomationAreas(AkronModuleSettings settings) {
+        settings?.AutoKillAreas?.RemoveAll(area => area == null || string.IsNullOrWhiteSpace(area.MapSid));
+        settings?.AutoDeafenAreas?.RemoveAll(area => area == null || string.IsNullOrWhiteSpace(area.MapSid));
     }
 }

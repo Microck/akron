@@ -213,7 +213,16 @@ public static partial class AkronActions {
         }
 
         string mode = FormatCoreMode(AkronModule.Settings.CoreModeOverride);
-        return AkronModule.Settings.CoreModeOverrideEnabled ? "On | " + mode : "Off | " + mode;
+        return IsCoreModeOverrideActive(level) ? "On | " + mode : "Off | " + mode;
+    }
+
+    // The captured snapshot is the whole state of the override: there is no separate enabled
+    // flag to fall out of step with it across a restart, a room change, or a StartPos restore.
+    public static bool IsCoreModeOverrideActive(Level level) {
+        AkronModuleSession session = AkronModule.Session;
+        return level?.Session != null &&
+               session?.CoreModeRestoreSnapshot != null &&
+               string.Equals(session.CoreModeRestoreRoom, level.Session.Level, StringComparison.Ordinal);
     }
 
     public static void ToggleCoreMode(Level level) {
@@ -223,15 +232,22 @@ public static partial class AkronActions {
             return;
         }
 
+        bool active = IsCoreModeOverrideActive(level);
         if (AkronModule.Settings.CoreModeClickBehavior == AkronCoreModeClickBehavior.Cycle) {
-            AkronCoreModeOverride nextMode = AkronModule.Settings.CoreModeOverride == AkronCoreModeOverride.Hot
-                ? AkronCoreModeOverride.Cold
-                : AkronCoreModeOverride.Hot;
-            ApplyCoreModeOverride(level, session, nextMode);
+            // Off, Hot, Cold, Off. Cycle used to swap Hot and Cold forever, which left the row
+            // with no way to take the override back off.
+            if (!active) {
+                ApplyCoreModeOverride(level, session, AkronCoreModeOverride.Hot);
+            } else if (AkronModule.Settings.CoreModeOverride == AkronCoreModeOverride.Hot) {
+                ApplyCoreModeOverride(level, session, AkronCoreModeOverride.Cold);
+            } else {
+                DisableCoreModeOverride(level, session);
+            }
+
             return;
         }
 
-        if (!AkronModule.Settings.CoreModeOverrideEnabled) {
+        if (!active) {
             ApplyCoreModeOverride(level, session, AkronModule.Settings.CoreModeOverride);
             return;
         }
@@ -254,25 +270,39 @@ public static partial class AkronActions {
 
         mode = AkronModuleSettings.NormalizeCoreModeOverride(mode);
         AkronModule.Settings.CoreModeOverride = mode;
-        AkronModule.Settings.CoreModeOverrideEnabled = true;
         level.CoreMode = ToSessionCoreMode(mode);
         Engine.Scene?.Add(new AkronToast("Core Mode: " + FormatCoreMode(mode) + "."));
     }
 
+    // A snapshot from another room is replaced rather than kept: the mode this room started
+    // with is the only value "off" may write back here.
     private static void CaptureCoreModeRestoreSnapshot(Level level, AkronModuleSession session) {
-        if (session.CoreModeRestoreSnapshot == null) {
-            session.CoreModeRestoreSnapshot = level.CoreMode;
+        if (IsCoreModeOverrideActive(level)) {
+            return;
         }
+
+        session.CoreModeRestoreSnapshot = level.CoreMode;
+        session.CoreModeRestoreRoom = level.Session?.Level ?? string.Empty;
     }
 
     private static void DisableCoreModeOverride(Level level, AkronModuleSession session) {
-        if (session.CoreModeRestoreSnapshot.HasValue) {
+        if (IsCoreModeOverrideActive(level)) {
             level.CoreMode = session.CoreModeRestoreSnapshot.Value;
-            session.CoreModeRestoreSnapshot = null;
         }
 
-        AkronModule.Settings.CoreModeOverrideEnabled = false;
+        ClearCoreModeRestoreSnapshot(session);
         Engine.Scene?.Add(new AkronToast("Core Mode override off."));
+    }
+
+    // Called when something else owns the room's core mode again: a StartPos restore writes it
+    // from the restored state, so the pre-restore snapshot no longer describes anything.
+    internal static void ClearCoreModeRestoreSnapshot(AkronModuleSession session) {
+        if (session == null) {
+            return;
+        }
+
+        session.CoreModeRestoreSnapshot = null;
+        session.CoreModeRestoreRoom = string.Empty;
     }
 
     public static string FormatCoreMode(AkronCoreModeOverride mode) {

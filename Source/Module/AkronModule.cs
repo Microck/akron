@@ -130,6 +130,7 @@ public partial class AkronModule : EverestModule {
     public override void Load() {
         renderedStartPosFrameGeneration = AkronActions.StartPosFrameGeneration;
         AkronModuleSettings.EnsureCurrentKeybindDefaults(Settings);
+        AkronModuleSettings.DropUnkeyedAutomationAreas(Settings);
         AkronLog.Normal(nameof(AkronModule), "load start; " + AkronLog.DescribeSettings());
         AkronAudioSplitter.Load();
         try {
@@ -1667,8 +1668,11 @@ public partial class AkronModule : EverestModule {
         AkronScreenProjection.Attach(self);
         AkronInternalRecorder.NotifyAreaComplete(self);
         AkronActions.RestoreAutoDeafen();
+        // Every completion gets a sidecar: it is the record of what the run was played with, and
+        // that is worth having whether or not a proof helper happened to be on. The panel stays a
+        // helper surface, so it only appears when a helper is on or the attempt is not clean.
+        string path = AkronProof.WriteSidecar(self, "area-complete");
         if (Settings.ProofModeOverlay || Settings.EndScreenHelper || Session.AttemptStatus != AkronStatus.GoldberryHardlistClean) {
-            string path = AkronProof.WriteSidecar(self, "area-complete");
             AkronProof.ShowProofPanel(self, "area-complete", path);
         }
     }
