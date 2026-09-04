@@ -1222,6 +1222,10 @@ public sealed class SetupPackTests {
         Assert.Equal(source.RecordingFramerate, target.RecordingFramerate);
         Assert.Equal(source.RecordingBitrateMbps, target.RecordingBitrateMbps);
         Assert.Equal(source.RecordingKeyframeIntervalSeconds, target.RecordingKeyframeIntervalSeconds);
+        Assert.Equal(source.RecordingReplayBufferSeconds, target.RecordingReplayBufferSeconds);
+        Assert.Equal(source.RecordingPreRollSeconds, target.RecordingPreRollSeconds);
+        Assert.Equal(source.RecordingPostRollSeconds, target.RecordingPostRollSeconds);
+        Assert.Equal(source.RecordingEndscreenDurationSeconds, target.RecordingEndscreenDurationSeconds);
     }
 
     // Issue #175: an area with no map behind it is refused rather than imported as a rectangle

@@ -62,7 +62,11 @@ public partial class AkronModule {
         // hook inside the call below, and that hook starts the next attempt and clears this
         // flag. Setting it afterwards would mark the fresh attempt as already fired.
         Session.AutoKillTimerFired = true;
-        TriggerAutoKillDeath(player, "Auto kill triggered at " + Settings.AutoKillSeconds + "s.", null);
+        if (!TriggerAutoKillDeath(player, "Auto kill triggered at " + Settings.AutoKillSeconds + "s.", null)) {
+            // Player.Die refuses in some states, a reflection fall among them. Nothing died, so
+            // the attempt was not spent and the next frame may try again.
+            Session.AutoKillTimerFired = false;
+        }
     }
 
     private static void ApplyAutoDeafen(Level level, Player player) {
@@ -506,8 +510,8 @@ public partial class AkronModule {
         Settings.AutoDeafenShowArea = true;
     }
 
+    // Clears this map's areas and nothing else: areas on other maps still need the mode on.
     public static void ClearAutoDeafenArea() {
-        Settings.AutoDeafenArea = false;
         foreach (AkronRectangleData area in CurrentMapAutoDeafenAreas()) {
             Settings.AutoDeafenAreas.Remove(area);
         }

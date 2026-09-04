@@ -1,6 +1,7 @@
 using Celeste;
 using Celeste.Mod;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -58,7 +59,7 @@ public static class AkronProof {
         AppendJson(builder, "recorderActive", AkronInternalRecorder.IsRecording.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "replayBufferActive", AkronInternalRecorder.IsReplayBuffering.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "endScreenHelper", settings.EndScreenHelper.ToString().ToLowerInvariant(), true, true);
-        AppendJson(builder, "recordingEndscreenDurationSeconds", settings.RecordingEndscreenDurationSeconds.ToString("0.00"), true, true);
+        AppendJson(builder, "recordingEndscreenDurationSeconds", settings.RecordingEndscreenDurationSeconds.ToString("0.00", CultureInfo.InvariantCulture), true, true);
         AppendJson(builder, "cleanLegitimacyAvailable", AkronPolicy.CanExposeCleanLegitimacy().ToString().ToLowerInvariant(), false, true);
         builder.AppendLine("  },");
         builder.AppendLine("  \"activeFeatures\": {");
@@ -95,7 +96,7 @@ public static class AkronProof {
         AppendJson(builder, "invincibilityLavaIcePushback", settings.InvincibilityLavaIcePushback.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "invincibilitySpikeGroundRefills", settings.InvincibilitySpikeGroundRefills.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "freezeGameplay", session.FreezeGameplay.ToString().ToLowerInvariant(), true, true);
-        AppendJson(builder, "timescaleMultiplier", session.TimescaleMultiplier.ToString("0.0"), true, true);
+        AppendJson(builder, "timescaleMultiplier", session.TimescaleMultiplier.ToString("0.0", CultureInfo.InvariantCulture), true, true);
         AppendJson(builder, "respawnAtStartPos", settings.RespawnAtStartPos.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "tasFileConfigured", (!string.IsNullOrWhiteSpace(settings.TasFilePath)).ToString().ToLowerInvariant(), true, true);
         // Last entry in the block, so no trailing comma: the sidecar has to parse as JSON.
@@ -103,15 +104,15 @@ public static class AkronProof {
         builder.AppendLine("  },");
         builder.AppendLine("  \"proofTelemetry\": {");
         AppendJson(builder, "pauseTrackerEnabled", settings.PauseTracker.ToString().ToLowerInvariant(), true, true);
-        AppendJson(builder, "pauseCount", session.PauseTrackerPauseCount.ToString(), true, true);
-        AppendJson(builder, "rapidPauseCount", session.PauseTrackerRapidPauseCount.ToString(), true, true);
-        AppendJson(builder, "pausedSeconds", session.PauseTrackerPausedSeconds.ToString("0.000"), true, true);
+        AppendJson(builder, "pauseCount", session.PauseTrackerPauseCount.ToString(CultureInfo.InvariantCulture), true, true);
+        AppendJson(builder, "rapidPauseCount", session.PauseTrackerRapidPauseCount.ToString(CultureInfo.InvariantCulture), true, true);
+        AppendJson(builder, "pausedSeconds", session.PauseTrackerPausedSeconds.ToString("0.000", CultureInfo.InvariantCulture), true, true);
         AppendJson(builder, "lagPauserEnabled", settings.LagPauser.ToString().ToLowerInvariant(), true, true);
-        AppendJson(builder, "lagPauserThresholdMs", settings.LagPauserThresholdMs.ToString(), true, true);
-        AppendJson(builder, "lagPauserRecoveryGraceMs", settings.LagPauserRecoveryGraceMs.ToString(), true, true);
-        AppendJson(builder, "lagPauserRepeatCooldownMs", settings.LagPauserRepeatCooldownMs.ToString(), true, true);
-        AppendJson(builder, "lagPauserTriggerCount", session.LagPauserTriggerCount.ToString(), true, true);
-        AppendJson(builder, "lastLagSpikeMs", session.LagPauserLastSpikeMs.ToString("0.000"), true, true);
+        AppendJson(builder, "lagPauserThresholdMs", settings.LagPauserThresholdMs.ToString(CultureInfo.InvariantCulture), true, true);
+        AppendJson(builder, "lagPauserRecoveryGraceMs", settings.LagPauserRecoveryGraceMs.ToString(CultureInfo.InvariantCulture), true, true);
+        AppendJson(builder, "lagPauserRepeatCooldownMs", settings.LagPauserRepeatCooldownMs.ToString(CultureInfo.InvariantCulture), true, true);
+        AppendJson(builder, "lagPauserTriggerCount", session.LagPauserTriggerCount.ToString(CultureInfo.InvariantCulture), true, true);
+        AppendJson(builder, "lastLagSpikeMs", session.LagPauserLastSpikeMs.ToString("0.000", CultureInfo.InvariantCulture), true, true);
         AppendJson(builder, "usedGoldenStartHelper", session.UsedGoldenStartHelper.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "usedJournalSnapshotCompare", session.UsedJournalSnapshotCompare.ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "journalSnapshot", string.IsNullOrWhiteSpace(session.LastJournalSnapshotPath) ? "" : Path.GetFileName(session.LastJournalSnapshotPath), true);
@@ -140,22 +141,27 @@ public static class AkronProof {
     public static string WriteSidecar(Level level, string eventName) {
         string directory = Path.Combine(Everest.PathGame, "Saves", "AkronProof");
         Directory.CreateDirectory(directory);
-        string path = BuildSidecarPath(directory);
-        File.WriteAllText(path, BuildSummaryJson(level, eventName));
-        return path;
+        return WriteSidecarFile(directory, BuildSummaryJson(level, eventName));
     }
 
     // Two sidecars in the same second used to land on the same name, and the second one erased
     // the first. The QA proof overlay writes one per StartPos capture and restore, so that is
-    // reachable. Milliseconds separate them, and a suffix covers the same millisecond.
-    private static string BuildSidecarPath(string directory) {
-        string stamp = System.DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff");
-        string path = Path.Combine(directory, "akron-proof-" + stamp + ".json");
-        for (int suffix = 2; File.Exists(path) && suffix <= 1000; suffix++) {
-            path = Path.Combine(directory, "akron-proof-" + stamp + "-" + suffix.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".json");
+    // reachable. Milliseconds separate them, and a name is claimed by creating the file rather
+    // than by asking whether it exists, so two writers cannot pick the same one.
+    private static string WriteSidecarFile(string directory, string content) {
+        string stamp = System.DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
+        for (int attempt = 1; ; attempt++) {
+            string suffix = attempt == 1 ? string.Empty : "-" + attempt.ToString(CultureInfo.InvariantCulture);
+            string path = Path.Combine(directory, "akron-proof-" + stamp + suffix + ".json");
+            try {
+                using FileStream stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write);
+                using StreamWriter writer = new StreamWriter(stream);
+                writer.Write(content);
+                return path;
+            } catch (IOException) when (attempt < 1000 && File.Exists(path)) {
+                // Name taken by a sidecar written in the same millisecond. Try the next one.
+            }
         }
-
-        return path;
     }
 
     private static void AppendJson(StringBuilder builder, string key, string value, bool comma, bool raw = false) {

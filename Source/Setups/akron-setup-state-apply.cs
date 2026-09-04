@@ -8,12 +8,14 @@ public partial class AkronModuleSettings {
         SafeMode = resolved.SafeMode;
         StreamerMode = resolved.StreamerMode;
         ProofModeOverlay = resolved.ProofModeOverlay;
+        // A pack that states the mode also states the five values a later "off" would restore,
+        // so the snapshot from before the import is meaningless. An import that leaves the mode
+        // where it was, which every scoped section does, leaves the snapshot alone.
+        bool submissionModeChanged = SubmissionMode != resolved.SubmissionMode;
         SubmissionMode = resolved.SubmissionMode;
-
-        // A pack states all six proof values outright, so the bundle overrode nothing here and
-        // there is nothing for a later "off" to put back. Keeping the old snapshot would restore
-        // values from before the import.
-        SubmissionModeRestore = null;
+        if (submissionModeChanged) {
+            SubmissionModeRestore = null;
+        }
         ProofRecorderGuard = resolved.ProofRecorderGuard;
         EndScreenHelper = resolved.EndScreenHelper;
         PauseTracker = resolved.PauseTracker;
