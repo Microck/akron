@@ -133,7 +133,7 @@ public partial class AkronModule {
                     AkronEntityInspector.RecordLastDeath(level, deathPosition, deathHazard);
                 }
                 Session.LastDeathDuringNoclip = Settings.Noclip;
-                AkronPracticeStats.ResetAttemptTimer(level);
+                AkronPracticeStats.ResetAttemptTimer();
             }
         }
 

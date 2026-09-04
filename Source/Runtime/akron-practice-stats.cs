@@ -48,7 +48,7 @@ public static class AkronPracticeStats {
         AkronDeloadSimulator.BeginLevel(level);
         AkronModule.Session.TrackedRoom = level.Session.Level;
         AkronModule.Session.RoomEnteredAt = level.Session.Time;
-        ResetAttemptTimer(level);
+        ResetAttemptTimer();
         ResetRoomStatTracker(level.Session.Time);
         AkronModule.Session.LastRoomTime = 0;
         AkronModule.Session.DeathPbLossPromptShown = false;
@@ -126,7 +126,7 @@ public static class AkronPracticeStats {
     }
 
     // Called on level begin and on every death: those are the boundaries of an attempt.
-    public static void ResetAttemptTimer(Level level) {
+    public static void ResetAttemptTimer() {
         AkronModule.Session.AttemptElapsedSeconds = 0f;
         AkronModule.Session.AutoKillTimerFired = false;
     }
