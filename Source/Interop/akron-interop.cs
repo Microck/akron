@@ -46,30 +46,36 @@ public static class AkronInterop {
     }
 
     public static void UnregisterSpeedrunToolSaveLoadHooks() {
+        // Each registration is removed and forgotten on its own. A removal that
+        // throws keeps its field, so the registration is still known and a later
+        // call can try again instead of leaving it behind in Speedrun Tool.
         try {
             if (speedrunToolSaveLoadHookRegistration != null && speedrunToolSaveLoadUnregisterMethod != null) {
                 speedrunToolSaveLoadUnregisterMethod.Invoke(null, new[] { speedrunToolSaveLoadHookRegistration });
             }
+            speedrunToolSaveLoadHookRegistration = null;
         } catch (Exception exception) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to unregister Speedrun Tool save-load render suppression: " + exception.Message);
         }
-        // Independent of the hook above: a failure there must not leave the processor
-        // behind, because the fields are cleared below and it could never be removed.
         try {
             if (speedrunToolReturnSameObjectProcessor != null && speedrunToolRemoveReturnSameObjectProcessorMethod != null) {
                 speedrunToolRemoveReturnSameObjectProcessorMethod.Invoke(null, new object[] { speedrunToolReturnSameObjectProcessor });
             }
+            speedrunToolReturnSameObjectProcessor = null;
         } catch (Exception exception) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to unregister Speedrun Tool live-object processor: " + exception.Message);
         }
 
-        speedrunToolSaveLoadHookRegistration = null;
-        speedrunToolSaveLoadUnregisterMethod = null;
         speedrunToolIgnoreSaveStateMethod = null;
-        speedrunToolRemoveReturnSameObjectProcessorMethod = null;
-        speedrunToolReturnSameObjectProcessor = null;
         speedrunToolExcludedOverlay = null;
-        speedrunToolSaveLoadHooksRegistered = false;
+        // Only a clean teardown lets EnsureSpeedrunToolSaveLoadHooksRegistered run
+        // again; registering a second copy next to a leftover would be worse than
+        // the warning above.
+        if (speedrunToolSaveLoadHookRegistration == null && speedrunToolReturnSameObjectProcessor == null) {
+            speedrunToolSaveLoadUnregisterMethod = null;
+            speedrunToolRemoveReturnSameObjectProcessorMethod = null;
+            speedrunToolSaveLoadHooksRegistered = false;
+        }
     }
 
     public static bool SpeedrunToolLoaded => IsModLoaded(SpeedrunToolMetadata, "SpeedrunTool");
@@ -262,13 +268,20 @@ public static class AkronInterop {
                 beforeLoadState,
                 null
             });
-            // After the hook registration, so a failure there cannot leave a processor
-            // behind that the next attempt would add a second time. Tells SRT's cloner
-            // which Akron objects are not savestate state; see
-            // IsSpeedrunToolLiveObjectType for what is on the list and why.
+            // Tells SRT's cloner which Akron objects are not savestate state; see
+            // IsSpeedrunToolLiveObjectType for what is on the list and why. Runs after
+            // the hook registration and rolls it back on failure, so the two are
+            // registered together or not at all and a retry cannot add a second hook.
             if (addReturnSameObjectProcessorMethod != null && speedrunToolRemoveReturnSameObjectProcessorMethod != null) {
-                speedrunToolReturnSameObjectProcessor = IsSpeedrunToolLiveObjectType;
-                addReturnSameObjectProcessorMethod.Invoke(null, new object[] { speedrunToolReturnSameObjectProcessor });
+                try {
+                    speedrunToolReturnSameObjectProcessor = IsSpeedrunToolLiveObjectType;
+                    addReturnSameObjectProcessorMethod.Invoke(null, new object[] { speedrunToolReturnSameObjectProcessor });
+                } catch {
+                    speedrunToolReturnSameObjectProcessor = null;
+                    speedrunToolSaveLoadUnregisterMethod?.Invoke(null, new[] { speedrunToolSaveLoadHookRegistration });
+                    speedrunToolSaveLoadHookRegistration = null;
+                    throw;
+                }
             }
             speedrunToolSaveLoadHooksRegistered = true;
         } catch (Exception exception) {

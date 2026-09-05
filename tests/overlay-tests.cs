@@ -2007,6 +2007,17 @@ public sealed class OverlayTests {
             interopSource.IndexOf("public static void UnregisterSpeedrunToolSaveLoadHooks()", StringComparison.Ordinal));
         unregister = unregister.Substring(0, unregister.IndexOf("speedrunToolSaveLoadHooksRegistered = false;", StringComparison.Ordinal));
         Assert.Contains("speedrunToolRemoveReturnSameObjectProcessorMethod.Invoke(null, new object[] { speedrunToolReturnSameObjectProcessor });", unregister);
+        // A failed removal keeps its field so the next teardown can retry, and only a
+        // clean teardown re-arms registration.
+        Assert.Contains("speedrunToolReturnSameObjectProcessor = null;\n        } catch", unregister);
+        Assert.Contains("if (speedrunToolSaveLoadHookRegistration == null && speedrunToolReturnSameObjectProcessor == null) {", unregister);
+        // Registering the processor after the hook rolls the hook back on failure.
+        string register = interopSource.Substring(
+            interopSource.IndexOf("public static void EnsureSpeedrunToolSaveLoadHooksRegistered()", StringComparison.Ordinal));
+        int hook = register.IndexOf("speedrunToolSaveLoadHookRegistration = registerMethod.Invoke(", StringComparison.Ordinal);
+        int processor = register.IndexOf("addReturnSameObjectProcessorMethod.Invoke(null, new object[] { speedrunToolReturnSameObjectProcessor });", StringComparison.Ordinal);
+        Assert.True(hook >= 0 && processor > hook);
+        Assert.Contains("speedrunToolSaveLoadUnregisterMethod?.Invoke(null, new[] { speedrunToolSaveLoadHookRegistration });", register);
     }
 
     [Fact]
