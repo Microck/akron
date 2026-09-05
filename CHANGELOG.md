@@ -6,23 +6,20 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Fixed
+
+- Loading a Speedrun Tool savestate no longer hitches because of Akron. Speedrun Tool deep-cloned Akron's overlay and Akron's per-profile statistics on every save and load, and the statistics grow with every room ever played, so the load frame got slower the longer Akron had been in use. With Speedrun Tool 3.27.14 or newer, the versions whose interop lets a mod opt objects out of cloning, both now stay live, which also means a savestate no longer rewinds room stats or StartPos metadata (#153).
+
 ## Akron Beta 78
 
 ### Changed
 
-- Auto Kill's timer mode measures the current attempt instead of cumulative chapter time, fires at most once per attempt, and re-arms on the next one. Enabling it in a chapter already past the threshold no longer kills on every respawn. Clear Areas now only clears this map's areas: it no longer switches the Method to Timer or leaves Auto Kill armed. The Auto Kill toast is raised only when the death actually happens, so Celeste's own Assist invincibility no longer produces a message with nothing dying (#164).
-- Auto Kill and Auto Deafen areas belong to the map they were drawn on, so a set drawn for one chapter no longer fires in another chapter whose rooms cover the same coordinates. Areas from earlier builds carry no map and are dropped rather than migrated. Setup packs move to `akron-setup-v9`; packs from earlier builds must be exported again (#175).
-- Recorder setup packs accept every value the recorder itself accepts, up to 360 FPS, 1000 Mbps, 15360x8640 and a 20-second keyframe interval, so an exported pack always imports again (#173).
-- Akron writes a proof sidecar on every area completion, whatever the attempt's classification and whether or not a proof helper is on. The proof panel stays a helper surface and appears on the same terms as before (#174).
-- Submission Mode is a mode you can leave: enabling it remembers what Proof-mode Overlay, Proof Recorder Guard, End Screen Helper, Pause Tracker and Map Version Stamp were, and disabling it puts those five values back (#174).
+- Improve Auto Kill and Auto Deafen area handling, recorder setup packs, proof sidecars, and Submission Mode.
+- Move setup packs to `akron-setup-v9`; older packs must be exported again.
 
 ### Fixed
 
-- The Core Mode override covers the room it was applied in. It ends when the room changes or a StartPos slot is restored, so turning it off cannot write back a core mode captured somewhere else, and the row can no longer read On with nothing to restore after a restart. Cycle click behavior now cycles Hot, Cold, and off, so the row can turn the override off (#171).
-- Proof sidecars are valid JSON again. Removing the unsafe restore override in the previous release left a trailing comma in the active-feature block, so every sidecar written since then failed to parse (#174).
-- The Submission Mode recorder warning arms again whenever the recorder does, so disarming the recorder later in the same level warns again (#174).
-- Proof sidecar names carry milliseconds, so two sidecars written in the same second no longer overwrite each other (#174).
-- The proof sidecar's active-feature list includes Disable Playback, No Stamina Flash, Air Jumps, Dash Redirect, and Grab Mode (#174).
+- Fix Auto Kill timer and area behavior, Core Mode overrides, and proof sidecar output, naming, and feature reporting.
 
 ## Akron Beta 77
 

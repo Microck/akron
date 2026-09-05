@@ -32,6 +32,8 @@ public static class AkronInterop {
     private static object speedrunToolSaveLoadHookRegistration;
     private static MethodInfo speedrunToolSaveLoadUnregisterMethod;
     private static MethodInfo speedrunToolIgnoreSaveStateMethod;
+    private static MethodInfo speedrunToolRemoveReturnSameObjectProcessorMethod;
+    private static Func<Type, bool> speedrunToolReturnSameObjectProcessor;
     private static AkronOverlay speedrunToolExcludedOverlay;
     private static Type extendedCameraZoomHooksType;
     private static PropertyInfo extendedCameraAutomaticZoomingProperty;
@@ -44,19 +46,36 @@ public static class AkronInterop {
     }
 
     public static void UnregisterSpeedrunToolSaveLoadHooks() {
+        // Each registration is removed and forgotten on its own. A removal that
+        // throws keeps its field, so the registration is still known and a later
+        // call can try again instead of leaving it behind in Speedrun Tool.
         try {
             if (speedrunToolSaveLoadHookRegistration != null && speedrunToolSaveLoadUnregisterMethod != null) {
                 speedrunToolSaveLoadUnregisterMethod.Invoke(null, new[] { speedrunToolSaveLoadHookRegistration });
             }
+            speedrunToolSaveLoadHookRegistration = null;
         } catch (Exception exception) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to unregister Speedrun Tool save-load render suppression: " + exception.Message);
         }
+        try {
+            if (speedrunToolReturnSameObjectProcessor != null && speedrunToolRemoveReturnSameObjectProcessorMethod != null) {
+                speedrunToolRemoveReturnSameObjectProcessorMethod.Invoke(null, new object[] { speedrunToolReturnSameObjectProcessor });
+            }
+            speedrunToolReturnSameObjectProcessor = null;
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to unregister Speedrun Tool live-object processor: " + exception.Message);
+        }
 
-        speedrunToolSaveLoadHookRegistration = null;
-        speedrunToolSaveLoadUnregisterMethod = null;
         speedrunToolIgnoreSaveStateMethod = null;
         speedrunToolExcludedOverlay = null;
-        speedrunToolSaveLoadHooksRegistered = false;
+        // Only a clean teardown lets EnsureSpeedrunToolSaveLoadHooksRegistered run
+        // again; registering a second copy next to a leftover would be worse than
+        // the warning above.
+        if (speedrunToolSaveLoadHookRegistration == null && speedrunToolReturnSameObjectProcessor == null) {
+            speedrunToolSaveLoadUnregisterMethod = null;
+            speedrunToolRemoveReturnSameObjectProcessorMethod = null;
+            speedrunToolSaveLoadHooksRegistered = false;
+        }
     }
 
     public static bool SpeedrunToolLoaded => IsModLoaded(SpeedrunToolMetadata, "SpeedrunTool");
@@ -212,6 +231,18 @@ public static class AkronInterop {
                 null,
                 new[] { typeof(Entity), typeof(bool) },
                 null);
+            MethodInfo addReturnSameObjectProcessorMethod = saveLoadExportsType?.GetMethod(
+                "AddReturnSameObjectProcessor",
+                BindingFlags.Public | BindingFlags.Static,
+                null,
+                new[] { typeof(Func<Type, bool>) },
+                null);
+            speedrunToolRemoveReturnSameObjectProcessorMethod = saveLoadExportsType?.GetMethod(
+                "RemoveReturnSameObjectProcessor",
+                BindingFlags.Public | BindingFlags.Static,
+                null,
+                new[] { typeof(Func<Type, bool>) },
+                null);
             if (registerMethod == null) {
                 return;
             }
@@ -237,6 +268,21 @@ public static class AkronInterop {
                 beforeLoadState,
                 null
             });
+            // Tells SRT's cloner which Akron objects are not savestate state; see
+            // IsSpeedrunToolLiveObjectType for what is on the list and why. Runs after
+            // the hook registration and rolls it back on failure, so the two are
+            // registered together or not at all and a retry cannot add a second hook.
+            if (addReturnSameObjectProcessorMethod != null && speedrunToolRemoveReturnSameObjectProcessorMethod != null) {
+                try {
+                    speedrunToolReturnSameObjectProcessor = IsSpeedrunToolLiveObjectType;
+                    addReturnSameObjectProcessorMethod.Invoke(null, new object[] { speedrunToolReturnSameObjectProcessor });
+                } catch {
+                    speedrunToolReturnSameObjectProcessor = null;
+                    speedrunToolSaveLoadUnregisterMethod?.Invoke(null, new[] { speedrunToolSaveLoadHookRegistration });
+                    speedrunToolSaveLoadHookRegistration = null;
+                    throw;
+                }
+            }
             speedrunToolSaveLoadHooksRegistered = true;
         } catch (Exception exception) {
             if (!speedrunToolSaveLoadHookWarningLogged) {
@@ -244,6 +290,28 @@ public static class AkronInterop {
                 speedrunToolSaveLoadHookWarningLogged = true;
             }
         }
+    }
+
+    // Types SRT's deep cloner must return by reference instead of cloning. SRT
+    // clones on the game thread at every savestate save and again at every load,
+    // so anything on this list is both a hitch and a rewind that Akron never wanted.
+    //
+    //  * AkronOverlay: process UI, never gameplay state. IgnoreSaveState (above)
+    //    only removes it from the Level's entity list. SRT also snapshots every
+    //    EverestModule static field typed as an Entity (SaveLoadAction.
+    //    InitModuleFields), and AkronModule.Overlay is one, so without this the
+    //    whole overlay graph was cloned twice per savestate round trip and the
+    //    clone installed as the live overlay.
+    //  * AkronModuleSaveData: per-profile statistics and StartPos metadata. SRT
+    //    clones every module's _SaveData (SaveLoadAction.SupportModSessionAndSaveData).
+    //    RoomStats grows by one record per room ever visited, so that clone costs
+    //    a few milliseconds per thousand rooms on each load, and restoring the
+    //    clone rewound stats and slots set after the savestate was taken.
+    //
+    // AkronModuleSession stays cloned: it is small and holds attempt state that
+    // belongs to the moment the savestate was taken.
+    internal static bool IsSpeedrunToolLiveObjectType(Type type) {
+        return type == typeof(AkronOverlay) || type == typeof(AkronModuleSaveData);
     }
 
     internal static void ExcludeAkronOverlayFromSpeedrunToolSavestates(AkronOverlay overlay) {
