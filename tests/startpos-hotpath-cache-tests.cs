@@ -896,44 +896,29 @@ public sealed class StartPosHotPathCacheTests {
     }
 
     [Fact]
-    public void ASavestateLoadDoesNotRewindTheStartPosCatalog() {
-        // A savestate restore replaces AkronModule._SaveData and _Session wholesale.
-        // The persisted StartPos metadata lives in the first and the in-session
-        // catalog in the second, and neither is gameplay state: both can hold slots
-        // created after the savestate was taken. Measured in game, a slot set after
-        // the savestate read startpos-set: false with its snapshot and metadata intact
-        // on disk until the next process start, and the rewound persisted catalog is
-        // what the next save file write would have persisted.
+    public void ASavestateLoadRebuildsTheSessionStartPosCatalog() {
+        // Speedrun Tool keeps Akron's save data live (AkronInterop.IsSpeedrunToolLiveObjectType)
+        // but replaces AkronModule._Session wholesale, and the in-session catalog view lives
+        // there. The rebuild has to run whatever the load reported, because the session can be
+        // replaced by a load that then fails or throws.
         string saveLoad = SaveLoadSource;
         string load = SliceMember(saveLoad, "public static AkronSaveLoadResult Load(Level level, int slot)");
 
-        int captured = load.IndexOf(
-            "AkronModule.Instance == null ? null : AkronModule.SaveData?.StartPositionsByMap",
-            StringComparison.Ordinal);
         int core = load.IndexOf("return LoadCore(level, slot);", StringComparison.Ordinal);
-        int restored = load.IndexOf(
-            "AkronActions.RestoreStartPosCatalogAfterStateLoad(level, startPosCatalog);",
-            StringComparison.Ordinal);
-        Assert.True(captured >= 0, "the catalog is not captured before the restore");
-        Assert.True(core > captured);
-        Assert.True(restored > core, "the catalog is not put back after the restore");
+        int rebuilt = load.IndexOf("AkronActions.RebuildStartPosCatalogAfterStateLoad(level);", StringComparison.Ordinal);
+        Assert.True(core >= 0 && rebuilt > core, "the session catalog is not rebuilt after the restore");
         Assert.Contains("} finally {", load);
+        Assert.DoesNotContain("StartPositionsByMap", load);
 
-        // The restore has to be inside that hold: numbered slots are Speedrun Tool's, and
-        // SpeedrunTool assigns _Session and _SaveData itself, so there is nowhere inside
-        // Akron to fix this.
+        // Numbered slots are Speedrun Tool's, so this is the only place Akron can do it.
         string core_ = SliceMember(saveLoad, "private static AkronSaveLoadResult LoadCore(Level level, int slot)");
         Assert.Contains("TryBrokerLoad(level, slot)", core_);
 
-        // And the in-session view is rebuilt from the metadata, because the session
-        // object itself was replaced and the view has to land on the new one.
         string rebuild = SliceMember(
             ActionsSource,
-            "internal static void RestoreStartPosCatalogAfterStateLoad(");
-        int metadata = rebuild.IndexOf("RestoreStartPosCatalog(", StringComparison.Ordinal);
-        int session = rebuild.IndexOf("LoadStartPositionsForLevel(level);", StringComparison.Ordinal);
-        Assert.True(metadata >= 0 && session > metadata,
-            "the session catalog must be rebuilt from the metadata that was put back first");
+            "internal static void RebuildStartPosCatalogAfterStateLoad(");
+        Assert.Contains("LoadStartPositionsForLevel(level);", rebuild);
+        Assert.DoesNotContain("RestoreStartPosCatalog(", rebuild);
     }
 
     [Fact]

@@ -1562,22 +1562,14 @@ public static partial class AkronActions {
     // object itself is replaced by the restore and the view has to land on the new
     // one. LoadStartPositionsForLevel derives it from the persisted metadata, which
     // is why the metadata is put back first.
-    internal static void RestoreStartPosCatalogAfterStateLoad(
-        Level level,
-        Dictionary<string, AkronPersistedStartPosMap> catalogBeforeLoad
-    ) {
+    internal static void RebuildStartPosCatalogAfterStateLoad(Level level) {
         // Caught because the only caller runs this from a finally. A savestate load
         // that worked must not be reported as failed because the catalog rebuild
         // stumbled, and a load that threw must report its own exception rather than
-        // this one. Nothing durable is at risk either way: the metadata on disk is
-        // untouched and the next room load rebuilds the same view.
+        // this one. Nothing durable is at risk either way: the metadata is untouched
+        // and the next room load rebuilds the same view.
         try {
-            if (catalogBeforeLoad != null) {
-                RestoreStartPosCatalog(
-                    AkronModule.Instance == null ? null : AkronModule.SaveData,
-                    catalogBeforeLoad);
-            }
-            // The same Level instance survives both restore paths - each copies into
+            // The same Level instance survives the restore - Speedrun Tool copies into
             // it rather than replacing it in the scene - so this is the level the
             // rebuilt catalog belongs to.
             LoadStartPositionsForLevel(level);
