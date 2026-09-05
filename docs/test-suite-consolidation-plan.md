@@ -185,12 +185,31 @@ This deliberately rejects #189's blanket Part 3B deletions across overlay, scann
 
 ### 11. Separate the release contract check without duplicating it
 
-Files: `tests/startpos-persistence-tests.cs`, `Makefile`, `.github/workflows/ci.yml`, and the existing testing documentation.
+Files: `tests/startpos-persistence-tests.cs`, `Makefile`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, and the existing testing documentation.
 
 1. Keep `TheNewestChangelogContractMentionNamesTheContractsThisBuildActuallyWrites` and its comparisons against compiled format constants. Give it a `ReleaseContract` category.
-2. Add a `release-contract-check` Make target that runs that category. Include it in `preflight-release` before packaging.
-3. Run the ordinary test target with the release category excluded, and add an explicit release-contract check to CI using the same built test assembly. Existing release workflows that run all tests continue to include it; inspect any filtered release test command before changing it.
-4. Check a current document passes and a deliberately stale format token fails the release target. Confirm the category selects the intended test and CI cannot skip it accidentally.
+2. Add a `release-contract-check` Make target that runs only that category. The ordinary `test` target excludes it. Both consume the same Release test assembly after a successful build; preserve a build prerequisite for direct local target invocation.
+3. Use the execution matrix below in local preflight, ordinary CI, and release CI. Replace each existing unfiltered workflow test step with the two filtered checks. Do not retain an additional unfiltered run or invoke the standalone check again after `preflight-release` has already run it.
+4. Check a current document passes and a deliberately stale format token fails the release target. Confirm the standalone category selects exactly the intended test, the ordinary filter excludes it, and each CI workflow runs both checks before package verification or publication.
+
+The planned commands, after restore and build, are:
+
+```bash
+# Ordinary test target
+dotnet test tests/akron-tests.csproj --configuration Release --no-build --nologo \
+  --filter 'Category!=ReleaseContract'
+# release-contract-check target
+dotnet test tests/akron-tests.csproj --configuration Release --no-build --nologo \
+  --filter 'Category=ReleaseContract'
+```
+
+| Entry point | Test sequence after build |
+|---|---|
+| Local `test` | Ordinary filtered suite only. |
+| Local `release-contract-check` | Release category only. |
+| `preflight-release` | Ordinary filtered suite, then release category, then packaging. |
+| `.github/workflows/ci.yml` | Ordinary filtered suite, then release category, then package verification. |
+| `.github/workflows/release.yml` | Ordinary filtered suite, then release category, then package verification and the existing release steps. |
 
 **Objective justification:** release-document consistency belongs in a named preflight check, while comparing the real compiled constants avoids a second script with its own format literals. This is a relocation of enforcement, not removal of coverage. Adding a standalone parser or making the check optional is unnecessary.
 
@@ -205,10 +224,10 @@ For each implementation slice, record the changed methods/assertions, the failur
 Final verification:
 
 1. Run the relevant test classes after each logical slice. For each replacement, verify sensitivity to the specific missing operation before deleting the source assertion.
-2. Run the full Release suite and the separate release-contract check after all settled changes. Reconcile method/case deltas against the five deletions, renames, replacement theories, and added cases. A lower count is not itself success.
+2. Run the ordinary Release suite with `ReleaseContract` excluded, then the separate release-contract check, using step 11's commands after all settled changes. Together they must cover the full suite once. Reconcile method/case deltas against the five deletions, renames, replacement theories, and added cases. A lower count is not itself success.
 3. Preserve CI's package existence, PDB exclusion, and exact license/notice checks. No package-manager or dependency changes are needed.
 4. Apply `ce-simplify-code` to settled implementation changes before final review. Do not apply it to this planning-only document.
-5. Verify affected restore/input/render behavior on the remote Linux Mint test machine. A native Windows held-read/write/rotation check is required before replacing the corresponding sharing guards. If that host is unavailable, leave those guards intact and report the missing verification.
+5. Run Celeste with Everest and Akron loaded on the remote Linux Mint test machine. For the restore fix, check StartPos restoration both in the same process and after restarting the game. If implementation changes input or rendering, exercise the affected overlay controls and bindings and inspect the affected overlay/world render passes in that running session. Record the map SID, setup state, interactions, and visual evidence. Separately, verify held-read/write/rotation behavior on native Windows before replacing the corresponding sharing guards; Linux or Wine results do not establish native Windows sharing behavior. If a required host is unavailable, leave the corresponding guards intact and report the missing verification.
 6. Identify any helpers, imports, constants, or fixtures made unused by the actual diff. List them and obtain removal approval under repository rules; do not include speculative dead-code cleanup. `GetPerformanceTelemetrySourcePath` is a likely candidate only after its sole source-based test is replaced. Other source-reading helpers still have callers.
 
 ## What stays outside this change set
