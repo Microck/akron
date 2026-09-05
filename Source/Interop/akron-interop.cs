@@ -50,11 +50,17 @@ public static class AkronInterop {
             if (speedrunToolSaveLoadHookRegistration != null && speedrunToolSaveLoadUnregisterMethod != null) {
                 speedrunToolSaveLoadUnregisterMethod.Invoke(null, new[] { speedrunToolSaveLoadHookRegistration });
             }
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to unregister Speedrun Tool save-load render suppression: " + exception.Message);
+        }
+        // Independent of the hook above: a failure there must not leave the processor
+        // behind, because the fields are cleared below and it could never be removed.
+        try {
             if (speedrunToolReturnSameObjectProcessor != null && speedrunToolRemoveReturnSameObjectProcessorMethod != null) {
                 speedrunToolRemoveReturnSameObjectProcessorMethod.Invoke(null, new object[] { speedrunToolReturnSameObjectProcessor });
             }
         } catch (Exception exception) {
-            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to unregister Speedrun Tool save-load render suppression: " + exception.Message);
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to unregister Speedrun Tool live-object processor: " + exception.Message);
         }
 
         speedrunToolSaveLoadHookRegistration = null;
@@ -235,13 +241,6 @@ public static class AkronInterop {
                 return;
             }
 
-            // Tell SRT's cloner which Akron objects are not savestate state. See
-            // IsSpeedrunToolLiveObjectType for what is on the list and why.
-            if (addReturnSameObjectProcessorMethod != null && speedrunToolRemoveReturnSameObjectProcessorMethod != null) {
-                speedrunToolReturnSameObjectProcessor = IsSpeedrunToolLiveObjectType;
-                addReturnSameObjectProcessorMethod.Invoke(null, new object[] { speedrunToolReturnSameObjectProcessor });
-            }
-
             Action<Dictionary<Type, Dictionary<string, object>>, Level> afterLoadState = (_, _) => {
                 AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
                 AkronModule.SuppressLagPauserForSpeedrunToolLoadState();
@@ -263,6 +262,14 @@ public static class AkronInterop {
                 beforeLoadState,
                 null
             });
+            // After the hook registration, so a failure there cannot leave a processor
+            // behind that the next attempt would add a second time. Tells SRT's cloner
+            // which Akron objects are not savestate state; see
+            // IsSpeedrunToolLiveObjectType for what is on the list and why.
+            if (addReturnSameObjectProcessorMethod != null && speedrunToolRemoveReturnSameObjectProcessorMethod != null) {
+                speedrunToolReturnSameObjectProcessor = IsSpeedrunToolLiveObjectType;
+                addReturnSameObjectProcessorMethod.Invoke(null, new object[] { speedrunToolReturnSameObjectProcessor });
+            }
             speedrunToolSaveLoadHooksRegistered = true;
         } catch (Exception exception) {
             if (!speedrunToolSaveLoadHookWarningLogged) {
