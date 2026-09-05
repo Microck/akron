@@ -658,13 +658,10 @@ public static partial class AkronSaveLoadService {
         CurrentSlotName = GetSlotName(slot);
 
         // A savestate rewinds gameplay. It must not rewind the list of StartPos slots
-        // the player has set, which lives in Akron's module save data and session.
-        // SpeedrunTool keeps the save data object live (AkronInterop.
-        // IsSpeedrunToolLiveObjectType), so putting the catalog back is a no-op there
-        // and only guards a Speedrun Tool build that ignores that registration. It
-        // still replaces _Session wholesale, and Akron never sees that assignment, so
-        // the in-session view has to be rebuilt here either way. See
-        // AkronActions.RestoreStartPosCatalogAfterStateLoad.
+        // the player has set. Speedrun Tool keeps Akron's save data live
+        // (AkronInterop.IsSpeedrunToolLiveObjectType) but replaces _Session wholesale,
+        // and Akron never sees that assignment, so the in-session view of the catalog is
+        // rebuilt here. See AkronActions.RebuildStartPosCatalogAfterStateLoad.
         //
         // Unconditional rather than only on Success. A load can be refused before it
         // touches anything, but it can also fail or throw after the module state has
@@ -672,12 +669,10 @@ public static partial class AkronSaveLoadService {
         // a result code to describe how far a third-party mod got. The cost of being
         // wrong the safe way is one catalog rebuild - about one stat per placed slot -
         // on an action that is already a whole-level restore.
-        Dictionary<string, AkronPersistedStartPosMap> startPosCatalog =
-            AkronModule.Instance == null ? null : AkronModule.SaveData?.StartPositionsByMap;
         try {
             return LoadCore(level, slot);
         } finally {
-            AkronActions.RestoreStartPosCatalogAfterStateLoad(level, startPosCatalog);
+            AkronActions.RebuildStartPosCatalogAfterStateLoad(level);
         }
     }
 
