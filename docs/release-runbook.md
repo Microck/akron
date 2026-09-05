@@ -23,6 +23,11 @@ Required public surfaces:
 
 Tags and artifact names stay canonical because external links use them. Public titles and changelog headings can use readable names such as `Akron Beta 42`. Do not mint a replacement tag for a sync or publishing failure unless rollback or unpublish has been explicitly chosen. Normal recovery repairs the same tag.
 
+Normal releases are published as the latest GitHub Release, including versions
+whose tag contains `-beta`. Mark a release as a GitHub prerelease only when
+explicitly requested, using the manual workflow's `prerelease` input. The tag's
+spelling alone does not select that flag.
+
 ## Deterministic path
 
 The prepare, publish, and completion phases below are scripted. The prose

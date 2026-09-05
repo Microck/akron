@@ -25,7 +25,7 @@ concurrency:
 
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
-  IS_PRERELEASE: ${{ (github.event_name == 'workflow_dispatch' && inputs.prerelease) || (github.event_name != 'workflow_dispatch' && contains(github.ref_name, '-')) }}
+  IS_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
 
 jobs:
   build:
@@ -355,7 +355,10 @@ jobs:
           set -euo pipefail
           cd release-artifacts
           title="$RELEASE_DISPLAY_NAME"
-          prerelease_flag=(--prerelease="$IS_PRERELEASE")
+          release_flags=(--prerelease="$IS_PRERELEASE")
+          if [ "$IS_PRERELEASE" != "true" ]; then
+            release_flags+=(--latest)
+          fi
 
           assets=(
             "Akron-${RELEASE_TAG}.zip"
@@ -367,9 +370,9 @@ jobs:
             release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.id')"
             gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}" --method PATCH --input release-notes.json
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
-            gh release edit "$RELEASE_TAG" --title "$title" "${prerelease_flag[@]}"
+            gh release edit "$RELEASE_TAG" --title "$title" "${release_flags[@]}"
           else
-            gh release create "$RELEASE_TAG" "${assets[@]}" --title "$title" --notes-file release-notes.md --verify-tag "${prerelease_flag[@]}"
+            gh release create "$RELEASE_TAG" "${assets[@]}" --title "$title" --notes-file release-notes.md --verify-tag "${release_flags[@]}"
           fi
 
   sync_links:
