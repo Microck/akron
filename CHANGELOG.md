@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Fixed
+
+- Loading a Speedrun Tool savestate no longer hitches because of Akron. Speedrun Tool deep-cloned Akron's overlay and Akron's per-profile statistics on every save and load, and the statistics grow with every room ever played, so the load frame got slower the longer Akron had been in use. With Speedrun Tool 3.27.14 or newer, the versions whose interop lets a mod opt objects out of cloning, both now stay live, which also means a savestate no longer rewinds room stats or StartPos metadata (#153).
+
 ## Akron Beta 78
 
 ### Changed
