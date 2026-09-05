@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 78
+
 ### Changed
 
 - Improve Auto Kill and Auto Deafen area handling, recorder setup packs, proof sidecars, and Submission Mode.

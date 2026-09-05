@@ -499,7 +499,7 @@ async function uploadReleaseAssetAndFindFileId(
       error instanceof Error &&
       error.code === "GAMEBANANA_EDIT_PERMISSION_DENIED"
     ) {
-      await logPageState(page, "Stored GameBanana session edit denial");
+      await logPageState(page, "Stored GameBanana session edit denial", error.message);
       await captureDebugArtifact(page, "stored-gamebanana-session-edit-denial");
       if (cookieFallbackAuth) {
         console.log(
@@ -513,7 +513,7 @@ async function uploadReleaseAssetAndFindFileId(
             cookieError instanceof Error &&
             cookieError.code === "GAMEBANANA_EDIT_PERMISSION_DENIED"
           ) {
-            await logPageState(page, "GameBanana cookie auth edit denial");
+            await logPageState(page, "GameBanana cookie auth edit denial", cookieError.message);
             await captureDebugArtifact(page, "gamebanana-cookie-auth-edit-denial");
           } else {
             await logPageState(page, "GameBanana cookie auth upload failed");
@@ -913,17 +913,27 @@ function sanitizedPageUrl(value) {
   }
 }
 
-async function logPageState(page, label) {
-  const [title, hasEditForm, hasFileInput, hasPasswordInput] = await Promise.all([
+async function logPageState(page, label, reason = "") {
+  const [title, hasEditForm, hasFileInput, hasPasswordInput, moduleText] = await Promise.all([
     page.title().catch(() => ""),
     page.locator("#EditFormModule").first().isVisible().catch(() => false),
     page.locator('input[type="file"]').first().isVisible().catch(() => false),
     page.locator('input[type="password"]').first().isVisible().catch(() => false),
+    // What GameBanana put where the edit form should be. Without this the run only says the
+    // form was missing, which is the same line whether the session expired, the account lost
+    // permission, or the runner's address was refused.
+    page.locator("#EditFormModule").first().innerText().catch(() => ""),
   ]);
 
   console.log(
     `${label}: url=${sanitizedPageUrl(page.url())} title=${JSON.stringify(redactKnownSecrets(title).slice(0, 200))} editForm=${hasEditForm} fileInput=${hasFileInput} passwordInput=${hasPasswordInput}`,
   );
+  if (reason) {
+    console.log(`${label} reason: ${JSON.stringify(redactKnownSecrets(reason).slice(0, 400))}`);
+  }
+  if (moduleText) {
+    console.log(`${label} page said: ${JSON.stringify(redactKnownSecrets(moduleText.replace(/\s+/g, " ")).slice(0, 400))}`);
+  }
 }
 
 async function captureDebugArtifact(page, label) {
