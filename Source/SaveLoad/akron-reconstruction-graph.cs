@@ -11127,6 +11127,13 @@ internal static class AkronStartPosReconstruction {
         }
     }
 
+    // The portable bundle supplies raw document bytes; both readers enforce the same
+    // document contract and allocation limits through the restore graph.
+    internal static AkronReconstructionDocument ReadPackSnapshot(Stream snapshotStream) {
+        using AkronBoundedReadStream bounded = new AkronBoundedReadStream(snapshotStream, MaxDecompressedSnapshotBytes);
+        return RestoreGraph.Deserialize(bounded);
+    }
+
     public static bool TryReadSnapshot(
         Stream snapshotStream,
         out AkronReconstructionDocument document,

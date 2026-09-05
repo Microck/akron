@@ -34,7 +34,7 @@ public static class AkronArchive {
     private const int MaxMapSidLength = 256;
 
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {
-        WriteIndented = true,
+        WriteIndented = false,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
@@ -68,15 +68,19 @@ public static class AkronArchive {
         }
         Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
 
-        if (File.Exists(path)) {
-            File.Delete(path);
-        }
-
-        using ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create);
-        WriteEntry(archive, ManifestEntryName, JsonSerializer.Serialize(manifest, JsonOptions));
-        WriteEntry(archive, payloadEntryName, payloadJson ?? string.Empty);
-        foreach (KeyValuePair<string, string> attachment in attachmentPaths.OrderBy(pair => pair.Key, StringComparer.Ordinal)) {
-            WriteFileEntry(archive, attachment.Key, attachment.Value);
+        // A long export must not expose a partial archive or destroy the last good one.
+        string temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try {
+            using (ZipArchive archive = ZipFile.Open(temporaryPath, ZipArchiveMode.Create)) {
+                WriteEntry(archive, ManifestEntryName, JsonSerializer.Serialize(manifest, JsonOptions));
+                WriteEntry(archive, payloadEntryName, payloadJson ?? string.Empty);
+                foreach (KeyValuePair<string, string> attachment in attachmentPaths.OrderBy(pair => pair.Key, StringComparer.Ordinal)) {
+                    WriteFileEntry(archive, attachment.Key, attachment.Value);
+                }
+            }
+            File.Move(temporaryPath, path, overwrite: true);
+        } finally {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
         }
     }
 
@@ -325,13 +329,15 @@ public static class AkronArchive {
     }
 
     private static void WriteEntry(ZipArchive archive, string name, string content) {
-        ZipArchiveEntry entry = archive.CreateEntry(name, CompressionLevel.Optimal);
+        ZipArchiveEntry entry = archive.CreateEntry(name, CompressionLevel.SmallestSize);
         using Stream stream = entry.Open();
         using StreamWriter writer = new StreamWriter(stream);
         writer.Write(content);
     }
 
     private static void WriteFileEntry(ZipArchive archive, string name, string path) {
+        // Snapshot attachments already use maximum Brotli compression. Preserve their
+        // exact bytes and checksums instead of compressing the same content twice.
         ZipArchiveEntry entry = archive.CreateEntry(name, CompressionLevel.NoCompression);
         using Stream destination = entry.Open();
         using FileStream source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -358,3 +364,6 @@ public static class AkronArchive {
         return buffer.ToArray();
     }
 }
+
+// Local saves favor quick writes. Portable packs favor size: transcode the exact
+// JSON bytes without building a room graph or changing the local snapshot file.

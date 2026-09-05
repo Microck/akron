@@ -867,9 +867,8 @@ public sealed class SetupPackTests {
 
         Assert.Contains("akron-setup-v4", refusal.Message);
         Assert.Contains(AkronSetupPacks.SetupPackFormat, refusal.Message);
-        Assert.Contains("built rooms differently", refusal.Message);
-        Assert.Contains("Recreate the setup and its StartPos slots in this build", refusal.Message);
-        Assert.Contains("then export a new pack", refusal.Message);
+        Assert.Contains("Export a new pack with this build", refusal.Message);
+        Assert.Contains("Recreate older StartPos slots only if this build can no longer load them", refusal.Message);
     }
 
     [Fact]
@@ -903,7 +902,7 @@ public sealed class SetupPackTests {
     }
 
     [Fact]
-    public void AStartPosPackNamesItsSnapshotAttachmentAfterTheCurrentDocumentFormat() {
+    public void AStartPosPackReferencesTheCanonicalSnapshotBundle() {
         const string areaSid = "Maps/EntryName";
         const int slot = 6;
         string stateSlotName = AkronActions.GetStartPosStateSlotName(areaSid, slot);
@@ -926,11 +925,9 @@ public sealed class SetupPackTests {
 
             AkronSetupPack written = AkronSetupPacks.Read(archivePath);
 
-            // The attachment name states which fresh-room baseline the document inside
-            // it was measured against, so it tracks the document format rather than the
-            // pack format. A stale name here would let a v7 attachment ride inside a
-            // pack that claims to be current.
-            Assert.Equal("startpos/6.v10.json.gz", Assert.Single(written.StartPositions).Value.SnapshotEntry);
+            // Slots share one transport entry; the document retains its own graph format.
+            Assert.Equal("startpos/snapshots.bin.br", Assert.Single(written.StartPositions).Value.SnapshotEntry);
+            Assert.Matches("^[a-f0-9]{64}$", written.SnapshotBundleSha256);
             Assert.Equal(AkronSetupPacks.SetupPackFormat, written.Format);
         } finally {
             AkronStartPosReconstruction.DeleteSnapshot(stateSlotName);
@@ -1177,7 +1174,7 @@ public sealed class SetupPackTests {
             pack.StartPositions[snapshot.Key] = new AkronStartPosPackEntry {
                 AreaSid = pack.ArchiveMapSid,
                 Room = "room-" + snapshot.Key,
-                SnapshotEntry = "startpos/" + snapshot.Key + ".v10.json.gz",
+                SnapshotEntry = AkronSnapshotBundle.EntryName,
                 SnapshotSha256 = new string('0', 64)
             };
             pack.SnapshotSourcePaths[snapshot.Key] = snapshot.Value;

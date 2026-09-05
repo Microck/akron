@@ -182,13 +182,14 @@ public static class AkronCommunityPackUploads {
             throw new InvalidOperationException("Only StartPos, Auto Kill, and Auto Deafen packs can be uploaded.");
         }
 
-        Directory.CreateDirectory(GetTempUploadDirectory());
-        string fileName = SanitizeFileName(string.IsNullOrWhiteSpace(title) ? GenerateTitle("Akron", section) : title)
-                          + "-"
-                          + DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ", CultureInfo.InvariantCulture)
-                          + AkronArchive.Extension;
-        string path = Path.Combine(GetTempUploadDirectory(), fileName);
         AkronSetupPack pack = BuildScopedUploadPack(AkronModule.Settings, AkronModule.Session, title, section, mapSid);
+        return WriteTempArchive(pack, mapSid, CancellationToken.None);
+    }
+
+    private static string WriteTempArchive(AkronSetupPack pack, string mapSid, CancellationToken cancellationToken) {
+        Directory.CreateDirectory(GetTempUploadDirectory());
+        string fileName = "upload-" + Guid.NewGuid().ToString("N") + AkronArchive.Extension;
+        string path = Path.Combine(GetTempUploadDirectory(), fileName);
         AkronSetupPacks.WriteArchive(
             path,
             pack,
@@ -200,7 +201,7 @@ public static class AkronCommunityPackUploads {
                     Game = "Celeste",
                     MapSid = mapSid?.Trim() ?? string.Empty
                 }
-            });
+            }, cancellationToken);
         return path;
     }
 
@@ -249,6 +250,7 @@ public static class AkronCommunityPackUploads {
     private static void CopyStartPosUploadState(AkronSetupState target, AkronSetupState source) {
         target.SmartStartPos = source.SmartStartPos;
         target.RespawnAtStartPos = source.RespawnAtStartPos;
+        target.StartPosWaitForInput = source.StartPosWaitForInput;
         target.StartPosShowLabel = source.StartPosShowLabel;
         target.StartPosLabelColor = source.StartPosLabelColor;
         target.StartPosLabelAnchor = source.StartPosLabelAnchor;
@@ -884,6 +886,7 @@ public static class AkronCommunityPackUploads {
         private readonly CancellationTokenSource uploadCancellation = new CancellationTokenSource();
         private AkronCommunityPackUploadCaptureSettings captureSettings;
         private string packPath = string.Empty;
+        private Task<string> archiveTask;
         private DateTime captureStartedUtc;
         private bool ownsCaptureScan;
         private bool cleanedUp;
@@ -943,8 +946,9 @@ public static class AkronCommunityPackUploads {
             }
 
             try {
-                SetUploadStatus("Creating .akr pack...", 0.04f);
-                packPath = WriteTempArchive(draft.Section, draft.Title, draft.MapSid);
+                SetUploadStatus("Compressing .akr pack...", 0.04f);
+                AkronSetupPack pack = BuildScopedUploadPack(AkronModule.Settings, AkronModule.Session, draft.Title, draft.Section, draft.MapSid);
+                archiveTask = Task.Run(() => WriteTempArchive(pack, draft.MapSid, uploadCancellation.Token));
             } catch (Exception exception) when (exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException) {
                 FailUpload("Could not create temp upload archive: " + exception.Message, exception, "Could not create the .akr file.");
                 yield break;
@@ -994,6 +998,17 @@ public static class AkronCommunityPackUploads {
             if (markedRoomCandidateCount > MaxUploadRoomCaptures && captures.Count == MaxUploadRoomCaptures) {
                 Engine.Scene?.Add(new AkronToast("Upload Pack attached the first " + captures.Count.ToString(CultureInfo.InvariantCulture) + " marked rooms."));
             }
+
+            SetUploadStatus("Compressing .akr pack...", 0.74f);
+            while (!archiveTask.IsCompleted) {
+                yield return null;
+            }
+            if (!archiveTask.IsCompletedSuccessfully) {
+                FailUpload("Could not compress upload: " + archiveTask.Exception?.GetBaseException().Message,
+                    archiveTask.Exception, "Could not compress the .akr file.");
+                yield break;
+            }
+            packPath = archiveTask.GetAwaiter().GetResult();
 
             Task<AkronCommunityPackUploadCompleteResponse> uploadTask = null;
             try {
@@ -1079,6 +1094,18 @@ public static class AkronCommunityPackUploads {
             }
 
             cleanedUp = true;
+            // Removal can happen while compression is still running. Observe its
+            // outcome and remove its unique temp file after the writer has finished.
+            if (archiveTask != null && string.IsNullOrWhiteSpace(packPath)) {
+                _ = archiveTask.ContinueWith(completed => {
+                    _ = completed.Exception;
+                    if (completed.IsCompletedSuccessfully) {
+                        try { File.Delete(completed.Result); }
+                        catch (IOException exception) { AkronLog.Warn(nameof(AkronCommunityPackUploads), exception.Message); }
+                        catch (UnauthorizedAccessException exception) { AkronLog.Warn(nameof(AkronCommunityPackUploads), exception.Message); }
+                    }
+                }, TaskScheduler.Default);
+            }
             try {
                 if (!string.IsNullOrWhiteSpace(packPath) && File.Exists(packPath)) {
                     File.Delete(packPath);

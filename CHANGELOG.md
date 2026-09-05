@@ -6,6 +6,11 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Changed
+
+- Move setup packs to `akron-setup-v10`, with shared, lossless Brotli compression for exact StartPos snapshots. Export older packs again; current `akron-reconstruction-v10` local saves remain usable.
+- Compress setup exports and uploads in the background, keep the previous export if writing fails, and reuse downloaded packs whose catalog checksum still matches.
+
 ## Akron Beta 80
 
 ### Fixed

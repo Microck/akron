@@ -3993,7 +3993,7 @@ public sealed class StartPosPersistenceTests {
     public void SetupPackImportBindsStartPosBerryProgressToTheRecipientSave() {
         string source = File.ReadAllText(GetSourcePath("Setups", "akron-setup-packs.cs"));
         int prepareStart = source.IndexOf("private static PreparedStartPosImport PrepareStartPosImport", StringComparison.Ordinal);
-        int prepareEnd = source.IndexOf("private static string GetSnapshotEntryName", prepareStart, StringComparison.Ordinal);
+        int prepareEnd = source.IndexOf("private static void RequireCurrentPackFormat", prepareStart, StringComparison.Ordinal);
         string prepareImport = SourceSlice(source, prepareStart, prepareEnd - prepareStart);
 
         int level = prepareImport.IndexOf("Level recipientLevel = TryGetCurrentLevel();", StringComparison.Ordinal);
@@ -4001,7 +4001,7 @@ public sealed class StartPosPersistenceTests {
             "string.Equals(recipientLevel?.Session?.Area.GetSID(), targetMapSid, StringComparison.Ordinal)",
             StringComparison.Ordinal);
         int capture = prepareImport.IndexOf("AkronBerryProgressSnapshot.Capture(recipientLevel)", StringComparison.Ordinal);
-        int loop = prepareImport.IndexOf("foreach (KeyValuePair<int, AkronStartPosPackEntry>", StringComparison.Ordinal);
+        int loop = prepareImport.IndexOf("AkronSnapshotBundle.Read(checkedStream", StringComparison.Ordinal);
         Assert.True(level >= 0 && targetCheck > level && capture > targetCheck && capture < loop);
         Assert.Contains("document.BerryProgress = recipientBerryProgress;", prepareImport);
     }

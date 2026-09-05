@@ -1,0 +1,144 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using Xunit;
+
+namespace Celeste.Mod.Akron.Tests;
+
+public sealed class SnapshotBundleTests {
+    [Fact]
+    public void RoundTripPreservesArbitraryBytesAndSharedDocuments() {
+        using var files = new BundleFiles();
+        byte[] first = new byte[192 * 1024 + 17];
+        new Random(423).NextBytes(first);
+        // Include long base64 runs, padding, escaped strings, and numeric lexemes.
+        Encoding.ASCII.GetBytes(new string('A', 70001)).CopyTo(first, 31);
+        Encoding.UTF8.GetBytes("\"AAAA==\\\"\",-0,1.00000000000000000001,1e+300,é").CopyTo(first, 70100);
+        byte[] second = (byte[])first.Clone();
+        second[^1] ^= 1;
+        var expected = new Dictionary<int, byte[]> { [2] = first, [99] = second };
+        var sources = new[] { files.Source(99, second), files.Source(2, first) };
+        Dictionary<int, string> written = AkronSnapshotBundle.Write(files.Bundle, sources);
+        var visited = new List<int>();
+        using var stream = File.OpenRead(files.Bundle);
+        Dictionary<int, string> read = AkronSnapshotBundle.Read(stream, (slot, document) => {
+            visited.Add(slot);
+            using var restored = new MemoryStream();
+            document.CopyTo(restored, 997);
+            Assert.Equal(expected[slot], restored.ToArray());
+        });
+        Assert.Equal(new[] { 2, 99 }, visited);
+        foreach (int slot in visited) {
+            string hash = Convert.ToHexString(SHA256.HashData(expected[slot])).ToLowerInvariant();
+            Assert.Equal(hash, written[slot]);
+            Assert.Equal(hash, read[slot]);
+        }
+    }
+
+    [Fact]
+    public void ChangedSourceCannotProduceAnArchive() {
+        using var files = new BundleFiles();
+        AkronSnapshotBundle.Source source = files.Source(1, Encoding.UTF8.GetBytes("original"));
+        File.AppendAllText(source.Path, "changed");
+        Assert.Throws<InvalidDataException>(() => AkronSnapshotBundle.Write(files.Bundle, new[] { source }));
+        Assert.False(File.Exists(files.Bundle));
+        Assert.Empty(Directory.GetDirectories(files.DirectoryPath));
+    }
+
+    [Fact]
+    public void CancellationPreservesAnExistingDestination() {
+        using var files = new BundleFiles();
+        AkronSnapshotBundle.Source source = files.Source(1, Encoding.UTF8.GetBytes("original"));
+        File.WriteAllText(files.Bundle, "previous export");
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        Assert.Throws<OperationCanceledException>(() => AkronSnapshotBundle.Write(files.Bundle, new[] { source }, cancellation.Token));
+        Assert.Equal("previous export", File.ReadAllText(files.Bundle));
+        Assert.Empty(Directory.GetDirectories(files.DirectoryPath));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RejectsTrailingAndTruncatedBrotli(bool trailing) {
+        using var files = new BundleFiles();
+        AkronSnapshotBundle.Write(files.Bundle, new[] { files.Source(1, Encoding.UTF8.GetBytes("snapshot")) });
+        byte[] valid = File.ReadAllBytes(files.Bundle);
+        byte[] invalid = new byte[valid.Length + (trailing ? 1 : -1)];
+        Array.Copy(valid, invalid, Math.Min(valid.Length, invalid.Length));
+        using var stream = new MemoryStream(invalid);
+        Action read = () => AkronSnapshotBundle.Read(stream, (_, document) => document.CopyTo(Stream.Null));
+        if (trailing) Assert.Throws<InvalidDataException>(read);
+        else Assert.Throws<EndOfStreamException>(read);
+    }
+
+    [Fact]
+    public void RejectsAConsumerThatLeavesDocumentBytesUnread() {
+        using var files = new BundleFiles();
+        AkronSnapshotBundle.Write(files.Bundle, new[] { files.Source(1, Encoding.UTF8.GetBytes("snapshot")) });
+        using var stream = File.OpenRead(files.Bundle);
+        Assert.Throws<InvalidDataException>(() => AkronSnapshotBundle.Read(stream, (_, _) => { }));
+    }
+
+    [Theory]
+    [InlineData(4097, 0, 0)]
+    [InlineData(0, 100, 0)]
+    [InlineData(0, 1, 100)]
+    public void RejectsOutOfRangeBundleHeaders(int dictionaryCount, int documents, int slot) {
+        using var raw = new MemoryStream();
+        using (var writer = new BinaryWriter(raw, Encoding.UTF8, leaveOpen: true)) {
+            writer.Write(Encoding.ASCII.GetBytes("AKRSB001"));
+            writer.Write(dictionaryCount);
+            writer.Write(documents);
+            writer.Write(slot);
+        }
+        using MemoryStream encoded = LiteralBundle(raw.ToArray());
+        Assert.Throws<InvalidDataException>(() => AkronSnapshotBundle.Read(encoded, (_, document) => document.CopyTo(Stream.Null)));
+    }
+
+    [Fact]
+    public void ReadsAnIndependentlyConstructedDictionaryReference() {
+        using var raw = new MemoryStream();
+        using (var writer = new BinaryWriter(raw, Encoding.UTF8, leaveOpen: true)) {
+            writer.Write(Encoding.ASCII.GetBytes("AKRSB001"));
+            writer.Write(1); writer.Write(3); writer.Write(Encoding.ASCII.GetBytes("abc"));
+            writer.Write(1); writer.Write(7); writer.Write(6);
+            writer.Write((byte)1); writer.Write(0);
+            writer.Write((byte)0); writer.Write(3); writer.Write(Encoding.ASCII.GetBytes("def"));
+        }
+        using MemoryStream encoded = LiteralBundle(raw.ToArray());
+        AkronSnapshotBundle.Read(encoded, (slot, document) => {
+            Assert.Equal(7, slot);
+            using var restored = new StreamReader(document, leaveOpen: true);
+            Assert.Equal("abcdef", restored.ReadToEnd());
+        });
+    }
+
+    private static MemoryStream LiteralBundle(byte[] raw) {
+        var encoded = new MemoryStream();
+        using (var brotli = new BrotliStream(encoded, CompressionLevel.Fastest, leaveOpen: true))
+        using (var writer = new BinaryWriter(brotli)) {
+            writer.Write((byte)0); writer.Write(raw.Length); writer.Write(raw);
+        }
+        encoded.Position = 0;
+        return encoded;
+    }
+
+    private sealed class BundleFiles : IDisposable {
+        internal string DirectoryPath { get; } = Path.Combine(Path.GetTempPath(), "akron-bundle-" + Guid.NewGuid().ToString("N"));
+        internal string Bundle => Path.Combine(DirectoryPath, "bundle.br");
+        internal BundleFiles() => Directory.CreateDirectory(DirectoryPath);
+        internal AkronSnapshotBundle.Source Source(int slot, byte[] bytes) {
+            string path = Path.Combine(DirectoryPath, slot + ".json.gz");
+            using (var file = File.Create(path))
+            using (var gzip = new GZipStream(file, CompressionLevel.Fastest)) gzip.Write(bytes);
+            using var source = File.OpenRead(path);
+            return new AkronSnapshotBundle.Source(slot, path, Convert.ToHexString(SHA256.HashData(source)));
+        }
+        public void Dispose() => Directory.Delete(DirectoryPath, recursive: true);
+    }
+}
