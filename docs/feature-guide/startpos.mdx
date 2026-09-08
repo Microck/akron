@@ -23,6 +23,18 @@ captured frame. Akron stores this state in a local v10 snapshot file so it
 survives closing and restarting Celeste. Set and Load hold the room state until
 Celeste renders the restored frame.
 
+An ordinary Load keeps the captured player animation and frame. Explicit spawn
+options can change that pose; Load does not otherwise recalculate it.
+
+Captured coroutine state includes removed components still held by a running
+routine, such as a CrushBlock's sound after its delayed removal. Those
+components restore as detached objects, without adding them back to the room.
+
+A successful first Load prepares the other slots in the active chapter within
+the machine's memory budget. Later Loads reuse those room states. Restoring
+the saved render-buffer pixels must not add a GPU readback to each Load;
+pixel comparisons belong in the QA capture checks.
+
 When **Wait for input after load** is enabled, Akron keeps gameplay paused after
 the restored frame until a fresh gameplay input arrives. Controls held before
 the Load do not release the pause. Backdrops and respawn wipes keep moving while

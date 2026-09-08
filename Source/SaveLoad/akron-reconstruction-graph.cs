@@ -612,12 +612,10 @@ internal static class AkronGameplayBufferState {
                 // Gameplay buffers are derived presentation state. A camera or graphics
                 // mod can resize them after Set, so an incompatible buffer must not turn
                 // an otherwise valid StartPos into a half-applied failed restore.
+                // SetData writes the validated pixel payload. Reading it straight
+                // back stalls the GPU on every warm Load; compare pixels in QA.
                 if (!Adapter.RestoreExisting(snapshot.Payload, renderTarget)) {
                     LogSkippedBuffer(field.Name, "current render target dimensions differ");
-                    continue;
-                }
-                if (!Adapter.Verify(snapshot.Payload, renderTarget)) {
-                    LogSkippedBuffer(field.Name, "restored pixels differ");
                 }
             } catch (Exception exception) {
                 LogSkippedBuffer(field.Name, exception.GetType().Name + ": " + exception.Message);
@@ -5259,15 +5257,18 @@ internal sealed class AkronReconstructionGraph {
                 return false;
             }
 
-            // Component.RemoveSelf leaves Component.Entity intact. CrushBlock relies on
-            // that while its authenticated attack iterator's delayed-removal closure
-            // keeps the old SoundSource alive. The two independent back-references must
-            // name the same entity, so a closure cannot adopt another entity's component.
+            // A routine can retain a component after Component.Removed clears Entity.
+            // The proved iterator and its declared closure local still own that detached
+            // object. An attached component must belong to the iterator's entity instead.
             AkronReconstructionValue iteratorOwner = FindReferenceField(iteratorNode, "<>4__this");
-            AkronReconstructionValue componentOwner = FindReferenceField(node, "<Entity>k__BackingField");
+            AkronReconstructionValue componentOwner = node.FieldsOrNull?
+                .FirstOrDefault(field => field.Name == "<Entity>k__BackingField" &&
+                                         field.DeclaringTypeName == typeof(Component).AssemblyQualifiedName)?.Value;
             return iteratorOwner != null &&
                    componentOwner != null &&
-                   iteratorOwner.NodeId == componentOwner.NodeId;
+                   (componentOwner.Kind == NullValueKind ||
+                    (componentOwner.Kind == ReferenceValueKind &&
+                     iteratorOwner.NodeId == componentOwner.NodeId));
         }
 
         // Everest wraps every coroutine frame in SwapImmediatelyExtension's
@@ -5758,7 +5759,9 @@ internal sealed class AkronReconstructionGraph {
                 (target.ParentKind == "field" || target.ParentKind == "array");
             bool reconstructedOwnedComponentAlias =
                 authenticatedOwnedComponent &&
-                IsAuthenticatedOwnedComponentAlias(target, edgeParent);
+                (IsAuthenticatedOwnedComponentAlias(target, edgeParent) ||
+                 (savedOwnerEdge && target.ParentNodeId == edgeParent.Id &&
+                  IsAuthenticatedIteratorClosureOwnedComponent(target, targetType)));
             bool reconstructedOwnedComponentOwnerEdge =
                 authenticatedEdgeParentOwnedComponent &&
                 edgeField?.Name == "<Entity>k__BackingField" &&

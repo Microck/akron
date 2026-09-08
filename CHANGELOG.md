@@ -6,6 +6,12 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Fixed
+
+- Restore StartPos snapshots whose running CrushBlock routine still holds a removed sound component, including when preparing other slots for instant loads.
+- Keep the captured animation and frame when loading an ordinary StartPos, instead of recalculating the player's pose.
+- Avoid a GPU readback stall when restoring StartPos render buffers, reducing repeated-load delays.
+
 ## Akron Beta 79
 
 ### Fixed

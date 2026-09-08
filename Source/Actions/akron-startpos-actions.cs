@@ -752,8 +752,8 @@ public static partial class AkronActions {
     }
 
     private static void RefreshStartPosPlayerPose(Player player, bool clearMovementInput) {
-        // Placement and an old persisted slot can both change collision context without
-        // running Player.Update. Refresh the derived ground input, then let Celeste
+        // Spawn configuration can change collision context without running
+        // Player.Update. Refresh the derived ground input, then let Celeste
         // choose edge, edgeBack, dangling, falling, or the ordinary idle pose before
         // the restored room renders its first frame.
         player.onGround = player.OnGround();
@@ -1330,15 +1330,13 @@ public static partial class AkronActions {
         if (restored == AkronSaveLoadResult.Success) {
             Level restoredLevel = Engine.Scene as Level ?? currentLevel;
             if (restoredLevel.Tracker.GetEntity<Player>() is Player player) {
-                // Position is part of every StartPos entry, so it remains the load-boundary
-                // contract even for snapshots written before placement pose refresh existed.
-                // Spawn configuration is metadata too: applying it after every cold or warm
-                // restore prevents a stale saved animation from reaching the first render.
+                // Explicit spawn options can change the captured pose. An ordinary
+                // snapshot already holds its exact animation and frame, so running
+                // UpdateSprite again would change the state the player saved.
                 if (startPos.UsesSpawnConfig) {
                     ApplyStartPosPlayerConfiguration(restoredLevel, player, startPos);
                 } else {
                     player.Position = ClampToRoom(restoredLevel, startPos.Position);
-                    RefreshStartPosPlayerPose(player, clearMovementInput: false);
                 }
             }
             ReportStartPosRestoreTiming(restoreTimer.Elapsed, usedSnapshot, prewarmHitsBeforeLoad);
