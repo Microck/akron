@@ -5789,9 +5789,18 @@ public sealed class StartPosReconstructionTests {
         Assert.Single(GetRuntimeField<Stack<IEnumerator>>(freshOwner.Routine!, "enumerators"));
     }
 
-    [Fact]
-    public void IteratorClosureCanRetainARuntimeComponentOwnedByTheSameEntity() {
-        (SavedSceneRoot saved, _) = CreateClosureRoutineScene(midFlight: true, withOwnedComponent: true);
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void IteratorClosureCanRetainARuntimeComponentOwnedByTheSameEntity(bool removed) {
+        (SavedSceneRoot saved, ClosureRoutineEntity owner) = CreateClosureRoutineScene(midFlight: true, withOwnedComponent: true);
+        if (removed) {
+            IEnumerator running = GetRuntimeField<Stack<IEnumerator>>(owner.Routine!, "enumerators").Peek();
+            object capturedClosure = GetRuntimeField<object>(running, "<>8__1");
+            OwnedTestComponent capturedComponent = GetRuntimeField<OwnedTestComponent>(capturedClosure, "component");
+            // Component.Removed clears Entity while the iterator retains its local.
+            SetRuntimeField(capturedComponent, "<Entity>k__BackingField", null);
+        }
         (SavedSceneRoot baseline, _) = CreateClosureRoutineScene(midFlight: false, withOwnedComponent: true);
         AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
         AkronReconstructionCapture capture = graph.Capture(saved, baseline);
@@ -5810,7 +5819,56 @@ public sealed class StartPosReconstructionTests {
             "enumerators").Peek();
         object closure = GetRuntimeField<object>(iterator, "<>8__1");
         OwnedTestComponent component = GetRuntimeField<OwnedTestComponent>(closure, "component");
-        Assert.Same(freshOwner, GetRuntimeField<Entity>(component, "<Entity>k__BackingField"));
+        Assert.Same(removed ? null : freshOwner, GetRuntimeField<Entity>(component, "<Entity>k__BackingField"));
+    }
+
+    [Fact]
+    public void CrushBlockAttackRestoresItsRemovedSoundSource() {
+        SavedSceneRoot saved = CreateCrushBlockRoutineScene(midFlight: true);
+        SavedSceneRoot baseline = CreateCrushBlockRoutineScene(midFlight: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionNode soundNode = Assert.Single(capture.Document.Nodes, node =>
+            node.TypeName == typeof(SoundSource).AssemblyQualifiedName);
+        Assert.Contains("<>8__1.sfx", soundNode.Path);
+
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        AkronReconstructionRestore restore = graph.Restore(document, CreateCrushBlockRoutineScene(midFlight: false));
+
+        Assert.True(restore.Success, restore.Error);
+        SoundSource sound = Assert.IsType<SoundSource>(restore.Objects[soundNode.Id]);
+        Assert.Null(GetRuntimeField<Entity>(sound, "<Entity>k__BackingField"));
+    }
+
+    private static SavedSceneRoot CreateCrushBlockRoutineScene(bool midFlight) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        CrushBlock owner = CreateUninitializedEntity<CrushBlock>();
+        ComponentList components = CreateDetachedComponentList(owner);
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("b-00b", 9));
+        Coroutine routine = (Coroutine) RuntimeHelpers.GetUninitializedObject(typeof(Coroutine));
+        SetRuntimeField(routine, "<Entity>k__BackingField", owner);
+        Stack<IEnumerator> iterators = new Stack<IEnumerator>();
+        if (midFlight) {
+            // Use Celeste's actual iterator, hoisted closure and SoundSource types.
+            // Only the stopped sound remains; the delayed alarm already removed it.
+            MethodInfo attack = typeof(CrushBlock).GetMethod("AttackSequence", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Type iteratorType = attack.GetCustomAttribute<IteratorStateMachineAttribute>()!.StateMachineType;
+            object iterator = RuntimeHelpers.GetUninitializedObject(iteratorType);
+            FieldInfo closureField = iteratorType.GetField("<>8__1", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
+            object closure = RuntimeHelpers.GetUninitializedObject(closureField.FieldType);
+            SetRuntimeField(iterator, "<>4__this", owner);
+            closureField.SetValue(iterator, closure);
+            SetRuntimeField(closure, "sfx", RuntimeHelpers.GetUninitializedObject(typeof(SoundSource)));
+            iterators.Push((IEnumerator) iterator);
+        }
+        SetRuntimeField(routine, "enumerators", iterators);
+        SetRuntimeField(components, "components", new List<Component> { routine });
+        SetRuntimeField(components, "current", new HashSet<Component> { routine });
+        AddDetachedEntity(entities, owner);
+        return new SavedSceneRoot { Scene = scene, Entities = entities };
     }
 
     // The containment side of the closure-lambda licence: a document that moves

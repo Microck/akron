@@ -817,6 +817,8 @@ public static partial class AkronCommands {
         Log(prefix + "-position: " + FormatVector(player.Position));
         Log(prefix + "-speed: " + FormatVector(player.Speed));
         Log(prefix + "-facing: " + player.Facing);
+        Log(prefix + "-animation: " + player.Sprite.CurrentAnimationID);
+        Log(prefix + "-animation-frame: " + player.Sprite.CurrentAnimationFrame.ToString(CultureInfo.InvariantCulture));
         Log(prefix + "-state: " + player.StateMachine.State.ToString(CultureInfo.InvariantCulture));
         Log(prefix + "-stamina: " + player.Stamina.ToString("0.##", CultureInfo.InvariantCulture));
         Log(prefix + "-dashes: " + player.Dashes.ToString(CultureInfo.InvariantCulture));
@@ -833,6 +835,8 @@ public static partial class AkronCommands {
         AkronAutomationService.RecordOutput(prefix + "-position: " + FormatVector(player.Position));
         AkronAutomationService.RecordOutput(prefix + "-speed: " + FormatVector(player.Speed));
         AkronAutomationService.RecordOutput(prefix + "-facing: " + player.Facing);
+        AkronAutomationService.RecordOutput(prefix + "-animation: " + player.Sprite.CurrentAnimationID);
+        AkronAutomationService.RecordOutput(prefix + "-animation-frame: " + player.Sprite.CurrentAnimationFrame.ToString(CultureInfo.InvariantCulture));
         AkronAutomationService.RecordOutput(prefix + "-state: " + player.StateMachine.State.ToString(CultureInfo.InvariantCulture));
         AkronAutomationService.RecordOutput(prefix + "-stamina: " + player.Stamina.ToString("0.##", CultureInfo.InvariantCulture));
         AkronAutomationService.RecordOutput(prefix + "-dashes: " + player.Dashes.ToString(CultureInfo.InvariantCulture));

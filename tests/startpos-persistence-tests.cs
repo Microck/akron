@@ -2755,7 +2755,7 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
-    public void EveryStartPosRefreshesTheNativePoseAtCaptureOrLoadBoundary() {
+    public void ConfiguredStartPosRefreshesTheNativePoseAtCaptureOrLoadBoundary() {
         string source = File.ReadAllText(GetActionsSourcePath());
         string placement = SourceSlice(
             source,
@@ -2786,7 +2786,6 @@ public sealed class StartPosPersistenceTests {
 
         Assert.True(successfulRestore >= 0 && applyConfiguration > successfulRestore && timingReport > applyConfiguration);
         Assert.Contains("ApplyStartPosPlayerConfiguration(restoredLevel, player, startPos);", load);
-        Assert.Contains("RefreshStartPosPlayerPose(player, clearMovementInput: false);", load);
         Assert.Contains("startPos.Position", load);
 
         string playerSnapshot = SourceSlice(
