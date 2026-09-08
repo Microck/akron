@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 80
+
 ### Fixed
 
 - Restore StartPos snapshots whose running CrushBlock routine still holds a removed sound component, including when preparing other slots for instant loads.
