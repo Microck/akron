@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 81
+
 ### Changed
 
 - Move setup packs to `akron-setup-v10`, with shared, lossless Brotli compression for exact StartPos snapshots. Export older packs again.
