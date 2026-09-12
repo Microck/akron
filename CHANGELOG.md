@@ -26,6 +26,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 - Restart the bulk sweep after SSH recovery, reject stale startup logs, and keep failed or blocked maps in its aggregate results, including unreported sides after a timeout.
 - Preserve quotes, backslashes, and line breaks in automation arguments and room-warp acknowledgements. Quoted command-file arguments now use JSON string escaping.
 - Reject setup packs whose snapshot documents expand beyond 1 GiB in total, on both export and import.
+- Refuse heavily fragmented snapshot bundles before tiny commands or frames can stall setup import.
 
 ## Akron Beta 80
 

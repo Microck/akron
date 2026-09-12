@@ -16,6 +16,8 @@ namespace Celeste.Mod.Akron;
 internal static class AkronSnapshotBundle {
     internal const string EntryName = "startpos/snapshots.bin.br";
     internal const int BlockBytes = 65536;
+    private const int MinChunkBytes = 4096;
+    private const int MinPackedRunBytes = 128;
     internal const int MaxDictionaryBytes = 16 * 1024 * 1024;
     internal const int MaxDocumentBytes = 384 * 1024 * 1024;
     internal const long MaxPackDocumentBytes = 1024L * 1024 * 1024;
@@ -234,7 +236,7 @@ internal static class AkronSnapshotBundle {
             previous = 0;
             while (previous < available) {
                 hash = unchecked((hash << 1) + Gear[buffer[previous++]]);
-                if (previous >= 4096 && ((hash & 16383) == 0 || previous == BlockBytes)) break;
+                if (previous >= MinChunkBytes && ((hash & 16383) == 0 || previous == BlockBytes)) break;
             }
             return previous;
         }
@@ -337,7 +339,7 @@ internal static class AkronSnapshotBundle {
             if (literalCount == literal.Length) FlushLiteral();
         }
         private void FlushRun() {
-            int packed = runCount >= 128 ? runCount / 4 * 4 : 0;
+            int packed = runCount >= MinPackedRunBytes ? runCount / 4 * 4 : 0;
             if (packed > 0) {
                 FlushLiteral();
                 Base64.DecodeFromUtf8(run.AsSpan(0, packed), binary, out _, out int produced);
@@ -365,6 +367,7 @@ internal static class AkronSnapshotBundle {
         private readonly byte[] binary = new byte[BlockBytes * 3 / 4];
         private int offset;
         private int available;
+        private int frameWorkBudget = BlockBytes;
         public override bool CanRead => true;
         public override int Read(Span<byte> bytes) {
             if (bytes.IsEmpty) return 0;
@@ -376,8 +379,15 @@ internal static class AkronSnapshotBundle {
                 uint length = BinaryPrimitives.ReadUInt32LittleEndian(header);
                 if (length == 0 || length > BlockBytes || tag is not (0 or 1))
                     throw new InvalidDataException("Invalid snapshot frame.");
+                if (tag == 1 && (length > binary.Length || length % 3 != 0))
+                    throw new InvalidDataException("Invalid base64 frame.");
+                int decodedLength = (int)(tag == 1 ? length / 3 * 4 : length);
+                // A packed run pays for its preceding short literal frame. Cap credit
+                // so earlier large frames cannot fund an unbounded run of tiny frames.
+                frameWorkBudget = Math.Min(BlockBytes, frameWorkBudget + decodedLength - MinPackedRunBytes / 2);
+                if (frameWorkBudget < 0)
+                    throw new InvalidDataException("Snapshot bundle uses too many small frames. Export the pack again.");
                 if (tag == 1) {
-                    if (length > binary.Length || length % 3 != 0) throw new InvalidDataException("Invalid base64 frame.");
                     source.ReadExactly(binary.AsSpan(0, (int)length));
                     Base64.EncodeToUtf8(binary.AsSpan(0, (int)length), buffer, out _, out available);
                 } else {
@@ -398,11 +408,17 @@ internal static class AkronSnapshotBundle {
         private byte[] reference;
         private int commandRemaining;
         private int referenceOffset;
+        // Writer chunks reach MinChunkBytes except at EOF; allow 1,024 extra
+        // commands for small independently assembled documents.
+        private readonly int maxCommands = 1024 + (length + MinChunkBytes - 1) / MinChunkBytes;
+        private int commandsRead;
         internal int Remaining { get; private set; } = length;
         public override bool CanRead => true;
         public override int Read(Span<byte> bytes) {
             if (bytes.IsEmpty || Remaining == 0) return 0;
             if (commandRemaining == 0) {
+                if (++commandsRead > maxCommands)
+                    throw new InvalidDataException("Snapshot bundle uses too many data commands. Export the pack again.");
                 int tag = reader.ReadByte();
                 if (tag == 0) {
                     commandRemaining = ReadNumber(reader, 1, BlockBytes);

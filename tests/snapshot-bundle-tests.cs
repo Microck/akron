@@ -162,6 +162,65 @@ public sealed class SnapshotBundleTests {
         Assert.Equal(1024L * 1024 * 1024, consumed);
     }
 
+    [Fact]
+    public void RejectsExcessiveOneByteCommands() {
+        const int length = 2048;
+        using var raw = new MemoryStream();
+        using (var writer = new BinaryWriter(raw, Encoding.UTF8, leaveOpen: true)) {
+            writer.Write(Encoding.ASCII.GetBytes("AKRSB001"));
+            writer.Write(0); writer.Write(1); writer.Write(1); writer.Write(length);
+            for (int index = 0; index < length; index++) {
+                writer.Write((byte)0); writer.Write(1); writer.Write((byte)0);
+            }
+        }
+        using MemoryStream encoded = LiteralBundle(raw.ToArray());
+        Assert.Throws<InvalidDataException>(() => AkronSnapshotBundle.Read(encoded,
+            (_, document) => document.CopyTo(Stream.Null)));
+    }
+
+    [Fact]
+    public void RejectsTinyFrameBurstAfterAFullFrame() {
+        const int tailBytes = 2000;
+        int length = AkronSnapshotBundle.BlockBytes + tailBytes;
+        using var raw = new MemoryStream();
+        using (var writer = new BinaryWriter(raw, Encoding.UTF8, leaveOpen: true)) {
+            writer.Write(Encoding.ASCII.GetBytes("AKRSB001"));
+            writer.Write(0); writer.Write(1); writer.Write(1); writer.Write(length);
+            writer.Write((byte)0); writer.Write(AkronSnapshotBundle.BlockBytes);
+            writer.Write(new byte[AkronSnapshotBundle.BlockBytes]);
+            writer.Write((byte)0); writer.Write(tailBytes); writer.Write(new byte[tailBytes]);
+        }
+        byte[] bytes = raw.ToArray();
+        using var encoded = new MemoryStream();
+        using (var brotli = new BrotliStream(encoded, CompressionLevel.SmallestSize, leaveOpen: true))
+        using (var writer = new BinaryWriter(brotli)) {
+            writer.Write((byte)0); writer.Write(AkronSnapshotBundle.BlockBytes);
+            writer.Write(bytes, 0, AkronSnapshotBundle.BlockBytes);
+            for (int index = AkronSnapshotBundle.BlockBytes; index < bytes.Length; index++) {
+                writer.Write((byte)0); writer.Write(1); writer.Write(bytes[index]);
+            }
+        }
+        encoded.Position = 0;
+        Assert.Throws<InvalidDataException>(() => AkronSnapshotBundle.Read(encoded,
+            (_, document) => document.CopyTo(Stream.Null)));
+    }
+
+    [Fact]
+    public void WriterRoundTripsMinimumPackedRunsAndTinyLiteralSeparators() {
+        using var files = new BundleFiles();
+        byte[] expected = new byte[129 * 2048];
+        var random = new Random(912);
+        for (int index = 0; index < expected.Length; index++)
+            expected[index] = index % 129 == 128 ? (byte)0 : (byte)random.Next('A', 'Z' + 1);
+        AkronSnapshotBundle.Write(files.Bundle, new[] { files.Source(1, expected) });
+        using var encoded = File.OpenRead(files.Bundle);
+        AkronSnapshotBundle.Read(encoded, (_, document) => {
+            using var restored = new MemoryStream();
+            document.CopyTo(restored);
+            Assert.Equal(expected, restored.ToArray());
+        });
+    }
+
     private static MemoryStream LiteralBundle(byte[] raw) {
         var encoded = new MemoryStream();
         using (var brotli = new BrotliStream(encoded, CompressionLevel.Fastest, leaveOpen: true))

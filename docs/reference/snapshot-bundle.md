@@ -20,6 +20,12 @@ unsigned 32-bit payload length:
 - Tag 1: 3 through 49,152 binary bytes, with length divisible by three. Expand
   them to standard, unpadded ASCII base64 and append those bytes.
 
+Frame parsing starts with 65,536 units of fragmentation credit. Before reading
+each payload, update `credit = min(65536, credit + decodedFrameBytes - 64)`;
+reject the frame if the result is negative. For tag 1, `decodedFrameBytes` is
+four thirds of the binary payload length. The credit cap prevents large
+earlier frames from funding an arbitrarily long burst of tiny frames.
+
 The resulting byte stream has this structure. All integers are unsigned 32-bit
 little-endian values:
 
@@ -37,10 +43,13 @@ little-endian values:
 A document command starts with one byte. Tag 0 is followed by a literal length
 and 1 through 65,536 literal bytes. Tag 1 is followed by a zero-based dictionary
 index. Neither command may exceed the document's remaining length.
+Each document permits at most `1024 + ceil(originalByteLength / 4096)`
+commands. Together with the frame-credit limit, this bounds parsing work
+even when the compressed entry and reconstructed documents are small.
 
 ## Encoder policy
 
-The decoder contract does not depend on how the encoder selects chunks. The
+The decoder does not require the encoder's chunk boundaries. Akron's
 encoder uses content-defined chunks with a 4 KiB minimum, 16 KiB target, and
 64 KiB maximum. It keeps at most 65,536 discovery records and spools at most
 128 MiB of candidate bytes. The dictionary itself remains capped at 16 MiB.
@@ -54,6 +63,7 @@ paths. Input gzip checksums and raw document checksums detect source changes
 between capture and encoding. Cancellation removes temporary files.
 
 The base64 transform recognizes runs of the standard ASCII base64 alphabet.
+A run is packed only after it reaches 128 bytes.
 It converts only complete four-character groups, leaving padding, short tails,
 quotes, escapes, and all other bytes literal. Thus it is reversible for arbitrary
 input bytes and does not depend on JSON string semantics.

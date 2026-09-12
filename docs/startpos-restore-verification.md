@@ -273,7 +273,7 @@ complete failure with unavailable-side skips, incomplete success, a requested
 subset, and failed prelaunch. Complete results do not gain artificial blocked
 rows, and a retry replaces stale rows without removing another map's results.
 
-The final transport review found that command-file quoting could lose embedded
+A command-transport review found that command-file quoting could lose embedded
 quotes or turn room-name line breaks into command boundaries. A probe against
 the pre-fix Akron assembly reproduced the loss; the same probe passed after
 the parser change. Quoted automation arguments now use JSON string escaping,
@@ -293,3 +293,16 @@ without generating bytecode.
 These transport checks are headless, not a new live map sweep. Run the updated
 harness with the updated Akron build: quoted command-file arguments and the
 warp acknowledgement use the new documented grammar.
+
+The next bundle review found that document-size limits did not bound command
+and frame overhead. Two independent bundles with 2 KiB documents, one using
+one-byte commands and the other one-byte frames, were accepted by the old
+compiled reader. The same probe now rejects both through `InvalidDataException`.
+The reader caps command count per document and uses a capped, rolling
+fragmentation allowance for frames.
+
+All 1,986 Release tests passed against the pinned CI references, with zero
+failures or skips. The bundle suite retains regressions for excessive commands,
+a tiny-frame burst after a full frame, and writer round trips containing
+minimum-length packed runs separated by tiny literal frames. These checks
+exercise the compiled codec headlessly, not the running game.
