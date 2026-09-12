@@ -47,6 +47,8 @@ Akron exposes developer-facing console commands through Everest's debug console 
 | `akron_perf <status\|reset\|record [label]\|stop\|gcevents <on\|off>>` | Developer performance telemetry: overlay/render diagnostics, frame-time and GC attribution, and the JSONL perf record the `scripts/akron-perf` harness drives. `gcevents` controls the runtime GC event subscription used while recording. |
 | `akron_feature <name> [on\|off\|toggle\|status]` | Low-level wrapper over many toggles. Document the concrete overlay row first. |
 | `akron_qa_*`, `akron_player_state`, `akron_input_state` | QA state setup and telemetry for live verification. |
+| `akron_qa_list_rooms [offset] [limit]` | Page exact room names from the loaded map, with JSON string output and a continuation offset. |
+| `akron_qa_warp_room <room-name>` | Schedule a warp within the loaded map using the exact, untrimmed room name. |
 | `akron_qa_messages [count]` | Report the most recent Akron messages raised for the player, newest last. `count` defaults to 5 and must be positive. Output includes `qa-messages-raised`, `qa-messages-reported`, and one `qa-message` line per returned message. |
 | `akron_position <x> <y>` | Command-only position setter for controlled map debugging. StartPos and room-warp UI flows are the player-facing paths. |
 | `akron_debug_snapshot [tag]` | Diagnostic JSON artifact for bug reports and automation. |
@@ -56,6 +58,29 @@ Akron exposes developer-facing console commands through Everest's debug console 
 | `akron_play_tas` | Run the configured TAS handoff action for automation. |
 | `akron_prompt_state`, `akron_prompt_select` | Prompt automation for tests and live verification. |
 | `akron_broker_warnings <on\|off\|status>` | Show or set Speedrun Tool broker warning behavior. |
+
+### Room inventory and warping
+
+Both commands require a loaded level.
+
+`akron_qa_list_rooms [offset] [limit]` defaults to offset `0` and limit `100`.
+The offset must be a nonnegative integer; the limit must be an integer from
+`1` through `100`. Invalid arguments print the command's usage without listing
+rooms. The offset is a zero-based index into the map's room entries. Null and
+dummy entries are skipped, so a page can emit fewer names than its limit.
+
+Each room is reported as `qa-map-room: <JSON string>`. Decode that JSON string
+to recover the exact name, including whitespace and escaped characters. Every
+page ends with `qa-map-rooms-next: <offset>`: pass that offset to the next call,
+or stop at `-1`. An offset at or beyond the end returns no names and `-1`.
+Do not infer completion from an empty page alone.
+
+`akron_qa_warp_room <room-name>` looks up the supplied name without trimming
+it. Use the decoded inventory name exactly. Empty input reports
+`qa-warp-room: missing room`; an unknown name reports
+`qa-warp-room: not-found room=<name>`. A valid name schedules the warp for the
+end of the frame and reports `qa-warp-room: room=<name>`. That line acknowledges
+the request; it does not prove the room has finished loading.
 
 ## Extended gameplay commands
 
