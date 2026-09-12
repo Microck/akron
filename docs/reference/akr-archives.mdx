@@ -164,7 +164,8 @@ manifest `createdAt` value.
 The setup payload size limit is 2 MiB.
 
 The compressed bundle is limited to 509 MiB, leaving room under the 512 MiB
-community-download limit. Each expanded v11 snapshot is limited to 384 MiB.
+community-download limit. Each expanded v11 snapshot is limited to 384 MiB,
+and all expanded snapshot documents together are limited to 1 GiB.
 Export accepts local gzip sources up to 128 MiB each and 509 MiB in total.
 A `StartPos` or `Whole` archive can contain at most 99 StartPos entries.
 Each slot key must be in the range 1-99.
@@ -276,7 +277,7 @@ flowchart TD
   payloadCheck -->|Yes| apply["Apply section"]
 ```
 
-Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats. Setup packs created before `akron-setup-v10` cannot be imported. Export a new pack with the current build. Current v10 local StartPos saves do not need to be recreated.
+Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats. Setup packs created before `akron-setup-v10` cannot be imported. Export a new pack with the current build. Current v11 local StartPos saves do not need to be recreated.
 
 Akron verifies the compressed bundle hash and each document\'s checksum, map,
 and room before applying the setup. It then binds the snapshot to the recipient's

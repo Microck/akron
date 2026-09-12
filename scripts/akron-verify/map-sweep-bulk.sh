@@ -106,6 +106,7 @@ stop_game() {
 }
 
 launch_game() {
+  ssh_up || return 1
   if [ "$WINDOWS" = "1" ]; then
     rsh "schtasks /run /tn \"${WINDOWS_TASK}\"" >/dev/null 2>&1 || return 1
     local i
@@ -122,18 +123,18 @@ launch_game() {
     echo "Windows scheduled task did not start Celeste" >&2
     return 1
   fi
-  local launch_cmd="cd ${LAUNCH_DIR} && setsid env \
+  local launch_cmd="cd '${LAUNCH_DIR}' && touch /tmp/akron-bulk.marker && { setsid env \
       AKRON_AUTOMATION_ENABLED=1 AKRON_AUTOMATION_SESSION_TOKEN='${TOKEN}' \
       DISPLAY=:0 XAUTHORITY=/home/${USER_NAME}/.Xauthority \
       XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
       PATH=/home/${USER_NAME}/.local/bin:/usr/local/bin:/usr/bin:/bin \
-      nohup ./start.n-w.sh >/tmp/akron-bulk-launch.log 2>&1 </dev/null & echo launched"
+      nohup ./start.n-w.sh >/tmp/akron-bulk-launch.log 2>&1 </dev/null & echo launched; }"
   if [ -n "${SSHPASS:-}" ]; then
     timeout 45 sshpass -e ssh "${SSH_HOST_KEY_OPTIONS[@]}" "${USER_NAME}@${HOST}" \
-      "$launch_cmd" >/dev/null 2>&1 || true
+      "$launch_cmd" >/dev/null 2>&1 || return 1
   else
     timeout 45 ssh "${SSH_HOST_KEY_OPTIONS[@]}" "${USER_NAME}@${HOST}" \
-      "$launch_cmd" >/dev/null 2>&1 || true
+      "$launch_cmd" >/dev/null 2>&1 || return 1
   fi
   local i
   # Commands are only processed once Everest finishes loading and the module
@@ -184,6 +185,16 @@ wait_ssh() {
     echo "ssh still down (try $i); sleeping 30s" >&2
     sleep 30
   done
+}
+
+capture_game_log() {
+  if [ "$WINDOWS" = "1" ]; then
+    rsh "powershell -NoProfile -Command \"Get-Content -LiteralPath '${GAME_ROOT}/log.txt' -Tail 200\"" \
+      > "$1" 2>/dev/null || true
+  else
+    rsh "tail -c 8000 '${GAME_ROOT}/log.txt' 2>/dev/null" \
+      > "$1" 2>/dev/null || true
+  fi
 }
 
  # Keep the sweep's recovery archive outside Saves so Akron's startup backup
@@ -242,13 +253,8 @@ wait_ssh() {
      rm -rf "$(dirname "$list_dir")"
      # A timeout can leave Celeste alive but unable to process commands.
      # Capture the log first, then recycle the process on every retry.
-    if [ "$WINDOWS" = "1" ]; then
-      rsh "powershell -NoProfile -Command \"Get-Content -LiteralPath '${GAME_ROOT}/log.txt' -Tail 200\"" \
-        > "$OUTPUT/inventory-attempt-${attempt}-game-log-tail.txt" 2>/dev/null || true
-    else
-      rsh "tail -c 8000 '${GAME_ROOT}/log.txt' 2>/dev/null" \
-        > "$OUTPUT/inventory-attempt-${attempt}-game-log-tail.txt" 2>/dev/null || true
-    fi
+    wait_ssh || return 1
+    capture_game_log "$OUTPUT/inventory-attempt-${attempt}-game-log-tail.txt"
      say "Game did not answer inventory; restarting"
      stop_game
      launch_game || continue
@@ -288,52 +294,40 @@ EOF
       continue
     fi
   fi
-  if ! game_alive; then
-    say "Game died; relaunching before $SID"
-    python3 - "$AGGREGATE" "$SID" <<'EOF'
-import json, sys
-agg, sid = sys.argv[1], sys.argv[2]
-rows = json.load(open(agg))
-rows.append({"sid": sid, "side": "all", "status": "blocked",
-             "reason": "game process was gone before this map started; relaunched"})
-json.dump(rows, open(agg, "w"), indent=2)
-EOF
-    stop_game
-    launch_game || { echo "relaunch failed; skipping $SID" >&2; continue; }
-  fi
   mkdir -p "$MAP_DIR" || exit 1
   # map-sweep.py creates its output dir itself, so give each attempt a fresh
   # numbered run directory under the map's evidence directory.
   RUN_NUM="$(find "$MAP_DIR" -maxdepth 1 -type d -name 'attempt-*' 2>/dev/null | wc -l)"
   RUN_DIR="$MAP_DIR/attempt-$RUN_NUM"
-  say "Sweeping $SID ($SIDES, rooms=$ROOMS)"
-  if "${SWEEP_ENV[@]}" timeout 1500 python3 scripts/akron-verify/map-sweep.py \
-      --exact --filter "$SID" --sides "$SIDES" --rooms "$ROOMS" --output "$RUN_DIR"; then
-    :
-  else
-    echo "WARN $SID sweep exited $?; game may have crashed" >&2
-    # The .NET fatal (SuspendThread / 0x80131506) lands in the game's log.txt,
-    # which a relaunch truncates — snapshot it before stop_game.
-    if [ "$WINDOWS" = "1" ]; then
-      rsh "powershell -NoProfile -Command \"Get-Content -LiteralPath '${GAME_ROOT}/log.txt' -Tail 200\"" \
-        > "$RUN_DIR/game-log-tail.txt" 2>/dev/null || true
+  BLOCK_REASON=""
+  SWEEP_FAILED=0
+  if ! game_alive; then
+    say "Game died; relaunching before $SID"
+    if ! wait_ssh; then
+      BLOCK_REASON="ssh stayed down before this map started"
     else
-      rsh "tail -c 8000 '${GAME_ROOT}/log.txt' 2>/dev/null" \
-        > "$RUN_DIR/game-log-tail.txt" 2>/dev/null || true
-    fi
-    if ! ssh_up; then
-      echo "WARN ssh is down after $SID; waiting for the network before continuing" >&2
-      wait_ssh || { echo "ssh stayed down; skipping $SID" >&2; continue; }
-    else
-      # A failed command can leave Celeste alive but unable to consume the
-      # next command. Recycle after every failed map, not only after a dead
-      # process, so one hung map cannot contaminate the following maps.
-      echo "WARN recycling game after failed sweep for $SID" >&2
+      capture_game_log "$MAP_DIR/attempt-${RUN_NUM}-prelaunch-game-log-tail.txt"
       stop_game
-      launch_game || { echo "relaunch failed; skipping $SID" >&2; continue; }
+      launch_game || BLOCK_REASON="game process was gone before this map started; relaunch failed"
     fi
   fi
-  python3 - "$AGGREGATE" "$RUN_DIR" "$SID" <<'EOF'
+  if [ -z "$BLOCK_REASON" ]; then
+    say "Sweeping $SID ($SIDES, rooms=$ROOMS)"
+    if "${SWEEP_ENV[@]}" timeout 1500 python3 scripts/akron-verify/map-sweep.py \
+        --exact --filter "$SID" --sides "$SIDES" --rooms "$ROOMS" --output "$RUN_DIR"; then
+      :
+    else
+      echo "WARN $SID sweep exited $?; game may have crashed" >&2
+      SWEEP_FAILED=1
+    fi
+  fi
+  # A timeout or failed prelaunch may occur before map-sweep creates its directory.
+  mkdir -p "$RUN_DIR" || exit 1
+  if [ -f "$MAP_DIR/attempt-${RUN_NUM}-prelaunch-game-log-tail.txt" ]; then
+    mv "$MAP_DIR/attempt-${RUN_NUM}-prelaunch-game-log-tail.txt" "$RUN_DIR/prelaunch-game-log-tail.txt"
+  fi
+  # Commit this attempt before any recovery can wait indefinitely or fail.
+  python3 - "$AGGREGATE" "$RUN_DIR" "$SID" "$BLOCK_REASON" <<'EOF'
 import json, os, sys, tempfile
 from pathlib import Path
 agg_path, run_dir, sid = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
@@ -343,19 +337,36 @@ agg = json.load(open(agg_path))
 # runs simply run again because not all sides are done.
 agg = [r for r in agg if r.get("sid") != sid]
 results = run_dir / "results.json"
-if results.exists():
-    for row in json.load(open(results)):
+rows = json.load(open(results)) if results.exists() else []
+if rows:
+    for row in rows:
         row["evidence"] = str(run_dir)
         agg.append(row)
 else:
     agg.append({"sid": sid, "side": "all", "status": "blocked",
-                "reason": "sweep produced no results.json (crash or timeout)",
+                "reason": sys.argv[4] or "sweep produced no results (crash or timeout)",
                 "evidence": str(run_dir)})
 fd, staged = tempfile.mkstemp(dir=str(agg_path.parent), suffix=".json")
 with os.fdopen(fd, "w") as handle:
     json.dump(agg, handle, indent=2)
 os.replace(staged, agg_path)
 EOF
+  if [ -n "$BLOCK_REASON" ]; then
+    echo "$BLOCK_REASON; stopping after $SID" >&2
+    break
+  fi
+  if [ "$SWEEP_FAILED" -eq 1 ]; then
+    if ! ssh_up; then
+      echo "WARN ssh is down after $SID; waiting for the network before continuing" >&2
+      wait_ssh || { echo "ssh stayed down; stopping after $SID" >&2; break; }
+    fi
+    # A failed command can leave Celeste alive but unable to consume the next
+    # command. Preserve its log after SSH recovers, then recycle every failure.
+    capture_game_log "$RUN_DIR/game-log-tail.txt"
+    echo "WARN recycling game after failed sweep for $SID" >&2
+    stop_game
+    launch_game || { echo "relaunch failed; stopping after $SID" >&2; break; }
+  fi
 done < "$OUTPUT/map-list.txt"
 # Aggregate summary + bugs file (record only; never fixed here).
 python3 - "$AGGREGATE" "$OUTPUT" <<'EOF'

@@ -2,7 +2,8 @@
 
 The setup v10 transport keeps each reconstruction document byte-for-byte intact.
 It does not parse and rewrite JSON numbers, strings, object order, or graph nodes.
-Local reconstruction v10 gzip saves do not change.
+Local saves use gzip with `akron-reconstruction-v11`. Recapture older StartPos
+slots, then re-export their setup packs.
 
 ## Wire contract
 
@@ -30,6 +31,7 @@ little-endian values:
 5. For each document: slot number, original byte length, then commands until
    exactly that many bytes have been reconstructed. Slots are strictly
    increasing, from 1 through 99. Each document contains 1 through 384 MiB.
+   The combined expanded length of all documents cannot exceed 1 GiB.
 6. EOF, with no additional frames or bytes.
 
 A document command starts with one byte. Tag 0 is followed by a literal length

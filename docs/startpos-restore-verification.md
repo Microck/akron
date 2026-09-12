@@ -208,10 +208,12 @@ after unfreezing, the scene remained `Level` and its screenshot showed gameplay
 without an error screen. This is a verified safe refusal, not Lua restore support.
 
 That candidate still refused Skunkynator's detached grid when the callback was
-its first captured reference. The regression now uses the real `TileInterceptor`
-callback and proves memory/disk camera identity and callback mutation of the
-correct grid. It failed before checking all exact entity-field aliases and
-passes afterward; foreign, missing, and competing owners remain refused.
+its first captured reference. The original regression used the real
+`TileInterceptor` callback and failed before checking all exact entity-field
+aliases. CI's stripped assembly removes that callback body, so the durable
+fixture uses an executable constructor closure with the same concrete
+sibling-grid ownership. It checks memory/disk camera identity and mutation of
+the correct grid; foreign, missing, and competing owners remain refused.
 The final callback-first candidate
 (`53ef1c0e746e6a1dd84e25149be0983fb6b3a87577bdfc1778cff12c6f2fe2f4`)
 passed capture, per-slot restart copies, export/import, independent cold loads,
@@ -222,8 +224,8 @@ took 3.7-5.1 seconds; four warm bodies took 23.3-27.6 ms. Forsaken City's `1` an
 without an error screen. The Release build and archive integrity check passed.
 
 The final run's command responses, map logs, screenshots, result JSON, and
-deployed checksum are retained under
-`/home/ubuntu/akron-startpos-work-20260911/live-alias-final`.
+deployed checksum are retained in the verification workspace's
+`live-alias-final` directory.
 The 1,970-test TRX is under the sibling `alias-final-tests` directory; the native
 Lua refusal and resumed frame are under `live-native-final` and
 `lua-refusal-resume`. Earlier candidate results remain separate from this run.
@@ -233,3 +235,30 @@ documented machine timed out. Its old bulk archive inside `Saves` could not
 be moved. New bulk runs create their recovery archive
 outside `Saves`; a local archive round trip confirmed repeated backups do not
 include an earlier recovery archive.
+
+PR review follow-up: all 1,972 Release tests passed with zero failures or skips
+against the exact stripped reference archive used by CI
+(`ab72454daf77701ccf8bc36e591280551795b53734c453abbf7fec4cf94fcf8e`).
+The tests no longer depend on stripped engine getters, constructors, indexers,
+or `EntityID` hashing. Camera fixtures use distinct primitive scalar state;
+the runtime identity index compares the same type, room, and numeric ID without
+calling stripped engine methods. This follow-up has headless verification,
+not a new live map sweep.
+
+The snapshot bundle now caps combined expanded documents at 1 GiB. Streaming
+tests accepted exactly that boundary and refused a fourth document before
+delivering its callback when it crossed the limit. A throwaway export probe
+also rejected repeated documents above the limit, preserved the existing
+destination, and removed its staging files.
+
+A throwaway harness exercised the real bulk-sweep control flow with command
+substitutes: SSH recovery, unrecoverable SSH, failed relaunch, failed prelaunch,
+missing and empty results, stale startup logs, and launch-time SSH failure.
+All eight scenarios passed, including result retention and restart ordering;
+the complete shell script also passed `bash -n`.
+
+The follow-up CI-mode solution build completed with zero warnings or errors.
+Package CRCs, PDB exclusion, and exact license/notice contents passed. That
+headless review package is
+`7feb6e6c83b77bafe04c75aa4da146191b65197498fd68d74feb3f948a58ec96`;
+it is not the earlier Windows-deployed archive.

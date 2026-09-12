@@ -23,6 +23,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 - Preserve readonly fields and shared references when copying native StartPos state back into an existing room.
 - Report the actual cause of refused StartPos captures. The map sweep waits for capture, load, and export completion, respects cutscene guards, preserves exact room names, and marks checks after a command timeout as blocked.
 - Keep the bulk sweep's recovery archive outside `Saves` so startup backups do not include it again on each launch.
+- Restart the bulk sweep after SSH recovery, reject stale startup logs, and keep failed or blocked maps in its aggregate results.
+- Reject setup packs whose snapshot documents expand beyond 1 GiB in total, on both export and import.
 
 ## Akron Beta 80
 

@@ -118,11 +118,58 @@ public sealed class SnapshotBundleTests {
         });
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EnforcesExpandedPackBudgetBeforeDeliveringTheCrossingDocument(bool overBudget) {
+        const int blockBytes = 65536;
+        int[] lengths = { 384 * 1024 * 1024, 384 * 1024 * 1024, 256 * 1024 * 1024 };
+        using var raw = new MemoryStream();
+        using (var writer = new BinaryWriter(raw, Encoding.UTF8, leaveOpen: true)) {
+            writer.Write(Encoding.ASCII.GetBytes("AKRSB001"));
+            writer.Write(1);
+            writer.Write(blockBytes);
+            writer.Write(new byte[blockBytes]);
+            writer.Write(lengths.Length + (overBudget ? 1 : 0));
+            for (int i = 0; i < lengths.Length; i++) {
+                writer.Write(i + 1);
+                writer.Write(lengths[i]);
+                for (int remaining = lengths[i]; remaining > 0; remaining -= blockBytes) {
+                    writer.Write((byte)1);
+                    writer.Write(0);
+                }
+            }
+            if (overBudget) {
+                writer.Write(4);
+                writer.Write(1);
+                writer.Write((byte)0);
+                writer.Write(1);
+                writer.Write((byte)0);
+            }
+        }
+        using MemoryStream encoded = LiteralBundle(raw.ToArray());
+        var visited = new List<int>();
+        var buffer = new byte[blockBytes];
+        long consumed = 0;
+        Action read = () => AkronSnapshotBundle.Read(encoded, (slot, document) => {
+            visited.Add(slot);
+            int count;
+            while ((count = document.Read(buffer)) > 0) consumed += count;
+        });
+        if (overBudget) Assert.Throws<InvalidDataException>(read);
+        else read();
+        Assert.Equal(new[] { 1, 2, 3 }, visited);
+        Assert.Equal(1024L * 1024 * 1024, consumed);
+    }
+
     private static MemoryStream LiteralBundle(byte[] raw) {
         var encoded = new MemoryStream();
         using (var brotli = new BrotliStream(encoded, CompressionLevel.Fastest, leaveOpen: true))
         using (var writer = new BinaryWriter(brotli)) {
-            writer.Write((byte)0); writer.Write(raw.Length); writer.Write(raw);
+            for (int offset = 0; offset < raw.Length; offset += AkronSnapshotBundle.BlockBytes) {
+                int count = Math.Min(AkronSnapshotBundle.BlockBytes, raw.Length - offset);
+                writer.Write((byte)0); writer.Write(count); writer.Write(raw, offset, count);
+            }
         }
         encoded.Position = 0;
         return encoded;

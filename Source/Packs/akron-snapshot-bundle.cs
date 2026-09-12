@@ -18,6 +18,7 @@ internal static class AkronSnapshotBundle {
     internal const int BlockBytes = 65536;
     internal const int MaxDictionaryBytes = 16 * 1024 * 1024;
     internal const int MaxDocumentBytes = 384 * 1024 * 1024;
+    internal const long MaxPackDocumentBytes = 1024L * 1024 * 1024;
     private const int MaxDictionaryItems = 4096;
     private const int MaxDiscoveryItems = 65536;
     private const long MaxDiscoveryBytes = 128L * 1024 * 1024;
@@ -49,6 +50,7 @@ internal static class AkronSnapshotBundle {
                 FileAccess.ReadWrite, FileShare.None);
             var chunks = new Dictionary<string, Chunk>(StringComparer.Ordinal);
             var documents = new List<Document>();
+            long documentBytes = 0;
             foreach (Source source in sources.OrderBy(source => source.Slot)) {
                 using FileStream file = OpenSource(source);
                 using var gzip = new GZipStream(file, CompressionMode.Decompress);
@@ -59,6 +61,8 @@ internal static class AkronSnapshotBundle {
                     cancellationToken.ThrowIfCancellationRequested();
                     length = checked(length + count);
                     if (length > MaxDocumentBytes) throw new InvalidDataException("Snapshot is too large.");
+                    documentBytes = checked(documentBytes + count);
+                    if (documentBytes > MaxPackDocumentBytes) throw new InvalidDataException("Snapshot bundle is too large.");
                     ReadOnlySpan<byte> bytes = reader.Bytes;
                     hash.AppendData(bytes);
                     string key = Convert.ToHexString(SHA256.HashData(bytes));
@@ -191,9 +195,12 @@ internal static class AkronSnapshotBundle {
         int documentCount = ReadNumber(reader, 1, 99);
         var hashes = new Dictionary<int, string>();
         int previousSlot = 0;
+        long documentBytes = 0;
         for (int i = 0; i < documentCount; i++) {
             int slot = ReadNumber(reader, previousSlot + 1, 99);
             int length = ReadNumber(reader, 1, MaxDocumentBytes);
+            documentBytes = checked(documentBytes + length);
+            if (documentBytes > MaxPackDocumentBytes) throw new InvalidDataException("Snapshot bundle is too large.");
             using var document = new DocumentReader(reader, dictionary, length);
             readDocument(slot, document);
             if (document.Remaining != 0) throw new InvalidDataException("Snapshot reader did not consume the document.");

@@ -3150,24 +3150,24 @@ public sealed class StartPosReconstructionTests {
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void TileInterceptorCallbackRestoresItsCapturedGrid(bool fromDisk) {
+    public void ConstructorCallbackRestoresItsCapturedGrid(bool fromDisk) {
         static SavedSceneRoot Scene(bool firstAttached) {
-            TileInterceptorOwner owner = CreateUninitializedEntity<TileInterceptorOwner>();
+            GridCallbackOwner owner = CreateUninitializedEntity<GridCallbackOwner>();
             InitializeEmptyComponentList(owner);
             SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
             owner.Grid = (TileGrid) RuntimeHelpers.GetUninitializedObject(typeof(TileGrid));
-            owner.Grid.Tiles = new VirtualMap<MTexture>(1, 1);
+            owner.Grid.Tiles = CreateSingleSegmentTextureGrid(1, 1);
             owner.OtherGrid = (TileGrid) RuntimeHelpers.GetUninitializedObject(typeof(TileGrid));
-            owner.OtherGrid.Tiles = new VirtualMap<MTexture>(1, 1);
-            owner.Interceptor = new TileInterceptor(owner.Grid, true);
-            owner.OtherInterceptor = new TileInterceptor(owner.Grid, true);
+            owner.OtherGrid.Tiles = CreateSingleSegmentTextureGrid(1, 1);
+            owner.Interceptor = new GridCallbackComponent(owner.Grid);
+            owner.OtherInterceptor = new GridCallbackComponent(owner.Grid);
             Component[] attached = firstAttached
                 ? new Component[] { owner.Grid, owner.Interceptor }
                 : new Component[] { owner.OtherGrid, owner.OtherInterceptor };
             foreach (Component component in attached) {
                 SetRuntimeField(component, "<Entity>k__BackingField", owner);
-                GetRuntimeField<List<Component>>(owner.Components, "components").Add(component);
-                GetRuntimeField<HashSet<Component>>(owner.Components, "current").Add(component);
+                GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "components").Add(component);
+                GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "current").Add(component);
             }
             return CreateOwnedScene(owner);
         }
@@ -3184,12 +3184,12 @@ public sealed class StartPosReconstructionTests {
 
         Assert.True(restore.Success, restore.Error);
         Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
-        TileInterceptorOwner owner = Assert.IsType<TileInterceptorOwner>(GetEntityListContents(fresh.Entities)[0]);
-        MTexture tile = (MTexture) RuntimeHelpers.GetUninitializedObject(typeof(MTexture));
-        owner.Interceptor!.Intercepter(tile, default, default);
-        Assert.Same(tile, owner.Grid.Tiles[0, 0]);
-        owner.OtherInterceptor.Intercepter(null, default, default);
-        Assert.Null(owner.Grid.Tiles[0, 0]);
+        GridCallbackOwner owner = Assert.IsType<GridCallbackOwner>(GetEntityListContents(fresh.Entities)[0]);
+        VirtualMap<MTexture> tiles = CreateSingleSegmentTextureGrid(1, 1);
+        owner.Interceptor.Intercept(tiles);
+        Assert.Same(tiles, owner.Grid.Tiles);
+        owner.OtherInterceptor.Intercept(null);
+        Assert.Null(owner.Grid.Tiles);
     }
 
     [Fact]
@@ -3321,16 +3321,17 @@ public sealed class StartPosReconstructionTests {
         AkronReconstructionRestore restore = graph.Restore(document, fresh.Root);
 
         Assert.True(restore.Success, restore.Error);
-        Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+        AkronReconstructionVerification verification = graph.Verify(document, restore, Array.Empty<string>());
+        Assert.True(verification.Success, verification.Error);
         Assert.Same(originalCamera, fresh.Scene.Camera);
         Assert.Same(originalCamera, fresh.Component.ClipCamera);
-        TileInterceptorOwner owner = Assert.IsType<TileInterceptorOwner>(
+        GridCallbackOwner owner = Assert.IsType<GridCallbackOwner>(
             GetEntityListContents(fresh.Root.Entities)[1]);
-        MTexture tile = (MTexture) RuntimeHelpers.GetUninitializedObject(typeof(MTexture));
-        owner.Interceptor.Intercepter(tile, default, default);
-        Assert.Same(tile, owner.Grid.Tiles[0, 0]);
+        VirtualMap<MTexture> tiles = CreateSingleSegmentTextureGrid(1, 1);
+        owner.Interceptor.Intercept(tiles);
+        Assert.Same(tiles, owner.Grid.Tiles);
         if (detachedAtCapture) {
-            Assert.Null(fresh.Component.Entity);
+            Assert.Null(GetRuntimeField<Entity>(fresh.Component, "<Entity>k__BackingField"));
         }
     }
 
@@ -5758,9 +5759,9 @@ public sealed class StartPosReconstructionTests {
     public void ManagedGridOwnershipRequiresAnExactDeclaredField(bool opaqueOwner) {
         ManagedGridOwnerEntity savedOwner = CreateUninitializedEntity<ManagedGridOwnerEntity>();
         InitializeEmptyComponentList(savedOwner);
-        VirtualMap<MTexture> grid = new VirtualMap<MTexture>(4, 4);
+        VirtualMap<MTexture> grid = CreateSingleSegmentTextureGrid(4, 4);
         MTexture texture = (MTexture) RuntimeHelpers.GetUninitializedObject(typeof(MTexture));
-        grid[1, 2] = texture;
+        GetRuntimeField<MTexture[,][,]>(grid, "segments")[0, 0][1, 2] = texture;
         if (opaqueOwner) {
             savedOwner.Opaque = grid;
         } else {
@@ -5786,8 +5787,9 @@ public sealed class StartPosReconstructionTests {
             Assert.Null(freshOwner.Texture);
         } else {
             Assert.True(restore.Success, restore.Error);
-            Assert.Same(freshOwner.Texture, freshOwner.Grid![1, 2]);
-            Assert.Null(freshOwner.Grid[2, 1]);
+            MTexture[,] values = GetRuntimeField<MTexture[,][,]>(freshOwner.Grid!, "segments")[0, 0];
+            Assert.Same(freshOwner.Texture, values[1, 2]);
+            Assert.Null(values[2, 1]);
             Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
         }
     }
@@ -5847,7 +5849,7 @@ public sealed class StartPosReconstructionTests {
             PooledRuntimeEffect restored = Assert.IsType<PooledRuntimeEffect>(
                 Assert.Single(GetEntityListContents(fresh.Entities)));
             Assert.Equal(37, restored.Value);
-            Assert.Same(fresh.Scene, restored.Scene);
+            Assert.Same(fresh.Scene, GetRuntimeField<Scene>(restored, "<Scene>k__BackingField"));
         }
     }
 
@@ -5876,7 +5878,7 @@ public sealed class StartPosReconstructionTests {
             GetEntityListContents(fresh.Entities).OfType<CapturedRuntimeEffect>());
         Assert.Same(freshCreator, restored.Creator);
         Assert.Equal(37, restored.Creator.Value);
-        Assert.Same(fresh.Scene, restored.Scene);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(restored, "<Scene>k__BackingField"));
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
 
@@ -5910,9 +5912,9 @@ public sealed class StartPosReconstructionTests {
             GetEntityListContents(fresh.Entities).OfType<ComponentCapturedRuntimeEffect>());
         Assert.Same(freshComponent, restored.Creator);
         Assert.Same(freshComponent, freshCreator.Owned);
-        Assert.Same(freshCreator, restored.Creator!.Entity);
-        Assert.Equal(37, restored.Creator.Value);
-        Assert.Same(fresh.Scene, restored.Scene);
+        Assert.Same(freshCreator, GetRuntimeField<Entity>(restored.Creator!, "<Entity>k__BackingField"));
+        Assert.Equal(37, restored.Creator!.Value);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(restored, "<Scene>k__BackingField"));
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
 
@@ -5940,13 +5942,13 @@ public sealed class StartPosReconstructionTests {
         // Visit the effect before its component and owner, including refusal.
         SavedSceneRoot saved = CreateOwnedScene(effect, creator);
         if (invalidProof == "missing-membership") {
-            GetRuntimeField<List<Component>>(creator.Components, "components").Remove(creator.Owned);
+            GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(creator, "<Components>k__BackingField"), "components").Remove(creator.Owned);
         } else if (invalidProof == "wrong-component-owner" || invalidProof == "wrong-list-owner") {
             SourceIdentifiedEntity other = CreateSourceIdentifiedEntity("a00", 20, 0);
             SetRuntimeField(other, "<Scene>k__BackingField", saved.Scene);
             AddDetachedEntity(saved.Entities, other);
             SetRuntimeField(
-                invalidProof == "wrong-component-owner" ? (object) creator.Owned : creator.Components,
+                invalidProof == "wrong-component-owner" ? (object) creator.Owned : GetRuntimeField<ComponentList>(creator, "<Components>k__BackingField"),
                 "<Entity>k__BackingField",
                 other);
         } else if (invalidProof == "foreign-scene") {
@@ -5969,9 +5971,9 @@ public sealed class StartPosReconstructionTests {
         Assert.False(restore.Success);
         Assert.Same(freshCreator, Assert.Single(GetEntityListContents(fresh.Entities)));
         Assert.Same(freshComponent, freshCreator.Owned);
-        Assert.Same(freshCreator, freshComponent.Entity);
+        Assert.Same(freshCreator, GetRuntimeField<Entity>(freshComponent, "<Entity>k__BackingField"));
         Assert.Equal(0, freshComponent.Value);
-        Assert.Same(fresh.Scene, freshCreator.Scene);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(freshCreator, "<Scene>k__BackingField"));
     }
 
     [Theory]
@@ -6006,7 +6008,7 @@ public sealed class StartPosReconstructionTests {
             Assert.Single(GetEntityListContents(fresh.Entities)));
         Assert.Same(effect, Assert.Single(freshBackdrop.Effects));
         Assert.NotSame(Assert.Single(savedBackdrop.Effects), effect);
-        Assert.Same(fresh.Scene, effect.Scene);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(effect, "<Scene>k__BackingField"));
         Assert.Equal(37, effect.Value);
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
@@ -6036,7 +6038,7 @@ public sealed class StartPosReconstructionTests {
         CollectionRuntimeEffect restored = Assert.Single(
             GetEntityListContents(fresh.Entities).OfType<CollectionRuntimeEffect>());
         Assert.Same(restored, Assert.Single(freshOwner.Effects));
-        Assert.Same(fresh.Scene, restored.Scene);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(restored, "<Scene>k__BackingField"));
         Assert.Equal(37, restored.Value);
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
@@ -6072,7 +6074,7 @@ public sealed class StartPosReconstructionTests {
         CollectionRuntimeEffect effect = Assert.Single(
             GetEntityListContents(fresh.Entities).OfType<CollectionRuntimeEffect>());
         Assert.Same(effect, Assert.Single(effects));
-        Assert.Same(fresh.Scene, effect.Scene);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(effect, "<Scene>k__BackingField"));
         Assert.Equal(37, effect.Value);
     }
 
@@ -6097,7 +6099,7 @@ public sealed class StartPosReconstructionTests {
         IEnumerator iterator = Assert.Single(GetRuntimeField<Stack<IEnumerator>>(freshRoutine, "enumerators"));
         Assert.True(iterator.MoveNext());
         Assert.Same(fresh.Scene, componentOwner ? freshOwner.Driver!.ObservedScene : freshOwner.ObservedScene);
-        Assert.Same(freshOwner, freshRoutine.Entity);
+        Assert.Same(freshOwner, GetRuntimeField<Entity>(freshRoutine, "<Entity>k__BackingField"));
         Assert.NotSame(fresh.ForeignScene, freshOwner.ObservedScene);
     }
 
@@ -6119,7 +6121,7 @@ public sealed class StartPosReconstructionTests {
         Assert.False(restore.Success);
         Assert.Empty(GetRuntimeField<Stack<IEnumerator>>(routine, "enumerators"));
         Assert.Null(owner.ObservedScene);
-        Assert.Same(fresh.Scene, owner.Scene);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(owner, "<Scene>k__BackingField"));
     }
 
     [Theory]
@@ -6184,7 +6186,7 @@ public sealed class StartPosReconstructionTests {
         if (conflictingType) {
             Assert.False(restore.Success);
             Assert.Same(replacement, Assert.Single(GetEntityListContents(fresh.Entities)));
-            Assert.Same(fresh.Scene, replacement.Scene);
+            Assert.Same(fresh.Scene, GetRuntimeField<Scene>(replacement, "<Scene>k__BackingField"));
             return;
         }
         Assert.True(restore.Success, restore.Error);
@@ -6192,7 +6194,7 @@ public sealed class StartPosReconstructionTests {
             Assert.Single(GetEntityListContents(fresh.Entities)));
         Assert.True(GetRuntimeField<bool>(restored, "triggered"));
         Assert.True(GetRuntimeField<bool>(restored, "onlyOnce"));
-        Assert.Same(fresh.Scene, restored.Scene);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(restored, "<Scene>k__BackingField"));
     }
 
     [Fact]
@@ -6215,7 +6217,7 @@ public sealed class StartPosReconstructionTests {
         Assert.True(restore.Success, restore.Error);
         Assert.Same(freshTarget, Assert.Single(freshOwner.Peers));
         Assert.Same(freshOwner, Assert.Single(GetEntityListContents(fresh.Entities)));
-        Assert.Null(freshTarget.Scene);
+        Assert.Null(GetRuntimeField<Scene>(freshTarget, "<Scene>k__BackingField"));
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
 
@@ -7412,6 +7414,19 @@ public sealed class StartPosReconstructionTests {
         public ResourceCameraScene? Foreign;
     }
 
+    private static VirtualMap<MTexture> CreateSingleSegmentTextureGrid(int columns, int rows) {
+        VirtualMap<MTexture> grid =
+            (VirtualMap<MTexture>) RuntimeHelpers.GetUninitializedObject(typeof(VirtualMap<MTexture>));
+        SetRuntimeField(grid, "Columns", columns);
+        SetRuntimeField(grid, "Rows", rows);
+        SetRuntimeField(grid, "SegmentColumns", 1);
+        SetRuntimeField(grid, "SegmentRows", 1);
+        var segments = new MTexture[1, 1][,];
+        segments[0, 0] = new MTexture[VirtualMap<MTexture>.SegmentSize, VirtualMap<MTexture>.SegmentSize];
+        SetRuntimeField(grid, "segments", segments);
+        return grid;
+    }
+
     private static (SavedSceneRoot Root, ResourceCameraScene Scene, TileGrid Component) CreateSceneCameraAlias(
         bool captured,
         string proof = "valid",
@@ -7420,10 +7435,11 @@ public sealed class StartPosReconstructionTests {
     ) {
         ResourceCameraScene scene = (ResourceCameraScene) RuntimeHelpers.GetUninitializedObject(typeof(ResourceCameraScene));
         scene.Camera = (Camera) RuntimeHelpers.GetUninitializedObject(typeof(Camera));
-        scene.Camera.Position = new Vector2(20f, 30f);
+        // Use a primitive scalar: CI strips FNA's vector constructors.
+        SetRuntimeField(scene.Camera, "angle", 0.125f);
         scene.Foreign = (ResourceCameraScene) RuntimeHelpers.GetUninitializedObject(typeof(ResourceCameraScene));
         scene.Foreign.Camera = (Camera) RuntimeHelpers.GetUninitializedObject(typeof(Camera));
-        scene.Foreign.Camera.Position = new Vector2(200f, 300f);
+        SetRuntimeField(scene.Foreign.Camera, "angle", 0.25f);
         LinkSceneEntities(scene.Foreign, CreateDetachedEntityList());
         EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
         BackgroundTiles canonicalOwner = CreateUninitializedEntity<BackgroundTiles>();
@@ -7435,39 +7451,39 @@ public sealed class StartPosReconstructionTests {
         canonicalGrid.ClipCamera = scene.Camera;
         SetRuntimeField(canonicalOwner, "Tiles", canonicalGrid);
         SetRuntimeField(canonicalGrid, "<Entity>k__BackingField", canonicalOwner);
-        GetRuntimeField<List<Component>>(canonicalOwner.Components, "components").Add(canonicalGrid);
-        GetRuntimeField<HashSet<Component>>(canonicalOwner.Components, "current").Add(canonicalGrid);
-        TileInterceptorOwner owner = CreateUninitializedEntity<TileInterceptorOwner>();
+        GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(canonicalOwner, "<Components>k__BackingField"), "components").Add(canonicalGrid);
+        GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(canonicalOwner, "<Components>k__BackingField"), "current").Add(canonicalGrid);
+        GridCallbackOwner owner = CreateUninitializedEntity<GridCallbackOwner>();
         InitializeEmptyComponentList(owner);
         SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
         AddDetachedEntity(entities, owner);
         SetRuntimeField(owner, "<Scene>k__BackingField", scene);
         TileGrid grid = (TileGrid) RuntimeHelpers.GetUninitializedObject(typeof(TileGrid));
-        grid.Tiles = new VirtualMap<MTexture>(1, 1);
+        grid.Tiles = CreateSingleSegmentTextureGrid(1, 1);
         grid.ClipCamera = captured
             ? (proof == "foreign-scene" ? scene.Foreign.Camera : scene.Camera)
             : staleCamera ? (Camera) RuntimeHelpers.GetUninitializedObject(typeof(Camera)) : null;
         if (!captured && grid.ClipCamera is Camera stale) {
-            stale.Position = new Vector2(-20f, -30f);
+            SetRuntimeField(stale, "angle", -0.125f);
         }
         owner.Grid = grid;
-        owner.Interceptor = new TileInterceptor(grid, true);
+        owner.Interceptor = new GridCallbackComponent(grid);
         SetRuntimeField(owner.Interceptor, "<Entity>k__BackingField", owner);
-        GetRuntimeField<List<Component>>(owner.Components, "components").Add(owner.Interceptor);
-        GetRuntimeField<HashSet<Component>>(owner.Components, "current").Add(owner.Interceptor);
+        GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "components").Add(owner.Interceptor);
+        GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "current").Add(owner.Interceptor);
         if (captured && !detachedAtCapture) {
             SetRuntimeField(grid, "<Entity>k__BackingField", owner);
-            GetRuntimeField<List<Component>>(owner.Components, "components").Add(grid);
-            GetRuntimeField<HashSet<Component>>(owner.Components, "current").Add(grid);
+            GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "components").Add(grid);
+            GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "current").Add(grid);
         }
         if (captured && proof == "missing-membership") {
-            SetRuntimeField(owner.Components, "<Entity>k__BackingField", null);
+            SetRuntimeField(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "<Entity>k__BackingField", null);
         }
         if (captured && proof == "missing-field") {
             owner.Grid = null!;
         }
         if (captured && proof == "competing-owner") {
-            TileInterceptorOwner otherOwner = CreateUninitializedEntity<TileInterceptorOwner>();
+            GridCallbackOwner otherOwner = CreateUninitializedEntity<GridCallbackOwner>();
             InitializeEmptyComponentList(otherOwner);
             SetRuntimeField(otherOwner, "<SourceId>k__BackingField", CreateEntityId("a00", 11));
             AddDetachedEntity(entities, otherOwner);
@@ -7489,8 +7505,8 @@ public sealed class StartPosReconstructionTests {
             SetRuntimeField(entity, "<SourceId>k__BackingField", CreateEntityId("a00", 10 + index));
             entity.Target = new OwnedTestComponent { Value = includeCallback && index == 0 ? 37 : 0 };
             SetRuntimeField(entity.Target, "<Entity>k__BackingField", entity);
-            GetRuntimeField<List<Component>>(entity.Components, "components").Add(entity.Target);
-            GetRuntimeField<HashSet<Component>>(entity.Components, "current").Add(entity.Target);
+            GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(entity, "<Components>k__BackingField"), "components").Add(entity.Target);
+            GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(entity, "<Components>k__BackingField"), "current").Add(entity.Target);
             owners[index] = entity;
         }
         ComponentCallbackOwner owner = owners[0];
@@ -7501,12 +7517,12 @@ public sealed class StartPosReconstructionTests {
                 : new ConstructorCallbackComponent(captured);
             if (!detachedCallback) {
                 SetRuntimeField(owner.Callback, "<Entity>k__BackingField", owner);
-                GetRuntimeField<List<Component>>(owner.Components, "components").Add(owner.Callback);
-                GetRuntimeField<HashSet<Component>>(owner.Components, "current").Add(owner.Callback);
+                GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "components").Add(owner.Callback);
+                GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "current").Add(owner.Callback);
             }
             if (captureProof == "missing-membership") {
-                GetRuntimeField<List<Component>>(owner.Components, "components").Remove(captured);
-                GetRuntimeField<HashSet<Component>>(owner.Components, "current").Remove(captured);
+                GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "components").Remove(captured);
+                GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "current").Remove(captured);
             }
         }
         return (CreateOwnedScene(owners), owner);
@@ -10939,7 +10955,7 @@ public sealed class StartPosReconstructionTests {
                 RuntimeCollectionComponent component = new RuntimeCollectionComponent();
                 SetRuntimeField(component, "<Entity>k__BackingField", entityOwner);
                 GetComponentListContents(entityOwner).Add(component);
-                SetRuntimeField(entityOwner.Components, "current", new HashSet<Component> { component });
+                SetRuntimeField(GetRuntimeField<ComponentList>(entityOwner, "<Components>k__BackingField"), "current", new HashSet<Component> { component });
                 scene.RetainedComponent = component;
                 effects = component.Effects;
             } else {
@@ -10976,7 +10992,7 @@ public sealed class StartPosReconstructionTests {
         public IEnumerator? Manual;
 
         public IEnumerator Run() {
-            Scene scene = Scene;
+            Scene scene = GetRuntimeField<Scene>(this, "<Scene>k__BackingField");
             while (true) {
                 yield return null;
                 ObservedScene = scene;
@@ -10984,7 +11000,7 @@ public sealed class StartPosReconstructionTests {
         }
 
         public IEnumerator RunOpaque() {
-            object scene = Scene;
+            object scene = GetRuntimeField<Scene>(this, "<Scene>k__BackingField");
             while (true) {
                 yield return null;
                 ObservedScene = (Scene) scene;
@@ -10998,7 +11014,7 @@ public sealed class StartPosReconstructionTests {
         public SceneRoutineComponent() : base(false, false) { }
 
         public IEnumerator Run() {
-            Scene scene = Entity.Scene;
+            Scene scene = GetRuntimeField<Scene>(GetRuntimeField<Entity>(this, "<Entity>k__BackingField"), "<Scene>k__BackingField");
             while (true) {
                 yield return null;
                 ObservedScene = scene;
@@ -11031,7 +11047,7 @@ public sealed class StartPosReconstructionTests {
             SetRuntimeField(owner.Driver, "<Entity>k__BackingField", owner);
             ordered.Insert(componentFirst ? 0 : 1, owner.Driver);
         }
-        SetRuntimeField(coroutineOwner.Components, "current", new HashSet<Component>(ordered));
+        SetRuntimeField(GetRuntimeField<ComponentList>(coroutineOwner, "<Components>k__BackingField"), "current", new HashSet<Component>(ordered));
         if (midFlight) {
             IEnumerator iterator = componentOwner ? owner.Driver!.Run()
                 : invalidProof == "opaque-scene" ? owner.RunOpaque() : owner.Run();
@@ -11179,11 +11195,22 @@ public sealed class StartPosReconstructionTests {
         }
     }
 
-    private sealed class TileInterceptorOwner : Entity {
+    private sealed class GridCallbackOwner : Entity {
         public TileGrid Grid = null!;
         public TileGrid OtherGrid = null!;
-        public TileInterceptor Interceptor = null!;
-        public TileInterceptor OtherInterceptor = null!;
+        public GridCallbackComponent Interceptor = null!;
+        public GridCallbackComponent OtherInterceptor = null!;
+    }
+
+    // TileInterceptor's constructor and callback bodies are absent from CI's
+    // reference assembly. This executable fixture retains the same constructor
+    // closure and concrete sibling-grid ownership exercised by the live check.
+    private sealed class GridCallbackComponent : Component {
+        public Action<VirtualMap<MTexture>?> Intercept;
+
+        public GridCallbackComponent(TileGrid grid) : base(false, false) {
+            Intercept = tiles => grid.Tiles = tiles;
+        }
     }
 
     private sealed class ComponentCallbackOwner : Entity {

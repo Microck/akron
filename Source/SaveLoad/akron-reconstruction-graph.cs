@@ -1370,6 +1370,8 @@ internal sealed class AkronReconstructionGraph {
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private static readonly FieldInfo EntitySourceIdField =
         typeof(Entity).GetField("<SourceId>k__BackingField", RuntimeInstanceFields);
+    private static readonly FieldInfo EntitySceneField =
+        typeof(Entity).GetField("<Scene>k__BackingField", RuntimeInstanceFields);
     private static readonly FieldInfo EntityComponentsField =
         typeof(Entity).GetField("<Components>k__BackingField", RuntimeInstanceFields);
     private static readonly FieldInfo ComponentEntityField =
@@ -3686,6 +3688,10 @@ internal sealed class AkronReconstructionGraph {
         return EntitySourceIdField?.GetValue(entity) is EntityID sourceId ? sourceId : default;
     }
 
+    private static Scene GetEntityScene(Entity entity) {
+        return EntitySceneField?.GetValue(entity) as Scene;
+    }
+
     private static ComponentList GetEntityComponents(Entity entity) {
         return EntityComponentsField?.GetValue(entity) as ComponentList;
     }
@@ -3906,7 +3912,7 @@ internal sealed class AkronReconstructionGraph {
                 EntityID savedSourceId = GetEntitySourceId(savedEntity);
                 List<FreshResource> sourceMatches = matches
                     .Where(candidate => candidate.Value is Entity freshEntity &&
-                                        GetEntitySourceId(freshEntity).Equals(savedSourceId))
+                                        EntityIdsMatch(GetEntitySourceId(freshEntity), savedSourceId))
                     .ToList();
                 return sourceMatches.Count == 1 ? sourceMatches[0] : null;
             }
@@ -3997,7 +4003,7 @@ internal sealed class AkronReconstructionGraph {
             bool entityIdentityMatches = savedValue is not Entity savedEntity ||
                                          !HasStableSourceId(GetEntitySourceId(savedEntity)) ||
                                          freshValue is Entity freshEntity &&
-                                         GetEntitySourceId(freshEntity).Equals(GetEntitySourceId(savedEntity));
+                                         EntityIdsMatch(GetEntitySourceId(freshEntity), GetEntitySourceId(savedEntity));
             if ((!freshTypeMatches || !entityIdentityMatches) &&
                 (savedValue is Entity || savedValue is Component)) {
                 FreshResource matchedRoomObject = FindFreshRoomObject(savedValue);
@@ -4511,8 +4517,8 @@ internal sealed class AkronReconstructionGraph {
             new Dictionary<int, (int Ordinal, int Count)>();
         private readonly Dictionary<int, Dictionary<Type, List<Renderer>>> freshRendererTypesByRendererList =
             new Dictionary<int, Dictionary<Type, List<Renderer>>>();
-        private readonly Dictionary<(Type Type, EntityID SourceId), List<Entity>> freshSourceEntities =
-            new Dictionary<(Type Type, EntityID SourceId), List<Entity>>();
+        private readonly Dictionary<(Type Type, string Room, int Id), List<Entity>> freshSourceEntities =
+            new Dictionary<(Type Type, string Room, int Id), List<Entity>>();
         private readonly Dictionary<object, int> freshFieldAliasReservations =
             new Dictionary<object, int>(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<int, object> freshFieldAliasesByNode = new Dictionary<int, object>();
@@ -4908,7 +4914,8 @@ internal sealed class AkronReconstructionGraph {
             }
             if (firstVisit && value is Entity sourceEntity &&
                 HasStableSourceId(GetEntitySourceId(sourceEntity))) {
-                var key = (type, GetEntitySourceId(sourceEntity));
+                EntityID sourceId = GetEntitySourceId(sourceEntity);
+                var key = (type, sourceId.Level, sourceId.ID);
                 if (!freshSourceEntities.TryGetValue(key, out List<Entity> sourceEntities)) {
                     sourceEntities = new List<Entity>();
                     freshSourceEntities.Add(key, sourceEntities);
@@ -7410,7 +7417,7 @@ internal sealed class AkronReconstructionGraph {
                 if (entity != null &&
                     (!capturedComponent ||
                      (Objects.TryGetValue(scene.NodeId, out object freshScene) &&
-                      ReferenceEquals(entity.Scene, freshScene))) &&
+                      ReferenceEquals(GetEntityScene(entity), freshScene))) &&
                     GetEntityListEntities(entityList)
                     .Any(candidate => ReferenceEquals(candidate, entity))) {
                     return true;
@@ -7524,13 +7531,13 @@ internal sealed class AkronReconstructionGraph {
                         !nodes.TryGetValue(entityId, out entityNode)) {
                         return false;
                     }
-                    entity = component.Entity;
+                    entity = GetComponentEntity(component);
                     if (entity == null || !GetComponentListComponents(GetEntityComponents(entity))
                             .Any(candidate => ReferenceEquals(candidate, component))) {
                         return false;
                     }
                 }
-                return entity != null && ReferenceEquals(entity.Scene, scene) &&
+                return entity != null && ReferenceEquals(GetEntityScene(entity), scene) &&
                        entity.GetType() == ResolveType(entityNode.TypeName, entityNode.Path) &&
                        SavedFreshIdentityMatches(entityNode, entity) &&
                        FindReferenceField(entityNode, "<Scene>k__BackingField")?.NodeId == sceneNode.Id &&
@@ -7647,10 +7654,10 @@ internal sealed class AkronReconstructionGraph {
                 !TryGetEntityListOwnerNode(target, out _) &&
                 Objects.TryGetValue(current.Id, out object retainedOwner) &&
                 retainedOwner is Entity retainedOwnerEntity &&
-                retainedOwnerEntity.Scene != null &&
-                ReferenceEquals(retainedOwnerEntity.Scene, targetEntity.Scene) &&
+                GetEntityScene(retainedOwnerEntity) is Scene retainedScene &&
+                ReferenceEquals(retainedScene, GetEntityScene(targetEntity)) &&
                 TryGetSavedEntityId(target, out _) && SavedEntitySourceMatches(target, targetEntity) &&
-                GetEntityListEntities(GetSceneEntities(retainedOwnerEntity.Scene))
+                GetEntityListEntities(GetSceneEntities(retainedScene))
                     .Any(candidate => ReferenceEquals(candidate, targetEntity))) {
                 // A removed trigger can remain in the player's collision
                 // bookkeeping. It still identifies the map entity a clean
@@ -8292,7 +8299,7 @@ internal sealed class AkronReconstructionGraph {
                 Type type = ResolveType(current.TypeName, current.Path);
                 if (typeof(Entity).IsAssignableFrom(type)) {
                     if (TryGetSavedEntityId(current, out EntityID sourceId) &&
-                        freshSourceEntities.TryGetValue((type, sourceId), out List<Entity> entities) &&
+                        freshSourceEntities.TryGetValue((type, sourceId.Level, sourceId.ID), out List<Entity> entities) &&
                         entities.Count == 1) {
                         identityOwner = entities[0];
                     }
@@ -8303,7 +8310,7 @@ internal sealed class AkronReconstructionGraph {
                         nodes.TryGetValue(ownerId, out AkronReconstructionNode ownerNode) &&
                         TryGetSavedEntityId(ownerNode, out EntityID sourceId) &&
                         freshSourceEntities.TryGetValue(
-                            (ResolveType(ownerNode.TypeName, ownerNode.Path), sourceId),
+                            (ResolveType(ownerNode.TypeName, ownerNode.Path), sourceId.Level, sourceId.ID),
                             out List<Entity> owners) &&
                         owners.Count == 1 && GetEntityComponents(owners[0]) is ComponentList components) {
                         foreach (Component component in GetComponentListComponents(components)) {
@@ -8728,7 +8735,7 @@ internal sealed class AkronReconstructionGraph {
             }
             if (!TryGetEntityListOwnerNode(target, out AkronReconstructionNode entityListNode)) {
                 if (!TryGetSavedEntityId(target, out EntityID sourceId) ||
-                    !freshSourceEntities.TryGetValue((targetType, sourceId), out List<Entity> candidates)) {
+                    !freshSourceEntities.TryGetValue((targetType, sourceId.Level, sourceId.ID), out List<Entity> candidates)) {
                     return false;
                 }
                 foreach (Entity candidate in candidates) {
