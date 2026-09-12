@@ -107,6 +107,9 @@ internal static class AkronDeepClone {
     }
 
     private static bool? ShouldUseOriginalObject(Type type) {
+        if (type == typeof(BlendState) || type == typeof(GraphicsResource)) {
+            return false;
+        }
         if (type.FullName == "Celeste.Celeste" ||
             type == typeof(Settings) ||
             type == typeof(Type) ||
@@ -119,6 +122,7 @@ internal static class AkronDeepClone {
             type == typeof(Monocle.Commands) ||
             type == typeof(BitTag) ||
             type == typeof(Atlas) ||
+            AkronStartPosReconstruction.IsDynamicDataCache(type) ||
             type.IsSubclassOf(typeof(GraphicsResource)) ||
             typeof(MTexture).IsAssignableFrom(type) ||
             string.Equals(type.Name, "ILHook", StringComparison.Ordinal) ||
@@ -137,12 +141,25 @@ internal static class AkronDeepClone {
         }
 
         lock (source) {
+            if (source.GetType() == typeof(BlendState)) {
+                return AkronBlendStateSnapshot.Clone((BlendState) source);
+            }
+
             if (AkronStartPosReconstruction.IsLiveHookOwner(source)) {
                 // The Set-frame hook-owner registry identifies this process
                 // singleton. Keeping its exact target here gives reconstruction
                 // identity evidence instead of asking it to infer ownership from
                 // a cloned iterator later.
                 return source;
+            }
+            Type sourceType = source.GetType();
+            if (AkronReconstructionGraph.IsNativeLuaStateType(sourceType)) {
+                // Copying a Lua wrapper duplicates its native ownership without
+                // rewinding the VM. Refuse before any handles are cloned.
+                throw new AkronReconstructionException(
+                    "$",
+                    AkronReconstructionGraph.NativeLuaSnapshotRefusal,
+                    sourceType.AssemblyQualifiedName);
             }
 
             if (source is VirtualAsset virtualAsset) {
@@ -248,6 +265,18 @@ internal static class AkronDeepClone {
         return clone;
     }
 
+    internal static bool HasCustomDynamicData(object source) {
+        if (DynamicDataMap.HasCustomValues(source)) {
+            return true;
+        }
+        foreach (DynamicDataMapAccessor map in GetGenericDynamicDataMaps(source.GetType())) {
+            if (map.HasCustomValues(source)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static void CloneDynamicDataIfPresent(object source, object clone, DeepCloneState state) {
         if (ReferenceEquals(source, clone)) {
             return;
@@ -298,14 +327,17 @@ internal static class AkronDeepClone {
                 value = null;
                 return false;
             },
-            (_, _) => { });
+            (_, _) => { },
+            Array.Empty<FieldInfo>());
 
         private readonly TryGetValue tryGetValue;
         private readonly Action<object, object> replace;
+        private readonly FieldInfo[] sidecarFields;
 
-        private DynamicDataMapAccessor(TryGetValue tryGetValue, Action<object, object> replace) {
+        private DynamicDataMapAccessor(TryGetValue tryGetValue, Action<object, object> replace, FieldInfo[] sidecarFields) {
             this.tryGetValue = tryGetValue;
             this.replace = replace;
+            this.sidecarFields = sidecarFields;
         }
 
         public static DynamicDataMapAccessor Create(Type sidecarType) {
@@ -342,7 +374,27 @@ internal static class AkronDeepClone {
                 (key, value) => {
                     typedMap.Remove(key);
                     typedMap.Add(key, (TValue) value);
-                });
+                },
+                typeof(TValue).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
+        }
+
+        public bool HasCustomValues(object source) {
+            if (!tryGetValue(source, out object sidecar)) {
+                return false;
+            }
+            foreach (FieldInfo field in sidecarFields) {
+                object value = field.GetValue(sidecar);
+                bool populated = value switch {
+                    null => false,
+                    IDictionary dictionary => dictionary.Count != 0,
+                    ICollection<string> names => names.Count != 0,
+                    _ => true
+                };
+                if (populated) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public void CloneEntry(object source, object clone, DeepCloneState state) {

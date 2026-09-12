@@ -13,39 +13,11 @@ namespace Force.DeepCloner.Helpers {
             return GenerateProcessMethod(realType, asObject && realType.IsValueType());
         }
 
-        private static FieldInfo _attributesFieldInfo = typeof(FieldInfo).GetPrivateField("m_fieldAttributes");
-
-        // slow, but hardcore method to set readonly field
+        // Instance readonly fields can be set through reflection on the
+        // supported runtime. Do not patch shared FieldInfo metadata or silently
+        // keep the source reference when an assignment fails.
         internal static void ForceSetField(FieldInfo field, object obj, object value) {
-            FieldInfo fieldInfo = field.GetType().GetPrivateField("m_fieldAttributes");
-
-            // TODO: think about it
-            // nothing to do :( we should a throw an exception, but it is no good for user
-            if (fieldInfo == null) {
-                return;
-            }
-
-            object ov = fieldInfo.GetValue(field);
-            if (!(ov is FieldAttributes)) {
-                return;
-            }
-
-            FieldAttributes v = (FieldAttributes)ov;
-
-            // protect from parallel execution, when first thread set field readonly back, and second set it to write value
-            lock (fieldInfo) {
-                try {
-                    fieldInfo.SetValue(field, v & ~FieldAttributes.InitOnly);
-                    field.SetValue(obj, value);
-                } catch (FieldAccessException) {
-                    // Some modded Celeste runtimes reject writes to initonly
-                    // fields even after the FieldInfo attributes are patched.
-                    // MemberwiseClone already copied the field value, so keeping
-                    // that original reference is safer than crashing a restore.
-                } finally {
-                    fieldInfo.SetValue(field, v | FieldAttributes.InitOnly);
-                }
-            }
+            field.SetValue(obj, value);
         }
 
         private static object GenerateProcessMethod(Type type, bool unboxStruct) {

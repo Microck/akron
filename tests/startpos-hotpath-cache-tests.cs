@@ -52,7 +52,8 @@ public sealed class StartPosHotPathCacheTests {
 
         string expectedDigest =
             Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(slotName))).ToLowerInvariant();
-        Assert.Equal("v10-" + expectedDigest + ".json.gz", Path.GetFileName(first));
+        string version = AkronReconstructionDocument.CurrentFormat["akron-reconstruction-".Length..];
+        Assert.Equal(version + "-" + expectedDigest + ".json.gz", Path.GetFileName(first));
     }
 
     [Fact]

@@ -61,33 +61,25 @@ namespace Force.DeepCloner.Helpers {
             } while (tp != null);
 
             foreach (FieldInfo fieldInfo in fi) {
+                Expression value = Expression.Field(fromLocal, fieldInfo);
                 if (isDeepClone && !DeepClonerSafeTypes.CanReturnSameObject(fieldInfo.FieldType)) {
                     MethodInfo methodInfo = fieldInfo.FieldType.IsValueType()
                         ? typeof(DeepClonerGenerator).GetPrivateStaticMethod("CloneStructInternal")
                             .MakeGenericMethod(fieldInfo.FieldType)
                         : typeof(DeepClonerGenerator).GetPrivateStaticMethod("CloneClassInternal");
 
-                    MemberExpression get = Expression.Field(fromLocal, fieldInfo);
-
-                    // toLocal.Field = Clone...Internal(fromLocal.Field)
-                    Expression call = (Expression)Expression.Call(methodInfo, get, state);
+                    value = Expression.Call(methodInfo, value, state);
                     if (!fieldInfo.FieldType.IsValueType()) {
-                        call = Expression.Convert(call, fieldInfo.FieldType);
+                        value = Expression.Convert(value, fieldInfo.FieldType);
                     }
+                }
 
-                    // should handle specially
-                    // todo: think about optimization, but it rare case
-                    if (fieldInfo.IsInitOnly) {
-                        // var setMethod = fieldInfo.GetType().GetMethod("SetValue", new[] { typeof(object), typeof(object) });
-                        // expressionList.Add(Expression.Call(Expression.Constant(fieldInfo), setMethod, toLocal, call));
-                        MethodInfo setMethod = typeof(DeepClonerExprGenerator).GetPrivateStaticMethod("ForceSetField");
-                        expressionList.Add(Expression.Call(setMethod, Expression.Constant(fieldInfo),
-                            Expression.Convert(toLocal, typeof(object)), Expression.Convert(call, typeof(object))));
-                    } else {
-                        expressionList.Add(Expression.Assign(Expression.Field(toLocal, fieldInfo), call));
-                    }
+                if (fieldInfo.IsInitOnly) {
+                    MethodInfo setMethod = typeof(DeepClonerExprGenerator).GetPrivateStaticMethod("ForceSetField");
+                    expressionList.Add(Expression.Call(setMethod, Expression.Constant(fieldInfo),
+                        Expression.Convert(toLocal, typeof(object)), Expression.Convert(value, typeof(object))));
                 } else {
-                    expressionList.Add(Expression.Assign(Expression.Field(toLocal, fieldInfo), Expression.Field(fromLocal, fieldInfo)));
+                    expressionList.Add(Expression.Assign(Expression.Field(toLocal, fieldInfo), value));
                 }
             }
 

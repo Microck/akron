@@ -11,7 +11,7 @@ Exports write compact manifest and setup JSON and use maximum DEFLATE compressio
 for JSON entries. StartPos slots share one `startpos/snapshots.bin.br` entry stored
 without further ZIP compression. A bounded dictionary shares repeated byte chunks;
 a reversible base64 transform removes text overhead before Brotli quality 11,
-window 24. Every original v10 JSON byte survives unchanged.
+window 24. Every original snapshot JSON byte survives unchanged.
 
 `snapshotBundleSha256` covers the compressed bundle. Each slot's
 `snapshotSha256` covers its raw JSON document. Local StartPos saves continue to use
@@ -94,15 +94,14 @@ The current portable and local contracts are:
 
 | Setup payload | StartPos snapshot document | StartPos attachment name | Snapshot file on disk |
 |---|---|---|---|
-| `akron-setup-v10` | `akron-reconstruction-v10` | `startpos/snapshots.bin.br` | `Saves/AkronStartPos/v10-<digest>.json.gz` |
+| `akron-setup-v10` | `akron-reconstruction-v11` | `startpos/snapshots.bin.br` | `Saves/AkronStartPos/v11-<digest>.json.gz` |
 
-A StartPos snapshot addresses each object by its position in a clean reload of the room
-rather than by an identifier of its own. That makes a snapshot meaningful only against
-the fresh room the build that wrote it produced. When Akron changes what a clean reload
-contains, every position after the change shifts, and two objects of the same type with
-no distinguishing identity can pair the wrong way round and restore without reporting a
-failure. Both contracts are therefore bumped together whenever the fresh room changes,
-and the snapshot file name carries the same version so an older file is never read.
+A StartPos snapshot records an object graph with map identities, ownership
+edges, live-resource identities, and structural paths into a clean room reload.
+Reconstruction checks those relationships before applying saved state. A change
+to required captured state or baseline assumptions requires a new snapshot
+version; the filename carries that version too. The setup payload version
+changes independently when the pack's own contract changes.
 
 The contracts also move when a snapshot has to carry something it did not carry before.
 A snapshot records, next to each saved object, whether the name it was saved under is
@@ -117,7 +116,8 @@ refused by the reader, before the reconstruction path sees it.
 
 | Change | Effect on existing data |
 |---|---|
-| `akron-setup-v9` -> `akron-setup-v10` | Export packs again to use the shared Brotli bundle. Existing local v10 StartPos saves remain usable and do not need to be set again. |
+| `akron-reconstruction-v10` -> `akron-reconstruction-v11` | Set StartPos slots again, then export their packs again. Snapshots now include the active area's room-owned dust style in the same graph as its controllers. Older snapshots lack that state and cannot be restored exactly. The `akron-setup-v10` container is unchanged. |
+| `akron-setup-v9` -> `akron-setup-v10` | Export packs again to use the shared Brotli bundle. This container change alone did not invalidate local snapshots; the separate v11 snapshot change above does. |
 | `akron-setup-v8` -> `akron-setup-v9` | Every `.akr` setup pack made by an earlier build must be exported again. Auto Kill and Auto Deafen areas now name the map they were drawn on, and the Core Mode override's enabled flag left the setup state. |
 | `akron-setup-v7` -> `akron-setup-v8` | Every `.akr` setup pack made by an earlier build must be exported again. The overlay animation duration, floating button, and Deload Spinners flag left the setup state. |
 | `akron-overlay-theme-v1` -> `akron-overlay-theme-v2` | Every `.akr` theme pack made by an earlier build must be exported again. The animation duration left the theme. |
@@ -164,7 +164,7 @@ manifest `createdAt` value.
 The setup payload size limit is 2 MiB.
 
 The compressed bundle is limited to 509 MiB, leaving room under the 512 MiB
-community-download limit. Each expanded v10 snapshot is limited to 384 MiB.
+community-download limit. Each expanded v11 snapshot is limited to 384 MiB.
 Export accepts local gzip sources up to 128 MiB each and 509 MiB in total.
 A `StartPos` or `Whole` archive can contain at most 99 StartPos entries.
 Each slot key must be in the range 1-99.

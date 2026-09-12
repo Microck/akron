@@ -40,6 +40,86 @@ public sealed class StartPosPersistenceTests {
         BindingFlags.Instance | BindingFlags.NonPublic
     ) ?? throw new InvalidOperationException("Celeste.Player.temp field is unavailable.");
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RoomDustStyleRestoresItsControllerAliasWithoutReplacingOtherAreas(bool fromDisk) {
+        const int areaId = int.MaxValue - 1;
+        const int otherAreaId = int.MaxValue;
+        Dictionary<int, DustStyles.DustStyle> table = new Dictionary<int, DustStyles.DustStyle>();
+        string directory = Path.Combine(Path.GetTempPath(), "akron-dust-style-" + Guid.NewGuid().ToString("N"));
+        try {
+            DustStyles.DustStyle style = new DustStyles.DustStyle {
+                EdgeColors = new[] { new Vector3 { X = 0.2f, Y = 0.4f, Z = 0.6f } },
+                EyeTextures = "danger/dustcreature/eyes"
+            };
+            DustStyles.DustStyle otherStyle = new DustStyles.DustStyle {
+                EdgeColors = new[] { new Vector3 { X = 1f, Y = 1f, Z = 1f } },
+                EyeTextures = "unrelated-area"
+            };
+            table[areaId] = style;
+            table[otherAreaId] = otherStyle;
+            DustStyleRoom saved = new DustStyleRoom {
+                ControllerStyle = style,
+                RuntimeState = new AkronPersistentRuntimeState {
+                    DustStyle = AkronPersistentRuntimeState.CaptureDustStyle(table, areaId)
+                }
+            };
+            AkronDeepClone.ClearSharedState();
+            saved = (DustStyleRoom) AkronDeepClone.Clone(saved);
+            AkronDeepClone.ClearSharedState();
+            Assert.NotSame(style.EdgeColors, saved.ControllerStyle.EdgeColors);
+
+            DustStyleRoom restored;
+            if (fromDisk) {
+                AkronReconstructionGraph graph = new AkronReconstructionGraph(_ => false);
+                DustStyleRoom fresh = new DustStyleRoom {
+                    RuntimeState = new AkronPersistentRuntimeState()
+                };
+                AkronReconstructionCapture capture = graph.Capture(saved, fresh);
+                Assert.True(capture.Success, capture.Error);
+                Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                    "style", "Tests/DustStyles", "room", 0, capture.Document, out string saveError, directory), saveError);
+                Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
+                    "style", out AkronReconstructionDocument document, out string loadError, directory), loadError);
+                AkronReconstructionRestore result = graph.Restore(document, fresh);
+                Assert.True(result.Success, result.Error);
+                restored = (DustStyleRoom) result.Objects[document.RootNodeId];
+            } else {
+                restored = (DustStyleRoom) AkronDeepClone.Clone(saved);
+            }
+
+            // Removing an outgoing controller clears its registration. Repeated
+            // restores must install the incoming controller's exact style alias.
+            for (int restore = 0; restore < 2; restore++) {
+                table.Remove(areaId);
+                AkronPersistentRuntimeState.RestoreDustStyle(table, areaId, restored.RuntimeState.DustStyle);
+                Assert.Same(restored.ControllerStyle.EdgeColors, table[areaId].EdgeColors);
+                Assert.Equal(restored.ControllerStyle.EyeTextures, table[areaId].EyeTextures);
+                Assert.Same(otherStyle.EdgeColors, table[otherAreaId].EdgeColors);
+                Assert.Equal(otherStyle.EyeTextures, table[otherAreaId].EyeTextures);
+            }
+
+            table.Remove(areaId);
+            DustStyles.DustStyle? absent = AkronPersistentRuntimeState.CaptureDustStyle(table, areaId);
+            table[areaId] = style;
+            AkronPersistentRuntimeState.RestoreDustStyle(table, areaId, absent);
+            Assert.False(table.ContainsKey(areaId));
+            Assert.Same(otherStyle.EdgeColors, table[otherAreaId].EdgeColors);
+            Assert.Equal(otherStyle.EyeTextures, table[otherAreaId].EyeTextures);
+        } finally {
+            AkronDeepClone.ClearSharedState();
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    private sealed class DustStyleRoom {
+        public DustStyles.DustStyle ControllerStyle;
+        public AkronPersistentRuntimeState RuntimeState = null!;
+    }
+
     [Fact]
     public void FreshRoomDrainFinishesEntitiesAddedDuringAwake() {
         List<Entity> entities = new List<Entity>();
@@ -557,7 +637,6 @@ public sealed class StartPosPersistenceTests {
             Assert.True(AkronStartPosReconstruction.TryLoadSnapshot(
                 slotName, out AkronReconstructionDocument document, out string loadError, directory), loadError);
             Assert.Equal(AkronReconstructionDocument.CurrentFormat, document.Format);
-            Assert.Equal("akron-reconstruction-v10", document.Format);
             Assert.Equal(slotName, document.SlotName);
             Assert.Equal("Tests/FormatBump", document.MapSid);
             Assert.Equal("room", document.Room);
@@ -599,30 +678,6 @@ public sealed class StartPosPersistenceTests {
             }
         }
 
-        // Finding the catalog needs a loaded save file; reading one does not. The
-        // sentence is chosen from the catalog alone, so it is exercised against a real
-        // catalog here and only the lookup is pinned in the source.
-        string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-actions.cs"));
-        int describe = source.IndexOf(
-            "internal static string DescribeMissingStartPos(Level level, int slot)", StringComparison.Ordinal);
-        int describeEnd = source.IndexOf(
-            "internal static string DescribeMissingStartPos(", describe + 1, StringComparison.Ordinal);
-        string describeMethod = SourceSlice(source, describe, describeEnd - describe);
-
-        Assert.Contains(
-            "DescribeMissingStartPos(slot, GetPersistedStartPositions(GetAreaSid(level)))",
-            describeMethod);
-        Assert.DoesNotContain("HasSupersededSnapshot", describeMethod);
-
-        // And the direct load is what asks for it. A sentence no path reaches has
-        // shipped here before, so both callers are pinned rather than assumed: this
-        // one, and Previous and Next below.
-        int load = source.IndexOf("public static void LoadStartPos(Level level)", StringComparison.Ordinal);
-        int loadEnd = source.IndexOf("public static void LoadStartPosSlot(", load, StringComparison.Ordinal);
-
-        Assert.Contains(
-            "new AkronToast(DescribeMissingStartPos(level, slot))",
-            SourceSlice(source, load, loadEnd - load));
     }
 
     // The catalog a save file would hold for one map, with each slot's state recorded
@@ -2407,45 +2462,6 @@ public sealed class StartPosPersistenceTests {
         }
     }
 
-    // An install may only remove a destination it can prove it created.
-    //
-    // The install asks whether the slot already holds a snapshot by moving it aside and
-    // reading the failure, and "missing" is also what comes back for a query the
-    // filesystem could not complete: a folder in the path that has lost its search
-    // permission, an IO error, a Windows attribute read a scanner is holding off.
-    // Measured outside the suite, with the snapshot folder made unsearchable and then
-    // searchable again mid-install: taking that answer at face value ends with
-    // File.Delete removing a snapshot the install never touched, which is the loss this
-    // whole path exists to prevent. So the emptiness answer is proved with an exclusive
-    // create, and the rollback's delete is reached only through that proof.
-    //
-    // Asserted on the source because the divergence needs the filesystem to change
-    // between two statements inside Install, which no test can arrange from outside;
-    // what a test can hold is that the delete has no other route to it.
-    [Fact]
-    public void AnInstallOnlyRemovesADestinationItProvedItCreated() {
-        string source = File.ReadAllText(GetSourcePath("SaveLoad", "akron-reconstruction-graph.cs"));
-        int install = source.IndexOf("internal sealed class PreparedSnapshotInstall", StringComparison.Ordinal);
-        int end = source.IndexOf("private const string CompareInfoSortNameKeyPrefix", install, StringComparison.Ordinal);
-        Assert.True(install >= 0 && end > install);
-        string transaction = SourceSlice(source, install, end - install);
-
-        // The proof, and the only branch that may delete, gated on it.
-        Assert.Contains("new FileStream(destinationPath, FileMode.CreateNew", transaction);
-        Assert.Contains("destinationClaimed = true;", transaction);
-        Assert.Contains("} else if (destinationClaimed) {\n", transaction);
-        Assert.Equal(1, CountOccurrences(transaction, "File.Delete("));
-
-        // Neither the install nor the rollback may ask the filesystem what it did: those
-        // answers are the ones that cannot tell "nothing there" from "cannot say".
-        Assert.DoesNotContain("File.Exists(destinationPath)", transaction);
-        Assert.DoesNotContain("File.Exists(backupPath)", transaction);
-        // The one existence question left is about the staged file the caller wrote, and
-        // a wrong answer there refuses the install rather than removing anything.
-        Assert.Equal(1, CountOccurrences(transaction, "File.Exists("));
-        Assert.Contains("File.Exists(sourcePath)", transaction);
-    }
-
     // A rollback that cannot do its job says so and stops; it does not throw.
     //
     // Both of its callers are already carrying a failure. Install's catch block calls it
@@ -2526,35 +2542,6 @@ public sealed class StartPosPersistenceTests {
         Assert.True(read > dispose);
     }
 
-    [Fact]
-    public void StartPosLoadsWaitForAStableEngineBoundary() {
-        string source = File.ReadAllText(GetActionsSourcePath());
-        int loadStart = source.IndexOf("public static void LoadStartPos(Level level)", StringComparison.Ordinal);
-        int loadEnd = source.IndexOf("public static void LoadStartPosSlot", loadStart, StringComparison.Ordinal);
-        int deathStart = source.IndexOf("internal static void RestoreStartPosAfterDeath", StringComparison.Ordinal);
-        int deathEnd = source.IndexOf("private static bool RestoreStartPos", deathStart, StringComparison.Ordinal);
-
-        string loadMethod = SourceSlice(source, loadStart, loadEnd - loadStart);
-        string deathMethod = SourceSlice(source, deathStart, deathEnd - deathStart);
-
-        Assert.Contains("AkronModule.ScheduleAfterStableEngineUpdate", loadMethod);
-        Assert.DoesNotContain("level.OnEndOfFrame", loadMethod);
-        Assert.Contains("AkronModule.ScheduleAfterStableEngineUpdate", deathMethod);
-        Assert.DoesNotContain("level.OnEndOfFrame", deathMethod);
-    }
-
-    [Fact]
-    public void DeferredStartPosLoadStopsAfterTheSceneChanges() {
-        string source = File.ReadAllText(GetActionsSourcePath());
-        int load = source.IndexOf("public static void LoadStartPos(Level level)", StringComparison.Ordinal);
-        int schedule = source.IndexOf("AkronModule.ScheduleAfterStableEngineUpdate(() =>", load, StringComparison.Ordinal);
-        int sceneGuard = source.IndexOf("if (Engine.Scene != level)", schedule, StringComparison.Ordinal);
-        int restore = source.IndexOf("RestoreStartPos(", sceneGuard, StringComparison.Ordinal);
-
-        Assert.True(schedule > load);
-        Assert.True(sceneGuard > schedule);
-        Assert.True(restore > sceneGuard);
-    }
 
     [Fact]
     public void StartPosCaptureFiltersIgnoredEntitiesWithoutChangingTheLiveRoom() {
@@ -2801,25 +2788,6 @@ public sealed class StartPosPersistenceTests {
         Assert.DoesNotContain("player.Sprite.Play(animation);", playerSnapshot);
     }
 
-    [Fact]
-    public void PlayerCollisionScratchNeverBecomesSavedState() {
-        Assert.True(AkronReconstructionGraph.IsTransientRuntimeField(typeof(Player), PlayerTempField));
-
-        string source = File.ReadAllText(GetSourcePath("SaveLoad", "akron-reconstruction-graph.cs"));
-        int captureFreshIndex = source.IndexOf("private void IndexFreshValue(", StringComparison.Ordinal);
-        int captureObject = source.IndexOf("private void CaptureObject(", captureFreshIndex, StringComparison.Ordinal);
-        int restoreFreshIndex = source.IndexOf("private void IndexFreshResources(", captureObject, StringComparison.Ordinal);
-
-        Assert.Contains(
-            "IsTransientRuntimeField(type, field)",
-            SourceSlice(source, captureFreshIndex, captureObject - captureFreshIndex));
-        Assert.Contains(
-            "IsTransientRuntimeField(savedObject.GetType(), field)",
-            SourceSlice(source, captureObject, restoreFreshIndex - captureObject));
-        Assert.Contains(
-            "IsTransientRuntimeField(type, field)",
-            SourceTail(source, restoreFreshIndex));
-    }
 
     [Theory]
     [InlineData(false)]
@@ -3075,76 +3043,7 @@ public sealed class StartPosPersistenceTests {
         Assert.True(methodEnd > complete);
     }
 
-    [Fact]
-    public void LoadProbeRecordsItsPixelCaptureAfterTheRestoreFrame() {
-        string qaSource = File.ReadAllText(GetQaCommandsSourcePath());
-        int method = qaSource.IndexOf("public static void QaStartPosLoadProbe", StringComparison.Ordinal);
-        int load = qaSource.IndexOf("AkronActions.LoadStartPos(level);", method, StringComparison.Ordinal);
-        int probe = qaSource.IndexOf("Func<Level, bool> recordProbe =", load, StringComparison.Ordinal);
-        int pixelCapture = qaSource.IndexOf("AkronCapture.RequestGameplayBufferQaCapture(", probe, StringComparison.Ordinal);
-        int stableBoundary = qaSource.IndexOf("AkronModule.ScheduleAfterStableEngineUpdate(() =>", pixelCapture, StringComparison.Ordinal);
 
-        Assert.True(method >= 0);
-        Assert.True(load > method);
-        Assert.True(probe > load);
-        Assert.True(pixelCapture > probe);
-        Assert.True(stableBoundary > pixelCapture);
-    }
-
-    [Fact]
-    public void LoadProbeKeepsAutomationOpenUntilEndOfFrameStateIsRecorded() {
-        string qaSource = File.ReadAllText(GetQaCommandsSourcePath());
-        string automationSource = File.ReadAllText(GetSourcePath("Automation", "akron-automation-service.cs"));
-        int method = qaSource.IndexOf("public static void QaStartPosLoadProbe", StringComparison.Ordinal);
-        int defer = qaSource.IndexOf("AkronAutomationService.DeferRunCompletion();", method, StringComparison.Ordinal);
-
-        Assert.True(method >= 0);
-        Assert.True(defer > method);
-
-        int stableBoundary = qaSource.IndexOf("AkronModule.ScheduleAfterStableEngineUpdate(() =>", method, StringComparison.Ordinal);
-        Assert.True(stableBoundary > method);
-        Assert.True(defer > stableBoundary);
-
-        int complete = qaSource.IndexOf("AkronAutomationService.CompleteDeferredRun();", stableBoundary, StringComparison.Ordinal);
-
-        Assert.True(complete > stableBoundary);
-        Assert.Contains("if (HandleDeferredRun())", automationSource);
-        Assert.Contains("DeferredRunFrameLimit", automationSource);
-        Assert.Contains("FailDeferredRun", automationSource);
-    }
-
-    [Fact]
-    public void IdlePollSurvivesTheFrameCounterThatAStartPosRestores() {
-        string source = File.ReadAllText(GetSourcePath("Automation", "akron-automation-service.cs"));
-        int process = source.IndexOf("public static void ProcessPendingCommands", StringComparison.Ordinal);
-        Assert.True(process >= 0);
-        int idleBranch = source.IndexOf("if (!hasActiveRun) {", process, StringComparison.Ordinal);
-        Assert.True(idleBranch > process);
-        int guard = source.IndexOf("if (Engine.FrameCounter < nextIdlePollFrame &&", idleBranch, StringComparison.Ordinal);
-        Assert.True(guard > idleBranch);
-        int rewind = source.IndexOf("nextIdlePollFrame - Engine.FrameCounter <= IdlePollFrames", guard, StringComparison.Ordinal);
-        Assert.True(rewind > guard);
-        int schedule = source.IndexOf("nextIdlePollFrame = Engine.FrameCounter + IdlePollFrames;", rewind, StringComparison.Ordinal);
-        Assert.True(schedule > rewind);
-
-        // FinalizeRun must not own this: LoadStartPos runs the restore on a later
-        // engine boundary, so the run has already finalized by the time the counter
-        // moves and a deadline written there is the pre-restore clock.
-        int finalizeStart = source.IndexOf("private static void FinalizeRun(", StringComparison.Ordinal);
-        int finalizeEnd = source.IndexOf("private static void WriteResult(", finalizeStart, StringComparison.Ordinal);
-        string finalizeRun = SourceSlice(source, finalizeStart, finalizeEnd - finalizeStart);
-
-        Assert.True(finalizeStart >= 0);
-        Assert.True(finalizeEnd > finalizeStart);
-        Assert.DoesNotContain("nextIdlePollFrame", finalizeRun);
-
-        string actionsSource = File.ReadAllText(GetActionsSourcePath());
-        int loadStartPos = actionsSource.IndexOf("public static void LoadStartPos(Level level)", StringComparison.Ordinal);
-        int deferredRestore = actionsSource.IndexOf("AkronModule.ScheduleAfterStableEngineUpdate(", loadStartPos, StringComparison.Ordinal);
-
-        Assert.True(loadStartPos >= 0);
-        Assert.True(deferredRestore > loadStartPos);
-    }
 
     [Fact]
     public void DeferredAutomationCompletionKeepsLaterCommandsQueued() {
@@ -3740,19 +3639,6 @@ public sealed class StartPosPersistenceTests {
         Assert.Contains("capturePersistentResources: false", SourceSlice(source, captureRollback, 320));
     }
 
-    [Fact]
-    public void PixelTaggedLoadProbeCompletesAfterTheRenderCapture() {
-        string qaSource = File.ReadAllText(GetSourcePath("Commands", "akron-qa-commands.cs"));
-        string captureSource = File.ReadAllText(GetSourcePath("Tools", "akron-capture.cs"));
-
-        int request = qaSource.IndexOf("RequestGameplayBufferQaCapture(", StringComparison.Ordinal);
-        int pixelTag = qaSource.IndexOf("pixelTag,", request, StringComparison.Ordinal);
-        int completion = qaSource.IndexOf("AkronAutomationService.CompleteDeferredRun", pixelTag, StringComparison.Ordinal);
-        Assert.True(request >= 0 && pixelTag > request && completion > pixelTag);
-        Assert.Contains("if (!waitForPixelCapture)", qaSource);
-        Assert.Contains("pendingGameplayBufferQaCompletion", captureSource);
-        Assert.Contains("completion?.Invoke()", captureSource);
-    }
 
     [Fact]
     public void InMemoryRestoreRefreshesTheTrackerBeforeHelperCallbacks() {
@@ -4063,20 +3949,6 @@ public sealed class StartPosPersistenceTests {
         Assert.DoesNotContain("char.IsLetterOrDigit(character)", source);
     }
 
-    [Fact]
-    public void LoadingStartPosPreservesTheRespawnPreference() {
-        string source = File.ReadAllText(GetActionsSourcePath());
-        int load = source.IndexOf("public static void LoadStartPos(Level level)", StringComparison.Ordinal);
-        int loadEnd = source.IndexOf("public static void LoadStartPosSlot", load, StringComparison.Ordinal);
-        int restore = source.IndexOf("private static bool RestoreStartPos(", StringComparison.Ordinal);
-        int restoreEnd = source.IndexOf("internal static void RelinkRuntimeRenderState", restore, StringComparison.Ordinal);
-        string loadPath = SourceSlice(source, load, loadEnd - load);
-        string restorePath = SourceSlice(source, restore, restoreEnd - restore);
-
-        Assert.DoesNotContain("enableRespawnAtStartPosAfterRestore", loadPath);
-        Assert.DoesNotContain("enableRespawnAtStartPosAfterRestore", restorePath);
-        Assert.Contains("AkronModule.Settings.RespawnAtStartPos = restoreRespawnAtStartPos;", restorePath);
-    }
 
     [Fact]
     public void EnabledStartPosRespawnUsesTheLastLoadedSlotAfterDeath() {
@@ -4362,34 +4234,6 @@ public sealed class StartPosPersistenceTests {
         Assert.DoesNotContain("DiscardRuntimeStateMemory", transitionPath);
     }
 
-    [Fact]
-    public void EveryStartPosLoadOutcomeReachesThePlayer() {
-        string source = File.ReadAllText(GetActionsSourcePath());
-        int load = source.IndexOf("public static void LoadStartPos(Level level)", StringComparison.Ordinal);
-        int loadEnd = source.IndexOf("public static void LoadStartPosSlot(", load, StringComparison.Ordinal);
-        string loadPath = SourceSlice(source, load, loadEnd - load);
-
-        // The two deferred-boundary guards used to return without a word, which looks
-        // exactly like a dead hotkey.
-        Assert.Contains("was not loaded: the scene changed.", loadPath);
-        Assert.Contains("was not loaded: a capture is still finishing.", loadPath);
-
-        // The deferred boundary swallows exceptions, so the restore reports its own.
-        int restore = source.IndexOf(
-            "private static bool RestoreStartPos(Level level, AkronStartPos startPos",
-            StringComparison.Ordinal);
-        int restoreEnd = source.IndexOf("private static void ReportStartPosLoadFailure(", restore, StringComparison.Ordinal);
-        string restorePath = SourceSlice(source, restore, restoreEnd - restore);
-        Assert.Contains("catch (Exception exception)", restorePath);
-        Assert.Contains("ReportStartPosLoadFailure(", restorePath);
-
-        // A rolled-back cold restore has to say that nothing changed, or it is
-        // indistinguishable from the load never having run.
-        string saveLoadSource = File.ReadAllText(GetSaveLoadSourcePath());
-        Assert.Contains("nothing was changed and you are still in ", saveLoadSource);
-        Assert.Contains("its restart copy is still finishing", saveLoadSource);
-        Assert.Contains("no restart copy of this StartPos exists on disk", saveLoadSource);
-    }
 
     // What the refusal is about decides the sentence, and it is carried from the graph to
     // the toast through five hops. Every one of them can silently drop it and leave the

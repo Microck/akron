@@ -107,8 +107,8 @@ public static partial class AkronSetupPacks {
     // whether a saved resource's key names it, and, for the room half of a snapshot,
     // whether the map laid a saved entity's id out - so the v8 snapshots inside a v5
     // pack cannot be rebuilt here either.
-    // v10 changes only the portable snapshot encoding to a shared Brotli bundle. Local v10 gzip
-    // snapshots remain usable; exporting again writes the new pack contract.
+    // v10 changes only the portable snapshot encoding to a shared Brotli bundle.
+    // The native snapshot format is versioned independently; export requires the current one.
     public const string SetupPackFormat = "akron-setup-v10";
     private static Task exportTask;
     internal static bool ExportInProgress => exportTask != null && !exportTask.IsCompleted;

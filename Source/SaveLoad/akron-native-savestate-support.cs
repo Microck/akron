@@ -255,9 +255,8 @@ internal static class AkronNativeSavestateSupport {
                     ["PauseGameplaySfx"] = Audio.PauseGameplaySfx
                 };
 
-                // DustStyles is static visual support for vanilla DustEdges. Restoring
-                // a cloned copy can leave DustEdges with invalid style references on
-                // the next render; keep the live table instead of snapshotting it.
+                // Active-area DustStyles state is captured alongside the Level,
+                // not here: its arrays can alias controller fields in the room graph.
             },
             loadState: (savedValues, level) => {
                 AkronSaveLoadService.LoadStaticMembers(savedValues, typeof(Engine),
