@@ -219,6 +219,8 @@ trailing spaces, tabs, and CR/LF after decoding. Encode embedded quotes as
 line break inside an argument in the command file. In Python, use
 `json.dumps(value, ensure_ascii=False)` so Unicode names do not needlessly
 expand against the command-line limit.
+The repository's verification and perf shell harnesses require local `python3`
+for this encoding.
 
 ```text
 akron_qa_warp_room "  room \"A\"\\branch\r\nnext  "
