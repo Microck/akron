@@ -306,3 +306,20 @@ failures or skips. The bundle suite retains regressions for excessive commands,
 a tiny-frame burst after a full frame, and writer round trips containing
 minimum-length packed runs separated by tiny literal frames. These checks
 exercise the compiled codec headlessly, not the running game.
+
+A later review found that unsupported blend descriptors threw
+`InvalidOperationException` during the synchronous clone, outside the capture
+refusal contract. They now throw `AkronReconstructionException`, which the
+existing capture handler reports without letting Set rethrow it.
+
+The canonical unsupported-descriptor regression failed before the change and
+passes afterward. A separate real deep-clone probe used executable FNA from
+the Windows installation because CI's stripped `IsDisposed` getter cannot
+execute. Custom `Tag`, DynamicData, and disposed descriptors all changed from
+`InvalidOperationException` to the capture-refusal type; a normal descriptor
+still cloned independently. That FNA assembly's SHA-256 is
+`7249fd96f989fa6c3adc28b64dbb7cbff21bb1746128e250e243fabf21a1932f`.
+
+All 1,987 Release tests passed against the pinned CI references, with zero
+failures or skips. The real-FNA probe is headless; the in-game failure toast
+has not been visually rechecked for this follow-up.

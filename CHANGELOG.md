@@ -19,6 +19,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 - Avoid worker-stack overflow when indexing and saving deeply linked StartPos graphs.
 - Stop boxed native pointers from trapping StartPos resource indexing in an infinite walk. Refuse unsupported Lua state before copying native VM handles.
 - Treat process caches as live boundaries during capture and resource indexing, and snapshot mutable blend settings without copying GPU handles.
+- Report custom or disposed blend states through the normal capture-failure path instead of letting Set throw.
 - Restore the active room's dust style with its controllers so repeated StartPos loads do not leave their shared registry empty.
 - Preserve readonly fields and shared references when copying native StartPos state back into an existing room.
 - Report the actual cause of refused StartPos captures. The map sweep waits for capture, load, and export completion, respects cutscene guards, preserves exact room names, and marks checks after a command timeout as blocked.

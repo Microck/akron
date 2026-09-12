@@ -4148,6 +4148,17 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
+    public void CustomBlendDescriptorUsesTheCaptureRefusalContract() {
+        BlendState source = (BlendState)RuntimeHelpers.GetUninitializedObject(typeof(CustomBlendDescriptor));
+        GC.SuppressFinalize(source);
+
+        Assert.Throws<AkronReconstructionException>(() => AkronBlendStateSnapshot.Clone(source));
+    }
+
+    private sealed class CustomBlendDescriptor : BlendState {
+    }
+
+    [Fact]
     public void ABlendStateCannotRequestRenderTargetAllocationThroughItsPayload() {
         AkronReconstructionResourcePayload payload = new AkronReconstructionResourcePayload {
             Kind = "virtual-render-target-rgba-v1",

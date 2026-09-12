@@ -506,7 +506,10 @@ internal static class AkronBlendStateSnapshot {
     private static void ValidateSource(BlendState source) {
         if (source.GetType() != typeof(BlendState) || source.IsDisposed || source.Tag != null ||
             AkronDeepClone.HasCustomDynamicData(source)) {
-            throw new InvalidOperationException("BlendState must be a live built-in descriptor without custom Tag or dynamic state.");
+            throw new AkronReconstructionException(
+                "$",
+                "Custom or disposed blend state cannot be saved safely. Capture in another room.",
+                source.GetType().AssemblyQualifiedName);
         }
     }
 
