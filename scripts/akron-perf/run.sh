@@ -101,6 +101,7 @@ say() { printf '\n== %s %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 SSH_HOST_KEY_OPTIONS=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${KNOWN_HOSTS}" -o ConnectTimeout=20)
 rsh() { sshpass -e ssh "${SSH_HOST_KEY_OPTIONS[@]}" "${USER_NAME}@${HOST}" "$@"; }
 rcp() { sshpass -e scp "${SSH_HOST_KEY_OPTIONS[@]}" "$@"; }
+json_arg() { python3 -c 'import json, sys; print(json.dumps(sys.argv[1], ensure_ascii=False))' "$1"; }
 
 # ---------------------------------------------------------------- build/deploy
 
@@ -148,6 +149,7 @@ say "Uploading the TAS scenario"
 rsh "mkdir -p '${GAME_ROOT}/Saves/AkronPerfScenario' '${PERF_DIR}'; rm -f '${PERF_DIR}'/*.jsonl"
 rcp scripts/akron-perf/scenario.tas "${USER_NAME}@${HOST}:${GAME_ROOT}/Saves/AkronPerfScenario/scenario.tas"
 TAS_PATH="${GAME_ROOT}/Saves/AkronPerfScenario/scenario.tas"
+TAS_PATH_JSON="$(json_arg "$TAS_PATH")"
 
 # ------------------------------------------------------------------ game loop
 
@@ -277,16 +279,17 @@ place_slots() {
 # that it says everything to the game in one file before playback begins.
 place_and_play_during() {
     local n="$1"
-    local label="$2"
+    local label_json
+    label_json="$(json_arg "$2")" || return 1
     local i body=""
-    body="akron_tas_file ${TAS_PATH}
+    body="akron_tas_file ${TAS_PATH_JSON}
 "
     if [ "$GC_EVENTS" -eq 0 ]; then
         body="${body}akron_perf gcevents off
 "
     fi
     body="${body}akron_perf reset
-akron_perf record ${label}
+akron_perf record ${label_json}
 "
     for i in $(seq 1 "$n"); do body="${body}akron_startpos set ${i}
 "; done
@@ -296,7 +299,8 @@ akron_perf record ${label}
 }
 
 record_and_play() {
-    local label="$1"
+    local label_json
+    label_json="$(json_arg "$1")" || return 1
     # Stress mode runs the overlay churn loop concurrently with scripted
     # gameplay: visibility toggled every 15 frames, UI mutated every frame, and
     # a forced full GC every 120 frames. It only exists in Debug builds
@@ -309,12 +313,12 @@ record_and_play() {
     # before. Once it is on it stalls the automation queue: measured on the box,
     # every command sent after `akron_qa_stress on` timed out, so anything the
     # harness still needs to say to the game has to be said first.
-    send "akron_tas_file ${TAS_PATH}" 30 >/dev/null
+    send "akron_tas_file ${TAS_PATH_JSON}" 30 >/dev/null
     if [ "$GC_EVENTS" -eq 0 ]; then
         send "akron_perf gcevents off" 30 >/dev/null
     fi
     send "akron_perf reset
-akron_perf record ${label}
+akron_perf record ${label_json}
 akron_startpos status" 60
     send "akron_play_tas" 30 >/dev/null
     if [ "$STRESS" -eq 1 ]; then

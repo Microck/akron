@@ -12,6 +12,7 @@ public static partial class AkronCommands {
         if (string.IsNullOrWhiteSpace(value)) {
             Log("setup-section: " + AkronSetupPacks.FormatSection(AkronModule.Settings.SetupPackSection));
             Log("setup-directory: " + AkronSetupPacks.GetSetupDirectory());
+            Log("setup-export-in-progress: " + AkronSetupPacks.ExportInProgress.ToString().ToLowerInvariant());
             return;
         }
 
@@ -24,7 +25,7 @@ public static partial class AkronCommands {
             }
 
             string path = AkronSetupPacks.ExportCurrent(exportName, section);
-            Log("setup-export: " + path);
+            Log("setup-export-started: " + path);
             Log("setup-section: " + AkronSetupPacks.FormatSection(section));
             return;
         }

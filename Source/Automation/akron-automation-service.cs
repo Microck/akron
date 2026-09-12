@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Celeste;
 using Monocle;
 
@@ -131,6 +132,7 @@ public static class AkronAutomationService {
         "akron_qa_label_number",
         "akron_qa_label_row_order",
         "akron_qa_list_maps",
+        "akron_qa_list_rooms",
         "akron_qa_messages",
         "akron_qa_pause",
         "akron_qa_pause_event",
@@ -377,36 +379,43 @@ public static class AkronAutomationService {
         Engine.Commands.ExecuteCommand(command, args);
     }
 
-    private static string[] Tokenize(string input) {
+    internal static string[] Tokenize(string input) {
         List<string> tokens = new List<string>();
-        StringBuilder current = new StringBuilder();
-        bool insideQuotes = false;
-
-        foreach (char character in input) {
-            if (character == '"') {
-                insideQuotes = !insideQuotes;
+        int index = 0;
+        while (index < input.Length) {
+            if (char.IsWhiteSpace(input[index])) {
+                index++;
                 continue;
             }
 
-            if (char.IsWhiteSpace(character) && !insideQuotes) {
-                FlushToken(tokens, current);
-                continue;
+            int start = index;
+            if (input[index] == '"') {
+                index++;
+                while (index < input.Length && input[index] != '"') {
+                    if (input[index] == '\\') {
+                        index++;
+                    }
+                    index++;
+                }
+                if (index >= input.Length) {
+                    throw new JsonException("Quoted argument is not terminated.");
+                }
+                index++;
+                if (index < input.Length && !char.IsWhiteSpace(input[index])) {
+                    throw new JsonException("Quoted arguments must be separated by whitespace.");
+                }
+                tokens.Add(JsonSerializer.Deserialize<string>(input.AsSpan(start, index - start)));
+            } else {
+                while (index < input.Length && !char.IsWhiteSpace(input[index])) {
+                    if (input[index] == '"') {
+                        throw new JsonException("Quoted arguments must start at a token boundary.");
+                    }
+                    index++;
+                }
+                tokens.Add(input.Substring(start, index - start));
             }
-
-            current.Append(character);
         }
-
-        FlushToken(tokens, current);
         return tokens.ToArray();
-    }
-
-    private static void FlushToken(List<string> tokens, StringBuilder current) {
-        if (current.Length == 0) {
-            return;
-        }
-
-        tokens.Add(current.ToString());
-        current.Clear();
     }
 
     private static void AppendOutput(string line) {
@@ -503,7 +512,13 @@ public static class AkronAutomationService {
                 error = "Command file exceeds command limits.";
                 return false;
             }
-            string command = Tokenize(commandLine).FirstOrDefault() ?? string.Empty;
+            string command;
+            try {
+                command = Tokenize(commandLine).FirstOrDefault() ?? string.Empty;
+            } catch (JsonException) {
+                error = "Command file contains an invalid quoted argument.";
+                return false;
+            }
             if (!IsAllowedCommand(command)) {
                 error = "Automation command is not allowlisted: " + command;
                 return false;

@@ -6,6 +6,29 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Changed
+
+- Move setup packs to `akron-setup-v10`, with shared, lossless Brotli compression for exact StartPos snapshots. Export older packs again.
+- Compress setup exports and uploads in the background, keep the previous export if writing fails, and reuse downloaded packs whose catalog checksum still matches.
+- Move StartPos snapshots to `akron-reconstruction-v11` to include room-owned registry state. Capture older slots again, then re-export their StartPos packs; positions, spawn settings, and keybinds are unchanged.
+
+### Fixed
+
+- Reconstruct nested grids, helper-owned UI, backdrop particles, retained entities, running coroutines, and component-owned callbacks through their identified owners without requiring identical fresh-room populations.
+- Preserve scene-owned camera identity for detached components, including grids first reached through callbacks, and restore map metadata cached by mod sessions after leaving a room.
+- Avoid worker-stack overflow when indexing and saving deeply linked StartPos graphs.
+- Stop boxed native pointers from trapping StartPos resource indexing in an infinite walk. Refuse unsupported Lua state before copying native VM handles.
+- Treat process caches as live boundaries during capture and resource indexing, and snapshot mutable blend settings without copying GPU handles.
+- Report custom or disposed blend states through the normal capture-failure path instead of letting Set throw.
+- Restore the active room's dust style with its controllers so repeated StartPos loads do not leave their shared registry empty.
+- Preserve readonly fields and shared references when copying native StartPos state back into an existing room.
+- Report the actual cause of refused StartPos captures. The map sweep waits for capture, load, and export completion, respects cutscene guards, preserves exact room names, and marks checks after a command timeout as blocked.
+- Keep the bulk sweep's recovery archive outside `Saves` so startup backups do not include it again on each launch.
+- Restart the bulk sweep after SSH recovery, reject stale startup logs, and keep failed or blocked maps in its aggregate results, including unreported sides after a timeout.
+- Preserve quotes, backslashes, and line breaks in automation arguments and room-warp acknowledgements. Quoted command-file arguments now use JSON string escaping.
+- Reject setup packs whose snapshot documents expand beyond 1 GiB in total, on both export and import.
+- Refuse heavily fragmented snapshot bundles before tiny commands or frames can stall setup import.
+
 ## Akron Beta 80
 
 ### Fixed

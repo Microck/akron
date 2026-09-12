@@ -357,7 +357,11 @@ public static partial class AkronActions {
             if (ownsRollback) {
                 RestoreStartPosRollback(fileSlot, slot, null, stateSlotName, reason: null);
             }
-            Engine.Scene?.Add(new AkronToast("StartPos capture failed: " + saveResult + "."));
+            string captureFailure = string.IsNullOrWhiteSpace(AkronSaveLoadService.LastPersistentSnapshotError)
+                ? saveResult.ToString()
+                : AkronSaveLoadService.LastPersistentSnapshotError;
+            AkronLog.Warn(nameof(AkronActions), "StartPos " + slot + " capture failed: " + captureFailure);
+            Engine.Scene?.Add(new AkronToast(TruncateStartPosFailureToast("StartPos capture failed: " + captureFailure)));
             completion?.Invoke(false);
             return;
         }
@@ -839,49 +843,63 @@ public static partial class AkronActions {
             : 0;
     }
 
-    public static void LoadStartPos(Level level) {
-        if (level == null || !AkronModule.TryUse(AkronFeatureKind.StartPosTools)) {
-            return;
-        }
-        if (startPosCaptureInProgress) {
-            Engine.Scene?.Add(new AkronToast("StartPos capture is still finishing."));
-            return;
-        }
-
-        int slot = AkronModule.Settings.ActiveStartPosSlot;
-        AkronStartPos startPos = GetStartPos(slot);
-        if (startPos == null) {
-            Engine.Scene?.Add(new AkronToast(DescribeMissingStartPos(level, slot)));
-            return;
-        }
-        if (!IsStartPosInArea(startPos, level.Session.Area.GetSID())) {
-            Engine.Scene?.Add(new AkronToast("StartPos " + AkronModule.Settings.ActiveStartPosSlot + " belongs to " + startPos.AreaSid + "."));
-            return;
-        }
-
-        AkronModule.ScheduleAfterStableEngineUpdate(() => {
-            // The load runs one engine boundary after the key press. Both of these
-            // used to return silently, which is indistinguishable from a dead hotkey.
-            if (Engine.Scene != level) {
-                Engine.Scene?.Add(new AkronToast("StartPos " + slot + " was not loaded: the scene changed."));
+    public static void LoadStartPos(Level level, Action<bool> completion = null) {
+        bool scheduled = false;
+        try {
+            if (level == null || !AkronModule.TryUse(AkronFeatureKind.StartPosTools)) {
                 return;
             }
             if (startPosCaptureInProgress) {
-                Engine.Scene?.Add(new AkronToast("StartPos " + slot + " was not loaded: a capture is still finishing."));
+                Engine.Scene?.Add(new AkronToast("StartPos capture is still finishing."));
                 return;
             }
 
-            if (!RestoreStartPos(
-                level,
-                startPos,
-                "Loaded StartPos " + slot + ".",
-                slot)) {
+            int slot = AkronModule.Settings.ActiveStartPosSlot;
+            AkronStartPos startPos = GetStartPos(slot);
+            if (startPos == null) {
+                Engine.Scene?.Add(new AkronToast(DescribeMissingStartPos(level, slot)));
+                return;
+            }
+            if (!IsStartPosInArea(startPos, level.Session.Area.GetSID())) {
+                Engine.Scene?.Add(new AkronToast("StartPos " + slot + " belongs to " + startPos.AreaSid + "."));
                 return;
             }
 
-            Level currentLevel = Engine.Scene as Level ?? level;
-            BeginStartPosInputWait(currentLevel, waitingForWipe: false);
-        });
+            AkronModule.ScheduleAfterStableEngineUpdate(() => {
+                bool loaded = false;
+                try {
+                    if (Engine.Scene != level) {
+                        Engine.Scene?.Add(new AkronToast("StartPos " + slot + " was not loaded: the scene changed."));
+                        return;
+                    }
+                    if (startPosCaptureInProgress) {
+                        Engine.Scene?.Add(new AkronToast("StartPos " + slot + " was not loaded: a capture is still finishing."));
+                        return;
+                    }
+
+                    if (!RestoreStartPos(
+                        level,
+                        startPos,
+                        "Loaded StartPos " + slot + ".",
+                        slot)) {
+                        return;
+                    }
+
+                    Level currentLevel = Engine.Scene as Level ?? level;
+                    BeginStartPosInputWait(currentLevel, waitingForWipe: false);
+                    loaded = true;
+                } finally {
+                    completion?.Invoke(loaded);
+                }
+            });
+            scheduled = true;
+        } finally {
+            // The deferred action owns completion only after it has been queued.
+            // An observer must never mistake scheduling (or a missing slot) for Load.
+            if (!scheduled) {
+                completion?.Invoke(false);
+            }
+        }
     }
 
     public static void LoadStartPosSlot(Level level, int slot) {

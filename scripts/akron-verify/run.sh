@@ -46,9 +46,9 @@
 # exact values the setup wrote (facing, dashes, flag, counter - position is one
 # gravity frame past the set point, so it is deterministic but not the set value),
 # and keeps the whole field set as a baseline; checks 2 and 3 assert their probes
-# reproduce that baseline exactly. A refused load still arms a pixel capture, so
-# the hash comparisons alone never claimed the load succeeded - these field
-# assertions are what does.
+# reproduce that baseline exactly. A refused load reports failure without arming
+# a pixel capture. The named state assertions, not buffer hashes, check that the
+# requested state was restored.
 
 set -uo pipefail
 
@@ -249,7 +249,8 @@ if [ -z "$REF_HASH" ]; then
 fi
 REF_ROOM="$(send 'akron_status' 40 | sed -n 's/^startpos-room: //p')"
 
-send "akron_qa_warp_room ${AWAY_ROOM}" 60 >/dev/null
+AWAY_ROOM_JSON="$(python3 -c 'import json, sys; print(json.dumps(sys.argv[1], ensure_ascii=False))' "$AWAY_ROOM")" || exit 1
+send "akron_qa_warp_room ${AWAY_ROOM_JSON}" 60 >/dev/null
 sleep 4
 AWAY_ROOM_ACTUAL="$(send 'akron_status' 40 | sed -n 's|^room: .*/ ||p')"
 

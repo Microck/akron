@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Celeste.Mod.Akron;
 using MonoMod.Utils;
 using Xunit;
@@ -52,6 +54,63 @@ namespace Celeste.Mod.Akron.Tests {
                 Assert.Equal("SpringCollab2020", new DynamicData(clone).Data["mod-name"]);
             } finally {
                 AkronDeepClone.Reset();
+            }
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void CopyIntoRestoresReadonlyFieldsWithTheRequestedCopyDepth(bool deep) {
+            ReadonlyCloneProbe source = new ReadonlyCloneProbe(47, new List<int> { 37 });
+            ReadonlyCloneProbe target = new ReadonlyCloneProbe(12, new List<int> { 5 });
+            AkronDeepClone.Initialize();
+            AkronDeepClone.ClearSharedState();
+            try {
+                if (deep) {
+                    AkronDeepClone.CopyInto(source, target);
+                } else {
+                    Force.DeepCloner.DeepClonerExtensions.ShallowCloneTo(source, target);
+                }
+
+                Assert.Equal(47, target.Value);
+                Assert.Same(target.Items, target.Alias);
+                source.Items.Add(99);
+                Assert.Equal(deep ? new[] { 37 } : new[] { 37, 99 }, target.Items);
+            } finally {
+                AkronDeepClone.Reset();
+            }
+        }
+
+        [Theory]
+        [InlineData("Celeste.Mod.LuaCoroutine, Celeste")]
+        [InlineData("NLua.LuaTable, NLua")]
+        public void NativeLuaStateIsRefusedBeforeCloningItsHandles(string typeName) {
+            object source = RuntimeHelpers.GetUninitializedObject(Type.GetType(typeName, throwOnError: true)!);
+            GC.SuppressFinalize(source);
+            object? clone = null;
+            AkronDeepClone.Initialize();
+            AkronDeepClone.ClearSharedState();
+            try {
+                Exception? refusal = Record.Exception(() => clone = AkronSaveLoadService.DeepClone(source));
+                if (clone != null) {
+                    GC.SuppressFinalize(clone);
+                }
+
+                Assert.IsType<AkronReconstructionException>(refusal);
+            } finally {
+                AkronDeepClone.Reset();
+            }
+        }
+
+        private sealed class ReadonlyCloneProbe {
+            public readonly int Value;
+            public readonly List<int> Items;
+            public readonly List<int> Alias;
+
+            public ReadonlyCloneProbe(int value, List<int> items) {
+                Value = value;
+                Items = items;
+                Alias = items;
             }
         }
 

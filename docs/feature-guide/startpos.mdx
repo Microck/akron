@@ -19,7 +19,7 @@ The StartPos tab is Akron's player position and room-state restore workflow. The
 A StartPos is an exact gameplay-state snapshot. Loading it must restore every
 captured entity, component, reference, position, speed, timer, state machine,
 animation, coroutine, random-number state, and registered helper state to the
-captured frame. Akron stores this state in a local v10 snapshot file so it
+captured frame. Akron stores this state in a local v11 snapshot file so it
 survives closing and restarting Celeste. Set and Load hold the room state until
 Celeste renders the restored frame.
 
@@ -30,6 +30,23 @@ Captured coroutine state includes removed components still held by a running
 routine, such as a CrushBlock's sound after its delayed removal. Those
 components restore as detached objects, without adding them back to the room.
 
+Reconstruction follows captured object ownership and identity, including typed
+managed grids, records, pooled effects, helper-owned UI, backdrop particles,
+and removed objects still referenced by their owners. Running coroutines keep
+references to their owning room. A helper does not need a map-specific exception
+for these shapes. Process-owned caches stay attached to the running engine.
+Mutable blend settings are copied as managed values, without copying GPU
+handles. Room-owned dust styles are saved with the room so their controller
+references remain consistent across repeated loads.
+
+Callbacks created by a component's constructor can also restore captured
+sibling components. Named component fields preserve identity when an entity
+swaps which component is attached; removed callbacks must still belong to
+their entity, not borrow another entity's state.
+
+The v11 snapshot adds required room-registry state. Set existing v10 StartPos
+slots again, then export any StartPos packs again. Positions, spawn settings,
+and keybinds are unchanged; the older saved room state cannot be loaded exactly.
 A successful first Load prepares the other slots in the active chapter within
 the machine's memory budget. Later Loads reuse those room states. Restoring
 the saved render-buffer pixels must not add a GPU readback to each Load;
@@ -52,8 +69,10 @@ statistics do not rewind. Room simulation clocks restore to the Set frame
 because room objects and visuals use them.
 
 Akron must reject capture or load when it cannot represent required gameplay
-state exactly. It must not replace an exact StartPos with a player-only or
-session-only room reload.
+state exactly. This includes unregistered native handles, such as a running Lua
+interpreter, that a managed snapshot cannot recreate. Akron reports a refusal
+instead of substituting a player-only or session-only room reload. Manual
+capture and load are blocked while paused, dead, transitioning, or in a cutscene.
 
 There is one named exception to that contract. Akron does not capture the
 playback tutorial ghost, Celeste's `playbackTutorial` entity, or the trail it
@@ -69,14 +88,13 @@ ghosts a map places in a room. Playback figures a cutscene owns, such as
 Farewell's wave-dash tutorial, are captured and restored exactly as before. Use
 **Disable Playback** if you would rather the ghost were not there at all.
 
-Akron does not load old selected-field room snapshots. A v10 snapshot contains
-the complete managed room graph, registered helper state, audio state, and
-render-buffer pixels required by the Set frame. Akron refuses the load if the
-file is missing, damaged, uses another snapshot format, or belongs to another
-map or save file. A snapshot format change refuses every slot set before it,
-because a snapshot names room objects by their place in a clean reload of the
-room and a change to what that reload contains moves them; those slots have to
-be set again, and Akron says so when you load one. Imported StartPos packs bind
+Akron does not load old selected-field room snapshots. A v11 snapshot contains
+the complete managed room graph, registered helper state, audio state, room
+registry state, and render-buffer pixels required by the Set frame. Akron
+refuses the load if the file is missing, damaged, uses another snapshot format,
+or belongs to another map or save file. Snapshot versions change when required
+captured state or reconstruction assumptions change. Older slots must be set
+again; Akron does not guess the missing state. Imported StartPos packs bind
 their snapshots to the active save-file slot without importing the author's
 progress or module save data. The
 same map and object-providing mods must remain installed because an exact

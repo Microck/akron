@@ -426,6 +426,15 @@ public static class AkronCommunityPacks {
     private static void DownloadPack(AkronCommunityPackEntry entry, string destinationPath) {
         ValidateCatalogEntry(entry);
         Uri uri = ResolveCatalogResourceUri(entry, entry.DownloadUrl, "Pack");
+        // The catalog binds the exact size and digest. Recheck the local file so a
+        // changed or damaged cache never bypasses the normal download verification.
+        if (File.Exists(destinationPath)) {
+            using FileStream cached = File.OpenRead(destinationPath);
+            if (cached.Length == entry.SizeBytes && CryptographicOperations.FixedTimeEquals(
+                    SHA256.HashData(cached), Convert.FromHexString(entry.Sha256))) {
+                return;
+            }
+        }
         if (uri.Scheme == Uri.UriSchemeFile) {
             using FileStream source = new FileStream(uri.LocalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
             WriteVerifiedPack(source, destinationPath, entry);

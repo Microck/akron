@@ -570,43 +570,47 @@ public static partial class AkronCommands {
         }
 
         AkronActions.SetStartPosSlot(slot);
-        AkronActions.LoadStartPos(level);
-        Func<Level, bool> recordProbe = currentLevel => {
-            bool waitForPixelCapture = false;
-            AkronAutomationService.RecordOutput("qa-startpos-load-probe: end-of-frame");
-            RecordControlledPlayerProbe(currentLevel, "qa-startpos-load-probe");
-            RecordQaStartPosBackdropState(currentLevel, slot, "qa-startpos-load-probe");
-            AkronAutomationService.RecordOutput("qa-session-flag: " + flag + "=" + currentLevel.Session.GetFlag(flag).ToString().ToLowerInvariant());
-            AkronAutomationService.RecordOutput("qa-session-counter: " + counter + "=" + currentLevel.Session.GetCounter(counter).ToString(CultureInfo.InvariantCulture));
-            AkronAutomationService.RecordOutput("qa-session-deaths: " + currentLevel.Session.Deaths.ToString(CultureInfo.InvariantCulture));
-            AkronAutomationService.RecordOutput("qa-session-room-deaths: " + currentLevel.Session.DeathsInCurrentLevel.ToString(CultureInfo.InvariantCulture));
-            AkronAutomationService.RecordOutput("qa-session-time: " + currentLevel.Session.Time.ToString(CultureInfo.InvariantCulture));
-            if (!string.IsNullOrWhiteSpace(pixelTag)) {
-                if (AkronCapture.RequestGameplayBufferQaCapture(
-                        pixelTag,
-                        out string normalizedTag,
-                        AkronAutomationService.CompleteDeferredRun)) {
-                    waitForPixelCapture = true;
-                    AkronAutomationService.RecordOutput("qa-startpos-load-probe-pixel: armed;tag=" + normalizedTag);
-                } else {
-                    AkronAutomationService.RecordOutput("qa-startpos-load-probe-pixel: rejected");
-                }
-            }
-            return waitForPixelCapture;
-        };
-        AkronModule.ScheduleAfterStableEngineUpdate(() => {
-            bool waitForPixelCapture = false;
-            try {
-                Level currentLevel = Engine.Scene as Level ?? level;
-                waitForPixelCapture = recordProbe(currentLevel);
-            } finally {
-                if (!waitForPixelCapture) {
-                    AkronAutomationService.CompleteDeferredRun();
-                }
-            }
-        });
         AkronAutomationService.DeferRunCompletion();
         Log("qa-startpos-load-probe: scheduled");
+        try {
+            AkronActions.LoadStartPos(level, loaded => {
+                bool waitForPixelCapture = false;
+                try {
+                    if (!loaded) {
+                        Log("qa-startpos-load-probe: failed;slot=" + slot.ToString(CultureInfo.InvariantCulture));
+                        return;
+                    }
+
+                    Level currentLevel = (Level) Engine.Scene;
+                    Log("qa-startpos-load-probe: loaded;slot=" + slot.ToString(CultureInfo.InvariantCulture));
+                    RecordControlledPlayerProbe(currentLevel, "qa-startpos-load-probe");
+                    RecordQaStartPosBackdropState(currentLevel, slot, "qa-startpos-load-probe");
+                    AkronAutomationService.RecordOutput("qa-session-flag: " + flag + "=" + currentLevel.Session.GetFlag(flag).ToString().ToLowerInvariant());
+                    AkronAutomationService.RecordOutput("qa-session-counter: " + counter + "=" + currentLevel.Session.GetCounter(counter).ToString(CultureInfo.InvariantCulture));
+                    AkronAutomationService.RecordOutput("qa-session-deaths: " + currentLevel.Session.Deaths.ToString(CultureInfo.InvariantCulture));
+                    AkronAutomationService.RecordOutput("qa-session-room-deaths: " + currentLevel.Session.DeathsInCurrentLevel.ToString(CultureInfo.InvariantCulture));
+                    AkronAutomationService.RecordOutput("qa-session-time: " + currentLevel.Session.Time.ToString(CultureInfo.InvariantCulture));
+                    if (!string.IsNullOrWhiteSpace(pixelTag)) {
+                        if (AkronCapture.RequestGameplayBufferQaCapture(
+                                pixelTag,
+                                out string normalizedTag,
+                                AkronAutomationService.CompleteDeferredRun)) {
+                            waitForPixelCapture = true;
+                            AkronAutomationService.RecordOutput("qa-startpos-load-probe-pixel: armed;tag=" + normalizedTag);
+                        } else {
+                            AkronAutomationService.RecordOutput("qa-startpos-load-probe-pixel: rejected");
+                        }
+                    }
+                } finally {
+                    if (!waitForPixelCapture) {
+                        AkronAutomationService.CompleteDeferredRun();
+                    }
+                }
+            });
+        } catch {
+            AkronAutomationService.CompleteDeferredRun();
+            throw;
+        }
     }
 
     private static void LogQaStartPosBackdropState(Level level, int slot, string prefix) {
@@ -1170,12 +1174,12 @@ public static partial class AkronCommands {
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(roomName)) {
+        if (string.IsNullOrEmpty(roomName)) {
             Log("qa-warp-room: missing room");
             return;
         }
 
-        LevelData room = level.Session.MapData.Get(roomName.Trim());
+        LevelData room = level.Session.MapData.Get(roomName);
         if (room == null) {
             Log("qa-warp-room: not-found room=" + roomName);
             return;
@@ -1201,7 +1205,7 @@ public static partial class AkronCommands {
             level.Entities.UpdateLists();
             AkronLevelRenderState.RelinkRendererCameras(level);
         };
-        Log("qa-warp-room: room=" + room.Name);
+        Log("qa-warp-room: room-json=" + Newtonsoft.Json.JsonConvert.SerializeObject(room.Name));
     }
 
     [Command("akron_qa_inspector_pin_world", "pin the entity inspector at a world coordinate for Akron live automation: x y")]
@@ -1550,6 +1554,30 @@ public static partial class AkronCommands {
         }
 
         Log("qa-list-maps: count=" + count.ToString(CultureInfo.InvariantCulture));
+    }
+
+    [Command("akron_qa_list_rooms", "list exact room names without entity-output truncation: [offset] [limit]")]
+    public static void QaListRooms(string offsetText = "0", string limitText = "100") {
+        Level level = RequireLevel();
+        if (level == null) {
+            return;
+        }
+        if (!int.TryParse(offsetText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int offset) ||
+            !int.TryParse(limitText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int limit) ||
+            offset < 0 || limit < 1 || limit > 100) {
+            Log("usage: akron_qa_list_rooms [offset >= 0] [limit 1..100]");
+            return;
+        }
+
+        List<LevelData> rooms = level.Session.MapData.Levels;
+        int end = offset >= rooms.Count ? rooms.Count : offset + Math.Min(limit, rooms.Count - offset);
+        for (int index = offset; index < end; index++) {
+            LevelData room = rooms[index];
+            if (room != null && !room.Dummy) {
+                Log("qa-map-room: " + Newtonsoft.Json.JsonConvert.SerializeObject(room.Name));
+            }
+        }
+        Log("qa-map-rooms-next: " + (end < rooms.Count ? end : -1).ToString(CultureInfo.InvariantCulture));
     }
 
     [Command("akron_qa_find_map_entities", "list loaded map entity data by name filter: [filter] [limit]")]

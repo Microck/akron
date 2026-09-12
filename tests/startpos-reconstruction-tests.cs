@@ -930,7 +930,7 @@ public sealed class StartPosReconstructionTests {
     // without dropping a live object the document keeps. Nothing the player owns explains
     // that, so it keeps the bug-report sentence.
     [Fact]
-    public void ARefusalTheMapCannotExplainStillAsksForABugReport() {
+    public void AnUnexplainedOwnershipConflictIsClassifiedAsASavedObjectRefusal() {
         PlaybackGhostReloadRoom fresh =
             CreateTwoTrailReloadedGhostRoomTheSessionBuiltDifferently(unpairableFirst: true);
 
@@ -941,25 +941,7 @@ public sealed class StartPosReconstructionTests {
             mapIdsAtReload: new[] { 42, 7, 8 });
 
         Assert.False(restore.Success);
-        Assert.Contains(
-            "reconstructed reference edge would drop a fresh object this document keeps",
-            restore.Error);
-        // A vanilla Celeste type, same as the map refusal above, and it gets the other
-        // sentence. The kind is what separates them, not the assembly.
-        Assert.Equal(typeof(PlayerHair).AssemblyQualifiedName, restore.RefusedTypeName);
         Assert.Equal(AkronReconstructionRefusalKind.SavedObject, restore.RefusedKind);
-
-        string message = AkronStartPosRefusal.Describe(
-            "StartPos 1",
-            restore.RefusedTypeName,
-            restore.RefusedKind,
-            new[] { ("ExtendedVariantMode", "ExtendedVariantMode") });
-
-        Assert.Equal(
-            "StartPos 1 could not be rebuilt: this room has no PlayerHair to match, and no mod " +
-            "owns it. If your mods have not changed, this is an Akron bug; report " +
-            "akron-current.log.",
-            message);
     }
 
     // Everest's own CoreModule is a real EverestModule named "Everest" and it lives in
@@ -2250,56 +2232,7 @@ public sealed class StartPosReconstructionTests {
     }
 
     [Fact]
-    public void AnUnpairedGhostStillTakesItsSceneEdgeOnStructuralBudgetAloneAndRestoresWrongly() {
-        // THIS TEST PINS BEHAVIOUR THAT IS WRONG. It is here so that the day it is
-        // fixed, it fails and says so.
-        //
-        // ValidateReferenceEdge accepts a reference edge with no authenticator at all
-        // whenever freshListStructuralTypeCounts holds a remaining occurrence for
-        // (target type, structural path with every list index wildcarded). That budget
-        // records that SOME object of that type sits at that path in the fresh room. It
-        // does not record WHICH, and it does not require the edge's parent to be an
-        // object the fresh room holds. So when a saved entity fails to pair - here
-        // because the fresh room rebuilt it with a different EntityID - the
-        // reconstructed copy's <Scene> edge spends the occurrence that the room's own
-        // live entity put there, and the restore reports Success.
-        //
-        // What ends up wrong is not only that edge. The room's own PlayerSprite is
-        // fresh-resolved, so its <Entity> back reference is rewritten to the
-        // reconstructed copy, the saved state lands on that copy, and the entity the
-        // room actually holds keeps its clean-load state. In game the surviving trail
-        // would render the room's sprite at the reconstructed copy's position.
-        //
-        // The map here is the same map it always was: it lays out both ghosts, and
-        // this reload's session state is why entity 42 was not built. The refusal
-        // above cannot reach that, and it should not - a room whose session no longer
-        // spawns one of its entities has to keep restoring.
-        //
-        // What that leaves is not "rebuilt beside the live ghost". The saved entity
-        // list holds four entities and so does the reloaded room, so the rebuilt ghost
-        // takes the live ghost's slot rather than being added next to it, and the
-        // ghost the reload built is dropped. That much is the saved population winning,
-        // which is what a restore is for.
-        //
-        // What is wrong is what happens to that dropped ghost, and it is measured
-        // below rather than described. Several edges here carry no authenticator and
-        // ride the occurrence budget, the <Scene> edge above among them; Snapshot.Hair
-        // is the only one of them whose target is a component, and it is the one the
-        // "component aliases on occurrence budget alone" question is about. That write
-        // is not what makes the room wrong: the rebuilt hair lands in the rebuilt
-        // ghost's own Hair field and both halves of the trail end up pointing at that
-        // same rebuilt ghost, so the trail is not split between two owners.
-        //
-        // The harm is on the other side of the same room. The room's own PlayerSprite
-        // is fresh-resolved and relabelled, so the object the reload built for ghost 43
-        // now belongs to the rebuilt ghost 42 while ghost 43's own component list still
-        // lists it, and ghost 43 is left out of the entity list with its Scene still
-        // pointing at the Level. That write is a pairing rather than a budget
-        // admission - the snapshot's Sprite field is a fresh path and the resolver
-        // takes what is in it, with no identity check - so no rule about which
-        // component edges the budget admits reaches it. A stricter budget would still
-        // refuse this document as a whole, because the restore only gets far enough to
-        // make that write while its count-only edges are admitted.
+    public void AReconstructedGhostDoesNotStealTheComponentsOfADifferentlyIdentifiedGhost() {
         PlaybackGhostReloadRoom fresh = CreateReloadedGhostRoomWithRenumberedGhost();
         Level level = fresh.Level;
         EntityList entities = fresh.Entities;
@@ -2313,39 +2246,25 @@ public sealed class StartPosReconstructionTests {
             mapIdsWhenSet: new[] { 42, 7 },
             mapIdsAtReload: new[] { 42, 43, 7 });
 
-        // Accepted, with no authenticator: the saved document asked for the fresh Level
-        // at a path the fresh room does hold a Level at, and that was enough.
+        // Session state may suppress a still-placed ghost. The saved population
+        // wins, but the dropped fresh ghost must retain its own components.
         Assert.True(restore.Success, restore.Error);
 
-        // WRONG: the room's own sprite no longer points at the ghost the room holds.
-        Entity? spriteOwner = GetRuntimeField<Entity>(freshSprite, "<Entity>k__BackingField");
-        Assert.NotSame(liveGhost, spriteOwner);
-        PlayerPlayback reconstructedGhost = Assert.IsType<PlayerPlayback>(spriteOwner);
-        // WRONG: the reconstructed copy takes the entity-list slot of the ghost the room
-        // load built, and gets the live Level in its Scene on the occurrence budget
-        // alone. The ghost LoadLevel produced is dropped from the room entirely.
+        Assert.Same(liveGhost, GetRuntimeField<Entity>(freshSprite, "<Entity>k__BackingField"));
+        Assert.Same(liveGhost, GetRuntimeField<Entity>(freshHair, "<Entity>k__BackingField"));
+        PlayerPlayback reconstructedGhost = Assert.Single(
+            GetEntityListContents(entities).OfType<PlayerPlayback>());
+        Assert.NotSame(liveGhost, reconstructedGhost);
         Assert.Same(level, GetRuntimeField<Scene>(reconstructedGhost, "<Scene>k__BackingField"));
         Assert.Contains(GetEntityListContents(entities), entity => ReferenceEquals(entity, reconstructedGhost));
         Assert.DoesNotContain(GetEntityListContents(entities), entity => ReferenceEquals(entity, liveGhost));
-        // WRONG: the saved state landed on the reconstructed copy, and the ghost the
-        // room actually holds kept its clean-load state.
         Assert.Equal(2.5f, GetRuntimeField<float>(reconstructedGhost, "time"));
         Assert.Equal(0f, GetRuntimeField<float>(liveGhost, "time"));
-        // The surviving snapshot keeps the room's PlayerSprite and is handed a
-        // reconstructed PlayerHair on the occurrence budget alone.
-        Assert.Same(freshSprite, snapshot.Sprite);
+        Assert.NotSame(freshSprite, snapshot.Sprite);
         Assert.NotSame(freshHair, snapshot.Hair);
-        // NOT wrong, and pinned because the comment above used to claim it was: both
-        // halves of the trail point at the same ghost afterwards, and it is the rebuilt
-        // one. The rebuilt hair goes where the document says it goes.
         Assert.Same(reconstructedGhost, GetRuntimeField<Entity>(snapshot.Hair!, "<Entity>k__BackingField"));
         Assert.Same(reconstructedGhost, GetRuntimeField<Entity>(snapshot.Sprite!, "<Entity>k__BackingField"));
         Assert.Contains(snapshot.Hair, GetComponentListContents(reconstructedGhost));
-        // WRONG, and this is the part no rule about component edges reaches: the ghost
-        // the reload built is out of the entity list while its Scene still points at
-        // the Level, and its own component list still holds the PlayerSprite that now
-        // belongs to the rebuilt ghost.
-        Assert.Same(level, GetRuntimeField<Scene>(liveGhost, "<Scene>k__BackingField"));
         Assert.Contains(freshSprite, GetComponentListContents(liveGhost));
         Assert.Contains(freshHair, GetComponentListContents(liveGhost));
     }
@@ -3204,6 +3123,261 @@ public sealed class StartPosReconstructionTests {
         Assert.Equal(38, Assert.IsType<TestNode>(fresh.Callback.Target).Value);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ComponentConstructorCallbackRestoresItsOwnedCapture(bool fromDisk) {
+        var saved = CreateComponentCallbackScene(includeCallback: true);
+        var baseline = CreateComponentCallbackScene(includeCallback: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved.Root, baseline.Root);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = fromDisk
+            ? graph.Deserialize(graph.Serialize(capture.Document))
+            : capture.Document;
+        var fresh = CreateComponentCallbackScene(includeCallback: false);
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh.Root);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+        fresh.Owner.Callback!.Callback();
+        Assert.Equal(38, fresh.Owner.Target.Value);
+        Assert.Equal(0, Assert.IsType<ComponentCallbackOwner>(
+            GetEntityListContents(fresh.Root.Entities)[1]).Target.Value);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ConstructorCallbackRestoresItsCapturedGrid(bool fromDisk) {
+        static SavedSceneRoot Scene(bool firstAttached) {
+            GridCallbackOwner owner = CreateUninitializedEntity<GridCallbackOwner>();
+            InitializeEmptyComponentList(owner);
+            SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+            owner.Grid = (TileGrid) RuntimeHelpers.GetUninitializedObject(typeof(TileGrid));
+            owner.Grid.Tiles = CreateSingleSegmentTextureGrid(1, 1);
+            owner.OtherGrid = (TileGrid) RuntimeHelpers.GetUninitializedObject(typeof(TileGrid));
+            owner.OtherGrid.Tiles = CreateSingleSegmentTextureGrid(1, 1);
+            owner.Interceptor = new GridCallbackComponent(owner.Grid);
+            owner.OtherInterceptor = new GridCallbackComponent(owner.Grid);
+            Component[] attached = firstAttached
+                ? new Component[] { owner.Grid, owner.Interceptor }
+                : new Component[] { owner.OtherGrid, owner.OtherInterceptor };
+            foreach (Component component in attached) {
+                SetRuntimeField(component, "<Entity>k__BackingField", owner);
+                GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "components").Add(component);
+                GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "current").Add(component);
+            }
+            return CreateOwnedScene(owner);
+        }
+
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(Scene(true), Scene(false));
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = fromDisk
+            ? graph.Deserialize(graph.Serialize(capture.Document))
+            : capture.Document;
+        SavedSceneRoot fresh = Scene(false);
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.True(graph.Verify(document, restore, Array.Empty<string>()).Success);
+        GridCallbackOwner owner = Assert.IsType<GridCallbackOwner>(GetEntityListContents(fresh.Entities)[0]);
+        VirtualMap<MTexture> tiles = CreateSingleSegmentTextureGrid(1, 1);
+        owner.Interceptor.Intercept(tiles);
+        Assert.Same(tiles, owner.Grid.Tiles);
+        owner.OtherInterceptor.Intercept(null);
+        Assert.Null(owner.Grid.Tiles);
+    }
+
+    [Fact]
+    public void LiveInstanceAnchorsDoNotIndexOrRestoreTheirContents() {
+        List<TestResourceHolder> savedCache = new List<TestResourceHolder> {
+            new TestResourceHolder { Resource = new TestResource("saved-private-resource") }
+        };
+        List<TestResourceHolder> liveCache = new List<TestResourceHolder> {
+            new TestResourceHolder { Resource = new TestResource("live-private-resource") }
+        };
+        bool IsCache(object value) => ReferenceEquals(value, savedCache) || ReferenceEquals(value, liveCache);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource,
+            value => IsCache(value) ? "registered-cache" :
+                throw new InvalidOperationException("A live anchor's private resource must not be indexed."),
+            resolveDetachedLiveResource: (type, key) =>
+                type == liveCache.GetType() && key == type.AssemblyQualifiedName + "|registered-cache"
+                    ? liveCache : null,
+            isAdditionalLiveResource: IsCache);
+        AkronReconstructionCapture capture = graph.Capture(
+            new TestResourceListRoot { Holders = savedCache },
+            new TestResourceListRoot { Holders = liveCache });
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        TestResource replacement = new TestResource("updated-live-resource");
+        liveCache[0].Resource = replacement;
+        TestResourceListRoot fresh = new TestResourceListRoot { Holders = liveCache };
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(liveCache, fresh.Holders);
+        Assert.Same(replacement, fresh.Holders[0].Resource);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ModuleSessionCanRestoreRetainedMapMetadata(bool fromDisk) {
+        LevelData room = (LevelData) RuntimeHelpers.GetUninitializedObject(typeof(LevelData));
+        room.Name = "previous-room";
+        EntityData key = new EntityData { ID = 42, Name = "key", Level = room };
+        EntityData sibling = new EntityData { ID = 43, Name = "spring", Level = room };
+        room.Entities = new List<EntityData> { key, sibling };
+        room.Triggers = new List<EntityData>();
+        RetainedMapMetadataSession saved = new RetainedMapMetadataSession();
+        saved.Entries.Add("retained-key", key);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, new RetainedMapMetadataSession());
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = fromDisk
+            ? graph.Deserialize(graph.Serialize(capture.Document))
+            : capture.Document;
+        RetainedMapMetadataSession fresh = new RetainedMapMetadataSession();
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        EntityData restoredKey = fresh.Entries["retained-key"];
+        Assert.Equal(42, restoredKey.ID);
+        Assert.Equal("previous-room", restoredKey.Level.Name);
+        Assert.Same(restoredKey, restoredKey.Level.Entities[0]);
+        Assert.Equal("spring", restoredKey.Level.Entities[1].Name);
+        Assert.Same(restoredKey.Level, restoredKey.Level.Entities[1].Level);
+    }
+
+    [Fact]
+    public void DeepGraphPersistencePreservesValuesAndCyclesOnASmallWorkerStack() {
+        const int depth = 1024;
+        static DeepGraphRecord CreateGraph(int offset) {
+            DeepGraphRecord last = new DeepGraphRecord { Value = offset };
+            DeepGraphRecord root = last;
+            for (int index = 1; index <= depth; index++) {
+                root = new DeepGraphRecord { Next = root, Value = offset + index };
+            }
+            last.Next = root;
+            root.Shared = last;
+            return root;
+        }
+
+        Exception? failure = null;
+        System.Threading.Thread worker = new System.Threading.Thread(() => {
+            try {
+                DeepGraphRecord saved = CreateGraph(17);
+                DeepGraphRecord fresh = CreateGraph(-10000);
+                DeepGraphRecord originalLast = fresh.Shared!;
+                AkronReconstructionGraph graph = new AkronReconstructionGraph(_ => false, _ => string.Empty);
+                AkronReconstructionCapture capture = graph.Capture(saved, CreateGraph(-10000));
+                Assert.True(capture.Success, capture.Error);
+                AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+
+                AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+                Assert.True(restore.Success, restore.Error);
+                DeepGraphRecord cursor = fresh;
+                for (int index = depth; index >= 0; index--) {
+                    Assert.Equal(17 + index, cursor.Value);
+                    cursor = Assert.IsType<DeepGraphRecord>(cursor.Next);
+                }
+                Assert.Same(fresh, cursor);
+                Assert.Same(originalLast, fresh.Shared);
+                Assert.Equal(17, fresh.Shared!.Value);
+            } catch (Exception exception) {
+                failure = exception;
+            }
+        }, 256 * 1024) { IsBackground = true };
+        worker.Start();
+        Assert.True(worker.Join(TimeSpan.FromSeconds(60)), "The deep graph round trip did not finish.");
+        Assert.True(failure == null, failure?.ToString());
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void ComponentCanRestoreAnAliasToItsScenesCamera(bool fromDisk, bool detachedAtCapture) {
+        var saved = CreateSceneCameraAlias(captured: true, detachedAtCapture: detachedAtCapture);
+        var baseline = CreateSceneCameraAlias(captured: false, staleCamera: !detachedAtCapture);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved.Root, baseline.Root);
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = fromDisk
+            ? graph.Deserialize(graph.Serialize(capture.Document))
+            : capture.Document;
+        var fresh = CreateSceneCameraAlias(captured: false, staleCamera: !detachedAtCapture);
+        Camera originalCamera = fresh.Scene.Camera;
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh.Root);
+
+        Assert.True(restore.Success, restore.Error);
+        AkronReconstructionVerification verification = graph.Verify(document, restore, Array.Empty<string>());
+        Assert.True(verification.Success, verification.Error);
+        Assert.Same(originalCamera, fresh.Scene.Camera);
+        Assert.Same(originalCamera, fresh.Component.ClipCamera);
+        GridCallbackOwner owner = Assert.IsType<GridCallbackOwner>(
+            GetEntityListContents(fresh.Root.Entities)[1]);
+        VirtualMap<MTexture> tiles = CreateSingleSegmentTextureGrid(1, 1);
+        owner.Interceptor.Intercept(tiles);
+        Assert.Same(tiles, owner.Grid.Tiles);
+        if (detachedAtCapture) {
+            Assert.Null(GetRuntimeField<Entity>(fresh.Component, "<Entity>k__BackingField"));
+        }
+    }
+
+    [Theory]
+    [InlineData("foreign-scene", false)]
+    [InlineData("foreign-scene", true)]
+    [InlineData("missing-membership", false)]
+    [InlineData("missing-field", true)]
+    [InlineData("competing-owner", true)]
+    public void ComponentCannotBorrowAnotherScenesCamera(string invalidProof, bool detachedAtCapture) {
+        var saved = CreateSceneCameraAlias(captured: true, invalidProof, detachedAtCapture: detachedAtCapture);
+        var baseline = CreateSceneCameraAlias(captured: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved.Root, baseline.Root);
+        Assert.True(capture.Success, capture.Error);
+        var fresh = CreateSceneCameraAlias(captured: false);
+        Camera originalCamera = fresh.Component.ClipCamera;
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh.Root);
+
+        Assert.False(restore.Success);
+        Assert.Same(originalCamera, fresh.Component.ClipCamera);
+    }
+
+    [Theory]
+    [InlineData("foreign-owner", false)]
+    [InlineData("missing-membership", false)]
+    [InlineData("opaque-field", false)]
+    [InlineData("foreign-owner", true)]
+    [InlineData("missing-membership", true)]
+    [InlineData("opaque-field", true)]
+    public void ComponentConstructorCallbackCannotBorrowUnownedState(string invalidProof, bool detachedCallback) {
+        var saved = CreateComponentCallbackScene(includeCallback: true, invalidProof, detachedCallback);
+        var baseline = CreateComponentCallbackScene(includeCallback: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved.Root, baseline.Root);
+        Assert.True(capture.Success, capture.Error);
+        var fresh = CreateComponentCallbackScene(includeCallback: false);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh.Root);
+
+        Assert.False(restore.Success);
+        Assert.Null(fresh.Owner.Callback);
+        Assert.Equal(0, fresh.Owner.Target.Value);
+    }
+
     [Fact]
     public void ReconstructedCallbackClosureCanPointBackToItsFreshDeclaringOwner() {
         CallbackClosureOwner savedOwner = new CallbackClosureOwner { Value = 37 };
@@ -3372,8 +3546,10 @@ public sealed class StartPosReconstructionTests {
     // an entity. Reading one would give two documents claiming one format two
     // different guarantees, with nothing on screen to say which you got, so the
     // format moved instead.
-    [Fact]
-    public void ASnapshotFromBeforeTheIdentityEvidenceIsRefusedRatherThanReadWithoutIt() {
+    [Theory]
+    [InlineData("akron-reconstruction-v8")]
+    [InlineData("akron-reconstruction-v10")]
+    public void ASnapshotMissingRequiredCapturedStateIsRefusedRatherThanPartiallyRestored(string oldFormat) {
         AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
         AkronReconstructionCapture capture = graph.Capture(
             new TestRoot { Counter = 7 },
@@ -3381,17 +3557,14 @@ public sealed class StartPosReconstructionTests {
         Assert.True(capture.Success, capture.Error);
         string json = graph.Serialize(capture.Document).Replace(
             AkronReconstructionDocument.CurrentFormat,
-            "akron-reconstruction-v8",
+            oldFormat,
             StringComparison.Ordinal);
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
             graph.Deserialize(json));
 
-        Assert.StartsWith(
-            "Reconstruction document format is unsupported: set this StartPos again.",
-            exception.Message);
-        Assert.Contains("akron-reconstruction-v8", exception.Message);
-        Assert.Contains("akron-reconstruction-v10", exception.Message);
+        Assert.Contains(oldFormat, exception.Message);
+        Assert.Contains(AkronReconstructionDocument.CurrentFormat, exception.Message);
     }
 
     [Fact]
@@ -3404,7 +3577,7 @@ public sealed class StartPosReconstructionTests {
             maxJsonBinaryBytes: 100);
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-            graph.Deserialize("{\"Format\":\"akron-reconstruction-v10\",\"Nodes\":[]}"));
+            graph.Deserialize("{\"Format\":\"" + AkronReconstructionDocument.CurrentFormat + "\",\"Nodes\":[]}"));
 
         Assert.Contains("container count exceeds", exception.Message);
     }
@@ -3972,6 +4145,47 @@ public sealed class StartPosReconstructionTests {
         Assert.Equal(12, fresh.Counter);
         Assert.Equal(5, fresh.Primary.Value);
         Assert.Null(fresh.Resource);
+    }
+
+    [Fact]
+    public void CustomBlendDescriptorUsesTheCaptureRefusalContract() {
+        BlendState source = (BlendState)RuntimeHelpers.GetUninitializedObject(typeof(CustomBlendDescriptor));
+        GC.SuppressFinalize(source);
+
+        Assert.Throws<AkronReconstructionException>(() => AkronBlendStateSnapshot.Clone(source));
+    }
+
+    private sealed class CustomBlendDescriptor : BlendState {
+    }
+
+    [Fact]
+    public void ABlendStateCannotRequestRenderTargetAllocationThroughItsPayload() {
+        AkronReconstructionResourcePayload payload = new AkronReconstructionResourcePayload {
+            Kind = "virtual-render-target-rgba-v1",
+            Width = 1,
+            Height = 1,
+            Bytes = new byte[4]
+        };
+
+        Assert.Throws<InvalidOperationException>(() =>
+            new AkronRoomResourceAdapter().Restore(typeof(BlendState), payload, null!));
+    }
+
+    [Theory]
+    [InlineData(47, -1, 0)]
+    [InlineData(48, 0, int.MaxValue)]
+    [InlineData(48, 6, 16)]
+    public void InvalidBlendDescriptorsAreRefusedBeforeCreatingGraphicsState(int length, int word, int value) {
+        byte[] bytes = new byte[length];
+        if (word >= 0) {
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(word * sizeof(int)), value);
+        }
+        AkronReconstructionResourcePayload payload = new AkronReconstructionResourcePayload {
+            Kind = AkronBlendStateSnapshot.PayloadKind,
+            Bytes = bytes
+        };
+
+        Assert.Throws<InvalidOperationException>(() => AkronBlendStateSnapshot.Restore(payload));
     }
 
     [Fact]
@@ -5524,6 +5738,500 @@ public sealed class StartPosReconstructionTests {
         Assert.Same(liveCache, restoredCache);
     }
 
+    [Fact]
+    public void AClonedDynamicDataCacheKeepsItsIdentityWhenTheBaselineHasNoWrapper() {
+        AkronDeepClone.Initialize();
+        DynamicDataHolder live = new DynamicDataHolder {
+            Data = new MonoMod.Utils.DynamicData(new DynamicDataSubject()),
+            Value = 37
+        };
+        DynamicDataHolder saved = (DynamicDataHolder) AkronSaveLoadService.DeepClone(live);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            AkronStartPosReconstruction.IsLiveResourceType,
+            AkronStartPosReconstruction.GetLiveResourceKey,
+            resolveDetachedLiveResource: AkronStartPosReconstruction.ResolveDetachedLiveResource);
+
+        AkronReconstructionCapture capture = graph.Capture(saved, new DynamicDataHolder());
+
+        Assert.True(capture.Success, capture.Error);
+        DynamicDataHolder fresh = new DynamicDataHolder {
+            Data = new MonoMod.Utils.DynamicData(new DynamicDataSubject())
+        };
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(37, fresh.Value);
+        Assert.Same(GetRuntimeField<object>(live.Data, "_Cache"),
+            GetRuntimeField<object>(fresh.Data!, "_Cache"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ManagedGridOwnershipRequiresAnExactDeclaredField(bool opaqueOwner) {
+        ManagedGridOwnerEntity savedOwner = CreateUninitializedEntity<ManagedGridOwnerEntity>();
+        InitializeEmptyComponentList(savedOwner);
+        VirtualMap<MTexture> grid = CreateSingleSegmentTextureGrid(4, 4);
+        MTexture texture = (MTexture) RuntimeHelpers.GetUninitializedObject(typeof(MTexture));
+        GetRuntimeField<MTexture[,][,]>(grid, "segments")[0, 0][1, 2] = texture;
+        if (opaqueOwner) {
+            savedOwner.Opaque = grid;
+        } else {
+            savedOwner.Grid = grid;
+        }
+        savedOwner.Texture = texture;
+        ManagedGridOwnerEntity baselineOwner = CreateUninitializedEntity<ManagedGridOwnerEntity>();
+        InitializeEmptyComponentList(baselineOwner);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(
+            CreateSourceEntityListOwnerRoot(savedOwner),
+            CreateSourceEntityListOwnerRoot(baselineOwner));
+        Assert.True(capture.Success, capture.Error);
+        ManagedGridOwnerEntity freshOwner = CreateUninitializedEntity<ManagedGridOwnerEntity>();
+        InitializeEmptyComponentList(freshOwner);
+
+        AkronReconstructionRestore restore = graph.Restore(
+            capture.Document, CreateSourceEntityListOwnerRoot(freshOwner));
+
+        if (opaqueOwner) {
+            Assert.False(restore.Success);
+            Assert.Null(freshOwner.Opaque);
+            Assert.Null(freshOwner.Texture);
+        } else {
+            Assert.True(restore.Success, restore.Error);
+            MTexture[,] values = GetRuntimeField<MTexture[,][,]>(freshOwner.Grid!, "segments")[0, 0];
+            Assert.Same(freshOwner.Texture, values[1, 2]);
+            Assert.Null(values[2, 1]);
+            Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+        }
+    }
+
+    [Fact]
+    public void OwnedCollectionRecordsRestoreThroughIntermediateManagedState() {
+        ManagedGridOwnerEntity savedOwner = CreateUninitializedEntity<ManagedGridOwnerEntity>();
+        InitializeEmptyComponentList(savedOwner);
+        savedOwner.Surface = new ManagedSurfaceState();
+        savedOwner.Surface.Records.Add(new ManagedSurfaceState.Record { Value = 37 });
+        ManagedGridOwnerEntity baselineOwner = CreateUninitializedEntity<ManagedGridOwnerEntity>();
+        InitializeEmptyComponentList(baselineOwner);
+        baselineOwner.Surface = new ManagedSurfaceState();
+        baselineOwner.Surface.Records.Capacity = 4;
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(
+            CreateSourceEntityListOwnerRoot(savedOwner),
+            CreateSourceEntityListOwnerRoot(baselineOwner));
+        Assert.True(capture.Success, capture.Error);
+        ManagedGridOwnerEntity freshOwner = CreateUninitializedEntity<ManagedGridOwnerEntity>();
+        InitializeEmptyComponentList(freshOwner);
+        freshOwner.Surface = new ManagedSurfaceState();
+        freshOwner.Surface.Records.Capacity = 4;
+
+        AkronReconstructionRestore restore = graph.Restore(
+            capture.Document, CreateSourceEntityListOwnerRoot(freshOwner));
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(37, Assert.Single(freshOwner.Surface.Records).ReadValue());
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PooledRuntimeEntitiesRequireTheAuthenticatedSceneOwnershipLoop(bool foreignScene) {
+        PooledRuntimeEffect effect = CreateUninitializedEntity<PooledRuntimeEffect>();
+        InitializeEmptyComponentList(effect);
+        effect.Value = 37;
+        SavedSceneRoot saved = CreateOwnedScene(effect);
+        if (foreignScene) {
+            SetRuntimeField(effect, "<Scene>k__BackingField",
+                RuntimeHelpers.GetUninitializedObject(typeof(Scene)));
+        }
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, CreateOwnedScene());
+        Assert.True(capture.Success, capture.Error);
+        SavedSceneRoot fresh = CreateOwnedScene();
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        if (foreignScene) {
+            Assert.False(restore.Success);
+            Assert.Empty(GetEntityListContents(fresh.Entities));
+        } else {
+            Assert.True(restore.Success, restore.Error);
+            PooledRuntimeEffect restored = Assert.IsType<PooledRuntimeEffect>(
+                Assert.Single(GetEntityListContents(fresh.Entities)));
+            Assert.Equal(37, restored.Value);
+            Assert.Same(fresh.Scene, GetRuntimeField<Scene>(restored, "<Scene>k__BackingField"));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RuntimeEntityCreatorProofDoesNotDependOnEntityListOrder(bool creatorFirst) {
+        SourceIdentifiedEntity creator = CreateSourceIdentifiedEntity("a00", 10, 37);
+        CapturedRuntimeEffect effect = CreateUninitializedEntity<CapturedRuntimeEffect>();
+        InitializeEmptyComponentList(effect);
+        effect.Creator = creator;
+        SavedSceneRoot saved = creatorFirst
+            ? CreateOwnedScene(creator, effect)
+            : CreateOwnedScene(effect, creator);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(
+            saved, CreateOwnedScene(CreateSourceIdentifiedEntity("a00", 10, 0)));
+        Assert.True(capture.Success, capture.Error);
+        SourceIdentifiedEntity freshCreator = CreateSourceIdentifiedEntity("a00", 10, 0);
+        SavedSceneRoot fresh = CreateOwnedScene(freshCreator);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        CapturedRuntimeEffect restored = Assert.Single(
+            GetEntityListContents(fresh.Entities).OfType<CapturedRuntimeEffect>());
+        Assert.Same(freshCreator, restored.Creator);
+        Assert.Equal(37, restored.Creator.Value);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(restored, "<Scene>k__BackingField"));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RuntimeEntityComponentCreatorProofDoesNotDependOnEntityListOrder(bool creatorFirst) {
+        OwnedComponentEntity creator = CreateOwnedComponentEntity();
+        SetRuntimeField(creator, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+        creator.Owned.Value = 37;
+        ComponentCapturedRuntimeEffect effect = CreateUninitializedEntity<ComponentCapturedRuntimeEffect>();
+        InitializeEmptyComponentList(effect);
+        effect.Creator = creator.Owned;
+        SavedSceneRoot saved = creatorFirst
+            ? CreateOwnedScene(creator, effect)
+            : CreateOwnedScene(effect, creator);
+        OwnedComponentEntity baselineCreator = CreateOwnedComponentEntity();
+        SetRuntimeField(baselineCreator, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, CreateOwnedScene(baselineCreator));
+        Assert.True(capture.Success, capture.Error);
+        OwnedComponentEntity freshCreator = CreateOwnedComponentEntity(ownedFirst: true);
+        SetRuntimeField(freshCreator, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+        OwnedTestComponent freshComponent = freshCreator.Owned;
+        SavedSceneRoot fresh = CreateOwnedScene(freshCreator);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        ComponentCapturedRuntimeEffect restored = Assert.Single(
+            GetEntityListContents(fresh.Entities).OfType<ComponentCapturedRuntimeEffect>());
+        Assert.Same(freshComponent, restored.Creator);
+        Assert.Same(freshComponent, freshCreator.Owned);
+        Assert.Same(freshCreator, GetRuntimeField<Entity>(restored.Creator!, "<Entity>k__BackingField"));
+        Assert.Equal(37, restored.Creator!.Value);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(restored, "<Scene>k__BackingField"));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Theory]
+    [InlineData("opaque-field")]
+    [InlineData("base-field")]
+    [InlineData("missing-membership")]
+    [InlineData("wrong-component-owner")]
+    [InlineData("wrong-list-owner")]
+    [InlineData("foreign-scene")]
+    [InlineData("wrong-fresh-owner")]
+    public void RuntimeEntityComponentCreatorsRequireTypedMembershipAndTheSameScene(string invalidProof) {
+        OwnedComponentEntity creator = CreateOwnedComponentEntity();
+        SetRuntimeField(creator, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+        creator.Owned.Value = 37;
+        ComponentCapturedRuntimeEffect effect = CreateUninitializedEntity<ComponentCapturedRuntimeEffect>();
+        InitializeEmptyComponentList(effect);
+        if (invalidProof == "opaque-field") {
+            effect.OpaqueCreator = creator.Owned;
+        } else if (invalidProof == "base-field") {
+            effect.BaseCreator = creator.Owned;
+        } else {
+            effect.Creator = creator.Owned;
+        }
+        // Visit the effect before its component and owner, including refusal.
+        SavedSceneRoot saved = CreateOwnedScene(effect, creator);
+        if (invalidProof == "missing-membership") {
+            GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(creator, "<Components>k__BackingField"), "components").Remove(creator.Owned);
+        } else if (invalidProof == "wrong-component-owner" || invalidProof == "wrong-list-owner") {
+            SourceIdentifiedEntity other = CreateSourceIdentifiedEntity("a00", 20, 0);
+            SetRuntimeField(other, "<Scene>k__BackingField", saved.Scene);
+            AddDetachedEntity(saved.Entities, other);
+            SetRuntimeField(
+                invalidProof == "wrong-component-owner" ? (object) creator.Owned : GetRuntimeField<ComponentList>(creator, "<Components>k__BackingField"),
+                "<Entity>k__BackingField",
+                other);
+        } else if (invalidProof == "foreign-scene") {
+            SetRuntimeField(creator, "<Scene>k__BackingField",
+                RuntimeHelpers.GetUninitializedObject(typeof(Scene)));
+        }
+        OwnedComponentEntity baselineCreator = CreateOwnedComponentEntity();
+        SetRuntimeField(baselineCreator, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, CreateOwnedScene(baselineCreator));
+        Assert.True(capture.Success, capture.Error);
+        OwnedComponentEntity freshCreator = CreateOwnedComponentEntity();
+        SetRuntimeField(freshCreator, "<SourceId>k__BackingField",
+            CreateEntityId("a00", invalidProof == "wrong-fresh-owner" ? 20 : 10));
+        OwnedTestComponent freshComponent = freshCreator.Owned;
+        SavedSceneRoot fresh = CreateOwnedScene(freshCreator);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Same(freshCreator, Assert.Single(GetEntityListContents(fresh.Entities)));
+        Assert.Same(freshComponent, freshCreator.Owned);
+        Assert.Same(freshCreator, GetRuntimeField<Entity>(freshComponent, "<Entity>k__BackingField"));
+        Assert.Equal(0, freshComponent.Value);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(freshCreator, "<Scene>k__BackingField"));
+    }
+
+    [Theory]
+    [InlineData("valid")]
+    [InlineData("opaque-owner")]
+    [InlineData("base-element")]
+    [InlineData("foreign-scene")]
+    [InlineData("missing-owner")]
+    public void RuntimeEntitiesRequireTheirTypedFreshBackdropCollection(string ownership) {
+        (SavedSceneRoot saved, RuntimeCollectionBackdrop savedBackdrop) =
+            CreateRuntimeBackdropScene(includeEffect: true, ownership);
+        (SavedSceneRoot baseline, _) = CreateRuntimeBackdropScene(includeEffect: false, ownership);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, RuntimeCollectionBackdrop freshBackdrop) =
+            CreateRuntimeBackdropScene(includeEffect: false, ownership);
+        if (ownership == "missing-owner") {
+            ((RuntimeBackdropScene) fresh.Scene).Backdrop = null;
+        }
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        if (ownership != "valid") {
+            Assert.False(restore.Success);
+            Assert.Empty(GetEntityListContents(fresh.Entities));
+            Assert.Empty(freshBackdrop.Effects);
+            return;
+        }
+        Assert.True(restore.Success, restore.Error);
+        CollectionRuntimeEffect effect = Assert.IsType<CollectionRuntimeEffect>(
+            Assert.Single(GetEntityListContents(fresh.Entities)));
+        Assert.Same(effect, Assert.Single(freshBackdrop.Effects));
+        Assert.NotSame(Assert.Single(savedBackdrop.Effects), effect);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(effect, "<Scene>k__BackingField"));
+        Assert.Equal(37, effect.Value);
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TypedRuntimeEntityCollectionOriginIsIndependentOfAllocationOrder(bool creatorFirst) {
+        RuntimeCollectionEntity owner = CreateUninitializedEntity<RuntimeCollectionEntity>();
+        InitializeEmptyComponentList(owner);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+        CollectionRuntimeEffect effect = CreateUninitializedEntity<CollectionRuntimeEffect>();
+        InitializeEmptyComponentList(effect);
+        effect.Value = 37;
+        owner.Effects = new List<CollectionRuntimeEffect> { effect };
+        SavedSceneRoot saved = creatorFirst ? CreateOwnedScene(owner, effect) : CreateOwnedScene(effect, owner);
+        RuntimeCollectionEntity baselineOwner = CreateRuntimeCollectionEntity();
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, CreateOwnedScene(baselineOwner));
+        Assert.True(capture.Success, capture.Error);
+        RuntimeCollectionEntity freshOwner = CreateRuntimeCollectionEntity();
+        SavedSceneRoot fresh = CreateOwnedScene(freshOwner);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        CollectionRuntimeEffect restored = Assert.Single(
+            GetEntityListContents(fresh.Entities).OfType<CollectionRuntimeEffect>());
+        Assert.Same(restored, Assert.Single(freshOwner.Effects));
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(restored, "<Scene>k__BackingField"));
+        Assert.Equal(37, restored.Value);
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
+    [Theory]
+    [InlineData("entity", "foreign")]
+    [InlineData("entity", "detached")]
+    [InlineData("component", "valid")]
+    [InlineData("component", "foreign")]
+    [InlineData("component", "detached")]
+    [InlineData("renderer", "valid")]
+    [InlineData("renderer", "foreign")]
+    [InlineData("renderer", "detached")]
+    public void RetainedRuntimeCollectionRootsRequireActualSceneMembership(string rootKind, string membership) {
+        (SavedSceneRoot saved, _) = CreateRetainedRuntimeOwnerScene(rootKind, membership, includeEffect: true);
+        (SavedSceneRoot baseline, _) = CreateRetainedRuntimeOwnerScene(rootKind, membership, includeEffect: false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (SavedSceneRoot fresh, List<CollectionRuntimeEffect> effects) =
+            CreateRetainedRuntimeOwnerScene(rootKind, membership, includeEffect: false);
+        Entity[] before = GetEntityListContents(fresh.Entities).ToArray();
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        if (membership != "valid") {
+            Assert.False(restore.Success);
+            Assert.Equal(before, GetEntityListContents(fresh.Entities));
+            Assert.Empty(effects);
+            return;
+        }
+        Assert.True(restore.Success, restore.Error);
+        CollectionRuntimeEffect effect = Assert.Single(
+            GetEntityListContents(fresh.Entities).OfType<CollectionRuntimeEffect>());
+        Assert.Same(effect, Assert.Single(effects));
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(effect, "<Scene>k__BackingField"));
+        Assert.Equal(37, effect.Value);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void CompilerIteratorSceneLocalAliasesItsAuthenticatedOwnerScene(
+        bool componentOwner, bool componentFirst
+    ) {
+        (CapturedSceneRoom saved, _, _) = CreateCapturedSceneRoom(true, componentOwner, componentFirst);
+        (CapturedSceneRoom baseline, _, _) = CreateCapturedSceneRoom(false, componentOwner, componentFirst);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (CapturedSceneRoom fresh, SceneRoutineEntity freshOwner, Coroutine freshRoutine) =
+            CreateCapturedSceneRoom(false, componentOwner, componentFirst);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        IEnumerator iterator = Assert.Single(GetRuntimeField<Stack<IEnumerator>>(freshRoutine, "enumerators"));
+        Assert.True(iterator.MoveNext());
+        Assert.Same(fresh.Scene, componentOwner ? freshOwner.Driver!.ObservedScene : freshOwner.ObservedScene);
+        Assert.Same(freshOwner, GetRuntimeField<Entity>(freshRoutine, "<Entity>k__BackingField"));
+        Assert.NotSame(fresh.ForeignScene, freshOwner.ObservedScene);
+    }
+
+    [Theory]
+    [InlineData("foreign-scene")]
+    [InlineData("foreign-coroutine")]
+    [InlineData("opaque-scene")]
+    public void CompilerIteratorSceneLocalCannotBorrowAnotherSceneOrOwner(string invalidProof) {
+        (CapturedSceneRoom saved, _, _) = CreateCapturedSceneRoom(true, false, false, invalidProof);
+        (CapturedSceneRoom baseline, _, _) = CreateCapturedSceneRoom(false, false, false, invalidProof);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (CapturedSceneRoom fresh, SceneRoutineEntity owner, Coroutine routine) =
+            CreateCapturedSceneRoom(false, false, false, invalidProof);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.False(restore.Success);
+        Assert.Empty(GetRuntimeField<Stack<IEnumerator>>(routine, "enumerators"));
+        Assert.Null(owner.ObservedScene);
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(owner, "<Scene>k__BackingField"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ManuallyDrivenIteratorKeepsItsStructuralSceneProofWithoutACoroutine(bool foreignScene) {
+        static (CapturedSceneRoom Room, SceneRoutineEntity Owner) CreateManualRoom(bool foreign) {
+            (CapturedSceneRoom room, SceneRoutineEntity owner, _) =
+                CreateCapturedSceneRoom(false, false, false);
+            owner.Manual = owner.Run();
+            Assert.True(owner.Manual.MoveNext());
+            if (foreign) {
+                owner.Manual.GetType().GetFields(RuntimeInstanceFields)
+                    .Single(field => field.FieldType == typeof(Scene))
+                    .SetValue(owner.Manual, room.ForeignScene);
+            }
+            return (room, owner);
+        }
+
+        (CapturedSceneRoom saved, SceneRoutineEntity savedOwner) = CreateManualRoom(foreignScene);
+        (CapturedSceneRoom baseline, _) = CreateManualRoom(false);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        (CapturedSceneRoom fresh, SceneRoutineEntity freshOwner) = CreateManualRoom(false);
+        IEnumerator previous = freshOwner.Manual!;
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        if (foreignScene) {
+            Assert.False(restore.Success);
+            Assert.Same(previous, freshOwner.Manual);
+            Assert.Null(freshOwner.ObservedScene);
+            return;
+        }
+        Assert.True(restore.Success, restore.Error);
+        Assert.NotSame(savedOwner.Manual, freshOwner.Manual);
+        Assert.True(freshOwner.Manual!.MoveNext());
+        Assert.Same(fresh.Scene, freshOwner.ObservedScene);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ASessionSuppressedMapEntityRestoresOnlyWhenItsIdentityHasNoConflictingType(bool conflictingType) {
+        MiniTextboxTrigger trigger = CreateUninitializedEntity<MiniTextboxTrigger>();
+        InitializeEmptyComponentList(trigger);
+        SetRuntimeField(trigger, "<SourceId>k__BackingField", CreateEntityId("a00", 10000010));
+        SetRuntimeField(trigger, "triggered", true);
+        SetRuntimeField(trigger, "onlyOnce", true);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(
+            IsLiveResource, getMapPlacedEntityIds: (_, _) => new[] { 10000010 });
+        AkronReconstructionCapture capture = graph.Capture(
+            CreateOwnedScene(trigger), CreateOwnedScene());
+        Assert.True(capture.Success, capture.Error);
+        capture.Document.Room = "a00";
+        Entity replacement = CreateSourceIdentifiedEntity("a00", 10000010, 0);
+        SavedSceneRoot fresh = conflictingType ? CreateOwnedScene(replacement) : CreateOwnedScene();
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        if (conflictingType) {
+            Assert.False(restore.Success);
+            Assert.Same(replacement, Assert.Single(GetEntityListContents(fresh.Entities)));
+            Assert.Same(fresh.Scene, GetRuntimeField<Scene>(replacement, "<Scene>k__BackingField"));
+            return;
+        }
+        Assert.True(restore.Success, restore.Error);
+        MiniTextboxTrigger restored = Assert.IsType<MiniTextboxTrigger>(
+            Assert.Single(GetEntityListContents(fresh.Entities)));
+        Assert.True(GetRuntimeField<bool>(restored, "triggered"));
+        Assert.True(GetRuntimeField<bool>(restored, "onlyOnce"));
+        Assert.Same(fresh.Scene, GetRuntimeField<Scene>(restored, "<Scene>k__BackingField"));
+    }
+
+    [Fact]
+    public void RemovedEntityRetainedByAnOwnerCollectionMatchesItsFreshSourceIdentity() {
+        PeerTargetEntity retained = CreatePeerTargetEntity("a00", 10);
+        PeerCollectionOwnerEntity owner = CreatePeerCollectionOwnerEntity("a00", 20, retained);
+        SavedSceneRoot saved = CreateOwnedScene(owner);
+        PeerTargetEntity baselineTarget = CreatePeerTargetEntity("a00", 10);
+        SavedSceneRoot baseline = CreateOwnedScene(
+            CreatePeerCollectionOwnerEntity("a00", 20), baselineTarget);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+        PeerCollectionOwnerEntity freshOwner = CreatePeerCollectionOwnerEntity("a00", 20);
+        PeerTargetEntity freshTarget = CreatePeerTargetEntity("a00", 10);
+        SavedSceneRoot fresh = CreateOwnedScene(freshOwner, freshTarget);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(freshTarget, Assert.Single(freshOwner.Peers));
+        Assert.Same(freshOwner, Assert.Single(GetEntityListContents(fresh.Entities)));
+        Assert.Null(GetRuntimeField<Scene>(freshTarget, "<Scene>k__BackingField"));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
     // Frost Helper's EntityBatcher starts with a shader id in its parameter
     // dictionary, then replaces that value with the live Effect after the first
     // render. A clean-room baseline therefore has null where the saved room has
@@ -6286,6 +6994,47 @@ public sealed class StartPosReconstructionTests {
         Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
     }
 
+    [Fact]
+    public void NamedPeerAliasesFollowSourceIdentityWhenOwnerAndPeerPairsChangeListOrder() {
+        PeerTargetEntity savedP = CreatePeerTargetEntity("a00", 20);
+        PeerTargetEntity savedQ = CreatePeerTargetEntity("a00", 21);
+        savedP.Value = 37;
+        savedQ.Value = 81;
+        SourceEntityListOwnerRoot saved = CreateSourceEntityListOwnerRoot(
+            CreatePeerLinkEntity("a00", 10, savedP), savedP,
+            CreatePeerLinkEntity("a00", 11, savedQ), savedQ);
+        PeerTargetEntity baselineP = CreatePeerTargetEntity("a00", 20);
+        PeerTargetEntity baselineQ = CreatePeerTargetEntity("a00", 21);
+        SourceEntityListOwnerRoot baseline = CreateSourceEntityListOwnerRoot(
+            CreatePeerLinkEntity("a00", 10, baselineP), baselineP,
+            CreatePeerLinkEntity("a00", 11, baselineQ), baselineQ);
+        PeerTargetEntity freshP = CreatePeerTargetEntity("a00", 20);
+        PeerTargetEntity freshQ = CreatePeerTargetEntity("a00", 21);
+        PeerLinkEntity freshA = CreatePeerLinkEntity("a00", 10, freshP);
+        PeerLinkEntity freshB = CreatePeerLinkEntity("a00", 11, freshQ);
+        SourceEntityListOwnerRoot fresh = CreateSourceEntityListOwnerRoot(
+            freshB, freshQ, freshA, freshP);
+        AkronReconstructionGraph graph = new AkronReconstructionGraph(IsLiveResource, _ => string.Empty);
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+        Assert.True(capture.Success, capture.Error);
+
+        AkronReconstructionRestore restore = graph.Restore(capture.Document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Same(freshP, freshA.Peer);
+        Assert.Same(freshQ, freshB.Peer);
+        Assert.Equal(37, freshP.Value);
+        Assert.Equal(81, freshQ.Value);
+        Assert.Equal(20, GetRuntimeField<EntityID>(freshP, "<SourceId>k__BackingField").ID);
+        Assert.Equal(21, GetRuntimeField<EntityID>(freshQ, "<SourceId>k__BackingField").ID);
+        Assert.Collection(GetEntityListContents(fresh.Entities),
+            entity => Assert.Same(freshA, entity),
+            entity => Assert.Same(freshP, entity),
+            entity => Assert.Same(freshB, entity),
+            entity => Assert.Same(freshQ, entity));
+        Assert.True(graph.Verify(capture.Document, restore, Array.Empty<string>()).Success);
+    }
+
     // The crossed population through a named field, and the reason
     // RefuseAnEdgeThatDropsAFreshObjectTheDocumentKeeps asks whether the displaced
     // object is one the document keeps rather than only whether the slot is occupied.
@@ -6660,6 +7409,134 @@ public sealed class StartPosReconstructionTests {
         typeof(ComponentList).GetField("current", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(components, new HashSet<Component>(orderedComponents));
         return entity;
+    }
+
+    private sealed class RetainedMapMetadataSession : EverestModuleSession {
+        public Dictionary<string, EntityData> Entries = new Dictionary<string, EntityData>();
+    }
+
+    private sealed class DeepGraphRecord {
+        public DeepGraphRecord? Next;
+        public DeepGraphRecord? Shared;
+        public int Value;
+    }
+
+    private sealed class ResourceCameraScene : Level {
+        public ResourceCameraScene? Foreign;
+    }
+
+    private static VirtualMap<MTexture> CreateSingleSegmentTextureGrid(int columns, int rows) {
+        VirtualMap<MTexture> grid =
+            (VirtualMap<MTexture>) RuntimeHelpers.GetUninitializedObject(typeof(VirtualMap<MTexture>));
+        SetRuntimeField(grid, "Columns", columns);
+        SetRuntimeField(grid, "Rows", rows);
+        SetRuntimeField(grid, "SegmentColumns", 1);
+        SetRuntimeField(grid, "SegmentRows", 1);
+        var segments = new MTexture[1, 1][,];
+        segments[0, 0] = new MTexture[VirtualMap<MTexture>.SegmentSize, VirtualMap<MTexture>.SegmentSize];
+        SetRuntimeField(grid, "segments", segments);
+        return grid;
+    }
+
+    private static (SavedSceneRoot Root, ResourceCameraScene Scene, TileGrid Component) CreateSceneCameraAlias(
+        bool captured,
+        string proof = "valid",
+        bool staleCamera = false,
+        bool detachedAtCapture = false
+    ) {
+        ResourceCameraScene scene = (ResourceCameraScene) RuntimeHelpers.GetUninitializedObject(typeof(ResourceCameraScene));
+        scene.Camera = (Camera) RuntimeHelpers.GetUninitializedObject(typeof(Camera));
+        // Use a primitive scalar: CI strips FNA's vector constructors.
+        SetRuntimeField(scene.Camera, "angle", 0.125f);
+        scene.Foreign = (ResourceCameraScene) RuntimeHelpers.GetUninitializedObject(typeof(ResourceCameraScene));
+        scene.Foreign.Camera = (Camera) RuntimeHelpers.GetUninitializedObject(typeof(Camera));
+        SetRuntimeField(scene.Foreign.Camera, "angle", 0.25f);
+        LinkSceneEntities(scene.Foreign, CreateDetachedEntityList());
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        BackgroundTiles canonicalOwner = CreateUninitializedEntity<BackgroundTiles>();
+        InitializeEmptyComponentList(canonicalOwner);
+        AddDetachedEntity(entities, canonicalOwner);
+        SetRuntimeField(canonicalOwner, "<Scene>k__BackingField", scene);
+        SetRuntimeField(scene, "BgTiles", canonicalOwner);
+        TileGrid canonicalGrid = (TileGrid) RuntimeHelpers.GetUninitializedObject(typeof(TileGrid));
+        canonicalGrid.ClipCamera = scene.Camera;
+        SetRuntimeField(canonicalOwner, "Tiles", canonicalGrid);
+        SetRuntimeField(canonicalGrid, "<Entity>k__BackingField", canonicalOwner);
+        GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(canonicalOwner, "<Components>k__BackingField"), "components").Add(canonicalGrid);
+        GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(canonicalOwner, "<Components>k__BackingField"), "current").Add(canonicalGrid);
+        GridCallbackOwner owner = CreateUninitializedEntity<GridCallbackOwner>();
+        InitializeEmptyComponentList(owner);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+        AddDetachedEntity(entities, owner);
+        SetRuntimeField(owner, "<Scene>k__BackingField", scene);
+        TileGrid grid = (TileGrid) RuntimeHelpers.GetUninitializedObject(typeof(TileGrid));
+        grid.Tiles = CreateSingleSegmentTextureGrid(1, 1);
+        grid.ClipCamera = captured
+            ? (proof == "foreign-scene" ? scene.Foreign.Camera : scene.Camera)
+            : staleCamera ? (Camera) RuntimeHelpers.GetUninitializedObject(typeof(Camera)) : null;
+        if (!captured && grid.ClipCamera is Camera stale) {
+            SetRuntimeField(stale, "angle", -0.125f);
+        }
+        owner.Grid = grid;
+        owner.Interceptor = new GridCallbackComponent(grid);
+        SetRuntimeField(owner.Interceptor, "<Entity>k__BackingField", owner);
+        GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "components").Add(owner.Interceptor);
+        GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "current").Add(owner.Interceptor);
+        if (captured && !detachedAtCapture) {
+            SetRuntimeField(grid, "<Entity>k__BackingField", owner);
+            GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "components").Add(grid);
+            GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "current").Add(grid);
+        }
+        if (captured && proof == "missing-membership") {
+            SetRuntimeField(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "<Entity>k__BackingField", null);
+        }
+        if (captured && proof == "missing-field") {
+            owner.Grid = null!;
+        }
+        if (captured && proof == "competing-owner") {
+            GridCallbackOwner otherOwner = CreateUninitializedEntity<GridCallbackOwner>();
+            InitializeEmptyComponentList(otherOwner);
+            SetRuntimeField(otherOwner, "<SourceId>k__BackingField", CreateEntityId("a00", 11));
+            AddDetachedEntity(entities, otherOwner);
+            SetRuntimeField(otherOwner, "<Scene>k__BackingField", scene);
+            otherOwner.Grid = grid;
+        }
+        return (new SavedSceneRoot { Scene = scene, Entities = entities }, scene, grid);
+    }
+
+    private static (SavedSceneRoot Root, ComponentCallbackOwner Owner) CreateComponentCallbackScene(
+        bool includeCallback,
+        string captureProof = "valid",
+        bool detachedCallback = false
+    ) {
+        ComponentCallbackOwner[] owners = new ComponentCallbackOwner[2];
+        for (int index = 0; index < owners.Length; index++) {
+            ComponentCallbackOwner entity = CreateUninitializedEntity<ComponentCallbackOwner>();
+            InitializeEmptyComponentList(entity);
+            SetRuntimeField(entity, "<SourceId>k__BackingField", CreateEntityId("a00", 10 + index));
+            entity.Target = new OwnedTestComponent { Value = includeCallback && index == 0 ? 37 : 0 };
+            SetRuntimeField(entity.Target, "<Entity>k__BackingField", entity);
+            GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(entity, "<Components>k__BackingField"), "components").Add(entity.Target);
+            GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(entity, "<Components>k__BackingField"), "current").Add(entity.Target);
+            owners[index] = entity;
+        }
+        ComponentCallbackOwner owner = owners[0];
+        if (includeCallback) {
+            OwnedTestComponent captured = captureProof == "foreign-owner" ? owners[1].Target : owner.Target;
+            owner.Callback = captureProof == "opaque-field"
+                ? new ConstructorCallbackComponent((object) captured)
+                : new ConstructorCallbackComponent(captured);
+            if (!detachedCallback) {
+                SetRuntimeField(owner.Callback, "<Entity>k__BackingField", owner);
+                GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "components").Add(owner.Callback);
+                GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "current").Add(owner.Callback);
+            }
+            if (captureProof == "missing-membership") {
+                GetRuntimeField<List<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "components").Remove(captured);
+                GetRuntimeField<HashSet<Component>>(GetRuntimeField<ComponentList>(owner, "<Components>k__BackingField"), "current").Remove(captured);
+            }
+        }
+        return (CreateOwnedScene(owners), owner);
     }
 
     // withBlink mirrors what BeforeRender does for the saved side; the fresh and
@@ -7124,6 +8001,42 @@ public sealed class StartPosReconstructionTests {
         Assert.False(capture.Success);
         Assert.Equal("$.Handle", capture.ErrorPath);
         Assert.Contains("pointer-type=System.UIntPtr", capture.Error);
+    }
+
+    [Fact]
+    public void CaptureRefusesBoxedPointersWithoutWalkingTheirPointerField() {
+        BoxedNativeHandleRoot saved = new BoxedNativeHandleRoot {
+            Handle = RuntimeHelpers.GetUninitializedObject(typeof(Pointer))
+        };
+        BoxedNativeHandleRoot baseline = new BoxedNativeHandleRoot {
+            Handle = RuntimeHelpers.GetUninitializedObject(typeof(Pointer))
+        };
+        AkronReconstructionGraph graph = CreateFinitePointerProbeGraph();
+
+        AkronReconstructionCapture capture = graph.Capture(saved, baseline);
+
+        Assert.False(capture.Success);
+        Assert.Equal("$.Handle", capture.ErrorPath);
+        Assert.Null(capture.Document);
+    }
+
+    [Fact]
+    public void RestoreSkipsUnusedBoxedPointersInTheFreshResourceIndex() {
+        AkronReconstructionGraph graph = CreateFinitePointerProbeGraph();
+        AkronReconstructionCapture capture = graph.Capture(
+            new BoxedNativeHandleRoot { Value = 41 },
+            new BoxedNativeHandleRoot());
+        Assert.True(capture.Success, capture.Error);
+        AkronReconstructionDocument document = graph.Deserialize(graph.Serialize(capture.Document));
+        BoxedNativeHandleRoot fresh = new BoxedNativeHandleRoot {
+            Handle = RuntimeHelpers.GetUninitializedObject(typeof(Pointer))
+        };
+
+        AkronReconstructionRestore restore = graph.Restore(document, fresh);
+
+        Assert.True(restore.Success, restore.Error);
+        Assert.Equal(41, fresh.Value);
+        Assert.Null(fresh.Handle);
     }
 
     // A snapshot written before that gate was fixed holds a scalar whose type is
@@ -8182,10 +9095,10 @@ public sealed class StartPosReconstructionTests {
             Assert.Equal("Celeste/1-ForsakenCity", document.MapSid);
             Assert.Equal("1", document.Room);
             Assert.Equal(0, document.FileSlot);
-            Assert.Equal("akron-reconstruction-v10", document.Format);
+            Assert.Equal(AkronReconstructionDocument.CurrentFormat, document.Format);
             Assert.Equal("LightBuffer", Assert.Single(document.GameplayBuffers).FieldName);
             Assert.Equal(new byte[] { 1, 2, 3, 4 }, document.GameplayBuffers[0].Payload.Bytes);
-            Assert.Contains("v10-", Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
+            Assert.Contains("v11-", Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
             Assert.True(File.Exists(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
         } finally {
             if (Directory.Exists(directory)) {
@@ -8363,6 +9276,22 @@ public sealed class StartPosReconstructionTests {
     // reaches is known to hold one, but a helper that talks to native code can.
     private sealed class NativeHandleRoot {
         public IntPtr Handle;
+    }
+
+    private sealed class BoxedNativeHandleRoot {
+        public object? Handle;
+        public int Value;
+    }
+
+    private static AkronReconstructionGraph CreateFinitePointerProbeGraph() {
+        int pointerVisits = 0;
+        return new AkronReconstructionGraph(type => {
+            // Bound a regressed reboxing loop without exhausting the test runner.
+            if (type == typeof(Pointer) && ++pointerVisits > 32) {
+                throw new InvalidOperationException("The resource index entered a boxed pointer repeatedly.");
+            }
+            return IsLiveResource(type);
+        });
     }
 
     // The Spring Collab 2020 shape that used to refuse every Heart of the Storm
@@ -8767,7 +9696,7 @@ public sealed class StartPosReconstructionTests {
             };
         }
 
-        public object Restore(AkronReconstructionResourcePayload payload, object freshResource) {
+        public object Restore(Type resourceType, AkronReconstructionResourcePayload payload, object freshResource) {
             LastRestored = new TestResource(System.Text.Encoding.UTF8.GetString(payload.Bytes), payload.Name);
             return LastRestored;
         }
@@ -8813,6 +9742,7 @@ public sealed class StartPosReconstructionTests {
     }
 
     private sealed class PeerTargetEntity : Entity {
+        public int Value;
     }
 
     private sealed class PeerLinkEntity : Entity {
@@ -9903,6 +10833,256 @@ public sealed class StartPosReconstructionTests {
         public int Exposed = 5;
     }
 
+    private sealed class ManagedGridOwnerEntity : Entity {
+        public object? Opaque;
+        public VirtualMap<MTexture>? Grid;
+        public MTexture? Texture;
+        public ManagedSurfaceState? Surface;
+    }
+
+    private sealed class ManagedSurfaceState {
+        public List<Record> Records = new List<Record>();
+
+        public sealed class Record {
+            public int Value;
+
+            public int ReadValue() {
+                return Value;
+            }
+        }
+    }
+
+    [Pooled]
+    private sealed class PooledRuntimeEffect : Entity {
+        public int Value;
+    }
+
+    private sealed class CapturedRuntimeEffect : Entity {
+        public SourceIdentifiedEntity Creator = null!;
+    }
+
+    private sealed class ComponentCapturedRuntimeEffect : Entity {
+        public OwnedTestComponent? Creator;
+        public Component? BaseCreator;
+        public object? OpaqueCreator;
+    }
+
+    private sealed class CollectionRuntimeEffect : Entity {
+        public int Value;
+    }
+
+    private sealed class RuntimeCollectionEntity : Entity {
+        public List<CollectionRuntimeEffect> Effects = null!;
+    }
+
+    private sealed class RuntimeCollectionComponent : Component {
+        public List<CollectionRuntimeEffect> Effects = new List<CollectionRuntimeEffect>(4);
+
+        public RuntimeCollectionComponent() : base(false, false) { }
+    }
+
+    private sealed class RuntimeCollectionRenderer : Renderer {
+        public List<CollectionRuntimeEffect> Effects = new List<CollectionRuntimeEffect>(4);
+    }
+
+    private static RuntimeCollectionEntity CreateRuntimeCollectionEntity() {
+        RuntimeCollectionEntity owner = CreateUninitializedEntity<RuntimeCollectionEntity>();
+        InitializeEmptyComponentList(owner);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+        owner.Effects = new List<CollectionRuntimeEffect>(4);
+        return owner;
+    }
+
+    private sealed class RuntimeCollectionBackdrop : Backdrop {
+        public List<CollectionRuntimeEffect> Effects = null!;
+        public List<Entity>? BaseEffects;
+        public object? OpaqueEffects;
+    }
+
+    private sealed class RuntimeBackdropScene : Scene {
+        public Backdrop? Backdrop;
+        public Entity? RetainedEntity;
+        public Component? RetainedComponent;
+        public Renderer? RetainedRenderer;
+        public Scene? ForeignScene;
+    }
+
+    private static (SavedSceneRoot Root, RuntimeCollectionBackdrop Backdrop) CreateRuntimeBackdropScene(
+        bool includeEffect, string ownership
+    ) {
+        RuntimeBackdropScene scene =
+            (RuntimeBackdropScene) RuntimeHelpers.GetUninitializedObject(typeof(RuntimeBackdropScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        RuntimeCollectionBackdrop backdrop =
+            (RuntimeCollectionBackdrop) RuntimeHelpers.GetUninitializedObject(typeof(RuntimeCollectionBackdrop));
+        backdrop.Effects = new List<CollectionRuntimeEffect>(4);
+        scene.Backdrop = backdrop;
+        scene.ForeignScene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        if (includeEffect) {
+            CollectionRuntimeEffect effect = CreateUninitializedEntity<CollectionRuntimeEffect>();
+            InitializeEmptyComponentList(effect);
+            effect.Value = 37;
+            SetRuntimeField(effect, "<Scene>k__BackingField",
+                ownership == "foreign-scene" ? scene.ForeignScene : scene);
+            AddDetachedEntity(entities, effect);
+            if (ownership == "opaque-owner") {
+                backdrop.OpaqueEffects = new List<CollectionRuntimeEffect> { effect };
+            } else if (ownership == "base-element") {
+                backdrop.BaseEffects = new List<Entity> { effect };
+            } else {
+                backdrop.Effects.Add(effect);
+            }
+        }
+        return (new SavedSceneRoot { Scene = scene, Entities = entities }, backdrop);
+    }
+
+    private static (SavedSceneRoot Root, List<CollectionRuntimeEffect> Effects) CreateRetainedRuntimeOwnerScene(
+        string rootKind, string membership, bool includeEffect
+    ) {
+        RuntimeBackdropScene scene =
+            (RuntimeBackdropScene) RuntimeHelpers.GetUninitializedObject(typeof(RuntimeBackdropScene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        SavedSceneRoot foreign = CreateOwnedScene();
+        scene.ForeignScene = foreign.Scene;
+        Scene ownerScene = membership == "valid" ? scene : foreign.Scene;
+        EntityList ownerEntities = membership == "valid" ? entities : foreign.Entities;
+        List<CollectionRuntimeEffect> effects;
+        RuntimeCollectionEntity? entityOwner = null;
+        if (rootKind == "renderer") {
+            RuntimeCollectionRenderer renderer = new RuntimeCollectionRenderer();
+            scene.RetainedRenderer = renderer;
+            effects = renderer.Effects;
+            if (membership != "detached") {
+                RendererList renderers = (RendererList) RuntimeHelpers.GetUninitializedObject(typeof(RendererList));
+                SetRuntimeField(renderers, "Renderers", new List<Renderer> { renderer });
+                SetRuntimeField(renderers, "adding", new List<Renderer>());
+                SetRuntimeField(renderers, "removing", new List<Renderer>());
+                SetRuntimeField(renderers, "scene", ownerScene);
+                SetRuntimeField(ownerScene, "<RendererList>k__BackingField", renderers);
+            }
+        } else {
+            entityOwner = CreateRuntimeCollectionEntity();
+            if (rootKind == "component") {
+                RuntimeCollectionComponent component = new RuntimeCollectionComponent();
+                SetRuntimeField(component, "<Entity>k__BackingField", entityOwner);
+                GetComponentListContents(entityOwner).Add(component);
+                SetRuntimeField(GetRuntimeField<ComponentList>(entityOwner, "<Components>k__BackingField"), "current", new HashSet<Component> { component });
+                scene.RetainedComponent = component;
+                effects = component.Effects;
+            } else {
+                scene.RetainedEntity = entityOwner;
+                effects = entityOwner.Effects;
+            }
+            if (membership != "detached") {
+                SetRuntimeField(entityOwner, "<Scene>k__BackingField", ownerScene);
+            }
+        }
+        if (includeEffect) {
+            CollectionRuntimeEffect effect = CreateUninitializedEntity<CollectionRuntimeEffect>();
+            InitializeEmptyComponentList(effect);
+            effect.Value = 37;
+            SetRuntimeField(effect, "<Scene>k__BackingField", scene);
+            AddDetachedEntity(entities, effect);
+            effects.Add(effect);
+        }
+        if (entityOwner != null && membership != "detached") {
+            AddDetachedEntity(ownerEntities, entityOwner);
+        }
+        return (new SavedSceneRoot { Scene = scene, Entities = entities }, effects);
+    }
+
+    private sealed class CapturedSceneRoom {
+        public Scene Scene = null!;
+        public Scene ForeignScene = null!;
+        public EntityList Entities = null!;
+    }
+
+    private sealed class SceneRoutineEntity : Entity {
+        public SceneRoutineComponent? Driver;
+        public Scene? ObservedScene;
+        public IEnumerator? Manual;
+
+        public IEnumerator Run() {
+            Scene scene = GetRuntimeField<Scene>(this, "<Scene>k__BackingField");
+            while (true) {
+                yield return null;
+                ObservedScene = scene;
+            }
+        }
+
+        public IEnumerator RunOpaque() {
+            object scene = GetRuntimeField<Scene>(this, "<Scene>k__BackingField");
+            while (true) {
+                yield return null;
+                ObservedScene = (Scene) scene;
+            }
+        }
+    }
+
+    private sealed class SceneRoutineComponent : Component {
+        public Scene? ObservedScene;
+
+        public SceneRoutineComponent() : base(false, false) { }
+
+        public IEnumerator Run() {
+            Scene scene = GetRuntimeField<Scene>(GetRuntimeField<Entity>(this, "<Entity>k__BackingField"), "<Scene>k__BackingField");
+            while (true) {
+                yield return null;
+                ObservedScene = scene;
+            }
+        }
+    }
+
+    private static (CapturedSceneRoom Root, SceneRoutineEntity Owner, Coroutine Routine) CreateCapturedSceneRoom(
+        bool midFlight, bool componentOwner, bool componentFirst, string invalidProof = ""
+    ) {
+        SceneRoutineEntity owner = CreateUninitializedEntity<SceneRoutineEntity>();
+        InitializeEmptyComponentList(owner);
+        SetRuntimeField(owner, "<SourceId>k__BackingField", CreateEntityId("a00", 10));
+        SceneRoutineEntity other = CreateUninitializedEntity<SceneRoutineEntity>();
+        InitializeEmptyComponentList(other);
+        SetRuntimeField(other, "<SourceId>k__BackingField", CreateEntityId("a00", 20));
+        SavedSceneRoot scene = CreateOwnedScene(owner, other);
+        CapturedSceneRoom root = new CapturedSceneRoom {
+            Scene = scene.Scene,
+            Entities = scene.Entities,
+            ForeignScene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene))
+        };
+        Coroutine routine = CreateDetachedCoroutine();
+        SceneRoutineEntity coroutineOwner = invalidProof == "foreign-coroutine" ? other : owner;
+        SetRuntimeField(routine, "<Entity>k__BackingField", coroutineOwner);
+        List<Component> ordered = GetComponentListContents(coroutineOwner);
+        ordered.Add(routine);
+        if (componentOwner) {
+            owner.Driver = new SceneRoutineComponent();
+            SetRuntimeField(owner.Driver, "<Entity>k__BackingField", owner);
+            ordered.Insert(componentFirst ? 0 : 1, owner.Driver);
+        }
+        SetRuntimeField(GetRuntimeField<ComponentList>(coroutineOwner, "<Components>k__BackingField"), "current", new HashSet<Component>(ordered));
+        if (midFlight) {
+            IEnumerator iterator = componentOwner ? owner.Driver!.Run()
+                : invalidProof == "opaque-scene" ? owner.RunOpaque() : owner.Run();
+            Assert.True(iterator.MoveNext());
+            if (invalidProof == "foreign-scene") {
+                iterator.GetType().GetFields(RuntimeInstanceFields)
+                    .Single(field => field.FieldType == typeof(Scene))
+                    .SetValue(iterator, root.ForeignScene);
+            }
+            GetRuntimeField<Stack<IEnumerator>>(routine, "enumerators").Push(iterator);
+        }
+        return (root, owner, routine);
+    }
+
+    private static SavedSceneRoot CreateOwnedScene(params Entity[] members) {
+        Scene scene = (Scene) RuntimeHelpers.GetUninitializedObject(typeof(Scene));
+        EntityList entities = LinkSceneEntities(scene, CreateDetachedEntityList());
+        foreach (Entity entity in members) {
+            SetRuntimeField(entity, "<Scene>k__BackingField", scene);
+            AddDetachedEntity(entities, entity);
+        }
+        return new SavedSceneRoot { Scene = scene, Entities = entities };
+    }
+
     private sealed class RegisteredEffectRoot {
         public Effect? Effect;
     }
@@ -10023,6 +11203,41 @@ public sealed class StartPosReconstructionTests {
 
         public void SetValue(int value) {
             Value = value;
+        }
+    }
+
+    private sealed class GridCallbackOwner : Entity {
+        public TileGrid Grid = null!;
+        public TileGrid OtherGrid = null!;
+        public GridCallbackComponent Interceptor = null!;
+        public GridCallbackComponent OtherInterceptor = null!;
+    }
+
+    // TileInterceptor's constructor and callback bodies are absent from CI's
+    // reference assembly. This executable fixture retains the same constructor
+    // closure and concrete sibling-grid ownership exercised by the live check.
+    private sealed class GridCallbackComponent : Component {
+        public Action<VirtualMap<MTexture>?> Intercept;
+
+        public GridCallbackComponent(TileGrid grid) : base(false, false) {
+            Intercept = tiles => grid.Tiles = tiles;
+        }
+    }
+
+    private sealed class ComponentCallbackOwner : Entity {
+        public OwnedTestComponent Target = null!;
+        public ConstructorCallbackComponent? Callback;
+    }
+
+    private sealed class ConstructorCallbackComponent : Component {
+        public Action Callback;
+
+        public ConstructorCallbackComponent(OwnedTestComponent captured) : base(false, false) {
+            Callback = () => captured.Value++;
+        }
+
+        public ConstructorCallbackComponent(object captured) : base(false, false) {
+            Callback = () => ((OwnedTestComponent) captured).Value++;
         }
     }
 

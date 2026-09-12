@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -9,6 +10,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 using Celeste;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -25,6 +28,8 @@ public sealed class AkronSetupPack {
     public Dictionary<string, AkronButtonBindingPack> ButtonBindings { get; set; } = new Dictionary<string, AkronButtonBindingPack>();
     public Dictionary<string, string> MenuActionBindings { get; set; } = new Dictionary<string, string>();
     public Dictionary<int, AkronStartPosPackEntry> StartPositions { get; set; } = new Dictionary<int, AkronStartPosPackEntry>();
+
+    public string SnapshotBundleSha256 { get; set; } = string.Empty;
 
     [JsonIgnore]
     public string ArchiveMapSid { get; set; } = string.Empty;
@@ -102,7 +107,11 @@ public static partial class AkronSetupPacks {
     // whether a saved resource's key names it, and, for the room half of a snapshot,
     // whether the map laid a saved entity's id out - so the v8 snapshots inside a v5
     // pack cannot be rebuilt here either.
-    public const string SetupPackFormat = "akron-setup-v9";
+    // v10 changes only the portable snapshot encoding to a shared Brotli bundle.
+    // The native snapshot format is versioned independently; export requires the current one.
+    public const string SetupPackFormat = "akron-setup-v10";
+    private static Task exportTask;
+    internal static bool ExportInProgress => exportTask != null && !exportTask.IsCompleted;
 
     public const int MaxStartPositions = 99;
     public const int MaxAutoKillAreas = 128;
@@ -135,7 +144,7 @@ public static partial class AkronSetupPacks {
     private const long MaxDecompressedSnapshotBytes = AkronStartPosReconstruction.MaxDecompressedSnapshotBytes;
 
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {
-        WriteIndented = true,
+        WriteIndented = false,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         Converters = { new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false) }
@@ -527,14 +536,35 @@ public static partial class AkronSetupPacks {
     }
 
     public static string ExportCurrent(string name = "", AkronSetupSection section = AkronSetupSection.Whole) {
+        if (ExportInProgress) {
+            Engine.Scene?.Add(new AkronToast("A setup export is already running."));
+            return string.Empty;
+        }
         section = NormalizeSection(section);
         try {
             AkronSetupPack pack = Capture(AkronModule.Settings, AkronModule.Session, name, section);
             Directory.CreateDirectory(GetSetupDirectory());
             string fileName = SanitizeFileName(pack.Name) + "-" + DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ", CultureInfo.InvariantCulture) + AkronArchive.Extension;
             string path = Path.Combine(GetSetupDirectory(), fileName);
-            Write(AkronModule.Settings, AkronModule.Session, path, name, section);
-            Engine.Scene?.Add(new AkronToast("Exported " + FormatSection(section) + " setup " + pack.Name + "."));
+            // Capture live state above on the game thread. Compression only reads
+            // that detached pack and verified snapshot files in the background.
+            ValidatePortablePack(pack, pack.Section, pack.ArchiveMapSid);
+            exportTask = Task.Run(() => {
+                string message;
+                try {
+                    WriteArchive(path, pack, new AkronArchiveManifest {
+                        Kind = SetupArchiveKind,
+                        CreatedAt = pack.CreatedUtc,
+                        Target = new AkronArchiveTarget { MapSid = pack.ArchiveMapSid }
+                    });
+                    message = "Exported " + FormatSection(section) + " setup " + pack.Name + ".";
+                } catch (Exception exception) {
+                    Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to export Akron setup archive: " + exception.Message);
+                    message = "Could not export setup pack.";
+                }
+                MainThreadHelper.Schedule(() => Engine.Scene?.Add(new AkronToast(message)));
+            });
+            Engine.Scene?.Add(new AkronToast("Compressing setup pack in the background..."));
             return path;
         } catch (Exception exception) when (exception is InvalidDataException || exception is AkronSetupPackFormatException || exception is IOException || exception is UnauthorizedAccessException) {
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to export Akron setup archive: " + exception.Message);
@@ -649,42 +679,46 @@ public static partial class AkronSetupPacks {
         throw new InvalidDataException("Setup archive payload is too large.");
     }
 
-    internal static void WriteArchive(string path, AkronSetupPack pack, AkronArchiveManifest manifest) {
-        HashSet<string> expectedEntries = GetExpectedSnapshotEntries(pack);
-        Dictionary<string, string> attachments = new Dictionary<string, string>(StringComparer.Ordinal);
-        long attachmentBytes = 0;
-        foreach (KeyValuePair<int, AkronStartPosPackEntry> pair in pack.StartPositions ?? new Dictionary<int, AkronStartPosPackEntry>()) {
+    internal static void WriteArchive(string path, AkronSetupPack pack, AkronArchiveManifest manifest, CancellationToken cancellationToken = default) {
+        GetExpectedSnapshotEntries(pack);
+        var sources = new List<AkronSnapshotBundle.Source>();
+        long sourceBytes = 0;
+        foreach (KeyValuePair<int, AkronStartPosPackEntry> pair in pack.StartPositions) {
             if (!pack.SnapshotSourcePaths.TryGetValue(pair.Key, out string snapshotPath) || !File.Exists(snapshotPath)) {
                 throw new InvalidDataException("StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + " has no exact snapshot to export.");
             }
-            long snapshotBytes = new FileInfo(snapshotPath).Length;
-            if (snapshotBytes > MaxSnapshotAttachmentBytes) {
-                throw new InvalidDataException(
-                    "StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + " snapshot is too large to export.");
+            long length = new FileInfo(snapshotPath).Length;
+            if (length > MaxSnapshotAttachmentBytes) {
+                throw new InvalidDataException("StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + " snapshot is too large to export.");
             }
-            if (attachmentBytes > MaxSnapshotAttachmentsBytes - snapshotBytes) {
+            sourceBytes += length;
+            if (sourceBytes > MaxSnapshotAttachmentsBytes) {
                 throw new InvalidDataException("StartPos snapshot attachments are too large to export.");
             }
-            attachmentBytes += snapshotBytes;
-            attachments[pair.Value.SnapshotEntry] = snapshotPath;
-        }
-        if (!expectedEntries.SetEquals(attachments.Keys)) {
-            throw new InvalidDataException("StartPos snapshot attachments are incomplete.");
+            sources.Add(new AkronSnapshotBundle.Source(pair.Key, snapshotPath, pair.Value.SnapshotSha256));
         }
 
-        foreach (KeyValuePair<int, AkronStartPosPackEntry> pair in pack.StartPositions ?? new Dictionary<int, AkronStartPosPackEntry>()) {
-            string snapshotPath = attachments[pair.Value.SnapshotEntry];
-            if (!string.Equals(ComputeFileSha256(snapshotPath), pair.Value.SnapshotSha256, StringComparison.Ordinal)) {
-                throw new InvalidDataException("StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + " changed during export.");
+        // Captured checksums identify local gzip files. Only the exported clone gets
+        // raw-document hashes and the compressed bundle hash, so capture is reusable.
+        AkronSetupPack exportedPack = JsonSerializer.Deserialize<AkronSetupPack>(JsonSerializer.Serialize(pack, JsonOptions), JsonOptions);
+        var attachments = new Dictionary<string, string>(StringComparer.Ordinal);
+        string stagingDirectory = Path.Combine(Path.GetTempPath(), "akron-pack-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(stagingDirectory);
+        try {
+            if (sources.Count > 0) {
+                string bundlePath = Path.Combine(stagingDirectory, "snapshots.bin.br");
+                Dictionary<int, string> hashes = AkronSnapshotBundle.Write(bundlePath, sources, cancellationToken);
+                foreach (KeyValuePair<int, string> pair in hashes) {
+                    exportedPack.StartPositions[pair.Key].SnapshotSha256 = pair.Value;
+                }
+                exportedPack.SnapshotBundleSha256 = ComputeFileSha256(bundlePath);
+                attachments.Add(AkronSnapshotBundle.EntryName, bundlePath);
             }
+            cancellationToken.ThrowIfCancellationRequested();
+            AkronArchive.WritePayloadArchive(path, manifest, SetupArchivePayload, SerializePackPayloadForArchive(exportedPack), attachments);
+        } finally {
+            Directory.Delete(stagingDirectory, recursive: true);
         }
-
-        AkronArchive.WritePayloadArchive(
-            path,
-            manifest,
-            SetupArchivePayload,
-            SerializePackPayloadForArchive(pack),
-            attachments);
     }
 
     public static AkronSetupPack Read(string path) {
@@ -715,6 +749,11 @@ public static partial class AkronSetupPacks {
         if (!expectedAttachments.SetEquals(attachmentNames)) {
             throw new InvalidDataException("Setup pack snapshot entries do not match its StartPos data.");
         }
+        if (expectedAttachments.Count == 0 ? pack.SnapshotBundleSha256 != string.Empty :
+                pack.SnapshotBundleSha256?.Length != 64 || !pack.SnapshotBundleSha256.All(Uri.IsHexDigit) ||
+                pack.SnapshotBundleSha256 != pack.SnapshotBundleSha256.ToLowerInvariant()) {
+            throw new InvalidDataException("Setup pack has an invalid snapshot bundle checksum.");
+        }
         pack.ArchiveMapSid = manifest.Target.MapSid;
         pack.ArchivePath = path;
         return pack;
@@ -728,20 +767,20 @@ public static partial class AkronSetupPacks {
 
         foreach (KeyValuePair<int, AkronStartPosPackEntry> pair in pack.StartPositions ?? new Dictionary<int, AkronStartPosPackEntry>()) {
             AkronStartPosPackEntry entry = pair.Value ?? throw new InvalidDataException("Setup pack has an invalid StartPos entry.");
-            string expectedName = GetSnapshotEntryName(pair.Key);
+            string expectedName = AkronSnapshotBundle.EntryName;
             if (!string.Equals(entry.SnapshotEntry, expectedName, StringComparison.Ordinal) ||
                 entry.SnapshotSha256?.Length != 64 ||
                 !entry.SnapshotSha256.All(Uri.IsHexDigit) ||
-                !string.Equals(entry.SnapshotSha256, entry.SnapshotSha256.ToLowerInvariant(), StringComparison.Ordinal) ||
-                !entries.Add(entry.SnapshotEntry)) {
+                !string.Equals(entry.SnapshotSha256, entry.SnapshotSha256.ToLowerInvariant(), StringComparison.Ordinal)) {
                 throw new InvalidDataException("Setup pack has invalid StartPos snapshot metadata.");
             }
+            entries.Add(entry.SnapshotEntry);
         }
         return entries;
     }
 
     private static PreparedStartPosImport PrepareStartPosImport(AkronSetupPack pack, string targetMapSid) {
-        if (pack == null || string.IsNullOrWhiteSpace(pack.ArchivePath)) {
+        if (pack == null || string.IsNullOrWhiteSpace(pack.ArchivePath) || pack.StartPositions.Count == 0) {
             return null;
         }
 
@@ -755,21 +794,21 @@ public static partial class AkronSetupPacks {
                 ? AkronBerryProgressSnapshot.Capture(recipientLevel)
                 : null;
         try {
-            foreach (KeyValuePair<int, AkronStartPosPackEntry> pair in pack.StartPositions.OrderBy(pair => pair.Key)) {
-                AkronStartPosPackEntry entry = pair.Value;
-                byte[] compressedSnapshot = AkronArchive.ReadBinaryEntry(pack.ArchivePath, entry.SnapshotEntry, MaxSnapshotAttachmentBytes);
-                string digest = Convert.ToHexString(SHA256.HashData(compressedSnapshot)).ToLowerInvariant();
-                if (!string.Equals(digest, entry.SnapshotSha256, StringComparison.Ordinal)) {
-                    throw new InvalidDataException("StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + " snapshot checksum differs.");
-                }
-
-                using MemoryStream snapshotStream = new MemoryStream(compressedSnapshot, writable: false);
-                if (!AkronStartPosReconstruction.TryReadSnapshot(
-                        snapshotStream,
-                        out AkronReconstructionDocument document,
-                        out string readError,
-                        MaxDecompressedSnapshotBytes)) {
-                    throw new InvalidDataException("StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + " snapshot is invalid: " + readError);
+            using ZipArchive archive = ZipFile.OpenRead(pack.ArchivePath);
+            ZipArchiveEntry bundle = archive.GetEntry(AkronSnapshotBundle.EntryName)
+                ?? throw new InvalidDataException("Setup pack snapshot bundle is missing.");
+            if (bundle.Length > MaxSnapshotAttachmentsBytes) throw new InvalidDataException("Snapshot bundle is too large.");
+            using Stream encoded = bundle.Open();
+            using SHA256 bundleHash = SHA256.Create();
+            using var checkedStream = new CryptoStream(encoded, bundleHash, CryptoStreamMode.Read);
+            Dictionary<int, string> hashes = AkronSnapshotBundle.Read(checkedStream, (slot, snapshotStream) => {
+                if (!pack.StartPositions.TryGetValue(slot, out AkronStartPosPackEntry entry))
+                    throw new InvalidDataException("Snapshot bundle contains an unexpected slot.");
+                AkronReconstructionDocument document;
+                try {
+                    document = AkronStartPosReconstruction.ReadPackSnapshot(snapshotStream);
+                } catch (Exception exception) {
+                    throw new InvalidDataException("StartPos slot " + slot.ToString(CultureInfo.InvariantCulture) + " snapshot is invalid: " + exception.Message, exception);
                 }
                 if (!string.Equals(document.MapSid, targetMapSid, StringComparison.Ordinal) ||
                     !string.Equals(document.Room, entry.Room, StringComparison.Ordinal)) {
@@ -777,7 +816,7 @@ public static partial class AkronSetupPacks {
                 }
                 document.BerryProgress = recipientBerryProgress;
 
-                string targetSlotName = AkronActions.GetStartPosStateSlotName(targetMapSid, pair.Key);
+                string targetSlotName = AkronActions.GetStartPosStateSlotName(targetMapSid, slot);
                 int recipientFileSlot = SaveData.Instance?.FileSlot ?? -1;
                 if (!AkronStartPosReconstruction.SaveSnapshot(
                         targetSlotName,
@@ -787,11 +826,22 @@ public static partial class AkronSetupPacks {
                         document,
                         out string saveError,
                         stagingDirectory)) {
-                    throw new InvalidDataException("Could not stage StartPos slot " + pair.Key.ToString(CultureInfo.InvariantCulture) + ": " + saveError);
+                    throw new InvalidDataException("Could not stage StartPos slot " + slot.ToString(CultureInfo.InvariantCulture) + ": " + saveError);
                 }
-                stagedSnapshots[pair.Key] = AkronStartPosReconstruction.GetSnapshotPath(targetSlotName, stagingDirectory);
+                stagedSnapshots[slot] = AkronStartPosReconstruction.GetSnapshotPath(targetSlotName, stagingDirectory);
+            });
+            if (!Convert.ToHexString(bundleHash.Hash).Equals(pack.SnapshotBundleSha256, StringComparison.OrdinalIgnoreCase) ||
+                    hashes.Count != pack.StartPositions.Count) {
+                throw new InvalidDataException("Snapshot bundle does not match its pack metadata.");
+            }
+            foreach (KeyValuePair<int, string> pair in hashes) {
+                if (!string.Equals(pair.Value, pack.StartPositions[pair.Key].SnapshotSha256, StringComparison.Ordinal))
+                    throw new InvalidDataException("StartPos snapshot checksum differs.");
             }
             return new PreparedStartPosImport(stagingDirectory, targetMapSid, stagedSnapshots);
+        } catch (EndOfStreamException exception) {
+            Directory.Delete(stagingDirectory, recursive: true);
+            throw new InvalidDataException("StartPos snapshot bundle is truncated.", exception);
         } catch {
             Directory.Delete(stagingDirectory, recursive: true);
             throw;
@@ -811,7 +861,7 @@ public static partial class AkronSetupPacks {
 
         throw new AkronSetupPackFormatException(
             "This setup pack is " + DescribePackFormat(pack) + " and Akron now reads " + SetupPackFormat +
-            ". Packs from an older Akron built rooms differently. Recreate the setup and its StartPos slots in this build, then export a new pack.");
+            ". Export a new pack with this build. Recreate older StartPos slots only if this build can no longer load them.");
     }
 
     // The format string comes out of a pack payload, which is allowed to be 2 MiB, so it
@@ -828,12 +878,6 @@ public static partial class AkronSetupPacks {
     }
 
     private const int MaxReportedPackFormatChars = 32;
-
-    // Tracks AkronReconstructionDocument.CurrentFormat, so the entry name states which
-    // fresh-room baseline the attachment was measured against.
-    private static string GetSnapshotEntryName(int slot) {
-        return "startpos/" + slot.ToString(CultureInfo.InvariantCulture) + ".v10.json.gz";
-    }
 
     private static string ComputeFileSha256(string path) {
         using FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -1133,6 +1177,7 @@ public static partial class AkronSetupPacks {
 
         if (pack.Section is not AkronSetupSection.StartPos and not AkronSetupSection.Whole) {
             root.Remove("startPositions");
+            root.Remove("snapshotBundleSha256");
         }
 
         return root.ToJsonString(JsonOptions);
@@ -1158,6 +1203,7 @@ public static partial class AkronSetupPacks {
         }
         if (section is AkronSetupSection.StartPos or AkronSetupSection.Whole) {
             expectedTopLevel.Add("startPositions");
+            expectedTopLevel.Add("snapshotBundleSha256");
         }
 
         RequireExactJsonProperties(root, expectedTopLevel, "Setup pack");
@@ -1679,7 +1725,7 @@ public static partial class AkronSetupPacks {
             }
 
             string snapshotPath = AkronStartPosReconstruction.GetSnapshotPath(pair.Value.StateSlotName);
-            string snapshotEntry = GetSnapshotEntryName(pair.Key);
+            string snapshotEntry = AkronSnapshotBundle.EntryName;
             bool hasSnapshot = !string.IsNullOrWhiteSpace(pair.Value.StateSlotName) && File.Exists(snapshotPath);
             entries[pair.Key] = new AkronStartPosPackEntry {
                 X = pair.Value.Position.X,

@@ -687,7 +687,13 @@ public static partial class AkronSaveLoadService {
         bool capturePersistentResources = true,
         bool prepareForRestore = true
     ) {
-        if (level == null || !CanAccessNativeState(level, out _)) {
+        LastPersistentSnapshotError = string.Empty;
+        if (level == null) {
+            LastPersistentSnapshotError = "no level is active";
+            return null;
+        }
+        if (!CanAccessNativeState(level, out string accessError)) {
+            LastPersistentSnapshotError = accessError;
             return null;
         }
 
@@ -761,6 +767,10 @@ public static partial class AkronSaveLoadService {
                 AkronVirtualAssetReloadTracker.GetRegistrationsSince(virtualAssetMarker);
             retainsTrackedVirtualAssets = true;
             return saveSlot;
+        } catch (AkronReconstructionException exception) {
+            LastPersistentSnapshotError = exception.Message;
+            ReleaseDormantEventInstances(saveSlot);
+            return null;
         } catch {
             ReleaseDormantEventInstances(saveSlot);
             throw;
@@ -1779,6 +1789,7 @@ public static partial class AkronSaveLoadService {
         Glitch.Value = state.GlitchValue;
         Distort.Anxiety = state.DistortAnxiety;
         Distort.GameRate = state.DistortGameRate;
+        AkronPersistentRuntimeState.RestoreDustStyle(DustStyles.Styles, level.Session.Area.ID, state.DustStyle);
 
         foreach (EverestModule module in Everest.Modules.Where(module =>
                      module is not AkronModule && module.GetType().Name != "NullModule")) {
@@ -2186,6 +2197,10 @@ public static partial class AkronSaveLoadService {
             saveSlot.GlitchValue = Glitch.Value;
             saveSlot.DistortAnxiety = Distort.Anxiety;
             saveSlot.DistortGameRate = Distort.GameRate;
+            // Capture in the Level's clone context: controllers can own the same
+            // EdgeColors array as the active-area registry entry.
+            saveSlot.DustStyle = (DustStyles.DustStyle?) DeepClone(
+                AkronPersistentRuntimeState.CaptureDustStyle(DustStyles.Styles, level.Session.Area.ID));
 
             foreach (EverestModule module in Everest.Modules.Where(module => module.GetType().Name != "NullModule")) {
                 if (module._Session != null) {
@@ -2225,6 +2240,8 @@ public static partial class AkronSaveLoadService {
             saveSlot.GlitchValue = Glitch.Value;
             saveSlot.DistortAnxiety = Distort.Anxiety;
             saveSlot.DistortGameRate = Distort.GameRate;
+            saveSlot.DustStyle = (DustStyles.DustStyle?) DeepClone(
+                AkronPersistentRuntimeState.CaptureDustStyle(DustStyles.Styles, level.Session.Area.ID));
             foreach (EverestModule module in Everest.Modules.Where(module => module.GetType().Name != "NullModule")) {
                 if (module._Session != null) {
                     saveSlot.ModuleSessions[module.GetType().FullName ?? module.GetType().Name] =
@@ -2340,6 +2357,10 @@ public static partial class AkronSaveLoadService {
                     level.Entities.UpdateLists();
                 }
             }
+            AkronPersistentRuntimeState.RestoreDustStyle(
+                DustStyles.Styles,
+                level.Session.Area.ID,
+                (DustStyles.DustStyle?) DeepClone(saveSlot.DustStyle));
 
             Player player = level.Tracker.GetEntity<Player>();
             if (player != null && savedLevel == null) {

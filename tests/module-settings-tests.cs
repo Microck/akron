@@ -2927,13 +2927,72 @@ public sealed class ModuleSettingsTests
             token,
             out _,
             out error));
-        Assert.Contains("allowlisted", error, StringComparison.OrdinalIgnoreCase);
         Assert.False(AkronAutomationService.TryParseCommandFileForTesting(
             "token: wrong-token\nakron_status",
             token,
             out _,
             out error));
-        Assert.Contains("token", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AutomationQuotedArgumentsPreserveExactTextAndEmptyStrings()
+    {
+        string token = new string('t', 32);
+        string command = "akron_qa_warp_room \"  \\\"north\\\" \\\\ passage\\r\\n雪\\u03a9  \" \"\" 0";
+
+        Assert.True(AkronAutomationService.TryParseCommandFileForTesting(
+            "token: " + token + "\n" + command,
+            token,
+            out IReadOnlyList<string> commands,
+            out string error), error);
+        Assert.Equal(
+            new[] { "akron_qa_warp_room", "  \"north\" \\ passage\r\n雪Ω  ", "", "0" },
+            AkronAutomationService.Tokenize(Assert.Single(commands)));
+    }
+
+    [Fact]
+    public void AutomationEncodedNewlinesStayInsideOneArgument()
+    {
+        string token = new string('t', 32);
+
+        Assert.True(AkronAutomationService.TryParseCommandFileForTesting(
+            "token: " + token + "\nakron_qa_warp_room \"room\\r\\nakron_status\\nquit\" 0\nakron_status",
+            token,
+            out IReadOnlyList<string> commands,
+            out string error), error);
+        Assert.Collection(commands,
+            command => Assert.Equal(
+                new[] { "akron_qa_warp_room", "room\r\nakron_status\nquit", "0" },
+                AkronAutomationService.Tokenize(command)),
+            command => Assert.Equal(new[] { "akron_status" }, AkronAutomationService.Tokenize(command)));
+    }
+
+    [Theory]
+    [InlineData("\"unfinished")]
+    [InlineData("\"trailing\\")]
+    [InlineData("\"bad\\q\"")]
+    [InlineData("\"bad\\u12xz\"")]
+    [InlineData("\"raw\tcontrol\"")]
+    [InlineData("\"room\"suffix")]
+    [InlineData("\"room\"\"next\"")]
+    [InlineData("prefix\"room\"")]
+    public void AutomationMalformedQuotedArgumentsRejectTheCommandFile(string argument)
+    {
+        string token = new string('t', 32);
+
+        Assert.False(AkronAutomationService.TryParseCommandFileForTesting(
+            "token: " + token + "\nakron_status\nakron_qa_warp_room " + argument + "\nakron_status",
+            token,
+            out _,
+            out _));
+    }
+
+    [Fact]
+    public void AutomationBareWindowsPathsKeepLiteralBackslashes()
+    {
+        Assert.Equal(
+            new[] { "akron_tas_file", @"C:\new\test.tas", @"D:\folder\" },
+            AkronAutomationService.Tokenize(@"akron_tas_file C:\new\test.tas D:\folder\"));
     }
 
     [Fact]

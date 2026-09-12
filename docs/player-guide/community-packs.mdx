@@ -58,10 +58,10 @@ Community packs use the same `.akr` import path as local exports.
 
 - Export your current setup before importing a community pack.
 - Confirm that the pack section is StartPos, Auto Kill, or Auto Deafen.
-- For StartPos packs, install the same map and object-providing mods used by the author. Each imported StartPos includes its v10 snapshot, coordinates, and spawn settings.
+- For StartPos packs, install the same map and object-providing mods used by the author. Each imported StartPos includes its v11 snapshot, coordinates, and spawn settings.
 - Imported settings can affect attempt status and proof metadata when used.
 - The Community Packs browser accepts StartPos, Auto Kill, and Auto Deafen setup archives.
-- A public pack contains `manifest.json`, `setup.json`, and one v10 snapshot entry per StartPos. Its manifest `kind` is `setup` and its payload format is `akron-setup-v9`.
+- A public pack contains `manifest.json`, `setup.json`, and, for saved StartPos slots, one shared `startpos/snapshots.bin.br` bundle. Its manifest `kind` is `setup` and its payload format is `akron-setup-v10`.
 
 ## Size limits
 
@@ -70,8 +70,9 @@ Akron caps catalog and pack downloads before importing:
 - Catalog index: 1 MiB.
 - `.akr` pack download: 512 MiB.
 - Setup payload inside an `.akr`: 2 MiB.
-- Each compressed StartPos snapshot attachment: 128 MiB.
-- All compressed StartPos snapshot attachments in one pack: 509 MiB.
+- Compressed StartPos snapshot bundle: 509 MiB.
+- Each expanded StartPos snapshot: 384 MiB.
+- All expanded StartPos snapshots in one pack: 1 GiB.
 - Each downloaded catalog preview image: 2 MiB, no wider or taller than 2048 pixels, and no larger than 4,194,304 pixels in total.
 - Marked-room captures in one in-game upload: 10 rooms.
 

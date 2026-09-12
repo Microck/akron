@@ -96,6 +96,7 @@ public sealed class AkronSaveLoadSlot {
     public float GlitchValue { get; set; }
     public float DistortAnxiety { get; set; }
     public float DistortGameRate { get; set; }
+    internal DustStyles.DustStyle? DustStyle { get; set; }
     public Dictionary<string, Dictionary<Type, Dictionary<string, object>>> ActionState { get; }
     internal List<AkronGameplayBufferSnapshot> GameplayBuffers { get; set; } = new List<AkronGameplayBufferSnapshot>();
     internal IReadOnlyDictionary<object, AkronReconstructionResourcePayload> PersistentRenderTargets { get; set; } =
@@ -310,6 +311,7 @@ internal sealed class AkronPersistentRuntimeState {
     public float GlitchValue { get; set; }
     public float DistortAnxiety { get; set; }
     public float DistortGameRate { get; set; }
+    public DustStyles.DustStyle? DustStyle { get; set; }
     public Dictionary<string, EverestModuleSession> ModuleSessions { get; set; } =
         new Dictionary<string, EverestModuleSession>();
 
@@ -321,7 +323,8 @@ internal sealed class AkronPersistentRuntimeState {
             EngineTimeRate = slot.EngineTimeRate,
             GlitchValue = slot.GlitchValue,
             DistortAnxiety = slot.DistortAnxiety,
-            DistortGameRate = slot.DistortGameRate
+            DistortGameRate = slot.DistortGameRate,
+            DustStyle = slot.DustStyle
         };
         CopyNonAkronModuleState(slot.ModuleSessions, state.ModuleSessions);
         return state;
@@ -337,7 +340,8 @@ internal sealed class AkronPersistentRuntimeState {
 #pragma warning restore CS0618
             GlitchValue = Glitch.Value,
             DistortAnxiety = Distort.Anxiety,
-            DistortGameRate = Distort.GameRate
+            DistortGameRate = Distort.GameRate,
+            DustStyle = CaptureDustStyle(DustStyles.Styles, level.Session.Area.ID)
         };
         foreach (EverestModule module in Everest.Modules.Where(module =>
                      module is not AkronModule && module.GetType().Name != "NullModule")) {
@@ -347,6 +351,27 @@ internal sealed class AkronPersistentRuntimeState {
             }
         }
         return state;
+    }
+
+    internal static DustStyles.DustStyle? CaptureDustStyle(
+        Dictionary<int, DustStyles.DustStyle> styles,
+        int areaId
+    ) {
+        return styles.TryGetValue(areaId, out DustStyles.DustStyle style) ? style : null;
+    }
+
+    internal static void RestoreDustStyle(
+        Dictionary<int, DustStyles.DustStyle> styles,
+        int areaId,
+        DustStyles.DustStyle? style
+    ) {
+        // The table is process-owned; only the active area's entry belongs to the
+        // room. Keep the style's graph aliases intact and leave every other area alone.
+        if (style.HasValue) {
+            styles[areaId] = style.Value;
+        } else {
+            styles.Remove(areaId);
+        }
     }
 
     private static void CopyNonAkronModuleState<T>(
