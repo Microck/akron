@@ -327,7 +327,7 @@ EOF
     mv "$MAP_DIR/attempt-${RUN_NUM}-prelaunch-game-log-tail.txt" "$RUN_DIR/prelaunch-game-log-tail.txt"
   fi
   # Commit this attempt before any recovery can wait indefinitely or fail.
-  python3 - "$AGGREGATE" "$RUN_DIR" "$SID" "$BLOCK_REASON" <<'EOF'
+  python3 - "$AGGREGATE" "$RUN_DIR" "$SID" "$BLOCK_REASON" "$SWEEP_FAILED" "$SIDES" <<'EOF'
 import json, os, sys, tempfile
 from pathlib import Path
 agg_path, run_dir, sid = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
@@ -338,14 +338,18 @@ agg = json.load(open(agg_path))
 agg = [r for r in agg if r.get("sid") != sid]
 results = run_dir / "results.json"
 rows = json.load(open(results)) if results.exists() else []
-if rows:
-    for row in rows:
-        row["evidence"] = str(run_dir)
-        agg.append(row)
-else:
-    agg.append({"sid": sid, "side": "all", "status": "blocked",
-                "reason": sys.argv[4] or "sweep produced no results (crash or timeout)",
-                "evidence": str(run_dir)})
+for row in rows:
+    row["evidence"] = str(run_dir)
+    agg.append(row)
+reported_sides = {row.get("side") for row in rows}
+for side in dict.fromkeys(sys.argv[6].split(",")):
+    if side in reported_sides:
+        continue
+    reason = sys.argv[4] or (
+        "sweep exited before reporting this side (crash or timeout)"
+        if sys.argv[5] == "1" else "sweep produced no result for this requested side")
+    agg.append({"sid": sid, "side": side, "status": "blocked",
+                "reason": reason, "evidence": str(run_dir)})
 fd, staged = tempfile.mkstemp(dir=str(agg_path.parent), suffix=".json")
 with os.fdopen(fd, "w") as handle:
     json.dump(agg, handle, indent=2)

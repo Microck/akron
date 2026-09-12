@@ -262,3 +262,13 @@ Package CRCs, PDB exclusion, and exact license/notice contents passed. That
 headless review package is
 `7feb6e6c83b77bafe04c75aa4da146191b65197498fd68d74feb3f948a58ec96`;
 it is not the earlier Windows-deployed archive.
+
+A second review found that an outer sweep timeout could leave a nonempty
+results file containing only the first completed side. The aggregate now
+retains those completed rows and records every missing requested side as
+blocked, including in the summary counts and bugs list. The reproduction
+first failed with only the normal-side pass present. After the fix, six
+merge/summary smoke scenarios passed: partial timeout, partial failure,
+complete failure with unavailable-side skips, incomplete success, a requested
+subset, and failed prelaunch. Complete results do not gain artificial blocked
+rows, and a retry replaces stale rows without removing another map's results.
