@@ -283,8 +283,14 @@ def check_map(game, area, side, room_count, selected_rooms=None):
                   "\n".join(f"akron_startpos clear {slot}" for slot in range(1, 16)), "prepare")
         references = {}
         for slot, room in enumerate(selected, 1):
-            warped = game.send('akron_freeze off\nakron_qa_warp_room "' + room + '"', "warp")
-            if "qa-warp-room: room=" + room + "\n" not in warped:
+            warped = game.send("akron_freeze off\nakron_qa_warp_room " +
+                               json.dumps(room, ensure_ascii=False), "warp")
+            warp_match = re.search(r"^qa-warp-room: room-json=(.+)$", warped, re.M)
+            try:
+                warped_room = json.loads(warp_match.group(1)) if warp_match else None
+            except json.JSONDecodeError as error:
+                raise RuntimeError("Invalid room warp acknowledgement") from error
+            if warped_room != room:
                 raise RuntimeError("Room warp failed: " + room)
             time.sleep(2)
             requested_cutscene_skip = finish_room_cutscene(game)
@@ -333,7 +339,8 @@ def check_map(game, area, side, room_count, selected_rooms=None):
             raise TimeoutError("Snapshot export was still running after 20 minutes; loads were not tested")
         for slot in references:
             game.send("akron_qa_pause pause", "pause-for-import")
-            imported = game.send('akron_setup import startpos "' + export_path + '"', "import")
+            imported = game.send("akron_setup import startpos " +
+                                 json.dumps(export_path, ensure_ascii=False), "import")
             if "setup-imported: true\n" not in imported:
                 raise RuntimeError("Snapshot pack import failed")
             game.send("akron_qa_pause unpause", "resume")

@@ -76,11 +76,15 @@ or stop at `-1`. An offset at or beyond the end returns no names and `-1`.
 Do not infer completion from an empty page alone.
 
 `akron_qa_warp_room <room-name>` looks up the supplied name without trimming
-it. Use the decoded inventory name exactly. Empty input reports
+it. Use the decoded inventory name exactly, encoded as a JSON string argument
+when using the file-backed queue described below. Empty input reports
 `qa-warp-room: missing room`; an unknown name reports
 `qa-warp-room: not-found room=<name>`. A valid name schedules the warp for the
-end of the frame and reports `qa-warp-room: room=<name>`. That line acknowledges
-the request; it does not prove the room has finished loading.
+end of the frame and reports `qa-warp-room: room-json=<JSON string>`. JSON-decode
+the acknowledgement before comparing it with the requested name; it preserves
+quotes, backslashes, leading/trailing whitespace, and CR/LF in the actual room
+name. That line acknowledges the request; it does not prove the room has
+finished loading.
 
 ## Extended gameplay commands
 
@@ -201,6 +205,37 @@ akron_overlay show
 ```
 
 The queue accepts only commands in Akron's internal automation allowlist. It rejects command files larger than 64 KiB, files with more than 128 lines, runs with more than 64 commands, and command lines longer than 2,048 characters.
+
+Each physical line contains one command. Unquoted arguments are literal,
+whitespace-delimited tokens; backslashes in an unquoted Windows path stay
+literal. An argument beginning with `"` must be one complete JSON string
+token, followed by whitespace or the end of the line. There is no shell-style
+quote concatenation or single-quote syntax.
+
+Use a JSON encoder for arbitrary argument values rather than surrounding them
+with quotes yourself. JSON strings preserve empty strings (`""`), leading and
+trailing spaces, tabs, and CR/LF after decoding. Encode embedded quotes as
+`\"`, backslashes as `\\`, and line breaks as `\r` and `\n`; never put a literal
+line break inside an argument in the command file. In Python, use
+`json.dumps(value, ensure_ascii=False)` so Unicode names do not needlessly
+expand against the command-line limit.
+
+```text
+akron_qa_warp_room "  room \"A\"\\branch\r\nnext  "
+akron_setup import startpos "C:\\Games\\Celeste\\Saves\\My setup.akr"
+akron_tas_file C:\Celeste\Saves\scenario.tas
+```
+
+The first example passes one exact room name, including both leading and
+trailing spaces and the decoded CR/LF. The quoted Windows path must double
+every backslash: `"C:\new\test.akr"` would decode `\n` and `\t` as control
+characters instead of path separators. Bare Windows paths need no escaping,
+but cannot contain whitespace.
+
+Malformed JSON, including invalid escapes, unescaped control characters, or
+an unterminated string, rejects the entire command file before any commands
+are queued. Text concatenated to a closed quoted token, such as `"room"suffix`,
+is also rejected; separate arguments with whitespace.
 
 | File | Purpose |
 |---|---|

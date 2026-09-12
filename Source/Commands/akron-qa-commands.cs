@@ -1205,7 +1205,7 @@ public static partial class AkronCommands {
             level.Entities.UpdateLists();
             AkronLevelRenderState.RelinkRendererCameras(level);
         };
-        Log("qa-warp-room: room=" + room.Name);
+        Log("qa-warp-room: room-json=" + Newtonsoft.Json.JsonConvert.SerializeObject(room.Name));
     }
 
     [Command("akron_qa_inspector_pin_world", "pin the entity inspector at a world coordinate for Akron live automation: x y")]

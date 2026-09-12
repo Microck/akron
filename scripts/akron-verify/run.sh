@@ -249,7 +249,8 @@ if [ -z "$REF_HASH" ]; then
 fi
 REF_ROOM="$(send 'akron_status' 40 | sed -n 's/^startpos-room: //p')"
 
-send "akron_qa_warp_room ${AWAY_ROOM}" 60 >/dev/null
+AWAY_ROOM_JSON="$(python3 -c 'import json, sys; print(json.dumps(sys.argv[1], ensure_ascii=False))' "$AWAY_ROOM")" || exit 1
+send "akron_qa_warp_room ${AWAY_ROOM_JSON}" 60 >/dev/null
 sleep 4
 AWAY_ROOM_ACTUAL="$(send 'akron_status' 40 | sed -n 's|^room: .*/ ||p')"
 

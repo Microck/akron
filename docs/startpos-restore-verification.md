@@ -272,3 +272,24 @@ merge/summary smoke scenarios passed: partial timeout, partial failure,
 complete failure with unavailable-side skips, incomplete success, a requested
 subset, and failed prelaunch. Complete results do not gain artificial blocked
 rows, and a retry replaces stale rows without removing another map's results.
+
+The final transport review found that command-file quoting could lose embedded
+quotes or turn room-name line breaks into command boundaries. A probe against
+the pre-fix Akron assembly reproduced the loss; the same probe passed after
+the parser change. Quoted automation arguments now use JSON string escaping,
+and the warp acknowledgement carries a JSON room name. Bare arguments retain
+literal backslashes.
+
+All 1,983 Release tests passed against the pinned CI references, with zero
+failures or skips. The existing automation suite now covers exact decoded
+text, empty arguments, command-looking encoded newlines, malformed quoting,
+and bare Windows paths. A throwaway producer-to-parser smoke executed the real
+Python warp/import expressions and shell encoders against the compiled C#
+command-file parser. Exact names and Windows paths round-tripped, mismatched
+warp acknowledgements were refused, and perf labels retained their contents.
+All three affected shell scripts passed `bash -n`; the Python sweep parsed
+without generating bytecode.
+
+These transport checks are headless, not a new live map sweep. Run the updated
+harness with the updated Akron build: quoted command-file arguments and the
+warp acknowledgement use the new documented grammar.
