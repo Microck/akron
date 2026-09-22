@@ -458,7 +458,7 @@ public partial class AkronModule : EverestModule {
             return;
         }
         ulong startPosFrameGeneration = AkronActions.StartPosFrameGeneration;
-        if (startPosFrameGeneration != renderedStartPosFrameGeneration) {
+        if (startPosFrameGeneration != renderedStartPosFrameGeneration || AkronActions.IsStartPosCapturePending) {
             // A fixed-timestep game loop can run more than one update before a
             // render. Keep the saved frame unchanged until it is actually drawn.
             AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);

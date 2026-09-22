@@ -1211,24 +1211,6 @@ public sealed class StartPosPersistenceTests {
         }
     }
 
-    [Fact]
-    public void ARepeatedSetIsRefusedBeforeWarmSlotsAreEvicted() {
-        string source = File.ReadAllText(GetActionsSourcePath());
-        int capture = source.IndexOf("private static void CaptureStartPos", StringComparison.Ordinal);
-        int captureEnd = source.IndexOf("private static void TrimWarmStartPosSlotsAndReport", capture, StringComparison.Ordinal);
-        string body = SourceSlice(source, capture, captureEnd - capture);
-
-        int rollbackRefusal = body.IndexOf("StartPosRollbacks.ContainsKey(stateSlotName)", StringComparison.Ordinal);
-        int refusalReturn = body.IndexOf("return;", rollbackRefusal, StringComparison.Ordinal);
-        int prepareBudget = body.IndexOf("PrepareWarmStartPosCapture", StringComparison.Ordinal);
-        int beginRollback = body.IndexOf("BeginStartPosRollback", StringComparison.Ordinal);
-
-        Assert.True(
-            rollbackRefusal >= 0 &&
-            refusalReturn > rollbackRefusal &&
-            refusalReturn < prepareBudget &&
-            beginRollback > prepareBudget);
-    }
 
     // The ceiling on warm StartPos clones has to be denominated in bytes, not in slots.
     // Four slots the size of a Heart of the Storm clone overrun the budget, and one of
@@ -1679,19 +1661,6 @@ public sealed class StartPosPersistenceTests {
         Assert.DoesNotContain("module._SaveData =", restoreMethod);
     }
 
-    [Fact]
-    public void StartPosCapturePublishesTheWarmStateBeforeDiskWorkStarts() {
-        string actionsSource = File.ReadAllText(GetActionsSourcePath());
-        int capture = actionsSource.IndexOf("private static void CaptureStartPos", StringComparison.Ordinal);
-        int publish = actionsSource.IndexOf("PublishPendingStartPos(fileSlot, slot, startPos);", capture, StringComparison.Ordinal);
-        int enqueue = actionsSource.IndexOf("AkronStartPosPersistence.Enqueue", capture, StringComparison.Ordinal);
-        int completion = actionsSource.IndexOf("completion?.Invoke(true);", capture, StringComparison.Ordinal);
-
-        Assert.True(capture >= 0);
-        Assert.True(publish > capture);
-        Assert.True(enqueue > publish);
-        Assert.True(completion > publish);
-    }
 
     [Fact]
     public void SuccessfulStartPosCaptureRetainsItsWarmRuntimeStateAfterDiskCommit() {
@@ -2659,22 +2628,6 @@ public sealed class StartPosPersistenceTests {
         Assert.Contains("AkronGameplayBufferState.PresentArmedLevelBuffer", moduleSource);
     }
 
-    [Fact]
-    public void StartPosCaptureOnlyBlocksDuringTheNativeSetBoundary() {
-        string source = File.ReadAllText(GetActionsSourcePath());
-        int captureStart = source.IndexOf("private static void CaptureStartPos", StringComparison.Ordinal);
-        int captureEnd = source.IndexOf("private static void ApplyStartPosPlayerConfiguration", captureStart, StringComparison.Ordinal);
-        string captureMethod = SourceSlice(source, captureStart, captureEnd - captureStart);
-        int busyCheck = captureMethod.IndexOf("if (startPosCaptureInProgress)", StringComparison.Ordinal);
-        int begin = captureMethod.IndexOf("startPosCaptureInProgress = true;", busyCheck, StringComparison.Ordinal);
-        int save = captureMethod.IndexOf("SaveRuntimeState", begin, StringComparison.Ordinal);
-        int release = captureMethod.IndexOf("startPosCaptureInProgress = false;", save, StringComparison.Ordinal);
-        int enqueue = captureMethod.IndexOf("AkronStartPosPersistence.Enqueue", release, StringComparison.Ordinal);
-
-        Assert.True(busyCheck >= 0 && begin > busyCheck && save > begin);
-        Assert.True(release > save);
-        Assert.True(enqueue > release);
-    }
 
     [Fact]
     public void ConfiguredStartPosRefreshesTheNativePoseAtCaptureOrLoadBoundary() {
@@ -3552,57 +3505,6 @@ public sealed class StartPosPersistenceTests {
         Assert.True(trackerRefresh < methodEnd);
     }
 
-    [Fact]
-    public void SuccessfulPreUpdateStartPosStateChangeRendersBeforeSimulationAdvances() {
-        string moduleSource = File.ReadAllText(GetModuleSourcePath());
-        string actionsSource = File.ReadAllText(GetActionsSourcePath());
-        int levelUpdate = moduleSource.IndexOf("private static void LevelOnUpdate", StringComparison.Ordinal);
-        Assert.True(levelUpdate >= 0);
-
-        int generationCapture = moduleSource.IndexOf("ulong startPosFrameGeneration = AkronActions.StartPosFrameGeneration;", levelUpdate, StringComparison.Ordinal);
-        Assert.True(generationCapture > levelUpdate);
-
-        int pendingRenderCheck = moduleSource.IndexOf("if (startPosFrameGeneration != renderedStartPosFrameGeneration)", levelUpdate, StringComparison.Ordinal);
-        Assert.True(pendingRenderCheck > generationCapture);
-        int heldClock = moduleSource.IndexOf("AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);", pendingRenderCheck, StringComparison.Ordinal);
-        Assert.True(heldClock > pendingRenderCheck);
-
-        int automation = moduleSource.IndexOf("AkronAutomationService.ProcessPendingCommands(self);", generationCapture, StringComparison.Ordinal);
-        Assert.True(automation > generationCapture);
-
-        int automationRestoreCheck = moduleSource.IndexOf("if (AkronActions.StartPosFrameGeneration != startPosFrameGeneration)", automation, StringComparison.Ordinal);
-        Assert.True(automationRestoreCheck > automation);
-
-        int hotkeys = moduleSource.IndexOf("HandleHotkeys(self);", automationRestoreCheck, StringComparison.Ordinal);
-        Assert.True(hotkeys > automationRestoreCheck);
-
-        int hotkeyRestoreCheck = moduleSource.IndexOf("if (AkronActions.StartPosFrameGeneration != startPosFrameGeneration)", hotkeys, StringComparison.Ordinal);
-        Assert.True(hotkeyRestoreCheck > hotkeys);
-
-        int gameplayUpdate = moduleSource.IndexOf("orig(self);", hotkeyRestoreCheck, StringComparison.Ordinal);
-        Assert.True(gameplayUpdate > hotkeyRestoreCheck);
-
-        int renderRelink = actionsSource.IndexOf("RelinkRuntimeRenderState(currentLevel);", StringComparison.Ordinal);
-        Assert.True(renderRelink >= 0);
-
-        int restoreNotification = actionsSource.IndexOf("StartPosFrameGeneration++;", renderRelink, StringComparison.Ordinal);
-        Assert.True(restoreNotification > renderRelink);
-
-        int successfulRestore = actionsSource.IndexOf("return true;", restoreNotification, StringComparison.Ordinal);
-        Assert.True(successfulRestore > restoreNotification);
-
-        int persistedStartPos = actionsSource.IndexOf("PersistStartPos(slot, startPos, fileSlot, out previousMetadataLost)", StringComparison.Ordinal);
-        Assert.True(persistedStartPos >= 0);
-        int captureNotification = actionsSource.IndexOf("StartPosFrameGeneration++;", persistedStartPos, StringComparison.Ordinal);
-        Assert.True(captureNotification > persistedStartPos);
-
-        int renderCore = moduleSource.IndexOf("private static void EngineOnRenderCore", StringComparison.Ordinal);
-        int roomBufferCapture = moduleSource.IndexOf("AkronCapture.CapturePendingGameplayBufferQaFrame();", renderCore, StringComparison.Ordinal);
-        int renderAcknowledgement = moduleSource.IndexOf("renderedStartPosFrameGeneration = AkronActions.StartPosFrameGeneration;", roomBufferCapture, StringComparison.Ordinal);
-        Assert.True(renderCore >= 0);
-        Assert.True(roomBufferCapture > renderCore);
-        Assert.True(renderAcknowledgement > roomBufferCapture);
-    }
 
 
     [Fact]

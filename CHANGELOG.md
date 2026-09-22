@@ -18,9 +18,10 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 - Reuse Refill Clarity textures after normal Speedrun Tool savestate loads instead of rebuilding them through GPU readbacks on the first resumed update.
 - Reduce recurring gameplay allocations from keyboard-binding polling and Refill Clarity's per-frame entity checks.
-- Reserve capacity for both temporary StartPos clones before preparing a new restart baseline.
+- Reserve capacity for both temporary StartPos clones before preparing a new restart baseline, and report every older slot moved out of the warm cache.
 - Keep diagnostics from re-showing a hidden pause menu or losing its visibility when the dialog closes.
 - Preserve Entity Inspector pins and map bindings while StartPos prepares a fresh-room baseline.
+- Defer StartPos Set until outer update hooks and random-number scopes have unwound, while holding the requested gameplay frame.
 
 ## Akron Beta 81
 

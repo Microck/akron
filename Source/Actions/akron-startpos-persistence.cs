@@ -320,7 +320,9 @@ internal static class AkronStartPosPersistence {
         }
     }
 
-    internal static bool PrepareFreshBaseline(Level level) {
+    internal static bool PrepareFreshBaseline(Level level, out int droppedSlots, out long droppedBytes) {
+        droppedSlots = 0;
+        droppedBytes = 0;
         if (level == null || !started || shuttingDown) {
             return false;
         }
@@ -334,7 +336,8 @@ internal static class AkronStartPosPersistence {
 
         // Only Set requests this work. Rebuild through the same fresh-room path
         // used by a cold Load, then put the live room back before capturing Set.
-        AkronSaveLoadSlotLease baseline = AkronSaveLoadService.CaptureFreshBaselineForStartPos(level);
+        AkronSaveLoadSlotLease baseline = AkronSaveLoadService.CaptureFreshBaselineForStartPos(
+            level, out droppedSlots, out droppedBytes);
         if (baseline?.Slot == null) {
             baseline?.Dispose();
             return false;

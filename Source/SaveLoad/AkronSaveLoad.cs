@@ -1064,11 +1064,13 @@ public static partial class AkronSaveLoadService {
         MarkRuntimeSlotsChanged();
     }
 
-    internal static AkronSaveLoadSlotLease CaptureFreshBaselineForStartPos(Level level) {
+    internal static AkronSaveLoadSlotLease CaptureFreshBaselineForStartPos(
+        Level level, out int droppedSlots, out long droppedBytes
+    ) {
         // The live-room rollback stays resident until the fresh baseline is captured.
         // It is not a cached slot, so reserve both clones before allocating either.
         if (!PrepareWarmStartPosCapture(
-                level.Session.Area.GetSID(), out _, out _, reserveRollback: true)) {
+                level.Session.Area.GetSID(), out droppedSlots, out droppedBytes, reserveRollback: true)) {
             LastPersistentSnapshotError =
                 "fresh-room baseline and live-room rollback do not fit inside the warm memory limit";
             return null;

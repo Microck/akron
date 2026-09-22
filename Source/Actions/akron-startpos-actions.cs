@@ -26,6 +26,7 @@ public static partial class AkronActions {
     // render before Celeste advances the room simulation.
     internal static ulong StartPosFrameGeneration { get; private set; }
     private static bool startPosCaptureInProgress;
+    internal static bool IsStartPosCapturePending => startPosCaptureInProgress;
     private static readonly Dictionary<string, Dictionary<int, AkronStartPos>> PendingStartPositionsByFileAndMap =
         new Dictionary<string, Dictionary<int, AkronStartPos>>(StringComparer.Ordinal);
 
@@ -272,31 +273,8 @@ public static partial class AkronActions {
             completion?.Invoke(false);
             return;
         }
-        // Make room before cloning. Trimming after the capture cannot prevent the peak
-        // allocation, and pending clones have no disk copy that can safely replace them.
-        if (!AkronSaveLoadService.PrepareWarmStartPosCapture(
-                areaSid,
-                out int droppedWarmSlots,
-                out long droppedWarmBytes)) {
-            Engine.Scene?.Add(new AkronToast(
-                "StartPos slots on this map do not leave room for another capture inside the " +
-                (AkronSaveLoadService.MaxWarmStartPosBytes / (1024L * 1024L)).ToString(CultureInfo.InvariantCulture) +
-                " MB warm limit. Pause for a moment to let the restart copies finish, or clear a slot."));
-            completion?.Invoke(false);
-            return;
-        }
-        startPosCaptureInProgress = true;
-        // A Set freezes the game thread for a full clone. Nothing speculative should be
-        // reading a snapshot file or allocating a document graph across that window.
-        AkronStartPosPersistence.CancelPrewarm();
-
-        AkronSaveLoadResult saveResult = AkronSaveLoadResult.Failed;
-        Stopwatch captureTimer = Stopwatch.StartNew();
-        StartPosPlayerSnapshot playerSnapshot = null;
-        Vector2? originalRespawnPoint = level.Session.RespawnPoint;
-        Vector2 clampedPosition = ClampToRoom(level, position);
         AkronStartPos startPos = new AkronStartPos {
-            Position = clampedPosition,
+            Position = ClampToRoom(level, position),
             Room = level.Session.Level,
             AreaSid = areaSid,
             UsesSpawnConfig = useSpawnConfig,
@@ -308,6 +286,57 @@ public static partial class AkronActions {
             ProfileId = GetCurrentStartPosProfileId(),
             StateSlotName = stateSlotName
         };
+        Session requestedSession = level.Session;
+        Player requestedPlayer = level.Tracker.GetEntity<Player>();
+        startPosCaptureInProgress = true;
+        // Hold the requested frame while update hooks unwind. The stable boundary
+        // also waits for any outer mod's Calc.PushRandom scope to be popped.
+        StartPosFrameGeneration++;
+        AkronModule.ScheduleAfterStableEngineUpdate(() => {
+            bool captured = false;
+            try {
+                if (!ReferenceEquals(Engine.Scene, level) ||
+                    !ReferenceEquals(level.Session, requestedSession) ||
+                    !ReferenceEquals(level.Tracker.GetEntity<Player>(), requestedPlayer) ||
+                    level.Session.Level != startPos.Room ||
+                    GetCurrentFileSlot() != fileSlot ||
+                    GetCurrentStartPosProfileId() != startPos.ProfileId) {
+                    Engine.Scene?.Add(new AkronToast("StartPos " + slot + " was not captured: the room or profile changed."));
+                    return;
+                }
+                captured = CompleteStartPosCapture(level, startPos, fileSlot, slot, toast);
+            } finally {
+                startPosCaptureInProgress = false;
+                completion?.Invoke(captured);
+            }
+        });
+    }
+
+    private static bool CompleteStartPosCapture(
+        Level level,
+        AkronStartPos startPos,
+        int fileSlot,
+        int slot,
+        string toast
+    ) {
+        string stateSlotName = startPos.StateSlotName;
+        if (!AkronSaveLoadService.PrepareWarmStartPosCapture(
+                startPos.AreaSid,
+                out int droppedWarmSlots,
+                out long droppedWarmBytes)) {
+            Engine.Scene?.Add(new AkronToast(
+                "StartPos slots on this map do not leave room for another capture inside the " +
+                (AkronSaveLoadService.MaxWarmStartPosBytes / (1024L * 1024L)).ToString(CultureInfo.InvariantCulture) +
+                " MB warm limit. Pause for a moment to let the restart copies finish, or clear a slot."));
+            return false;
+        }
+        // A Set freezes the game thread for a full clone. Nothing speculative should be
+        // reading a snapshot file or allocating a document graph across that window.
+        AkronStartPosPersistence.CancelPrewarm();
+        AkronSaveLoadResult saveResult = AkronSaveLoadResult.Failed;
+        Stopwatch captureTimer = Stopwatch.StartNew();
+        StartPosPlayerSnapshot playerSnapshot = null;
+        Vector2? originalRespawnPoint = level.Session.RespawnPoint;
 
         // Park whatever this slot already holds before the capture overwrites it. Every
         // exit below either commits the replacement or restores what was parked.
@@ -316,21 +345,22 @@ public static partial class AkronActions {
             // One runtime slot cannot safely hold two captures while the first capture's
             // restart copy still owns its rollback. Refuse the second Set before it
             // mutates the shared runtime state or rollback record.
-            startPosCaptureInProgress = false;
             Engine.Scene?.Add(new AkronToast("StartPos " + slot + " is still finishing its restart copy."));
-            completion?.Invoke(false);
-            return;
+            return false;
         }
 
         try {
             bool restoreRespawnAtStartPos = AkronModule.Settings.RespawnAtStartPos;
             AkronModule.Settings.RespawnAtStartPos = false;
             try {
-                if (AkronStartPosPersistence.PrepareFreshBaseline(level)) {
-                    if (useSpawnConfig && level.Tracker.GetEntity<Player>() is Player player) {
+                if (AkronStartPosPersistence.PrepareFreshBaseline(
+                        level, out int baselineDroppedSlots, out long baselineDroppedBytes)) {
+                    droppedWarmSlots += baselineDroppedSlots;
+                    droppedWarmBytes += baselineDroppedBytes;
+                    if (startPos.UsesSpawnConfig && level.Tracker.GetEntity<Player>() is Player player) {
                         playerSnapshot = StartPosPlayerSnapshot.Capture(player);
                         ApplyStartPosPlayerConfiguration(level, player, startPos);
-                        level.Session.RespawnPoint = clampedPosition;
+                        level.Session.RespawnPoint = startPos.Position;
                     }
                     // StartPos keeps cumulative time and deaths instead of
                     // rewinding those statistics with the captured room state.
@@ -340,11 +370,9 @@ public static partial class AkronActions {
                 AkronModule.Settings.RespawnAtStartPos = restoreRespawnAtStartPos;
             }
         } catch {
-            startPosCaptureInProgress = false;
             if (ownsRollback) {
                 RestoreStartPosRollback(fileSlot, slot, null, stateSlotName, reason: null);
             }
-            completion?.Invoke(false);
             throw;
         } finally {
             if (playerSnapshot != null && level.Tracker.GetEntity<Player>() is Player player) {
@@ -354,7 +382,6 @@ public static partial class AkronActions {
         }
 
         if (saveResult != AkronSaveLoadResult.Success) {
-            startPosCaptureInProgress = false;
             if (ownsRollback) {
                 RestoreStartPosRollback(fileSlot, slot, null, stateSlotName, reason: null);
             }
@@ -363,8 +390,7 @@ public static partial class AkronActions {
                 : AkronSaveLoadService.LastPersistentSnapshotError;
             AkronLog.Warn(nameof(AkronActions), "StartPos " + slot + " capture failed: " + captureFailure);
             Engine.Scene?.Add(new AkronToast(TruncateStartPosFailureToast("StartPos capture failed: " + captureFailure)));
-            completion?.Invoke(false);
-            return;
+            return false;
         }
 
         // Preparing the capture may have moved older slots to disk. Report that only once this capture has
@@ -379,7 +405,6 @@ public static partial class AkronActions {
         try {
             PublishPendingStartPos(fileSlot, slot, startPos);
             rollback.PublishedEntry = startPos;
-            startPosCaptureInProgress = false;
             // No save file means the metadata half of a restart copy can never be
             // written, so the copy cannot start and the Set below is rolled back.
             persistenceGeneration = AkronModule.SaveData == null
@@ -391,11 +416,9 @@ public static partial class AkronActions {
             // so the parked state has to be put back now or it stays retained and a later
             // Set on this slot would inherit a record it does not own. The throw itself is
             // the report.
-            startPosCaptureInProgress = false;
             if (ownsRollback) {
                 RestoreStartPosRollback(fileSlot, slot, startPos, stateSlotName, reason: null);
             }
-            completion?.Invoke(false);
             throw;
         }
         if (persistenceGeneration == 0) {
@@ -403,8 +426,7 @@ public static partial class AkronActions {
             // cannot survive leaving the map. Roll the Set back now instead of handing
             // back a StartPos that stops working without explanation later.
             RollBackFailedStartPos(fileSlot, slot, startPos, "its restart copy could not start");
-            completion?.Invoke(false);
-            return;
+            return false;
         }
 
         // Run after the Set is published, so this capture counts as pending and is never
@@ -412,10 +434,10 @@ public static partial class AkronActions {
         TrimWarmStartPosSlotsAndReport();
 
         Engine.Scene?.Add(new AkronToast(toast));
-        completion?.Invoke(true);
-        if (!useSpawnConfig) {
+        if (!startPos.UsesSpawnConfig) {
             StartPosFrameGeneration++;
         }
+        return true;
     }
 
     // Drops the coldest warm clones the memory budget can no longer pay for, and says so
