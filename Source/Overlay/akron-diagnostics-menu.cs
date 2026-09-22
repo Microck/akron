@@ -69,6 +69,9 @@ internal sealed class AkronDiagnosticsMenu : TextMenu {
         }
         Tag = Tags.HUD | Tags.PauseUpdate;
         Depth = Depths.Top;
+        // Native TextMenu waits for the scene clock to tick before setting this.
+        // Diagnostics also works while that clock is held by a gameplay freeze.
+        HighlightColor = HighlightColorA;
         Add(new AkronIgnoreSaveStateComponent(based: false));
         AutoScroll = false;
         ItemSpacing = 2f;
