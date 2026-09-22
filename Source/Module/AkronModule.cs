@@ -1170,11 +1170,11 @@ public partial class AkronModule : EverestModule {
         return framePixels;
     }
 
-    internal static RefillClarityFrameCacheKey GetRefillClarityFrameCacheKey(MTexture frame, int color, int opacity) {
+    private static RefillClarityFrameCacheKey GetRefillClarityFrameCacheKey(MTexture frame, int color, int opacity) {
         return new RefillClarityFrameCacheKey(GetRefillClaritySourceFrameCacheKey(frame), color, opacity);
     }
 
-    internal static RefillClaritySourceCacheKey GetRefillClaritySourceFrameCacheKey(MTexture frame) {
+    private static RefillClaritySourceCacheKey GetRefillClaritySourceFrameCacheKey(MTexture frame) {
         Rectangle clip = frame.ClipRect;
         Vector2 offset = frame.DrawOffset;
         return new RefillClaritySourceCacheKey(
@@ -1306,11 +1306,11 @@ public partial class AkronModule : EverestModule {
     // SRT clones both animation arrays and MTexture wrappers, but keeps the
     // underlying VirtualTexture live. Cache pixels by that resource and region,
     // not by a wrapper that changes on every restore.
-    internal readonly record struct RefillClaritySourceCacheKey(
+    private readonly record struct RefillClaritySourceCacheKey(
         VirtualTexture Texture, int X, int Y, int ClipWidth, int ClipHeight,
         float OffsetX, float OffsetY, int Width, int Height);
 
-    internal readonly record struct RefillClarityFrameCacheKey(RefillClaritySourceCacheKey Source, int Color, int Opacity);
+    private readonly record struct RefillClarityFrameCacheKey(RefillClaritySourceCacheKey Source, int Color, int Opacity);
 
     private sealed class RefillClaritySpriteState {
         public bool Applied;

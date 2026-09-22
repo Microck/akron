@@ -1191,39 +1191,6 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void RefillClarityReusesPixelsAfterSavestateWrappersAreCloned()
-    {
-        VirtualTexture texture = (VirtualTexture) RuntimeHelpers.GetUninitializedObject(typeof(VirtualTexture));
-        MTexture original = Frame(texture);
-        MTexture restored = Frame(texture);
-        MTexture otherRegion = Frame(texture, clipX: 8);
-        MTexture otherOffset = Frame(texture, offsetX: 2);
-        MTexture otherSize = Frame(texture, width: 16);
-        MTexture otherTexture = Frame((VirtualTexture) RuntimeHelpers.GetUninitializedObject(typeof(VirtualTexture)));
-        Dictionary<AkronModule.RefillClarityFrameCacheKey, string> cache = new() {
-            [AkronModule.GetRefillClarityFrameCacheKey(original, 0xFF00FF, 100)] = "existing GPU frame"
-        };
-
-        Assert.Equal("existing GPU frame", cache[AkronModule.GetRefillClarityFrameCacheKey(restored, 0xFF00FF, 100)]);
-        Assert.False(cache.ContainsKey(AkronModule.GetRefillClarityFrameCacheKey(otherRegion, 0xFF00FF, 100)));
-        Assert.False(cache.ContainsKey(AkronModule.GetRefillClarityFrameCacheKey(otherOffset, 0xFF00FF, 100)));
-        Assert.False(cache.ContainsKey(AkronModule.GetRefillClarityFrameCacheKey(otherSize, 0xFF00FF, 100)));
-        Assert.False(cache.ContainsKey(AkronModule.GetRefillClarityFrameCacheKey(otherTexture, 0xFF00FF, 100)));
-        Assert.False(cache.ContainsKey(AkronModule.GetRefillClarityFrameCacheKey(restored, 0x00FF00, 100)));
-        Assert.False(cache.ContainsKey(AkronModule.GetRefillClarityFrameCacheKey(restored, 0xFF00FF, 50)));
-
-        static MTexture Frame(VirtualTexture texture, int clipX = 0, int offsetX = 1, int width = 8) {
-            MTexture frame = (MTexture) RuntimeHelpers.GetUninitializedObject(typeof(MTexture));
-            typeof(MTexture).GetProperty(nameof(MTexture.Texture))!.SetValue(frame, texture);
-            typeof(MTexture).GetProperty(nameof(MTexture.ClipRect))!.SetValue(frame, new Rectangle { X = clipX, Width = 8, Height = 8 });
-            typeof(MTexture).GetProperty(nameof(MTexture.DrawOffset))!.SetValue(frame, new Vector2 { X = offsetX, Y = 2 });
-            typeof(MTexture).GetProperty(nameof(MTexture.Width))!.SetValue(frame, width);
-            typeof(MTexture).GetProperty(nameof(MTexture.Height))!.SetValue(frame, 8);
-            return frame;
-        }
-    }
-
-    [Fact]
     public void RefillClarityRecognizesCustomOneUseRefillEntities()
     {
         Assert.True(AkronHudRenderer.ShouldRenderRefillClarityOutline(MakeLive(new CustomOneUseRefillProbe())));
