@@ -989,7 +989,8 @@ public static partial class AkronSaveLoadService {
     internal static bool PrepareWarmStartPosCapture(
         string mapSid,
         out int droppedSlots,
-        out long droppedBytes
+        out long droppedBytes,
+        bool reserveRollback = false
     ) {
         long total = WarmStartPosBytes;
         long projectedCaptureBytes = MinWarmStartPosCaptureReserveBytes;
@@ -1000,13 +1001,14 @@ public static partial class AkronSaveLoadService {
             }
         }
         long warmBudgetBytes = WarmStartPosBudgetBytes;
-        if (projectedCaptureBytes > warmBudgetBytes) {
+        long captureCount = reserveRollback ? 2L : 1L;
+        if (projectedCaptureBytes > warmBudgetBytes / captureCount) {
             droppedSlots = 0;
             droppedBytes = 0;
             return false;
         }
 
-        long targetBytes = warmBudgetBytes - projectedCaptureBytes;
+        long targetBytes = warmBudgetBytes - projectedCaptureBytes * captureCount;
         if (total <= targetBytes) {
             droppedSlots = 0;
             droppedBytes = 0;
@@ -1059,6 +1061,15 @@ public static partial class AkronSaveLoadService {
     }
 
     internal static AkronSaveLoadSlotLease CaptureFreshBaselineForStartPos(Level level) {
+        // The live-room rollback stays resident until the fresh baseline is captured.
+        // It is not a cached slot, so reserve both clones before allocating either.
+        if (!PrepareWarmStartPosCapture(
+                level.Session.Area.GetSID(), out _, out _, reserveRollback: true)) {
+            LastPersistentSnapshotError =
+                "fresh-room baseline and live-room rollback do not fit inside the warm memory limit";
+            return null;
+        }
+
         string currentSlotName = CurrentSlotName;
         string room = level.Session.Level;
         AkronSaveLoadSlot rollback = CaptureRuntimeState(

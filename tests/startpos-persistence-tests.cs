@@ -1357,6 +1357,45 @@ public sealed class StartPosPersistenceTests {
         }
     }
 
+    [Fact]
+    public void FirstSetReservesBothClonesWithoutSpendingPendingSlots() {
+        string mapSid = "Tests/FirstSetCapacity" + Guid.NewGuid().ToString("N");
+        List<string> installed = new List<string>();
+        long slotBytes = (AkronSaveLoadService.MaxWarmStartPosBytes -
+                          AkronSaveLoadService.MinWarmStartPosCaptureReserveBytes) / 8L;
+        try {
+            for (int slot = 1; slot <= 8; slot++) {
+                string stateSlotName = AkronActions.GetStartPosStateSlotName(mapSid, slot, 0);
+                AkronSaveLoadService.AddWarmStartPosSlotForTests(stateSlotName, mapSid, slotBytes);
+                installed.Add(stateSlotName);
+            }
+
+            Assert.True(AkronSaveLoadService.PrepareWarmStartPosCapture(mapSid, out _, out _));
+            Assert.False(AkronSaveLoadService.PrepareWarmStartPosCapture(
+                mapSid, out int droppedSlots, out long droppedBytes, reserveRollback: true));
+            Assert.Equal(0, droppedSlots);
+            Assert.Equal(0L, droppedBytes);
+            Assert.All(installed, name => Assert.True(AkronSaveLoadService.HasRuntimeStateInMemory(name)));
+
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                installed[0], mapSid, "room", 0, MinimalDocument(), out string error), error);
+            Assert.True(AkronStartPosReconstruction.SaveSnapshot(
+                installed[1], mapSid, "room", 0, MinimalDocument(), out error), error);
+
+            Assert.True(AkronSaveLoadService.PrepareWarmStartPosCapture(
+                mapSid, out droppedSlots, out droppedBytes, reserveRollback: true));
+            Assert.Equal(2, droppedSlots);
+            Assert.Equal(2L * slotBytes, droppedBytes);
+            Assert.False(AkronSaveLoadService.HasRuntimeStateInMemory(installed[0]));
+            Assert.False(AkronSaveLoadService.HasRuntimeStateInMemory(installed[1]));
+            Assert.All(installed.Skip(2), name => Assert.True(AkronSaveLoadService.HasRuntimeStateInMemory(name)));
+        } finally {
+            foreach (string stateSlotName in installed) {
+                AkronSaveLoadService.ClearRuntimeState(stateSlotName);
+            }
+        }
+    }
+
     // Dropping a warm clone is only safe once the slot's restart copy is on disk. A
     // clone with no snapshot behind it is the only copy of that state, so the budget
     // must refuse to spend it and the Set path must decline instead.

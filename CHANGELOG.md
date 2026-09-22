@@ -18,6 +18,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 - Reuse Refill Clarity textures after normal Speedrun Tool savestate loads instead of rebuilding them through GPU readbacks on the first resumed update.
 - Reduce recurring gameplay allocations from keyboard-binding polling and Refill Clarity's per-frame entity checks.
+- Reserve capacity for both temporary StartPos clones before preparing a new restart baseline.
 
 ## Akron Beta 81
 
