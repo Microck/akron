@@ -22,6 +22,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 - Keep diagnostics from re-showing a hidden pause menu or losing its visibility when the dialog closes.
 - Preserve Entity Inspector pins and map bindings while StartPos prepares a fresh-room baseline.
 - Defer StartPos Set until outer update hooks and random-number scopes have unwound, while holding the requested gameplay frame.
+- Restore Akron module state and global save data when a failed cold StartPos Load rolls back to the live room.
 
 ## Akron Beta 81
 

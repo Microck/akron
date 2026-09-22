@@ -1611,7 +1611,12 @@ public static partial class AkronSaveLoadService {
             }
 
             string persistentFailure = LastPersistentSnapshotError;
-            AkronSaveLoadResult rollbackResult = RestoreRuntimeState(level, rollbackSlot, allowDeadPlayer: true);
+            AkronSaveLoadResult rollbackResult = RestoreRuntimeState(
+                level,
+                rollbackSlot,
+                allowDeadPlayer: true,
+                freshBaselineStateSlotName: null,
+                rollback: true);
             // A successful rollback is indistinguishable from "the button did nothing"
             // unless the message says so. Name the outcome, not just the failure.
             LastPersistentSnapshotError = rollbackResult == AkronSaveLoadResult.Success
