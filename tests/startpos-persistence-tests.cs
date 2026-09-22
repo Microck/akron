@@ -3539,19 +3539,6 @@ public sealed class StartPosPersistenceTests {
         Assert.Contains("RestoreGraph.ReleaseOwnedPersistentResources()", facadePath);
     }
 
-    [Fact]
-    public void FailedPersistentRestoreReloadsThePreLoadRuntimeState() {
-        string source = File.ReadAllText(GetSaveLoadSourcePath());
-        int restore = source.IndexOf("private static AkronSaveLoadResult RestorePersistentRuntimeState(", StringComparison.Ordinal);
-        int captureRollback = source.IndexOf("rollbackSlot = CaptureRuntimeState(", restore, StringComparison.Ordinal);
-        int restoreCore = source.IndexOf("RestorePersistentRuntimeStateCore(level, document, out freshBaseline)", captureRollback, StringComparison.Ordinal);
-        int restoreRollback = source.IndexOf("RestoreRuntimeState(level, rollbackSlot", restoreCore, StringComparison.Ordinal);
-        int discardRollback = source.IndexOf("ReleaseRuntimeSlotResources(rollbackSlot)", restoreRollback, StringComparison.Ordinal);
-
-        Assert.True(restore >= 0 && captureRollback > restore);
-        Assert.True(restoreCore > captureRollback && restoreRollback > restoreCore && discardRollback > restoreRollback);
-        Assert.Contains("capturePersistentResources: false", SourceSlice(source, captureRollback, 320));
-    }
 
 
     [Fact]

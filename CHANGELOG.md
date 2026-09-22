@@ -20,6 +20,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 - Reduce recurring gameplay allocations from keyboard-binding polling and Refill Clarity's per-frame entity checks.
 - Reserve capacity for both temporary StartPos clones before preparing a new restart baseline.
 - Keep diagnostics from re-showing a hidden pause menu or losing its visibility when the dialog closes.
+- Preserve Entity Inspector pins and map bindings while StartPos prepares a fresh-room baseline.
 
 ## Akron Beta 81
 

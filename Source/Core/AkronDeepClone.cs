@@ -60,6 +60,10 @@ internal static class AkronDeepClone {
         sharedDeepCloneState = state;
     }
 
+    internal static T GetKnownClone<T>(T source) where T : class {
+        return source == null ? null : sharedDeepCloneState?.GetKnownRef(source) as T;
+    }
+
     public static DeepCloneState CreateSharedEntityState(AkronSaveLoadSlot slot) {
         if (slot?.SavedLevel == null) {
             return null;

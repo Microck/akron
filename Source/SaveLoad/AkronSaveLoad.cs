@@ -685,7 +685,8 @@ public static partial class AkronSaveLoadService {
         string slotName,
         bool saveTimeAndDeaths,
         bool capturePersistentResources = true,
-        bool prepareForRestore = true
+        bool prepareForRestore = true,
+        bool preserveInspectorState = false
     ) {
         LastPersistentSnapshotError = string.Empty;
         if (level == null) {
@@ -746,6 +747,9 @@ public static partial class AkronSaveLoadService {
             AkronIgnoreSaveStateComponent.RemoveAllFromSnapshot(saveSlot.SavedLevel);
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 CaptureRegisteredActionState(saveSlot, action, level);
+            }
+            if (preserveInspectorState) {
+                saveSlot.InspectorPinRollback = new AkronEntityInspector.InspectorPinRollbackState();
             }
             if (prepareForRestore) {
                 PrepareSlotPreClone(saveSlot);
@@ -1077,7 +1081,8 @@ public static partial class AkronSaveLoadService {
             AkronActions.StartPosStateSlotPrefix + "Baseline rollback",
             saveTimeAndDeaths: true,
             capturePersistentResources: false,
-            prepareForRestore: false);
+            prepareForRestore: false,
+            preserveInspectorState: true);
         if (rollback == null) {
             LastPersistentSnapshotError = "could not preserve the live room before preparing StartPos";
             CurrentSlotName = currentSlotName;
@@ -1366,6 +1371,7 @@ public static partial class AkronSaveLoadService {
             if (saveSlot.GameplayBuffers.Count > 0) {
                 AkronGameplayBufferState.RestoreBestEffort(saveSlot.GameplayBuffers);
             }
+            saveSlot.InspectorPinRollback?.Restore();
             if (!rollback) {
                 PrepareRuntimeSlotPreClone(saveSlot);
                 AkronStartPosPersistence.UseRuntimeFreshBaseline(freshBaselineStateSlotName);
@@ -1556,7 +1562,8 @@ public static partial class AkronSaveLoadService {
                 level,
                 rollbackSlotName,
                 saveTimeAndDeaths: true,
-                capturePersistentResources: false);
+                capturePersistentResources: false,
+                preserveInspectorState: true);
         } catch (Exception exception) {
             CurrentSlotName = slotName;
             LastPersistentSnapshotError = "could not capture pre-load state: " + exception.GetType().Name + ": " + exception.Message;
