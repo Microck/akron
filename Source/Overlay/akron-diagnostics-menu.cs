@@ -83,10 +83,11 @@ internal sealed class AkronDiagnosticsMenu : TextMenu {
     internal static void Open(TextMenu parent = null) {
         Scene scene = Engine.Scene;
         if (scene == null || current != null) return;
+        // Release the hide-pause cache before the modal captures its parent's visibility.
+        if (scene is Level) AkronRuntimeOptions.RestorePauseMenuVisibility();
         parent ??= scene.Entities.OfType<TextMenu>().FirstOrDefault(menu => menu.Focused);
         current = new AkronDiagnosticsMenu(scene, parent);
         scene.Add(current);
-        if (scene is Level level) AkronRuntimeOptions.ApplyPauseMenuVisibility(level);
         Input.MenuConfirm.ConsumeBuffer();
         Input.MenuCancel.ConsumeBuffer();
     }

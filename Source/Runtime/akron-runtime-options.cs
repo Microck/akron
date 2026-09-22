@@ -284,7 +284,7 @@ public static class AkronRuntimeOptions {
         SetHudRendererVisibility(level, false, HiddenPauseHudVisibility);
     }
 
-    private static void RestorePauseMenuVisibility() {
+    internal static void RestorePauseMenuVisibility() {
         foreach (KeyValuePair<Entity, bool> entry in HiddenPauseMenuVisibility) {
             if (entry.Key.Scene != null) {
                 entry.Key.Visible = entry.Value;
