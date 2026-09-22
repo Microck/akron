@@ -173,6 +173,7 @@ public static class AkronRuntimeOptions {
                level.Paused &&
                AkronModule.Settings.HidePauseMenu &&
                !AkronPromptMenu.IsOpen &&
+               !AkronDiagnosticsMenu.IsOpen &&
                AkronPolicy.CanUse(AkronFeatureKind.PauseMenuVisibility).Allowed;
     }
 
@@ -251,10 +252,11 @@ public static class AkronRuntimeOptions {
         SetHudRendererVisibility(level, false, HiddenHudVisibility);
     }
 
-    private static void ApplyPauseMenuVisibility(Level level) {
+    internal static void ApplyPauseMenuVisibility(Level level) {
         if (level == null ||
             !AkronModule.Settings.HidePauseMenu ||
-            !level.Paused) {
+            !level.Paused ||
+            AkronDiagnosticsMenu.IsOpen) {
             RestorePauseMenuVisibility();
             return;
         }

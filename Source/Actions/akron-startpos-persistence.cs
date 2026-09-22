@@ -20,7 +20,6 @@ namespace Celeste.Mod.Akron;
 internal static class AkronStartPosPersistence {
     private static readonly object Sync = new object();
     private static readonly Queue<PersistenceJob> Ready = new Queue<PersistenceJob>();
-    private static readonly List<PersistenceJob> WaitingForBaseline = new List<PersistenceJob>();
     private static readonly ConcurrentQueue<PersistenceCompletion> Completed =
         new ConcurrentQueue<PersistenceCompletion>();
     private static readonly Dictionary<string, long> LatestGenerations =
@@ -32,10 +31,6 @@ internal static class AkronStartPosPersistence {
     // restore can reuse a true fresh baseline without retaining every visited room.
     private static readonly Dictionary<string, AkronSaveLoadSlotLease> RuntimeFreshBaselines =
         new Dictionary<string, AkronSaveLoadSlotLease>(StringComparer.Ordinal);
-    private static readonly Dictionary<string, long> PendingBaselineGenerations =
-        new Dictionary<string, long>(StringComparer.Ordinal);
-    private static readonly Dictionary<string, long> PendingBaselineInitializationGenerations =
-        new Dictionary<string, long>(StringComparer.Ordinal);
 
     // Slots queued for background snapshot deserialization, in the order they should
     // be read. Loading one slot on a map usually means the next slot is wanted soon,
@@ -87,7 +82,6 @@ internal static class AkronStartPosPersistence {
     private static int prewarmBudgetFull;
     private static int prewarmNotStored;
     private static long nextGeneration;
-    private static long nextBaselineGeneration;
     private static int suppressBaselineCapture;
     private static bool started;
     private static bool shuttingDown;
@@ -311,74 +305,45 @@ internal static class AkronStartPosPersistence {
         return true;
     }
 
-    public static void NotifyLevelReady(Level level, bool refreshBaseline = false) {
-        if (level == null || !started || suppressBaselineCapture > 0) {
+    public static void NotifyLevelReady(Level level) {
+        if (level == null || suppressBaselineCapture > 0) {
             return;
         }
 
-        string expectedKey = BuildBaselineKey(level);
-        long captureGeneration;
+        // Room loads invalidate a baseline, but do not request another snapshot.
+        // Cloning here made every transition and respawn pay for unused StartPos state.
         lock (Sync) {
-            // A baseline is only useful while its room is current. Each queued or
-            // running job retains its own lease, so dropping the cache here cannot
-            // invalidate work that already started.
-            EvictOtherBaselinesLocked(expectedKey);
-            FailWaitingJobsExceptLocked(
-                expectedKey,
-                "the room changed before its fresh-room baseline was ready");
-            // A room load always rebuilds the room, so any retained baseline
-            // describes the previous build and must be dropped. Deciding this
-            // from observed state instead would need a freshness check that can
-            // see every input room construction reads, including arbitrary
-            // module session and save data, and no such check exists.
-            if (refreshBaseline) {
-                FailWaitingJobsForBaselineLocked(
-                    expectedKey,
-                    "the room reloaded before its fresh-room baseline was ready");
-                if (FreshBaselines.Remove(expectedKey, out AkronSaveLoadSlotLease staleBaseline)) {
-                    staleBaseline.Dispose();
-                }
-            } else if (FreshBaselines.ContainsKey(expectedKey) ||
-                       PendingBaselineGenerations.ContainsKey(expectedKey)) {
-                return;
+            foreach (AkronSaveLoadSlotLease baseline in FreshBaselines.Values) {
+                baseline.Dispose();
             }
-
-            captureGeneration = ++nextBaselineGeneration;
-            PendingBaselineGenerations[expectedKey] = captureGeneration;
-            PendingBaselineInitializationGenerations[expectedKey] = captureGeneration;
-        }
-
-        AkronModule.ScheduleAfterStableEngineUpdate(
-            () => CaptureFreshBaseline(level, expectedKey, captureGeneration));
-    }
-
-    public static bool ConsumeFreshBaselineInitializationUpdate(Level level) {
-        string key = BuildBaselineKey(level);
-        lock (Sync) {
-            if (!PendingBaselineGenerations.TryGetValue(key, out long captureGeneration) ||
-                !PendingBaselineInitializationGenerations.TryGetValue(key, out long initializationGeneration) ||
-                captureGeneration != initializationGeneration) {
-                return false;
-            }
-
-            PendingBaselineInitializationGenerations.Remove(key);
-            return true;
+            FreshBaselines.Clear();
         }
     }
 
-    public static bool IsFreshBaselineCapturePending(Level level) {
+    internal static bool PrepareFreshBaseline(Level level) {
+        if (level == null || !started || shuttingDown) {
+            return false;
+        }
+
         string key = BuildBaselineKey(level);
         lock (Sync) {
-            if (!PendingBaselineGenerations.TryGetValue(key, out long captureGeneration)) {
-                return false;
+            if (FreshBaselines.ContainsKey(key)) {
+                return true;
             }
-
-            // The first room update must run before capture. Once that update is
-            // consumed, hold later fixed-timestep updates until the render-boundary
-            // capture completes so lag catch-up cannot move the baseline forward.
-            return !PendingBaselineInitializationGenerations.TryGetValue(key, out long initializationGeneration) ||
-                   initializationGeneration != captureGeneration;
         }
+
+        // Only Set requests this work. Rebuild through the same fresh-room path
+        // used by a cold Load, then put the live room back before capturing Set.
+        AkronSaveLoadSlotLease baseline = AkronSaveLoadService.CaptureFreshBaselineForStartPos(level);
+        if (baseline?.Slot == null) {
+            baseline?.Dispose();
+            return false;
+        }
+        lock (Sync) {
+            EvictOtherBaselinesLocked(key);
+            FreshBaselines.Add(key, baseline);
+        }
+        return true;
     }
 
     public static long Enqueue(
@@ -422,13 +387,11 @@ internal static class AkronStartPosPersistence {
                 AttachRuntimeFreshBaselineLocked(job.StateSlotName, baseline);
                 Ready.Enqueue(job);
                 StartWorkerLocked();
-            } else if (PendingBaselineGenerations.ContainsKey(baselineKey)) {
-                WaitingForBaseline.Add(job);
             } else {
                 Completed.Enqueue(new PersistenceCompletion(
                     job,
                     AkronSaveLoadResult.Failed,
-                    "fresh-room baseline is unavailable until the room is loaded normally",
+                    "fresh-room baseline could not be prepared for this capture",
                     string.Empty,
                     TimeSpan.Zero));
             }
@@ -501,13 +464,6 @@ internal static class AkronStartPosPersistence {
                 previousBaseline.Dispose();
             }
             FreshBaselines[baselineKey] = currentBaseline;
-            PendingBaselineGenerations.Remove(baselineKey);
-            PendingBaselineInitializationGenerations.Remove(baselineKey);
-            FailWaitingJobsExceptLocked(
-                baselineKey,
-                "the room changed before its fresh-room baseline was ready");
-            QueueWaitingJobsForBaselineLocked(baselineKey, currentBaseline);
-            StartWorkerLocked();
         }
     }
 
@@ -1091,15 +1047,6 @@ internal static class AkronStartPosPersistence {
             prewarmGeneration++;
             PrewarmQueue.Clear();
             runningPrewarm = prewarmTask;
-            foreach (PersistenceJob waiting in WaitingForBaseline) {
-                Completed.Enqueue(new PersistenceCompletion(
-                    waiting,
-                    AkronSaveLoadResult.Failed,
-                    "fresh-room baseline was not ready before shutdown",
-                    string.Empty,
-                    TimeSpan.Zero));
-            }
-            WaitingForBaseline.Clear();
             runningWorker = workerTask;
             outstanding = Ready.Count + (runningWorker == null ? 0 : 1);
         }
@@ -1145,8 +1092,6 @@ internal static class AkronStartPosPersistence {
                 baseline.Dispose();
             }
             RuntimeFreshBaselines.Clear();
-            PendingBaselineGenerations.Clear();
-            PendingBaselineInitializationGenerations.Clear();
             LatestGenerations.Clear();
             started = false;
             shuttingDown = false;
@@ -1181,7 +1126,7 @@ internal static class AkronStartPosPersistence {
         bool isFromLoader
     ) {
         orig(self, playerIntro, isFromLoader);
-        NotifyLevelReady(self, refreshBaseline: true);
+        NotifyLevelReady(self);
     }
 
     private static bool SaveDataOnTryDeleteModSaveData(
@@ -1230,162 +1175,6 @@ internal static class AkronStartPosPersistence {
         return YamlHelper.Deserializer.Deserialize<AkronModuleSaveData>(reader);
     }
 
-    private static void CaptureFreshBaseline(
-        Level level,
-        string expectedKey,
-        long captureGeneration
-    ) {
-        if (Engine.Scene != level || suppressBaselineCapture > 0 ||
-            !string.Equals(BuildBaselineKey(level), expectedKey, StringComparison.Ordinal)) {
-            lock (Sync) {
-                if (!RemovePendingBaselineGenerationLocked(expectedKey, captureGeneration)) {
-                    return;
-                }
-                FailWaitingJobsForBaselineLocked(
-                    expectedKey,
-                    "fresh-room baseline became unavailable before capture");
-            }
-            return;
-        }
-
-        lock (Sync) {
-            if (!IsPendingBaselineGenerationLocked(expectedKey, captureGeneration)) {
-                return;
-            }
-            if (PendingBaselineInitializationGenerations.TryGetValue(expectedKey, out long initializationGeneration) &&
-                initializationGeneration == captureGeneration) {
-                AkronModule.ScheduleAfterStableEngineUpdate(
-                    () => CaptureFreshBaseline(level, expectedKey, captureGeneration));
-                return;
-            }
-            if (shuttingDown) {
-                PendingBaselineGenerations.Remove(expectedKey);
-                PendingBaselineInitializationGenerations.Remove(expectedKey);
-                FailWaitingJobsForBaselineLocked(
-                    expectedKey,
-                    "fresh-room baseline was interrupted by shutdown");
-                return;
-            }
-            if (FreshBaselines.TryGetValue(expectedKey, out AkronSaveLoadSlotLease existingBaseline)) {
-                PendingBaselineGenerations.Remove(expectedKey);
-                PendingBaselineInitializationGenerations.Remove(expectedKey);
-                QueueWaitingJobsForBaselineLocked(expectedKey, existingBaseline);
-                StartWorkerLocked();
-                return;
-            }
-        }
-
-        Stopwatch timer = Stopwatch.StartNew();
-        AkronSaveLoadSlotLease baseline = null;
-        try {
-            baseline = AkronSaveLoadService.CaptureFreshRuntimeState(
-                level,
-                "Akron fresh-room baseline " + expectedKey);
-            if (baseline?.Slot == null) {
-                baseline?.Dispose();
-                lock (Sync) {
-                    if (RemovePendingBaselineGenerationLocked(expectedKey, captureGeneration)) {
-                        FailWaitingJobsForBaselineLocked(
-                            expectedKey,
-                            "fresh-room baseline capture returned no state");
-                    }
-                }
-                return;
-            }
-
-            lock (Sync) {
-                if (!IsPendingBaselineGenerationLocked(expectedKey, captureGeneration)) {
-                    baseline.Dispose();
-                    return;
-                }
-                if (shuttingDown) {
-                    PendingBaselineGenerations.Remove(expectedKey);
-                    PendingBaselineInitializationGenerations.Remove(expectedKey);
-                    baseline.Dispose();
-                    return;
-                }
-                if (FreshBaselines.TryGetValue(
-                        expectedKey,
-                        out AkronSaveLoadSlotLease installedBaseline)) {
-                    // A warm restore installed this room's baseline while the
-                    // game-thread clone ran. Use it for jobs queued during that
-                    // window instead of leaving their leases stranded.
-                    PendingBaselineGenerations.Remove(expectedKey);
-                    PendingBaselineInitializationGenerations.Remove(expectedKey);
-                    baseline.Dispose();
-                    QueueWaitingJobsForBaselineLocked(expectedKey, installedBaseline);
-                    StartWorkerLocked();
-                    return;
-                }
-                FreshBaselines[expectedKey] = baseline;
-                PendingBaselineGenerations.Remove(expectedKey);
-                PendingBaselineInitializationGenerations.Remove(expectedKey);
-                QueueWaitingJobsForBaselineLocked(expectedKey, baseline);
-                StartWorkerLocked();
-            }
-        } catch (Exception exception) {
-            baseline?.Dispose();
-            lock (Sync) {
-                if (RemovePendingBaselineGenerationLocked(expectedKey, captureGeneration)) {
-                    FailWaitingJobsForBaselineLocked(
-                        expectedKey,
-                        "fresh-room baseline capture failed: " + exception.GetType().Name + ": " + exception.Message);
-                }
-            }
-            AkronLog.Warn(nameof(AkronStartPosPersistence),
-                "Could not prepare the fresh StartPos baseline: " + exception);
-        } finally {
-            timer.Stop();
-            AkronLog.Verbose(nameof(AkronStartPosPersistence),
-                "Fresh StartPos baseline prepared in " + timer.Elapsed.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture) + " ms.");
-        }
-    }
-
-    private static bool IsPendingBaselineGenerationLocked(string baselineKey, long generation) {
-        return PendingBaselineGenerations.TryGetValue(baselineKey, out long currentGeneration) &&
-               currentGeneration == generation;
-    }
-
-    private static bool RemovePendingBaselineGenerationLocked(string baselineKey, long generation) {
-        if (!IsPendingBaselineGenerationLocked(baselineKey, generation)) {
-            return false;
-        }
-
-        PendingBaselineGenerations.Remove(baselineKey);
-        if (PendingBaselineInitializationGenerations.TryGetValue(baselineKey, out long initializationGeneration) &&
-            initializationGeneration == generation) {
-            PendingBaselineInitializationGenerations.Remove(baselineKey);
-        }
-        return true;
-    }
-
-    private static void QueueWaitingJobsForBaselineLocked(
-        string baselineKey,
-        AkronSaveLoadSlotLease baseline
-    ) {
-        for (int index = WaitingForBaseline.Count - 1; index >= 0; index--) {
-            PersistenceJob waiting = WaitingForBaseline[index];
-            if (!string.Equals(BuildBaselineKey(waiting.SavedState.Slot), baselineKey, StringComparison.Ordinal)) {
-                continue;
-            }
-            if (!LatestGenerations.TryGetValue(waiting.StateSlotName, out long currentGeneration) ||
-                currentGeneration != waiting.Generation) {
-                WaitingForBaseline.RemoveAt(index);
-                Completed.Enqueue(new PersistenceCompletion(
-                    waiting,
-                    AkronSaveLoadResult.NoState,
-                    "superseded by a newer Set",
-                    string.Empty,
-                    TimeSpan.Zero));
-                continue;
-            }
-            waiting.FreshBaseline = baseline.Retain();
-            AttachRuntimeFreshBaselineLocked(waiting.StateSlotName, baseline);
-            WaitingForBaseline.RemoveAt(index);
-            Ready.Enqueue(waiting);
-        }
-    }
-
     private static void AttachRuntimeFreshBaselineLocked(
         string stateSlotName,
         AkronSaveLoadSlotLease baseline
@@ -1416,38 +1205,6 @@ internal static class AkronStartPosPersistence {
             .FirstOrDefault(candidate =>
                 candidate?.Slot != null &&
                 string.Equals(BuildBaselineKey(candidate.Slot), baselineKey, StringComparison.Ordinal));
-    }
-
-    private static void FailWaitingJobsForBaselineLocked(string baselineKey, string error) {
-        for (int index = WaitingForBaseline.Count - 1; index >= 0; index--) {
-            PersistenceJob waiting = WaitingForBaseline[index];
-            if (!string.Equals(BuildBaselineKey(waiting.SavedState.Slot), baselineKey, StringComparison.Ordinal)) {
-                continue;
-            }
-            WaitingForBaseline.RemoveAt(index);
-            Completed.Enqueue(new PersistenceCompletion(
-                waiting,
-                AkronSaveLoadResult.Failed,
-                error,
-                string.Empty,
-                TimeSpan.Zero));
-        }
-    }
-
-    private static void FailWaitingJobsExceptLocked(string baselineKey, string error) {
-        for (int index = WaitingForBaseline.Count - 1; index >= 0; index--) {
-            PersistenceJob waiting = WaitingForBaseline[index];
-            if (string.Equals(BuildBaselineKey(waiting.SavedState.Slot), baselineKey, StringComparison.Ordinal)) {
-                continue;
-            }
-            WaitingForBaseline.RemoveAt(index);
-            Completed.Enqueue(new PersistenceCompletion(
-                waiting,
-                AkronSaveLoadResult.Failed,
-                error,
-                string.Empty,
-                TimeSpan.Zero));
-        }
     }
 
     private static void EvictOtherBaselinesLocked(string baselineKey) {

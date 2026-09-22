@@ -1058,6 +1058,57 @@ public static partial class AkronSaveLoadService {
         MarkRuntimeSlotsChanged();
     }
 
+    internal static AkronSaveLoadSlotLease CaptureFreshBaselineForStartPos(Level level) {
+        string currentSlotName = CurrentSlotName;
+        string room = level.Session.Level;
+        AkronSaveLoadSlot rollback = CaptureRuntimeState(
+            level,
+            AkronActions.StartPosStateSlotPrefix + "Baseline rollback",
+            saveTimeAndDeaths: true,
+            capturePersistentResources: false,
+            prepareForRestore: false);
+        if (rollback == null) {
+            LastPersistentSnapshotError = "could not preserve the live room before preparing StartPos";
+            CurrentSlotName = currentSlotName;
+            return null;
+        }
+
+        AkronSaveLoadSlotLease baseline = null;
+        List<Entity> ghosts = AkronSnapshotExclusion.DetachFromLevel(level);
+        AkronIgnoreSaveStateComponent.RemoveAll(level);
+        try {
+            if (TryLoadFreshRoom(level, room, out string error)) {
+                baseline = CaptureFreshRuntimeState(level, "Akron fresh-room baseline " + room);
+            } else {
+                LastPersistentSnapshotError = error;
+            }
+        } catch (Exception exception) {
+            LastPersistentSnapshotError = "could not prepare StartPos: " + exception.GetType().Name + ": " + exception.Message;
+        } finally {
+            // Keep process UI and playback ghosts from the original room, not the
+            // temporary fresh copy. RestoreRuntimeState owns their restore bracket.
+            AkronSnapshotExclusion.DetachFromLevel(level);
+            AkronSnapshotExclusion.ReattachToLevel(level, ghosts);
+            AkronIgnoreSaveStateComponent.ReAddAll(level);
+            try {
+                AkronSaveLoadResult result = RestoreRuntimeState(
+                    level, rollback, allowDeadPlayer: true, freshBaselineStateSlotName: null, rollback: true);
+                if (result != AkronSaveLoadResult.Success) {
+                    baseline?.Dispose();
+                    baseline = null;
+                    throw new InvalidOperationException("Could not restore the live room after preparing StartPos: " + result);
+                }
+            } catch {
+                baseline?.Dispose();
+                throw;
+            } finally {
+                CurrentSlotName = currentSlotName;
+                ReleaseRuntimeSlotResources(rollback);
+            }
+        }
+        return baseline;
+    }
+
     internal static AkronSaveLoadSlotLease CaptureFreshRuntimeState(
         Level level,
         string slotName,
@@ -1240,7 +1291,8 @@ public static partial class AkronSaveLoadService {
         Level level,
         AkronSaveLoadSlot saveSlot,
         bool allowDeadPlayer,
-        string freshBaselineStateSlotName
+        string freshBaselineStateSlotName,
+        bool rollback = false
     ) {
         if (level == null || saveSlot == null) {
             return AkronSaveLoadResult.NoState;
@@ -1290,8 +1342,8 @@ public static partial class AkronSaveLoadService {
             if (!RestoreNativeSlot(
                     level,
                     saveSlot,
-                    restoreAkronModuleState: false,
-                    restoreGlobalSaveData: false)) {
+                    restoreAkronModuleState: rollback,
+                    restoreGlobalSaveData: rollback)) {
                 return AkronSaveLoadResult.SessionMismatch;
             }
 
@@ -1303,8 +1355,10 @@ public static partial class AkronSaveLoadService {
             if (saveSlot.GameplayBuffers.Count > 0) {
                 AkronGameplayBufferState.RestoreBestEffort(saveSlot.GameplayBuffers);
             }
-            PrepareRuntimeSlotPreClone(saveSlot);
-            AkronStartPosPersistence.UseRuntimeFreshBaseline(freshBaselineStateSlotName);
+            if (!rollback) {
+                PrepareRuntimeSlotPreClone(saveSlot);
+                AkronStartPosPersistence.UseRuntimeFreshBaseline(freshBaselineStateSlotName);
+            }
             // Berry progress is persistent save data. Apply it only after the
             // remaining restore work can no longer report a normal failure.
             if (saveSlot.BerryProgress != null &&

@@ -323,18 +323,19 @@ public static partial class AkronActions {
         }
 
         try {
-            if (useSpawnConfig && level.Tracker.GetEntity<Player>() is Player player) {
-                playerSnapshot = StartPosPlayerSnapshot.Capture(player);
-                ApplyStartPosPlayerConfiguration(level, player, startPos);
-                level.Session.RespawnPoint = clampedPosition;
-            }
-
             bool restoreRespawnAtStartPos = AkronModule.Settings.RespawnAtStartPos;
             AkronModule.Settings.RespawnAtStartPos = false;
             try {
-                // StartPos always keeps cumulative time and deaths instead of
-                // rewinding those statistics with the captured room state.
-                saveResult = AkronSaveLoadService.SaveRuntimeState(level, stateSlotName, saveTimeAndDeaths: false);
+                if (AkronStartPosPersistence.PrepareFreshBaseline(level)) {
+                    if (useSpawnConfig && level.Tracker.GetEntity<Player>() is Player player) {
+                        playerSnapshot = StartPosPlayerSnapshot.Capture(player);
+                        ApplyStartPosPlayerConfiguration(level, player, startPos);
+                        level.Session.RespawnPoint = clampedPosition;
+                    }
+                    // StartPos keeps cumulative time and deaths instead of
+                    // rewinding those statistics with the captured room state.
+                    saveResult = AkronSaveLoadService.SaveRuntimeState(level, stateSlotName, saveTimeAndDeaths: false);
+                }
             } finally {
                 AkronModule.Settings.RespawnAtStartPos = restoreRespawnAtStartPos;
             }

@@ -6,6 +6,19 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Added
+
+- Add **Send diagnostics** to the Interface tab and Akron's mod options. Describe the problem, review consent, and send bounded, redacted logs, mod versions and system specs to private Cloudflare storage and Akron's private Discord support channel.
+
+### Changed
+
+- Prepare StartPos restart baselines only when Set needs them, rather than cloning every room on entry or reload. The first Set in a room now does that work explicitly.
+
+### Fixed
+
+- Reuse Refill Clarity textures after normal Speedrun Tool savestate loads instead of rebuilding them through GPU readbacks on the first resumed update.
+- Reduce recurring gameplay allocations from keyboard-binding polling and Refill Clarity's per-frame entity checks.
+
 ## Akron Beta 81
 
 ### Changed

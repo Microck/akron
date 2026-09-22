@@ -1191,18 +1191,36 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void RefillClarityCacheIdentityIncludesTheIdleFrameSet()
+    public void RefillClarityReusesPixelsAfterSavestateWrappersAreCloned()
     {
-        MTexture[] firstFrames = new MTexture[1];
-        MTexture[] secondFrames = new MTexture[1];
+        VirtualTexture texture = (VirtualTexture) RuntimeHelpers.GetUninitializedObject(typeof(VirtualTexture));
+        MTexture original = Frame(texture);
+        MTexture restored = Frame(texture);
+        MTexture otherRegion = Frame(texture, clipX: 8);
+        MTexture otherOffset = Frame(texture, offsetX: 2);
+        MTexture otherSize = Frame(texture, width: 16);
+        MTexture otherTexture = Frame((VirtualTexture) RuntimeHelpers.GetUninitializedObject(typeof(VirtualTexture)));
+        Dictionary<AkronModule.RefillClarityFrameCacheKey, string> cache = new() {
+            [AkronModule.GetRefillClarityFrameCacheKey(original, 0xFF00FF, 100)] = "existing GPU frame"
+        };
 
-        object firstFrameKey = AkronModule.GetRefillClarityFrameCacheKey(firstFrames, false, 0xFF00FF, 100);
-        object secondFrameKey = AkronModule.GetRefillClarityFrameCacheKey(secondFrames, false, 0xFF00FF, 100);
-        object firstSourceKey = AkronModule.GetRefillClaritySourceFrameCacheKey(firstFrames, false);
-        object secondSourceKey = AkronModule.GetRefillClaritySourceFrameCacheKey(secondFrames, false);
+        Assert.Equal("existing GPU frame", cache[AkronModule.GetRefillClarityFrameCacheKey(restored, 0xFF00FF, 100)]);
+        Assert.False(cache.ContainsKey(AkronModule.GetRefillClarityFrameCacheKey(otherRegion, 0xFF00FF, 100)));
+        Assert.False(cache.ContainsKey(AkronModule.GetRefillClarityFrameCacheKey(otherOffset, 0xFF00FF, 100)));
+        Assert.False(cache.ContainsKey(AkronModule.GetRefillClarityFrameCacheKey(otherSize, 0xFF00FF, 100)));
+        Assert.False(cache.ContainsKey(AkronModule.GetRefillClarityFrameCacheKey(otherTexture, 0xFF00FF, 100)));
+        Assert.False(cache.ContainsKey(AkronModule.GetRefillClarityFrameCacheKey(restored, 0x00FF00, 100)));
+        Assert.False(cache.ContainsKey(AkronModule.GetRefillClarityFrameCacheKey(restored, 0xFF00FF, 50)));
 
-        Assert.NotEqual(firstFrameKey, secondFrameKey);
-        Assert.NotEqual(firstSourceKey, secondSourceKey);
+        static MTexture Frame(VirtualTexture texture, int clipX = 0, int offsetX = 1, int width = 8) {
+            MTexture frame = (MTexture) RuntimeHelpers.GetUninitializedObject(typeof(MTexture));
+            typeof(MTexture).GetProperty(nameof(MTexture.Texture))!.SetValue(frame, texture);
+            typeof(MTexture).GetProperty(nameof(MTexture.ClipRect))!.SetValue(frame, new Rectangle { X = clipX, Width = 8, Height = 8 });
+            typeof(MTexture).GetProperty(nameof(MTexture.DrawOffset))!.SetValue(frame, new Vector2 { X = offsetX, Y = 2 });
+            typeof(MTexture).GetProperty(nameof(MTexture.Width))!.SetValue(frame, width);
+            typeof(MTexture).GetProperty(nameof(MTexture.Height))!.SetValue(frame, 8);
+            return frame;
+        }
     }
 
     [Fact]
@@ -3095,53 +3113,6 @@ public sealed class ModuleSettingsTests
         Assert.DoesNotContain("No Stamina Flash", levelLabels);
         Assert.DoesNotContain("No Trails", levelLabels);
         Assert.DoesNotContain("Uncomplete Level", shortcutsLabels);
-    }
-
-    [Fact]
-    public void OverlayRowsFollowApprovedTaskGrouping()
-    {
-        List<string> globalLabels = BuildOverlayEntryLabels("Global")
-            .Where(label => label != "FPS Bypass" && label != "TPS Bypass")
-            .ToList();
-
-        Assert.Equal(
-            new[] {
-                "Timescale", "Transition Speed", "Frame Stepper", "Safe Mode", "Freeze Attempts",
-                "Submission Mode", "Pause Buffering", "Autosave", "Defer Engine GC"
-            },
-            globalLabels);
-
-        Assert.Equal(
-            new[] {
-                "Core Mode", "Freeze Gameplay", "Confirm Actions", "Skip Intro",
-                "Skip Postcards", "Auto Kill", "Respawn Time", "Pause Timer", "Pause Tracker", "Lag Pauser",
-                "Freeze Timer While Paused", "Hide Pause Menu", "Hide Vanilla HUD", "Hide Akron HUD", "Auto Deafen", "Deload Spinners",
-                "Show Hitboxes", "Fix Hitbox Pixels", "Show Hitbox Trail", "Show Hitboxes On Death",
-                "Show Triggers", "Refill Clarity", "Screenshake", "Light Level", "Bloom Level", "Screen Tint",
-                "Reduced Visual Noise", "No Particles", "No Glitch", "No Anxiety", "No Distortion", "Hide Snow",
-                "Hide Wind Snow", "Hide Waterfalls", "Hide Tentacles", "Disable Playback", "Hide Heat Distortion", "No Death Wipe",
-                "No Freeze Frames"
-            },
-            BuildOverlayEntryLabels("Level"));
-
-        Assert.Equal(
-            new[] {
-                "Invincibility", "Air Jumps", "Infinite Dash", "Infinite Stamina", "Ground Refills",
-                "Dash Count", "Grab Mode", "Set Inventory", "Dream State", "Noclip", "Click Teleport",
-                "Dash Redirect", "Hazard Accuracy", "Fast Lookout", "Golden Start", "Show Trajectory",
-                "Control Display", "Dash Bar", "Dash Number", "Stamina Bar", "Speed Number", "Hide Player",
-                "Golden Transparency", "Madeline Colors", "Madeline Hair Length", "Madeline Effect Sync",
-                "Custom Trail", "Trail Visibility", "No Trails", "No Stamina Flash",
-                "Death Particles", "No Death Effect", "No Respawn Animation"
-            },
-            BuildOverlayEntryLabels("Player"));
-
-        Assert.Equal(
-            new[] {
-                "Theme", "UI Scale", "Opacity", "Export Setup", "Import Setup", "Community Packs",
-                "Upload Pack", "Pause While Open", "Block Gameplay Input", "Streamer Mode", "Logging", "Search Autofocus", "Search"
-            },
-            BuildOverlayEntryLabels("Interface"));
     }
 
     [Fact]

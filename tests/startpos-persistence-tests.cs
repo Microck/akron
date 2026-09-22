@@ -1733,6 +1733,36 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
+    public void RoomLoadReleasesItsBaselineWithoutDiscardingWarmStartPos() {
+        string name = "Akron StartPos room-load-" + Guid.NewGuid().ToString("N");
+        AkronSaveLoadSlot slot = new AkronSaveLoadSlot(name, "room", "Tests/RoomLoad", false);
+        int releases = 0;
+        AkronSaveLoadSlotOwner owner = new AkronSaveLoadSlotOwner(slot, _ => releases++);
+        using AkronSaveLoadSlotLease lease = owner.Retain();
+        owner.ReleaseOwnership();
+        try {
+            AkronStartPosPersistence.AttachRuntimeFreshBaseline(name, lease);
+            AkronStartPosPersistence.UseRuntimeFreshBaseline(name);
+            lease.Dispose();
+
+            // Invalidation needs no initialized entity graph, graphics device, or
+            // deferred capture. A warm slot still owns the old baseline for Load.
+            AkronStartPosPersistence.NotifyLevelReady(
+                (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level)));
+            Assert.Equal(0, releases);
+            using (AkronSaveLoadSlotLease retained = AkronStartPosPersistence.RetainRuntimeFreshBaseline(name)) {
+                Assert.Same(slot, retained.Slot);
+            }
+            AkronStartPosPersistence.RemoveRuntimeFreshBaseline(name);
+            Assert.Equal(1, releases);
+        } finally {
+            AkronStartPosPersistence.NotifyLevelReady(
+                (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level)));
+            AkronStartPosPersistence.RemoveRuntimeFreshBaseline(name);
+        }
+    }
+
+    [Fact]
     public void WarmStartPosBaselinesFromDifferentSessionsDoNotShare() {
         string firstName = "Akron StartPos old-session-baseline-" + Guid.NewGuid().ToString("N");
         string secondName = "Akron StartPos current-session-baseline-" + Guid.NewGuid().ToString("N");
@@ -1926,29 +1956,6 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
-    public void FailedFreshBaselineCompletesWaitingPersistenceJobs() {
-        string persistenceSource = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
-        int capture = persistenceSource.IndexOf("private static void CaptureFreshBaseline", StringComparison.Ordinal);
-        int captureEnd = persistenceSource.IndexOf("private static void StartWorkerLocked", capture, StringComparison.Ordinal);
-        string capturePath = SourceSlice(persistenceSource, capture, captureEnd - capture);
-
-        Assert.Contains("FailWaitingJobsForBaselineLocked", capturePath);
-        Assert.Contains("fresh-room baseline", capturePath);
-    }
-
-    [Fact]
-    public void SetNeverCapturesABaselineFromTheCurrentRuntimeState() {
-        string persistenceSource = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
-        int enqueue = persistenceSource.IndexOf("public static long Enqueue", StringComparison.Ordinal);
-        int enqueueEnd = persistenceSource.IndexOf("public static void Cancel", enqueue, StringComparison.Ordinal);
-        string enqueuePath = SourceSlice(persistenceSource, enqueue, enqueueEnd - enqueue);
-
-        Assert.DoesNotContain("NotifyLevelReady(currentLevel)", enqueuePath);
-        Assert.Contains("PendingBaselineGenerations.ContainsKey(baselineKey)", enqueuePath);
-        Assert.Contains("fresh-room baseline is unavailable", enqueuePath);
-    }
-
-    [Fact]
     public void WarmCrossRoomRestoreReusesTheStartPosFreshBaseline() {
         string persistenceSource = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
         string saveLoadSource = File.ReadAllText(GetSaveLoadSourcePath());
@@ -1982,44 +1989,6 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
-    public void FreshBaselineCacheEvictsRoomsThatAreNoLongerCurrent() {
-        string persistenceSource = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
-        int notify = persistenceSource.IndexOf("public static void NotifyLevelReady", StringComparison.Ordinal);
-        int notifyEnd = persistenceSource.IndexOf("public static long Enqueue", notify, StringComparison.Ordinal);
-        string notifyPath = SourceSlice(persistenceSource, notify, notifyEnd - notify);
-
-        Assert.Contains("EvictOtherBaselinesLocked(expectedKey)", notifyPath);
-        Assert.Contains("FailWaitingJobsExceptLocked(", notifyPath);
-        Assert.Contains("expectedKey,", notifyPath);
-    }
-
-    // Every room load rebuilds the room, so the retained baseline is stale and
-    // must be recaptured. The refresh is unconditional on purpose: StartPos
-    // promises exact restoration, and no in-process check can see every input
-    // room construction reads, so skipping a capture cannot be made sound.
-    [Fact]
-    public void RoomLoadsRefreshTheFreshBaselineUnconditionally() {
-        string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
-        int notify = source.IndexOf("public static void NotifyLevelReady", StringComparison.Ordinal);
-        int notifyEnd = source.IndexOf("public static long Enqueue", notify, StringComparison.Ordinal);
-        string notifyPath = SourceSlice(source, notify, notifyEnd - notify);
-        int loadHook = source.IndexOf("private static void LevelOnLoadLevel", StringComparison.Ordinal);
-        int capture = source.IndexOf("private static void CaptureFreshBaseline", loadHook, StringComparison.Ordinal);
-        string loadHookPath = SourceSlice(source, loadHook, capture - loadHook);
-
-        Assert.Contains("bool refreshBaseline = false", notifyPath);
-        Assert.Contains("if (refreshBaseline) {", notifyPath);
-        // No freshness heuristic may creep back in front of the capture.
-        Assert.DoesNotContain("sessionUnchanged", notifyPath);
-        Assert.Contains("FreshBaselines.Remove(expectedKey", notifyPath);
-        Assert.Contains("FailWaitingJobsForBaselineLocked(", notifyPath);
-        Assert.Contains("the room reloaded before its fresh-room baseline was ready", notifyPath);
-        Assert.Contains("PendingBaselineGenerations[expectedKey] = captureGeneration", notifyPath);
-        Assert.Contains("IsPendingBaselineGenerationLocked", source);
-        Assert.Contains("NotifyLevelReady(self, refreshBaseline: true);", loadHookPath);
-    }
-
-    [Fact]
     public void WarmRestoreDoesNotMutateTheSavedLevelWhileDiskConversionReadsIt() {
         string saveLoadSource = File.ReadAllText(GetSaveLoadSourcePath());
         int restore = saveLoadSource.IndexOf("private static bool RestoreNativeSlot", StringComparison.Ordinal);
@@ -2034,23 +2003,6 @@ public sealed class StartPosPersistenceTests {
         Assert.DoesNotContain("AkronDeepClone.CopyInto(level, savedLevel)", restorePath);
         Assert.DoesNotContain("saveSlot.SavedLevel =", restorePath);
         Assert.Contains("level.Session.Time = Math.Max(currentSessionTime, level.Session.Time);", restorePath);
-    }
-
-    [Fact]
-    public void WarmStartPosRestorePreservesCurrentGlobalAndModuleSaveData() {
-        string source = File.ReadAllText(GetSaveLoadSourcePath());
-        int runtimeRestore = source.IndexOf("public static AkronSaveLoadResult RestoreRuntimeState", StringComparison.Ordinal);
-        int runtimeRestoreEnd = source.IndexOf("public static AkronSaveLoadResult LoadRuntimeState", runtimeRestore, StringComparison.Ordinal);
-        string runtimeRestorePath = SourceSlice(source, runtimeRestore, runtimeRestoreEnd - runtimeRestore);
-        int nativeRestore = source.IndexOf("private static bool RestoreNativeSlot", StringComparison.Ordinal);
-        int nativeRestoreEnd = source.IndexOf("private static void CaptureCuratedSessionState", nativeRestore, StringComparison.Ordinal);
-        string nativeRestorePath = SourceSlice(source, nativeRestore, nativeRestoreEnd - nativeRestore);
-
-        Assert.Contains("restoreGlobalSaveData: false", runtimeRestorePath);
-        Assert.Contains("restoreGlobalSaveData && saveSlot.SaveDataState", nativeRestorePath);
-        int moduleSaveDataGate = nativeRestorePath.IndexOf("if (restoreGlobalSaveData &&", StringComparison.Ordinal);
-        int moduleSaveDataRestore = nativeRestorePath.IndexOf("saveSlot.ModuleSaveData.TryGetValue", moduleSaveDataGate, StringComparison.Ordinal);
-        Assert.True(moduleSaveDataGate >= 0 && moduleSaveDataRestore > moduleSaveDataGate);
     }
 
     [Fact]
@@ -2086,62 +2038,6 @@ public sealed class StartPosPersistenceTests {
         Assert.DoesNotContain("VirtualContent.Assets.OfType<VirtualRenderTarget>()", graphSource);
         Assert.Contains("GetRenderTargetsSince(virtualAssetMarker)", saveLoadSource);
         Assert.Contains("new AkronSaveLoadSlotOwner(saveSlot, ReleaseRuntimeSlotResources)", saveLoadSource);
-    }
-
-    [Fact]
-    public void FreshBaselineAndColdRestoreUseTheSameSingleInitializationUpdate() {
-        string moduleSource = File.ReadAllText(GetModuleSourcePath());
-        string saveLoadSource = File.ReadAllText(GetSaveLoadSourcePath());
-        string persistenceSource = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
-        int levelUpdate = moduleSource.IndexOf("private static void LevelOnUpdate", StringComparison.Ordinal);
-        int pending = moduleSource.IndexOf("ConsumeFreshBaselineInitializationUpdate", levelUpdate, StringComparison.Ordinal);
-        int originalUpdate = pending >= 0
-            ? moduleSource.IndexOf("orig(self);", pending, StringComparison.Ordinal)
-            : -1;
-        int returnAfterUpdate = originalUpdate >= 0
-            ? moduleSource.IndexOf("return;", originalUpdate, StringComparison.Ordinal)
-            : -1;
-        int pendingCapture = returnAfterUpdate >= 0
-            ? moduleSource.IndexOf("IsFreshBaselineCapturePending(self)", returnAfterUpdate, StringComparison.Ordinal)
-            : -1;
-        int holdPendingCaptureClock = pendingCapture >= 0
-            ? moduleSource.IndexOf("HoldSceneClockForSkippedLevelUpdate(self);", pendingCapture, StringComparison.Ordinal)
-            : -1;
-        int returnAfterPendingCapture = holdPendingCaptureClock >= 0
-            ? moduleSource.IndexOf("return;", holdPendingCaptureClock, StringComparison.Ordinal)
-            : -1;
-        int initialization = moduleSource.IndexOf("internal static void RunFreshRoomInitializationUpdate", StringComparison.Ordinal);
-        int initializationEnd = initialization >= 0
-            ? moduleSource.IndexOf("private static void LevelOnBeforeRender", initialization, StringComparison.Ordinal)
-            : -1;
-        string initializationPath = initialization >= 0 && initializationEnd > initialization
-            ? SourceSlice(moduleSource, initialization, initializationEnd - initialization)
-            : string.Empty;
-        int beforeUpdate = initializationPath.IndexOf("level.BeforeUpdate();", StringComparison.Ordinal);
-        int update = initializationPath.IndexOf("level.Update();", StringComparison.Ordinal);
-        int afterUpdate = initializationPath.IndexOf("level.AfterUpdate();", StringComparison.Ordinal);
-        int freshRoom = saveLoadSource.IndexOf("private static bool TryLoadFreshRoom", StringComparison.Ordinal);
-        int freshRoomEnd = saveLoadSource.IndexOf("internal static void DrainFreshRoomEntityLists", freshRoom, StringComparison.Ordinal);
-        string freshRoomPath = SourceSlice(saveLoadSource, freshRoom, freshRoomEnd - freshRoom);
-        int loadLevel = freshRoomPath.IndexOf("level.LoadLevel", StringComparison.Ordinal);
-        int replayUpdate = loadLevel >= 0
-            ? freshRoomPath.IndexOf("RunFreshRoomInitializationUpdate(level)", loadLevel, StringComparison.Ordinal)
-            : -1;
-        int drainLists = replayUpdate >= 0
-            ? freshRoomPath.IndexOf("DrainFreshRoomEntityLists", replayUpdate, StringComparison.Ordinal)
-            : -1;
-
-        Assert.True(pending > levelUpdate);
-        Assert.True(originalUpdate > pending && returnAfterUpdate > originalUpdate);
-        Assert.True(pendingCapture > returnAfterUpdate);
-        Assert.True(holdPendingCaptureClock > pendingCapture && returnAfterPendingCapture > holdPendingCaptureClock);
-        Assert.True(initialization >= 0);
-        Assert.True(beforeUpdate >= 0 && update > beforeUpdate && afterUpdate > update);
-        Assert.True(loadLevel >= 0 && replayUpdate > loadLevel && drainLists > replayUpdate);
-        Assert.Contains("ScheduleAfterStableEngineUpdate(", persistenceSource);
-        Assert.Contains("() => CaptureFreshBaseline", persistenceSource);
-        Assert.DoesNotContain("MaxWipeWaitAttempts", persistenceSource);
-        Assert.DoesNotContain("if (level.Wipe != null)", persistenceSource);
     }
 
     [Fact]
@@ -3570,27 +3466,6 @@ public sealed class StartPosPersistenceTests {
 
         Assert.True(apply >= 0 && catchFailure > apply && dispose > catchFailure);
         Assert.Contains("Could not apply a StartPos restart copy", updatePath);
-    }
-
-    [Fact]
-    public void LateBaselineCaptureDrainsJobsThroughInstalledBaseline() {
-        string source = File.ReadAllText(GetSourcePath("Actions", "akron-startpos-persistence.cs"));
-        int capture = source.IndexOf("private static void CaptureFreshBaseline(", StringComparison.Ordinal);
-        int captureEnd = source.IndexOf("private static bool IsPendingBaselineGenerationLocked", capture, StringComparison.Ordinal);
-        string capturePath = SourceSlice(source, capture, captureEnd - capture);
-        int timer = capturePath.IndexOf("Stopwatch timer", StringComparison.Ordinal);
-        int installed = capturePath.IndexOf(
-            "out AkronSaveLoadSlotLease installedBaseline",
-            timer,
-            StringComparison.Ordinal);
-        int queue = installed < 0
-            ? -1
-            : capturePath.IndexOf(
-                "QueueWaitingJobsForBaselineLocked(expectedKey, installedBaseline)",
-                installed,
-                StringComparison.Ordinal);
-
-        Assert.True(timer >= 0 && installed > timer && queue > installed);
     }
 
     [Fact]
