@@ -57,6 +57,7 @@ internal static class AkronDiagnostics {
     private static CancellationTokenSource activeCancellation;
     private static AkronDiagnosticStatus status = new AkronDiagnosticStatus("idle", "No diagnostics have been sent.");
     // These patterns run only on the upload worker. A timeout aborts the report rather than sending unredacted text.
+    private static readonly Regex AuthenticationScheme = Pattern(@"\b(?:Bearer|Basic)[ \t]+[A-Za-z0-9._~+/-]+=*");
     private static readonly Regex SensitiveLine = Pattern(@"^.*(?:password|passwd|pwd\s*[:=]|secret|token|authorization|authentication|cookie|api[ _-]?key|access[ _-]?key|private[ _-]?key|credential|connection[ _-]?string|username|user[ _-]?name|hostname|machine[ _-]?name|profile[ _-]?name|save[ _-]?name|environment\s*[:=]).*$", RegexOptions.Multiline);
     private static readonly Regex SensitiveContinuation = Pattern(@"^.*(?:password|passwd|pwd|secret|token|authorization|cookie|api[ _-]?key|access[ _-]?key|credential)[^\r\n]*[:=][ \t]*\r?\n[^\r\n]*", RegexOptions.Multiline);
     private static readonly Regex PrivateKey = Pattern(@"-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|\z)|(?:^[A-Za-z0-9+/=]+\r?\n)+-----END [^-]*PRIVATE KEY-----", RegexOptions.Multiline);
@@ -263,6 +264,7 @@ internal static class AkronDiagnostics {
     internal static string Redact(string text, Regex privateValuePattern, bool redactAddresses = true) {
         text ??= string.Empty;
         text = PrivateKey.Replace(text, "[private key removed]");
+        text = AuthenticationScheme.Replace(text, "[credential removed]");
         text = SensitiveContinuation.Replace(text, "[sensitive value removed]");
         text = SensitiveLine.Replace(text, "[sensitive line removed]");
         text = Url.Replace(text, "[url removed]");

@@ -8,7 +8,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Added
 
-- Add **Send diagnostics** to the Interface tab and Akron's mod options. Describe the problem, review consent, and send bounded, redacted logs, mod versions and system specs to private Cloudflare storage and Akron's private Discord support channel.
+- Add **Send diagnostics** to the Interface tab and Akron's mod options. Describe the problem, review consent, and send bounded logs, mod versions and system specs to private Cloudflare storage and Akron's private Discord support channel. Automatic redaction covers common credentials, including bare Bearer and Basic values, and local identifiers.
 
 ### Changed
 

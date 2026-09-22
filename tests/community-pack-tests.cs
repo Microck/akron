@@ -504,6 +504,8 @@ public sealed class CommunityPackTests {
     public void DiagnosticsRedactCredentialsAndLocalIdentifiersWithoutDroppingUsefulLogLines() {
         string text = "transition a -> b\n" +
             "Authorization: Bearer private-auth-value\n" +
+            "request bEaReR ab12\n" +
+            "request Basic\tYWJjOmRlZg==\n" +
             "api_key=private-key-value\n" +
             "\"password\":\n  \"private-next-line-value\"\n" +
             "loaded /home/private-person/Games/Celeste/Mods/Akron.dll\n" +
@@ -515,7 +517,7 @@ public sealed class CommunityPackTests {
 
         string redacted = AkronDiagnostics.Redact(text, AkronDiagnostics.CreatePrivateValuePattern(new[] { "private-person", "private-computer" }));
 
-        foreach (string forbidden in new[] { "private-auth-value", "private-key-value", "private-next-line-value", "private-person", "private-password", "private-signature", "private-computer", "private-key-body" }) {
+        foreach (string forbidden in new[] { "Bearer", "ab12", "Basic", "YWJjOmRlZg==", "private-auth-value", "private-key-value", "private-next-line-value", "private-person", "private-password", "private-signature", "private-computer", "private-key-body" }) {
             Assert.DoesNotContain(forbidden, redacted, StringComparison.OrdinalIgnoreCase);
         }
         Assert.Contains("transition a -> b", redacted);
