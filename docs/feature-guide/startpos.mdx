@@ -23,6 +23,11 @@ captured frame. Akron stores this state in a local v11 snapshot file so it
 survives closing and restarting Celeste. Set and Load hold the room state until
 Celeste renders the restored frame.
 
+Set holds the requested gameplay frame until outer update hooks have finished.
+If the room, player, or save profile changes before capture starts, Akron cancels
+the request. The console command reports the active map's status after completion
+or cancellation; it does not switch back to the abandoned map's slot catalog.
+
 An ordinary Load keeps the captured player animation and frame. Explicit spawn
 options can change that pose; Load does not otherwise recalculate it.
 

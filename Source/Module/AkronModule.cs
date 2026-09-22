@@ -118,9 +118,14 @@ public partial class AkronModule : EverestModule {
         new ConditionalWeakTable<Refill, RefillClaritySpriteState>();
     private static readonly Dictionary<RefillClaritySourceCacheKey, RefillClaritySourceFrame> RefillClaritySourceFrameCache =
         new Dictionary<RefillClaritySourceCacheKey, RefillClaritySourceFrame>();
-    private static readonly Dictionary<RefillClarityFrameCacheKey, MTexture> RefillClarityFrameCache =
-        new Dictionary<RefillClarityFrameCacheKey, MTexture>();
-    private static readonly List<VirtualTexture> RefillClarityFrameTextures = new List<VirtualTexture>();
+    private const int MaxRefillClarityCachedFrames = 128;
+    private const long MaxRefillClarityCachedBytes = 4L * 1024L * 1024L;
+    private static readonly Dictionary<RefillClarityFrameCacheKey, RefillClarityFrameCacheEntry> RefillClarityFrameCache =
+        new Dictionary<RefillClarityFrameCacheKey, RefillClarityFrameCacheEntry>();
+    private static readonly ConditionalWeakTable<VirtualTexture, RefillClarityFrameCacheEntry> RefillClarityFrameOwners =
+        new ConditionalWeakTable<VirtualTexture, RefillClarityFrameCacheEntry>();
+    private static long refillClarityCachedBytes;
+    private static long refillClarityUseStamp;
 
     public AkronModule() {
         Instance = this;
@@ -1112,25 +1117,68 @@ public partial class AkronModule : EverestModule {
         }
 
         MTexture[] idleFrames = sprite.Animations["idle"].Frames;
+        MTexture[] restoredFrames = sprite.Has("idlenr") ? sprite.Animations["idlenr"].Frames : null;
         MTexture[] frames = new MTexture[idleFrames.Length];
         for (int index = 0; index < idleFrames.Length; index++) {
             MTexture frame = idleFrames[index];
             RefillClarityFrameCacheKey key = GetRefillClarityFrameCacheKey(frame, color, opacity);
-            if (!RefillClarityFrameCache.TryGetValue(key, out MTexture cached)) {
-                if (!RefillClaritySourceFrameCache.TryGetValue(key.Source, out RefillClaritySourceFrame source)) {
-                    if (Engine.Graphics?.GraphicsDevice == null) {
-                        return null;
+            if (!RefillClarityFrameCache.TryGetValue(key, out RefillClarityFrameCacheEntry cached)) {
+                // A saved sprite can still own a texture evicted from the bounded
+                // cache. Re-admit it without reading pixels or uploading a replacement.
+                if (restoredFrames != null && index < restoredFrames.Length &&
+                    RefillClarityFrameOwners.TryGetValue(restoredFrames[index].Texture, out cached) &&
+                    cached.Key == key) {
+                    VirtualContent.Assets.Add(cached.Frame.Texture);
+                } else {
+                    if (!RefillClaritySourceFrameCache.TryGetValue(key.Source, out RefillClaritySourceFrame source)) {
+                        if (Engine.Graphics?.GraphicsDevice == null) {
+                            return null;
+                        }
+                        source = ReadRefillClaritySourceFrame(frame);
+                        RefillClaritySourceFrameCache.Add(key.Source, source);
                     }
-                    source = ReadRefillClaritySourceFrame(frame);
-                    RefillClaritySourceFrameCache.Add(key.Source, source);
+                    MTexture generated = CreateRefillClarityFrame(
+                        source, (++refillClarityUseStamp).ToString(CultureInfo.InvariantCulture), color, opacity);
+                    cached = new RefillClarityFrameCacheEntry(key, generated);
+                    RefillClarityFrameOwners.Add(generated.Texture, cached);
                 }
-                cached = CreateRefillClarityFrame(
-                    source, RefillClarityFrameCache.Count.ToString(CultureInfo.InvariantCulture), color, opacity);
                 RefillClarityFrameCache.Add(key, cached);
+                refillClarityCachedBytes += cached.Bytes;
             }
-            frames[index] = cached;
+            cached.UseStamp = ++refillClarityUseStamp;
+            frames[index] = cached.Frame;
         }
+        TrimRefillClarityFrameCache();
         return frames;
+    }
+
+    private static void TrimRefillClarityFrameCache() {
+        while (RefillClarityFrameCache.Count > MaxRefillClarityCachedFrames ||
+               refillClarityCachedBytes > MaxRefillClarityCachedBytes) {
+            RefillClarityFrameCacheEntry oldest = null;
+            foreach (RefillClarityFrameCacheEntry entry in RefillClarityFrameCache.Values) {
+                if (oldest == null || entry.UseStamp < oldest.UseStamp) {
+                    oldest = entry;
+                }
+            }
+            RefillClarityFrameCache.Remove(oldest.Key);
+            refillClarityCachedBytes -= oldest.Bytes;
+            // VirtualContent otherwise roots generated textures forever. FNA
+            // finalizes the GPU resource after the last sprite/snapshot releases
+            // it; disposing here would invalidate those still-live references.
+            VirtualContent.Assets.Remove(oldest.Frame.Texture);
+
+            bool sourceStillCached = false;
+            foreach (RefillClarityFrameCacheKey key in RefillClarityFrameCache.Keys) {
+                if (key.Source == oldest.Key.Source) {
+                    sourceStillCached = true;
+                    break;
+                }
+            }
+            if (!sourceStillCached) {
+                RefillClaritySourceFrameCache.Remove(oldest.Key.Source);
+            }
+        }
     }
 
     private static RefillClaritySourceFrame ReadRefillClaritySourceFrame(MTexture frame) {
@@ -1185,7 +1233,6 @@ public partial class AkronModule : EverestModule {
         Color[] pixels = BuildRefillClarityPixels(source.Pixels, source.PixelWidth, source.PixelHeight, rgb, opacity);
         VirtualTexture texture = VirtualContent.CreateTexture("akron-refill-clarity-" + key, source.PixelWidth, source.PixelHeight, Color.Transparent);
         texture.Texture_Safe.SetData(pixels);
-        RefillClarityFrameTextures.Add(texture);
         return new MTexture(texture, source.DrawOffset, source.FrameWidth, source.FrameHeight);
     }
 
@@ -1276,13 +1323,15 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void ClearRefillClarityFrameCache() {
-        foreach (VirtualTexture texture in RefillClarityFrameTextures) {
-            texture.Dispose();
+        foreach (KeyValuePair<VirtualTexture, RefillClarityFrameCacheEntry> owner in RefillClarityFrameOwners) {
+            owner.Key.Dispose();
         }
 
-        RefillClarityFrameTextures.Clear();
+        RefillClarityFrameOwners.Clear();
         RefillClarityFrameCache.Clear();
         RefillClaritySourceFrameCache.Clear();
+        refillClarityCachedBytes = 0;
+        refillClarityUseStamp = 0;
     }
 
     private readonly struct RefillClaritySourceFrame {
@@ -1311,6 +1360,19 @@ public partial class AkronModule : EverestModule {
         float OffsetX, float OffsetY, int Width, int Height);
 
     private readonly record struct RefillClarityFrameCacheKey(RefillClaritySourceCacheKey Source, int Color, int Opacity);
+
+    private sealed class RefillClarityFrameCacheEntry {
+        internal RefillClarityFrameCacheEntry(RefillClarityFrameCacheKey key, MTexture frame) {
+            Key = key;
+            Frame = frame;
+            Bytes = (long) frame.Texture.Width * frame.Texture.Height * sizeof(uint);
+        }
+
+        internal RefillClarityFrameCacheKey Key { get; }
+        internal MTexture Frame { get; }
+        internal long Bytes { get; }
+        internal long UseStamp { get; set; }
+    }
 
     private sealed class RefillClaritySpriteState {
         public bool Applied;

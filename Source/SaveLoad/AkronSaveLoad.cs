@@ -1096,7 +1096,11 @@ public static partial class AkronSaveLoadService {
         AkronIgnoreSaveStateComponent.RemoveAll(level);
         try {
             if (TryLoadFreshRoom(level, room, out string error)) {
-                baseline = CaptureFreshRuntimeState(level, "Akron fresh-room baseline " + room);
+                baseline = CaptureFreshRuntimeState(
+                    level, "Akron fresh-room baseline " + room,
+                    out int captureDroppedSlots, out long captureDroppedBytes);
+                droppedSlots += captureDroppedSlots;
+                droppedBytes += captureDroppedBytes;
             } else {
                 LastPersistentSnapshotError = error;
             }
@@ -1130,8 +1134,12 @@ public static partial class AkronSaveLoadService {
     internal static AkronSaveLoadSlotLease CaptureFreshRuntimeState(
         Level level,
         string slotName,
+        out int droppedSlots,
+        out long droppedBytes,
         string runtimeStateSlotName = null
     ) {
+        droppedSlots = 0;
+        droppedBytes = 0;
         if (level == null) {
             return null;
         }
@@ -1140,8 +1148,8 @@ public static partial class AkronSaveLoadService {
         if (!PrepareFreshRuntimeBaselineCapture(
                 level.Session.Area.GetSID(),
                 retainedBaselineAlreadyExists,
-                out _,
-                out _)) {
+                out droppedSlots,
+                out droppedBytes)) {
             LastPersistentSnapshotError =
                 "fresh-room baseline could not be captured inside the warm memory limit";
             return null;
@@ -1189,7 +1197,8 @@ public static partial class AkronSaveLoadService {
         lease = AkronStartPosPersistence.DeduplicateRuntimeFreshBaseline(
             runtimeStateSlotName,
             lease);
-        TrimWarmStartPosSlots(out _);
+        droppedSlots += TrimWarmStartPosSlots(out long trimmedBytes);
+        droppedBytes += trimmedBytes;
         if (WarmStartPosBytes > WarmStartPosBudgetBytes) {
             lease.Dispose();
             LastPersistentSnapshotError =
@@ -1698,6 +1707,8 @@ public static partial class AkronSaveLoadService {
         freshBaseline = CaptureFreshRuntimeState(
             level,
             "Akron restored fresh-room baseline " + document.MapSid + "|" + document.Room,
+            out _,
+            out _,
             document.SlotName);
         if (freshBaseline?.Slot == null) {
             freshBaseline?.Dispose();

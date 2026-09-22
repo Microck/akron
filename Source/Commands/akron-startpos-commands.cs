@@ -99,7 +99,7 @@ public static partial class AkronCommands {
                 break;
             case "set":
                 Log("startpos-capture: scheduled");
-                AkronActions.SetStartPos(level, _ => LogStartPosStatus(level));
+                AkronActions.SetStartPos(level, _ => LogStartPosStatus(Engine.Scene as Level));
                 return;
             case "load":
                 AkronActions.LoadStartPos(level);

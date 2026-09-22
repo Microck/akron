@@ -67,6 +67,22 @@ Confirm the following:
 - The search text is not filtering out the desired pack.
 - The catalog entry's map SID matches the current map's SID.
 
+## Room transitions or Speedrun Tool unfreezes hitch
+
+Akron prepares a room's StartPos restart baseline when **Set** first needs it,
+not on every room entry. That first Set can still take longer than later Sets.
+Normal Speedrun Tool loads reuse Refill Clarity textures instead of reading them
+back from the GPU on the first resumed update.
+
+The reusable Clarity cache holds at most 128 generated frames and 4 MiB of texture
+pixels. Source pixel buffers leave the cache when no cached variant needs them.
+Live refills and savestates may still own textures outside that cache; those
+textures remain valid until their owners release them.
+
+If a hitch remains, distinguish the initial save, the Load keypress, the first
+resumed frame, and an actual room transition in your diagnostic description.
+Those are separate operations and may have different causes.
+
 ## Send diagnostics to a maintainer
 
 Open **Interface → Send diagnostics** in Akron's overlay, or **Send diagnostics**
