@@ -259,6 +259,7 @@ public sealed partial class AkronOverlay {
                     Toggle("Block Gameplay Input", () => AkronModule.Settings.ConsumeGameplayInputInMenu, value => AkronModule.Settings.ConsumeGameplayInputInMenu = value, "input", "madeline", "overlay", "consume"),
                     Toggle("Streamer Mode", () => AkronModule.Settings.StreamerMode, value => AkronModule.Settings.StreamerMode = value),
                     LoggingToggle(),
+                    Action("Send diagnostics", () => Engine.Scene != null, AkronDiagnosticsMenu.DescribeAction, () => AkronDiagnosticsMenu.Open(), "logs", "support", "report", "upload", "performance"),
                     Toggle("Search Autofocus", () => AkronModule.Settings.SearchAutofocus, value => AkronModule.Settings.SearchAutofocus = value),
                     SearchInput()
                 };

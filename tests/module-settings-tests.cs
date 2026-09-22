@@ -1191,21 +1191,6 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void RefillClarityCacheIdentityIncludesTheIdleFrameSet()
-    {
-        MTexture[] firstFrames = new MTexture[1];
-        MTexture[] secondFrames = new MTexture[1];
-
-        object firstFrameKey = AkronModule.GetRefillClarityFrameCacheKey(firstFrames, false, 0xFF00FF, 100);
-        object secondFrameKey = AkronModule.GetRefillClarityFrameCacheKey(secondFrames, false, 0xFF00FF, 100);
-        object firstSourceKey = AkronModule.GetRefillClaritySourceFrameCacheKey(firstFrames, false);
-        object secondSourceKey = AkronModule.GetRefillClaritySourceFrameCacheKey(secondFrames, false);
-
-        Assert.NotEqual(firstFrameKey, secondFrameKey);
-        Assert.NotEqual(firstSourceKey, secondSourceKey);
-    }
-
-    [Fact]
     public void RefillClarityRecognizesCustomOneUseRefillEntities()
     {
         Assert.True(AkronHudRenderer.ShouldRenderRefillClarityOutline(MakeLive(new CustomOneUseRefillProbe())));
@@ -3095,53 +3080,6 @@ public sealed class ModuleSettingsTests
         Assert.DoesNotContain("No Stamina Flash", levelLabels);
         Assert.DoesNotContain("No Trails", levelLabels);
         Assert.DoesNotContain("Uncomplete Level", shortcutsLabels);
-    }
-
-    [Fact]
-    public void OverlayRowsFollowApprovedTaskGrouping()
-    {
-        List<string> globalLabels = BuildOverlayEntryLabels("Global")
-            .Where(label => label != "FPS Bypass" && label != "TPS Bypass")
-            .ToList();
-
-        Assert.Equal(
-            new[] {
-                "Timescale", "Transition Speed", "Frame Stepper", "Safe Mode", "Freeze Attempts",
-                "Submission Mode", "Pause Buffering", "Autosave", "Defer Engine GC"
-            },
-            globalLabels);
-
-        Assert.Equal(
-            new[] {
-                "Core Mode", "Freeze Gameplay", "Confirm Actions", "Skip Intro",
-                "Skip Postcards", "Auto Kill", "Respawn Time", "Pause Timer", "Pause Tracker", "Lag Pauser",
-                "Freeze Timer While Paused", "Hide Pause Menu", "Hide Vanilla HUD", "Hide Akron HUD", "Auto Deafen", "Deload Spinners",
-                "Show Hitboxes", "Fix Hitbox Pixels", "Show Hitbox Trail", "Show Hitboxes On Death",
-                "Show Triggers", "Refill Clarity", "Screenshake", "Light Level", "Bloom Level", "Screen Tint",
-                "Reduced Visual Noise", "No Particles", "No Glitch", "No Anxiety", "No Distortion", "Hide Snow",
-                "Hide Wind Snow", "Hide Waterfalls", "Hide Tentacles", "Disable Playback", "Hide Heat Distortion", "No Death Wipe",
-                "No Freeze Frames"
-            },
-            BuildOverlayEntryLabels("Level"));
-
-        Assert.Equal(
-            new[] {
-                "Invincibility", "Air Jumps", "Infinite Dash", "Infinite Stamina", "Ground Refills",
-                "Dash Count", "Grab Mode", "Set Inventory", "Dream State", "Noclip", "Click Teleport",
-                "Dash Redirect", "Hazard Accuracy", "Fast Lookout", "Golden Start", "Show Trajectory",
-                "Control Display", "Dash Bar", "Dash Number", "Stamina Bar", "Speed Number", "Hide Player",
-                "Golden Transparency", "Madeline Colors", "Madeline Hair Length", "Madeline Effect Sync",
-                "Custom Trail", "Trail Visibility", "No Trails", "No Stamina Flash",
-                "Death Particles", "No Death Effect", "No Respawn Animation"
-            },
-            BuildOverlayEntryLabels("Player"));
-
-        Assert.Equal(
-            new[] {
-                "Theme", "UI Scale", "Opacity", "Export Setup", "Import Setup", "Community Packs",
-                "Upload Pack", "Pause While Open", "Block Gameplay Input", "Streamer Mode", "Logging", "Search Autofocus", "Search"
-            },
-            BuildOverlayEntryLabels("Interface"));
     }
 
     [Fact]

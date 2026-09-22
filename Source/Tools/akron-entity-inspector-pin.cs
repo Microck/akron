@@ -1799,6 +1799,121 @@ public static partial class AkronEntityInspector
         }
     }
 
+    // Rollbacks replace the entity graph without another real room entry.
+    // Use that graph's clone map for both passes; never retain discarded
+    // temporary-room entities or clone removed entities just for inspector UI.
+    internal sealed class InspectorPinRollbackState
+    {
+        private readonly Dictionary<Entity, int> ids = new Dictionary<Entity, int>(ReferenceComparer);
+        private readonly Dictionary<Entity, InspectorSourceRecord> records = new Dictionary<Entity, InspectorSourceRecord>(ReferenceComparer);
+        private readonly Dictionary<EntityData, InspectorSourceOrdinalState> ordinals = new Dictionary<EntityData, InspectorSourceOrdinalState>(ReferenceComparer);
+        private readonly List<InspectorHit> selection = new List<InspectorHit>();
+        private readonly List<InspectorHit> preview = new List<InspectorHit>();
+        private readonly int nextId = inspectorPinNextId;
+        private readonly int roomSessionId = inspectorPinRoomSessionId;
+        private readonly string roomKey = inspectorPinRoomKey;
+        private readonly string signature = inspectorPinStackSignature;
+        private readonly bool positionInitialized = inspectorPinPositionInitialized;
+        private readonly Rectangle cardRect = inspectorPinCardRect;
+        private readonly Entity selectedEntity;
+        private readonly int selectedIndex;
+        private readonly int previewIndex;
+
+        internal InspectorPinRollbackState()
+        {
+            CopyIds(inspectorIds, ids);
+            CopyRecords(sourceRecords, records);
+            CopyOrdinals(sourceOrdinalStates, ordinals);
+            selectedIndex = CopyHits(currentStack, selection, inspectorPinSelectedIndex);
+            previewIndex = CopyHits(previewStack, preview, inspectorPinPreviewSelectedIndex);
+            selectedEntity = AkronDeepClone.GetKnownClone(inspectorPinSelectedEntity);
+        }
+
+        internal void Restore()
+        {
+            CopyIds(ids, inspectorIds);
+            CopyRecords(records, sourceRecords);
+            CopyOrdinals(ordinals, sourceOrdinalStates);
+            inspectorPinSelectedIndex = CopyHits(selection, currentStack, selectedIndex);
+            inspectorPinPreviewSelectedIndex = CopyHits(preview, previewStack, previewIndex);
+            inspectorPinSelectedEntity = AkronDeepClone.GetKnownClone(selectedEntity);
+            inspectorPinNextId = nextId;
+            inspectorPinRoomSessionId = roomSessionId;
+            inspectorPinRoomKey = roomKey;
+            inspectorPinStackSignature = signature;
+            inspectorPinPositionInitialized = positionInitialized;
+            inspectorPinCardRect = cardRect;
+            if (inspectorPinSelectedEntity == null)
+            {
+                ClearInspectorPinSelection();
+            }
+        }
+
+        private static void CopyIds(Dictionary<Entity, int> source, Dictionary<Entity, int> target)
+        {
+            target.Clear();
+            foreach (KeyValuePair<Entity, int> pair in source)
+            {
+                Entity entity = AkronDeepClone.GetKnownClone(pair.Key);
+                if (entity != null)
+                {
+                    target.Add(entity, pair.Value);
+                }
+            }
+        }
+
+        private static void CopyRecords(Dictionary<Entity, InspectorSourceRecord> source, Dictionary<Entity, InspectorSourceRecord> target)
+        {
+            target.Clear();
+            foreach (KeyValuePair<Entity, InspectorSourceRecord> pair in source)
+            {
+                Entity entity = AkronDeepClone.GetKnownClone(pair.Key);
+                if (entity != null)
+                {
+                    InspectorSourceRecord record = pair.Value;
+                    // Source binding uses identity in the shared MapData, not
+                    // a cloned EntityData node from the saved entity graph.
+                    target.Add(entity, new InspectorSourceRecord(
+                        record.SourceData, record.SourceId, record.Ordinal,
+                        (InspectorSourceOrdinalState)AkronDeepClone.Clone(record.OrdinalState),
+                        record.RoomSessionId));
+                }
+            }
+        }
+
+        private static void CopyOrdinals(Dictionary<EntityData, InspectorSourceOrdinalState> source, Dictionary<EntityData, InspectorSourceOrdinalState> target)
+        {
+            target.Clear();
+            foreach (KeyValuePair<EntityData, InspectorSourceOrdinalState> pair in source)
+            {
+                target.Add(
+                    pair.Key,
+                    (InspectorSourceOrdinalState)AkronDeepClone.Clone(pair.Value));
+            }
+        }
+
+        private static int CopyHits(List<InspectorHit> source, List<InspectorHit> target, int selectedIndex)
+        {
+            target.Clear();
+            int mappedIndex = 0;
+            for (int index = 0; index < source.Count; index++)
+            {
+                InspectorHit hit = source[index];
+                Entity entity = AkronDeepClone.GetKnownClone(hit.Entity);
+                if (entity == null)
+                {
+                    continue;
+                }
+                if (index == selectedIndex)
+                {
+                    mappedIndex = target.Count;
+                }
+                target.Add(hit.WithEntity(entity));
+            }
+            return mappedIndex;
+        }
+    }
+
     private sealed class InspectorHit
     {
         public Entity Entity { get; set; }
@@ -1815,6 +1930,13 @@ public static partial class AkronEntityInspector
         public Vector2 ClickWorldPoint { get; set; }
         public Point ProbePixel { get; set; }
         public InspectorSourceBinding Binding { get; set; }
+
+        public InspectorHit WithEntity(Entity entity)
+        {
+            InspectorHit copy = (InspectorHit)MemberwiseClone();
+            copy.Entity = entity;
+            return copy;
+        }
     }
 
     private sealed class InspectorSourceRecord

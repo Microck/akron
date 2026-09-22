@@ -98,8 +98,9 @@ public static partial class AkronCommands {
                 AkronActions.SetStartPosSlot(slot);
                 break;
             case "set":
-                AkronActions.SetStartPos(level);
-                break;
+                Log("startpos-capture: scheduled");
+                AkronActions.SetStartPos(level, _ => LogStartPosStatus(Engine.Scene as Level));
+                return;
             case "load":
                 AkronActions.LoadStartPos(level);
                 break;

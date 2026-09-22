@@ -685,7 +685,8 @@ public static partial class AkronSaveLoadService {
         string slotName,
         bool saveTimeAndDeaths,
         bool capturePersistentResources = true,
-        bool prepareForRestore = true
+        bool prepareForRestore = true,
+        bool preserveInspectorState = false
     ) {
         LastPersistentSnapshotError = string.Empty;
         if (level == null) {
@@ -746,6 +747,9 @@ public static partial class AkronSaveLoadService {
             AkronIgnoreSaveStateComponent.RemoveAllFromSnapshot(saveSlot.SavedLevel);
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 CaptureRegisteredActionState(saveSlot, action, level);
+            }
+            if (preserveInspectorState) {
+                saveSlot.InspectorPinRollback = new AkronEntityInspector.InspectorPinRollbackState();
             }
             if (prepareForRestore) {
                 PrepareSlotPreClone(saveSlot);
@@ -989,7 +993,8 @@ public static partial class AkronSaveLoadService {
     internal static bool PrepareWarmStartPosCapture(
         string mapSid,
         out int droppedSlots,
-        out long droppedBytes
+        out long droppedBytes,
+        bool reserveRollback = false
     ) {
         long total = WarmStartPosBytes;
         long projectedCaptureBytes = MinWarmStartPosCaptureReserveBytes;
@@ -1000,13 +1005,14 @@ public static partial class AkronSaveLoadService {
             }
         }
         long warmBudgetBytes = WarmStartPosBudgetBytes;
-        if (projectedCaptureBytes > warmBudgetBytes) {
+        long captureCount = reserveRollback ? 2L : 1L;
+        if (projectedCaptureBytes > warmBudgetBytes / captureCount) {
             droppedSlots = 0;
             droppedBytes = 0;
             return false;
         }
 
-        long targetBytes = warmBudgetBytes - projectedCaptureBytes;
+        long targetBytes = warmBudgetBytes - projectedCaptureBytes * captureCount;
         if (total <= targetBytes) {
             droppedSlots = 0;
             droppedBytes = 0;
@@ -1058,11 +1064,82 @@ public static partial class AkronSaveLoadService {
         MarkRuntimeSlotsChanged();
     }
 
+    internal static AkronSaveLoadSlotLease CaptureFreshBaselineForStartPos(
+        Level level, out int droppedSlots, out long droppedBytes
+    ) {
+        // The live-room rollback stays resident until the fresh baseline is captured.
+        // It is not a cached slot, so reserve both clones before allocating either.
+        if (!PrepareWarmStartPosCapture(
+                level.Session.Area.GetSID(), out droppedSlots, out droppedBytes, reserveRollback: true)) {
+            LastPersistentSnapshotError =
+                "fresh-room baseline and live-room rollback do not fit inside the warm memory limit";
+            return null;
+        }
+
+        string currentSlotName = CurrentSlotName;
+        string room = level.Session.Level;
+        AkronSaveLoadSlot rollback = CaptureRuntimeState(
+            level,
+            AkronActions.StartPosStateSlotPrefix + "Baseline rollback",
+            saveTimeAndDeaths: true,
+            capturePersistentResources: false,
+            prepareForRestore: false,
+            preserveInspectorState: true);
+        if (rollback == null) {
+            LastPersistentSnapshotError = "could not preserve the live room before preparing StartPos";
+            CurrentSlotName = currentSlotName;
+            return null;
+        }
+
+        AkronSaveLoadSlotLease baseline = null;
+        List<Entity> ghosts = AkronSnapshotExclusion.DetachFromLevel(level);
+        AkronIgnoreSaveStateComponent.RemoveAll(level);
+        try {
+            if (TryLoadFreshRoom(level, room, out string error)) {
+                baseline = CaptureFreshRuntimeState(
+                    level, "Akron fresh-room baseline " + room,
+                    out int captureDroppedSlots, out long captureDroppedBytes);
+                droppedSlots += captureDroppedSlots;
+                droppedBytes += captureDroppedBytes;
+            } else {
+                LastPersistentSnapshotError = error;
+            }
+        } catch (Exception exception) {
+            LastPersistentSnapshotError = "could not prepare StartPos: " + exception.GetType().Name + ": " + exception.Message;
+        } finally {
+            // Keep process UI and playback ghosts from the original room, not the
+            // temporary fresh copy. RestoreRuntimeState owns their restore bracket.
+            AkronSnapshotExclusion.DetachFromLevel(level);
+            AkronSnapshotExclusion.ReattachToLevel(level, ghosts);
+            AkronIgnoreSaveStateComponent.ReAddAll(level);
+            try {
+                AkronSaveLoadResult result = RestoreRuntimeState(
+                    level, rollback, allowDeadPlayer: true, freshBaselineStateSlotName: null, rollback: true);
+                if (result != AkronSaveLoadResult.Success) {
+                    baseline?.Dispose();
+                    baseline = null;
+                    throw new InvalidOperationException("Could not restore the live room after preparing StartPos: " + result);
+                }
+            } catch {
+                baseline?.Dispose();
+                throw;
+            } finally {
+                CurrentSlotName = currentSlotName;
+                ReleaseRuntimeSlotResources(rollback);
+            }
+        }
+        return baseline;
+    }
+
     internal static AkronSaveLoadSlotLease CaptureFreshRuntimeState(
         Level level,
         string slotName,
+        out int droppedSlots,
+        out long droppedBytes,
         string runtimeStateSlotName = null
     ) {
+        droppedSlots = 0;
+        droppedBytes = 0;
         if (level == null) {
             return null;
         }
@@ -1071,8 +1148,8 @@ public static partial class AkronSaveLoadService {
         if (!PrepareFreshRuntimeBaselineCapture(
                 level.Session.Area.GetSID(),
                 retainedBaselineAlreadyExists,
-                out _,
-                out _)) {
+                out droppedSlots,
+                out droppedBytes)) {
             LastPersistentSnapshotError =
                 "fresh-room baseline could not be captured inside the warm memory limit";
             return null;
@@ -1120,7 +1197,8 @@ public static partial class AkronSaveLoadService {
         lease = AkronStartPosPersistence.DeduplicateRuntimeFreshBaseline(
             runtimeStateSlotName,
             lease);
-        TrimWarmStartPosSlots(out _);
+        droppedSlots += TrimWarmStartPosSlots(out long trimmedBytes);
+        droppedBytes += trimmedBytes;
         if (WarmStartPosBytes > WarmStartPosBudgetBytes) {
             lease.Dispose();
             LastPersistentSnapshotError =
@@ -1240,7 +1318,8 @@ public static partial class AkronSaveLoadService {
         Level level,
         AkronSaveLoadSlot saveSlot,
         bool allowDeadPlayer,
-        string freshBaselineStateSlotName
+        string freshBaselineStateSlotName,
+        bool rollback = false
     ) {
         if (level == null || saveSlot == null) {
             return AkronSaveLoadResult.NoState;
@@ -1290,8 +1369,8 @@ public static partial class AkronSaveLoadService {
             if (!RestoreNativeSlot(
                     level,
                     saveSlot,
-                    restoreAkronModuleState: false,
-                    restoreGlobalSaveData: false)) {
+                    restoreAkronModuleState: rollback,
+                    restoreGlobalSaveData: rollback)) {
                 return AkronSaveLoadResult.SessionMismatch;
             }
 
@@ -1303,8 +1382,11 @@ public static partial class AkronSaveLoadService {
             if (saveSlot.GameplayBuffers.Count > 0) {
                 AkronGameplayBufferState.RestoreBestEffort(saveSlot.GameplayBuffers);
             }
-            PrepareRuntimeSlotPreClone(saveSlot);
-            AkronStartPosPersistence.UseRuntimeFreshBaseline(freshBaselineStateSlotName);
+            saveSlot.InspectorPinRollback?.Restore();
+            if (!rollback) {
+                PrepareRuntimeSlotPreClone(saveSlot);
+                AkronStartPosPersistence.UseRuntimeFreshBaseline(freshBaselineStateSlotName);
+            }
             // Berry progress is persistent save data. Apply it only after the
             // remaining restore work can no longer report a normal failure.
             if (saveSlot.BerryProgress != null &&
@@ -1491,7 +1573,8 @@ public static partial class AkronSaveLoadService {
                 level,
                 rollbackSlotName,
                 saveTimeAndDeaths: true,
-                capturePersistentResources: false);
+                capturePersistentResources: false,
+                preserveInspectorState: true);
         } catch (Exception exception) {
             CurrentSlotName = slotName;
             LastPersistentSnapshotError = "could not capture pre-load state: " + exception.GetType().Name + ": " + exception.Message;
@@ -1537,7 +1620,12 @@ public static partial class AkronSaveLoadService {
             }
 
             string persistentFailure = LastPersistentSnapshotError;
-            AkronSaveLoadResult rollbackResult = RestoreRuntimeState(level, rollbackSlot, allowDeadPlayer: true);
+            AkronSaveLoadResult rollbackResult = RestoreRuntimeState(
+                level,
+                rollbackSlot,
+                allowDeadPlayer: true,
+                freshBaselineStateSlotName: null,
+                rollback: true);
             // A successful rollback is indistinguishable from "the button did nothing"
             // unless the message says so. Name the outcome, not just the failure.
             LastPersistentSnapshotError = rollbackResult == AkronSaveLoadResult.Success
@@ -1619,6 +1707,8 @@ public static partial class AkronSaveLoadService {
         freshBaseline = CaptureFreshRuntimeState(
             level,
             "Akron restored fresh-room baseline " + document.MapSid + "|" + document.Room,
+            out _,
+            out _,
             document.SlotName);
         if (freshBaseline?.Slot == null) {
             freshBaseline?.Dispose();

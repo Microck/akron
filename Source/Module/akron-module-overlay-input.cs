@@ -328,6 +328,10 @@ public partial class AkronModule {
     }
 
     private static bool ShouldSuppressGlobalOverlayToggle(Scene scene) {
+        if (AkronDiagnosticsMenu.IsOpen) {
+            return true;
+        }
+
         if (scene is not Overworld overworld) {
             return false;
         }
@@ -635,12 +639,17 @@ public partial class AkronModule {
             return false;
         }
 
-        List<Keys> normalizedKeys = keys.Where(key => key != Keys.None).Distinct().ToList();
-        if (normalizedKeys.Count == 0 || !normalizedKeys.Any(key => IsRawKeyPressed(key, keyboard, previousKeyboard))) {
-            return false;
+        bool pressed = false;
+        foreach (Keys key in keys) {
+            if (key == Keys.None) {
+                continue;
+            }
+            if (!keyboard.IsKeyDown(key)) {
+                return false;
+            }
+            pressed |= !previousKeyboard.IsKeyDown(key);
         }
-
-        return normalizedKeys.All(key => keyboard.IsKeyDown(key));
+        return pressed;
     }
 
     private static bool IsKeyboardBindingHeld(IReadOnlyCollection<Keys> keys, KeyboardState keyboard) {
@@ -648,8 +657,17 @@ public partial class AkronModule {
             return false;
         }
 
-        List<Keys> normalizedKeys = keys.Where(key => key != Keys.None).Distinct().ToList();
-        return normalizedKeys.Count > 0 && normalizedKeys.All(key => keyboard.IsKeyDown(key));
+        bool held = false;
+        foreach (Keys key in keys) {
+            if (key == Keys.None) {
+                continue;
+            }
+            if (!keyboard.IsKeyDown(key)) {
+                return false;
+            }
+            held = true;
+        }
+        return held;
     }
 
     // Keys are a chord: all held, one newly pressed. Gamepad and mouse buttons fire on any one
@@ -713,10 +731,6 @@ public partial class AkronModule {
             9 => Settings.LoadStartPosSlot9,
             _ => null
         };
-    }
-
-    private static bool IsRawKeyPressed(Keys key, KeyboardState keyboard, KeyboardState previousKeyboard) {
-        return keyboard.IsKeyDown(key) && !previousKeyboard.IsKeyDown(key);
     }
 
     private static bool IsKeyboardBindingHeld(IReadOnlyCollection<Keys> keys) {

@@ -116,11 +116,16 @@ public partial class AkronModule : EverestModule {
     private static Vector2 preRedirectDashAim;
     private static readonly ConditionalWeakTable<Refill, RefillClaritySpriteState> RefillClaritySpriteStates =
         new ConditionalWeakTable<Refill, RefillClaritySpriteState>();
-    private static readonly Dictionary<RefillClaritySourceCacheKey, RefillClaritySourceFrame[]> RefillClaritySourceFrameCache =
-        new Dictionary<RefillClaritySourceCacheKey, RefillClaritySourceFrame[]>();
-    private static readonly Dictionary<RefillClarityFrameCacheKey, MTexture[]> RefillClarityFrameCache =
-        new Dictionary<RefillClarityFrameCacheKey, MTexture[]>();
-    private static readonly List<VirtualTexture> RefillClarityFrameTextures = new List<VirtualTexture>();
+    private static readonly Dictionary<RefillClaritySourceCacheKey, RefillClaritySourceFrame> RefillClaritySourceFrameCache =
+        new Dictionary<RefillClaritySourceCacheKey, RefillClaritySourceFrame>();
+    private const int MaxRefillClarityCachedFrames = 128;
+    private const long MaxRefillClarityCachedBytes = 4L * 1024L * 1024L;
+    private static readonly Dictionary<RefillClarityFrameCacheKey, RefillClarityFrameCacheEntry> RefillClarityFrameCache =
+        new Dictionary<RefillClarityFrameCacheKey, RefillClarityFrameCacheEntry>();
+    private static readonly ConditionalWeakTable<VirtualTexture, RefillClarityFrameCacheEntry> RefillClarityFrameOwners =
+        new ConditionalWeakTable<VirtualTexture, RefillClarityFrameCacheEntry>();
+    private static long refillClarityCachedBytes;
+    private static long refillClarityUseStamp;
 
     public AkronModule() {
         Instance = this;
@@ -271,6 +276,7 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Unload() {
+        AkronDiagnosticsMenu.CloseActive();
         if (Engine.Instance != null) {
             Engine.Instance.Exiting -= EngineOnExiting;
         }
@@ -456,20 +462,8 @@ public partial class AkronModule : EverestModule {
             orig(self);
             return;
         }
-        if (AkronStartPosPersistence.ConsumeFreshBaselineInitializationUpdate(self)) {
-            // Give each normal room load exactly one Celeste initialization update.
-            orig(self);
-            return;
-        }
-        if (AkronStartPosPersistence.IsFreshBaselineCapturePending(self)) {
-            // Engine.Update can run several fixed updates before one render. Hold
-            // every update after room initialization until the stable-boundary
-            // capture runs, or the disk baseline would depend on frame catch-up.
-            AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
-            return;
-        }
         ulong startPosFrameGeneration = AkronActions.StartPosFrameGeneration;
-        if (startPosFrameGeneration != renderedStartPosFrameGeneration) {
+        if (startPosFrameGeneration != renderedStartPosFrameGeneration || AkronActions.IsStartPosCapturePending) {
             // A fixed-timestep game loop can run more than one update before a
             // render. Keep the saved frame unchanged until it is actually drawn.
             AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
@@ -485,6 +479,10 @@ public partial class AkronModule : EverestModule {
         AkronScreenshotScanner.MaintainActiveScanHost(self);
         AkronAutomationService.ProcessPendingCommands(self);
         if (AkronActions.StartPosFrameGeneration != startPosFrameGeneration) {
+            return;
+        }
+        if (AkronDiagnosticsMenu.UpdatePausedLevel(self)) {
+            AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
             return;
         }
 #if DEBUG
@@ -833,7 +831,7 @@ public partial class AkronModule : EverestModule {
         StressUpdate(scene);
 #endif
         HandleGlobalOverlayHotkeys(scene);
-        if (!Settings.MenuBindingsInGameOnly) {
+        if (!Settings.MenuBindingsInGameOnly && !AkronDiagnosticsMenu.IsOpen) {
             AkronOverlay.ExecuteCustomBoundActions(scene);
         }
 
@@ -1060,16 +1058,17 @@ public partial class AkronModule : EverestModule {
             return;
         }
 
-        foreach (Refill refill in level.Entities.OfType<Refill>()) {
-            DynData<Refill> refillData = new DynData<Refill>(refill);
-            ApplyRefillClaritySprite(refill, refillData.Get<bool>("twoDashes"), refillData.Get<bool>("oneUse"));
+        foreach (Entity entity in level.Entities) {
+            if (entity is not Refill refill) {
+                continue;
+            }
+            ApplyRefillClaritySprite(refill, refill.twoDashes, refill.oneUse);
         }
     }
 
     private static void ApplyRefillClaritySprite(Refill refill, bool twoDashes, bool oneUse) {
         string path = twoDashes ? "objects/refillTwo/" : "objects/refill/";
-        DynData<Refill> refillData = new DynData<Refill>(refill);
-        Sprite sprite = refillData.Get<Sprite>("sprite");
+        Sprite sprite = refill.sprite;
 
         if (!oneUse ||
             !Settings.RefillClarity ||
@@ -1091,7 +1090,7 @@ public partial class AkronModule : EverestModule {
             return;
         }
 
-        MTexture[] frames = GetRefillClarityFrames(sprite, twoDashes, color, opacity);
+        MTexture[] frames = GetRefillClarityFrames(sprite, color, opacity);
         if (frames == null || frames.Length == 0) {
             return;
         }
@@ -1112,49 +1111,74 @@ public partial class AkronModule : EverestModule {
         state.Opacity = opacity;
     }
 
-    private static MTexture[] GetRefillClarityFrames(Sprite sprite, bool twoDashes, int color, int opacity) {
+    private static MTexture[] GetRefillClarityFrames(Sprite sprite, int color, int opacity) {
         if (!sprite.Has("idle")) {
             return null;
         }
 
         MTexture[] idleFrames = sprite.Animations["idle"].Frames;
-        RefillClarityFrameCacheKey key = GetRefillClarityFrameCacheKey(idleFrames, twoDashes, color, opacity);
-        if (RefillClarityFrameCache.TryGetValue(key, out MTexture[] cached)) {
-            return cached;
+        MTexture[] restoredFrames = sprite.Has("idlenr") ? sprite.Animations["idlenr"].Frames : null;
+        MTexture[] frames = new MTexture[idleFrames.Length];
+        for (int index = 0; index < idleFrames.Length; index++) {
+            MTexture frame = idleFrames[index];
+            RefillClarityFrameCacheKey key = GetRefillClarityFrameCacheKey(frame, color, opacity);
+            if (!RefillClarityFrameCache.TryGetValue(key, out RefillClarityFrameCacheEntry cached)) {
+                // A saved sprite can still own a texture evicted from the bounded
+                // cache. Re-admit it without reading pixels or uploading a replacement.
+                if (restoredFrames != null && index < restoredFrames.Length &&
+                    RefillClarityFrameOwners.TryGetValue(restoredFrames[index].Texture, out cached) &&
+                    cached.Key == key) {
+                    VirtualContent.Assets.Add(cached.Frame.Texture);
+                } else {
+                    if (!RefillClaritySourceFrameCache.TryGetValue(key.Source, out RefillClaritySourceFrame source)) {
+                        if (Engine.Graphics?.GraphicsDevice == null) {
+                            return null;
+                        }
+                        source = ReadRefillClaritySourceFrame(frame);
+                        RefillClaritySourceFrameCache.Add(key.Source, source);
+                    }
+                    MTexture generated = CreateRefillClarityFrame(
+                        source, (++refillClarityUseStamp).ToString(CultureInfo.InvariantCulture), color, opacity);
+                    cached = new RefillClarityFrameCacheEntry(key, generated);
+                    RefillClarityFrameOwners.Add(generated.Texture, cached);
+                }
+                RefillClarityFrameCache.Add(key, cached);
+                refillClarityCachedBytes += cached.Bytes;
+            }
+            cached.UseStamp = ++refillClarityUseStamp;
+            frames[index] = cached.Frame;
         }
-
-        RefillClaritySourceFrame[] sourceFrames = GetRefillClaritySourceFrames(idleFrames, twoDashes);
-        if (sourceFrames == null || sourceFrames.Length == 0) {
-            return null;
-        }
-
-        string textureKey = RefillClarityFrameCache.Count.ToString(CultureInfo.InvariantCulture);
-        MTexture[] frames = new MTexture[sourceFrames.Length];
-        for (int index = 0; index < sourceFrames.Length; index++) {
-            frames[index] = CreateRefillClarityFrame(sourceFrames[index], textureKey + "|" + index.ToString(CultureInfo.InvariantCulture), color, opacity);
-        }
-
-        RefillClarityFrameCache[key] = frames;
+        TrimRefillClarityFrameCache();
         return frames;
     }
 
-    private static RefillClaritySourceFrame[] GetRefillClaritySourceFrames(MTexture[] idleFrames, bool twoDashes) {
-        RefillClaritySourceCacheKey key = GetRefillClaritySourceFrameCacheKey(idleFrames, twoDashes);
-        if (RefillClaritySourceFrameCache.TryGetValue(key, out RefillClaritySourceFrame[] cached)) {
-            return cached;
-        }
+    private static void TrimRefillClarityFrameCache() {
+        while (RefillClarityFrameCache.Count > MaxRefillClarityCachedFrames ||
+               refillClarityCachedBytes > MaxRefillClarityCachedBytes) {
+            RefillClarityFrameCacheEntry oldest = null;
+            foreach (RefillClarityFrameCacheEntry entry in RefillClarityFrameCache.Values) {
+                if (oldest == null || entry.UseStamp < oldest.UseStamp) {
+                    oldest = entry;
+                }
+            }
+            RefillClarityFrameCache.Remove(oldest.Key);
+            refillClarityCachedBytes -= oldest.Bytes;
+            // VirtualContent otherwise roots generated textures forever. FNA
+            // finalizes the GPU resource after the last sprite/snapshot releases
+            // it; disposing here would invalidate those still-live references.
+            VirtualContent.Assets.Remove(oldest.Frame.Texture);
 
-        if (Engine.Graphics?.GraphicsDevice == null) {
-            return null;
+            bool sourceStillCached = false;
+            foreach (RefillClarityFrameCacheKey key in RefillClarityFrameCache.Keys) {
+                if (key.Source == oldest.Key.Source) {
+                    sourceStillCached = true;
+                    break;
+                }
+            }
+            if (!sourceStillCached) {
+                RefillClaritySourceFrameCache.Remove(oldest.Key.Source);
+            }
         }
-
-        RefillClaritySourceFrame[] frames = new RefillClaritySourceFrame[idleFrames.Length];
-        for (int index = 0; index < idleFrames.Length; index++) {
-            frames[index] = ReadRefillClaritySourceFrame(idleFrames[index]);
-        }
-
-        RefillClaritySourceFrameCache[key] = frames;
-        return frames;
     }
 
     private static RefillClaritySourceFrame ReadRefillClaritySourceFrame(MTexture frame) {
@@ -1194,23 +1218,21 @@ public partial class AkronModule : EverestModule {
         return framePixels;
     }
 
-    internal static RefillClarityFrameCacheKey GetRefillClarityFrameCacheKey(
-        MTexture[] idleFrames,
-        bool twoDashes,
-        int color,
-        int opacity) {
-        return new RefillClarityFrameCacheKey(idleFrames, twoDashes, color, opacity);
+    private static RefillClarityFrameCacheKey GetRefillClarityFrameCacheKey(MTexture frame, int color, int opacity) {
+        return new RefillClarityFrameCacheKey(GetRefillClaritySourceFrameCacheKey(frame), color, opacity);
     }
 
-    internal static RefillClaritySourceCacheKey GetRefillClaritySourceFrameCacheKey(MTexture[] idleFrames, bool twoDashes) {
-        return new RefillClaritySourceCacheKey(idleFrames, twoDashes);
+    private static RefillClaritySourceCacheKey GetRefillClaritySourceFrameCacheKey(MTexture frame) {
+        Rectangle clip = frame.ClipRect;
+        Vector2 offset = frame.DrawOffset;
+        return new RefillClaritySourceCacheKey(
+            frame.Texture, clip.X, clip.Y, clip.Width, clip.Height, offset.X, offset.Y, frame.Width, frame.Height);
     }
 
     private static MTexture CreateRefillClarityFrame(RefillClaritySourceFrame source, string key, int rgb, int opacity) {
         Color[] pixels = BuildRefillClarityPixels(source.Pixels, source.PixelWidth, source.PixelHeight, rgb, opacity);
         VirtualTexture texture = VirtualContent.CreateTexture("akron-refill-clarity-" + key, source.PixelWidth, source.PixelHeight, Color.Transparent);
         texture.Texture_Safe.SetData(pixels);
-        RefillClarityFrameTextures.Add(texture);
         return new MTexture(texture, source.DrawOffset, source.FrameWidth, source.FrameHeight);
     }
 
@@ -1301,13 +1323,15 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void ClearRefillClarityFrameCache() {
-        foreach (VirtualTexture texture in RefillClarityFrameTextures) {
-            texture.Dispose();
+        foreach (KeyValuePair<VirtualTexture, RefillClarityFrameCacheEntry> owner in RefillClarityFrameOwners) {
+            owner.Key.Dispose();
         }
 
-        RefillClarityFrameTextures.Clear();
+        RefillClarityFrameOwners.Clear();
         RefillClarityFrameCache.Clear();
         RefillClaritySourceFrameCache.Clear();
+        refillClarityCachedBytes = 0;
+        refillClarityUseStamp = 0;
     }
 
     private readonly struct RefillClaritySourceFrame {
@@ -1328,55 +1352,26 @@ public partial class AkronModule : EverestModule {
         public Color[] Pixels { get; }
     }
 
-    internal readonly struct RefillClaritySourceCacheKey : IEquatable<RefillClaritySourceCacheKey> {
-        public RefillClaritySourceCacheKey(MTexture[] frames, bool twoDashes) {
-            Frames = frames;
-            TwoDashes = twoDashes;
+    // SRT clones both animation arrays and MTexture wrappers, but keeps the
+    // underlying VirtualTexture live. Cache pixels by that resource and region,
+    // not by a wrapper that changes on every restore.
+    private readonly record struct RefillClaritySourceCacheKey(
+        VirtualTexture Texture, int X, int Y, int ClipWidth, int ClipHeight,
+        float OffsetX, float OffsetY, int Width, int Height);
+
+    private readonly record struct RefillClarityFrameCacheKey(RefillClaritySourceCacheKey Source, int Color, int Opacity);
+
+    private sealed class RefillClarityFrameCacheEntry {
+        internal RefillClarityFrameCacheEntry(RefillClarityFrameCacheKey key, MTexture frame) {
+            Key = key;
+            Frame = frame;
+            Bytes = (long) frame.Texture.Width * frame.Texture.Height * sizeof(uint);
         }
 
-        private MTexture[] Frames { get; }
-        private bool TwoDashes { get; }
-
-        public bool Equals(RefillClaritySourceCacheKey other) {
-            return ReferenceEquals(Frames, other.Frames) && TwoDashes == other.TwoDashes;
-        }
-
-        public override bool Equals(object obj) {
-            return obj is RefillClaritySourceCacheKey other && Equals(other);
-        }
-
-        public override int GetHashCode() {
-            return HashCode.Combine(RuntimeHelpers.GetHashCode(Frames), TwoDashes);
-        }
-    }
-
-    internal readonly struct RefillClarityFrameCacheKey : IEquatable<RefillClarityFrameCacheKey> {
-        public RefillClarityFrameCacheKey(MTexture[] frames, bool twoDashes, int color, int opacity) {
-            Frames = frames;
-            TwoDashes = twoDashes;
-            Color = color;
-            Opacity = opacity;
-        }
-
-        private MTexture[] Frames { get; }
-        private bool TwoDashes { get; }
-        private int Color { get; }
-        private int Opacity { get; }
-
-        public bool Equals(RefillClarityFrameCacheKey other) {
-            return ReferenceEquals(Frames, other.Frames) &&
-                   TwoDashes == other.TwoDashes &&
-                   Color == other.Color &&
-                   Opacity == other.Opacity;
-        }
-
-        public override bool Equals(object obj) {
-            return obj is RefillClarityFrameCacheKey other && Equals(other);
-        }
-
-        public override int GetHashCode() {
-            return HashCode.Combine(RuntimeHelpers.GetHashCode(Frames), TwoDashes, Color, Opacity);
-        }
+        internal RefillClarityFrameCacheKey Key { get; }
+        internal MTexture Frame { get; }
+        internal long Bytes { get; }
+        internal long UseStamp { get; set; }
     }
 
     private sealed class RefillClaritySpriteState {

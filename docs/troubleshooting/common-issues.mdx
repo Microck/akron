@@ -66,3 +66,56 @@ Confirm the following:
 - The category filter is not overly restrictive.
 - The search text is not filtering out the desired pack.
 - The catalog entry's map SID matches the current map's SID.
+
+## Room transitions or Speedrun Tool unfreezes hitch
+
+Akron prepares a room's StartPos restart baseline when **Set** first needs it,
+not on every room entry. That first Set can still take longer than later Sets.
+Normal Speedrun Tool loads reuse Refill Clarity textures instead of reading them
+back from the GPU on the first resumed update.
+
+The reusable Clarity cache holds at most 128 generated frames and 4 MiB of texture
+pixels. Source pixel buffers leave the cache when no cached variant needs them.
+Live refills and savestates may still own textures outside that cache; those
+textures remain valid until their owners release them.
+
+If a hitch remains, distinguish the initial save, the Load keypress, the first
+resumed frame, and an actual room transition in your diagnostic description.
+Those are separate operations and may have different causes.
+
+## Send diagnostics to a maintainer
+
+Open **Interface → Send diagnostics** in Akron's overlay, or **Send diagnostics**
+in Akron's Everest mod options. Choose **Describe the problem (optional)...** to
+explain what happened, what you expected, and how to reproduce it. The editor
+accepts up to 4,000 characters, including multiple lines and pasted text.
+Return to the consent screen, review it, then choose **Send now**. Nothing is
+uploaded just by opening the menu.
+
+The report includes game, Everest and Akron versions, loaded mod names and
+versions, the current map and room, CPU, GPU, RAM, operating system and runtime.
+It also includes available tails of the game log, current and previous Akron
+logs, and the latest Akron performance recording. Each log is limited to 1 MiB;
+the complete upload is limited to 4 MiB.
+
+Akron redacts common credentials, local paths, usernames and computer names from
+automatic details and logs. Other mods may write personal text that these filters
+do not recognize. Your description is sent as written; do not include passwords
+or other private information. Saves and environment variables are not collected.
+
+The consent screen shows the destination, normally
+`https://akron.micr.dev/uploads/diagnostics`. Reports stay in private Cloudflare
+storage, not the public pack catalog. The service queues each accepted report for
+Akron's private Discord channel **#diagnostic-alert**, where people with access
+can read the description and download the complete JSON report. After receipt
+is confirmed, copy the report ID for follow-up. The ID is not a public download
+link.
+
+Keep the menu open while sending. Closing it cancels the request, but cannot
+recall a report the server already received. The game does not retry uploads
+automatically. The service retries Discord delivery if it cannot confirm that
+an accepted report was posted; you do not need to send it again.
+
+If upload receipt is unconfirmed, a maintainer can check the report ID before you
+send another report. The game needs network access; an offline launcher sandbox
+can block uploads even when your browser connects normally.

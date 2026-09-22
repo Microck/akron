@@ -6,6 +6,26 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Added
+
+- Add **Send diagnostics** to the Interface tab and Akron's mod options. Describe the problem, review consent, and send bounded logs, mod versions and system specs to private Cloudflare storage and Akron's private Discord support channel. Automatic redaction covers common credentials, including bare Bearer and Basic values, and local identifiers.
+
+### Changed
+
+- Prepare StartPos restart baselines only when Set needs them, rather than cloning every room on entry or reload. The first Set in a room now does that work explicitly.
+
+### Fixed
+
+- Reuse Refill Clarity textures after normal Speedrun Tool savestate loads instead of rebuilding them through GPU readbacks on the first resumed update.
+- Bound Refill Clarity's reusable texture and pixel caches without invalidating textures still held by live refills or savestates.
+- Reduce recurring gameplay allocations from keyboard-binding polling and Refill Clarity's per-frame entity checks.
+- Reserve capacity for both temporary StartPos clones before preparing a new restart baseline, and report older slots evicted both before and after measuring the captured baseline.
+- Keep diagnostics from re-showing a hidden pause menu or losing its visibility when the dialog closes.
+- Preserve Entity Inspector pins and map bindings while StartPos prepares a fresh-room baseline.
+- Defer StartPos Set until outer update hooks and random-number scopes have unwound, while holding the requested gameplay frame.
+- Keep console Set status on the active map when a queued capture is canceled by a scene change.
+- Restore Akron module state and global save data when a failed cold StartPos Load rolls back to the live room.
+
 ## Akron Beta 81
 
 ### Changed

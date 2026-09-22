@@ -18,6 +18,7 @@ The Interface tab controls the Akron overlay itself and the public `.akr` pack w
 | Block Gameplay Input | Toggle | Keep gameplay input from reaching Madeline while the overlay is open. On by default. | None |
 | Streamer Mode | Toggle | Replace full local filesystem paths with filenames. | None |
 | Logging | Toggle | Write local Akron diagnostic logs to `Saves/AkronLogs`. | Goldberry/Hardlist clear |
+| Send diagnostics | Action | Describe a problem, review consent, and send bounded logs, mod versions and system specs to Akron's private Discord support channel. | None |
 | Search Autofocus | Toggle | Focus Akron search automatically when the overlay opens. | None |
 | Search | Text input | Filter visible Akron rows by label or search alias. | None |
 
@@ -91,3 +92,15 @@ Clicking **Community Packs** opens a standalone browser window. Use it to search
 **Upload Pack** is the only public submission path for map-linked StartPos, Auto Kill, and Auto Deafen packs. Akron exports the selected section, captures at least one marked room, and sends the batch to private moderation storage. Staff approval publishes the pack to the catalog and creates its Discord showcase post.
 
 Keybind, HUD, audio, and recorder packs are not map catalog entries. Post those exports in their matching Discord pack forums.
+
+## Send diagnostics
+
+**Send diagnostics** opens a consent menu before any upload. It is also available
+in Akron's Everest mod options. Add an optional problem description, then choose
+**Send now**. Reports use the configured community upload service, stay in private
+Cloudflare storage, and are queued for Akron's private Discord channel
+**#diagnostic-alert** with the full report attached. They never enter the public
+pack catalog. Keep the report ID for follow-up.
+
+See [Send diagnostics to a maintainer](/troubleshooting/common-issues#send-diagnostics-to-a-maintainer)
+for included data, redaction limits and cancellation behavior.

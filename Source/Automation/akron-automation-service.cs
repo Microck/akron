@@ -57,6 +57,7 @@ public static class AkronAutomationService {
         "akron_dash_redirect",
         "akron_death_particles",
         "akron_debug_snapshot",
+        "akron_diagnostics",
         "akron_deload_spinners",
         "akron_editable_flag",
         "akron_evm",

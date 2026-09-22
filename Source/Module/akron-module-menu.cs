@@ -22,6 +22,9 @@ public partial class AkronModule {
         menu.Add(new TextMenu.SubHeader("Safety"));
         menu.Add(new TextMenu.OnOff("Streamer Mode", Settings.StreamerMode).Change(value => Settings.StreamerMode = value));
         menu.Add(new TextMenu.OnOff("Safe Mode", Settings.SafeMode).Change(value => Settings.SafeMode = value));
+
+        menu.Add(new TextMenu.SubHeader("Support"));
+        menu.Add(new TextMenu.Button("Send diagnostics").Pressed(() => AkronDiagnosticsMenu.Open(menu)));
     }
 
     private void OpenKeyboardConfig(TextMenu menu) {
