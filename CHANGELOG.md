@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Fixed
+
+- Restore Olympus and raw install links for private GameBanana releases by serving the public GitHub Release archive.
+
 ## Akron Beta 82
 
 ### Added

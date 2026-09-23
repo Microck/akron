@@ -6,7 +6,7 @@ readme_path="${AKRON_README_PATH-README.md}"
 website_source_path="${AKRON_WEBSITE_SOURCE_PATH-}"
 website_api_path="${AKRON_WEBSITE_API_PATH-}"
 website_vercel_path="${AKRON_WEBSITE_VERCEL_PATH-}"
-api_url="https://api.gamebanana.com/Core/Item/Data?itemtype=Mod&itemid=${mod_id}&fields=Files().aFiles()&return_keys=1&format=json_min&flags=JSON_UNESCAPED_SLASHES"
+release_tag="${RELEASE_TAG-}"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required to parse the GameBanana API response." >&2
@@ -75,6 +75,11 @@ if ! [[ "$latest_file_id" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
+if [ -n "$website_source_path$website_api_path" ] && ! [[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]; then
+  echo "RELEASE_TAG is required to update the website install archive." >&2
+  exit 1
+fi
+
 if [ -n "$readme_path" ]; then
   FILE_ID="$latest_file_id" MOD_ID="$mod_id" perl -0pi -e '
     my $file_id = $ENV{"FILE_ID"};
@@ -97,35 +102,11 @@ for website_fallback_path in "$website_source_path" "$website_api_path"; do
     continue
   fi
 
-  FILE_ID="$latest_file_id" MOD_ID="$mod_id" perl -0pi -e '
-    my $file_id = $ENV{"FILE_ID"};
-    my $mod_id = $ENV{"MOD_ID"};
-
-    s#const gamebananaModId = "\d+";#const gamebananaModId = "$mod_id";#g;
-    s#const gamebananaFallbackFileId = "\d+";#const gamebananaFallbackFileId = "$file_id";#g;
+  RELEASE_TAG="$release_tag" perl -0pi -e '
+    my $tag = $ENV{"RELEASE_TAG"};
+    my $replacements = s#const releaseTag = "v[^"]+";#const releaseTag = "$tag";#g;
+    die "Website install releaseTag is missing\n" unless $replacements;
   ' "$website_fallback_path"
 
-  echo "$website_fallback_path points to file $latest_file_id for mod $mod_id."
+  echo "$website_fallback_path points to release $release_tag."
 done
-
-if [ -n "$website_vercel_path" ]; then
-  FILE_ID="$latest_file_id" MOD_ID="$mod_id" node - "$website_vercel_path" <<'EOF'
-const fs = require("node:fs");
-
-const filePath = process.argv[2];
-const fileId = process.env.FILE_ID;
-const modId = process.env.MOD_ID;
-
-const config = JSON.parse(fs.readFileSync(filePath, "utf8"));
-for (const route of config.redirects ?? []) {
-  if (route.source === "/olympus") {
-    route.destination = `everest:https://gamebanana.com/mmdl/${fileId},Mod,${modId}`;
-  } else if (route.source === "/raw") {
-    route.destination = `https://gamebanana.com/dl/${fileId}`;
-  }
-}
-fs.writeFileSync(filePath, `${JSON.stringify(config, null, 2)}\n`);
-EOF
-
-  echo "Akron website redirect routes point to file $latest_file_id for mod $mod_id."
-fi

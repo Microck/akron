@@ -60,56 +60,59 @@ else
     fail "GitHub Release ${tag} does not exist"
 fi
 
-# --- 2. GameBanana: update naming this version --------------------------------
-# The mod is private on GameBanana, so the anonymous API hides its file list;
-# the update feed and the raw download links below are the public record.
-updates_has_version() {
-    local updates
-    updates="$(curl -fsS "https://gamebanana.com/apiv11/Mod/${GAMEBANANA_MOD_ID}/Updates?_nPage=1")" || return 1
-    grep -qF "$version" <<<"$updates"
+# --- 2. GameBanana: published file metadata ---------------------------------
+# A private GameBanana mod can list files through Core/Item/Data but denies
+# anonymous update and download requests. Keep the upload check separate from
+# the public install path; the publisher verifies the linked update with auth.
+files_api="https://api.gamebanana.com/Core/Item/Data?itemtype=Mod&itemid=${GAMEBANANA_MOD_ID}&fields=Files().aFiles()&return_keys=1&format=json_min&flags=JSON_UNESCAPED_SLASHES"
+gamebanana_has_release_file() {
+    local files github_md5
+    files="$(curl -fsS "$files_api")" || return 1
+    github_md5="$(md5sum "$workdir/Akron-${tag}.zip" | cut -d' ' -f1)"
+    jq -e --arg md5 "$github_md5" --arg version "$version" '
+        .["Files().aFiles()"] | any(.[];
+            ((._sFile | ascii_downcase | gsub("[^a-z0-9]"; "")) | contains(($version | ascii_downcase | gsub("[^a-z0-9]"; ""))))
+            and ._sMd5Checksum == $md5
+            and ._bIsArchived == false
+            and ._sAnalysisResult == "ok"
+            and ._sAvResult == "clean")
+    ' <<<"$files" >/dev/null
 }
-if retry 6 30 "GameBanana update naming ${version}" updates_has_version; then
-    pass "GameBanana updates name ${version}"
+if retry 6 30 "GameBanana file matching ${version}" gamebanana_has_release_file; then
+    pass "GameBanana lists the release archive with matching MD5"
 else
-    fail "GameBanana updates do not name ${version}"
+    fail "GameBanana does not list the release archive with matching MD5"
 fi
 
-# --- 3. akron.micr.dev install endpoints, bound to the tag by checksum -------
-# /raw names the current GameBanana file id; /olympus must hand Olympus the
-# same id, and the bytes GameBanana serves for it must be the exact release
-# zip. That binds both endpoints to the tag harder than reading the mod page.
-raw_redirect="$(curl -fsS -o /dev/null -w '%{redirect_url}' "https://akron.micr.dev/raw" || true)"
-file_id="$(grep -oE '[0-9]+$' <<<"$raw_redirect" || true)"
-if [ -n "$file_id" ]; then
-    pass "akron.micr.dev/raw names GameBanana file ${file_id}"
+# --- 3. Public install endpoints must serve the GitHub release bytes ---------
+release_url="https://github.com/${REPO}/releases/download/${tag}/Akron-${tag}.zip"
+raw_points_at_release() {
+    local redirect
+    redirect="$(curl -fsS -o /dev/null -w '%{redirect_url}' "https://akron.micr.dev/raw")" || return 1
+    [ "$redirect" = "$release_url" ]
+}
+if retry 6 30 "akron.micr.dev/raw -> ${release_url}" raw_points_at_release; then
+    pass "akron.micr.dev/raw points to the public release archive"
 else
-    fail "akron.micr.dev/raw does not name a GameBanana file (redirect: '${raw_redirect}')"
+    fail "akron.micr.dev/raw does not point to the public release archive"
 fi
 
-olympus_points_at_file() {
-    [ -n "$file_id" ] || return 1
+olympus_points_at_release() {
     local redirect
     redirect="$(curl -fsS -o /dev/null -w '%{redirect_url}' "https://akron.micr.dev/olympus")" || return 1
-    grep -qF "gamebanana.com/mmdl/${file_id}" <<<"$redirect"
+    [ "$redirect" = "everest:${release_url}" ]
 }
-if retry 6 30 "akron.micr.dev/olympus -> mmdl/${file_id}" olympus_points_at_file; then
-    pass "akron.micr.dev/olympus hands Olympus mmdl/${file_id}"
+if retry 6 30 "akron.micr.dev/olympus -> everest:${release_url}" olympus_points_at_release; then
+    pass "akron.micr.dev/olympus hands Olympus the public release archive"
 else
-    fail "akron.micr.dev/olympus does not point at mmdl/${file_id}"
+    fail "akron.micr.dev/olympus does not hand Olympus the public release archive"
 fi
 
-gamebanana_serves_release_bytes() {
-    [ -n "$file_id" ] || return 1
-    curl -fsSL -o "$workdir/gamebanana.zip" "https://gamebanana.com/dl/${file_id}" || return 1
-    local github_sum gamebanana_sum
-    github_sum="$(awk '{print $1}' "$workdir/Akron-${tag}.zip.sha256" 2>/dev/null)" || return 1
-    gamebanana_sum="$(sha256sum "$workdir/gamebanana.zip" | awk '{print $1}')"
-    [ -n "$github_sum" ] && [ "$github_sum" = "$gamebanana_sum" ]
-}
-if retry 6 30 "GameBanana file ${file_id} matching the release checksum" gamebanana_serves_release_bytes; then
-    pass "GameBanana file ${file_id} is byte-identical to the GitHub release zip"
+if curl -fsSL -o "$workdir/install.zip" "https://akron.micr.dev/raw" &&
+        cmp -s "$workdir/install.zip" "$workdir/Akron-${tag}.zip"; then
+    pass "public raw download is byte-identical to the GitHub release zip"
 else
-    fail "GameBanana file ${file_id} does not match the GitHub release checksum"
+    fail "public raw download differs from the GitHub release zip"
 fi
 
 # --- 4. README on main keeps the stable install endpoints --------------------

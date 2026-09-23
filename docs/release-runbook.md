@@ -17,9 +17,9 @@ Required public surfaces:
 
 - GitHub tag: `vX.Y.Z`
 - GitHub Release: readable title, notes, `Akron-vX.Y.Z.zip`, its `.zip.sha256` checksum, the `.dependencies.json` dependency manifest, and the `.cdx.json` CycloneDX SBOM
-- GameBanana: release update and downloadable file for the same tag
+- GameBanana: release update and matching uploaded file metadata for the same tag; private submissions may reject anonymous downloads
 - README: Olympus one-click handoff and raw-download links point at Akron's stable install endpoints
-- `akron.micr.dev`: docs are current, install endpoints resolve to the published release, and fallback GameBanana file ids point at the published file
+- `akron.micr.dev`: docs are current, and both install endpoints resolve to the published GitHub Release archive
 
 Tags and artifact names stay canonical because external links use them. Public titles and changelog headings can use readable names such as `Akron Beta 42`. Do not mint a replacement tag for a sync or publishing failure unless rollback or unpublish has been explicitly chosen. Normal recovery repairs the same tag.
 
@@ -51,9 +51,9 @@ as the release owner; everything after the tag is Actions.
 
 3. The tag triggers the `Release` workflow as before. When it completes, the
    `Verify Release` workflow runs `scripts/release/verify-release.sh` against
-   the tag: release assets, checksum, zip integrity, the GameBanana update,
-   both `akron.micr.dev` install endpoints, byte-identity between the
-   GameBanana file and the GitHub release zip, and the README links. A stale
+   the tag: release assets, checksum, zip integrity, GameBanana file metadata,
+   both `akron.micr.dev` install endpoints, byte-identity between the public
+   download and the GitHub release zip, and the README links. A stale
    surface fails that run instead of waiting for someone to remember a check.
    The same script runs locally, and the workflow can be dispatched with
    `tag_name` when repairing an old tag.
@@ -201,9 +201,9 @@ gh run list -R Microck/Akron --workflow 'Sync GameBanana README Links' --limit 5
 
 3. GameBanana:
 
-- Verify the rendered mod page shows the new release/update.
-- Verify the latest file is downloadable and matches the released version.
-- Verify `https://akron.micr.dev/olympus` resolves to the current `everest:` install URL and `https://akron.micr.dev/raw` resolves to the new raw download file.
+- Confirm the publisher created the versioned update and the Core Files API lists a matching, unarchived release archive.
+- A private GameBanana submission may reject anonymous downloads and updates. Do not use its file links for public installation.
+- Verify `https://akron.micr.dev/olympus` resolves to the GitHub release archive with the `everest:` protocol, and `https://akron.micr.dev/raw` downloads that archive.
 
 4. README:
 
@@ -216,7 +216,7 @@ Confirm the image buttons point at Akron's stable install endpoints.
 5. `akron.micr.dev`:
 
 - Verify the rendered public site reflects the released docs.
-- Verify install/download links resolve to the current GameBanana file.
+- Verify install/download links resolve to the current GitHub release archive and the downloaded bytes match its checksum.
 - Verify any changed docs pages render correctly.
 
 Rendered public pages should be checked with a browser-capable CLI or agent workflow when possible. API and text checks are useful, but they do not catch stale rendered content, broken layout, or bad public links.
