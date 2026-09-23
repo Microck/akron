@@ -99,7 +99,7 @@ fi
 
 olympus_points_at_release() {
     local redirect
-    redirect="$(curl -fsS -o /dev/null -w '%{redirect_url}' "https://akron.micr.dev/olympus")" || return 1
+    redirect="$(curl -fsSI "https://akron.micr.dev/olympus" | tr -d '\r' | sed -n 's/^[Ll]ocation: //p')" || return 1
     [ "$redirect" = "everest:${release_url}" ]
 }
 if retry 6 30 "akron.micr.dev/olympus -> everest:${release_url}" olympus_points_at_release; then
