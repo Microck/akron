@@ -501,6 +501,44 @@ public sealed class CommunityPackTests {
     }
 
     [Fact]
+    public void DiagnosticsIssueFieldsStayTogetherWithTheLogReport() {
+        string description = AkronDiagnosticsMenu.FormatDescription(
+            "  StartPos fails after reload  ",
+            "The room stays empty.",
+            "1. Set a StartPos\n2. Reload the room",
+            "The room restores.",
+            "Map: example/map");
+        AkronDiagnosticReport report = new AkronDiagnosticReport {
+            ReportId = Guid.NewGuid().ToString("N"),
+            CreatedUtc = DateTime.UtcNow.ToString("O"),
+            Description = description
+        };
+        report.Logs.Add(new AkronDiagnosticLog { Name = "log.txt", Text = "room reload" });
+
+        using JsonDocument serialized = JsonDocument.Parse(AkronDiagnostics.SerializeBounded(report));
+        JsonElement root = serialized.RootElement;
+        Assert.Equal(
+            "## Title\nStartPos fails after reload\n\n## What happened\nThe room stays empty.\n\n## Steps to reproduce\n1. Set a StartPos\n2. Reload the room\n\n## Expected behavior\nThe room restores.\n\n## Additional context\nMap: example/map",
+            root.GetProperty("description").GetString());
+        Assert.Equal("room reload", root.GetProperty("logs")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public void DiagnosticsCanSerializeLogsWithoutAnIssueDescription() {
+        string description = AkronDiagnosticsMenu.FormatDescription(" ", "\n", "", "\t", "  ");
+        AkronDiagnosticReport report = new AkronDiagnosticReport {
+            ReportId = Guid.NewGuid().ToString("N"),
+            CreatedUtc = DateTime.UtcNow.ToString("O"),
+            Description = description
+        };
+        report.Logs.Add(new AkronDiagnosticLog { Name = "log.txt", Text = "room reload" });
+
+        using JsonDocument serialized = JsonDocument.Parse(AkronDiagnostics.SerializeBounded(report));
+        Assert.Equal(string.Empty, serialized.RootElement.GetProperty("description").GetString());
+        Assert.Equal("room reload", serialized.RootElement.GetProperty("logs")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
     public void DiagnosticsRedactCredentialsAndLocalIdentifiersWithoutDroppingUsefulLogLines() {
         string text = "transition a -> b\n" +
             "Authorization: Bearer private-auth-value\n" +

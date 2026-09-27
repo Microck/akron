@@ -8,6 +8,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Open Send diagnostics in Akron's ImGui overlay, attach an optional issue report to the logs, and confirm before sending a blank report.
 - Restore Olympus and raw install links for private GameBanana releases by serving the public GitHub Release archive.
 
 ## Akron Beta 82

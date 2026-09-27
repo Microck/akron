@@ -35,10 +35,12 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     private static bool inputSessionRequested;
 
     private readonly GraphicsDevice graphicsDevice;
+    private readonly IntPtr context;
     private readonly Dictionary<IntPtr, Texture2D> loadedTextures = new Dictionary<IntPtr, Texture2D>();
     private readonly Dictionary<string, IntPtr> embeddedTextureIds = new Dictionary<string, IntPtr>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IntPtr> byteTextureIds = new Dictionary<string, IntPtr>(StringComparer.Ordinal);
     private readonly HashSet<Keys> keyboardKeysBlockedUntilRelease = new HashSet<Keys>();
+    private readonly Queue<char> pendingTextInput = new Queue<char>();
     private readonly Keys[] allKeys = Enum.GetValues(typeof(Keys)).Cast<Keys>().ToArray();
     private readonly byte[] fontBytes;
     private readonly GCHandle fontHandle;
@@ -55,6 +57,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     private IntPtr? fontTextureId;
     private int scrollWheelValue;
     private KeyboardState previousKeyboard;
+    private char pendingHighSurrogate;
     private bool disposed;
     private static bool initializationFailed;
     private static int initializationRetryFrames;
@@ -69,7 +72,8 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         this.graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
 
         EnsureNativeResolverRegistered();
-        ImGui.SetCurrentContext(ImGui.CreateContext());
+        context = ImGui.CreateContext();
+        ImGui.SetCurrentContext(context);
         ImGui.GetIO().ConfigFlags &= ~ImGuiConfigFlags.NavEnableKeyboard;
 
         fontBytes = LoadEmbeddedResource("poppins.ttf");
@@ -91,6 +95,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         };
 
         RebuildFontAtlas();
+        TextInput.OnInput += QueueTextInput;
     }
 
     public static bool WantCaptureKeyboard { get; private set; }
@@ -103,6 +108,12 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         WantCaptureKeyboard = false;
         WantTextInput = false;
         WantCaptureMouse = false;
+    }
+
+    internal static void Shutdown() {
+        instance?.Dispose();
+        instance = null;
+        EndInputSession();
     }
 
     internal static void BeginInputSession() {
@@ -217,6 +228,8 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         }
 
         disposed = true;
+        TextInput.OnInput -= QueueTextInput;
+        ImGui.DestroyContext(context);
         if (fontHandle.IsAllocated) {
             fontHandle.Free();
         }
@@ -382,6 +395,8 @@ internal sealed class AkronImGuiRenderer : IDisposable {
             keyboardKeysBlockedUntilRelease.Clear();
             keyboardKeysBlockedUntilRelease.UnionWith(physicalKeyboard.GetPressedKeys());
             previousKeyboard = new KeyboardState();
+            pendingTextInput.Clear();
+            pendingHighSurrogate = '\0';
         }
 
         KeyboardState keyboard = acceptsInput
@@ -392,15 +407,38 @@ internal sealed class AkronImGuiRenderer : IDisposable {
                 io.AddKeyEvent(imguiKey, keyboard.IsKeyDown(key));
             }
 
-            if (keyboard.IsKeyDown(key) && !previousKeyboard.IsKeyDown(key) && TryGetInputCharacter(keyboard, key, out char character)) {
+            if (!AkronDiagnosticsMenu.IsOpen && keyboard.IsKeyDown(key) && !previousKeyboard.IsKeyDown(key) && TryGetInputCharacter(keyboard, key, out char character)) {
                 io.AddInputCharacter(character);
             }
+        }
+
+        if (AkronDiagnosticsMenu.IsOpen && acceptsInput) {
+            while (pendingTextInput.Count > 0) {
+                char character = pendingTextInput.Dequeue();
+                if (char.IsHighSurrogate(character)) {
+                    pendingHighSurrogate = character;
+                } else if (char.IsLowSurrogate(character)) {
+                    if (pendingHighSurrogate != '\0') io.AddInputCharacter((uint) char.ConvertToUtf32(pendingHighSurrogate, character));
+                    pendingHighSurrogate = '\0';
+                } else {
+                    pendingHighSurrogate = '\0';
+                    if (!char.IsControl(character)) io.AddInputCharacter(character);
+                }
+            }
+        } else {
+            pendingTextInput.Clear();
+            pendingHighSurrogate = '\0';
         }
 
         io.AddKeyEvent(ImGuiKey.ModCtrl, keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl));
         io.AddKeyEvent(ImGuiKey.ModShift, keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift));
         io.AddKeyEvent(ImGuiKey.ModAlt, keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt));
         previousKeyboard = keyboard;
+    }
+
+    // Celeste supplies translated Unicode here. Diagnostics uses it instead of the US-keyboard fallback.
+    private void QueueTextInput(char character) {
+        if (AkronDiagnosticsMenu.IsOpen) pendingTextInput.Enqueue(character);
     }
 
     internal static Keys[] FilterPressedKeys(Keys[] pressedKeys, HashSet<Keys> blockedKeys) {

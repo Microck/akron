@@ -26,6 +26,8 @@ public partial class AkronModule {
         KeyboardState previousKeyboard = previousStartPosHotkeyKeyboard;
         previousStartPosHotkeyKeyboard = keyboard;
 
+        if (AkronDiagnosticsMenu.IsOpen) return;
+
         if (Overlay?.IsTransientMouseUiActive == true && IsOverlayTogglePressed()) {
             Overlay.CancelTransientMouseUiForOverlayToggle();
             Overlay.PrewarmLayout(level);
@@ -229,6 +231,11 @@ public partial class AkronModule {
         KeyboardState keyboard = Keyboard.GetState();
         KeyboardState previousKeyboard = previousGlobalFrameBypassKeyboard;
         previousGlobalFrameBypassKeyboard = keyboard;
+
+        if (AkronDiagnosticsMenu.IsOpen) {
+            RefreshOverlayToggleKeyboardState();
+            return;
+        }
 
         if (Overlay?.IsTransientMouseUiActive == true && IsOverlayTogglePressed()) {
             Overlay.CancelTransientMouseUiForOverlayToggle();
