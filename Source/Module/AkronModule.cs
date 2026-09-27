@@ -375,6 +375,7 @@ public partial class AkronModule : EverestModule {
         AkronActions.RestoreLowVolumeBypass();
         AkronRuntimeOptions.Reset();
         AkronOverlayBlur.Unload();
+        AkronImGuiRenderer.Shutdown();
         deferredScreenWipeAction = null;
         ClearDeathWipeRenderSuppression();
         if (AkronInternalRecorder.IsRecording) {
@@ -479,10 +480,6 @@ public partial class AkronModule : EverestModule {
         AkronScreenshotScanner.MaintainActiveScanHost(self);
         AkronAutomationService.ProcessPendingCommands(self);
         if (AkronActions.StartPosFrameGeneration != startPosFrameGeneration) {
-            return;
-        }
-        if (AkronDiagnosticsMenu.UpdatePausedLevel(self)) {
-            AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
             return;
         }
 #if DEBUG
@@ -800,6 +797,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void EngineOnUpdate(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime) {
+        AkronDiagnosticsMenu.CloseIfSceneChanged(Engine.Scene);
         // First thing in the hook, so the recorded interval spans a whole engine
         // update including everything Akron itself adds to the frame.
         AkronPerformanceTelemetry.RecordUpdateFrame();

@@ -86,11 +86,11 @@ Those are separate operations and may have different causes.
 ## Send diagnostics to a maintainer
 
 Open **Interface → Send diagnostics** in Akron's overlay, or **Send diagnostics**
-in Akron's Everest mod options. Choose **Describe the problem (optional)...** to
-explain what happened, what you expected, and how to reproduce it. The editor
-accepts up to 4,000 characters, including multiple lines and pasted text.
-Return to the consent screen, review it, then choose **Send now**. Nothing is
-uploaded just by opening the menu.
+in Akron's Everest mod options. The Akron form has fields for a title, what
+happened, steps to reproduce it, expected behavior, and extra context. The
+combined report accepts up to 4,000 characters. Choose **Send now** to upload.
+If every field is blank, Akron asks you to confirm first. Opening the form does
+not upload anything.
 
 The report includes game, Everest and Akron versions, loaded mod names and
 versions, the current map and room, CPU, GPU, RAM, operating system and runtime.
@@ -103,7 +103,7 @@ automatic details and logs. Other mods may write personal text that these filter
 do not recognize. Your description is sent as written; do not include passwords
 or other private information. Saves and environment variables are not collected.
 
-The consent screen shows the destination, normally
+The default destination is
 `https://akron.micr.dev/uploads/diagnostics`. Reports stay in private Cloudflare
 storage, not the public pack catalog. The service queues each accepted report for
 Akron's private Discord channel **#diagnostic-alert**, where people with access

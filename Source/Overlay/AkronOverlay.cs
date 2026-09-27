@@ -229,6 +229,7 @@ public sealed partial class AkronOverlay : Entity {
 
     public bool SearchOwnsCurrentKeyboardFrame {
         get {
+            if (AkronDiagnosticsMenu.IsOpen) return true;
             return ShouldOwnCurrentKeyboardFrame(
                 autoKillAreaSelectionActive || autoDeafenAreaSelectionActive || startPosPlacementActive,
                 Visible,
@@ -311,6 +312,11 @@ public sealed partial class AkronOverlay : Entity {
         }
 
         if (UpdateBindingCapture()) {
+            return;
+        }
+
+        if (AkronDiagnosticsMenu.IsOpen) {
+            SearchOwnsGameplayInputThisFrame = true;
             return;
         }
 
@@ -413,6 +419,9 @@ public sealed partial class AkronOverlay : Entity {
         bool surfaceRendered = AkronImGuiRenderer.Render(DrawImGuiMenu);
         if (surfaceRendered) {
             imguiFrameLifecycle.MarkSurfaceSubmitted();
+        } else if (AkronDiagnosticsMenu.IsOpen) {
+            // The SpriteBatch fallback cannot show this ImGui form. Restore its caller.
+            AkronDiagnosticsMenu.CloseActive();
         }
         return surfaceRendered;
     }

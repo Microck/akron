@@ -38,6 +38,7 @@ public sealed partial class AkronOverlay {
         if (columnXPositions.Count == 0) {
             DrawImGuiBindingCapturePopup();
             DrawInternalRecorderExperimentalWarningPopup();
+            AkronDiagnosticsMenu.Draw();
             return;
         }
 
@@ -77,6 +78,7 @@ public sealed partial class AkronOverlay {
         DrawPendingImGuiItemTooltip();
         DrawImGuiBindingCapturePopup();
         DrawInternalRecorderExperimentalWarningPopup();
+        AkronDiagnosticsMenu.Draw();
     }
 
     private void DrawStartPosPlacementEditor() {
@@ -409,6 +411,7 @@ public sealed partial class AkronOverlay {
         return IsAnyOptionsPopupOpen() ||
                communityPackBrowserOpen ||
                uploadPackWindowOpen ||
+               AkronDiagnosticsMenu.IsOpen ||
                suppressImGuiRowPressesThisFrame ||
                IsBackgroundActionRowsSuppressedAfterPopupClose();
     }

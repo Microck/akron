@@ -1,518 +1,396 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using Microsoft.Xna.Framework;
+using System.Text;
+using ImGuiNET;
 using Microsoft.Xna.Framework.Input;
 using Monocle;
+using NumericsVector2 = System.Numerics.Vector2;
 
 namespace Celeste.Mod.Akron;
 
-// Unlike gameplay action prompts, diagnostics can open from the overworld mod menu.
-// Keep the caller alive and restore its focus instead of replacing Celeste's pause menu.
-internal sealed class AkronDiagnosticsMenu : TextMenu {
-    private static AkronDiagnosticsMenu current;
-    private readonly TextMenu parent;
-    private readonly bool parentWasVisible;
-    private readonly bool parentWasFocused;
-    private readonly Oui overworldPage;
-    private readonly bool overworldPageWasActive;
-    private readonly bool overworldPageWasFocused;
-    private readonly bool restoreOverlay;
-    private readonly bool ownsPause;
-    private readonly Level level;
-    private readonly Scene ownerScene;
-    private AkronDiagnosticStatus displayedStatus;
-    private enum Page { Consent, Description, Status }
-    private Page page;
-    private string description = string.Empty;
-    private string descriptionMessage = string.Empty;
-    private string descriptionCount = string.Empty;
-    private int descriptionCaret;
-    private int descriptionAnchor;
-    private int descriptionScroll;
-    private bool previousCommandsEnabled;
-    private KeyboardState previousDescriptionKeyboard;
-    private readonly Queue<char> descriptionInput = new Queue<char>();
-    private readonly List<DescriptionLine> descriptionLines = new List<DescriptionLine>();
-    private readonly record struct DescriptionLine(int Start, int End, string Text);
-    private const float DescriptionScale = 0.6f;
-    private const float DescriptionWidth = 1400f;
-    private const int DescriptionVisibleLines = 8;
-    private string endpoint;
-    private bool closed;
+// The form uses Akron's ImGui frame, including when opened from Everest's mod options.
+internal static class AkronDiagnosticsMenu {
+    private static Scene ownerScene;
+    private static TextMenu parent;
+    private static bool parentWasVisible;
+    private static bool parentWasFocused;
+    private static Oui overworldPage;
+    private static bool overworldPageWasActive;
+    private static bool overworldPageWasFocused;
+    private static bool overlayWasVisible;
+    private static string endpoint;
+    private static string endpointError;
+    private static string title = string.Empty;
+    private static string problem = string.Empty;
+    private static string steps = string.Empty;
+    private static string expected = string.Empty;
+    private static string extra = string.Empty;
+    private static bool showStatus;
+    private static bool popupNeedsOpen;
+    private static bool emptyConfirmationPending;
+    private static bool emptyConfirmationActive;
+    private static bool emptyConfirmationShown;
+    private static bool controllerInputReady;
+    private static bool controllerSelectionActive;
+    private static bool controllerSendSelected;
+    private static int controllerStatusSelection;
 
-    private AkronDiagnosticsMenu(Scene scene, TextMenu parentMenu) {
+    internal static bool IsOpen => ownerScene != null;
+
+    internal static void Open(TextMenu parentMenu = null) {
+        Scene scene = Engine.Scene;
+        if (scene == null || IsOpen) return;
+        // Release the hide-pause cache before capturing the parent's visibility.
+        if (scene is Level) AkronRuntimeOptions.RestorePauseMenuVisibility();
         ownerScene = scene;
-        parent = parentMenu;
+        parent = parentMenu ?? scene.Entities.OfType<TextMenu>().FirstOrDefault(menu => menu.Focused);
         if (parent != null) {
             parentWasVisible = parent.Visible;
             parentWasFocused = parent.Focused;
-            parent.Focused = false;
             parent.Visible = false;
+            parent.Focused = false;
         }
         overworldPage = (scene as Overworld)?.Current;
         if (overworldPage != null) {
-            // The title screen checks Selected, not Focused. Pause its input updates as well.
             overworldPageWasActive = overworldPage.Active;
             overworldPageWasFocused = overworldPage.Focused;
             overworldPage.Active = false;
             overworldPage.Focused = false;
         }
-        level = scene as Level;
-        restoreOverlay = AkronModule.IsOverlayVisible;
-        if (restoreOverlay) AkronModule.SetOverlayVisible(scene, false);
-        if (level != null && !level.Paused) {
-            ownsPause = true;
-            level.wasPaused = true;
-            level.StartPauseEffects();
-            level.Paused = true;
-        }
-        Tag = Tags.HUD | Tags.PauseUpdate;
-        Depth = Depths.Top;
-        // Native TextMenu waits for the scene clock to tick before setting this.
-        // Diagnostics also works while that clock is held by a gameplay freeze.
-        HighlightColor = HighlightColorA;
-        Add(new AkronIgnoreSaveStateComponent(based: false));
-        AutoScroll = false;
-        ItemSpacing = 2f;
-        OnESC = OnCancel = OnPause = CloseMenu;
-        if (AkronDiagnostics.Status.Phase == "idle") ShowConsent();
-        else ShowStatus();
-    }
-
-    internal static void Open(TextMenu parent = null) {
-        Scene scene = Engine.Scene;
-        if (scene == null || current != null) return;
-        // Release the hide-pause cache before the modal captures its parent's visibility.
-        if (scene is Level) AkronRuntimeOptions.RestorePauseMenuVisibility();
-        parent ??= scene.Entities.OfType<TextMenu>().FirstOrDefault(menu => menu.Focused);
-        current = new AkronDiagnosticsMenu(scene, parent);
-        scene.Add(current);
+        overlayWasVisible = AkronModule.IsOverlayVisible;
+        title = problem = steps = expected = extra = string.Empty;
+        AkronModule.SetOverlayVisible(scene, true);
+        AkronModule.GetOverlay(scene)?.ClearSearchQuery();
+        showStatus = AkronDiagnostics.Status.Phase != "idle";
+        popupNeedsOpen = true;
+        emptyConfirmationPending = false;
+        emptyConfirmationActive = false;
+        emptyConfirmationShown = false;
+        controllerInputReady = false;
+        controllerSelectionActive = false;
+        controllerSendSelected = false;
+        controllerStatusSelection = 0;
+        ResolveEndpoint();
         Input.MenuConfirm.ConsumeBuffer();
         Input.MenuCancel.ConsumeBuffer();
     }
 
-    internal static bool IsOpen => current != null && !current.closed;
-
-    internal static bool UpdatePausedLevel(Level level) {
-        if (!IsOpen || !ReferenceEquals(current.ownerScene, level)) return false;
-        // The level may already be frozen by StartPos, Free Camera or Freeze Gameplay.
-        // Keep menu input alive without resuming the level or consuming its input wait.
-        current.Update();
-        return true;
-    }
-
     internal static void CloseActive() {
-        current?.CloseMenu();
+        Close();
         AkronDiagnostics.Cancel();
     }
 
-    internal static string DescribeAction() => AkronDiagnostics.Status.Busy ? "Sending..." : AkronDiagnostics.Status.Phase == "idle" ? "Review consent" : "View result";
+    internal static void CloseIfSceneChanged(Scene scene) {
+        if (IsOpen && !ReferenceEquals(ownerScene, scene)) Close();
+    }
+
+    internal static string DescribeAction() => AkronDiagnostics.Status.Busy ? "Sending..." : AkronDiagnostics.Status.Phase == "idle" ? "Write report" : "View result";
 
     internal static string DescribeState() {
         AkronDiagnosticStatus state = AkronDiagnostics.Status;
-        return "menu=" + (current == null ? "closed" : current.page.ToString().ToLowerInvariant()) +
-            ";descriptionLength=" + (current?.description.Length ?? 0) +
+        return "menu=" + (!IsOpen ? "closed" : showStatus ? "status" : emptyConfirmationActive ? "confirmation" : "form") +
+            ";descriptionLength=" + (IsOpen ? BuildDescription().Length : 0) +
             ";phase=" + state.Phase + ";reportId=" + state.ReportId + ";message=" + state.Message;
     }
 
-    // Automation has the same two-step consent gate as the buttons. "send" cannot open or accept hidden consent.
+    // Commands require the visible form and its blank-report confirmation.
     internal static bool Execute(string action) {
-        if (action == "open") { Open(); return current != null; }
-        if (current == null || current.closed || !ReferenceEquals(Engine.Scene, current.ownerScene)) return false;
+        if (action == "open") { Open(); return IsOpen; }
+        if (!IsOpen || !ReferenceEquals(ownerScene, Engine.Scene)) return false;
         switch (action) {
             case "consent":
                 if (AkronDiagnostics.Status.Busy) return false;
-                current.ShowConsent();
-                return current.page == Page.Consent;
-            case "send":
-                if (current.page != Page.Consent) return false;
-                current.Send();
+                showStatus = false;
+                emptyConfirmationActive = false;
+                emptyConfirmationPending = false;
+                ResolveEndpoint();
                 return true;
-            case "cancel":
-                current.CloseMenu();
+            case "send": return Send();
+            case "confirm":
+                if (showStatus || !emptyConfirmationActive || !emptyConfirmationShown) return false;
+                emptyConfirmationActive = false;
+                SendConfirmed(string.Empty);
                 return true;
-            case "copy":
-                return current.CopyReportId();
-            default:
-                return false;
+            case "cancel": Close(); return true;
+            case "copy": return CopyReportId();
+            default: return false;
         }
     }
 
-    public override void Update() {
-        if (page == Page.Description) {
-            UpdateDescription();
+    internal static void Draw() {
+        const string popupId = "Send diagnostics##akron_diagnostics";
+        if (!IsOpen) {
+            // ImGui keeps modal state after its owner closes outside a frame.
+            if (ImGui.BeginPopupModal(popupId, ImGuiWindowFlags.NoSavedSettings)) {
+                ImGui.CloseCurrentPopup();
+                ImGui.EndPopup();
+            }
             return;
         }
-        base.Update();
-        if (!closed && page == Page.Status && !ReferenceEquals(displayedStatus, AkronDiagnostics.Status)) ShowStatus();
+        if (!ReferenceEquals(ownerScene, Engine.Scene)) { Close(); return; }
+        float scale = AkronModule.Settings.OverlayScale / 100f;
+        NumericsVector2 display = ImGui.GetIO().DisplaySize;
+        float width = Math.Min(720f * scale, display.X - 32f);
+        float height = Math.Min((showStatus ? 220f : 560f) * scale, display.Y - 32f);
+        if (popupNeedsOpen) {
+            ImGui.OpenPopup(popupId);
+            popupNeedsOpen = false;
+        }
+        ImGui.SetNextWindowPos(new NumericsVector2((display.X - width) / 2f, (display.Y - height) / 2f), ImGuiCond.Always);
+        ImGui.SetNextWindowSize(new NumericsVector2(width, height), ImGuiCond.Always);
+        if (!ImGui.BeginPopupModal(popupId, ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoSavedSettings)) return;
+        if (showStatus) DrawStatus();
+        else {
+            DrawForm(scale);
+            if (IsOpen) DrawEmptyConfirmation(scale);
+        }
+        if (!IsOpen) ImGui.CloseCurrentPopup();
+        ImGui.EndPopup();
+        controllerInputReady = true;
     }
 
-    public override void Render() {
-        Draw.Rect(0, 0, 1920, 1080, Color.Black * 0.92f);
-        if (page == Page.Description) {
-            RenderDescription();
+    private static void DrawForm(float scale) {
+        if (endpointError != null) {
+            ImGui.TextWrapped(endpointError);
+            if (ImGui.Button("Close") || (controllerInputReady &&
+                (CancelPressed() || ControllerPressed(Buttons.A)))) Close();
             return;
         }
-        base.Render();
+        // Keep the editor scrollable without pushing Send off a short screen.
+        ImGui.BeginChild("##diagnostics_form_content", new NumericsVector2(0f, -42f * scale));
+        ImGui.TextWrapped("Send to " + endpoint + ": recent logs, versions, mods, map/room, CPU/GPU/RAM, OS and runtime. Your text is sent as written; leave out private information.");
+        ImGui.Spacing();
+        ImGui.TextUnformatted("Title");
+        ImGui.SetNextItemWidth(-1f);
+        ImGui.InputText("##diagnostics_title", ref title, 121);
+        ImGui.TextUnformatted("What happened?");
+        ImGui.InputTextMultiline("##diagnostics_problem", ref problem, 2001, new NumericsVector2(-1f, 90f * scale));
+        ImGui.TextUnformatted("How can someone reproduce it?");
+        ImGui.InputTextMultiline("##diagnostics_steps", ref steps, 2001, new NumericsVector2(-1f, 90f * scale));
+        ImGui.TextUnformatted("What did you expect?");
+        ImGui.SetNextItemWidth(-1f);
+        ImGui.InputText("##diagnostics_expected", ref expected, 501);
+        ImGui.TextUnformatted("Anything else?");
+        ImGui.SetNextItemWidth(-1f);
+        ImGui.InputText("##diagnostics_extra", ref extra, 501);
+        string description = BuildDescription();
+        if (description.Length > AkronDiagnostics.MaxDescriptionLength) {
+            ImGui.TextWrapped("Report is over 4,000 characters. Shorten it before sending.");
+        }
+        ImGui.EndChild();
+        ImGui.Spacing();
+        if (ImGui.Button(controllerSelectionActive && !controllerSendSelected ? "> Cancel" : "Cancel")) { Close(); return; }
+        ImGui.SameLine();
+        ImGui.BeginDisabled(description.Length > AkronDiagnostics.MaxDescriptionLength);
+        if (ImGui.Button(controllerSelectionActive && controllerSendSelected ? "> Send now" : "Send now")) Send();
+        ImGui.EndDisabled();
+        if (!controllerInputReady || emptyConfirmationActive) return;
+        if (CancelPressed()) { Close(); return; }
+        UpdateControllerSelection();
+        if (ControllerPressed(Buttons.A)) {
+            if (controllerSendSelected) Send();
+            else Close();
+        }
     }
 
-    public override void Removed(Scene scene) {
-        Finish(scene);
-        base.Removed(scene);
-    }
-
-    public override void SceneEnd(Scene scene) {
-        Finish(scene);
-        base.SceneEnd(scene);
-    }
-
-    private void ClearItems() {
-        foreach (Item item in Items.ToArray()) Remove(item);
-        Selection = -1;
-    }
-
-    private void AddMessage(string text) {
-        foreach (string line in AkronModule.WrapModMenuLine(text, 76)) Add(new SubHeader(line, topPadding: false));
-    }
-
-    private void ShowConsent() {
-        if (AkronDiagnostics.Status.Busy) { ShowStatus(); return; }
-        StopEditingDescription();
-        page = Page.Status;
-        ClearItems();
-        Add(new Header("Send diagnostics"));
-        try {
-            endpoint = AkronDiagnostics.ResolveEndpoint(AkronModule.TryGetSettings()?.CommunityPackUploadEndpoint);
-        } catch (Exception) {
-            displayedStatus = AkronDiagnostics.Status;
-            AddMessage("Diagnostics cannot be sent. Set the community upload endpoint to an HTTPS URL without credentials, query, or fragment, then reopen this menu.");
-            Add(new Button("Back").Pressed(CloseMenu));
-            FirstSelection();
+    private static void DrawEmptyConfirmation(float scale) {
+        const string popupId = "Send without a description?##akron_empty_diagnostics";
+        if (emptyConfirmationPending) {
+            ImGui.OpenPopup(popupId);
+            emptyConfirmationPending = false;
+        }
+        ImGui.SetNextWindowSize(new NumericsVector2(430f * scale, 150f * scale), ImGuiCond.Appearing);
+        if (!ImGui.BeginPopupModal(popupId, ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoSavedSettings)) return;
+        if (!emptyConfirmationActive) {
+            ImGui.CloseCurrentPopup();
+            ImGui.EndPopup();
             return;
         }
-        Add(new Button(description.Length == 0 ? "Describe the problem (optional)..." : "Edit description (" + description.Length + " characters)...").Pressed(EditDescription));
-        AddMessage("Uploads your description, game / mod versions, map / room, and CPU / GPU / RAM / OS / runtime details.");
-        AddMessage("Includes available tails of log.txt, akron-current.log, akron-previous.log and performance.jsonl. At most 1 MiB each, 4 MiB total.");
-        AddMessage("Automatic details and logs redact common credentials, names and paths, but may contain personal text. No saves or environment variables are collected.");
-        AddMessage("Your description is sent as written. Do not include passwords or other private information.");
-        AddMessage("Stored privately on Cloudflare and sent to Akron's private Discord channel #diagnostic-alert. People with access can read and download the report.");
-        AddMessage("Upload endpoint: " + endpoint);
-        AddMessage("Nothing is sent until Send now. Closing cancels the request, but cannot recall a received report. The service retries Discord delivery; the game does not retry uploads.");
-        Item cancel = new Button("Cancel").Pressed(CloseMenu);
-        Add(cancel);
-        Add(new Button("Send now").Pressed(Send));
-        page = Page.Consent;
-        Selection = Items.IndexOf(cancel);
+        emptyConfirmationShown = true;
+        ImGui.TextWrapped("You're sending diagnostics without describing the issue. Are you sure?");
+        ImGui.Spacing();
+        if (ImGui.Button(controllerSelectionActive && !controllerSendSelected ? "> Go back" : "Go back")) {
+            emptyConfirmationActive = false;
+            ImGui.CloseCurrentPopup();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button(controllerSelectionActive && controllerSendSelected ? "> Send without description" : "Send without description")) {
+            emptyConfirmationActive = false;
+            ImGui.CloseCurrentPopup();
+            SendConfirmed(string.Empty);
+        }
+        if (controllerInputReady) {
+            UpdateControllerSelection();
+            if (CancelPressed() ||
+                (ControllerPressed(Buttons.A) && !controllerSendSelected)) {
+                emptyConfirmationActive = false;
+                ImGui.CloseCurrentPopup();
+            }
+            else if (ControllerPressed(Buttons.A) && controllerSendSelected) {
+                emptyConfirmationActive = false;
+                ImGui.CloseCurrentPopup();
+                SendConfirmed(string.Empty);
+            }
+        }
+        ImGui.EndPopup();
     }
 
-    private void Send() {
-        if (page != Page.Consent) return;
-        page = Page.Status;
+    private static void DrawStatus() {
+        // An automation command can confirm the visible child popup between frames.
+        if (ImGui.BeginPopupModal("Send without a description?##akron_empty_diagnostics", ImGuiWindowFlags.NoSavedSettings)) {
+            ImGui.CloseCurrentPopup();
+            ImGui.EndPopup();
+        }
+        AkronDiagnosticStatus status = AkronDiagnostics.Status;
+        ImGui.TextWrapped(status.Message);
+        if (!string.IsNullOrEmpty(status.ReportId)) {
+            ImGui.TextUnformatted("Report ID: " + status.ReportId);
+            if (ImGui.Button(controllerSelectionActive && controllerStatusSelection == 1 ? "> Copy report ID" : "Copy report ID")) CopyReportId();
+        }
+        ImGui.Spacing();
+        string closeLabel = status.Busy ? "Cancel upload and close" : "Close";
+        if (ImGui.Button(controllerSelectionActive && controllerStatusSelection == 0 ? "> " + closeLabel : closeLabel)) { Close(); return; }
+        if (!status.Busy) {
+            ImGui.SameLine();
+            int sendSelection = string.IsNullOrEmpty(status.ReportId) ? 1 : 2;
+            if (ImGui.Button(controllerSelectionActive && controllerStatusSelection == sendSelection ? "> Send another report" : "Send another report")) StartNewReport();
+        }
+        if (!controllerInputReady) return;
+        if (CancelPressed()) { Close(); return; }
+        if (!status.Busy) {
+            int lastSelection = string.IsNullOrEmpty(status.ReportId) ? 1 : 2;
+            if (ControllerPressed(Buttons.DPadLeft) || ControllerPressed(Buttons.LeftThumbstickLeft)) {
+                controllerSelectionActive = true;
+                controllerStatusSelection = Math.Max(0, controllerStatusSelection - 1);
+            } else if (ControllerPressed(Buttons.DPadRight) || ControllerPressed(Buttons.LeftThumbstickRight)) {
+                controllerSelectionActive = true;
+                controllerStatusSelection = Math.Min(lastSelection, controllerStatusSelection + 1);
+            }
+        }
+        if (ControllerPressed(Buttons.A)) {
+            if (controllerStatusSelection == 1 && !string.IsNullOrEmpty(status.ReportId)) CopyReportId();
+            else if (!status.Busy && controllerStatusSelection > 0) StartNewReport();
+            else Close();
+        }
+    }
+
+    private static void StartNewReport() {
+        title = problem = steps = expected = extra = string.Empty;
+        controllerSelectionActive = false;
+        controllerSendSelected = false;
+        controllerStatusSelection = 0;
+        ResolveEndpoint();
+        showStatus = false;
+    }
+
+    private static bool Send() {
+        if (!IsOpen || showStatus || endpointError != null) return false;
+        string description = BuildDescription();
+        if (description.Length > AkronDiagnostics.MaxDescriptionLength) return false;
+        if (description.Length == 0) {
+            emptyConfirmationPending = true;
+            emptyConfirmationActive = true;
+            emptyConfirmationShown = false;
+            controllerInputReady = false;
+            controllerSendSelected = false;
+            return true;
+        }
+        SendConfirmed(description);
+        return true;
+    }
+
+    private static void SendConfirmed(string description) {
+        showStatus = true;
+        controllerSelectionActive = false;
+        controllerSendSelected = false;
+        controllerStatusSelection = 0;
         AkronDiagnostics.StartConsentedUpload(endpoint, description);
-        ShowStatus();
         Input.MenuConfirm.ConsumeBuffer();
     }
 
-    private void ShowStatus() {
-        StopEditingDescription();
-        page = Page.Status;
-        displayedStatus = AkronDiagnostics.Status;
-        ClearItems();
-        Add(new Header("Diagnostics"));
-        AddMessage(displayedStatus.Message);
-        if (!string.IsNullOrEmpty(displayedStatus.ReportId)) {
-            AddMessage("Report ID: " + displayedStatus.ReportId);
-            Add(new Button("Copy report ID").Pressed(() => CopyReportId()));
+    private static string BuildDescription() => FormatDescription(title, problem, steps, expected, extra);
+
+    private static void UpdateControllerSelection() {
+        if (ControllerPressed(Buttons.DPadLeft) || ControllerPressed(Buttons.LeftThumbstickLeft)) {
+            controllerSelectionActive = true;
+            controllerSendSelected = false;
+        } else if (ControllerPressed(Buttons.DPadRight) || ControllerPressed(Buttons.LeftThumbstickRight)) {
+            controllerSelectionActive = true;
+            controllerSendSelected = true;
         }
-        if (displayedStatus.Busy) {
-            Add(new Button("Cancel upload and go back").Pressed(CloseMenu));
-        } else {
-            Add(new Button("Back").Pressed(CloseMenu));
-            Add(new Button("Review and send a new report...").Pressed(ShowConsent));
-        }
-        FirstSelection();
     }
 
-    private bool CopyReportId() {
+    private static bool ControllerPressed(Buttons button) =>
+        Input.Gamepad >= 0 && Input.Gamepad < MInput.GamePads.Length && MInput.GamePads[Input.Gamepad].Pressed(button);
+
+    private static bool CancelPressed() =>
+        MInput.Keyboard.Pressed(Keys.Escape) || Input.MenuCancel.Pressed ||
+        ControllerPressed(Buttons.B) || ControllerPressed(Buttons.Back);
+
+    internal static string FormatDescription(string title, string problem, string steps, string expected, string extra) {
+        StringBuilder report = new StringBuilder();
+        AppendSection(report, "Title", title);
+        AppendSection(report, "What happened", problem);
+        AppendSection(report, "Steps to reproduce", steps);
+        AppendSection(report, "Expected behavior", expected);
+        AppendSection(report, "Additional context", extra);
+        return report.ToString();
+    }
+
+    private static void AppendSection(StringBuilder report, string label, string value) {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        if (report.Length > 0) report.Append("\n\n");
+        report.Append("## ").Append(label).Append("\n").Append(value.Trim());
+    }
+
+    private static void ResolveEndpoint() {
+        try {
+            endpoint = AkronDiagnostics.ResolveEndpoint(AkronModule.TryGetSettings()?.CommunityPackUploadEndpoint);
+            endpointError = null;
+        } catch (Exception) {
+            endpoint = null;
+            endpointError = "Diagnostics cannot be sent. Set the community upload endpoint to an HTTPS URL without credentials, query or fragment, then reopen this form.";
+        }
+    }
+
+    private static bool CopyReportId() {
         string id = AkronDiagnostics.Status.ReportId;
         if (string.IsNullOrEmpty(id)) return false;
         try {
             TextInput.SetClipboardText(id);
-            Scene?.Add(new AkronToast("Diagnostic report ID copied.", forceVisible: true));
+            ownerScene?.Add(new AkronToast("Diagnostic report ID copied.", forceVisible: true));
             return true;
         } catch (Exception) {
-            Scene?.Add(new AkronToast("Clipboard unavailable. Copy the report ID displayed above.", forceVisible: true));
+            ownerScene?.Add(new AkronToast("Clipboard unavailable. Copy the report ID shown above.", forceVisible: true));
             return false;
         }
     }
 
-    private void CloseMenu() {
-        Finish(ownerScene);
-        RemoveSelf();
-    }
-
-    private void Finish(Scene scene) {
-        if (closed) return;
-        closed = true;
-        StopEditingDescription();
-        Focused = false;
-        if (ReferenceEquals(current, this)) current = null;
+    private static void Close() {
+        if (!IsOpen) return;
+        Scene scene = ownerScene;
+        ownerScene = null;
         if (AkronDiagnostics.Status.Busy) AkronDiagnostics.Cancel();
-        if (!ReferenceEquals(Engine.Scene, scene)) return;
-        if (parent != null && ReferenceEquals(parent.Scene, scene)) {
-            parent.Visible = parentWasVisible;
-            parent.Focused = parentWasFocused;
-        }
-        if (overworldPage != null && ReferenceEquals(overworldPage.Scene, scene)) {
-            overworldPage.Active = overworldPageWasActive;
-            if (scene is Overworld overworld && ReferenceEquals(overworld.Current, overworldPage)) {
-                overworldPage.Focused = overworldPageWasFocused;
+        if (ReferenceEquals(Engine.Scene, scene)) {
+            if (parent != null && ReferenceEquals(parent.Scene, scene)) {
+                parent.Visible = parentWasVisible;
+                parent.Focused = parentWasFocused;
             }
+            if (overworldPage != null && ReferenceEquals(overworldPage.Scene, scene)) {
+                overworldPage.Active = overworldPageWasActive;
+                if (scene is Overworld overworld && ReferenceEquals(overworld.Current, overworldPage)) overworldPage.Focused = overworldPageWasFocused;
+            }
+            if (!overlayWasVisible && AkronModule.IsOverlayVisible) AkronModule.SetOverlayVisible(scene, false);
         }
-        if (ownsPause && level != null) {
-            level.Paused = false;
-            level.unpauseTimer = 0.15f;
-            Audio.Play(SFX.ui_game_unpause);
-        }
-        if (restoreOverlay) AkronModule.SetOverlayVisible(scene, true);
+        parent = null;
+        overworldPage = null;
+        title = problem = steps = expected = extra = string.Empty;
+        emptyConfirmationPending = false;
+        emptyConfirmationActive = false;
+        emptyConfirmationShown = false;
+        controllerInputReady = false;
         Input.MenuConfirm.ConsumeBuffer();
         Input.MenuCancel.ConsumeBuffer();
         Input.Pause.ConsumeBuffer();
-    }
-
-    private void EditDescription() {
-        if (page != Page.Consent) return;
-        page = Page.Description;
-        Focused = false;
-        previousCommandsEnabled = Engine.Commands.Enabled;
-        Engine.Commands.Enabled = false;
-        previousDescriptionKeyboard = Keyboard.GetState();
-        descriptionCaret = descriptionAnchor = description.Length;
-        descriptionMessage = string.Empty;
-        descriptionInput.Clear();
-        RebuildDescriptionLines();
-        TextInput.OnInput += QueueDescriptionInput;
-        Input.MenuConfirm.ConsumeBuffer();
-    }
-
-    private void QueueDescriptionInput(char value) {
-        descriptionInput.Enqueue(value);
-    }
-
-    private void StopEditingDescription() {
-        if (page != Page.Description) return;
-        TextInput.OnInput -= QueueDescriptionInput;
-        descriptionInput.Clear();
-        Engine.Commands.Enabled = previousCommandsEnabled;
-        Focused = true;
-        page = Page.Consent;
-        ConsumeDescriptionInput();
-    }
-
-    private static void ConsumeDescriptionInput() {
-        foreach (VirtualInput input in MInput.VirtualInputs) {
-            if (input is VirtualButton button) button.ConsumePress();
-        }
-    }
-
-    private void UpdateDescription() {
-        KeyboardState keyboard = Keyboard.GetState();
-        bool Pressed(Keys key) => keyboard.IsKeyDown(key) && previousDescriptionKeyboard.IsKeyUp(key);
-        bool control = (keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl)) &&
-            keyboard.IsKeyUp(Keys.LeftAlt) && keyboard.IsKeyUp(Keys.RightAlt);
-        bool shift = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
-        bool handled = descriptionInput.Count > 0;
-        bool backspaceFromText = false;
-        bool newlineFromText = false;
-        if (Pressed(Keys.Escape) || Pressed(Keys.Tab) || (control && Pressed(Keys.Enter))) {
-            ShowConsent();
-            return;
-        }
-
-        if (control) {
-            if (Pressed(Keys.A)) {
-                descriptionAnchor = 0;
-                descriptionCaret = description.Length;
-                handled = true;
-            } else if (Pressed(Keys.C) || Pressed(Keys.X)) {
-                int start = Math.Min(descriptionAnchor, descriptionCaret);
-                int count = Math.Abs(descriptionAnchor - descriptionCaret);
-                if (count > 0) {
-                    try {
-                        TextInput.SetClipboardText(description.Substring(start, count));
-                        if (Pressed(Keys.X)) InsertDescription(string.Empty);
-                    } catch (Exception) {
-                        descriptionMessage = "Clipboard unavailable. Your description is unchanged.";
-                    }
-                }
-                handled = true;
-            } else if (Pressed(Keys.V)) {
-                try { InsertDescription(TextInput.GetClipboardText()); }
-                catch (Exception) { descriptionMessage = "Clipboard unavailable. Type your description instead."; }
-                handled = true;
-            }
-        } else {
-            while (descriptionInput.Count > 0) {
-                char value = descriptionInput.Dequeue();
-                if (value == '\b') {
-                    DeleteDescription(-1);
-                    backspaceFromText = true;
-                } else if (value is '\r' or '\n') {
-                    InsertDescription("\n");
-                    newlineFromText = true;
-                } else if (!char.IsControl(value)) {
-                    if (char.IsHighSurrogate(value)) {
-                        if (descriptionInput.TryPeek(out char next) && char.IsLowSurrogate(next)) {
-                            InsertDescription(char.ConvertFromUtf32(char.ConvertToUtf32(value, descriptionInput.Dequeue())));
-                        }
-                    } else if (!char.IsLowSurrogate(value)) {
-                        InsertDescription(value.ToString());
-                    }
-                }
-            }
-            if (Pressed(Keys.Enter) && !newlineFromText) { InsertDescription("\n"); handled = true; }
-        }
-        descriptionInput.Clear();
-
-        if ((Pressed(Keys.Back) && !backspaceFromText) || Pressed(Keys.Delete)) {
-            DeleteDescription(Pressed(Keys.Back) ? -1 : 1);
-            handled = true;
-        }
-        if (Pressed(Keys.Left) || Pressed(Keys.Right)) {
-            int direction = Pressed(Keys.Left) ? -1 : 1;
-            descriptionCaret = !shift && descriptionAnchor != descriptionCaret
-                ? direction < 0 ? Math.Min(descriptionAnchor, descriptionCaret) : Math.Max(descriptionAnchor, descriptionCaret)
-                : AdjacentDescriptionPosition(descriptionCaret, direction);
-            if (!shift) descriptionAnchor = descriptionCaret;
-            handled = true;
-        }
-        int line = DescriptionCaretLine();
-        if (Pressed(Keys.Home) || Pressed(Keys.End)) {
-            descriptionCaret = Pressed(Keys.Home)
-                ? control ? 0 : descriptionLines[line].Start
-                : control ? description.Length : descriptionLines[line].End;
-            if (!shift) descriptionAnchor = descriptionCaret;
-            handled = true;
-        }
-        if (Pressed(Keys.Up) || Pressed(Keys.Down)) {
-            int column = descriptionCaret - descriptionLines[line].Start;
-            DescriptionLine target = descriptionLines[Math.Clamp(line + (Pressed(Keys.Up) ? -1 : 1), 0, descriptionLines.Count - 1)];
-            descriptionCaret = Math.Min(target.Start + column, target.End);
-            if (descriptionCaret > 0 && descriptionCaret < description.Length && char.IsLowSurrogate(description[descriptionCaret])) descriptionCaret--;
-            if (!shift) descriptionAnchor = descriptionCaret;
-            handled = true;
-        }
-        KeepDescriptionCaretVisible();
-        previousDescriptionKeyboard = keyboard;
-        if (handled) ConsumeDescriptionInput();
-        else if (Input.MenuCancel.Pressed) ShowConsent();
-    }
-
-    private int AdjacentDescriptionPosition(int position, int direction) {
-        int next = Math.Clamp(position + direction, 0, description.Length);
-        if (next > 0 && next < description.Length && char.IsLowSurrogate(description[next])) next += direction;
-        return next;
-    }
-
-    private void DeleteDescription(int direction) {
-        if (descriptionAnchor == descriptionCaret) {
-            descriptionAnchor = AdjacentDescriptionPosition(descriptionCaret, direction);
-        }
-        InsertDescription(string.Empty);
-    }
-
-    private void InsertDescription(string value) {
-        value = (value ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Replace("\t", "    ");
-        int start = Math.Min(descriptionAnchor, descriptionCaret);
-        int end = Math.Max(descriptionAnchor, descriptionCaret);
-        if (start == end && value.Length == 0) return;
-        if (description.Length - (end - start) + value.Length > AkronDiagnostics.MaxDescriptionLength) {
-            descriptionMessage = "Limit: 4,000 characters. Shorten the text before adding more.";
-            return;
-        }
-        description = string.Concat(description.AsSpan(0, start), value, description.AsSpan(end));
-        descriptionCaret = descriptionAnchor = start + value.Length;
-        descriptionMessage = string.Empty;
-        RebuildDescriptionLines();
-    }
-
-    private void RebuildDescriptionLines() {
-        descriptionLines.Clear();
-        int start = 0;
-        int lastSpace = -1;
-        float width = 0;
-        for (int index = 0; index < description.Length; index++) {
-            char value = description[index];
-            if (value == '\n') {
-                descriptionLines.Add(new DescriptionLine(start, index, description.Substring(start, index - start)));
-                start = index + 1;
-                lastSpace = -1;
-                width = 0;
-                continue;
-            }
-            float characterWidth = ActiveFont.Measure(value).X * DescriptionScale;
-            if (index > start && width + characterWidth > DescriptionWidth) {
-                int end = lastSpace >= start ? lastSpace + 1 : index;
-                descriptionLines.Add(new DescriptionLine(start, end, description.Substring(start, end - start)));
-                start = end;
-                lastSpace = -1;
-                width = 0;
-                index = end - 1;
-                continue;
-            }
-            if (char.IsWhiteSpace(value)) lastSpace = index;
-            width += characterWidth;
-        }
-        descriptionLines.Add(new DescriptionLine(start, description.Length, description.Substring(start)));
-        descriptionCount = description.Length + " / " + AkronDiagnostics.MaxDescriptionLength + " characters";
-        KeepDescriptionCaretVisible();
-    }
-
-    private int DescriptionCaretLine() {
-        for (int index = descriptionLines.Count - 1; index >= 0; index--) {
-            if (descriptionCaret >= descriptionLines[index].Start) return index;
-        }
-        return 0;
-    }
-
-    private void KeepDescriptionCaretVisible() {
-        int line = DescriptionCaretLine();
-        descriptionScroll = Math.Clamp(descriptionScroll, Math.Max(0, line - DescriptionVisibleLines + 1), line);
-    }
-
-    private float DescriptionTextWidth(int start, int end) {
-        float width = 0;
-        for (int index = start; index < end; index++) width += ActiveFont.Measure(description[index]).X * DescriptionScale;
-        return width;
-    }
-
-    private void RenderDescription() {
-        ActiveFont.DrawOutline("What went wrong?", new Vector2(960, 160), new Vector2(0.5f, 0.5f), Vector2.One, Color.White, 2f, Color.Black);
-        ActiveFont.DrawOutline("Optional. Include what happened, what you expected, and how to reproduce it.",
-            new Vector2(960, 240), new Vector2(0.5f, 0.5f), Vector2.One * DescriptionScale, Color.LightGray, 2f, Color.Black);
-        float lineHeight = ActiveFont.LineHeight * DescriptionScale;
-        Vector2 origin = new Vector2(260, 330);
-        Draw.Rect(origin - new Vector2(20, 16), DescriptionWidth + 40, lineHeight * DescriptionVisibleLines + 32, Color.DarkSlateGray * 0.8f);
-        int selectionStart = Math.Min(descriptionAnchor, descriptionCaret);
-        int selectionEnd = Math.Max(descriptionAnchor, descriptionCaret);
-        int caretLine = DescriptionCaretLine();
-        for (int index = descriptionScroll; index < Math.Min(descriptionLines.Count, descriptionScroll + DescriptionVisibleLines); index++) {
-            DescriptionLine line = descriptionLines[index];
-            Vector2 position = origin + Vector2.UnitY * ((index - descriptionScroll) * lineHeight);
-            int start = Math.Max(line.Start, selectionStart);
-            int end = Math.Min(line.End, selectionEnd);
-            if (end > start) Draw.Rect(position + Vector2.UnitX * DescriptionTextWidth(line.Start, start), DescriptionTextWidth(start, end), lineHeight, HighlightColor * 0.4f);
-            ActiveFont.DrawOutline(line.Text, position, Vector2.Zero, Vector2.One * DescriptionScale, Color.White, 2f, Color.Black);
-            if (index == caretLine) Draw.Rect(position + Vector2.UnitX * DescriptionTextWidth(line.Start, descriptionCaret), 2f, lineHeight, Color.White);
-        }
-        float bottom = origin.Y + lineHeight * DescriptionVisibleLines + 50;
-        ActiveFont.DrawOutline(descriptionCount, new Vector2(960, bottom), new Vector2(0.5f, 0.5f), Vector2.One * DescriptionScale, Color.LightGray, 2f, Color.Black);
-        ActiveFont.DrawOutline("Type or paste with Ctrl+V. Enter: new line. Esc / Ctrl+Enter / controller Cancel: done.",
-            new Vector2(960, bottom + 60), new Vector2(0.5f, 0.5f), Vector2.One * DescriptionScale, Color.LightGray, 2f, Color.Black);
-        ActiveFont.DrawOutline("Sent as written. Do not include passwords or other private information.",
-            new Vector2(960, bottom + 110), new Vector2(0.5f, 0.5f), Vector2.One * DescriptionScale, Color.LightGray, 2f, Color.Black);
-        if (descriptionMessage.Length > 0) ActiveFont.DrawOutline(descriptionMessage,
-            new Vector2(960, bottom + 170), new Vector2(0.5f, 0.5f), Vector2.One * DescriptionScale, Color.Yellow, 2f, Color.Black);
     }
 }
