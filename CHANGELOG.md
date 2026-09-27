@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 83
+
 ### Fixed
 
 - Open Send diagnostics in Akron's ImGui overlay, attach an optional issue report to the logs, and confirm before sending a blank report.
