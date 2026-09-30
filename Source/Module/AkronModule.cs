@@ -415,7 +415,6 @@ public partial class AkronModule : EverestModule {
             AkronSaveLoadService.RemoveClonedDustEdges(self);
             orig(self);
         }
-        AkronInterop.EnsureSpeedrunToolTabDoesNotStealAkronOverlayBinding();
         AkronInterop.EnsureSpeedrunToolSaveLoadHooksRegistered();
         SuppressAkronRenderSurfacesAfterStateTransition();
         Session.CurrentSessionNonce = Guid.NewGuid().ToString("N");

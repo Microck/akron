@@ -58,6 +58,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     private int scrollWheelValue;
     private KeyboardState previousKeyboard;
     private char pendingHighSurrogate;
+    private bool textInputSubscribed;
     private bool disposed;
     private static bool initializationFailed;
     private static int initializationRetryFrames;
@@ -95,7 +96,6 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         };
 
         RebuildFontAtlas();
-        TextInput.OnInput += QueueTextInput;
     }
 
     public static bool WantCaptureKeyboard { get; private set; }
@@ -103,7 +103,12 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     public static bool WantCaptureMouse { get; private set; }
     internal static bool IsInitialized => instance != null;
 
+    internal static void EndTextInputSession() {
+        instance?.SetTextInputActive(false);
+    }
+
     internal static void EndInputSession() {
+        EndTextInputSession();
         inputSessionRequested = false;
         WantCaptureKeyboard = false;
         WantTextInput = false;
@@ -156,6 +161,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
             lastFailure = string.Empty;
             return true;
         } catch (Exception exception) {
+            EndInputSession();
             initializationFailed = true;
             initializationRetryFrames = 120;
             lastFailure = exception.GetType().Name + ": " + exception.Message;
@@ -228,7 +234,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         }
 
         disposed = true;
-        TextInput.OnInput -= QueueTextInput;
+        SetTextInputActive(false);
         ImGui.DestroyContext(context);
         if (fontHandle.IsAllocated) {
             fontHandle.Free();
@@ -322,6 +328,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         WantCaptureKeyboard = exposeCapture && io.WantCaptureKeyboard;
         WantTextInput = exposeCapture && io.WantTextInput;
         WantCaptureMouse = exposeCapture && io.WantCaptureMouse;
+        SetTextInputActive(AkronDiagnosticsMenu.AcceptsTextInput && WantTextInput && AkronOverlay.IsGameWindowInputActive());
         if (!renderDiagnosticLogged) {
             renderDiagnosticLogged = true;
             ImDrawDataPtr diagnosticDrawData = ImGui.GetDrawData();
@@ -434,6 +441,17 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         io.AddKeyEvent(ImGuiKey.ModShift, keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift));
         io.AddKeyEvent(ImGuiKey.ModAlt, keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt));
         previousKeyboard = keyboard;
+    }
+
+    // Everest treats a subscription as active text entry. SRT suppresses hotkeys while
+    // this handler is registered, so keep it only while a diagnostics field has focus.
+    private void SetTextInputActive(bool active) {
+        if (textInputSubscribed == active) return;
+        if (active) TextInput.OnInput += QueueTextInput;
+        else TextInput.OnInput -= QueueTextInput;
+        textInputSubscribed = active;
+        pendingTextInput.Clear();
+        pendingHighSurrogate = '\0';
     }
 
     // Celeste supplies translated Unicode here. Diagnostics uses it instead of the US-keyboard fallback.
