@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 84
+
 ### Fixed
 
 - Keep Speedrun Tool hotkeys working while Akron is enabled by releasing text input when diagnostics fields are not focused.
