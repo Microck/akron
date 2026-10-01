@@ -5,7 +5,6 @@ using System.Reflection;
 using Celeste;
 using Celeste.Mod;
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Input;
 using Monocle;
 using MonoMod.ModInterop;
 
@@ -24,7 +23,6 @@ public static class AkronInterop {
     private static readonly EverestModuleMetadata GravityHelperMetadata = new EverestModuleMetadata { Name = "GravityHelper" };
     private static readonly EverestModuleMetadata CommunalHelperMetadata = new EverestModuleMetadata { Name = "CommunalHelper" };
     private static readonly EverestModuleMetadata ExtendedCameraDynamicsMetadata = new EverestModuleMetadata { Name = "ExtendedCameraDynamics" };
-    private static bool speedrunToolTabConflictMitigated;
     private static bool speedrunToolSaveLoadHooksRegistered;
     private static bool speedrunToolSaveLoadHookWarningLogged;
     private static bool speedrunToolOverlayIgnoreWarningLogged;
@@ -164,52 +162,6 @@ public static class AkronInterop {
         } catch (Exception exception) {
             LogExtendedCameraDynamicsWarning("Failed to restore Extended Camera Dynamics automatic zooming: " + exception.Message);
             return false;
-        }
-    }
-
-    public static void EnsureSpeedrunToolTabDoesNotStealAkronOverlayBinding() {
-        if (speedrunToolTabConflictMitigated) {
-            return;
-        }
-
-        if (!SpeedrunToolLoaded || AkronModule.Settings.ToggleOverlay?.Keys?.Contains(Keys.Tab) != true) {
-            return;
-        }
-
-        try {
-            Type hotkeyConfigUiType = FindType("SpeedrunTool", "Celeste.Mod.SpeedrunTool.Other.HotkeyConfigUi");
-            Type hotkeyType = FindType("SpeedrunTool", "Celeste.Mod.SpeedrunTool.Other.Hotkey");
-            if (hotkeyConfigUiType == null || hotkeyType == null) {
-                return;
-            }
-
-            FieldInfo configsField = hotkeyConfigUiType.GetField("HotkeyConfigs", BindingFlags.Public | BindingFlags.Static);
-            object configs = configsField?.GetValue(null);
-            object toggleSaveLoadUi = Enum.Parse(hotkeyType, "ToggleSaveLoadUI");
-            object hotkeyConfig = configs?.GetType().GetProperty("Item")?.GetValue(configs, new[] { toggleSaveLoadUi });
-            if (hotkeyConfig == null) {
-                return;
-            }
-
-            MethodInfo getKeysMethod = hotkeyConfig.GetType().GetMethod("GetKeys", BindingFlags.Public | BindingFlags.Instance);
-            MethodInfo setKeysMethod = hotkeyConfig.GetType().GetMethod("SetKeys", BindingFlags.Public | BindingFlags.Instance);
-            MethodInfo updateVirtualButtonMethod = hotkeyConfig.GetType().GetMethod("UpdateVirtualButton", BindingFlags.Public | BindingFlags.Instance);
-            if (getKeysMethod == null || setKeysMethod == null || updateVirtualButtonMethod == null) {
-                return;
-            }
-
-            List<Keys> keys = getKeysMethod.Invoke(hotkeyConfig, Array.Empty<object>()) as List<Keys>;
-            if (keys == null || !keys.Contains(Keys.Tab)) {
-                return;
-            }
-
-            keys = keys.Where(key => key != Keys.Tab).ToList();
-            setKeysMethod.Invoke(hotkeyConfig, new object[] { keys });
-            updateVirtualButtonMethod.Invoke(hotkeyConfig, Array.Empty<object>());
-            speedrunToolTabConflictMitigated = true;
-            Logger.Log(LogLevel.Info, nameof(AkronModule), "Removed Tab from Speedrun Tool ToggleSaveLoadUI because Akron owns the Tab overlay binding.");
-        } catch (Exception exception) {
-            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to mitigate Speedrun Tool Tab conflict: " + exception.Message);
         }
     }
 

@@ -6,6 +6,11 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Fixed
+
+- Keep Speedrun Tool hotkeys working while Akron is enabled by releasing text input when diagnostics fields are not focused.
+- Preserve Speedrun Tool's Tab binding instead of clearing it when Akron uses Tab.
+
 ## Akron Beta 83
 
 ### Fixed

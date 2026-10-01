@@ -7,11 +7,57 @@ using System.Runtime.CompilerServices;
 using Celeste.Mod.Akron;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
+using Mono.Cecil;
 using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
 
 public sealed class OverlayTests {
+    [Fact]
+    public void RendererStartupDoesNotReserveEverestTextInput() {
+        // CI uses reference-only Celeste assemblies. Check the compiled constructor,
+        // where beta 83 registered a handler even with every UI closed.
+        using ModuleDefinition module = ModuleDefinition.ReadModule(typeof(AkronOverlay).Assembly.Location);
+        TypeDefinition renderer = module.GetType(typeof(AkronImGuiRenderer).FullName);
+        MethodDefinition constructor = renderer.Methods.Single(method => method.IsConstructor && !method.IsStatic);
+        Assert.DoesNotContain(constructor.Body.Instructions, instruction =>
+            instruction.Operand is MethodReference method &&
+            method.DeclaringType.FullName == typeof(TextInput).FullName && method.Name == "add_OnInput");
+    }
+
+    [Fact]
+    public void TextInputFocusPreservesPendingUnicodeAndReleaseClearsIt() {
+        // Exercise the renderer's session state without creating a graphics device.
+        // Everest's actual event dispatch and SRT require the in-game check.
+        AkronImGuiRenderer renderer = (AkronImGuiRenderer) RuntimeHelpers.GetUninitializedObject(typeof(AkronImGuiRenderer));
+        Queue<char> pending = new Queue<char>();
+        SetPrivateField(renderer, "pendingTextInput", pending);
+        MethodInfo setActive = typeof(AkronImGuiRenderer).GetMethod("SetTextInputActive", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        try {
+            setActive.Invoke(renderer, new object[] { true });
+            Assert.True(GetPrivateField<bool>(renderer, "textInputSubscribed"));
+            pending.Enqueue('é');
+            SetPrivateField(renderer, "pendingHighSurrogate", '\uD83D');
+
+            // The same focused field spans many frames. Repeating its state must
+            // neither register again nor drop characters waiting for the next frame.
+            setActive.Invoke(renderer, new object[] { true });
+            Assert.Equal(new[] { 'é' }, pending);
+            Assert.Equal('\uD83D', GetPrivateField<char>(renderer, "pendingHighSurrogate"));
+
+            setActive.Invoke(renderer, new object[] { false });
+            Assert.False(GetPrivateField<bool>(renderer, "textInputSubscribed"));
+            Assert.Empty(pending);
+            Assert.Equal('\0', GetPrivateField<char>(renderer, "pendingHighSurrogate"));
+
+            setActive.Invoke(renderer, new object[] { true });
+            Assert.Empty(pending);
+            Assert.Equal('\0', GetPrivateField<char>(renderer, "pendingHighSurrogate"));
+        } finally {
+            setActive.Invoke(renderer, new object[] { false });
+        }
+    }
+
     [Fact]
     public void ExternalToolTabsAreHiddenWhenTheirModsAreMissing() {
         string[] visibleTabs = InvokeBuildVisibleTabs(speedrunToolLoaded: false, celesteTasLoaded: false, extendedVariantModeAvailable: false, extendedCameraDynamicsLoaded: false);

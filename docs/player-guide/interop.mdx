@@ -12,7 +12,7 @@ External tool actions can change your attempt status. Check the **Classification
 | Area | What it adds |
 |---|---|
 | Motion Smoothing | FPS Bypass and TPS Bypass rows on the Global tab. |
-| Speedrun Tool | State capture and restore slots, room timer readout, Tab key conflict mitigation, plus optional Lag Pauser handling for load-state hitches. |
+| Speedrun Tool | State capture and restore slots, room timer readout, plus optional Lag Pauser handling for load-state hitches. |
 | CelesteTAS | TAS status detection and a configured `.tas` file playback action. |
 | Extended Variant Mode | Variant reset, master toggle, and randomizer controls. |
 | Extended Camera Dynamics | Camera hook status and Cursor Zoom zoom-out support. |
@@ -25,14 +25,16 @@ Motion Smoothing's higher-FPS path keeps Celeste simulation at 60 TPS while draw
 
 ## Speedrun Tool
 
-Speedrun Tool interop provides state-capture slots, room timer data, a Tab key conflict fix, and coordinated Lag Pauser handling for state transitions. The rows appear only when Speedrun Tool is loaded.
+Speedrun Tool interop provides state-capture slots, room timer data and coordinated Lag Pauser handling for state transitions. The rows appear only when Speedrun Tool is loaded.
 
 | Behavior | Details |
 |---|---|
-| Tab key conflict | If both Akron and Speedrun Tool bind Tab, Akron removes Speedrun Tool's Tab binding at startup so the overlay toggle works. |
+| Tab key conflict | Akron leaves Speedrun Tool's bindings unchanged. If both mods use Tab, assign a different key to one of their UI toggles in the mod options. |
 | Room timer | Akron reads room-timing data from Speedrun Tool's `RoomTimer` export. Room timer actions are **Normal clear** because they read data without changing live gameplay. |
 | State capture and restore | Capture, restore, and clear actions map to Speedrun Tool's TAS save slots. These are **Cheat** because they change live game state. |
 | Lag Pauser > Ignore SRT | Suppress Lag Pauser spike detection briefly around Speedrun Tool load-state hooks so intentional load hitches do not count as player lag spikes. |
+
+If an older Akron version cleared Speedrun Tool's Tab binding and that setting was saved, reassign it in Speedrun Tool's hotkey options. Akron does not restore or replace your chosen bindings.
 
 ## CelesteTAS
 

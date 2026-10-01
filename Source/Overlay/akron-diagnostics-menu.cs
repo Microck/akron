@@ -36,6 +36,7 @@ internal static class AkronDiagnosticsMenu {
     private static int controllerStatusSelection;
 
     internal static bool IsOpen => ownerScene != null;
+    internal static bool AcceptsTextInput => IsOpen && !showStatus && !emptyConfirmationActive && endpointError == null;
 
     internal static void Open(TextMenu parentMenu = null) {
         Scene scene = Engine.Scene;
@@ -288,6 +289,7 @@ internal static class AkronDiagnosticsMenu {
         string description = BuildDescription();
         if (description.Length > AkronDiagnostics.MaxDescriptionLength) return false;
         if (description.Length == 0) {
+            AkronImGuiRenderer.EndTextInputSession();
             emptyConfirmationPending = true;
             emptyConfirmationActive = true;
             emptyConfirmationShown = false;
@@ -300,6 +302,7 @@ internal static class AkronDiagnosticsMenu {
     }
 
     private static void SendConfirmed(string description) {
+        AkronImGuiRenderer.EndTextInputSession();
         showStatus = true;
         controllerSelectionActive = false;
         controllerSendSelected = false;
@@ -370,6 +373,7 @@ internal static class AkronDiagnosticsMenu {
         if (!IsOpen) return;
         Scene scene = ownerScene;
         ownerScene = null;
+        AkronImGuiRenderer.EndTextInputSession();
         if (AkronDiagnostics.Status.Busy) AkronDiagnostics.Cancel();
         if (ReferenceEquals(Engine.Scene, scene)) {
             if (parent != null && ReferenceEquals(parent.Scene, scene)) {
