@@ -21,6 +21,7 @@ public sealed class AkronSetupState {
     public bool LagPauserIgnoreSpeedrunToolLoadStates { get; set; }
     public bool LowDistractionOverlay { get; set; }
     public bool PauseGameplayInMenu { get; set; }
+    public bool MenuMouse { get; set; } = true;
     public int OverlayOpacity { get; set; } = 96;
     public AkronOverlayThemePreset OverlayThemePreset { get; set; } = AkronOverlayThemePreset.Default;
     public int OverlayScale { get; set; } = 100;

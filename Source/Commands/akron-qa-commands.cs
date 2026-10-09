@@ -2096,7 +2096,7 @@ public static partial class AkronCommands {
             AkronModule.Settings.CursorToolsClickAction = AkronCursorToolsClickAction.ClickTeleport;
         }
 
-        bool simulatedHold = AkronModule.ShouldUseCursorToolsHold(AkronModule.Settings.CursorTools, true, false);
+        bool simulatedHold = AkronModule.ShouldUseCursorToolsHold(AkronModule.Settings.CursorTools, true, false, false);
         AkronCursorToolsClickAction normalizedClickAction = AkronModuleSettings.NormalizeCursorToolsClickAction(AkronModule.Settings.CursorToolsClickAction);
         Log("qa-cursor-tools-enabled: " + AkronModule.Settings.CursorTools.ToString().ToLowerInvariant());
         Log("qa-cursor-tools-simulated-hold: " + simulatedHold.ToString().ToLowerInvariant());

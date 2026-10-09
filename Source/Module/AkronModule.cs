@@ -214,6 +214,7 @@ public partial class AkronModule : EverestModule {
         Everest.Events.Level.OnUnpause += LevelOnUnpause;
         Everest.Events.Level.OnExit += LevelOnExit;
         AkronEntityInspector.LoadInspectorPin();
+        AkronMenuMouse.Load();
         MethodInfo dashCoroutineMethod = ResolvePlayerDashCoroutineMethod();
         if (dashCoroutineMethod != null) {
             dashCoroutineHook = new ILHook(dashCoroutineMethod, PlayerDashCoroutineIlHook);
@@ -358,6 +359,7 @@ public partial class AkronModule : EverestModule {
         Everest.Events.Level.OnUnpause -= LevelOnUnpause;
         Everest.Events.Level.OnExit -= LevelOnExit;
         AkronEntityInspector.UnloadInspectorPin();
+        AkronMenuMouse.Unload();
         dashCoroutineHook?.Dispose();
         dashCoroutineHook = null;
         lookoutRoutineHook?.Dispose();
@@ -1479,7 +1481,14 @@ public partial class AkronModule : EverestModule {
 
     private static void TextMenuOnUpdate(On.Celeste.TextMenu.orig_Update orig, TextMenu self) {
         ReplacePauseMenuButtonActionIfNeeded(self?.Current as TextMenu.Button);
+        // Menu Mouse scrolls with the wheel, so the native auto-scroll must not move a
+        // menu the pointer is driving (see AkronMenuMouse.HoldsScroll).
+        bool holdScroll = AkronMenuMouse.HoldsScroll(self);
+        float heldY = holdScroll ? self.Y : 0f;
         orig(self);
+        if (holdScroll) {
+            self.Y = heldY;
+        }
         KeepNativeTextMenuInsideViewport(self);
     }
 

@@ -257,6 +257,7 @@ public sealed partial class AkronOverlay {
                     UploadPackRow(level),
                     Toggle("Pause While Open", () => AkronModule.Settings.PauseGameplayInMenu, value => AkronModule.Settings.PauseGameplayInMenu = value),
                     Toggle("Block Gameplay Input", () => AkronModule.Settings.ConsumeGameplayInputInMenu, value => AkronModule.Settings.ConsumeGameplayInputInMenu = value, "input", "madeline", "overlay", "consume"),
+                    Toggle("Menu Mouse", () => AkronModule.Settings.MenuMouse, value => AkronModule.Settings.MenuMouse = value, "mouse", "cursor", "click", "menu", "pause menu", "chapter select", "file select", "alt"),
                     Toggle("Streamer Mode", () => AkronModule.Settings.StreamerMode, value => AkronModule.Settings.StreamerMode = value),
                     LoggingToggle(),
                     Action("Send diagnostics", () => Engine.Scene != null, AkronDiagnosticsMenu.DescribeAction, () => AkronDiagnosticsMenu.Open(), "logs", "support", "report", "upload", "performance"),

@@ -6,6 +6,14 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Added
+
+- Add **Menu Mouse** to the Interface tab. Hold `Left Alt` (or the bind in its popup) in a Celeste menu to point and click: hover selects, left click confirms or steps the value under the cursor, right click goes back, and the wheel scrolls. Works in the pause menu, options and mod options, the main menu, file select, chapter select, the chapter panel, and the journal. On by default.
+
+### Fixed
+
+- Ignore Click Teleport clicks while the game is paused, including the click that unpauses it, so a click on the pause menu never moves Madeline or toggles Cursor Zoom. Cursor Tools, Cursor Zoom, Entity Inspector and Free Camera mouse control also stand down while Menu Mouse is driving a menu.
+
 ## Akron Beta 84
 
 ### Fixed

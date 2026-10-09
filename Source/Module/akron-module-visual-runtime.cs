@@ -9,15 +9,19 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
-    internal static bool ShouldUseCursorToolsHold(bool cursorTools, bool cursorToolsHoldBindingHeld, bool overlayVisible) {
-        return cursorTools && cursorToolsHoldBindingHeld && !overlayVisible;
+    // Cursor Tools and Menu Mouse share the Left Alt default. While Menu Mouse drives a
+    // menu it owns the cursor, so the hold must not also pan, zoom or freeze the level
+    // behind it (freezing would stop the pause menu from updating at all).
+    internal static bool ShouldUseCursorToolsHold(bool cursorTools, bool cursorToolsHoldBindingHeld, bool overlayVisible, bool menuMouseOwnsCursor) {
+        return cursorTools && cursorToolsHoldBindingHeld && !overlayVisible && !menuMouseOwnsCursor;
     }
 
     internal static bool IsCursorToolsHoldActive() {
         return ShouldUseCursorToolsHold(
             Settings.CursorTools,
             Settings.CursorToolsHold?.Check ?? false,
-            IsOverlayVisible);
+            IsOverlayVisible,
+            AkronMenuMouse.ShowsCursor);
     }
 
     internal static bool IsClickTeleportEffectiveEnabled() {
@@ -52,7 +56,8 @@ public partial class AkronModule {
         return IsFreeCameraMouseControlEffectiveEnabled(
             Settings.FreeCameraMouseControl,
             IsCursorToolsHoldActive(),
-            Settings.CursorToolsFreeCamera);
+            Settings.CursorToolsFreeCamera,
+            AkronMenuMouse.ShowsCursor);
     }
 
     internal static bool IsCursorToolEffectiveEnabled(bool savedToolEnabled, bool cursorToolsHoldActive, bool cursorToolsOptionEnabled) {
@@ -64,10 +69,13 @@ public partial class AkronModule {
                cursorToolsHoldActive && cursorToolsClickTeleportEnabled;
     }
 
-    internal static bool IsFreeCameraMouseControlEffectiveEnabled(bool freeCameraMouseControlEnabled, bool cursorToolsHoldActive, bool cursorToolsFreeCameraEnabled) {
-        return freeCameraMouseControlEnabled ||
-               cursorToolsHoldActive &&
-               cursorToolsFreeCameraEnabled;
+    // Free Camera pans every level update, paused or not, so pointing at a menu row
+    // with Menu Mouse would otherwise drag the camera behind the menu.
+    internal static bool IsFreeCameraMouseControlEffectiveEnabled(bool freeCameraMouseControlEnabled, bool cursorToolsHoldActive, bool cursorToolsFreeCameraEnabled, bool menuMouseOwnsCursor) {
+        return !menuMouseOwnsCursor &&
+               (freeCameraMouseControlEnabled ||
+                cursorToolsHoldActive &&
+                cursorToolsFreeCameraEnabled);
     }
 
     internal static bool IsCursorToolsFreezeGameplayEffectiveEnabled() {
@@ -101,21 +109,17 @@ public partial class AkronModule {
 
     private static void CaptureClickTeleportTargetBeforeCameraMovement(Level level, Player player) {
         pendingClickTeleportTarget = null;
-        if (!IsClickTeleportEffectiveEnabled() ||
-            Settings.StartPosMousePlacement ||
-            player == null ||
-            player.Dead ||
-            IsOverlayVisible ||
-            !ShouldShowClickTeleportCursor()) {
-            clickTeleportLastLeftDown = false;
-            return;
-        }
-
         MouseState mouse = Mouse.GetState();
-        bool leftDown = mouse.LeftButton == ButtonState.Pressed;
-        bool pressed = leftDown && !clickTeleportLastLeftDown;
-        clickTeleportLastLeftDown = leftDown;
-        if (!pressed) {
+        // A click while paused belongs to the pause menu (Menu Mouse shares the Left Alt
+        // default), never to the room behind it.
+        bool gated = !IsClickTeleportEffectiveEnabled() ||
+                     Settings.StartPosMousePlacement ||
+                     level.Paused ||
+                     player == null ||
+                     player.Dead ||
+                     IsOverlayVisible ||
+                     !ShouldShowClickTeleportCursor();
+        if (!TrackFreshPress(mouse.LeftButton == ButtonState.Pressed, gated, ref clickTeleportLastLeftDown)) {
             return;
         }
 
@@ -123,6 +127,15 @@ public partial class AkronModule {
         target.X = Calc.Clamp(target.X, level.Bounds.Left, level.Bounds.Right);
         target.Y = Calc.Clamp(target.Y, level.Bounds.Top, level.Bounds.Bottom);
         pendingClickTeleportTarget = target;
+    }
+
+    // A fresh press is one that starts while the feature is live. The input is tracked
+    // while gated too: the Alt+click on Resume is still held on the first unpaused frame,
+    // and must not count as a new press (teleporting Madeline or toggling Cursor Zoom).
+    internal static bool TrackFreshPress(bool down, bool gated, ref bool lastDown) {
+        bool pressed = !gated && down && !lastDown;
+        lastDown = down;
+        return pressed;
     }
 
     private static void ApplyClickTeleport(Level level, Player player) {
@@ -231,19 +244,18 @@ public partial class AkronModule {
     private static void UpdateCursorZoom(Level level) {
         bool cursorToolsHoldActive = IsCursorToolsHoldActive();
         bool cursorZoomEnabled = IsCursorZoomEffectiveEnabled();
-        if (!cursorZoomEnabled || IsOverlayVisible || !AkronPolicy.CanUse(AkronFeatureKind.CursorZoom).Allowed) {
+        bool bindDown = Settings.CursorZoomHold?.Check ?? false;
+        // Menu Mouse reads the same wheel; like the overlay, it pauses zoom input.
+        bool gated = !cursorZoomEnabled || IsOverlayVisible || AkronMenuMouse.ShowsCursor || !AkronPolicy.CanUse(AkronFeatureKind.CursorZoom).Allowed;
+        bool bindPressed = TrackFreshPress(Settings.CursorZoom && bindDown, gated, ref cursorZoomLastBindDown);
+        if (gated) {
             cursorZoomHadScrollSample = false;
-            cursorZoomLastBindDown = false;
             if (!cursorZoomEnabled) {
                 cursorZoomToggleActive = false;
                 DeactivateCursorZoom(level);
             }
             return;
         }
-
-        bool bindDown = Settings.CursorZoomHold?.Check ?? false;
-        bool bindPressed = Settings.CursorZoom && bindDown && !cursorZoomLastBindDown;
-        cursorZoomLastBindDown = Settings.CursorZoom ? bindDown : false;
 
         AkronCursorZoomActivationMode activationMode = AkronModuleSettings.NormalizeCursorZoomActivationMode(Settings.CursorZoomActivationMode);
         bool active = cursorToolsHoldActive || bindDown;
