@@ -6,6 +6,10 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+### Added
+
+- Add optional Automatic Error Reports for selected Akron startup, overlay, settings and StartPos failures. Reporting is off by default, requires a configured Sentry destination, and sends only bounded Akron stack details and the mod version. Local logging and Send diagnostics keep their existing behavior.
+
 ## Akron Beta 84
 
 ### Fixed

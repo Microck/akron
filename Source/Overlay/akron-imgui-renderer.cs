@@ -161,6 +161,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
             lastFailure = string.Empty;
             return true;
         } catch (Exception exception) {
+            AkronTelemetry.Capture(exception, AkronFailurePhase.Overlay);
             EndInputSession();
             initializationFailed = true;
             initializationRetryFrames = 120;
@@ -189,6 +190,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
             instance.EnsureBufferCapacity(8192, 16384);
             instance.effect ??= new BasicEffect(instance.graphicsDevice);
         } catch (Exception exception) {
+            AkronTelemetry.Capture(exception, AkronFailurePhase.Overlay);
             initializationFailed = true;
             initializationRetryFrames = 120;
             lastFailure = exception.GetType().Name + ": " + exception.Message;

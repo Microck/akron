@@ -24,6 +24,12 @@ public partial class AkronModule {
         menu.Add(new TextMenu.OnOff("Safe Mode", Settings.SafeMode).Change(value => Settings.SafeMode = value));
 
         menu.Add(new TextMenu.SubHeader("Support"));
+        AddWrappedModMenuSubHeaders(menu, AkronTelemetry.IsConfigured
+            ? "Automatic error reports send Akron stack frames and its version to Sentry at " + AkronTelemetry.Destination + ". No logs, exception messages, names, save contents or full paths are included."
+            : "Automatic error reports are not configured in this build.");
+        menu.Add(new TextMenu.OnOff("Automatic Error Reports", Settings.ErrorReportingEnabled) {
+            Disabled = !AkronTelemetry.IsConfigured && !Settings.ErrorReportingEnabled
+        }.Change(SetErrorReportingEnabled));
         menu.Add(new TextMenu.Button("Send diagnostics").Pressed(() => AkronDiagnosticsMenu.Open(menu)));
     }
 

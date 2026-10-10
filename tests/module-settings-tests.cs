@@ -466,6 +466,24 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void AutomaticErrorReportingDefaultsOff()
+    {
+        Assert.False(new AkronModuleSettings().ErrorReportingEnabled);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SetupPacksCannotReplaceErrorReportingConsent(bool consent)
+    {
+        AkronModuleSettings source = new AkronModuleSettings { ErrorReportingEnabled = !consent };
+        AkronSetupPack pack = AkronSetupPacks.Capture(source, session: null, "Consent test");
+        AkronModuleSettings target = new AkronModuleSettings { ErrorReportingEnabled = consent };
+        AkronSetupPacks.Apply(target, session: null, pack);
+        Assert.Equal(consent, target.ErrorReportingEnabled);
+    }
+
+    [Fact]
     public void LoggingDefaultsToPlaytesterSafeDiagnosticsWithBoundedRetention()
     {
         AkronModuleSettings settings = new AkronModuleSettings();

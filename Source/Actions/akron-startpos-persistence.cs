@@ -838,6 +838,7 @@ internal static class AkronStartPosPersistence {
                 // Completion applies file and metadata changes on the game
                 // thread. One failure must not strand later leases or prevent
                 // Shutdown from saving metadata and removing its hook.
+                AkronTelemetry.Capture(exception, AkronFailurePhase.StartPosApply);
                 AkronLog.Warn(nameof(AkronStartPosPersistence),
                     "Could not apply a StartPos restart copy: " + exception);
             } finally {
@@ -1295,6 +1296,7 @@ internal static class AkronStartPosPersistence {
                 error = AkronSnapshotPacing.CancelledMessage;
             } catch (Exception exception) {
                 result = AkronSaveLoadResult.Failed;
+                AkronTelemetry.Capture(exception, AkronFailurePhase.StartPosPersist);
                 error = exception.GetType().Name + ": " + exception.Message;
                 // Diagnostic, not Warn: the short form travels out through the
                 // completion and is already reported at Warn when the slot is
