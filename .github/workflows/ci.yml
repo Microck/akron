@@ -27,8 +27,30 @@ jobs:
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: 8.0.418
+      - name: Regenerate telemetry lock metadata for this draft
+        run: |
+          dotnet restore tests/telemetry/akron-telemetry-tests.csproj --force-evaluate --use-lock-file --nologo
+          echo 'TELEMETRY_RESTORED_LOCK_BEGIN'
+          cat tests/telemetry/packages.lock.json
+          echo 'TELEMETRY_RESTORED_LOCK_END'
       - name: Restore locked telemetry tests
         run: dotnet restore tests/telemetry/akron-telemetry-tests.csproj --locked-mode --nologo
+      - name: Capture targeted telemetry formatting evidence for this draft
+        run: |
+          mkdir -p validation
+          format_status=0
+          dotnet format tests/telemetry/akron-telemetry-tests.csproj --no-restore --include Source/Core/akron-telemetry.cs tests/telemetry/telemetry-tests.cs > validation/telemetry-format.log 2>&1 || format_status=$?
+          git diff -- Source/Core/akron-telemetry.cs tests/telemetry/telemetry-tests.cs > validation/telemetry-format.patch
+          git restore -- Source/Core/akron-telemetry.cs tests/telemetry/telemetry-tests.cs
+          cat validation/telemetry-format.log
+          exit "$format_status"
+      - name: Upload telemetry formatting evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: telemetry-formatting
+          path: validation/telemetry-format.*
+          retention-days: 3
       - name: Verify consent, sanitized SDK envelopes, deduplication and shutdown
         run: dotnet test tests/telemetry/akron-telemetry-tests.csproj --configuration Release --no-restore --nologo
 
@@ -70,6 +92,25 @@ jobs:
 
       - name: Build
         run: dotnet build Akron.sln --configuration Release --no-restore --nologo -p:ContinuousIntegrationBuild=true
+
+      - name: Capture targeted mod formatting evidence for this draft
+        run: |
+          mkdir -p validation
+          changed_files=(Source/Core/akron-telemetry.cs Source/Module/akron-module-telemetry.cs Source/Module/AkronModuleSettings.cs Source/Module/AkronModule.cs Source/Actions/akron-startpos-persistence.cs Source/Overlay/akron-imgui-renderer.cs Source/SaveLoad/AkronSaveLoad.cs Source/Module/akron-module-menu.cs Source/Overlay/akron-overlay-entries.cs Source/Overlay/akron-overlay-copy.cs tests/module-settings-tests.cs)
+          format_status=0
+          dotnet format Akron.sln --no-restore --include "${changed_files[@]}" > validation/mod-format.log 2>&1 || format_status=$?
+          git diff -- "${changed_files[@]}" > validation/mod-format.patch
+          git restore -- "${changed_files[@]}"
+          cat validation/mod-format.log
+          exit "$format_status"
+
+      - name: Upload mod formatting evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mod-formatting
+          path: validation/mod-format.*
+          retention-days: 3
 
       - name: Test
         run: dotnet test tests/akron-tests.csproj --configuration Release --no-build --nologo
