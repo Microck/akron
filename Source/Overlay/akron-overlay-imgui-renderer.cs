@@ -293,10 +293,10 @@ public sealed partial class AkronOverlay {
         bool selected = selectedPanel == SelectionPanel.Actions &&
                         selectedActionIndex == index &&
                         selectedTabIndex == tabIndex;
-        bool entryEnabled = entry.Enabled();
+        bool entryEnabled = entry.Enabled() && (!entry.FeatureKind.HasValue || AkronPolicy.CanUse(entry.FeatureKind.Value).Allowed);
         bool hasOptionsPopup = entry.HasOptionsPopup;
-        bool activeState = entry.Active?.Invoke() ??
-                           (ShouldReadEntryValueForActiveState(entry) && IsOnState(entry.Value()));
+        bool activeState = entryEnabled && (entry.Active?.Invoke() ??
+                           (ShouldReadEntryValueForActiveState(entry) && IsOnState(entry.Value())));
         bool searchMatch = !string.IsNullOrWhiteSpace(searchQuery) && entry.Control != OverlayEntryControl.SearchInput && MatchesSearch(entry.Tab, entry);
         activeState = activeState || searchMatch;
         string id = "##akron_" + entry.Tab + "_" + entry.ActionKey + "_" + index;

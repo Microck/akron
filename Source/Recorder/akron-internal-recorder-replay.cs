@@ -263,6 +263,10 @@ public static partial class AkronInternalRecorder {
     }
 
     private static void QueueClipSave(string kind, DateTime startUtc, DateTime eventUtc, int postRollSeconds) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed) {
+            return;
+        }
+
         if (AkronModuleSettings.ClampRecordingReplayBufferSeconds(AkronModule.Settings.RecordingReplayBufferSeconds) <= 0) {
             return;
         }
@@ -275,6 +279,10 @@ public static partial class AkronInternalRecorder {
     }
 
     private static void SaveReplayWindow(Scene scene, DateTime startUtc, DateTime endUtc, string kind) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed) {
+            return;
+        }
+
         string directory = replayDirectory;
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory)) {
             Engine.Scene?.Add(new AkronToast("Replay buffer has no captured segments yet."));
@@ -408,6 +416,10 @@ public static partial class AkronInternalRecorder {
     }
 
     private static void EnsureReplayBuffer(Scene scene, AkronModuleSettings settings, RecorderSpec spec) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed) {
+            return;
+        }
+
         lock (Sync) {
             if (replayProcess != null && activeSpec.Equals(spec)) {
                 return;

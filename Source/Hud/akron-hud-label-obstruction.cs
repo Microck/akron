@@ -119,11 +119,11 @@ public static partial class AkronHudRenderer {
         List<HudLabelObstructionPlan> plans = sink.Plans;
         WalkLabelStack(level, player, settings, kind => AkronPolicy.CanUse(kind).Allowed, sink, ref y);
 
-        if (AkronSaveLoadService.HasSlot(settings.ActiveSavestateSlot)) {
+        if (AkronPolicy.CanUse(AkronFeatureKind.Savestates).Allowed && AkronSaveLoadService.HasSlot(settings.ActiveSavestateSlot)) {
             plans.Add(BuildTextPlan("SRT slot " + settings.ActiveSavestateSlot + ": saved", HudEdgePadding, ref y, null));
         }
 
-        if (settings.EntityInspector) {
+        if (settings.EntityInspector && AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed) {
             plans.Add(BuildTextPlan("Entity: " + AkronEntityInspector.Describe(level), HudEdgePadding, ref y, null));
         }
 

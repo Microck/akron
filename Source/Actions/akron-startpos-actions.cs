@@ -26,6 +26,14 @@ public static partial class AkronActions {
     // render before Celeste advances the room simulation.
     internal static ulong StartPosFrameGeneration { get; private set; }
     private static bool startPosCaptureInProgress;
+    private static ulong startPosActionGeneration;
+
+    internal static void CancelPendingStartPosActions() {
+        startPosActionGeneration++;
+        startPosCaptureInProgress = false;
+        ClearStartPosInputWait();
+        AkronStartPosPersistence.CancelPrewarm();
+    }
     internal static bool IsStartPosCapturePending => startPosCaptureInProgress;
     private static readonly Dictionary<string, Dictionary<int, AkronStartPos>> PendingStartPositionsByFileAndMap =
         new Dictionary<string, Dictionary<int, AkronStartPos>>(StringComparer.Ordinal);
@@ -292,9 +300,14 @@ public static partial class AkronActions {
         // Hold the requested frame while update hooks unwind. The stable boundary
         // also waits for any outer mod's Calc.PushRandom scope to be popped.
         StartPosFrameGeneration++;
+        ulong generation = startPosActionGeneration;
         AkronModule.ScheduleAfterStableEngineUpdate(() => {
             bool captured = false;
             try {
+                if (generation != startPosActionGeneration ||
+                    !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
+                    return;
+                }
                 if (!ReferenceEquals(Engine.Scene, level) ||
                     !ReferenceEquals(level.Session, requestedSession) ||
                     !ReferenceEquals(level.Tracker.GetEntity<Player>(), requestedPlayer) ||
@@ -306,7 +319,9 @@ public static partial class AkronActions {
                 }
                 captured = CompleteStartPosCapture(level, startPos, fileSlot, slot, toast);
             } finally {
-                startPosCaptureInProgress = false;
+                if (generation == startPosActionGeneration) {
+                    startPosCaptureInProgress = false;
+                }
                 completion?.Invoke(captured);
             }
         });
@@ -888,9 +903,16 @@ public static partial class AkronActions {
                 return;
             }
 
+            ulong generation = startPosActionGeneration;
+            Session requestedSession = level.Session;
             AkronModule.ScheduleAfterStableEngineUpdate(() => {
                 bool loaded = false;
                 try {
+                    if (generation != startPosActionGeneration ||
+                        !ReferenceEquals(level.Session, requestedSession) ||
+                        !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
+                        return;
+                    }
                     if (Engine.Scene != level) {
                         Engine.Scene?.Add(new AkronToast("StartPos " + slot + " was not loaded: the scene changed."));
                         return;
@@ -1091,16 +1113,21 @@ public static partial class AkronActions {
         startPos.Grab = AkronModule.Settings.StartPosConfiguredGrab;
     }
 
-    internal static void RestoreStartPosAfterDeath(Level level, AkronStartPos startPos) {
-        if (level == null || startPos == null || startPosCaptureInProgress) {
-            return;
-        }
-
+    internal static void RestoreStartPosAfterDeath(Level level, Session requestedSession, PlayerDeadBody deadBody, AkronStartPos startPos) {
+        ulong generation = startPosActionGeneration;
         AkronModule.ScheduleAfterStableEngineUpdate(() => {
-            if (Engine.Scene != level) {
+            // A wipe can outlive its room or a newer restore in the same Level/Session.
+            // Only the exact body still present in the live room owns this completion.
+            if (level == null || deadBody == null || Engine.Scene != level || Engine.NextScene != level ||
+                !ReferenceEquals(level.Session, requestedSession) || deadBody.Scene != level ||
+                !level.Entities.Contains(deadBody)) {
                 return;
             }
-            if (startPosCaptureInProgress) {
+            if (startPos == null || generation != startPosActionGeneration || startPosCaptureInProgress ||
+                !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
+                // Replacing DeathAction also replaced Celeste's default level.Reload.
+                // Cancelling a StartPos operation must still finish this live death.
+                level.Reload();
                 return;
             }
 
@@ -1200,6 +1227,10 @@ public static partial class AkronActions {
     }
 
     private static bool RestoreStartPosCore(Level level, AkronStartPos startPos, string toast, int loadedSlot, bool endPlacementForLoad) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed ||
+            !IsStartPosInArea(startPos, GetAreaSid(level))) {
+            return false;
+        }
         ClearStartPosInputWait();
         bool restoreRespawnAtStartPos = AkronModule.Settings.RespawnAtStartPos;
         AkronModule.Settings.RespawnAtStartPos = false;

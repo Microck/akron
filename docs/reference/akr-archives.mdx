@@ -94,7 +94,7 @@ The current portable and local contracts are:
 
 | Setup payload | StartPos snapshot document | StartPos attachment name | Snapshot file on disk |
 |---|---|---|---|
-| `akron-setup-v10` | `akron-reconstruction-v11` | `startpos/snapshots.bin.br` | `Saves/AkronStartPos/v11-<digest>.json.gz` |
+| `akron-setup-v10` | `akron-reconstruction-v12` | `startpos/snapshots.bin.br` | `Saves/AkronStartPos/v12-<digest>.json.gz` |
 
 A StartPos snapshot records an object graph with map identities, ownership
 edges, live-resource identities, and structural paths into a clean room reload.
@@ -116,8 +116,9 @@ refused by the reader, before the reconstruction path sees it.
 
 | Change | Effect on existing data |
 |---|---|
+| `akron-reconstruction-v11` -> `akron-reconstruction-v12` | Set StartPos slots again, then export their packs again. Snapshots now record whether Akron owned the saved global timescale and the clock value it replaced. Older snapshots lack that ownership and cannot safely restore timing under map restrictions. The `akron-setup-v10` container is unchanged. |
 | `akron-reconstruction-v10` -> `akron-reconstruction-v11` | Set StartPos slots again, then export their packs again. Snapshots now include the active area's room-owned dust style in the same graph as its controllers. Older snapshots lack that state and cannot be restored exactly. The `akron-setup-v10` container is unchanged. |
-| `akron-setup-v9` -> `akron-setup-v10` | Export packs again to use the shared Brotli bundle. This container change alone did not invalidate local snapshots; the separate v11 snapshot change above does. |
+| `akron-setup-v9` -> `akron-setup-v10` | Export packs again to use the shared Brotli bundle. This container change alone did not invalidate local snapshots; snapshot format changes are separate. |
 | `akron-setup-v8` -> `akron-setup-v9` | Every `.akr` setup pack made by an earlier build must be exported again. Auto Kill and Auto Deafen areas now name the map they were drawn on, and the Core Mode override's enabled flag left the setup state. |
 | `akron-setup-v7` -> `akron-setup-v8` | Every `.akr` setup pack made by an earlier build must be exported again. The overlay animation duration, floating button, and Deload Spinners flag left the setup state. |
 | `akron-overlay-theme-v1` -> `akron-overlay-theme-v2` | Every `.akr` theme pack made by an earlier build must be exported again. The animation duration left the theme. |
@@ -164,7 +165,7 @@ manifest `createdAt` value.
 The setup payload size limit is 2 MiB.
 
 The compressed bundle is limited to 509 MiB, leaving room under the 512 MiB
-community-download limit. Each expanded v11 snapshot is limited to 384 MiB,
+community-download limit. Each expanded v12 snapshot is limited to 384 MiB,
 and all expanded snapshot documents together are limited to 1 GiB.
 Export accepts local gzip sources up to 128 MiB each and 509 MiB in total.
 A `StartPos` or `Whole` archive can contain at most 99 StartPos entries.
@@ -277,7 +278,7 @@ flowchart TD
   payloadCheck -->|Yes| apply["Apply section"]
 ```
 
-Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats. Setup packs created before `akron-setup-v10` cannot be imported. Export a new pack with the current build. Current v11 local StartPos saves do not need to be recreated.
+Akron rejects archives with unsupported formats or versions, incorrect kinds, missing or extra entries, oversized payloads, invalid JSON, or unsupported payload formats. Setup packs created before `akron-setup-v10` cannot be imported. Older StartPos snapshots, including v11, must be captured again, then their packs re-exported with the current build.
 
 Akron verifies the compressed bundle hash and each document\'s checksum, map,
 and room before applying the setup. It then binds the snapshot to the recipient's

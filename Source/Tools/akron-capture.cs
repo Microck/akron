@@ -13,16 +13,27 @@ public static class AkronCapture {
     private static string pendingPath = string.Empty;
     private static string pendingGameplayBufferQaTag = string.Empty;
     private static Action pendingGameplayBufferQaCompletion;
+    private static Scene pendingGameplayBufferQaScene;
+
+    internal static void CancelPendingCapture() {
+        pendingPath = string.Empty;
+        pendingGameplayBufferQaTag = string.Empty;
+        pendingGameplayBufferQaScene = null;
+        Action completion = pendingGameplayBufferQaCompletion;
+        pendingGameplayBufferQaCompletion = null;
+        completion?.Invoke();
+    }
 
     internal static bool IsCapturingGameFrame { get; private set; }
 
     internal static bool RequestGameplayBufferQaCapture(
+        Scene scene,
         string tag,
         out string normalizedTag,
         Action completion = null
     ) {
         normalizedTag = NormalizeQaTag(tag);
-        if (string.IsNullOrWhiteSpace(normalizedTag)) {
+        if (string.IsNullOrWhiteSpace(normalizedTag) || !AkronPolicy.CanUse(AkronFeatureKind.ScreenshotTool).Allowed) {
             return false;
         }
 
@@ -38,19 +49,28 @@ public static class AkronCapture {
 
         pendingGameplayBufferQaTag = normalizedTag;
         pendingGameplayBufferQaCompletion = completion;
+        pendingGameplayBufferQaScene = scene;
         return true;
     }
 
-    internal static void CapturePendingGameplayBufferQaFrame() {
+    internal static void CapturePendingGameplayBufferQaFrame(Scene currentScene) {
         if (string.IsNullOrWhiteSpace(pendingGameplayBufferQaTag)) {
             return;
         }
 
         string tag = pendingGameplayBufferQaTag;
         Action completion = pendingGameplayBufferQaCompletion;
+        Scene requestedScene = pendingGameplayBufferQaScene;
         pendingGameplayBufferQaTag = string.Empty;
         pendingGameplayBufferQaCompletion = null;
+        pendingGameplayBufferQaScene = null;
         try {
+            // A queued QA capture still owes its completion if the scene or
+            // engine has ended before the render boundary consumes it.
+            if (!ReferenceEquals(requestedScene, currentScene) ||
+                !AkronPolicy.CanUse(AkronFeatureKind.ScreenshotTool).Allowed) {
+                return;
+            }
             CaptureGameplayBufferQaFrame(tag);
         } finally {
             completion?.Invoke();
@@ -63,6 +83,9 @@ public static class AkronCapture {
     }
 
     private static bool CaptureGameplayBufferQaFrame(string tag) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.ScreenshotTool).Allowed) {
+            return false;
+        }
         RenderTarget2D texture = GameplayBuffers.Level?.Target;
         if (texture == null || texture.IsDisposed) {
             ReportGameplayBufferQaResult("qa-pixel-checkpoint: failed;tag=" + tag + ";reason=gameplay-buffer-unavailable");
@@ -129,6 +152,10 @@ public static class AkronCapture {
     }
 
     public static string Capture(Level level) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.ScreenshotTool).Allowed) {
+            pendingPath = string.Empty;
+            return string.Empty;
+        }
         if (string.IsNullOrWhiteSpace(pendingPath)) {
             return string.Empty;
         }

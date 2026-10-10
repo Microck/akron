@@ -15,6 +15,11 @@ public static partial class AkronActions {
     private const string ImplicitStartCheckpointName = "Start";
 
     private static bool autoDeafenActive;
+    private static bool lowVolumeApplied;
+    private static float previousMusicVolume;
+    private static float previousSfxVolume;
+    private static float appliedMusicVolume;
+    private static float appliedSfxVolume;
 
     public static bool AutoDeafenActive => autoDeafenActive;
 
@@ -354,22 +359,52 @@ public static partial class AkronActions {
             return;
         }
 
-        float next = NormalizeTimescaleMultiplier(session.TimescaleMultiplier + delta);
+        if (TrySetTimescaleMultiplier(session, session.TimescaleMultiplier + delta)) {
+            Engine.Scene?.Add(new AkronToast("Timescale value: " + session.TimescaleMultiplier.ToString("0.0x")));
+        }
+    }
 
-        // Resetting to canonical speed must stay available even when Cheat
-        // speed changes are blocked, but blocked policy decisions must not allow moving away
-        // from 1.0x.
+    internal static bool TrySetTimescaleMultiplier(AkronModuleSession session, float multiplier) {
+        if (session == null || AkronPolicy.IsMapRestricted(AkronFeatureKind.Timescale)) {
+            return false;
+        }
+
+        float next = NormalizeTimescaleMultiplier(multiplier);
         if (session.TimescaleEnabled && next != 1f && !AkronModule.TryUse(AkronFeatureKind.Timescale)) {
-            return;
+            return false;
         }
 
         ConfigureTimescaleMultiplier(session, next);
-        if (next == 1f && session.TimescaleEnabled) {
-#pragma warning disable CS0618
-            Engine.TimeRate = 1f;
-#pragma warning restore CS0618
+        AkronModule.ApplyTimescale(session);
+        return true;
+    }
+
+    internal static bool TrySetTimescaleEnabled(AkronModuleSession session, bool enabled) {
+        if (session == null || AkronPolicy.IsMapRestricted(AkronFeatureKind.Timescale)) {
+            return false;
         }
-        Engine.Scene?.Add(new AkronToast("Timescale value: " + next.ToString("0.0x")));
+
+        if (enabled && session.TimescaleMultiplier != 1f && !AkronModule.TryUse(AkronFeatureKind.Timescale)) {
+            return false;
+        }
+
+        session.TimescaleEnabled = enabled;
+        if (!enabled) {
+            AkronModule.ReleaseTimescale();
+        }
+        return true;
+    }
+
+    internal static bool TryResetTimescale(AkronModuleSession session) {
+        if (session == null || AkronPolicy.IsMapRestricted(AkronFeatureKind.Timescale)) {
+            return false;
+        }
+
+        // Reset configuration without claiming the shared clock before releasing it.
+        session.TimescaleMultiplier = 1f;
+        session.TimescaleEnabled = false;
+        AkronModule.ReleaseTimescale();
+        return true;
     }
 
     internal static void ConfigureTimescaleMultiplier(AkronModuleSession session, float multiplier) {
@@ -410,25 +445,45 @@ public static partial class AkronActions {
     }
 
     public static void ApplyLowVolumeBypass() {
-        if (!AkronModule.Settings.AllowLowVolume) {
+        if (!AkronModule.Settings.AllowLowVolume || !AkronPolicy.CanUse(AkronFeatureKind.LowVolumeBypass).Allowed) {
+            RestoreLowVolumeBypass();
             return;
         }
 
-        Audio.MusicVolume = AkronModuleSettings.ClampLowVolumeLevel(AkronModule.Settings.LowVolumeMusic) / 10f;
-        Audio.SfxVolume = AkronModuleSettings.ClampLowVolumeLevel(AkronModule.Settings.LowVolumeSfx) / 10f;
+        if (!lowVolumeApplied || Audio.MusicVolume != appliedMusicVolume) {
+            previousMusicVolume = Audio.MusicVolume;
+        }
+        if (!lowVolumeApplied || Audio.SfxVolume != appliedSfxVolume) {
+            previousSfxVolume = Audio.SfxVolume;
+        }
+        appliedMusicVolume = AkronModuleSettings.ClampLowVolumeLevel(AkronModule.Settings.LowVolumeMusic) / 10f;
+        appliedSfxVolume = AkronModuleSettings.ClampLowVolumeLevel(AkronModule.Settings.LowVolumeSfx) / 10f;
+        Audio.MusicVolume = appliedMusicVolume;
+        Audio.SfxVolume = appliedSfxVolume;
+        lowVolumeApplied = true;
     }
 
     public static void RestoreLowVolumeBypass() {
-        if (Settings.Instance == null) {
+        if (!lowVolumeApplied) {
             return;
         }
 
-        Settings.Instance.ApplyMusicVolume();
-        Settings.Instance.ApplySFXVolume();
+        if (Audio.MusicVolume == appliedMusicVolume) {
+            Audio.MusicVolume = previousMusicVolume;
+        }
+        if (Audio.SfxVolume == appliedSfxVolume) {
+            Audio.SfxVolume = previousSfxVolume;
+        }
+        lowVolumeApplied = false;
     }
 
     public static bool ActivateAutoDeafen(out string error) {
         error = string.Empty;
+        AkronPolicyDecision policy = AkronPolicy.CanUse(AkronFeatureKind.AutoDeafen);
+        if (!policy.Allowed) {
+            error = policy.Message;
+            return false;
+        }
         if (autoDeafenActive) {
             return true;
         }
@@ -516,7 +571,7 @@ public static partial class AkronActions {
             return;
         }
 
-        if (!AkronModule.TryUse(AkronFeatureKind.CameraOffset)) {
+        if (!AkronModule.TryUseRuntime(AkronFeatureKind.CameraOffset)) {
             return;
         }
 
@@ -824,7 +879,7 @@ public static partial class AkronActions {
     }
 
     public static string WriteDebugSnapshot(Level level, string tag = "manual") {
-        if (level == null) {
+        if (level == null || !AkronModule.TryUse(AkronFeatureKind.Logging)) {
             return string.Empty;
         }
 
@@ -997,7 +1052,7 @@ public static partial class AkronActions {
         }
 
         level.OnEndOfFrame += () => {
-            if (Engine.Scene != level) {
+            if (Engine.Scene != level || !AkronPolicy.CanUse(AkronFeatureKind.RoomWarp).Allowed) {
                 return;
             }
 

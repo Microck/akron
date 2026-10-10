@@ -38,8 +38,7 @@ public sealed partial class AkronOverlay
 
         if (ImGui.Button("Reset##" + popupId, new NumericsVector2(112f, 0f)))
         {
-            SetTimescaleMultiplier(1f);
-            SetTimescaleEnabled(false);
+            ResetTimescale();
         }
         DrawPopupActionBindingContext("Timescale", "Reset");
         DrawPopupTooltip("Restore normal gameplay speed and turn Timescale off.");

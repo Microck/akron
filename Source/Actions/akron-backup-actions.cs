@@ -226,6 +226,9 @@ public static class AkronBackupActions {
         out IReadOnlyList<AkronBackupSkippedFile> skipped,
         string protectedBackupPath = null) {
         skipped = Array.Empty<AkronBackupSkippedFile>();
+        if (!AkronPolicy.CanUse(AkronFeatureKind.Backups).Allowed) {
+            return false;
+        }
         lock (Sync) {
             try {
                 string savesFolder = GetSavesFolder();
@@ -529,6 +532,9 @@ public static class AkronBackupActions {
     }
 
     public static void OpenBackupFolder() {
+        if (!AkronModule.TryUse(AkronFeatureKind.Backups)) {
+            return;
+        }
         try {
             Directory.CreateDirectory(BackupFolder);
             StartShellOpen(BackupFolder);
@@ -540,6 +546,9 @@ public static class AkronBackupActions {
     }
 
     public static IReadOnlyList<AkronBackupEntry> ListBackups() {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.Backups).Allowed) {
+            return Array.Empty<AkronBackupEntry>();
+        }
         lock (Sync) {
             if (!backupListDirty) {
                 return cachedBackups;
@@ -596,6 +605,9 @@ public static class AkronBackupActions {
     }
 
     public static void RestoreBackup(AkronBackupEntry backup) {
+        if (!AkronModule.TryUse(AkronFeatureKind.Backups)) {
+            return;
+        }
         if (backup == null || string.IsNullOrWhiteSpace(backup.Path) || !File.Exists(backup.Path)) {
             LastStatus = "Restore failed: backup file missing.";
             Toast(LastStatus);
@@ -607,7 +619,11 @@ public static class AkronBackupActions {
                 level,
                 "Restore Backup",
                 "Restore " + backup.FileName + "?\nA pre-restore backup will be created first.",
-                new AkronPromptOption("Restore", () => RestoreBackupConfirmed(backup)));
+                new AkronPromptOption("Restore", () => {
+                    if (Engine.Scene == level) {
+                        RestoreBackupConfirmed(backup);
+                    }
+                }));
             return;
         }
 
@@ -619,6 +635,9 @@ public static class AkronBackupActions {
     }
 
     internal static void ApplyRetentionForQa() {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.Backups).Allowed) {
+            return;
+        }
         lock (Sync) {
             InvalidateBackupList();
             ApplyRetention();
@@ -626,6 +645,9 @@ public static class AkronBackupActions {
     }
 
     public static void SetPinned(AkronBackupEntry backup, bool pinned) {
+        if (!AkronModule.TryUse(AkronFeatureKind.Backups)) {
+            return;
+        }
         if (backup == null || string.IsNullOrWhiteSpace(backup.Path)) {
             return;
         }
@@ -700,6 +722,9 @@ public static class AkronBackupActions {
     }
 
     private static void RestoreBackupConfirmed(AkronBackupEntry backup) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.Backups).Allowed) {
+            return;
+        }
         lock (Sync) {
             try {
                 string savesFolder = GetSavesFolder();

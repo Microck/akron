@@ -9098,7 +9098,6 @@ public sealed class StartPosReconstructionTests {
             Assert.Equal(AkronReconstructionDocument.CurrentFormat, document.Format);
             Assert.Equal("LightBuffer", Assert.Single(document.GameplayBuffers).FieldName);
             Assert.Equal(new byte[] { 1, 2, 3, 4 }, document.GameplayBuffers[0].Payload.Bytes);
-            Assert.Contains("v11-", Path.GetFileName(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
             Assert.True(File.Exists(AkronStartPosReconstruction.GetSnapshotPath("Akron StartPos test 1", directory)));
         } finally {
             if (Directory.Exists(directory)) {

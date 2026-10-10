@@ -133,6 +133,32 @@ public static class AkronScreenshotScanner {
     private const int MapWorldPadding = 32;
     private const int ScannerExportMarkerBorder = 1;
     private static Entity scannerHost;
+    private static Level scanLevel;
+    private static Session scanSession;
+    private static Action restoreCurrentRoom;
+    private static ulong scanGeneration;
+
+    internal static void CancelForMapChange() {
+        scanGeneration++;
+        scanCancelled = true;
+        restoreCurrentRoom?.Invoke();
+        restoreCurrentRoom = null;
+        RestoreActivePlayerScanState(scanLevel);
+        scannerHost?.RemoveSelf();
+        scannerHost = null;
+        scanLevel = null;
+        scanSession = null;
+        isScanning = false;
+        allowScanRoomSetupTriggers = false;
+        ClearInitialPlayerState();
+    }
+
+    private static bool CanContinueScan(Level level, bool allowCancelled = false) {
+        return isScanning && (allowCancelled || !scanCancelled) && ReferenceEquals(level, scanLevel) &&
+               ReferenceEquals(Engine.Scene, level) && ReferenceEquals(level?.Session, scanSession) &&
+               AkronPolicy.CanUse(AkronFeatureKind.ScreenshotTool).Allowed &&
+               AkronPolicy.CanUse(AkronFeatureKind.CaptureCheatOptions).Allowed;
+    }
     private static bool isScanning;
     private static bool scanCancelled;
     private static bool allowScanRoomSetupTriggers;
@@ -404,7 +430,7 @@ public static class AkronScreenshotScanner {
         }
 
         scanCancelled = true;
-        RestoreActivePlayerScanState(Engine.Scene as Level);
+        RestoreActivePlayerScanState(scanLevel);
         Engine.Scene?.Add(new AkronToast("Stopping screenshot scan..."));
     }
 
@@ -431,6 +457,10 @@ public static class AkronScreenshotScanner {
         if (!isScanning || level == null || scannerHost == null) {
             return;
         }
+        if (!CanContinueScan(level, allowCancelled: true)) {
+            CancelForMapChange();
+            return;
+        }
 
         // Room reloads can remove the persistent scanner host from the active
         // entity list while leaving its Scene reference pointed at the level.
@@ -454,9 +484,16 @@ public static class AkronScreenshotScanner {
         if (!AkronModule.TryUse(AkronFeatureKind.ScreenshotTool)) {
             return false;
         }
+        AkronPolicyDecision capturePolicy = AkronPolicy.CanUse(AkronFeatureKind.CaptureCheatOptions);
+        if (!capturePolicy.Allowed) {
+            level.Add(new AkronToast(capturePolicy.Message));
+            return false;
+        }
 
         isScanning = true;
         scanCancelled = false;
+        scanLevel = level;
+        scanSession = level.Session;
         lastScanCompletedSuccessfully = false;
         if (scannerHost?.Scene != level) {
             scannerHost?.RemoveSelf();
@@ -496,7 +533,7 @@ public static class AkronScreenshotScanner {
             while (rooms.Count > 0 && isScanning && !scanCancelled) {
                 Level level = Engine.Scene as Level;
                 Player player = level?.Tracker.GetEntity<Player>();
-                if (level == null || player == null) {
+                if (!CanContinueScan(level) || player == null) {
                     AkronLog.Warn(nameof(AkronScreenshotScanner), "Cancelling screenshot scan because the active level or player disappeared.");
                     scanCancelled = true;
                     break;
@@ -507,7 +544,7 @@ public static class AkronScreenshotScanner {
                     yield return ChangeRoom(level, room);
                     level = Engine.Scene as Level;
                     player = level?.Tracker.GetEntity<Player>();
-                    if (level == null || player == null || !string.Equals(level.Session.Level, room, StringComparison.Ordinal)) {
+                    if (!CanContinueScan(level) || player == null || !string.Equals(level.Session.Level, room, StringComparison.Ordinal)) {
                         continue;
                     }
                 }
@@ -530,13 +567,13 @@ public static class AkronScreenshotScanner {
 
             Level current = Engine.Scene as Level;
             Player currentPlayer = current?.Tracker.GetEntity<Player>();
-            if (current != null && currentPlayer != null && !string.Equals(current.Session.Level, initialRoom, StringComparison.Ordinal)) {
-                yield return ChangeRoom(current, initialRoom);
+            if (CanContinueScan(current, allowCancelled: true) && currentPlayer != null && !string.Equals(current.Session.Level, initialRoom, StringComparison.Ordinal)) {
+                yield return ChangeRoom(current, initialRoom, returningToStart: true);
                 current = Engine.Scene as Level;
                 currentPlayer = current?.Tracker.GetEntity<Player>();
             }
 
-            if (currentPlayer != null) {
+            if (CanContinueScan(current, allowCancelled: true) && currentPlayer != null) {
                 currentPlayer.Position = initialPosition;
                 currentPlayer.Speed = initialSpeed;
                 currentPlayer.Visible = initialVisible;
@@ -547,7 +584,7 @@ public static class AkronScreenshotScanner {
                 }
             }
 
-            if (!scanCancelled) {
+            if (CanContinueScan(current)) {
                 if (buildMapComposite && mergedRooms != null && mergedRooms.Count > 0) {
                     if (mergedRooms.Count != scannedRoomCount) {
                         AkronLog.Warn(nameof(AkronScreenshotScanner), "Writing map collage with " + mergedRooms.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + " of " + scannedRoomCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + " scanned room collages.");
@@ -562,6 +599,8 @@ public static class AkronScreenshotScanner {
             scanCancelled = false;
             allowScanRoomSetupTriggers = false;
             scannerHost = null;
+            scanLevel = null;
+            scanSession = null;
             ClearInitialPlayerState();
         }
     }
@@ -600,7 +639,13 @@ public static class AkronScreenshotScanner {
         }
     }
 
-    private static IEnumerator ChangeRoom(Level level, string roomName) {
+    private static IEnumerator ChangeRoom(Level level, string roomName, bool returningToStart = false) {
+        ulong generation = scanGeneration;
+        if (!CanContinueScan(level, returningToStart)) {
+            yield break;
+        }
+        bool freezeTime = AkronModule.Settings.ScreenshotScannerFreezeTime &&
+                          AkronPolicy.CanUse(AkronFeatureKind.CaptureCheatOptions).Allowed;
         LevelData nextRoom = GetScanMapData(level)?.Get(roomName);
         if (!CanScanChapterRoom(nextRoom)) {
             yield break;
@@ -629,7 +674,7 @@ public static class AkronScreenshotScanner {
         allowScanRoomSetupTriggers = true;
         try {
             level.OnEndOfFrame += () => {
-                if (Engine.Scene != level) {
+                if (generation != scanGeneration || !CanContinueScan(level, returningToStart)) {
                     return;
                 }
 
@@ -652,7 +697,10 @@ public static class AkronScreenshotScanner {
             };
 
             for (int i = 0; i < 30 && !roomLoaded; i++) {
-                if (AkronModule.Settings.ScreenshotScannerFreezeTime) {
+                if (generation != scanGeneration || !CanContinueScan(level, returningToStart)) {
+                    yield break;
+                }
+                if (freezeTime) {
                     level.TimeActive = previousTime;
                     level.RawTimeActive = previousRawTime;
                 }
@@ -660,7 +708,10 @@ public static class AkronScreenshotScanner {
             }
 
             for (int i = 0; i < RoomLoadSettleFrames; i++) {
-                if (AkronModule.Settings.ScreenshotScannerFreezeTime) {
+                if (generation != scanGeneration || !CanContinueScan(level, returningToStart)) {
+                    yield break;
+                }
+                if (freezeTime) {
                     level.TimeActive = previousTime;
                     level.RawTimeActive = previousRawTime;
                 }
@@ -746,6 +797,9 @@ public static class AkronScreenshotScanner {
     }
 
     private static IEnumerator ScanCurrentRoom(Level level, Player player, List<AkronScreenshotMergedRoom> mergedRooms, List<AkronScreenshotRoomCapture> markedRoomCaptures, string markedRoomOutputDirectory) {
+        if (!CanContinueScan(level)) {
+            yield break;
+        }
         Rectangle bounds = level.Bounds;
         float cameraWidth = level.Camera.Right - level.Camera.Left;
         float cameraHeight = level.Camera.Bottom - level.Camera.Top;
@@ -783,10 +837,26 @@ public static class AkronScreenshotScanner {
         List<string> writtenTiles = new List<string>();
         // Both options change what the level does while the scan runs, which is what the
         // Cheat class on their checkboxes promises to record.
-        if ((suppressMadeline || freezeTime) && !AkronModule.TryUse(AkronFeatureKind.CaptureCheatOptions)) {
+        if ((suppressMadeline || freezeTime) && !AkronModule.TryUseRuntime(AkronFeatureKind.CaptureCheatOptions)) {
             suppressMadeline = false;
             freezeTime = false;
         }
+        restoreCurrentRoom = () => {
+            player.Position = previousPlayerPosition;
+            player.Speed = previousPlayerSpeed;
+            player.Visible = previousPlayerVisible;
+            player.Collidable = previousPlayerCollidable;
+            player.Collider = previousPlayerCollider;
+            if (player.Scene != null && player.StateMachine.State == Player.StDummy) {
+                player.StateMachine.State = previousPlayerState;
+            }
+            level.Background = previousBackground;
+            level.Foreground = previousForeground;
+            level.CameraLockMode = previousCameraLockMode;
+            timeStopEntity?.RemoveSelf();
+            level.TimeActive = previousTime;
+            level.RawTimeActive = previousRawTime;
+        };
 
         try {
             // Keep capture suppression local. Reusing global Hide Player/Noclip
@@ -809,7 +879,7 @@ public static class AkronScreenshotScanner {
 
             WriteMetadata(level, bounds, cameraWidth, cameraHeight, viewportWidth, viewportHeight);
             foreach (AkronScreenshotScanTile tile in BuildScanTiles(bounds, cameraWidth, cameraHeight, stepX, stepY)) {
-                if (!isScanning || scanCancelled) {
+                if (!CanContinueScan(level)) {
                     break;
                 }
 
@@ -827,6 +897,9 @@ public static class AkronScreenshotScanner {
                         level.RawTimeActive = previousRawTime;
                     }
                     yield return null;
+                    if (!CanContinueScan(level)) {
+                        yield break;
+                    }
                     level.Camera.Position = camera;
                     player.Position = camera + new Vector2(cameraWidth / 2f, cameraHeight / 2f);
                     player.Speed = Vector2.Zero;
@@ -852,7 +925,7 @@ public static class AkronScreenshotScanner {
                 writtenTiles.Add(lastExportPath);
             }
 
-            if (isScanning && !scanCancelled && TryWriteMergedRoomImage(level, writtenTiles, bounds, cameraWidth, cameraHeight, viewportWidth, viewportHeight, out AkronScreenshotMergedRoom mergedRoom)) {
+            if (CanContinueScan(level) && TryWriteMergedRoomImage(level, writtenTiles, bounds, cameraWidth, cameraHeight, viewportWidth, viewportHeight, out AkronScreenshotMergedRoom mergedRoom)) {
                 mergedRooms?.Add(mergedRoom);
                 if (markedRoomCaptures != null && !string.IsNullOrWhiteSpace(markedRoomOutputDirectory)) {
                     string markedRoomPath = Path.Combine(markedRoomOutputDirectory, BuildMarkedRoomFileName(markedRoomCaptures.Count + 1, mergedRoom.RoomName));
@@ -862,20 +935,8 @@ public static class AkronScreenshotScanner {
                 }
             }
         } finally {
-            player.Position = previousPlayerPosition;
-            player.Speed = previousPlayerSpeed;
-            player.Visible = previousPlayerVisible;
-            player.Collidable = previousPlayerCollidable;
-            player.Collider = previousPlayerCollider;
-            if (player.Scene != null && player.StateMachine.State == Player.StDummy) {
-                player.StateMachine.State = previousPlayerState;
-            }
-            level.Background = previousBackground;
-            level.Foreground = previousForeground;
-            level.CameraLockMode = previousCameraLockMode;
-            timeStopEntity?.RemoveSelf();
-            level.TimeActive = previousTime;
-            level.RawTimeActive = previousRawTime;
+            restoreCurrentRoom?.Invoke();
+            restoreCurrentRoom = null;
         }
     }
 

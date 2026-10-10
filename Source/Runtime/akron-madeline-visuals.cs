@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Celeste;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -6,11 +7,32 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
+    private static Player madelineVisualPlayer;
+    private static Color? previousMadelineHairColor;
+    private static int? previousMadelineHairCount;
+    private static readonly Dictionary<Sprite, Color> PreviousCrownColors = new();
+
+    internal static void RestoreMadelineVisualOverrides() {
+        if (madelineVisualPlayer?.Hair != null && previousMadelineHairColor.HasValue) {
+            madelineVisualPlayer.Hair.Color = previousMadelineHairColor.Value;
+        }
+        if (madelineVisualPlayer?.Sprite != null && previousMadelineHairCount.HasValue) {
+            madelineVisualPlayer.Sprite.HairCount = previousMadelineHairCount.Value;
+        }
+        foreach (KeyValuePair<Sprite, Color> entry in PreviousCrownColors) {
+            entry.Key.SetColor(entry.Value);
+        }
+        PreviousCrownColors.Clear();
+        madelineVisualPlayer = null;
+        previousMadelineHairColor = null;
+        previousMadelineHairCount = null;
+    }
+
     private static bool TryRenderMadelineSyncedDeathEffect(Player player) {
         if (!ShouldSyncMadelineEffect(Settings.MadelineDeathEffectSync) ||
             player?.StateMachine?.State != 14 ||
             global::Celeste.SaveData.Instance?.Assists.InvisibleMotion == true ||
-            !TryUse(AkronFeatureKind.MadelineEffectSync) ||
+            !TryUseRuntime(AkronFeatureKind.MadelineEffectSync) ||
             !TryResolveMadelineSyncColor(player, out Color color)) {
             return false;
         }
@@ -21,7 +43,7 @@ public partial class AkronModule {
 
     private static bool TryRunMadelineSyncedDashParticles(On.Celeste.Player.orig_DashBegin orig, Player player) {
         if (!ShouldSyncMadelineEffect(Settings.MadelineDashParticleSync) ||
-            !TryUse(AkronFeatureKind.MadelineEffectSync) ||
+            !TryUseRuntime(AkronFeatureKind.MadelineEffectSync) ||
             !TryResolveMadelineSyncColor(player, out Color color)) {
             return false;
         }
@@ -53,7 +75,7 @@ public partial class AkronModule {
         }
 
         if (ShouldSyncMadelineEffect(Settings.MadelineDashTrailSync) &&
-            TryUse(AkronFeatureKind.MadelineEffectSync) &&
+            TryUseRuntime(AkronFeatureKind.MadelineEffectSync) &&
             TryResolveMadelineSyncColor(player, out Color syncedColor)) {
             return syncedColor;
         }
@@ -62,13 +84,14 @@ public partial class AkronModule {
     }
 
     private static void ApplyMadelineVisualOverrides(Player player) {
+        madelineVisualPlayer = player;
         ApplyMadelineColors(player);
         ApplyMadelineHairLength(player);
         ApplyMadelineCrownSync(player);
     }
 
     private static void ApplyMadelineColors(Player player) {
-        if (player == null || !Settings.MadelineColors || !TryUse(AkronFeatureKind.MadelineColors)) {
+        if (player == null || !Settings.MadelineColors || !TryUseRuntime(AkronFeatureKind.MadelineColors)) {
             return;
         }
 
@@ -86,6 +109,7 @@ public partial class AkronModule {
         }
 
         if (TryResolveMadelineConfiguredColor(player, out Color color)) {
+            previousMadelineHairColor = player.Hair.Color;
             player.Hair.Color = color;
         }
     }
@@ -93,7 +117,7 @@ public partial class AkronModule {
     private static void ApplyMadelineHairLength(Player player) {
         if (player?.Sprite == null ||
             !Settings.MadelineHairLength ||
-            !TryUse(AkronFeatureKind.MadelineHairLength)) {
+            !TryUseRuntime(AkronFeatureKind.MadelineHairLength)) {
             return;
         }
 
@@ -103,6 +127,7 @@ public partial class AkronModule {
             return;
         }
 
+        previousMadelineHairCount = player.Sprite.HairCount;
         player.Sprite.HairCount = ResolveMadelineHairLength(player.Dashes, player.MaxDashes);
     }
 
@@ -125,13 +150,14 @@ public partial class AkronModule {
 
     private static void ApplyMadelineCrownSync(Player player) {
         if (!ShouldSyncMadelineEffect(Settings.MadelineCrownColorSync) ||
-            !TryUse(AkronFeatureKind.MadelineEffectSync) ||
+            !TryUseRuntime(AkronFeatureKind.MadelineEffectSync) ||
             !TryResolveMadelineSyncColor(player, out Color color)) {
             return;
         }
 
         foreach (Sprite sprite in player.Components.GetAll<Sprite>()) {
             if (sprite?.Animations?.ContainsKey("crown") == true) {
+                PreviousCrownColors[sprite] = sprite.Color;
                 sprite.SetColor(color);
             }
         }
@@ -148,7 +174,7 @@ public partial class AkronModule {
             return false;
         }
 
-        if (Settings.MadelineColors && TryUse(AkronFeatureKind.MadelineColors) && TryResolveMadelineConfiguredColor(player, out color)) {
+        if (Settings.MadelineColors && TryUseRuntime(AkronFeatureKind.MadelineColors) && TryResolveMadelineConfiguredColor(player, out color)) {
             return true;
         }
 

@@ -6,6 +6,11 @@ namespace Celeste.Mod.Akron;
 
 public static partial class AkronSaveLoadService {
     private static bool CanAccessNativeState(Level level, out string reason, bool allowDeadPlayer = false) {
+        AkronPolicyDecision policy = AkronPolicy.CanUse(AkronFeatureKind.StartPosTools);
+        if (!policy.Allowed) {
+            reason = policy.Message;
+            return false;
+        }
         Player player = level.Tracker.GetEntity<Player>();
         if (level.Paused) {
             reason = "Native StartPos restores are blocked while paused.";
@@ -25,6 +30,10 @@ public static partial class AkronSaveLoadService {
     }
 
     private static AkronSaveLoadResult TryBrokerSave(int slot) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.Savestates).Allowed ||
+            !AkronPolicy.CanUse(AkronFeatureKind.BrokeredSavestates).Allowed) {
+            return AkronSaveLoadResult.Blocked;
+        }
         if (AkronSpeedrunToolBroker.Available) {
             AkronPolicy.RecordFeatureUse(AkronFeatureKind.BrokeredSavestates);
             return AkronSpeedrunToolBroker.Save(slot);
@@ -36,6 +45,10 @@ public static partial class AkronSaveLoadService {
     }
 
     private static AkronSaveLoadResult TryBrokerLoad(Level level, int slot) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.Savestates).Allowed ||
+            !AkronPolicy.CanUse(AkronFeatureKind.BrokeredSavestates).Allowed) {
+            return AkronSaveLoadResult.Blocked;
+        }
         if (AkronSpeedrunToolBroker.Available) {
             long currentSessionTime = level?.Session?.Time ?? 0L;
             int currentDeaths = level?.Session?.Deaths ?? 0;
