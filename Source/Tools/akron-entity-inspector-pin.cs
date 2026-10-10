@@ -131,7 +131,8 @@ public static partial class AkronEntityInspector
     public static void UpdateInspectorPin(Level level)
     {
         AkronInspectorPinFilter filter = NormalizeInspectorPinFilter(AkronModule.Settings.InspectorPinFilter);
-        if (level == null || (!AkronModule.Settings.EntityInspector && !AkronModule.Settings.CursorTools))
+        if (level == null || !AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed ||
+            (!AkronModule.Settings.EntityInspector && !(AkronModule.Settings.CursorTools && AkronPolicy.CanUse(AkronFeatureKind.CursorTools).Allowed)))
         {
             inspectorPinLastLeftDown = false;
             ClearInspectorPinPreview();
@@ -330,7 +331,7 @@ public static partial class AkronEntityInspector
 
     public static void RenderInspectorPinOutlinesToGameplayBuffer(Level level)
     {
-        if (level == null)
+        if (level == null || !AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed)
         {
             return;
         }
@@ -501,7 +502,8 @@ public static partial class AkronEntityInspector
 
     public static bool ShouldRenderInspectorPinImGui(Level level)
     {
-        return (AkronModule.Settings.EntityInspector || AkronModule.Settings.CursorTools) &&
+        return AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed &&
+               (AkronModule.Settings.EntityInspector || (AkronModule.Settings.CursorTools && AkronPolicy.CanUse(AkronFeatureKind.CursorTools).Allowed)) &&
                level != null &&
                inspectorPinSelectedEntity != null &&
                currentStack.Count > 0;
@@ -734,7 +736,7 @@ public static partial class AkronEntityInspector
     {
         if (!AkronModule.Settings.EntityInspectorPinHoverPreview ||
             !AkronModule.ShouldShowEntityInspectorCursor() ||
-            !AkronModule.TryUse(AkronFeatureKind.EntityInspector))
+            !AkronModule.TryUseRuntime(AkronFeatureKind.EntityInspector))
         {
             ClearInspectorPinPreview();
             return;

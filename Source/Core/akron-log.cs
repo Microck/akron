@@ -170,7 +170,7 @@ public static class AkronLog {
         // Runs once per rendered frame per feature, so the settings lookup is one property read and the
         // early return allocates nothing.
         AkronModuleSettings settings = ResolveSettings();
-        if (settings == null) {
+        if (settings == null || !AkronPolicy.CanUse(AkronFeatureKind.Logging).Allowed) {
             return;
         }
 
@@ -193,7 +193,7 @@ public static class AkronLog {
 
     public static void RecordFeatureUse(AkronFeatureKind feature) {
         AkronModuleSettings settings = ResolveSettings();
-        if (settings == null) {
+        if (settings == null || !AkronPolicy.CanUse(AkronFeatureKind.Logging).Allowed) {
             return;
         }
 
@@ -263,7 +263,7 @@ public static class AkronLog {
 
     private static void Write(AkronLoggingLevel level, string source, string message, LogLevel? mirrorLogLevel) {
         AkronModuleSettings settings = ResolveSettings();
-        if (settings == null) {
+        if (settings == null || !AkronPolicy.CanUse(AkronFeatureKind.Logging).Allowed) {
             return;
         }
 

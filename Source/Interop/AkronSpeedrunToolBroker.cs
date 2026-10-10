@@ -33,6 +33,10 @@ public static class AkronSpeedrunToolBroker {
     }
 
     public static AkronSaveLoadResult Save(string slotName) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.BrokeredSavestates).Allowed) {
+            return AkronSaveLoadResult.Blocked;
+        }
+
         if (!Available) {
             return AkronSaveLoadResult.BrokerUnavailable;
         }
@@ -48,6 +52,10 @@ public static class AkronSpeedrunToolBroker {
     }
 
     public static AkronSaveLoadResult Load(string slotName) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.BrokeredSavestates).Allowed) {
+            return AkronSaveLoadResult.Blocked;
+        }
+
         if (!Available) {
             return AkronSaveLoadResult.BrokerUnavailable;
         }

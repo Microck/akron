@@ -156,7 +156,7 @@ public partial class AkronModule {
     }
 
     private static void RenderNoclipAccuracyTint() {
-        if (!Settings.NoclipAccuracy || !Settings.NoclipAccuracyTint || noclipAccuracyTintTimer <= 0f) {
+        if (!IsHazardAccuracyAllowed() || !Settings.NoclipAccuracyTint || noclipAccuracyTintTimer <= 0f) {
             return;
         }
 
@@ -232,7 +232,9 @@ public partial class AkronModule {
 
     private static void ApplyPlayerVisibilityOverride(Player player) {
         bool shouldHide = Settings.HidePlayer && AkronPolicy.CanUse(AkronFeatureKind.HidePlayer).Allowed ||
-                          Settings.Noclip && Settings.NoclipHidePlayer;
+                          Settings.Noclip && Settings.NoclipHidePlayer &&
+                          AkronPolicy.CanUse(AkronFeatureKind.Noclip).Allowed &&
+                          AkronPolicy.CanUse(AkronFeatureKind.HidePlayer).Allowed;
         if (!shouldHide) {
             RestorePlayerVisibilityOverride();
             return;

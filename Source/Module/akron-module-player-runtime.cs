@@ -101,16 +101,16 @@ public partial class AkronModule {
         }
         PlayerDeadBody deadBody = orig(self, direction, evenIfInvincible, registerDeathInStats);
         bool goldenDeath = level?.Entities.OfType<Strawberry>().Any(strawberry => strawberry.Golden && strawberry.Follower.Leader != null) == true;
-        if (deadBody != null && Settings.NoDeathEffect && TryUse(AkronFeatureKind.DeathVisuals) && level != null) {
+        if (deadBody != null && Settings.NoDeathEffect && TryUseRuntime(AkronFeatureKind.DeathVisuals) && level != null) {
             noDeathEffectBodies.Add(deadBody);
             SuppressDeathEffects(level, deadBody, frozenDeathSprite);
         }
-        if (deadBody != null && Settings.NoRespawnAnimation && TryUse(AkronFeatureKind.RespawnAnimation)) {
+        if (deadBody != null && Settings.NoRespawnAnimation && TryUseRuntime(AkronFeatureKind.RespawnAnimation)) {
             deadBody.Visible = false;
             deadBody.ActionDelay = Math.Min(deadBody.ActionDelay, 0.05f);
             respawnTimeElapsed[deadBody] = 0f;
         }
-        if (deadBody != null && Settings.RespawnTimeModifier && TryUse(AkronFeatureKind.RespawnTime)) {
+        if (deadBody != null && Settings.RespawnTimeModifier && TryUseRuntime(AkronFeatureKind.RespawnTime)) {
             deadBody.ActionDelay = AkronModuleSettings.ClampRespawnTimeSeconds(Settings.RespawnTimeSeconds);
             respawnTimeElapsed[deadBody] = 0f;
         }
@@ -132,7 +132,7 @@ public partial class AkronModule {
                 } else {
                     AkronEntityInspector.RecordLastDeath(level, deathPosition, deathHazard);
                 }
-                Session.LastDeathDuringNoclip = Settings.Noclip;
+                Session.LastDeathDuringNoclip = Settings.Noclip && AkronPolicy.CanUse(AkronFeatureKind.Noclip).Allowed;
                 AkronPracticeStats.ResetAttemptTimer();
             }
         }
@@ -169,11 +169,13 @@ public partial class AkronModule {
 
     private static void PlayerDeadBodyOnUpdate(On.Celeste.PlayerDeadBody.orig_Update orig, PlayerDeadBody self) {
         orig(self);
-        if (Settings.NoDeathEffect && noDeathEffectBodies.Contains(self) && self.Scene is Level level) {
+        if (Settings.NoDeathEffect && AkronPolicy.CanUse(AkronFeatureKind.DeathVisuals).Allowed && noDeathEffectBodies.Contains(self) && self.Scene is Level level) {
             SuppressDeathEffects(level, self, null);
         }
 
-        if ((!Settings.RespawnTimeModifier && !Settings.NoRespawnAnimation) || !respawnTimeElapsed.ContainsKey(self)) {
+        bool respawnTimeAllowed = Settings.RespawnTimeModifier && AkronPolicy.CanUse(AkronFeatureKind.RespawnTime).Allowed;
+        bool respawnAnimationAllowed = Settings.NoRespawnAnimation && AkronPolicy.CanUse(AkronFeatureKind.RespawnAnimation).Allowed;
+        if ((!respawnTimeAllowed && !respawnAnimationAllowed) || !respawnTimeElapsed.ContainsKey(self)) {
             return;
         }
 
@@ -183,10 +185,10 @@ public partial class AkronModule {
             return;
         }
 
-        float elapsedStep = Settings.RespawnTimeIgnoreSpeedhack ? Engine.RawDeltaTime : Engine.DeltaTime;
+        float elapsedStep = respawnTimeAllowed && Settings.RespawnTimeIgnoreSpeedhack ? Engine.RawDeltaTime : Engine.DeltaTime;
         float elapsed = respawnTimeElapsed[self] + Math.Max(0f, elapsedStep);
         respawnTimeElapsed[self] = elapsed;
-        float target = Settings.NoRespawnAnimation ? 0.05f : AkronModuleSettings.ClampRespawnTimeSeconds(Settings.RespawnTimeSeconds);
+        float target = respawnAnimationAllowed ? 0.05f : AkronModuleSettings.ClampRespawnTimeSeconds(Settings.RespawnTimeSeconds);
         if (elapsed >= target) {
             PlayerDeadBodyEndMethod?.Invoke(self, Array.Empty<object>());
             respawnTimeElapsed.Remove(self);
@@ -246,7 +248,7 @@ public partial class AkronModule {
             AkronStartPos startPos = AkronActions.GetDeathRespawnStartPos(level, player.Position);
             if (startPos != null &&
                 (string.IsNullOrWhiteSpace(startPos.AreaSid) || string.Equals(startPos.AreaSid, level.Session.Area.GetSID())) &&
-                TryUse(AkronFeatureKind.StartPosTools)) {
+                TryUseRuntime(AkronFeatureKind.StartPosTools)) {
                 // Keep vanilla death accounting and visuals, then reload the
                 // StartPos state at frame end so entities, sounds, and player
                 // state match the latest loaded practice snapshot.
@@ -261,7 +263,7 @@ public partial class AkronModule {
     }
 
     private static void PlayerOnUpdate(On.Celeste.Player.orig_Update orig, Player self) {
-        if (!Settings.Noclip || !TryUse(AkronFeatureKind.Noclip)) {
+        if (!Settings.Noclip || !TryUseRuntime(AkronFeatureKind.Noclip)) {
             RestoreNoclipDepth();
             bool wasGrounded = self.OnGround();
             int dashesBefore = self.Dashes;
@@ -281,7 +283,7 @@ public partial class AkronModule {
         if (Instance?._Settings != null &&
             Settings.NoFreezeFrames &&
             ShouldSuppressFreezeFrames(time) &&
-            TryUse(AkronFeatureKind.FreezeFrames)) {
+            TryUseRuntime(AkronFeatureKind.FreezeFrames)) {
             return;
         }
 
@@ -315,7 +317,7 @@ public partial class AkronModule {
 
 
     private static void ApplyEnabledRuntimeFeatures(Level level) {
-        if (!Settings.Noclip) {
+        if (!Settings.Noclip || !AkronPolicy.CanUse(AkronFeatureKind.Noclip).Allowed) {
             RestoreNoclipDepth();
             RestorePlayerVisibilityOverride();
         }
@@ -333,19 +335,14 @@ public partial class AkronModule {
             return;
         }
 
-#pragma warning disable CS0618
-        if (Session.TimescaleEnabled) {
-            Engine.TimeRate = Session.TimescaleMultiplier;
-        }
-#pragma warning restore CS0618
 
-        if (Settings.InfiniteStamina && TryUse(AkronFeatureKind.InfiniteStamina)) {
+        if (Settings.InfiniteStamina && TryUseRuntime(AkronFeatureKind.InfiniteStamina)) {
             player.Stamina = 110f;
         }
 
         ApplyDashCountOverride(player, false);
 
-        if (Settings.InfiniteDash && TryUse(AkronFeatureKind.InfiniteDash)) {
+        if (Settings.InfiniteDash && TryUseRuntime(AkronFeatureKind.InfiniteDash)) {
             int maxDashes = EffectiveDashCountLimit(player);
             if (maxDashes <= 0) {
                 player.Dashes = 0;
@@ -373,7 +370,7 @@ public partial class AkronModule {
         ApplyTransitionSpeed(level);
         ApplyVisualPlayerOverrides(player);
 
-        if (ShouldApplyAnyVisualNoiseSuppression() && TryUse(AkronFeatureKind.ReducedVisualNoise)) {
+        if (ShouldApplyAnyVisualNoiseSuppression() && TryUseRuntime(AkronFeatureKind.ReducedVisualNoise)) {
             ApplyReducedVisualNoise(level);
         }
     }
@@ -386,15 +383,15 @@ public partial class AkronModule {
             return;
         }
 
-        if (Settings.FpsBypass) {
-            TryUse(AkronFeatureKind.FpsBypass);
+        if (Settings.FpsBypass && AkronPolicy.CanUse(AkronFeatureKind.FpsBypass).Allowed) {
+            TryUseRuntime(AkronFeatureKind.FpsBypass);
         }
 
-        if (Settings.TpsBypass) {
-            TryUse(AkronFeatureKind.TpsBypass);
+        if (Settings.TpsBypass && AkronPolicy.CanUse(AkronFeatureKind.TpsBypass).Allowed) {
+            TryUseRuntime(AkronFeatureKind.TpsBypass);
         }
 
-        if (!Settings.FpsBypass) {
+        if (!Settings.FpsBypass || !AkronPolicy.CanUse(AkronFeatureKind.FpsBypass).Allowed) {
             return;
         }
 
@@ -418,7 +415,7 @@ public partial class AkronModule {
             return;
         }
 
-        if (!Settings.JumpHack) {
+        if (!Settings.JumpHack || !AkronPolicy.CanUse(AkronFeatureKind.MovementStatMutation).Allowed) {
             jumpHackAirJumpsUsed = 0;
             return;
         }
@@ -447,7 +444,7 @@ public partial class AkronModule {
             return;
         }
 
-        if (!TryUse(AkronFeatureKind.MovementStatMutation)) {
+        if (!TryUseRuntime(AkronFeatureKind.MovementStatMutation)) {
             return;
         }
 
@@ -515,7 +512,7 @@ public partial class AkronModule {
             return;
         }
 
-        if (!TryUse(AkronFeatureKind.DashCountOverride)) {
+        if (!TryUseRuntime(AkronFeatureKind.DashCountOverride)) {
             return;
         }
 
@@ -539,7 +536,7 @@ public partial class AkronModule {
         }
 
         bool grounded = wasGrounded || player.OnGround();
-        if (!grounded || !TryUse(AkronFeatureKind.GroundRefillRules)) {
+        if (!grounded || !TryUseRuntime(AkronFeatureKind.GroundRefillRules)) {
             return;
         }
 
@@ -567,7 +564,7 @@ public partial class AkronModule {
     }
 
     private static int EffectiveDashCountLimit(Player player) {
-        if (Settings.DashCountOverride) {
+        if (Settings.DashCountOverride && AkronPolicy.CanUse(AkronFeatureKind.DashCountOverride).Allowed) {
             return AkronModuleSettings.ClampDashCountOverride(Settings.DashCountOverrideValue);
         }
 
@@ -579,7 +576,7 @@ public partial class AkronModule {
             return orig(self);
         }
 
-        if (!TryUse(AkronFeatureKind.DashCountOverride)) {
+        if (!TryUseRuntime(AkronFeatureKind.DashCountOverride)) {
             return orig(self);
         }
 
@@ -595,13 +592,13 @@ public partial class AkronModule {
     private static bool IsNativeAssistInvincibilityAllowed() {
         return Settings.Invincibility &&
                AkronModuleSettings.NormalizeInvincibilityMode(Settings.InvincibilityMode) == AkronInvincibilityMode.Native &&
-               TryUse(AkronFeatureKind.Invincibility);
+               TryUseRuntime(AkronFeatureKind.Invincibility);
     }
 
     private static bool IsAkronInvincibilityAllowed() {
         return Settings.Invincibility &&
                AkronModuleSettings.NormalizeInvincibilityMode(Settings.InvincibilityMode) == AkronInvincibilityMode.Akron &&
-               TryUse(AkronFeatureKind.Invincibility);
+               TryUseRuntime(AkronFeatureKind.Invincibility);
     }
 
     private static void RisingLavaOnPlayer(On.Celeste.RisingLava.orig_OnPlayer orig, RisingLava self, Player player) {
@@ -696,7 +693,7 @@ public partial class AkronModule {
     }
 
     private static void PlayerOnRender(On.Celeste.Player.orig_Render orig, Player self) {
-        if (Settings.NoStaminaFlash && TryUse(AkronFeatureKind.ReducedVisualNoise)) {
+        if (Settings.NoStaminaFlash && TryUseRuntime(AkronFeatureKind.ReducedVisualNoise)) {
             self.flash = true;
         }
 
@@ -745,7 +742,7 @@ public partial class AkronModule {
             return redirectedAim;
         }
 
-        return TryUse(AkronFeatureKind.InputAssistShortcut)
+        return TryUseRuntime(AkronFeatureKind.InputAssistShortcut)
             ? preRedirectDashAim.EightWayNormal()
             : redirectedAim;
     }

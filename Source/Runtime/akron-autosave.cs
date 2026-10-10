@@ -62,7 +62,7 @@ public static class AkronAutosave {
             return;
         }
 
-        if (!AkronModule.TryUse(AkronFeatureKind.Autosave)) {
+        if (!(force ? AkronModule.TryUse(AkronFeatureKind.Autosave) : AkronModule.TryUseRuntime(AkronFeatureKind.Autosave))) {
             return;
         }
 

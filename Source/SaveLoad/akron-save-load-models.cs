@@ -94,6 +94,8 @@ public sealed class AkronSaveLoadSlot {
     public GrabModes GrabMode { get; set; }
     public CrouchDashModes CrouchDashMode { get; set; }
     public float EngineTimeRate { get; set; }
+    public bool EngineTimeRateOwnedByAkron { get; set; }
+    public float EngineTimeRateBeforeAkron { get; set; }
     public float GlitchValue { get; set; }
     public float DistortAnxiety { get; set; }
     public float DistortGameRate { get; set; }
@@ -309,6 +311,8 @@ internal sealed class AkronPersistentRuntimeState {
     public GrabModes GrabMode { get; set; }
     public CrouchDashModes CrouchDashMode { get; set; }
     public float EngineTimeRate { get; set; }
+    public bool EngineTimeRateOwnedByAkron { get; set; }
+    public float EngineTimeRateBeforeAkron { get; set; }
     public float GlitchValue { get; set; }
     public float DistortAnxiety { get; set; }
     public float DistortGameRate { get; set; }
@@ -322,6 +326,8 @@ internal sealed class AkronPersistentRuntimeState {
             GrabMode = slot.GrabMode,
             CrouchDashMode = slot.CrouchDashMode,
             EngineTimeRate = slot.EngineTimeRate,
+            EngineTimeRateOwnedByAkron = slot.EngineTimeRateOwnedByAkron,
+            EngineTimeRateBeforeAkron = slot.EngineTimeRateBeforeAkron,
             GlitchValue = slot.GlitchValue,
             DistortAnxiety = slot.DistortAnxiety,
             DistortGameRate = slot.DistortGameRate,
@@ -339,6 +345,8 @@ internal sealed class AkronPersistentRuntimeState {
 #pragma warning disable CS0618
             EngineTimeRate = Engine.TimeRate,
 #pragma warning restore CS0618
+            EngineTimeRateOwnedByAkron = AkronModule.OwnsCurrentTimescale,
+            EngineTimeRateBeforeAkron = AkronModule.TimescaleBeforeAkron,
             GlitchValue = Glitch.Value,
             DistortAnxiety = Distort.Anxiety,
             DistortGameRate = Distort.GameRate,

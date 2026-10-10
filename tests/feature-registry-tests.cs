@@ -1,13 +1,261 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using Monocle;
 using Celeste.Mod.Akron;
 using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
 
+[Collection(AkronSharedStateCollection.Name)]
 public sealed class FeatureRegistryTests
 {
+    [Fact]
+    public void EveryRegisteredIdentityCanBeRestrictedWithoutChangingClassification()
+    {
+        foreach (AkronFeatureKind kind in Enum.GetValues<AkronFeatureKind>())
+        {
+            AkronStatus classification = AkronFeatureRegistry.Classify(kind);
+            MapData map = MapWithDeclarations(kind.ToString());
+            try
+            {
+                AkronPolicy.EnterMap(map);
+                Assert.False(AkronPolicy.CanUse(kind).Allowed);
+                Assert.False(AkronModule.TryUseRuntime(kind));
+                Assert.True(AkronPolicy.IsMapRestricted(kind));
+                Assert.Equal(classification, AkronFeatureRegistry.Classify(kind));
+                Assert.Equal(new[] { kind }, AkronPolicy.RestrictedFeatures);
+            }
+            finally
+            {
+                AkronPolicy.UnloadMapRestrictions();
+            }
+            Assert.True(AkronPolicy.CanUse(kind).Allowed);
+        }
+    }
+
+    [Fact]
+    public void DeclarationsUnionAcrossRoomsAndCannotUseNumbersLabelsOrWrongCase()
+    {
+        MapData map = MapWithDeclarations(" Freeze,FrameAdvance,Freeze, ", "Timescale,freeze,0,Room labels");
+        AkronMapFeatureRestrictions restrictions = new(map.Levels);
+        Assert.Equal(new[] { AkronFeatureKind.Freeze, AkronFeatureKind.FrameAdvance, AkronFeatureKind.Timescale }, restrictions.Features);
+        Assert.Equal(new[] { "freeze", "0", "Room labels" }, restrictions.UnknownIdentities);
+        Assert.False(restrictions.Contains(AkronFeatureKind.StartPosTools));
+    }
+
+    [Fact]
+    public void EmptyMapsDoNotRestrictFeaturesAndReentryKeepsTheDeclaredPolicy()
+    {
+        MapData restricted = MapWithDeclarations("StartPosTools,RespawnTime,InfiniteStamina");
+        MapData unrestricted = MapWithDeclarations();
+        try
+        {
+            Assert.True(AkronPolicy.EnterMap(restricted));
+            Assert.False(AkronPolicy.EnterMap(restricted));
+            Assert.False(AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed);
+            AkronPolicy.LeaveMap();
+            Assert.False(AkronPolicy.HasMapRestrictions);
+            AkronPolicy.EnterMap(restricted);
+            Assert.False(AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed);
+            AkronPolicy.EnterMap(unrestricted);
+            foreach (AkronFeatureKind kind in Enum.GetValues<AkronFeatureKind>())
+            {
+                Assert.True(AkronPolicy.CanUse(kind).Allowed);
+            }
+        }
+        finally
+        {
+            AkronPolicy.UnloadMapRestrictions();
+        }
+    }
+
+    [Fact]
+    public void LoadingAnotherMapDoesNotReplaceTheLiveThreadsPolicy()
+    {
+        AkronPolicy.EnterMap(MapWithDeclarations("Timescale"));
+        try
+        {
+            AkronMapFeatureRestrictions previous = AkronPolicy.EnterMapLoadScope(MapWithDeclarations("Freeze"));
+            try
+            {
+                Assert.False(AkronPolicy.CanUse(AkronFeatureKind.Freeze).Allowed);
+                Assert.True(AkronPolicy.CanUse(AkronFeatureKind.Timescale).Allowed);
+                bool otherThreadHasLivePolicy = false;
+                System.Threading.Thread otherThread = new(() =>
+                {
+                    otherThreadHasLivePolicy = AkronPolicy.CanUse(AkronFeatureKind.Freeze).Allowed &&
+                        !AkronPolicy.CanUse(AkronFeatureKind.Timescale).Allowed;
+                });
+                otherThread.Start();
+                otherThread.Join();
+                Assert.True(otherThreadHasLivePolicy);
+            }
+            finally
+            {
+                AkronPolicy.ExitMapLoadScope(previous);
+            }
+            Assert.True(AkronPolicy.CanUse(AkronFeatureKind.Freeze).Allowed);
+            Assert.False(AkronPolicy.CanUse(AkronFeatureKind.Timescale).Allowed);
+        }
+        finally
+        {
+            AkronPolicy.UnloadMapRestrictions();
+        }
+    }
+
+    [Fact]
+    public void LivePreferenceAndSessionChangesCannotEnableRestrictedFreezeOrStepping()
+    {
+        using PolicyModuleState state = new();
+        state.Settings.FrameStepper = true;
+        state.Settings.Noclip = true;
+        state.Session.FreezeGameplay = true;
+        state.Session.StepFrameRequested = true;
+        AkronPolicy.EnterMap(MapWithDeclarations("Freeze,FrameAdvance,Noclip"));
+
+        Assert.False(AkronModule.IsGameplayFreezeEffective);
+        Assert.False(AkronModule.CanStepGameplay);
+        Assert.Empty(AkronPolicy.GetActiveCheatContributors(state.Settings, state.Session));
+        state.Session.FreezeGameplay = false;
+        state.Session.FreezeGameplay = true;
+        Assert.False(AkronModule.IsGameplayFreezeEffective);
+        Assert.True(state.Settings.Noclip);
+        Assert.True(state.Settings.FrameStepper);
+        Assert.True(state.Session.FreezeGameplay);
+
+        AkronPolicy.EnterMap(MapWithDeclarations("FrameAdvance"));
+        Assert.True(AkronModule.IsGameplayFreezeEffective);
+        Assert.False(AkronModule.CanStepGameplay);
+        AkronPolicy.LeaveMap();
+        Assert.True(AkronModule.CanStepGameplay);
+        Assert.Contains(AkronPolicy.GetActiveCheatContributors(state.Settings, state.Session), item => item.Feature == AkronFeatureKind.Noclip);
+    }
+
+    [Fact]
+    public void RestrictedTimescaleReleasesOnlyItsOwnClockAndPreservesSessionPreference()
+    {
+        using PolicyModuleState state = new();
+#pragma warning disable CS0618
+        float original = Engine.TimeRate;
+        try
+        {
+            Engine.TimeRate = 0.8f;
+            state.Session.TimescaleEnabled = true;
+            state.Session.TimescaleMultiplier = 0.25f;
+            AkronModule.ApplyTimescale();
+            Assert.Equal(0.25f, Engine.TimeRate);
+
+            AkronPolicy.EnterMap(MapWithDeclarations("Timescale"));
+            AkronModule.ApplyTimescale();
+            Assert.Equal(0.8f, Engine.TimeRate);
+            Assert.True(state.Session.TimescaleEnabled);
+            Assert.Equal(0.25f, state.Session.TimescaleMultiplier);
+
+            Engine.TimeRate = 0.4f;
+            state.Session.TimescaleMultiplier = 0.1f;
+            AkronModule.ApplyTimescale();
+            Assert.Equal(0.4f, Engine.TimeRate);
+            AkronPolicy.LeaveMap();
+            AkronModule.ApplyTimescale();
+            Assert.Equal(0.1f, Engine.TimeRate);
+            Engine.TimeRate = 0.6f;
+            AkronModule.ReleaseTimescale();
+            Assert.Equal(0.6f, Engine.TimeRate);
+        }
+        finally
+        {
+            AkronModule.ReleaseTimescale();
+            Engine.TimeRate = original;
+        }
+#pragma warning restore CS0618
+    }
+
+    [Fact]
+    public void SnapshotTimescaleOwnershipCannotRestoreDeniedTimingOrLoseItsOriginalClock()
+    {
+        using PolicyModuleState state = new();
+#pragma warning disable CS0618
+        float original = Engine.TimeRate;
+        try
+        {
+            Engine.TimeRate = 0.8f;
+            state.Session.TimescaleEnabled = true;
+            state.Session.TimescaleMultiplier = 0.25f;
+            AkronModule.ApplyTimescale();
+            AkronSaveLoadSlot slot = new("timing", "room", "Tests/Timing", true)
+            {
+                EngineTimeRate = Engine.TimeRate,
+                EngineTimeRateOwnedByAkron = AkronModule.OwnsCurrentTimescale,
+                EngineTimeRateBeforeAkron = AkronModule.TimescaleBeforeAkron
+            };
+            AkronPersistentRuntimeState saved = AkronPersistentRuntimeState.CaptureSaved(slot);
+            AkronModule.ReleaseTimescale();
+            AkronPolicy.EnterMap(MapWithDeclarations("Timescale"));
+            Engine.TimeRate = 0.6f;
+            AkronModule.RestoreSnapshotTimescale(saved.EngineTimeRate, saved.EngineTimeRateOwnedByAkron, saved.EngineTimeRateBeforeAkron);
+            Assert.Equal(0.6f, Engine.TimeRate);
+            Assert.False(AkronModule.OwnsCurrentTimescale);
+
+            // A snapshot's independent simulation clock is still restorable.
+            AkronModule.RestoreSnapshotTimescale(0.4f, false, 1f);
+            Assert.Equal(0.4f, Engine.TimeRate);
+            AkronPolicy.LeaveMap();
+            AkronModule.RestoreSnapshotTimescale(saved.EngineTimeRate, saved.EngineTimeRateOwnedByAkron, saved.EngineTimeRateBeforeAkron);
+            Assert.Equal(0.25f, Engine.TimeRate);
+            AkronModule.ReleaseTimescale();
+            Assert.Equal(0.8f, Engine.TimeRate);
+        }
+        finally
+        {
+            AkronModule.ReleaseTimescale();
+            Engine.TimeRate = original;
+        }
+#pragma warning restore CS0618
+    }
+
+    private static MapData MapWithDeclarations(params string[] declarations)
+    {
+        MapData map = (MapData)RuntimeHelpers.GetUninitializedObject(typeof(MapData));
+        map.Levels = new List<LevelData>();
+        // A normal spawn room with no marker must not hide a later room's declaration.
+        LevelData start = (LevelData)RuntimeHelpers.GetUninitializedObject(typeof(LevelData));
+        start.Entities = new List<EntityData>();
+        map.Levels.Add(start);
+        foreach (string declaration in declarations)
+        {
+            LevelData room = (LevelData)RuntimeHelpers.GetUninitializedObject(typeof(LevelData));
+            room.Entities = new List<EntityData> {
+                new() { Name = "Akron/featureRestrictions", Values = new Dictionary<string, object> { ["features"] = declaration } }
+            };
+            map.Levels.Add(room);
+        }
+        return map;
+    }
+
+    private sealed class PolicyModuleState : IDisposable
+    {
+        private readonly AkronModule previous = AkronModule.Instance;
+        internal readonly AkronModuleSettings Settings = new();
+        internal readonly AkronModuleSession Session = new();
+
+        internal PolicyModuleState()
+        {
+            AkronModule module = (AkronModule)RuntimeHelpers.GetUninitializedObject(typeof(AkronModule));
+            module._Settings = Settings;
+            module._Session = Session;
+            typeof(AkronModule).GetProperty(nameof(AkronModule.Instance))!.SetValue(null, module);
+        }
+
+        public void Dispose()
+        {
+            AkronModule.ReleaseTimescale();
+            AkronPolicy.UnloadMapRestrictions();
+            typeof(AkronModule).GetProperty(nameof(AkronModule.Instance))!.SetValue(null, previous);
+        }
+    }
+
     [Fact]
     public void EveryFeatureKindHasACompleteDefinition()
     {
@@ -477,7 +725,7 @@ public sealed class FeatureRegistryTests
     [InlineData("Extended Camera Dynamics", "ECD Zoom Out", AkronFeatureKind.CursorZoom)]
     [InlineData("Extended Camera Dynamics", "ECD Restore Zooming", null)]
     [InlineData("Extended Variant Mode", "Extended Variants Master", AkronFeatureKind.ExtendedVariantMode)]
-    [InlineData("Extended Variant Mode", "Reset Extended", null)]
+    [InlineData("Extended Variant Mode", "Reset Extended", AkronFeatureKind.ExtendedVariantMode)]
     public void RowsClassifyThroughTheFeatureKindThatRecordsThem(string tab, string label, AkronFeatureKind? expectedKind)
     {
         Dictionary<string, AkronFeatureKind?> kinds = BuildOverlayEntryFeatureKinds(tab);
@@ -508,6 +756,7 @@ public sealed class FeatureRegistryTests
 
         return kinds;
     }
+
 
     [Theory]
     [InlineData("Safe Mode", "Freeze deaths", AkronStatus.Cheat)]

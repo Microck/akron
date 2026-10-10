@@ -917,10 +917,16 @@ public sealed partial class AkronOverlay {
     }
 
     private string DescribeRenderedEntryValue(ActionEntry entry) {
-        return entry.Value();
+        return !entry.IsToggle && entry.FeatureKind.HasValue && !AkronPolicy.CanUse(entry.FeatureKind.Value).Allowed
+            ? "Map-suppressed"
+            : entry.Value();
     }
 
     private static string DescribeSelectedFlag(Level level) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.FlagInspector).Allowed) {
+            return "Map-suppressed";
+        }
+
         if (level == null) {
             return "No level";
         }

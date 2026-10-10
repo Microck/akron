@@ -23,7 +23,7 @@ public static partial class AkronHudRenderer {
 
     private static void RenderAutoKillArea(Level level) {
         AkronModuleSettings settings = AkronModule.Settings;
-        if (AkronCapture.IsCapturingGameFrame) {
+        if (AkronCapture.IsCapturingGameFrame || !AkronPolicy.CanUse(AkronFeatureKind.AutoKill).Allowed) {
             return;
         }
 
@@ -70,7 +70,7 @@ public static partial class AkronHudRenderer {
 
     private static void RenderAutoDeafenArea(Level level) {
         AkronModuleSettings settings = AkronModule.Settings;
-        if (AkronCapture.IsCapturingGameFrame || level == null) {
+        if (AkronCapture.IsCapturingGameFrame || level == null || !AkronPolicy.CanUse(AkronFeatureKind.AutoDeafen).Allowed) {
             return;
         }
 

@@ -21,7 +21,7 @@ public static partial class AkronHudRenderer {
     private static float frameCurrentStamina = MaxStamina;
 
     private static void RenderStaminaBars(Level level, Player player, float x, ref float y) {
-        if (!AkronModule.TryUse(AkronFeatureKind.ResourceBars)) {
+        if (!AkronModule.TryUseRuntime(AkronFeatureKind.ResourceBars)) {
             return;
         }
 
@@ -178,7 +178,7 @@ public static partial class AkronHudRenderer {
     }
 
     private static void RenderDashBar(Level level, Player player, float x, ref float y) {
-        if (!AkronModule.TryUse(AkronFeatureKind.ResourceBars)) {
+        if (!AkronModule.TryUseRuntime(AkronFeatureKind.ResourceBars)) {
             return;
         }
 

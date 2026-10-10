@@ -87,15 +87,13 @@ public sealed partial class AkronOverlay {
         yield return new BindableAction(PopupActionKey("Timescale", "Increase"), "Timescale / Increase", () => ApplyOptionsPopupDelta("Timescale", 1));
         yield return new BindableAction(PopupActionKey("Timescale", "Reset"), "Timescale / Reset", () => {
             AkronModuleSession session = AkronModule.Session;
-            if (session == null) {
+            if (session == null || !AkronPolicy.CanUse(AkronFeatureKind.Timescale).Allowed) {
                 return;
             }
 
             session.TimescaleMultiplier = 1f;
             session.TimescaleEnabled = false;
-#pragma warning disable CS0618
-            Engine.TimeRate = 1f;
-#pragma warning restore CS0618
+            AkronModule.ReleaseTimescale();
             Engine.Scene?.Add(new AkronToast("Timescale reset."));
         });
 

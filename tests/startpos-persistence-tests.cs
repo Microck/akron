@@ -2888,17 +2888,34 @@ public sealed class StartPosPersistenceTests {
             completionMethod.IndexOf("FinalizeRun();", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void PersistentRestoreRejectsNonFiniteProcessGlobalFloats() {
-        string source = File.ReadAllText(GetSaveLoadSourcePath());
-        int apply = source.IndexOf("private static bool ApplyPersistentRuntimeState", StringComparison.Ordinal);
-        int timeRateAssignment = source.IndexOf("Engine.TimeRate = state.EngineTimeRate;", apply, StringComparison.Ordinal);
-        int finiteCheck = source.IndexOf("float.IsFinite(state.EngineTimeRate)", apply, StringComparison.Ordinal);
-
-        Assert.True(apply >= 0 && finiteCheck > apply && timeRateAssignment > finiteCheck);
-        Assert.Contains("float.IsFinite(state.GlitchValue)", SourceSlice(source, apply, timeRateAssignment - apply));
-        Assert.Contains("float.IsFinite(state.DistortAnxiety)", SourceSlice(source, apply, timeRateAssignment - apply));
-        Assert.Contains("float.IsFinite(state.DistortGameRate)", SourceSlice(source, apply, timeRateAssignment - apply));
+    [Theory]
+    [InlineData(nameof(AkronPersistentRuntimeState.EngineTimeRate))]
+    [InlineData(nameof(AkronPersistentRuntimeState.EngineTimeRateBeforeAkron))]
+    [InlineData(nameof(AkronPersistentRuntimeState.GlitchValue))]
+    [InlineData(nameof(AkronPersistentRuntimeState.DistortAnxiety))]
+    [InlineData(nameof(AkronPersistentRuntimeState.DistortGameRate))]
+    public void PersistentRestoreRejectsNonFiniteProcessGlobalsWithoutMutation(string field) {
+        // Validation uses the Level only as an identity token and must reject
+        // invalid process globals before touching its runtime dependencies.
+        Level level = (Level)RuntimeHelpers.GetUninitializedObject(typeof(Level));
+        AkronPersistentRuntimeState state = new() {
+            Level = level,
+            EngineTimeRate = 1f,
+            EngineTimeRateOwnedByAkron = true,
+            EngineTimeRateBeforeAkron = 1f,
+            DistortGameRate = 1f
+        };
+        PropertyInfo property = typeof(AkronPersistentRuntimeState).GetProperty(field)!;
+        MethodInfo apply = typeof(AkronSaveLoadService).GetMethod(
+            "ApplyPersistentRuntimeState", BindingFlags.Static | BindingFlags.NonPublic)!;
+#pragma warning disable CS0618
+        var original = (Engine.TimeRate, Glitch.Value, Distort.Anxiety, Distort.GameRate);
+        foreach (float invalid in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity }) {
+            property.SetValue(state, invalid);
+            Assert.False((bool)apply.Invoke(null, new object[] { level, state })!);
+            Assert.Equal(original, (Engine.TimeRate, Glitch.Value, Distort.Anxiety, Distort.GameRate));
+        }
+#pragma warning restore CS0618
     }
 
     [Fact]

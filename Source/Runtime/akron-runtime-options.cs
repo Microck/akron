@@ -12,6 +12,9 @@ namespace Celeste.Mod.Akron;
 public static class AkronRuntimeOptions {
     private const float FreeCameraMouseDeadzone = 0.08f;
     private static bool vanillaHudHidden;
+    private static bool audioPitchApplied;
+    private static Level screenshakeLevel;
+    private static bool previousScreenshakeDisabled;
     private static Player freeCameraLockedPlayer;
     private static bool freeCameraPlayerStateCaptured;
     private static int previousFreeCameraPlayerState;
@@ -33,13 +36,18 @@ public static class AkronRuntimeOptions {
         RestoreHudVisibility();
         RestoreFreeCameraPlayerControl();
         RestoreVisualTuning();
-        SetAudioPitch(1f);
+        RestoreScreenshake();
+        RestoreAudioPitch();
+        AkronEarAid.ReconcileVolumeOverrides(restore: true);
+        AkronModule.RestoreTransitionSpeed();
+        AkronModule.RestoreMadelineVisualOverrides();
         SafeModeStatSnapshot.Clear();
         safeModeSnapshotArea = string.Empty;
     }
 
     public static void Apply(Level level, Player player) {
         ApplyAudioSpeedAndPitch();
+        AkronEarAid.ReconcileVolumeOverrides();
         ApplyHudVisibility(level);
         ApplyPauseMenuVisibility(level);
         ApplyScreenshake(level);
@@ -74,7 +82,14 @@ public static class AkronRuntimeOptions {
             return "Missing";
         }
 
-        return AkronModule.Settings.FpsBypass ? ResolveCurrentFrameBypassRates().Describe() : "Off";
+        return AkronModule.Settings.FpsBypass
+            ? AkronModuleSettings.ResolveFrameBypassRates(
+                AkronModule.Settings.FpsBypass,
+                AkronModule.Settings.FpsBypassTarget,
+                AkronModule.Settings.TpsBypass,
+                AkronModule.Settings.TpsBypassTarget,
+                AkronModule.Settings.FrameBypassMethod).Describe()
+            : "Off";
     }
 
     public static string DescribeTpsBypass() {
@@ -89,9 +104,9 @@ public static class AkronRuntimeOptions {
 
     public static AkronFrameBypassRates ResolveCurrentFrameBypassRates() {
         return AkronModuleSettings.ResolveFrameBypassRates(
-            AkronModule.Settings.FpsBypass,
+            AkronModule.Settings.FpsBypass && AkronPolicy.CanUse(AkronFeatureKind.FpsBypass).Allowed,
             AkronModule.Settings.FpsBypassTarget,
-            AkronModule.Settings.TpsBypass,
+            AkronModule.Settings.TpsBypass && AkronPolicy.CanUse(AkronFeatureKind.TpsBypass).Allowed,
             AkronModule.Settings.TpsBypassTarget,
             AkronModule.Settings.FrameBypassMethod);
     }
@@ -157,7 +172,8 @@ public static class AkronRuntimeOptions {
     }
 
     public static bool ShouldFreezeGameplayForFreeCamera(Level level) {
-        return level != null &&
+        return IsFreeCameraActive(level) &&
+               AkronPolicy.CanUse(AkronFeatureKind.Freeze).Allowed &&
                (AkronModule.Settings.FreeCamera && AkronModule.Settings.FreeCameraFreezeGameplay ||
                 AkronModule.IsCursorToolsFreezeGameplayEffectiveEnabled());
     }
@@ -180,7 +196,8 @@ public static class AkronRuntimeOptions {
     public static bool ShouldSuppressPauseBackgroundFade(Scene scene) {
         return scene is Level &&
                AkronModule.IsPauseCountdownActive &&
-               AkronModule.Settings.PauseCountdownHidePauseTint;
+               AkronModule.Settings.PauseCountdownHidePauseTint &&
+               AkronPolicy.CanUse(AkronFeatureKind.PauseCountdown).Allowed;
     }
 
     public static void HoldSceneClockForSkippedLevelUpdate(Level level) {
@@ -199,17 +216,24 @@ public static class AkronRuntimeOptions {
     }
 
     private static void ApplyAudioSpeedAndPitch() {
+        bool audioSpeedAllowed = AkronModule.Settings.AudioSpeed && AkronPolicy.CanUse(AkronFeatureKind.AudioSpeed).Allowed;
+        bool pitchShiftAllowed = AkronModule.Settings.PitchShift && AkronPolicy.CanUse(AkronFeatureKind.PitchShift).Allowed;
+        if (!audioSpeedAllowed && !pitchShiftAllowed) {
+            RestoreAudioPitch();
+            return;
+        }
+
         float speed = 1f;
-        if (AkronModule.Settings.AudioSpeed && AkronModule.TryUse(AkronFeatureKind.AudioSpeed)) {
+        if (audioSpeedAllowed && AkronModule.TryUseRuntime(AkronFeatureKind.AudioSpeed)) {
             speed = AkronModule.Settings.AudioSpeedPolicy switch {
-                AkronAudioSpeedPolicy.SyncTimescale => AkronModule.Session?.TimescaleEnabled == true ? AkronModule.Session.TimescaleMultiplier : 1f,
+                AkronAudioSpeedPolicy.SyncTimescale => AkronModule.Session?.TimescaleEnabled == true && AkronPolicy.CanUse(AkronFeatureKind.Timescale).Allowed ? AkronModule.Session.TimescaleMultiplier : 1f,
                 AkronAudioSpeedPolicy.Independent => AkronModuleSettings.ClampAudioMultiplier(AkronModule.Settings.AudioSpeedMultiplier),
                 _ => 1f
             };
         }
 
         float pitch = 1f;
-        if (AkronModule.Settings.PitchShift && AkronModule.TryUse(AkronFeatureKind.PitchShift)) {
+        if (pitchShiftAllowed && AkronModule.TryUseRuntime(AkronFeatureKind.PitchShift)) {
             pitch = AkronModule.Settings.PitchShiftPolicy switch {
                 AkronPitchPolicy.FollowSpeed => speed,
                 AkronPitchPolicy.Independent => AkronModuleSettings.ClampAudioMultiplier(AkronModule.Settings.PitchShiftMultiplier),
@@ -218,6 +242,14 @@ public static class AkronRuntimeOptions {
         }
 
         SetAudioPitch(Calc.Clamp(speed * pitch, 0.1f, 4f));
+        audioPitchApplied = true;
+    }
+
+    private static void RestoreAudioPitch() {
+        if (audioPitchApplied) {
+            SetAudioPitch(1f);
+            audioPitchApplied = false;
+        }
     }
 
     private static void SetAudioPitch(float pitch) {
@@ -244,7 +276,8 @@ public static class AkronRuntimeOptions {
             return;
         }
 
-        if (!AkronModule.TryUse(AkronFeatureKind.HudVisibility)) {
+        if (!AkronModule.TryUseRuntime(AkronFeatureKind.HudVisibility)) {
+            RestoreHudVisibility();
             return;
         }
 
@@ -299,14 +332,21 @@ public static class AkronRuntimeOptions {
     }
 
     private static void ApplyScreenshake(Level level, bool afterLevelUpdate = false) {
-        if (level == null) {
+        if (level == null || !AkronModule.Settings.Screenshake || !AkronPolicy.CanUse(AkronFeatureKind.Screenshake).Allowed) {
+            RestoreScreenshake();
             return;
+        }
+
+        if (screenshakeLevel != level) {
+            RestoreScreenshake();
+            screenshakeLevel = level;
+            previousScreenshakeDisabled = GetMember(level, "DisableScreenShake") is true;
         }
 
         int intensity = AkronModuleSettings.ClampScreenshakeIntensity(AkronModule.Settings.ScreenshakeIntensity);
         bool disabled = AkronModule.Settings.Screenshake &&
                         intensity <= 0 &&
-                        AkronModule.TryUse(AkronFeatureKind.Screenshake);
+                        AkronModule.TryUseRuntime(AkronFeatureKind.Screenshake);
         SetMember(level, "DisableScreenShake", disabled);
         if (disabled) {
             SetMember(level, "ShakeVector", Vector2.Zero);
@@ -316,13 +356,20 @@ public static class AkronRuntimeOptions {
         if (!afterLevelUpdate ||
             !AkronModule.Settings.Screenshake ||
             intensity >= 100 ||
-            !AkronModule.TryUse(AkronFeatureKind.Screenshake) ||
+            !AkronModule.TryUseRuntime(AkronFeatureKind.Screenshake) ||
             !TryGetMemberValue(level, "ShakeVector", out object shakeVector) ||
             shakeVector is not Vector2 vector) {
             return;
         }
 
         SetMember(level, "ShakeVector", vector * (intensity / 100f));
+    }
+
+    private static void RestoreScreenshake() {
+        if (screenshakeLevel != null) {
+            SetMember(screenshakeLevel, "DisableScreenShake", previousScreenshakeDisabled);
+            screenshakeLevel = null;
+        }
     }
 
     private static void ApplyVisualTuning(Level level) {
@@ -356,7 +403,7 @@ public static class AkronRuntimeOptions {
             return false;
         }
 
-        return AkronModule.TryUse(AkronFeatureKind.VisualTuning);
+        return AkronModule.TryUseRuntime(AkronFeatureKind.VisualTuning);
     }
 
     private static void CaptureVisualTuningBaseline(Level level) {
@@ -440,7 +487,7 @@ public static class AkronRuntimeOptions {
             return;
         }
 
-        if (!AkronModule.TryUse(AkronFeatureKind.FreeCamera)) {
+        if (!AkronModule.TryUseRuntime(AkronFeatureKind.FreeCamera)) {
             RestoreFreeCameraPlayerControl();
             return;
         }
@@ -574,7 +621,9 @@ public static class AkronRuntimeOptions {
             return;
         }
 
-        if (!AkronModule.TryUse(AkronFeatureKind.SafeModeStats)) {
+        if (!AkronModule.TryUseRuntime(AkronFeatureKind.SafeModeStats)) {
+            SafeModeStatSnapshot.Clear();
+            safeModeSnapshotArea = string.Empty;
             return;
         }
 

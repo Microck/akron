@@ -26,6 +26,14 @@ public static partial class AkronActions {
     // render before Celeste advances the room simulation.
     internal static ulong StartPosFrameGeneration { get; private set; }
     private static bool startPosCaptureInProgress;
+    private static ulong startPosActionGeneration;
+
+    internal static void CancelPendingStartPosActions() {
+        startPosActionGeneration++;
+        startPosCaptureInProgress = false;
+        ClearStartPosInputWait();
+        AkronStartPosPersistence.CancelPrewarm();
+    }
     internal static bool IsStartPosCapturePending => startPosCaptureInProgress;
     private static readonly Dictionary<string, Dictionary<int, AkronStartPos>> PendingStartPositionsByFileAndMap =
         new Dictionary<string, Dictionary<int, AkronStartPos>>(StringComparer.Ordinal);
@@ -292,9 +300,14 @@ public static partial class AkronActions {
         // Hold the requested frame while update hooks unwind. The stable boundary
         // also waits for any outer mod's Calc.PushRandom scope to be popped.
         StartPosFrameGeneration++;
+        ulong generation = startPosActionGeneration;
         AkronModule.ScheduleAfterStableEngineUpdate(() => {
             bool captured = false;
             try {
+                if (generation != startPosActionGeneration ||
+                    !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
+                    return;
+                }
                 if (!ReferenceEquals(Engine.Scene, level) ||
                     !ReferenceEquals(level.Session, requestedSession) ||
                     !ReferenceEquals(level.Tracker.GetEntity<Player>(), requestedPlayer) ||
@@ -306,7 +319,9 @@ public static partial class AkronActions {
                 }
                 captured = CompleteStartPosCapture(level, startPos, fileSlot, slot, toast);
             } finally {
-                startPosCaptureInProgress = false;
+                if (generation == startPosActionGeneration) {
+                    startPosCaptureInProgress = false;
+                }
                 completion?.Invoke(captured);
             }
         });
@@ -888,9 +903,16 @@ public static partial class AkronActions {
                 return;
             }
 
+            ulong generation = startPosActionGeneration;
+            Session requestedSession = level.Session;
             AkronModule.ScheduleAfterStableEngineUpdate(() => {
                 bool loaded = false;
                 try {
+                    if (generation != startPosActionGeneration ||
+                        !ReferenceEquals(level.Session, requestedSession) ||
+                        !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
+                        return;
+                    }
                     if (Engine.Scene != level) {
                         Engine.Scene?.Add(new AkronToast("StartPos " + slot + " was not loaded: the scene changed."));
                         return;
@@ -1092,12 +1114,17 @@ public static partial class AkronActions {
     }
 
     internal static void RestoreStartPosAfterDeath(Level level, AkronStartPos startPos) {
-        if (level == null || startPos == null || startPosCaptureInProgress) {
+        if (level == null || startPos == null || startPosCaptureInProgress ||
+            !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
             return;
         }
 
+        ulong generation = startPosActionGeneration;
+        Session requestedSession = level.Session;
         AkronModule.ScheduleAfterStableEngineUpdate(() => {
-            if (Engine.Scene != level) {
+            if (Engine.Scene != level || generation != startPosActionGeneration ||
+                !ReferenceEquals(level.Session, requestedSession) ||
+                !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
                 return;
             }
             if (startPosCaptureInProgress) {
@@ -1200,6 +1227,10 @@ public static partial class AkronActions {
     }
 
     private static bool RestoreStartPosCore(Level level, AkronStartPos startPos, string toast, int loadedSlot, bool endPlacementForLoad) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed ||
+            !IsStartPosInArea(startPos, GetAreaSid(level))) {
+            return false;
+        }
         ClearStartPosInputWait();
         bool restoreRespawnAtStartPos = AkronModule.Settings.RespawnAtStartPos;
         AkronModule.Settings.RespawnAtStartPos = false;

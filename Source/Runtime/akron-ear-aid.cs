@@ -5,6 +5,8 @@ using FMOD.Studio;
 namespace Celeste.Mod.Akron;
 
 public static class AkronEarAid {
+    private static readonly List<(EventInstance Instance, string Key, float OriginalVolume, bool Applied)> VolumeOverrides = new();
+
     public sealed class SoundDefinition {
         public SoundDefinition(string key, string label, params string[] eventFragments) {
             Key = key;
@@ -101,13 +103,35 @@ public static class AkronEarAid {
         }
 
         SoundDefinition sound = FindBestMatch(eventName);
-        if (sound == null) {
+        if (sound == null || !OverrideEnabled(sound.Key)) {
             return;
         }
 
-        if (OverrideEnabled(sound.Key) && AkronModule.TryUse(AkronFeatureKind.SoundVolumeOverride)) {
-            int volume = VolumeFor(sound.Key);
-            instance.setVolume(volume / 100f);
+        if (instance.getVolume(out float originalVolume, out _) != FMOD.RESULT.OK) {
+            return;
+        }
+
+        bool applied = AkronModule.TryUseRuntime(AkronFeatureKind.SoundVolumeOverride);
+        VolumeOverrides.Add((instance, sound.Key, originalVolume, applied));
+        if (applied) {
+            instance.setVolume(VolumeFor(sound.Key) / 100f);
+        }
+    }
+
+    internal static void ReconcileVolumeOverrides(bool restore = false) {
+        bool allowed = !restore && AkronPolicy.CanUse(AkronFeatureKind.SoundVolumeOverride).Allowed;
+        for (int index = VolumeOverrides.Count - 1; index >= 0; index--) {
+            var entry = VolumeOverrides[index];
+            if (!entry.Instance.isValid()) {
+                VolumeOverrides.RemoveAt(index);
+                continue;
+            }
+
+            bool apply = allowed && OverrideEnabled(entry.Key);
+            if (apply != entry.Applied) {
+                entry.Instance.setVolume(apply ? VolumeFor(entry.Key) / 100f : entry.OriginalVolume);
+                VolumeOverrides[index] = (entry.Instance, entry.Key, entry.OriginalVolume, apply);
+            }
         }
     }
 

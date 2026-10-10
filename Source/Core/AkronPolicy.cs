@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Celeste;
 using Monocle;
 
@@ -37,16 +38,79 @@ public static class AkronPolicy
     public const int UnclassifiedColorRgb = 0x909090;
     public const int SafeModeRedactedCleanColorRgb = 0x6495ED;
 
+    public const int MapRestrictionVersion = 1;
+    private const string MapRestrictionMessage = "Suppressed by this map. Your saved preference is unchanged.";
+    private static ConditionalWeakTable<MapData, AkronMapFeatureRestrictions> mapRestrictions = new();
+    private static volatile AkronMapFeatureRestrictions activeMapRestrictions = AkronMapFeatureRestrictions.Empty;
+    [System.ThreadStatic]
+    private static AkronMapFeatureRestrictions loadingMapRestrictions;
+    private static AkronMapFeatureRestrictions CurrentMapRestrictions => loadingMapRestrictions ?? activeMapRestrictions;
+
+    public static bool HasMapRestrictions => CurrentMapRestrictions.Features.Count != 0;
+    public static IReadOnlyList<AkronFeatureKind> RestrictedFeatures => CurrentMapRestrictions.Features;
+    public static bool IsMapRestricted(AkronFeatureKind feature) => CurrentMapRestrictions.Contains(feature);
+
+    internal static bool EnterMap(MapData map)
+    {
+        return SetMapRestrictions(GetMapRestrictions(map));
+    }
+
+    private static AkronMapFeatureRestrictions GetMapRestrictions(MapData map) => map == null
+        ? AkronMapFeatureRestrictions.Empty
+        : mapRestrictions.GetValue(map, CompileMapRestrictions);
+
+    internal static AkronMapFeatureRestrictions EnterMapLoadScope(MapData map)
+    {
+        // Everest can construct the incoming room while the outgoing level still updates.
+        // Loader effects use the target declaration without replacing the live scene's policy.
+        AkronMapFeatureRestrictions previous = loadingMapRestrictions;
+        loadingMapRestrictions = GetMapRestrictions(map);
+        return previous;
+    }
+
+    internal static void ExitMapLoadScope(AkronMapFeatureRestrictions previous)
+    {
+        loadingMapRestrictions = previous;
+    }
+
+    private static AkronMapFeatureRestrictions CompileMapRestrictions(MapData map)
+    {
+        AkronMapFeatureRestrictions restrictions = new(map.Levels);
+        foreach (string identity in restrictions.UnknownIdentities)
+        {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Unknown Akron/featureRestrictions identity '" + identity + "'. Use an exact AkronFeatureKind name; this entry was ignored.");
+        }
+        return restrictions;
+    }
+
+    private static bool SetMapRestrictions(AkronMapFeatureRestrictions restrictions)
+    {
+        if (ReferenceEquals(activeMapRestrictions, restrictions))
+        {
+            return false;
+        }
+        activeMapRestrictions = restrictions;
+        return true;
+    }
+
+    internal static bool LeaveMap() => SetMapRestrictions(AkronMapFeatureRestrictions.Empty);
+
+    internal static void UnloadMapRestrictions()
+    {
+        LeaveMap();
+        mapRestrictions = new();
+    }
+
     public static AkronPolicyDecision CanUse(AkronFeatureKind feature)
     {
-        AkronModuleSettings settings = AkronModule.Settings;
-
-        return new AkronPolicyDecision(true, AkronFeatureRegistry.Get(feature).Reason);
+        return IsMapRestricted(feature)
+            ? new AkronPolicyDecision(false, MapRestrictionMessage)
+            : new AkronPolicyDecision(true, AkronFeatureRegistry.Get(feature).Reason);
     }
 
     public static void RecordFeatureUse(AkronFeatureKind feature)
     {
-        if (AkronModule.Session == null)
+        if (AkronModule.Session == null || !CanUse(feature).Allowed)
         {
             return;
         }
@@ -229,7 +293,7 @@ public static class AkronPolicy
 
     private static void AddIfCheat(List<AkronActiveCheatContributor> contributors, bool enabled, string label, AkronFeatureKind feature)
     {
-        if (enabled && AkronFeatureRegistry.Classify(feature) == AkronStatus.Cheat)
+        if (enabled && CanUse(feature).Allowed && AkronFeatureRegistry.Classify(feature) == AkronStatus.Cheat)
         {
             contributors.Add(new AkronActiveCheatContributor(label, "Turn off " + label, feature));
         }
@@ -237,7 +301,7 @@ public static class AkronPolicy
 
     private static void AddMotionSmoothingCheatContributor(List<AkronActiveCheatContributor> contributors, bool enabled, string label, string disableCommand)
     {
-        if (enabled)
+        if (enabled && CanUse(AkronFeatureKind.FpsBypass).Allowed)
         {
             contributors.Add(new AkronActiveCheatContributor(label, disableCommand, AkronFeatureKind.FpsBypass));
         }
@@ -245,7 +309,7 @@ public static class AkronPolicy
 
     private static void AddExtendedVariantContributors(List<AkronActiveCheatContributor> contributors)
     {
-        if (!AkronExtendedVariants.Available)
+        if (!AkronExtendedVariants.Available || !CanUse(AkronFeatureKind.ExtendedVariantMode).Allowed)
         {
             return;
         }
