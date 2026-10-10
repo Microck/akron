@@ -167,6 +167,21 @@ public sealed partial class AkronOverlay
             10,
             popupId,
             "Lookout camera speed multiplier while Fast Lookout is enabled.");
+
+        // Fast Lookout only speeds up while this is held, and it starts unbound, so this row
+        // is the only in-game way to make the feature do anything.
+        ImGui.Separator();
+        DrawCursorHoldBindingRow(
+            "Player/Fast Lookout Hold",
+            "Fast Lookout / Hold",
+            "fast-lookout",
+            AkronModule.Settings.FastLookoutHold,
+            value => AkronModule.Settings.FastLookoutHold = value,
+            AkronModuleSettings.CreateEmptyButtonBinding(),
+            popupId,
+            "Hold this while using a lookout to move the camera faster.",
+            rowLabel: "Hold",
+            tooltipTitle: "Fast Lookout hold");
     }
 
     private void DrawNoDeathWipePopupControls(string popupId)

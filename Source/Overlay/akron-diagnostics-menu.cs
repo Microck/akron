@@ -38,13 +38,13 @@ internal static class AkronDiagnosticsMenu {
     internal static bool IsOpen => ownerScene != null;
     internal static bool AcceptsTextInput => IsOpen && !showStatus && !emptyConfirmationActive && endpointError == null;
 
-    internal static void Open(TextMenu parentMenu = null) {
+    internal static void Open() {
         Scene scene = Engine.Scene;
         if (scene == null || IsOpen) return;
         // Release the hide-pause cache before capturing the parent's visibility.
         if (scene is Level) AkronRuntimeOptions.RestorePauseMenuVisibility();
         ownerScene = scene;
-        parent = parentMenu ?? scene.Entities.OfType<TextMenu>().FirstOrDefault(menu => menu.Focused);
+        parent = scene.Entities.OfType<TextMenu>().FirstOrDefault(menu => menu.Focused);
         if (parent != null) {
             parentWasVisible = parent.Visible;
             parentWasFocused = parent.Focused;
