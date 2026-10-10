@@ -334,6 +334,7 @@ public sealed partial class AkronOverlay {
         ["Opacity"] = "Set Akron overlay background opacity.",
         ["Streamer Mode"] = "Show filenames instead of full local filesystem paths.",
         ["Logging"] = "Write local Akron diagnostic logs for debugging.",
+        ["Automatic Error Reports"] = "Send selected Akron errors to Sentry. On by default when configured; turn off here. Reports contain Akron stack frames and the mod version, without logs, exception messages, names, save contents or full paths.",
         ["Room Capture"] = "Capture overlapping tiles across the current room.",
         ["Map Capture"] = "Capture each room in the current map.",
         ["Search Autofocus"] = "Focus Akron search automatically when the overlay opens.",

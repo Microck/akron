@@ -109,21 +109,53 @@ jobs:
         run: dotnet restore Akron.sln --locked-mode --nologo -p:ContinuousIntegrationBuild=true
 
       - name: Build
-        run: dotnet build Akron.sln --configuration Release --no-restore --nologo -p:ContinuousIntegrationBuild=true
+        env:
+          AKRON_SENTRY_DSN: ${{ vars.AKRON_SENTRY_DSN }}
+        run: dotnet build Akron.sln --configuration Release --no-restore --nologo -p:ContinuousIntegrationBuild=true -p:AkronSentryDsn="$AKRON_SENTRY_DSN"
 
       - name: Test
         run: dotnet test tests/akron-tests.csproj --configuration Release --no-build --nologo
+
+      - name: Upload private Sentry symbols and release identity
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          AKRON_SENTRY_DSN: ${{ vars.AKRON_SENTRY_DSN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$AKRON_SENTRY_DSN" ]; then
+            echo "Sentry is not configured; skipping symbol upload."
+            exit 0
+          fi
+          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_ORG" ] || [ -z "$SENTRY_PROJECT" ]; then
+            echo "::error::Configured error reporting requires SENTRY_AUTH_TOKEN, SENTRY_ORG and SENTRY_PROJECT for readable release stacks."
+            exit 1
+          fi
+          # The pinned Sentry NuGet package includes this CLI. It is never copied into Akron.zip.
+          sentry_cli="${NUGET_PACKAGES:-$HOME/.nuget/packages}/sentry/6.12.0/tools/sentry-cli-Linux-x86_64"
+          chmod +x "$sentry_cli"
+          "$sentry_cli" debug-files upload --include-sources bin/Akron.dll bin/Akron.pdb
+          "$sentry_cli" releases new "akron@${RELEASE_TAG#v}"
+          "$sentry_cli" releases set-commits "akron@${RELEASE_TAG#v}" --commit "Microck/akron@$(git rev-parse HEAD)"
+          "$sentry_cli" releases finalize "akron@${RELEASE_TAG#v}"
 
       - name: Verify package contents
         run: |
           set -euo pipefail
           test -f Akron.zip
-          if unzip -Z1 Akron.zip | grep -E '\.pdb$'; then
-            echo "::error::Player package must not contain PDB files."
+          unzip -Z1 Akron.zip | grep -Fx bin/Akron.pdb >/dev/null
+          if unzip -Z1 Akron.zip | grep -E '\.pdb$' | grep -Fvx bin/Akron.pdb; then
+            echo "::error::Only Akron's portable PDB belongs in the player package."
             exit 1
           fi
           unzip -Z1 Akron.zip | grep -Fx LICENSE >/dev/null
           unzip -Z1 Akron.zip | grep -Fx ThirdPartyNotices.txt >/dev/null
+          unzip -Z1 Akron.zip | grep -Fx bin/Sentry.dll >/dev/null
+          if unzip -Z1 Akron.zip | grep -E '(^|/)(sentry-cli[^/]*|sentry\.dll|libsentry[^/]*)(/|$)'; then
+            echo "::error::Player package must not contain Sentry CLI or native crash handlers."
+            exit 1
+          fi
           cmp LICENSE <(unzip -p Akron.zip LICENSE)
           cmp licenses/third-party-notices.txt <(unzip -p Akron.zip ThirdPartyNotices.txt)
           cp Akron.zip "Akron-${RELEASE_TAG}.zip"

@@ -19,6 +19,7 @@ The Interface tab controls the Akron overlay itself and the public `.akr` pack w
 | Menu Mouse | Toggle | Hold the Menu Mouse key (`Left Alt` by default) to use the mouse in Celeste menus: the pause menu, options and mod options, the main menu, file select, chapter select, the chapter panel, and the journal. Hover selects a row, left click confirms it or steps the value under the cursor, right click goes back, and the wheel scrolls long lists. The list stays still while you hold the key and recenters on the selection when you let go. In chapter select and the chapter panel, click once to select and again to open. On Linux desktops that move windows with Alt+drag, such as Cinnamon, the desktop takes Alt+clicks before the game does; bind another key in the popup or change the desktop's window-move key. On by default. | None |
 | Streamer Mode | Toggle | Replace full local filesystem paths with filenames. | None |
 | Logging | Toggle | Write local Akron diagnostic logs to `Saves/AkronLogs`. | Goldberry/Hardlist clear |
+| Automatic Error Reports | Toggle | Send selected Akron error reports through Sentry. On by default when configured; turn off here. Unavailable without a configured destination. See [error reporting](/reference/error-reporting) for the exact data sent. | None |
 | Send diagnostics | Action | Describe a problem, review consent, and send bounded logs, mod versions and system specs to Akron's private Discord support channel. | None |
 | Search Autofocus | Toggle | Focus Akron search automatically when the overlay opens. | None |
 | Search | Text input | Filter visible Akron rows by label or search alias. | None |
@@ -99,8 +100,7 @@ Keybind, HUD, audio, and recorder packs are not map catalog entries. Post those 
 
 Text input is active only while a diagnostics field has focus. Closing the form releases it so Speedrun Tool hotkeys work again.
 
-**Send diagnostics** opens an Akron overlay form before any upload. It is also
-available in Akron's Everest mod options. Add a title, describe what happened,
+**Send diagnostics** opens an Akron overlay form before any upload. Add a title, describe what happened,
 list steps to reproduce it, and add the expected behavior or other context.
 Choose **Send now**. You can leave every field blank, but Akron asks you to
 confirm before sending. Reports use the configured community upload service,

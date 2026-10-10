@@ -811,7 +811,7 @@ public partial class AkronModule {
     }
 
     private static float ApplyFastLookoutMultiplier(float vanillaValue) {
-        return ApplyFastLookoutMultiplier(vanillaValue, Settings.FastLookoutHold?.Check == true);
+        return ApplyFastLookoutMultiplier(vanillaValue, IsFastLookoutHoldHeld());
     }
 
     private static float ApplyFastLookoutMultiplier(float vanillaValue, bool holdPressed) {

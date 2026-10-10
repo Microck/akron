@@ -466,6 +466,35 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void AutomaticErrorReportingDefaultsOn()
+    {
+        Assert.True(new AkronModuleSettings().ErrorReportingEnabled);
+    }
+
+    [Theory]
+    [InlineData("Logging: true\n", true)]
+    [InlineData("ErrorReportingEnabled: false\n", false)]
+    [InlineData("ErrorReportingEnabled: true\n", true)]
+    public void LoadedSettingsPreserveTheReportingPreference(string yaml, bool enabled)
+    {
+        AkronModuleSettings settings = new YamlDotNet.Serialization.DeserializerBuilder().Build()
+            .Deserialize<AkronModuleSettings>(yaml);
+        Assert.Equal(enabled, settings.ErrorReportingEnabled);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SetupPacksCannotReplaceErrorReportingConsent(bool consent)
+    {
+        AkronModuleSettings source = new AkronModuleSettings { ErrorReportingEnabled = !consent };
+        AkronSetupPack pack = AkronSetupPacks.Capture(source, session: null, "Consent test");
+        AkronModuleSettings target = new AkronModuleSettings { ErrorReportingEnabled = consent };
+        AkronSetupPacks.Apply(target, session: null, pack);
+        Assert.Equal(consent, target.ErrorReportingEnabled);
+    }
+
+    [Fact]
     public void LoggingDefaultsToPlaytesterSafeDiagnosticsWithBoundedRetention()
     {
         AkronModuleSettings settings = new AkronModuleSettings();
@@ -1007,20 +1036,26 @@ public sealed class ModuleSettingsTests
         Assert.Equal(expected, AkronModule.ShouldReleasePauseTimerFreezeStop(stoppedByAkron, freezeTimerEnabled, canFreezeTimer, freezeTimerDuringPause));
     }
 
-    [Fact]
-    public void ModMenuDescriptionsWrapBeforeTheyCanWidenTheMenu()
+    [Theory]
+    // Celeste's keyboard remap appends the pressed key; the menu bind keeps only that key,
+    // because Akron reads several keys as a chord.
+    [InlineData(new[] { Keys.Tab, Keys.F1 }, 1, Keys.Tab, new[] { Keys.F1 })]
+    [InlineData(new Keys[] { Keys.F1 }, 0, Keys.None, new[] { Keys.F1 })]
+    // At Input.MaxBindings Celeste trims the oldest key in the same update, so the add
+    // keeps the length and only the last key changes.
+    [InlineData(new[] { Keys.B, Keys.C, Keys.D, Keys.E, Keys.F, Keys.G, Keys.H, Keys.F6 }, 8, Keys.H, new[] { Keys.F6 })]
+    // Removing a key, or no remap at all, leaves the list alone, including a chord set in
+    // the overlay.
+    [InlineData(new Keys[] { }, 1, Keys.Tab, new Keys[] { })]
+    [InlineData(new[] { Keys.LeftControl, Keys.Tab }, 2, Keys.Tab, new[] { Keys.LeftControl, Keys.Tab })]
+    [InlineData(new[] { Keys.LeftControl, Keys.Tab }, 3, Keys.F1, new[] { Keys.LeftControl, Keys.Tab })]
+    public void MenuBindKeyboardScreenReplacesTheKey(Keys[] afterRemap, int countBefore, Keys lastBefore, Keys[] expected)
     {
-        IReadOnlyList<string> lines = AkronModule.WrapModMenuLine(
-            "Akron menu rows are bindable in the overlay by right-clicking or Shift-clicking them. These native config UIs remain for built-in keyboard/controller bindings.",
-            maxCharacters: 48);
+        List<Keys> keys = new List<Keys>(afterRemap);
 
-        Assert.All(lines, line => Assert.InRange(line.Length, 1, 48));
-        Assert.Equal(new[] {
-            "Akron menu rows are bindable in the overlay by",
-            "right-clicking or Shift-clicking them. These",
-            "native config UIs remain for built-in",
-            "keyboard/controller bindings."
-        }, lines);
+        AkronModule.KeepOnlyNewKey(keys, countBefore, lastBefore);
+
+        Assert.Equal(expected, keys);
     }
 
     [Theory]

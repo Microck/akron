@@ -740,6 +740,57 @@ public partial class AkronModule {
         };
     }
 
+    // Fast Lookout's hold: the keyboard keys are one chord (overlay capture stores Ctrl+V as
+    // two keys, which ButtonBinding.Check would treat as alternatives), while controller and
+    // mouse buttons stay alternatives as they were under Check. IsButtonBindingHeld is not
+    // used because it reads controller buttons as a chord too and ignores the mouse, which
+    // would break holds saved before the overlay row existed.
+    internal static bool IsFastLookoutHoldHeld() {
+        ButtonBinding binding = Settings.FastLookoutHold;
+        if (binding == null) {
+            return false;
+        }
+
+        if (TryGetButtonBindingKeys(binding, out IReadOnlyCollection<Keys> keys) &&
+            IsKeyboardBindingHeld(keys, Keyboard.GetState())) {
+            return true;
+        }
+
+        if (TryGetButtonBindingButtons(binding, out IReadOnlyCollection<Buttons> buttons) &&
+            buttons != null &&
+            Input.Gamepad >= 0 &&
+            Input.Gamepad < MInput.GamePads.Length) {
+            foreach (Buttons button in buttons) {
+                if (button != 0 && MInput.GamePads[Input.Gamepad].CurrentState.IsButtonDown(button)) {
+                    return true;
+                }
+            }
+        }
+
+        if (TryGetButtonBindingMouseButtons(binding, out IReadOnlyCollection<MInput.MouseData.MouseButtons> mouseButtons) &&
+            mouseButtons != null) {
+            foreach (MInput.MouseData.MouseButtons mouseButton in mouseButtons) {
+                if (IsMouseButtonHeld(mouseButton)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsMouseButtonHeld(MInput.MouseData.MouseButtons button) {
+        MouseState current = MInput.Mouse.CurrentState;
+        return button switch {
+            MInput.MouseData.MouseButtons.Left => current.LeftButton == ButtonState.Pressed,
+            MInput.MouseData.MouseButtons.Right => current.RightButton == ButtonState.Pressed,
+            MInput.MouseData.MouseButtons.Middle => current.MiddleButton == ButtonState.Pressed,
+            MInput.MouseData.MouseButtons.XButton1 => current.XButton1 == ButtonState.Pressed,
+            MInput.MouseData.MouseButtons.XButton2 => current.XButton2 == ButtonState.Pressed,
+            _ => false
+        };
+    }
+
     private static ButtonBinding GetStartPosSlotBinding(int slot) {
         return slot switch {
             1 => Settings.LoadStartPosSlot1,

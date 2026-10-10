@@ -91,10 +91,6 @@ public partial class AkronModule : EverestModule {
     private static ulong renderedStartPosFrameGeneration;
     private static int freshRoomInitializationUpdateDepth;
     private static readonly Queue<Action> afterEngineUpdateActions = new Queue<Action>();
-    private static readonly MethodInfo CreateKeyboardConfigUiMethod =
-        typeof(EverestModule).GetMethod("CreateKeyboardConfigUI", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-    private static readonly MethodInfo CreateButtonConfigUiMethod =
-        typeof(EverestModule).GetMethod("CreateButtonConfigUI", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
     private static readonly MethodInfo PlayerDeadBodyEndMethod =
         typeof(PlayerDeadBody).GetMethod("End", BindingFlags.Instance | BindingFlags.NonPublic);
     private static readonly FieldInfo PlayerDeadBodyDeathEffectField =
@@ -132,9 +128,37 @@ public partial class AkronModule : EverestModule {
         Logger.SetLogLevel(nameof(AkronModule), LogLevel.Info);
     }
 
+    // Settings.Enabled as it was when this session loaded. The switch takes effect on the
+    // next launch, so this stays fixed even if the player flips the setting meanwhile.
+    internal static bool EnabledThisSession { get; private set; }
+
+    // Everest rebuilds the command list after modules initialize and again whenever a mod
+    // registers or unregisters, so filtering each registration is the only removal that
+    // sticks.
+    private static void SkipAkronCommandsWhileDisabled(On.Monocle.Commands.orig_ProcessMethod orig, Monocle.Commands self, MethodInfo method) {
+        if (method.DeclaringType?.Assembly == typeof(AkronModule).Assembly) {
+            return;
+        }
+
+        orig(self, method);
+    }
+
     public override void Load() {
-        renderedStartPosFrameGeneration = AkronActions.StartPosFrameGeneration;
+        // Normalized even when disabled: the mod options menu still edits the menu bind.
         AkronModuleSettings.EnsureCurrentKeybindDefaults(Settings);
+        EnabledThisSession = Settings.Enabled;
+        if (!EnabledThisSession) {
+            // No overlay, HUD, logs, interop or error reports this session. Initialize,
+            // LoadContent and Unload return early too, so nothing below ever runs half set up.
+            // The one hook keeps Akron's [Command] methods out of the debug console: Everest
+            // finds them by reflection whether or not Akron loaded, and they assume a loaded Akron.
+            On.Monocle.Commands.ProcessMethod += SkipAkronCommandsWhileDisabled;
+            Logger.Log(LogLevel.Info, nameof(AkronModule), "Akron is disabled in its mod options; nothing loaded this session.");
+            return;
+        }
+
+        ConfigureErrorReporting();
+        renderedStartPosFrameGeneration = AkronActions.StartPosFrameGeneration;
         AkronModuleSettings.DropUnkeyedAutomationAreas(Settings);
         AkronLog.Normal(nameof(AkronModule), "load start; " + AkronLog.DescribeSettings());
         AkronAudioSplitter.Load();
@@ -147,6 +171,7 @@ public partial class AkronModule : EverestModule {
             AkronStartPosPersistence.Start();
             AkronScreenshotScanner.Load();
         } catch (Exception exception) {
+            AkronTelemetry.Capture(exception, AkronFailurePhase.Startup);
             Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed; continuing so the module menu and overlay can still load: " + exception);
         }
         if (Engine.Instance != null) {
@@ -259,24 +284,40 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Initialize() {
+        if (!EnabledThisSession) {
+            return;
+        }
+
         try {
             AkronMotionSmoothingInterop.RefreshLoadedState();
             AkronMotionSmoothingInterop.ApplyAkronSettings();
             AkronAudioSplitter.Initialize();
         } catch (Exception exception) {
+            AkronTelemetry.Capture(exception, AkronFailurePhase.Initialize);
             Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed during Initialize; continuing so the module menu and overlay can still load: " + exception);
         }
     }
 
     public override void LoadContent(bool firstLoad) {
+        if (!EnabledThisSession) {
+            return;
+        }
+
         try {
             AkronImGuiRenderer.WarmUp();
         } catch (Exception exception) {
+            AkronTelemetry.Capture(exception, AkronFailurePhase.Content);
             Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed during LoadContent; continuing so the module menu and overlay can still load: " + exception);
         }
     }
 
     public override void Unload() {
+        if (!EnabledThisSession) {
+            On.Monocle.Commands.ProcessMethod -= SkipAkronCommandsWhileDisabled;
+            return;
+        }
+
+        AkronTelemetry.Stop();
         AkronDiagnosticsMenu.CloseActive();
         if (Engine.Instance != null) {
             Engine.Instance.Exiting -= EngineOnExiting;
@@ -392,6 +433,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void EngineOnExiting(object sender, EventArgs eventArgs) {
+        AkronTelemetry.Stop();
         AkronStartPosPersistence.Shutdown();
         AkronActions.ClearPendingStartPosState();
         // Unload does not run on a normal quit, and an FFmpeg process that is killed with the
@@ -741,6 +783,7 @@ public partial class AkronModule : EverestModule {
                 // Everest saves every installed module's settings from one background thread and
                 // stops at the first exception, so throwing here would cost every other mod its
                 // save as well.
+                AkronTelemetry.Capture(exception, AkronFailurePhase.Settings);
                 AkronLog.Warn(nameof(AkronModule), "Could not save Akron settings: " + exception);
                 return false;
             }
@@ -888,6 +931,7 @@ public partial class AkronModule : EverestModule {
             try {
                 afterEngineUpdateActions.Dequeue().Invoke();
             } catch (Exception exception) {
+                AkronTelemetry.Capture(exception, AkronFailurePhase.DeferredAction);
                 Logger.Log(LogLevel.Error, nameof(AkronModule),
                     "Deferred engine-update action failed: " + exception);
             }

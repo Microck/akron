@@ -215,6 +215,8 @@ public sealed partial class AkronOverlay {
             true);
     }
 
+    // Bind row for a held ButtonBinding. Cursor tools use the default labels; other holds,
+    // like Fast Lookout's, pass their own.
     private void DrawCursorHoldBindingRow(
         string actionKey,
         string displayName,
@@ -223,13 +225,15 @@ public sealed partial class AkronOverlay {
         Action<ButtonBinding> setter,
         ButtonBinding defaultBinding,
         string popupId,
-        string tooltip) {
+        string tooltip,
+        string rowLabel = "Cursor",
+        string tooltipTitle = "Cursor hold") {
         const float bindingButtonWidth = 172f;
         const float actionButtonWidth = 54f;
         float labelWidth = CalculatePopupLabelWidth(bindingButtonWidth);
         string bindingText = AkronModuleSettings.DescribeBinding(binding);
 
-        DrawPopupRowLabel("Cursor", labelWidth);
+        DrawPopupRowLabel(rowLabel, labelWidth);
         ImGui.PushStyleColor(ImGuiCol.Button, AkronImGuiTheme.FrameBackground);
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, AkronImGuiTheme.ButtonHovered);
         ImGui.PushStyleColor(ImGuiCol.ButtonActive, AkronImGuiTheme.ButtonActive);
@@ -237,28 +241,28 @@ public sealed partial class AkronOverlay {
             StartButtonBindingCapture(actionKey, displayName, setter, clearMenuBinding: false);
         }
         ImGui.PopStyleColor(3);
-        DrawPopupTooltip(tooltip, "Cursor hold");
+        DrawPopupTooltip(tooltip, tooltipTitle);
 
         DrawPopupRowLabel("", labelWidth);
         float spacing = ImGui.GetStyle().ItemSpacing.X;
         if (ImGui.Button("Bind##" + idPrefix + "-cursor-bind-" + popupId, new NumericsVector2(actionButtonWidth, 0f))) {
             StartButtonBindingCapture(actionKey, displayName, setter, clearMenuBinding: false);
         }
-        DrawPopupTooltip("Capture a keyboard chord or controller button.", "Cursor hold");
+        DrawPopupTooltip("Capture a keyboard chord or controller button.", tooltipTitle);
 
         ImGui.SameLine(0f, spacing);
         if (ImGui.Button("Clear##" + idPrefix + "-cursor-clear-" + popupId, new NumericsVector2(actionButtonWidth, 0f))) {
             setter(AkronModuleSettings.CreateEmptyButtonBinding());
             menuBindingRevision++;
         }
-        DrawPopupTooltip("Clear this binding.", "Cursor hold");
+        DrawPopupTooltip("Clear this binding.", tooltipTitle);
 
         ImGui.SameLine(0f, spacing);
         if (ImGui.Button("Default##" + idPrefix + "-cursor-default-" + popupId, new NumericsVector2(actionButtonWidth + 10f, 0f))) {
             setter(defaultBinding);
             menuBindingRevision++;
         }
-        DrawPopupTooltip("Restore Akron's default binding.", "Cursor hold");
+        DrawPopupTooltip("Restore Akron's default binding.", tooltipTitle);
     }
 
     private void DrawHitboxTrailPopupControls(string popupId) {

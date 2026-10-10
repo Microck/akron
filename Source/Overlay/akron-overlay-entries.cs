@@ -260,6 +260,7 @@ public sealed partial class AkronOverlay {
                     Toggle("Menu Mouse", () => AkronModule.Settings.MenuMouse, value => AkronModule.Settings.MenuMouse = value, "mouse", "cursor", "click", "menu", "pause menu", "chapter select", "file select", "alt"),
                     Toggle("Streamer Mode", () => AkronModule.Settings.StreamerMode, value => AkronModule.Settings.StreamerMode = value),
                     LoggingToggle(),
+                    ErrorReportingToggle(),
                     Action("Send diagnostics", () => Engine.Scene != null, AkronDiagnosticsMenu.DescribeAction, () => AkronDiagnosticsMenu.Open(), "logs", "support", "report", "upload", "performance"),
                     Toggle("Search Autofocus", () => AkronModule.Settings.SearchAutofocus, value => AkronModule.Settings.SearchAutofocus = value),
                     SearchInput()
@@ -554,6 +555,16 @@ public sealed partial class AkronOverlay {
 
     private static OverlayEntry Toggle(string label, AkronFeatureKind? featureKind, Func<bool> getter, Action<bool> setter, params string[] tags) {
         return new OverlayEntry(label, () => true, () => getter() ? "On" : "Off", () => setter(!getter()), BuildSearchTerms(label, tags), true, OverlayEntryControl.Toggle, featureKind, active: getter);
+    }
+
+    private static OverlayEntry ErrorReportingToggle() {
+        return new OverlayEntry(
+            "Automatic Error Reports",
+            () => AkronTelemetry.IsConfigured,
+            () => AkronTelemetry.IsConfigured ? (AkronModule.Settings.ErrorReportingEnabled ? "On" : "Off") : "Not configured",
+            () => AkronModule.SetErrorReportingEnabled(!AkronModule.Settings.ErrorReportingEnabled),
+            BuildSearchTerms("Automatic Error Reports", new[] { "sentry", "errors", "support", "privacy", "consent" }),
+            true, OverlayEntryControl.Toggle, null, active: () => AkronTelemetry.IsConfigured && AkronModule.Settings.ErrorReportingEnabled);
     }
 
     private static OverlayEntry LoggingToggle() {
