@@ -11,7 +11,7 @@ When reporting is active, a notice appears once per game launch on the first mai
 
 The preference is stored only in your local mod settings as `ErrorReportingEnabled`. An existing saved Off choice remains Off. Importing a `.akr` pack cannot enable it or replace your choice. Turning it off immediately stops new sends and cancels pending requests; a report already sent cannot be recalled.
 
-Automatic reports contain the failure phase, exception type, Akron version, Akron source filenames and method/line details, and identifiers used to resolve that build's debug symbols. They exclude exception messages and data, local directory paths, usernames, machine names, map/save content, other mods' stack frames, HTTP bodies and URLs, breadcrumbs, and log attachments. The receiving server necessarily sees the network connection's IP address; the SDK does not add it as a user field.
+Automatic reports contain the failure phase, exception type, Akron version and Akron method names. Source filenames, line details and debug identifiers are included only when available to the runtime. Normal packaged Everest runs currently provide method names without source lines: Everest relinks the assembly, and the player package does not include the input PDB. They exclude exception messages and data, local directory paths, usernames, machine names, map/save content, other mods' stack frames, HTTP bodies and URLs, breadcrumbs, and log attachments. The receiving server necessarily sees the network connection's IP address; the SDK does not add it as a user field.
 
 Reporting covers selected failures already caught by Akron: startup helpers, ImGui initialization/rendering, settings saves, deferred actions, StartPos persistence and completion, and unexpected persistent restore failures. Expected cancellation and explicit reconstruction refusals are not reported. Repeated failures from the same phase, exception type and Akron method are reported once per reporting session, with at most 32 reports per session. The client does not install global exception or native crash handlers, record gameplay frames, trace requests, or track sessions.
 
@@ -36,6 +36,8 @@ For official releases, configure these values in GitHub's `release-build` enviro
 
 The release workflow uploads `Akron.dll` and its portable PDB privately to Sentry, includes embedded source information, and associates release `akron@<everest-version>` with the exact Git commit. The player ZIP continues to exclude PDB files and the Sentry CLI. Symbol upload is skipped without a DSN; a configured release fails if its symbol-upload credentials are incomplete.
 
+These uploads identify the original build, not Everest's rewritten runtime assembly. They do not currently enable source-line symbolication for normal packaged Everest runs. That limitation remains open; do not treat a successful upload as proof that runtime symbols match.
+
 ## Verification
 
 Run the game-independent suite with a fake HTTP handler; it does not send events to Sentry or need Celeste reference assemblies:
@@ -47,4 +49,4 @@ dotnet test tests/telemetry/akron-telemetry-tests.csproj --configuration Release
 
 The suite checks disabled reporting, payload redaction through the actual SDK, stable event identity, debug-image index remapping, renderer deduplication, session limits, consent revocation, bounded shutdown, resource disposal across repeated reporting sessions, and server rate limits. The full mod build and settings tests still require the project's verified Celeste reference archive.
 
-Before release, a maintainer should test the visible controls in Celeste/Everest, confirm a controlled handled error in a dedicated Sentry test project, verify its source line against the release symbols, turn reporting off and verify no further requests, and check both normal quit and mod unload. Do not manufacture a gameplay crash to test reporting.
+Before release, a maintainer should test the visible controls in Celeste/Everest, confirm a controlled handled error in a dedicated Sentry test project, turn reporting off and verify no further requests, and check both normal quit and mod unload. Source-line reporting additionally requires resolving and verifying the relinked-symbol limitation above. Do not manufacture a gameplay crash to test reporting.
