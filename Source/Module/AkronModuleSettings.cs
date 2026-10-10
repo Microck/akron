@@ -55,6 +55,10 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     private bool frameBypassHideStretchedEdges;
     private bool frameBypassSillyMode;
 
+    // Master switch, read once at load (AkronModule.EnabledThisSession). Off means Akron
+    // installs nothing on the next launch except its mod options entry, which is where it
+    // can be turned back on.
+    public bool Enabled { get; set; } = true;
     public bool StreamerMode { get; set; }
     // ProofModeOverlay is normally enabled indirectly by Submission Mode. The
     // direct command path exists for QA and review automation, not as a

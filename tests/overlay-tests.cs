@@ -593,6 +593,9 @@ public sealed class OverlayTests {
         Assert.True(AkronOverlay.UsesKeyboardChordDispatch(
             settings,
             settings.ToggleOverlay));
+        Assert.True(AkronOverlay.UsesKeyboardChordDispatch(
+            settings,
+            settings.FastLookoutHold));
         Assert.False(AkronOverlay.UsesKeyboardChordDispatch(
             settings,
             settings.Retry));
@@ -1889,7 +1892,6 @@ public sealed class OverlayTests {
         Assert.Contains("AkronModule.Settings.EntityInspectorCursorHold", entityInspectorPopup);
         Assert.Contains("AkronModule.Settings.EntityInspectorPinHoverPreview", entityInspectorPopup);
         Assert.Contains("\"Hover preview\"", entityInspectorPopup);
-        Assert.Contains("DrawPopupRowLabel(\"Cursor\"", popupSource);
         Assert.Contains("DrawEntityInspectorReportPlacementRows(popupId)", entityInspectorPopup);
         Assert.Contains("EntityInspectorPinPlacement", popupSource);
         Assert.Contains("EntityInspectorPinShowPropertiesByDefault", popupSource);

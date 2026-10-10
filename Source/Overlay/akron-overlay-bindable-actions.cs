@@ -1001,7 +1001,9 @@ public sealed partial class AkronOverlay {
     internal static bool UsesKeyboardChordDispatch(
         AkronModuleSettings settings,
         ButtonBinding binding) {
+        // FastLookoutHold is held as a keyboard chord too (AkronModule.IsFastLookoutHoldHeld).
         return ReferenceEquals(binding, settings.ToggleOverlay) ||
+               ReferenceEquals(binding, settings.FastLookoutHold) ||
                ReferenceEquals(binding, settings.SetStartPos) ||
                ReferenceEquals(binding, settings.LoadStartPos) ||
                ReferenceEquals(binding, settings.ClearStartPos) ||
