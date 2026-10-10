@@ -138,6 +138,8 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int OverlayScale { get; set; } = 100;
     public int OverlayBlur { get; set; }
     public bool Logging { get; set; } = true;
+    // Machine-local preference: intentionally absent from AkronSetupState and .akr setup packs.
+    public bool ErrorReportingEnabled { get; set; } = true;
     public AkronLoggingLevel LoggingLevel { get; set; } = AkronLoggingLevel.Diagnostic;
     public bool LoggingMirrorWarningsToEverest { get; set; } = true;
     public int LoggingMaxFileSizeMb { get; set; } = 5;

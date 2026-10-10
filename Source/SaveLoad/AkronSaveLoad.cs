@@ -1577,6 +1577,7 @@ public static partial class AkronSaveLoadService {
                 preserveInspectorState: true);
         } catch (Exception exception) {
             CurrentSlotName = slotName;
+            AkronTelemetry.Capture(exception, AkronFailurePhase.StartPosCapture);
             LastPersistentSnapshotError = "could not capture pre-load state: " + exception.GetType().Name + ": " + exception.Message;
             return AkronSaveLoadResult.Failed;
         }
@@ -1599,6 +1600,7 @@ public static partial class AkronSaveLoadService {
                 // refusal still names the type and what it is about, and that is what
                 // names the missing mod or the map that stopped placing the entity.
                 AkronReconstructionException refusal = exception as AkronReconstructionException;
+                if (refusal == null) AkronTelemetry.Capture(exception, AkronFailurePhase.StartPosRestore);
                 SetPersistentSnapshotFailure(
                     exception.GetType().Name + ": " + exception.Message,
                     refusal?.RefusedTypeName ?? string.Empty,

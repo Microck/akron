@@ -133,6 +133,7 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Load() {
+        ConfigureErrorReporting();
         renderedStartPosFrameGeneration = AkronActions.StartPosFrameGeneration;
         AkronModuleSettings.EnsureCurrentKeybindDefaults(Settings);
         AkronModuleSettings.DropUnkeyedAutomationAreas(Settings);
@@ -147,6 +148,7 @@ public partial class AkronModule : EverestModule {
             AkronStartPosPersistence.Start();
             AkronScreenshotScanner.Load();
         } catch (Exception exception) {
+            AkronTelemetry.Capture(exception, AkronFailurePhase.Startup);
             Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed; continuing so the module menu and overlay can still load: " + exception);
         }
         if (Engine.Instance != null) {
@@ -263,6 +265,7 @@ public partial class AkronModule : EverestModule {
             AkronMotionSmoothingInterop.ApplyAkronSettings();
             AkronAudioSplitter.Initialize();
         } catch (Exception exception) {
+            AkronTelemetry.Capture(exception, AkronFailurePhase.Initialize);
             Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed during Initialize; continuing so the module menu and overlay can still load: " + exception);
         }
     }
@@ -271,11 +274,13 @@ public partial class AkronModule : EverestModule {
         try {
             AkronImGuiRenderer.WarmUp();
         } catch (Exception exception) {
+            AkronTelemetry.Capture(exception, AkronFailurePhase.Content);
             Logger.Log(LogLevel.Error, nameof(AkronModule), "Akron startup helper initialization failed during LoadContent; continuing so the module menu and overlay can still load: " + exception);
         }
     }
 
     public override void Unload() {
+        AkronTelemetry.Stop();
         AkronDiagnosticsMenu.CloseActive();
         if (Engine.Instance != null) {
             Engine.Instance.Exiting -= EngineOnExiting;
@@ -390,6 +395,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void EngineOnExiting(object sender, EventArgs eventArgs) {
+        AkronTelemetry.Stop();
         AkronStartPosPersistence.Shutdown();
         AkronActions.ClearPendingStartPosState();
         // Unload does not run on a normal quit, and an FFmpeg process that is killed with the
@@ -739,6 +745,7 @@ public partial class AkronModule : EverestModule {
                 // Everest saves every installed module's settings from one background thread and
                 // stops at the first exception, so throwing here would cost every other mod its
                 // save as well.
+                AkronTelemetry.Capture(exception, AkronFailurePhase.Settings);
                 AkronLog.Warn(nameof(AkronModule), "Could not save Akron settings: " + exception);
                 return false;
             }
@@ -886,6 +893,7 @@ public partial class AkronModule : EverestModule {
             try {
                 afterEngineUpdateActions.Dequeue().Invoke();
             } catch (Exception exception) {
+                AkronTelemetry.Capture(exception, AkronFailurePhase.DeferredAction);
                 Logger.Log(LogLevel.Error, nameof(AkronModule),
                     "Deferred engine-update action failed: " + exception);
             }

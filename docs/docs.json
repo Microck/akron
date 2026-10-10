@@ -133,6 +133,7 @@
           "reference/akr-archives",
           "reference/community-pack-catalog",
           "reference/debug-commands",
+          "reference/error-reporting",
           "reference/file-locations",
           "reference/release-configuration"
         ]

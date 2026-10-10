@@ -40,6 +40,11 @@ Scope: bin/Newtonsoft.Json.dll in the player package
 Upstream: https://github.com/JamesNK/Newtonsoft.Json
 Copyright (c) 2007 James Newton-King
 
+Sentry .NET SDK 6.12.0
+Scope: bin/Sentry.dll in the player package
+Upstream: https://github.com/getsentry/sentry-dotnet/tree/6.12.0
+Copyright (c) 2018 Sentry
+
 The following MIT License applies to each component listed in this section:
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

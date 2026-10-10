@@ -466,6 +466,35 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
+    public void AutomaticErrorReportingDefaultsOn()
+    {
+        Assert.True(new AkronModuleSettings().ErrorReportingEnabled);
+    }
+
+    [Theory]
+    [InlineData("Logging: true\n", true)]
+    [InlineData("ErrorReportingEnabled: false\n", false)]
+    [InlineData("ErrorReportingEnabled: true\n", true)]
+    public void LoadedSettingsPreserveTheReportingPreference(string yaml, bool enabled)
+    {
+        AkronModuleSettings settings = new YamlDotNet.Serialization.DeserializerBuilder().Build()
+            .Deserialize<AkronModuleSettings>(yaml);
+        Assert.Equal(enabled, settings.ErrorReportingEnabled);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SetupPacksCannotReplaceErrorReportingConsent(bool consent)
+    {
+        AkronModuleSettings source = new AkronModuleSettings { ErrorReportingEnabled = !consent };
+        AkronSetupPack pack = AkronSetupPacks.Capture(source, session: null, "Consent test");
+        AkronModuleSettings target = new AkronModuleSettings { ErrorReportingEnabled = consent };
+        AkronSetupPacks.Apply(target, session: null, pack);
+        Assert.Equal(consent, target.ErrorReportingEnabled);
+    }
+
+    [Fact]
     public void LoggingDefaultsToPlaytesterSafeDiagnosticsWithBoundedRetention()
     {
         AkronModuleSettings settings = new AkronModuleSettings();
