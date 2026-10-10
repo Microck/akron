@@ -19,7 +19,8 @@ using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
 
-public sealed class TelemetryTests {
+public sealed class TelemetryTests
+{
     private const string Dsn = "https://publickey@example.invalid/1";
 
     [Theory]
@@ -28,23 +29,30 @@ public sealed class TelemetryTests {
     [InlineData(true, "http://publickey@example.invalid/1")]
     [InlineData(true, "https://publickey:secret@example.invalid/1")]
     [InlineData(true, "https://publickey@example.invalid/1?secret=value")]
-    public void MissingConsentOrValidDsnNeverStartsReporting(bool consent, string dsn) {
+    public void MissingConsentOrValidDsnNeverStartsReporting(bool consent, string dsn)
+    {
         RecordingHandler transport = new RecordingHandler();
-        try {
+        try
+        {
             AkronTelemetry.Configure(consent, dsn, "1.2.3", transport);
             AkronTelemetry.Capture(BuildFailure(), AkronFailurePhase.Startup);
             Assert.False(AkronTelemetry.IsEnabled);
             Assert.Empty(transport.Bodies);
-        } finally {
+        }
+        finally
+        {
             AkronTelemetry.Stop(flush: false);
         }
     }
 
     [Fact]
-    public void SanitizerPreservesIdentityAndOnlyAllowsAkronDiagnosticFields() {
+    public void SanitizerPreservesIdentityAndOnlyAllowsAkronDiagnosticFields()
+    {
         AkronErrorReporter reporter = new AkronErrorReporter(Dsn, "1.2.3", new RecordingHandler());
-        try {
-            SentryEvent source = new SentryEvent(BuildFailure()) {
+        try
+        {
+            SentryEvent source = new SentryEvent(BuildFailure())
+            {
                 ServerName = "private-machine",
                 Release = "private-version",
                 Environment = "private-environment",
@@ -89,15 +97,18 @@ public sealed class TelemetryTests {
             Assert.Equal(5, frame.FunctionId);
             Assert.Equal(7, frame.InstructionAddress);
             Assert.Equal("Akron.dll", Assert.Single(clean.DebugImages).CodeFile);
-        } finally { reporter.Stop(flush: false); }
+        }
+        finally { reporter.Stop(flush: false); }
     }
 
     [Fact]
-    public async Task ActualSdkEnvelopeIsScrubbedAndUsesTheReturnedEventId() {
+    public async Task ActualSdkEnvelopeIsScrubbedAndUsesTheReturnedEventId()
+    {
         RecordingHandler transport = new RecordingHandler();
         bool globalWasEnabled = SentrySdk.IsEnabled;
         AkronErrorReporter reporter = new AkronErrorReporter(Dsn, "1.2.3", transport);
-        try {
+        try
+        {
             SentryId id = reporter.Capture(BuildFailure(), AkronFailurePhase.StartPosPersist);
             await reporter.FlushAsync();
             string body = Assert.Single(transport.Bodies);
@@ -106,42 +117,53 @@ public sealed class TelemetryTests {
             Assert.Contains("StartPosPersist", body);
             Assert.DoesNotContain("private", body, StringComparison.OrdinalIgnoreCase);
             Assert.Equal(globalWasEnabled, SentrySdk.IsEnabled);
-        } finally { reporter.Stop(flush: false); }
+        }
+        finally { reporter.Stop(flush: false); }
     }
 
     [Fact]
-    public async Task RepeatedRendererFailuresAndCancellationDoNotFloodReports() {
+    public async Task RepeatedRendererFailuresAndCancellationDoNotFloodReports()
+    {
         RecordingHandler transport = new RecordingHandler();
         AkronErrorReporter reporter = new AkronErrorReporter(Dsn, "1.2.3", transport);
-        try {
+        try
+        {
             Assert.NotEqual(SentryId.Empty, reporter.Capture(BuildFailure(), AkronFailurePhase.Overlay));
-            for (int index = 0; index < 100; index++) {
+            for (int index = 0; index < 100; index++)
+            {
                 Assert.Equal(SentryId.Empty, reporter.Capture(BuildFailure(), AkronFailurePhase.Overlay));
             }
             Assert.Equal(SentryId.Empty, reporter.Capture(new OperationCanceledException(), AkronFailurePhase.StartPosPersist));
             Assert.NotEqual(SentryId.Empty, reporter.Capture(BuildFailure(), AkronFailurePhase.StartPosRestore));
             await reporter.FlushAsync();
             Assert.Equal(2, transport.Bodies.Count);
-        } finally { reporter.Stop(flush: false); }
+        }
+        finally { reporter.Stop(flush: false); }
     }
 
     [Fact]
-    public async Task IndependentFailuresHaveASessionLimit() {
+    public async Task IndependentFailuresHaveASessionLimit()
+    {
         RecordingHandler transport = new RecordingHandler();
         AkronErrorReporter reporter = new AkronErrorReporter(Dsn, "1.2.3", transport);
-        try {
-            foreach (AkronFailurePhase phase in Enum.GetValues<AkronFailurePhase>()) {
-                foreach (Exception exception in new Exception[] { new IOException(), new ArgumentException(), new InvalidOperationException(), new NotSupportedException() }) {
+        try
+        {
+            foreach (AkronFailurePhase phase in Enum.GetValues<AkronFailurePhase>())
+            {
+                foreach (Exception exception in new Exception[] { new IOException(), new ArgumentException(), new InvalidOperationException(), new NotSupportedException() })
+                {
                     reporter.Capture(exception, phase);
                 }
             }
             await reporter.FlushAsync();
             Assert.Equal(AkronErrorReporter.MaxReportsPerSession, transport.Bodies.Count);
-        } finally { reporter.Stop(flush: false); }
+        }
+        finally { reporter.Stop(flush: false); }
     }
 
     [Fact]
-    public async Task RevokingConsentCancelsInFlightAndPreventsQueuedSends() {
+    public async Task RevokingConsentCancelsInFlightAndPreventsQueuedSends()
+    {
         BlockingHandler transport = new BlockingHandler();
         AkronErrorReporter reporter = new AkronErrorReporter(Dsn, "1.2.3", transport);
         reporter.Capture(BuildFailure(), AkronFailurePhase.Overlay);
@@ -155,7 +177,8 @@ public sealed class TelemetryTests {
     }
 
     [Fact]
-    public async Task ShutdownIsBoundedAndIdempotent() {
+    public async Task ShutdownIsBoundedAndIdempotent()
+    {
         BlockingHandler transport = new BlockingHandler();
         AkronErrorReporter reporter = new AkronErrorReporter(Dsn, "1.2.3", transport);
         reporter.Capture(BuildFailure(), AkronFailurePhase.Overlay);
@@ -167,23 +190,28 @@ public sealed class TelemetryTests {
         await transport.Canceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
-    private static Exception BuildFailure() {
+    private static Exception BuildFailure()
+    {
         try { throw new IOException("private-user /home/private-user/file secret=private-token"); }
-        catch (Exception exception) {
+        catch (Exception exception)
+        {
             exception.Data["private-key"] = "private-value";
             return exception;
         }
     }
 
-    private static string Serialize(SentryEvent entry) {
+    private static string Serialize(SentryEvent entry)
+    {
         using MemoryStream stream = new MemoryStream();
         using (Utf8JsonWriter writer = new Utf8JsonWriter(stream)) entry.WriteTo(writer, null);
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 
-    private sealed class RecordingHandler : HttpMessageHandler {
+    private sealed class RecordingHandler : HttpMessageHandler
+    {
         internal ConcurrentQueue<string> Bodies { get; } = new ConcurrentQueue<string>();
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
             using Stream content = await request.Content.ReadAsStreamAsync(token);
             using Stream decoded = request.Content.Headers.ContentEncoding.Contains("gzip") ? new GZipStream(content, CompressionMode.Decompress) : content;
             using StreamReader reader = new StreamReader(decoded);
@@ -192,11 +220,13 @@ public sealed class TelemetryTests {
         }
     }
 
-    private sealed class BlockingHandler : HttpMessageHandler {
+    private sealed class BlockingHandler : HttpMessageHandler
+    {
         internal TaskCompletionSource<bool> Started { get; } = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource<bool> Canceled { get; } = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int StartCount;
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
             Interlocked.Increment(ref StartCount);
             Started.TrySetResult(true);
             try { await Task.Delay(Timeout.Infinite, token); }
