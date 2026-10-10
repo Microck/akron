@@ -19,6 +19,8 @@ Local Logging and the explicit **Send diagnostics** flow remain separate. Automa
 
 The SDK is pinned to Sentry .NET `6.12.0`. An absent DSN keeps reporting inert, including in development and CI. Never put an auth token in a build or player setting.
 
+Akron owns the SDK's queue and HTTP client through its public worker/transport extension points. Opt-out and unload cancel pending work and dispose those resources; the standalone SDK client does not create a retained background worker. Sentry rate-limit headers and plain HTTP 429 responses are honored.
+
 For a local build, set the public ingest DSN through the MSBuild property `AkronSentryDsn`. For a local run, `AKRON_SENTRY_DSN` overrides the compiled value; setting that environment variable to an empty string disables the destination. Only HTTPS DSNs with a public key and numeric project ID are accepted. A configured destination still requires the player's explicit opt-in.
 
 For official releases, configure these values in GitHub's `release-build` environment:
@@ -41,6 +43,6 @@ dotnet restore tests/telemetry/akron-telemetry-tests.csproj --locked-mode
 dotnet test tests/telemetry/akron-telemetry-tests.csproj --configuration Release --no-restore
 ```
 
-The suite checks disabled reporting, payload redaction through the actual SDK, stable event identity, debug-image index remapping, renderer deduplication, session limits, consent revocation, and bounded shutdown. The full mod build and settings tests still require the project's verified Celeste reference archive.
+The suite checks disabled reporting, payload redaction through the actual SDK, stable event identity, debug-image index remapping, renderer deduplication, session limits, consent revocation, bounded shutdown, resource disposal across repeated reporting sessions, and server rate limits. The full mod build and settings tests still require the project's verified Celeste reference archive.
 
 Before release, a maintainer should test the visible controls in Celeste/Everest, confirm a controlled handled error in a dedicated Sentry test project, verify its source line against the release symbols, turn reporting off and verify no further requests, and check both normal quit and mod unload. Do not manufacture a gameplay crash to test reporting.

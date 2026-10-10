@@ -96,7 +96,9 @@ internal sealed class AkronErrorReporter
     private readonly HashSet<string> reported = new HashSet<string>(StringComparer.Ordinal);
     private readonly CancellationTokenSource revoked = new CancellationTokenSource();
     private readonly SentryClient client;
+    private readonly AkronTelemetryWorker worker;
     private readonly string release;
+    private Task shutdown = Task.CompletedTask;
     private bool stopped;
 
     internal AkronErrorReporter(string dsn, string version, HttpMessageHandler transport = null)
@@ -123,13 +125,20 @@ internal sealed class AkronErrorReporter
             DisableFileWrite = true,
             DisableSentryHttpMessageHandler = true,
             ShutdownTimeout = ShutdownTimeout,
-            FlushTimeout = ShutdownTimeout,
-            CreateHttpMessageHandler = () => new ConsentHandler(revoked.Token, transport ?? new HttpClientHandler { AllowAutoRedirect = false })
+            FlushTimeout = ShutdownTimeout
         };
+        worker = new AkronTelemetryWorker(options,
+            new ConsentHandler(revoked.Token, transport ?? new HttpClientHandler { AllowAutoRedirect = false }));
+        options.BackgroundWorker = worker;
         options.AddInAppInclude("Celeste.Mod.Akron.");
         options.SetBeforeSend(Sanitize);
         // The standalone client does not register SDK integrations or change the global hub.
-        client = new SentryClient(options);
+        try { client = new SentryClient(options); }
+        catch
+        {
+            worker.Dispose();
+            throw;
+        }
     }
 
     internal SentryId Capture(Exception exception, AkronFailurePhase phase)
@@ -169,7 +178,7 @@ internal sealed class AkronErrorReporter
         // cannot be recalled. Do not wait for network delivery while the player changes consent.
         if (!flush)
         {
-            _ = Task.Run(DisposeClient);
+            shutdown = Task.Run(DisposeClient);
             return;
         }
         DisposeClient();
@@ -179,10 +188,20 @@ internal sealed class AkronErrorReporter
     {
         try { client.Dispose(); }
         catch (Exception) { }
-        finally { revoked.Cancel(); }
+        finally
+        {
+            revoked.Cancel();
+            worker.Dispose();
+        }
     }
 
     internal Task FlushAsync() => client.FlushAsync(ShutdownTimeout);
+
+    internal async Task WaitForShutdownAsync()
+    {
+        await shutdown.ConfigureAwait(false);
+        await worker.Completion.ConfigureAwait(false);
+    }
 
     // A new event is an allowlist, not a blacklist: exception messages/data, user identity,
     // request data, breadcrumbs, host/device context, other mods and raw paths cannot survive.

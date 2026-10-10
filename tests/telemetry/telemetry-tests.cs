@@ -172,8 +172,10 @@ public sealed class TelemetryTests
         reporter.Stop(flush: false);
         await transport.Canceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await reporter.FlushAsync();
+        await reporter.WaitForShutdownAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(SentryId.Empty, reporter.Capture(BuildFailure(), AkronFailurePhase.Content));
         Assert.Equal(1, transport.StartCount);
+        Assert.Equal(1, transport.DisposeCount);
     }
 
     [Fact]
@@ -188,6 +190,50 @@ public sealed class TelemetryTests
         reporter.Stop(flush: true);
         Assert.True(timer.Elapsed < TimeSpan.FromSeconds(2));
         await transport.Canceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await reporter.WaitForShutdownAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, transport.DisposeCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RepeatedConsentAndUnloadCyclesReleaseOwnedResources(bool flush)
+    {
+        for (int cycle = 0; cycle < 3; cycle++)
+        {
+            RecordingHandler transport = new RecordingHandler();
+            AkronErrorReporter reporter = new AkronErrorReporter(Dsn, "1.2.3", transport);
+            reporter.Capture(BuildFailure(), AkronFailurePhase.Overlay);
+            await reporter.FlushAsync();
+            reporter.Stop(flush);
+            reporter.Stop(flush);
+            await reporter.WaitForShutdownAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(1, transport.DisposeCount);
+            Assert.Single(transport.Bodies);
+            Assert.Equal(SentryId.Empty, reporter.Capture(BuildFailure(), AkronFailurePhase.Content));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OwnedTransportHonorsSentryAndRetryAfterRateLimits(bool plain429)
+    {
+        RateLimitedHandler transport = new RateLimitedHandler(plain429);
+        AkronErrorReporter reporter = new AkronErrorReporter(Dsn, "1.2.3", transport);
+        try
+        {
+            reporter.Capture(BuildFailure(), AkronFailurePhase.Overlay);
+            await reporter.FlushAsync();
+            reporter.Capture(BuildFailure(), AkronFailurePhase.Content);
+            await reporter.FlushAsync();
+            Assert.Equal(1, transport.SendCount);
+        }
+        finally
+        {
+            reporter.Stop(flush: false);
+            await reporter.WaitForShutdownAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
     }
 
     private static Exception BuildFailure()
@@ -209,7 +255,13 @@ public sealed class TelemetryTests
 
     private sealed class RecordingHandler : HttpMessageHandler
     {
+        internal int DisposeCount;
         internal ConcurrentQueue<string> Bodies { get; } = new ConcurrentQueue<string>();
+        protected override void Dispose(bool disposing)
+        {
+            Interlocked.Increment(ref DisposeCount);
+            base.Dispose(disposing);
+        }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             using Stream content = await request.Content.ReadAsStreamAsync(token);
@@ -225,6 +277,12 @@ public sealed class TelemetryTests
         internal TaskCompletionSource<bool> Started { get; } = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource<bool> Canceled { get; } = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int StartCount;
+        internal int DisposeCount;
+        protected override void Dispose(bool disposing)
+        {
+            Interlocked.Increment(ref DisposeCount);
+            base.Dispose(disposing);
+        }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             Interlocked.Increment(ref StartCount);
@@ -232,6 +290,24 @@ public sealed class TelemetryTests
             try { await Task.Delay(Timeout.Infinite, token); }
             catch (OperationCanceledException) { Canceled.TrySetResult(true); throw; }
             return new HttpResponseMessage(HttpStatusCode.OK);
+        }
+    }
+
+    private sealed class RateLimitedHandler : HttpMessageHandler
+    {
+        private readonly bool plain429;
+        internal int SendCount;
+        internal RateLimitedHandler(bool plain429) { this.plain429 = plain429; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Interlocked.Increment(ref SendCount);
+            HttpResponseMessage response = new HttpResponseMessage(plain429 ? HttpStatusCode.TooManyRequests : HttpStatusCode.OK)
+            {
+                Content = new StringContent("{}")
+            };
+            response.Headers.TryAddWithoutValidation(plain429 ? "Retry-After" : "X-Sentry-Rate-Limits",
+                plain429 ? "60" : "60:error:organization:quota");
+            return Task.FromResult(response);
         }
     }
 }
