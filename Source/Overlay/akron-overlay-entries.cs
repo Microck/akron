@@ -559,11 +559,11 @@ public sealed partial class AkronOverlay {
     private static OverlayEntry ErrorReportingToggle() {
         return new OverlayEntry(
             "Automatic Error Reports",
-            () => AkronTelemetry.IsConfigured || AkronModule.Settings.ErrorReportingEnabled,
+            () => AkronTelemetry.IsConfigured,
             () => AkronTelemetry.IsConfigured ? (AkronModule.Settings.ErrorReportingEnabled ? "On" : "Off") : "Not configured",
             () => AkronModule.SetErrorReportingEnabled(!AkronModule.Settings.ErrorReportingEnabled),
             BuildSearchTerms("Automatic Error Reports", new[] { "sentry", "errors", "support", "privacy", "consent" }),
-            true, OverlayEntryControl.Toggle, null, active: () => AkronModule.Settings.ErrorReportingEnabled);
+            true, OverlayEntryControl.Toggle, null, active: () => AkronTelemetry.IsConfigured && AkronModule.Settings.ErrorReportingEnabled);
     }
 
     private static OverlayEntry LoggingToggle() {

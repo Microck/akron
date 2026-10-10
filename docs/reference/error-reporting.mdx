@@ -5,9 +5,11 @@ description: Choose whether Akron sends selected errors to Sentry and configure 
 
 ## Player choice
 
-**Automatic Error Reports** is off by default. Enable it in the Interface tab or Akron's mod options under Support. Mod options show the configured destination. The control is unavailable when no valid Sentry destination is configured.
+**Automatic Error Reports** is on by default when a valid Sentry destination is configured. Turn it off in the Interface tab or Akron's mod options under Support. Mod options show the configured destination. The control is unavailable when no valid destination is configured, and no reports are sent.
 
-The preference is stored only in your local mod settings as `ErrorReportingEnabled`. Importing a `.akr` pack cannot enable it or replace your choice. Turning it off immediately stops new sends and cancels pending requests; a report already sent cannot be recalled.
+When reporting is active, a notice appears once per game launch on the first main-menu or gameplay screen. It explains what is sent and where to turn reporting off. Handled errors keep their existing player-facing behavior; automatic reporting does not add an error popup.
+
+The preference is stored only in your local mod settings as `ErrorReportingEnabled`. An existing saved Off choice remains Off. Importing a `.akr` pack cannot enable it or replace your choice. Turning it off immediately stops new sends and cancels pending requests; a report already sent cannot be recalled.
 
 Automatic reports contain the failure phase, exception type, Akron version, Akron source filenames and method/line details, and identifiers used to resolve that build's debug symbols. They exclude exception messages and data, local directory paths, usernames, machine names, map/save content, other mods' stack frames, HTTP bodies and URLs, breadcrumbs, and log attachments. The receiving server necessarily sees the network connection's IP address; the SDK does not add it as a user field.
 
@@ -21,7 +23,7 @@ The SDK is pinned to Sentry .NET `6.12.0`. An absent DSN keeps reporting inert, 
 
 Akron owns the SDK's queue and HTTP client through its public worker/transport extension points. Opt-out and unload cancel pending work and dispose those resources; the standalone SDK client does not create a retained background worker. Sentry rate-limit headers and plain HTTP 429 responses are honored.
 
-For a local build, set the public ingest DSN through the MSBuild property `AkronSentryDsn`. For a local run, `AKRON_SENTRY_DSN` overrides the compiled value; setting that environment variable to an empty string disables the destination. Only HTTPS DSNs with a public key and numeric project ID are accepted. A configured destination still requires the player's explicit opt-in.
+For a local build, set the public ingest DSN through the MSBuild property `AkronSentryDsn`. For a local run, `AKRON_SENTRY_DSN` overrides the compiled value; setting that environment variable to an empty string disables the destination. Only HTTPS DSNs with a public key and numeric project ID are accepted. Reporting follows the player's local setting, which defaults to On.
 
 For official releases, configure these values in GitHub's `release-build` environment:
 

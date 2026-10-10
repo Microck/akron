@@ -466,9 +466,19 @@ public sealed class ModuleSettingsTests
     }
 
     [Fact]
-    public void AutomaticErrorReportingDefaultsOff()
+    public void AutomaticErrorReportingDefaultsOn()
     {
-        Assert.False(new AkronModuleSettings().ErrorReportingEnabled);
+        Assert.True(new AkronModuleSettings().ErrorReportingEnabled);
+    }
+
+    [Theory]
+    [InlineData("Logging: true\n", true)]
+    [InlineData("ErrorReportingEnabled: false\n", false)]
+    [InlineData("ErrorReportingEnabled: true\n", true)]
+    public void LoadedSettingsPreserveTheReportingPreference(string yaml, bool enabled)
+    {
+        AkronModuleSettings settings = global::Celeste.Mod.YamlHelper.Deserializer.Deserialize<AkronModuleSettings>(yaml);
+        Assert.Equal(enabled, settings.ErrorReportingEnabled);
     }
 
     [Theory]

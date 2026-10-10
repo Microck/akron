@@ -1,10 +1,13 @@
 using System;
+using Celeste;
 using Monocle;
 
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModule
 {
+    private static bool errorReportingNoticeShown;
+
     private static void ConfigureErrorReporting()
     {
         try
@@ -16,6 +19,16 @@ public partial class AkronModule
         {
             // A broken telemetry configuration must not break the mod.
         }
+    }
+
+    private static void ShowErrorReportingNotice(Scene scene)
+    {
+        // Wait for a player-facing scene with fonts loaded, not the startup loader.
+        if (errorReportingNoticeShown || !AkronTelemetry.IsEnabled || scene is not (Overworld or Level)) return;
+        errorReportingNoticeShown = true;
+        scene.Add(new AkronToast(
+            "Automatic Error Reports are on. Akron stack details and version go to Sentry.\nTurn off: Akron > Interface > Automatic Error Reports.",
+            forceVisible: true, durationSeconds: 8f));
     }
 
     internal static void SetErrorReportingEnabled(bool enabled)

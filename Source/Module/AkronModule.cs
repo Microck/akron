@@ -804,6 +804,7 @@ public partial class AkronModule : EverestModule {
 
     private static void EngineOnUpdate(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime) {
         AkronDiagnosticsMenu.CloseIfSceneChanged(Engine.Scene);
+        ShowErrorReportingNotice(Engine.Scene);
         // First thing in the hook, so the recorded interval spans a whole engine
         // update including everything Akron itself adds to the frame.
         AkronPerformanceTelemetry.RecordUpdateFrame();
