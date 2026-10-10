@@ -115,6 +115,11 @@ public sealed partial class AkronOverlay {
         yield return new BindableAction(PopupActionKey("Grab Mode", "Hold"), "Grab Mode / Hold", () => SetConfiguredGrabMode(GrabModes.Hold));
         yield return new BindableAction(PopupActionKey("Grab Mode", "Toggle"), "Grab Mode / Toggle", () => SetConfiguredGrabMode(GrabModes.Toggle));
         yield return new BindableAction(PopupActionKey("Grab Mode", "Invert"), "Grab Mode / Invert", () => SetConfiguredGrabMode(GrabModes.Invert));
+        // Cycle and Smooth Camera bind to native ButtonBindings (ResolveDefaultButtonBinding),
+        // so the hotkey handlers fire them; these entries list them in the Keybinds tab.
+        yield return new BindableAction(PopupActionKey("Grab Mode", "Cycle"), "Grab Mode / Cycle", AkronActions.CycleGrabMode);
+        yield return new BindableAction(PopupActionKey("FPS Bypass", "Smooth Camera"), "FPS Bypass / Smooth Camera",
+            () => AkronModule.Settings.FrameBypassCameraSmoothing = NextCameraSmoothing(AkronModule.Settings.FrameBypassCameraSmoothing));
 
         yield return new BindableAction(PopupActionKey("Noclip", "Toggle"), "Noclip / Enabled", () => {
             bool next = !AkronModule.Settings.Noclip;
@@ -764,6 +769,18 @@ public sealed partial class AkronOverlay {
             "popup/StartPos/Load Slot 7" => settings.LoadStartPosSlot7,
             "popup/StartPos/Load Slot 8" => settings.LoadStartPosSlot8,
             "popup/StartPos/Load Slot 9" => settings.LoadStartPosSlot9,
+            // These native binds had no other in-game editor once Everest's generated
+            // keyboard/controller screens left the mod options, so their overlay controls
+            // edit the real binding instead of adding a separate overlay one.
+            "popup/SRT Slot/Previous" => settings.PreviousSlot,
+            "popup/SRT Slot/Next" => settings.NextSlot,
+            "popup/Timescale/Decrease" => settings.DecreaseTimescale,
+            "popup/Timescale/Increase" => settings.IncreaseTimescale,
+            "popup/Frame Stepper/Step Once" => settings.StepFrame,
+            "popup/Grab Mode/Cycle" => settings.CycleGrabMode,
+            "Global/FPS Bypass" => settings.ToggleFrameBypass,
+            "popup/FPS Bypass/Smooth Camera" => settings.CycleFrameBypassCameraSmoothing,
+            "Creator/Open Debug Map" => settings.OpenDebugMap,
             "Player/Noclip" => null,
             "Player/Hazard Accuracy" => null,
             "Player/Click Teleport" => settings.ClickTeleportCursor,

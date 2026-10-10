@@ -20,6 +20,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 ### Fixed
 
 - Ignore Click Teleport clicks while the game is paused, including the click that unpauses it, so a click on the pause menu never moves Madeline or toggles Cursor Zoom. Cursor Tools, Cursor Zoom, Entity Inspector and Free Camera mouse control also stand down while Menu Mouse is driving a menu.
+- Right-clicking SRT Slot Previous/Next, Timescale Decrease/Increase, Frame Stepper Step Once, Open Debug Map, the FPS Bypass row, and FPS Bypass Smooth Camera now edits and clears the real hotkey, including one saved from Everest's old keyboard and controller screens. The Grab Mode popup gets a **Cycle** button for the grab-mode cycling hotkey.
 
 ## Akron Beta 84
 

@@ -6847,6 +6847,35 @@ public sealed class ModuleSettingsTests
         Assert.False(InvokeTrySetDefaultButtonBinding(settings, "Global/Logging", AkronModuleSettings.CreateEmptyButtonBinding()));
     }
 
+    // Binds with no other in-game editor since Everest's config screens left the mod
+    // options: their overlay control must resolve to the native binding the hotkey
+    // handlers read, so Bind and Clear edit it instead of adding a separate overlay bind.
+    // Checks instance identity only: CI's reference-only Celeste.dll cannot run
+    // ButtonBinding.Keys.
+    [Theory]
+    [InlineData("popup/SRT Slot/Previous", nameof(AkronModuleSettings.PreviousSlot))]
+    [InlineData("popup/SRT Slot/Next", nameof(AkronModuleSettings.NextSlot))]
+    [InlineData("popup/Timescale/Decrease", nameof(AkronModuleSettings.DecreaseTimescale))]
+    [InlineData("popup/Timescale/Increase", nameof(AkronModuleSettings.IncreaseTimescale))]
+    [InlineData("popup/Frame Stepper/Step Once", nameof(AkronModuleSettings.StepFrame))]
+    [InlineData("popup/Grab Mode/Cycle", nameof(AkronModuleSettings.CycleGrabMode))]
+    [InlineData("Global/FPS Bypass", nameof(AkronModuleSettings.ToggleFrameBypass))]
+    [InlineData("popup/FPS Bypass/Smooth Camera", nameof(AkronModuleSettings.CycleFrameBypassCameraSmoothing))]
+    [InlineData("Creator/Open Debug Map", nameof(AkronModuleSettings.OpenDebugMap))]
+    public void OverlayBindsEditTheNativeBindTheirHotkeyReads(string actionKey, string settingName)
+    {
+        AkronModuleSettings settings = new AkronModuleSettings();
+        AkronModuleSettings.EnsureCurrentKeybindDefaults(settings);
+        MethodInfo? resolve = typeof(AkronOverlay).GetMethod("ResolveDefaultButtonBinding", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(resolve);
+
+        object? resolved = resolve!.Invoke(null, new object[] { settings, actionKey });
+
+        object? native = typeof(AkronModuleSettings).GetProperty(settingName)!.GetValue(settings);
+        Assert.NotNull(native);
+        Assert.Same(native, resolved);
+    }
+
     private static List<string> BuildOverlayEntryLabels(string tab)
     {
         MethodInfo? method = typeof(AkronOverlay).GetMethod("BuildDisplayEntriesForTab", BindingFlags.NonPublic | BindingFlags.Static);
