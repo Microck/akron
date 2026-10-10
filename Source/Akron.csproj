@@ -57,6 +57,8 @@
     <Target Name="Package" AfterTargets="Build" DependsOnTargets="CopyFiles">
         <ItemGroup>
             <FilesToPackage Include="$(ZippedFiles)" Exclude="..\bin\**\*.pdb" />
+            <!-- Everest needs Akron's input symbols while relinking to preserve runtime source lines. -->
+            <FilesToPackage Include="..\bin\Akron.pdb" />
             <FilesToPackage Include="..\LICENSE">
                 <PackagePath>LICENSE</PackagePath>
             </FilesToPackage>
