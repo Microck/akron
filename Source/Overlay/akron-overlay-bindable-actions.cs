@@ -76,26 +76,11 @@ public sealed partial class AkronOverlay {
                 return;
             }
 
-            bool next = !session.TimescaleEnabled;
-            if (next && session.TimescaleMultiplier != 1f && !AkronModule.TryUse(AkronFeatureKind.Timescale)) {
-                return;
-            }
-
-            session.TimescaleEnabled = next;
+            AkronActions.TrySetTimescaleEnabled(session, !session.TimescaleEnabled);
         });
         yield return new BindableAction(PopupActionKey("Timescale", "Decrease"), "Timescale / Decrease", () => ApplyOptionsPopupDelta("Timescale", -1));
         yield return new BindableAction(PopupActionKey("Timescale", "Increase"), "Timescale / Increase", () => ApplyOptionsPopupDelta("Timescale", 1));
-        yield return new BindableAction(PopupActionKey("Timescale", "Reset"), "Timescale / Reset", () => {
-            AkronModuleSession session = AkronModule.Session;
-            if (session == null || !AkronPolicy.CanUse(AkronFeatureKind.Timescale).Allowed) {
-                return;
-            }
-
-            session.TimescaleMultiplier = 1f;
-            session.TimescaleEnabled = false;
-            AkronModule.ReleaseTimescale();
-            Engine.Scene?.Add(new AkronToast("Timescale reset."));
-        });
+        yield return new BindableAction(PopupActionKey("Timescale", "Reset"), "Timescale / Reset", ResetTimescale);
 
         yield return new BindableAction(PopupActionKey("SRT Slot", "Previous"), "SRT Slot / Previous", () => ApplyOptionsPopupDelta("SRT Slot", -1));
         yield return new BindableAction(PopupActionKey("SRT Slot", "Next"), "SRT Slot / Next", () => ApplyOptionsPopupDelta("SRT Slot", 1));

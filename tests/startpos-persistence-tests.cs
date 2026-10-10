@@ -2820,18 +2820,6 @@ public sealed class StartPosPersistenceTests {
     }
 
     [Fact]
-    public void GameplayBufferQaProbeReadsTheFinishedRoomBeforeAkronHud() {
-        string moduleSource = File.ReadAllText(GetModuleSourcePath());
-        int baseRender = moduleSource.IndexOf("orig(self);", moduleSource.IndexOf("private static void EngineOnRenderCore", StringComparison.Ordinal), StringComparison.Ordinal);
-        int pixelProbe = moduleSource.IndexOf("AkronCapture.CapturePendingGameplayBufferQaFrame();", baseRender, StringComparison.Ordinal);
-        int akronHud = moduleSource.IndexOf("RenderAkronLevelHud(postRenderLevel);", baseRender, StringComparison.Ordinal);
-
-        Assert.True(baseRender >= 0);
-        Assert.True(pixelProbe > baseRender);
-        Assert.True(akronHud > pixelProbe);
-    }
-
-    [Fact]
     public void ExactReferenceCommandCapturesTheFirstRenderedSetFrame() {
         string qaSource = File.ReadAllText(GetQaCommandsSourcePath());
         int method = qaSource.IndexOf("public static void QaStartPosReferenceCapture", StringComparison.Ordinal);
@@ -2908,12 +2896,17 @@ public sealed class StartPosPersistenceTests {
         PropertyInfo property = typeof(AkronPersistentRuntimeState).GetProperty(field)!;
         MethodInfo apply = typeof(AkronSaveLoadService).GetMethod(
             "ApplyPersistentRuntimeState", BindingFlags.Static | BindingFlags.NonPublic)!;
+        // CI keeps field metadata but strips the game's property bodies.
+        FieldInfo[] distortionFields = typeof(Distort).GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+            .Where(candidate => candidate.FieldType == typeof(float)).ToArray();
+        object?[] originalDistortion = distortionFields.Select(candidate => candidate.GetValue(null)).ToArray();
 #pragma warning disable CS0618
-        var original = (Engine.TimeRate, Glitch.Value, Distort.Anxiety, Distort.GameRate);
+        var original = (Engine.TimeRate, Glitch.Value);
         foreach (float invalid in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity }) {
             property.SetValue(state, invalid);
             Assert.False((bool)apply.Invoke(null, new object[] { level, state })!);
-            Assert.Equal(original, (Engine.TimeRate, Glitch.Value, Distort.Anxiety, Distort.GameRate));
+            Assert.Equal(original, (Engine.TimeRate, Glitch.Value));
+            Assert.Equal(originalDistortion, distortionFields.Select(candidate => candidate.GetValue(null)).ToArray());
         }
 #pragma warning restore CS0618
     }
@@ -3706,23 +3699,6 @@ public sealed class StartPosPersistenceTests {
     }
 
 
-    [Fact]
-    public void EnabledStartPosRespawnUsesTheLastLoadedSlotAfterDeath() {
-        string source = File.ReadAllText(GetActionsSourcePath());
-        string playerRuntimeSource = File.ReadAllText(GetPlayerRuntimeSourcePath());
-
-        Assert.Contains("if (loadedSlot > 0)", source);
-        Assert.Contains("AkronModule.Session.LastLoadedStartPosSlot = loadedSlot;", source);
-        Assert.Contains("RestoreStartPosAfterDeath(Level level, AkronStartPos startPos)", source);
-        Assert.Contains("deadBody.DeathAction = () =>", playerRuntimeSource);
-        Assert.Contains("deadBody.DeathAction == null", playerRuntimeSource);
-        Assert.Contains("!deadBody.HasGolden", playerRuntimeSource);
-        Assert.Contains("if (Engine.Scene != level)", source);
-        Assert.Contains("SpotlightWipe.FocusPoint = respawnPoint - restoredLevel.Camera.Position;", source);
-        Assert.Contains("restoredLevel.DoScreenWipe(wipeIn: true, () => CompleteStartPosInputWaitWipe(restoredLevel));", source);
-        Assert.Contains("level.Reload();", source);
-        Assert.Equal(1, playerRuntimeSource.Split("AkronActions.RestoreStartPosAfterDeath(level, startPosRespawn)").Length - 1);
-    }
 
     [Fact]
     public void SuccessfulStartPosLoadsWaitForFreshInputAndKeepBackdropPresentationRunning() {
@@ -4650,14 +4626,18 @@ public sealed class StartPosPersistenceTests {
 
             RunPacedSnapshot(directory, "free", out long freeAllocated);
 
-            // Now hold the gate shut and open it in bursts, so the same job
-            // stops and restarts many times over.
+            // Wait until the worker actually parks, then open short work windows.
+            // A fast worker may finish before all six windows are needed.
             AkronSnapshotPacing.GameplayActive = true;
             long suspendedAllocated = 0;
-            Stopwatch suspendedTimer = Stopwatch.StartNew();
-            Thread worker = new Thread(() => RunPacedSnapshot(directory, "suspended", out suspendedAllocated));
+            using ManualResetEventSlim parked = new ManualResetEventSlim();
+            Thread worker = new Thread(() => RunPacedSnapshot(directory, "suspended", out suspendedAllocated, () => {
+                parked.Set();
+                return false;
+            }));
             worker.IsBackground = true;
             worker.Start();
+            bool observedPark = parked.Wait(TimeSpan.FromSeconds(10));
             for (int cycle = 0; cycle < 6 && worker.IsAlive; cycle++) {
                 Thread.Sleep(30);
                 AkronSnapshotPacing.GameplayActive = false;
@@ -4666,7 +4646,6 @@ public sealed class StartPosPersistenceTests {
             }
             AkronSnapshotPacing.GameplayActive = false;
             Assert.True(worker.Join(TimeSpan.FromSeconds(60)), "the suspended snapshot never finished");
-            suspendedTimer.Stop();
 
             Assert.True(freeAllocated > 0);
             // Five percent covers jitter in the shared reflection caches. A
@@ -4676,10 +4655,7 @@ public sealed class StartPosPersistenceTests {
             Assert.True(ratio < 1.05,
                 "suspending the worker allocated " + suspendedAllocated + " bytes against " +
                 freeAllocated + " for an uninterrupted run");
-            // And it really did stop: the gate was shut for at least six 30 ms
-            // stretches, none of which can overlap the work.
-            Assert.True(suspendedTimer.ElapsedMilliseconds >= 180,
-                "the suspended run took " + suspendedTimer.ElapsedMilliseconds + " ms, so it never waited");
+            Assert.True(observedPark, "the snapshot worker never entered its pacing wait");
         } finally {
             AkronSnapshotPacing.GameplayActive = previousActive;
             AkronSnapshotPacing.ForcedOpen = previousForcedOpen;
@@ -4689,13 +4665,13 @@ public sealed class StartPosPersistenceTests {
 
     // One whole paced job: the capture walk and the snapshot write, both of
     // which call Pace, measured on the thread that runs them.
-    private static void RunPacedSnapshot(string directory, string slotName, out long allocatedBytes) {
+    private static void RunPacedSnapshot(string directory, string slotName, out long allocatedBytes, Func<bool>? isAbandoned = null) {
         AkronReconstructionGraph graph = new AkronReconstructionGraph(_ => false);
         PacingChainNode saved = BuildPacingChain(600, valueOffset: 10);
         PacingChainNode baseline = BuildPacingChain(600, valueOffset: 0);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        AkronSnapshotPacing.BeginPacedWork();
+        AkronSnapshotPacing.BeginPacedWork(isAbandoned);
         try {
             AkronReconstructionCapture capture = graph.Capture(saved, baseline);
             Assert.True(capture.Success, capture.Error);

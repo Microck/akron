@@ -1113,21 +1113,21 @@ public static partial class AkronActions {
         startPos.Grab = AkronModule.Settings.StartPosConfiguredGrab;
     }
 
-    internal static void RestoreStartPosAfterDeath(Level level, AkronStartPos startPos) {
-        if (level == null || startPos == null || startPosCaptureInProgress ||
-            !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
-            return;
-        }
-
+    internal static void RestoreStartPosAfterDeath(Level level, Session requestedSession, PlayerDeadBody deadBody, AkronStartPos startPos) {
         ulong generation = startPosActionGeneration;
-        Session requestedSession = level.Session;
         AkronModule.ScheduleAfterStableEngineUpdate(() => {
-            if (Engine.Scene != level || generation != startPosActionGeneration ||
-                !ReferenceEquals(level.Session, requestedSession) ||
-                !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
+            // A wipe can outlive its room or a newer restore in the same Level/Session.
+            // Only the exact body still present in the live room owns this completion.
+            if (level == null || deadBody == null || Engine.Scene != level || Engine.NextScene != level ||
+                !ReferenceEquals(level.Session, requestedSession) || deadBody.Scene != level ||
+                !level.Entities.Contains(deadBody)) {
                 return;
             }
-            if (startPosCaptureInProgress) {
+            if (startPos == null || generation != startPosActionGeneration || startPosCaptureInProgress ||
+                !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
+                // Replacing DeathAction also replaced Celeste's default level.Reload.
+                // Cancelling a StartPos operation must still finish this live death.
+                level.Reload();
                 return;
             }
 

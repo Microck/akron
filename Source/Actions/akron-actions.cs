@@ -359,18 +359,52 @@ public static partial class AkronActions {
             return;
         }
 
-        float next = NormalizeTimescaleMultiplier(session.TimescaleMultiplier + delta);
+        if (TrySetTimescaleMultiplier(session, session.TimescaleMultiplier + delta)) {
+            Engine.Scene?.Add(new AkronToast("Timescale value: " + session.TimescaleMultiplier.ToString("0.0x")));
+        }
+    }
 
-        // Resetting to canonical speed must stay available even when Cheat
-        // speed changes are blocked, but blocked policy decisions must not allow moving away
-        // from 1.0x.
+    internal static bool TrySetTimescaleMultiplier(AkronModuleSession session, float multiplier) {
+        if (session == null || AkronPolicy.IsMapRestricted(AkronFeatureKind.Timescale)) {
+            return false;
+        }
+
+        float next = NormalizeTimescaleMultiplier(multiplier);
         if (session.TimescaleEnabled && next != 1f && !AkronModule.TryUse(AkronFeatureKind.Timescale)) {
-            return;
+            return false;
         }
 
         ConfigureTimescaleMultiplier(session, next);
-        AkronModule.ApplyTimescale();
-        Engine.Scene?.Add(new AkronToast("Timescale value: " + next.ToString("0.0x")));
+        AkronModule.ApplyTimescale(session);
+        return true;
+    }
+
+    internal static bool TrySetTimescaleEnabled(AkronModuleSession session, bool enabled) {
+        if (session == null || AkronPolicy.IsMapRestricted(AkronFeatureKind.Timescale)) {
+            return false;
+        }
+
+        if (enabled && session.TimescaleMultiplier != 1f && !AkronModule.TryUse(AkronFeatureKind.Timescale)) {
+            return false;
+        }
+
+        session.TimescaleEnabled = enabled;
+        if (!enabled) {
+            AkronModule.ReleaseTimescale();
+        }
+        return true;
+    }
+
+    internal static bool TryResetTimescale(AkronModuleSession session) {
+        if (session == null || AkronPolicy.IsMapRestricted(AkronFeatureKind.Timescale)) {
+            return false;
+        }
+
+        // Reset configuration without claiming the shared clock before releasing it.
+        session.TimescaleMultiplier = 1f;
+        session.TimescaleEnabled = false;
+        AkronModule.ReleaseTimescale();
+        return true;
     }
 
     internal static void ConfigureTimescaleMultiplier(AkronModuleSession session, float multiplier) {

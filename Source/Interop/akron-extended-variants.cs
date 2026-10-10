@@ -36,6 +36,7 @@ public static class AkronExtendedVariants {
     private static MethodInfo setVariantValueMethod;
     private static MethodInfo resetExtendedVariantsMethod;
     private static MethodInfo resetVanillaVariantsMethod;
+    private static MethodInfo changeRandomVariantMethod;
     private static FieldInfo variantHandlersField;
     private static FieldInfo instanceField;
     private static PropertyInfo settingsProperty;
@@ -92,10 +93,7 @@ public static class AkronExtendedVariants {
         // Only randomized writes need an observer. This mutation boundary runs when
         // EVM rolls variants, not on every player update or on map-authored triggers.
         if (randomizerHook == null) {
-            Type randomizer = moduleType.Assembly.GetType("ExtendedVariants.VariantRandomizer", true);
-            MethodInfo change = randomizer.GetMethod("changeVariantNow", BindingFlags.Static | BindingFlags.NonPublic)
-                ?? throw new MissingMethodException(randomizer.FullName, "changeVariantNow");
-            randomizerHook = new Hook(change, (Action<Action<bool>, bool>)ChangeRandomVariants);
+            randomizerHook = new Hook(changeRandomVariantMethod, (Action<Action<bool>, bool>)ChangeRandomVariants);
         }
         return CaptureExternalState();
     }
@@ -1027,7 +1025,8 @@ public static class AkronExtendedVariants {
             settingsProperty != null &&
             variantHandlersField != null &&
             getCurrentVariantValueMethod != null &&
-            setVariantValueMethod != null) {
+            setVariantValueMethod != null &&
+            changeRandomVariantMethod != null) {
             return true;
         }
 
@@ -1059,6 +1058,14 @@ public static class AkronExtendedVariants {
         setVariantValueMethod = uiEntriesType.GetMethod("SetVariantValue", BindingFlags.Static | BindingFlags.Public);
         resetExtendedVariantsMethod = moduleType.GetMethod("ResetExtendedVariantsToDefaultSettings", BindingFlags.Instance | BindingFlags.Public);
         resetVanillaVariantsMethod = moduleType.GetMethod("ResetVanillaVariantsToDefaultSettings", BindingFlags.Instance | BindingFlags.Public);
+        changeRandomVariantMethod = assembly.GetType("ExtendedVariants.VariantRandomizer")?.GetMethod(
+            "changeVariantNow", BindingFlags.Static | BindingFlags.NonPublic, null, new[] { typeof(bool) }, null);
+        if (changeRandomVariantMethod?.ReturnType != typeof(void)) {
+            changeRandomVariantMethod = null;
+            failedResolveAssemblyCount = assemblies.Length;
+            Logger.Log(LogLevel.Warn, nameof(AkronExtendedVariants), "EVM integration unavailable: this assembly lacks the required changeVariantNow(bool) observer. No EVM settings were changed.");
+            return false;
+        }
         bool resolved = GetInstance() != null &&
                GetSettings() != null &&
                variantHandlersField != null &&

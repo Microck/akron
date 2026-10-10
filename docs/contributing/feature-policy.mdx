@@ -124,13 +124,19 @@ The declaration has no region, nodes, flag conditions, or executable commands. A
 
 Restrictions cover the current map side. They persist through room transitions, death, room reload, chapter restart and save-and-quit/reentry. Leaving for a menu, entering another map, or unloading Akron removes the old map's restrictions. Pending frame steps, StartPos actions and captures do not transfer into the next map. Restrictions are compiled from map data rather than stored in Akron's savestate/session payload. Restart the map after editing its declaration.
 
+Direct chapter reloads retain policy through the outgoing level's end and every loader frame, including reloads that reuse the same session. Constructing a detached loader does not change the live map's policy. A cancelled StartPos death restore falls back to ordinary respawn only while its original dead body still belongs to the current room; stale callbacks cannot reload a replacement room or player.
+
 StartPos snapshots record whether Akron owned the saved global timescale. Loading a snapshot cannot restore a denied Akron timescale or replace the active map's clock with it. Independently owned saved timing remains part of the restored simulation. This changes the snapshot format to v12; capture older StartPos snapshots again.
 
 The overlay retains the configured value and marks restricted rows as map-suppressed. `akron_status` lists the policy version and restricted identities separately from configured values. Commands and hotkeys cannot override map policy. Ongoing effects use the same policy, so a pre-enabled feature does not bypass the declaration. Suppression never saves replacement preferences. Akron releases timing and other reversible state it owns; it does not repeatedly reset another mod's clock.
 
+The `Logging` identity suppresses Akron's own log-file writes. Warnings and errors still reach the Everest log when warning/error mirroring is enabled, so map restrictions cannot hide diagnostics needed to report a failure.
+
 Each identity is independent. To suppress a preset's individual effects, list those effects as well as any bundle action you want to deny. For example, use `MapVersionStamp`, `PauseTracker`, `ProofRecorderGuard` and `EndScreenHelper` when those independently configured features must be off, rather than assuming `SubmissionMode` recursively suppresses them. For independent freeze and stepping control, `Freeze` suppresses the freeze itself and `FrameAdvance` suppresses stepping while leaving an allowed freeze intact. `CaptureCheatOptions` denies room and chapter scanners because they move the player and restore simulation clocks, even with their optional freeze/hide settings off. Ordinary screenshots remain available; use `ScreenshotTool` to deny those too.
 
 This is an Akron contract, not a sandbox for other mods. It governs Akron's effect and integration entry points, not independent commands or features in Speedrun Tool, CelesteTAS or other helpers. It does not undo irreversible actions performed before entering the map, such as save unlocks or previously spawned entities.
+
+Akron's EVM integration requires the randomizer mutation observer so it can track and release randomized changes. If the installed EVM assembly lacks that capability, Akron logs a warning and leaves EVM state untouched rather than making untracked writes.
 
 ### Integration API
 

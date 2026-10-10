@@ -27,6 +27,7 @@ public static class AkronCapture {
     internal static bool IsCapturingGameFrame { get; private set; }
 
     internal static bool RequestGameplayBufferQaCapture(
+        Scene scene,
         string tag,
         out string normalizedTag,
         Action completion = null
@@ -48,11 +49,11 @@ public static class AkronCapture {
 
         pendingGameplayBufferQaTag = normalizedTag;
         pendingGameplayBufferQaCompletion = completion;
-        pendingGameplayBufferQaScene = Engine.Instance == null ? null : Engine.Scene;
+        pendingGameplayBufferQaScene = scene;
         return true;
     }
 
-    internal static void CapturePendingGameplayBufferQaFrame() {
+    internal static void CapturePendingGameplayBufferQaFrame(Scene currentScene) {
         if (string.IsNullOrWhiteSpace(pendingGameplayBufferQaTag)) {
             return;
         }
@@ -66,7 +67,6 @@ public static class AkronCapture {
         try {
             // A queued QA capture still owes its completion if the scene or
             // engine has ended before the render boundary consumes it.
-            Scene currentScene = Engine.Instance == null ? null : Engine.Scene;
             if (!ReferenceEquals(requestedScene, currentScene) ||
                 !AkronPolicy.CanUse(AkronFeatureKind.ScreenshotTool).Allowed) {
                 return;

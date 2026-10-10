@@ -148,7 +148,8 @@ public partial class AkronModule {
                 // Keep Celeste's death effect, delay, and wipe. The native
                 // DeathAction normally reloads the room; substitute the full
                 // StartPos snapshot only after that presentation completes.
-                deadBody.DeathAction = () => AkronActions.RestoreStartPosAfterDeath(level, startPosRespawn);
+                Session deathSession = level.Session;
+                deadBody.DeathAction = () => AkronActions.RestoreStartPosAfterDeath(level, deathSession, deadBody, startPosRespawn);
             }
         }
 

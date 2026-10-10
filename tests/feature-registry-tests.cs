@@ -108,35 +108,35 @@ public sealed class FeatureRegistryTests
     [Fact]
     public void LivePreferenceAndSessionChangesCannotEnableRestrictedFreezeOrStepping()
     {
-        using PolicyModuleState state = new();
+        using PolicyState state = new();
         state.Settings.FrameStepper = true;
         state.Settings.Noclip = true;
         state.Session.FreezeGameplay = true;
         state.Session.StepFrameRequested = true;
         AkronPolicy.EnterMap(MapWithDeclarations("Freeze,FrameAdvance,Noclip"));
 
-        Assert.False(AkronModule.IsGameplayFreezeEffective);
-        Assert.False(AkronModule.CanStepGameplay);
+        Assert.False(AkronModule.IsGameplayFreezeEffective(state.Session));
+        Assert.False(AkronModule.CanStepGameplay(state.Session, state.Settings));
         Assert.Empty(AkronPolicy.GetActiveCheatContributors(state.Settings, state.Session));
         state.Session.FreezeGameplay = false;
         state.Session.FreezeGameplay = true;
-        Assert.False(AkronModule.IsGameplayFreezeEffective);
+        Assert.False(AkronModule.IsGameplayFreezeEffective(state.Session));
         Assert.True(state.Settings.Noclip);
         Assert.True(state.Settings.FrameStepper);
         Assert.True(state.Session.FreezeGameplay);
 
         AkronPolicy.EnterMap(MapWithDeclarations("FrameAdvance"));
-        Assert.True(AkronModule.IsGameplayFreezeEffective);
-        Assert.False(AkronModule.CanStepGameplay);
+        Assert.True(AkronModule.IsGameplayFreezeEffective(state.Session));
+        Assert.False(AkronModule.CanStepGameplay(state.Session, state.Settings));
         AkronPolicy.LeaveMap();
-        Assert.True(AkronModule.CanStepGameplay);
+        Assert.True(AkronModule.CanStepGameplay(state.Session, state.Settings));
         Assert.Contains(AkronPolicy.GetActiveCheatContributors(state.Settings, state.Session), item => item.Feature == AkronFeatureKind.Noclip);
     }
 
     [Fact]
     public void RestrictedTimescaleReleasesOnlyItsOwnClockAndPreservesSessionPreference()
     {
-        using PolicyModuleState state = new();
+        using PolicyState state = new();
 #pragma warning disable CS0618
         float original = Engine.TimeRate;
         try
@@ -144,21 +144,21 @@ public sealed class FeatureRegistryTests
             Engine.TimeRate = 0.8f;
             state.Session.TimescaleEnabled = true;
             state.Session.TimescaleMultiplier = 0.25f;
-            AkronModule.ApplyTimescale();
+            AkronModule.ApplyTimescale(state.Session);
             Assert.Equal(0.25f, Engine.TimeRate);
 
             AkronPolicy.EnterMap(MapWithDeclarations("Timescale"));
-            AkronModule.ApplyTimescale();
+            AkronModule.ApplyTimescale(state.Session);
             Assert.Equal(0.8f, Engine.TimeRate);
             Assert.True(state.Session.TimescaleEnabled);
             Assert.Equal(0.25f, state.Session.TimescaleMultiplier);
 
             Engine.TimeRate = 0.4f;
             state.Session.TimescaleMultiplier = 0.1f;
-            AkronModule.ApplyTimescale();
+            AkronModule.ApplyTimescale(state.Session);
             Assert.Equal(0.4f, Engine.TimeRate);
             AkronPolicy.LeaveMap();
-            AkronModule.ApplyTimescale();
+            AkronModule.ApplyTimescale(state.Session);
             Assert.Equal(0.1f, Engine.TimeRate);
             Engine.TimeRate = 0.6f;
             AkronModule.ReleaseTimescale();
@@ -172,10 +172,115 @@ public sealed class FeatureRegistryTests
 #pragma warning restore CS0618
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void DisableAndResetTimescaleReleaseOnlyTheClockAkronStillOwns(bool reset, bool replacedByAnotherMod)
+    {
+        using PolicyState state = new();
+#pragma warning disable CS0618
+        float original = Engine.TimeRate;
+        try
+        {
+            Engine.TimeRate = 0.8f;
+            state.Session.TimescaleEnabled = true;
+            state.Session.TimescaleMultiplier = 0.5f;
+            AkronModule.ApplyTimescale(state.Session);
+            Assert.Equal(0.5f, Engine.TimeRate);
+            if (replacedByAnotherMod)
+            {
+                Engine.TimeRate = 0.6f;
+            }
+
+            Assert.True(reset
+                ? AkronActions.TryResetTimescale(state.Session)
+                : AkronActions.TrySetTimescaleEnabled(state.Session, false));
+
+            Assert.Equal(replacedByAnotherMod ? 0.6f : 0.8f, Engine.TimeRate);
+            Assert.False(AkronModule.OwnsCurrentTimescale);
+            Assert.False(state.Session.TimescaleEnabled);
+            Assert.Equal(reset ? 1f : 0.5f, state.Session.TimescaleMultiplier);
+            Assert.Empty(AkronPolicy.GetActiveCheatContributors(state.Settings, state.Session));
+            AkronModule.ApplyTimescale(state.Session);
+            Assert.Equal(replacedByAnotherMod ? 0.6f : 0.8f, Engine.TimeRate);
+        }
+        finally
+        {
+            AkronModule.ReleaseTimescale();
+            Engine.TimeRate = original;
+        }
+#pragma warning restore CS0618
+    }
+
+    [Fact]
+    public void SettingNormalMultiplierKeepsClockOwnershipUntilTimescaleIsDisabled()
+    {
+        using PolicyState state = new();
+#pragma warning disable CS0618
+        float original = Engine.TimeRate;
+        try
+        {
+            Engine.TimeRate = 0.8f;
+            state.Session.TimescaleEnabled = true;
+            state.Session.TimescaleMultiplier = 0.5f;
+            AkronModule.ApplyTimescale(state.Session);
+
+            Assert.True(AkronActions.TrySetTimescaleMultiplier(state.Session, 1f));
+            Assert.Equal(1f, Engine.TimeRate);
+            Assert.True(state.Session.TimescaleEnabled);
+            Assert.True(AkronModule.OwnsCurrentTimescale);
+            Assert.Empty(AkronPolicy.GetActiveCheatContributors(state.Settings, state.Session));
+            Assert.True(AkronActions.TrySetTimescaleEnabled(state.Session, false));
+            Assert.Equal(0.8f, Engine.TimeRate);
+        }
+        finally
+        {
+            AkronModule.ReleaseTimescale();
+            Engine.TimeRate = original;
+        }
+#pragma warning restore CS0618
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RestrictedTimescaleCommandsCannotChangePreferencesOrAnotherModsClock(bool enabled)
+    {
+        using PolicyState state = new();
+        state.Session.TimescaleEnabled = enabled;
+        state.Session.TimescaleMultiplier = 0.5f;
+        AkronPolicy.EnterMap(MapWithDeclarations("Timescale"));
+#pragma warning disable CS0618
+        float original = Engine.TimeRate;
+        try
+        {
+            Engine.TimeRate = 0.6f;
+            Assert.False(AkronActions.TrySetTimescaleEnabled(state.Session, false));
+            Assert.False(AkronActions.TrySetTimescaleEnabled(state.Session, true));
+            Assert.False(AkronActions.TrySetTimescaleMultiplier(state.Session, 1f));
+            Assert.False(AkronActions.TrySetTimescaleMultiplier(state.Session, 0.2f));
+            Assert.False(AkronActions.TryResetTimescale(state.Session));
+
+            Assert.Equal(enabled, state.Session.TimescaleEnabled);
+            Assert.Equal(0.5f, state.Session.TimescaleMultiplier);
+            Assert.Equal(0.6f, Engine.TimeRate);
+            Assert.False(AkronModule.OwnsCurrentTimescale);
+            Assert.Empty(AkronPolicy.GetActiveCheatContributors(state.Settings, state.Session));
+        }
+        finally
+        {
+            AkronModule.ReleaseTimescale();
+            Engine.TimeRate = original;
+        }
+#pragma warning restore CS0618
+    }
+
     [Fact]
     public void SnapshotTimescaleOwnershipCannotRestoreDeniedTimingOrLoseItsOriginalClock()
     {
-        using PolicyModuleState state = new();
+        using PolicyState state = new();
 #pragma warning disable CS0618
         float original = Engine.TimeRate;
         try
@@ -183,7 +288,7 @@ public sealed class FeatureRegistryTests
             Engine.TimeRate = 0.8f;
             state.Session.TimescaleEnabled = true;
             state.Session.TimescaleMultiplier = 0.25f;
-            AkronModule.ApplyTimescale();
+            AkronModule.ApplyTimescale(state.Session);
             AkronSaveLoadSlot slot = new("timing", "room", "Tests/Timing", true)
             {
                 EngineTimeRate = Engine.TimeRate,
@@ -234,25 +339,15 @@ public sealed class FeatureRegistryTests
         return map;
     }
 
-    private sealed class PolicyModuleState : IDisposable
+    private sealed class PolicyState : IDisposable
     {
-        private readonly AkronModule previous = AkronModule.Instance;
         internal readonly AkronModuleSettings Settings = new();
         internal readonly AkronModuleSession Session = new();
-
-        internal PolicyModuleState()
-        {
-            AkronModule module = (AkronModule)RuntimeHelpers.GetUninitializedObject(typeof(AkronModule));
-            module._Settings = Settings;
-            module._Session = Session;
-            typeof(AkronModule).GetProperty(nameof(AkronModule.Instance))!.SetValue(null, module);
-        }
 
         public void Dispose()
         {
             AkronModule.ReleaseTimescale();
             AkronPolicy.UnloadMapRestrictions();
-            typeof(AkronModule).GetProperty(nameof(AkronModule.Instance))!.SetValue(null, previous);
         }
     }
 

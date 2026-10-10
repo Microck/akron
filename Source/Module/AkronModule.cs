@@ -181,6 +181,7 @@ public partial class AkronModule : EverestModule {
         }
         On.Celeste.Level.LoadLevel += LevelOnLoadLevelForMapPolicy;
         On.Celeste.LevelEnter.ctor += LevelEnterOnConstructForMapPolicy;
+        On.Monocle.Engine.OnSceneTransition += EngineOnSceneTransitionForMapPolicy;
         On.Celeste.Level.Begin += LevelOnBegin;
         On.Celeste.Level.End += LevelOnEnd;
         On.Celeste.Level.UpdateTime += LevelOnUpdateTime;
@@ -341,6 +342,7 @@ public partial class AkronModule : EverestModule {
         AkronPolicy.UnloadMapRestrictions();
         On.Celeste.Level.LoadLevel -= LevelOnLoadLevelForMapPolicy;
         On.Celeste.LevelEnter.ctor -= LevelEnterOnConstructForMapPolicy;
+        On.Monocle.Engine.OnSceneTransition -= EngineOnSceneTransitionForMapPolicy;
         On.Celeste.Level.Begin -= LevelOnBegin;
         On.Celeste.Level.End -= LevelOnEnd;
         On.Celeste.Level.UpdateTime -= LevelOnUpdateTime;
@@ -502,7 +504,9 @@ public partial class AkronModule : EverestModule {
         // them from the first frame of the next level, so restoring here costs nothing.
         RestoreNativeAssistInvincibility();
         AkronActions.RestoreAutoDeafen();
-        LeaveMapPolicy(self.Session);
+        // Keep restrictions until the engine installs its next scene. In particular,
+        // a same-session LevelLoader restart must not open an unrestricted interval.
+        ResetMapPolicyEffects();
         orig(self);
     }
 
@@ -602,7 +606,7 @@ public partial class AkronModule : EverestModule {
             return;
         }
 
-        if (IsGameplayFreezeEffective && !(CanStepGameplay && Session.StepFrameRequested)) {
+        if (IsGameplayFreezeEffective(Session) && !(CanStepGameplay(Session, Settings) && Session.StepFrameRequested)) {
             AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
             if (!overlayUpdated) {
                 Overlay?.Update();
@@ -863,7 +867,7 @@ public partial class AkronModule : EverestModule {
         }
         ApplyPendingMapPolicyEffects();
         if (Engine.Scene is Level) {
-            ApplyTimescale();
+            ApplyTimescale(Session);
         } else {
             ReleaseTimescale();
         }
@@ -1660,7 +1664,7 @@ public partial class AkronModule : EverestModule {
             // Read the completed 320x180 room buffer before Akron draws its HUD.
             // StartPos restoration tests need exact game pixels without timer text or
             // desktop compositor noise.
-            AkronCapture.CapturePendingGameplayBufferQaFrame();
+            AkronCapture.CapturePendingGameplayBufferQaFrame(level);
             renderedStartPosFrameGeneration = AkronActions.StartPosFrameGeneration;
             AkronInternalRecorder.CaptureFrame(level);
             if (deathWipeRenderSuppressionActive && level.Transitioning) {

@@ -325,17 +325,18 @@ public sealed class ScreenshotScannerTests {
         int completions = 0;
         try {
             Assert.True(AkronCapture.RequestGameplayBufferQaCapture(
+                null,
                 "completion-test",
                 out string normalizedTag,
                 () => completions++));
 
-            _ = Record.Exception(AkronCapture.CapturePendingGameplayBufferQaFrame);
-            _ = Record.Exception(AkronCapture.CapturePendingGameplayBufferQaFrame);
+            _ = Record.Exception(() => AkronCapture.CapturePendingGameplayBufferQaFrame(null));
+            _ = Record.Exception(() => AkronCapture.CapturePendingGameplayBufferQaFrame(null));
 
             Assert.Equal("completion-test", normalizedTag);
             Assert.Equal(1, completions);
         } finally {
-            AkronCapture.CapturePendingGameplayBufferQaFrame();
+            AkronCapture.CapturePendingGameplayBufferQaFrame(null);
         }
     }
 
@@ -345,10 +346,12 @@ public sealed class ScreenshotScannerTests {
         int secondCompletions = 0;
         try {
             Assert.True(AkronCapture.RequestGameplayBufferQaCapture(
+                null,
                 "first-capture",
                 out _,
                 () => firstCompletions++));
             Assert.True(AkronCapture.RequestGameplayBufferQaCapture(
+                null,
                 "second-capture",
                 out _,
                 () => secondCompletions++));
@@ -356,10 +359,10 @@ public sealed class ScreenshotScannerTests {
             Assert.Equal(1, firstCompletions);
             Assert.Equal(0, secondCompletions);
 
-            AkronCapture.CapturePendingGameplayBufferQaFrame();
+            AkronCapture.CapturePendingGameplayBufferQaFrame(null);
             Assert.Equal(1, secondCompletions);
         } finally {
-            AkronCapture.CapturePendingGameplayBufferQaFrame();
+            AkronCapture.CapturePendingGameplayBufferQaFrame(null);
         }
     }
 

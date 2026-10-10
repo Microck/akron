@@ -112,7 +112,7 @@ public partial class AkronModule {
             AkronActions.ToggleFreeze();
         }
 
-        if (IsBindingPressed(Settings.StepFrame, keyboard, previousKeyboard) && CanStepGameplay) {
+        if (IsBindingPressed(Settings.StepFrame, keyboard, previousKeyboard) && CanStepGameplay(Session, Settings)) {
             Session.StepFrameRequested = true;
         }
 
@@ -367,7 +367,7 @@ public partial class AkronModule {
     }
 
     private static void UpdateStepHoldRepeat(KeyboardState keyboard, KeyboardState previousKeyboard) {
-        if (!CanStepGameplay || !Settings.StepHoldRepeat || !TryGetButtonBindingKeys(Settings.StepFrame, out IReadOnlyCollection<Keys> stepKeys) || !IsKeyboardBindingHeld(stepKeys)) {
+        if (!CanStepGameplay(Session, Settings) || !Settings.StepHoldRepeat || !TryGetButtonBindingKeys(Settings.StepFrame, out IReadOnlyCollection<Keys> stepKeys) || !IsKeyboardBindingHeld(stepKeys)) {
             Session.StepFrameHoldFrames = 0;
             Session.StepFrameRepeatCountdown = 0;
             return;

@@ -5,14 +5,12 @@ namespace Celeste.Mod.Akron;
 public partial class AkronModule
 {
     private static bool mapRestrictionEffectsPending;
-    private static Session mapPolicySession;
     private static bool ownsTimescale;
     private static float timescaleBeforeAkron;
     private static float lastAkronTimescale;
 
     private static void EnterMapPolicy(Session session)
     {
-        mapPolicySession = session;
         if (AkronPolicy.EnterMap(session?.MapData))
         {
             mapRestrictionEffectsPending = true;
@@ -25,6 +23,30 @@ public partial class AkronModule
         ClearPendingPolicyActions();
         ApplyPendingMapPolicyEffects();
         orig(self, session, fromSaveData);
+    }
+
+    private static void EngineOnSceneTransitionForMapPolicy(On.Monocle.Engine.orig_OnSceneTransition orig, Engine self, Scene from, Scene to)
+    {
+        // Constructors also run for detached snapshot loaders. Adopt their policy only
+        // when the engine installs them, after the outgoing scene ends and before Begin.
+        if (to is LevelLoader loader)
+        {
+            EnterMapPolicy(loader.session);
+        }
+        else if (to is Level level)
+        {
+            EnterMapPolicy(level.Session);
+        }
+        else if (to is LevelEnter levelEnter)
+        {
+            EnterMapPolicy(levelEnter.session);
+        }
+        else
+        {
+            LeaveMapPolicy();
+        }
+        ApplyPendingMapPolicyEffects();
+        orig(self, from, to);
     }
 
     private static void LevelOnLoadLevelForMapPolicy(On.Celeste.Level.orig_LoadLevel orig, Level self, Player.IntroTypes intro, bool isFromLoader)
@@ -42,18 +64,17 @@ public partial class AkronModule
         }
     }
 
-    private static void LeaveMapPolicy(Session expectedSession = null)
+    private static void LeaveMapPolicy()
     {
-        // LevelEnter/LevelLoader can install the next session before the old Level.End.
-        bool ownsPolicy = expectedSession == null || ReferenceEquals(mapPolicySession, expectedSession);
-        if (ownsPolicy)
-        {
-            mapPolicySession = null;
-        }
-        if (ownsPolicy && AkronPolicy.LeaveMap())
+        if (AkronPolicy.LeaveMap())
         {
             mapRestrictionEffectsPending = true;
         }
+        ResetMapPolicyEffects();
+    }
+
+    private static void ResetMapPolicyEffects()
+    {
         ClearPendingPolicyActions();
         ReleaseTimescale();
         AkronRuntimeOptions.Reset();
@@ -97,10 +118,10 @@ public partial class AkronModule
         ApplyMotionSmoothingSettings();
     }
 
-    internal static bool IsGameplayFreezeEffective => Session != null && Session.FreezeGameplay &&
+    internal static bool IsGameplayFreezeEffective(AkronModuleSession session) => session != null && session.FreezeGameplay &&
         AkronPolicy.CanUse(AkronFeatureKind.Freeze).Allowed;
 
-    internal static bool CanStepGameplay => IsGameplayFreezeEffective && Settings.FrameStepper &&
+    internal static bool CanStepGameplay(AkronModuleSession session, AkronModuleSettings settings) => IsGameplayFreezeEffective(session) && settings.FrameStepper &&
         AkronPolicy.CanUse(AkronFeatureKind.FrameAdvance).Allowed;
 
 #pragma warning disable CS0618
@@ -123,9 +144,9 @@ public partial class AkronModule
         lastAkronTimescale = value;
     }
 
-    internal static void ApplyTimescale()
+    internal static void ApplyTimescale(AkronModuleSession session)
     {
-        if (Session == null || !Session.TimescaleEnabled || !AkronPolicy.CanUse(AkronFeatureKind.Timescale).Allowed)
+        if (session == null || !session.TimescaleEnabled || !AkronPolicy.CanUse(AkronFeatureKind.Timescale).Allowed)
         {
             ReleaseTimescale();
             return;
@@ -136,7 +157,7 @@ public partial class AkronModule
             timescaleBeforeAkron = Engine.TimeRate;
             ownsTimescale = true;
         }
-        lastAkronTimescale = Session.TimescaleMultiplier;
+        lastAkronTimescale = session.TimescaleMultiplier;
         Engine.TimeRate = lastAkronTimescale;
 #pragma warning restore CS0618
     }

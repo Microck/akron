@@ -263,11 +263,12 @@ public static class AkronLog {
 
     private static void Write(AkronLoggingLevel level, string source, string message, LogLevel? mirrorLogLevel) {
         AkronModuleSettings settings = ResolveSettings();
-        if (settings == null || !AkronPolicy.CanUse(AkronFeatureKind.Logging).Allowed) {
+        if (settings == null) {
             return;
         }
 
-        bool writeToFile = settings.Logging && ShouldWrite(level, settings.LoggingLevel);
+        bool writeToFile = settings.Logging && ShouldWrite(level, settings.LoggingLevel) &&
+                           AkronPolicy.CanUse(AkronFeatureKind.Logging).Allowed;
         bool mirrorToEverest = mirrorLogLevel.HasValue && settings.LoggingMirrorWarningsToEverest;
         if (!writeToFile && !mirrorToEverest) {
             return;

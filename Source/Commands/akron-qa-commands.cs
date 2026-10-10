@@ -187,11 +187,12 @@ public static partial class AkronCommands {
     // it, and not at all in the other two, which is recorded in that script's own header.
     [Command("akron_qa_pixel_checkpoint", "capture and hash Celeste's next rendered 320x180 room buffer: <tag>")]
     public static void QaPixelCheckpoint(string tag = "checkpoint") {
-        if (RequireLevel() == null) {
+        Level level = RequireLevel();
+        if (level == null) {
             return;
         }
 
-        if (!AkronCapture.RequestGameplayBufferQaCapture(tag, out string normalizedTag)) {
+        if (!AkronCapture.RequestGameplayBufferQaCapture(level, tag, out string normalizedTag)) {
             Log("usage: akron_qa_pixel_checkpoint <tag>");
             return;
         }
@@ -613,6 +614,7 @@ public static partial class AkronCommands {
                     AkronAutomationService.RecordOutput("qa-session-time: " + currentLevel.Session.Time.ToString(CultureInfo.InvariantCulture));
                     if (!string.IsNullOrWhiteSpace(pixelTag)) {
                         if (AkronCapture.RequestGameplayBufferQaCapture(
+                                currentLevel,
                                 pixelTag,
                                 out string normalizedTag,
                                 AkronAutomationService.CompleteDeferredRun)) {
