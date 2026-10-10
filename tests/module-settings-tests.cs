@@ -477,7 +477,8 @@ public sealed class ModuleSettingsTests
     [InlineData("ErrorReportingEnabled: true\n", true)]
     public void LoadedSettingsPreserveTheReportingPreference(string yaml, bool enabled)
     {
-        AkronModuleSettings settings = global::Celeste.Mod.YamlHelper.Deserializer.Deserialize<AkronModuleSettings>(yaml);
+        AkronModuleSettings settings = new YamlDotNet.Serialization.DeserializerBuilder().Build()
+            .Deserialize<AkronModuleSettings>(yaml);
         Assert.Equal(enabled, settings.ErrorReportingEnabled);
     }
 
