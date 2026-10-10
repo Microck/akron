@@ -69,7 +69,10 @@ public sealed partial class AkronOverlay {
 
             foreach (OverlayEntry entry in BuildEntriesForTab(tabName, level)) {
                 string actionKey = string.IsNullOrWhiteSpace(entry.ActionKeyOverride) ? BuildActionKey(tabName, entry.Label) : entry.ActionKeyOverride;
-                if (HasMenuBinding(actionKey)) {
+                // Rows like FPS Bypass and Open Debug Map can carry a native bind instead of
+                // an overlay one. GetVisibleTabs/BuildEntriesForTab only list rows the player
+                // can see, so FPS Bypass still hides without Motion Smoothing.
+                if (HasVisibleBinding(actionKey)) {
                     yield return new KeybindOverviewSpec(entry.Label, actionKey, entry.SearchTerms);
                 }
             }

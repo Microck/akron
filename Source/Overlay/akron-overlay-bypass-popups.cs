@@ -310,6 +310,7 @@ public sealed partial class AkronOverlay
         {
             AkronModule.Settings.FrameBypassCameraSmoothing = NextCameraSmoothing(AkronModule.Settings.FrameBypassCameraSmoothing);
         }
+        DrawPopupActionBindingContext("FPS Bypass", "Smooth Camera", "FPS Bypass / Smooth Camera");
         DrawPopupTooltip("Fancy is highest quality, Fast is cheaper but can jitter backgrounds, Off leaves the camera pixel-locked.");
 
         if (ImGui.Button("Objects: " + AkronModule.Settings.FrameBypassObjectSmoothing + "##" + popupId))

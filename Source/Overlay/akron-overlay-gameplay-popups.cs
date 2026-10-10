@@ -47,6 +47,11 @@ public sealed partial class AkronOverlay {
         DrawGrabModeChoice("Hold", GrabModes.Hold, popupId);
         DrawGrabModeChoice("Toggle", GrabModes.Toggle, popupId);
         DrawGrabModeChoice("Invert", GrabModes.Invert, popupId);
+        if (ImGui.Button("Cycle##" + popupId)) {
+            AkronActions.CycleGrabMode();
+        }
+        DrawPopupActionBindingContext("Grab Mode", "Cycle", "Grab Mode / Cycle");
+        DrawPopupTooltip("Step to the next grab mode. Right-click to bind a key that does the same.");
         ImGui.TextUnformatted("Configured: " + AkronModule.Settings.GrabModeOverrideMode);
         ImGui.TextUnformatted("Active: " + Settings.Instance.GrabMode);
     }
