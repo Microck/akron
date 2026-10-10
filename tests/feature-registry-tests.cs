@@ -464,6 +464,7 @@ public sealed class FeatureRegistryTests
     [InlineData("Interface", "Upload Pack", null)]
     [InlineData("Interface", "Streamer Mode", null)]
     [InlineData("Interface", "Block Gameplay Input", null)]
+    [InlineData("Interface", "Menu Mouse", null)]
     [InlineData("Interface", "Logging", AkronFeatureKind.Logging)]
     [InlineData("Internal Recorder", "Start Recording", AkronFeatureKind.InternalRecorder)]
     [InlineData("Internal Recorder", "Build Clear Video", AkronFeatureKind.InternalRecorder)]

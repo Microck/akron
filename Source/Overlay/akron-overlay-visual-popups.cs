@@ -135,6 +135,18 @@ public sealed partial class AkronOverlay {
             "Hold this while Click Teleport is enabled, then left-click in the gameplay viewport to teleport.");
     }
 
+    private void DrawMenuMousePopupControls(string popupId) {
+        DrawCursorHoldBindingRow(
+            "Interface/Menu Mouse",
+            "Menu Mouse / Cursor hold",
+            "menu-mouse",
+            AkronModule.Settings.MenuMouseHold,
+            value => AkronModule.Settings.MenuMouseHold = value,
+            AkronModuleSettings.CreateLeftAltHoldBinding(),
+            popupId,
+            "Hold this in a Celeste menu to point and click. Hover selects, left click confirms, right click goes back, the wheel scrolls.");
+    }
+
     private void DrawCursorToolsPopupControls(string popupId) {
         DrawCursorHoldBindingRow(
             "Creator/Cursor Tools",

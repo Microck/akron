@@ -441,7 +441,8 @@ public partial class AkronModule {
                                 ShouldShowEntityInspectorCursor() ||
                                 ShouldShowClickTeleportCursor() ||
                                 ShouldShowCursorZoomCursor() ||
-                                ShouldShowFreeCameraMouseCursor();
+                                ShouldShowFreeCameraMouseCursor() ||
+                                AkronMenuMouse.ShowsCursor;
         if (shouldShowCursor) {
             ShowManagedCursorForTransientUi();
             return;
@@ -471,6 +472,7 @@ public partial class AkronModule {
     private static bool ShouldShowClickTeleportCursor() {
         return Engine.Scene is Level &&
                Overlay?.Visible != true &&
+               !AkronMenuMouse.ShowsCursor &&
                IsClickTeleportCursorActive() &&
                AkronPolicy.CanUse(AkronFeatureKind.ClickTeleport).Allowed;
     }
@@ -481,17 +483,30 @@ public partial class AkronModule {
                    Settings.EntityInspector || Settings.CursorTools,
                    IsEntityInspectorCursorHoldActive() || IsCursorToolsInspectorPinActive(),
                    Overlay?.Visible == true,
-                   AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed);
+                   AkronPolicy.CanUse(AkronFeatureKind.EntityInspector).Allowed,
+                   AkronMenuMouse.ShowsCursor);
     }
 
     internal static bool IsEntityInspectorCursorHoldActive() {
         return IsButtonBindingHeld(AkronModuleSettings.ResolveEntityInspectorCursorHoldBinding(Settings));
     }
 
-    internal static bool ShouldShowEntityInspectorCursor(bool entityInspector, bool cursorHoldBindingHeld, bool overlayVisible, bool policyAllowed) {
+    // The Akron overlay and its placement modes own the mouse while they are up, so
+    // Menu Mouse only runs when neither is active.
+    internal static bool IsMenuMouseHoldActive() {
+        return Settings.MenuMouse &&
+               Overlay?.Visible != true &&
+               Overlay?.IsTransientMouseUiActive != true &&
+               IsButtonBindingHeld(Settings.MenuMouseHold);
+    }
+
+    // Like the overlay, Menu Mouse driving a menu owns the shared Left Alt hold, so the
+    // inspector neither previews nor pins entities behind that menu.
+    internal static bool ShouldShowEntityInspectorCursor(bool entityInspector, bool cursorHoldBindingHeld, bool overlayVisible, bool policyAllowed, bool menuMouseOwnsCursor) {
         return entityInspector &&
                cursorHoldBindingHeld &&
                !overlayVisible &&
+               !menuMouseOwnsCursor &&
                policyAllowed;
     }
 

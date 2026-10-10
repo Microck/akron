@@ -137,6 +137,9 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int IndicatorOffsetY { get; set; }
     public bool ConsumeGameplayInputInMenu { get; set; } = true;
     public bool PauseGameplayInMenu { get; set; }
+    // Menu Mouse lets the cursor drive Celeste's own menus while MenuMouseHold is held.
+    // On by default: it does nothing until the hold bind is pressed in a menu.
+    public bool MenuMouse { get; set; } = true;
     public int OverlayOpacity { get; set; } = 96;
     public AkronOverlayThemePreset OverlayThemePreset { get; set; } = AkronOverlayThemePreset.Default;
     public int OverlayScale { get; set; } = 100;
@@ -320,6 +323,9 @@ public partial class AkronModuleSettings : EverestModuleSettings {
 
     [DefaultButtonBinding(0, Keys.LeftAlt)]
     public ButtonBinding CursorToolsHold { get; set; }
+
+    [DefaultButtonBinding(0, Keys.LeftAlt)]
+    public ButtonBinding MenuMouseHold { get; set; }
 
     public bool ReducedVisualNoise { get; set; }
     public bool NoParticles { get; set; }

@@ -16,6 +16,7 @@ The Interface tab controls the Akron overlay itself and the public `.akr` pack w
 | Upload Pack | Action | Submit the active map's StartPos, Auto Kill, or Auto Deafen setup through the moderated community catalog flow. | None |
 | Pause While Open | Toggle | When enabled, opening the Akron menu stops gameplay updates until the menu closes. | None |
 | Block Gameplay Input | Toggle | Keep gameplay input from reaching Madeline while the overlay is open. On by default. | None |
+| Menu Mouse | Toggle | Hold the Menu Mouse key (`Left Alt` by default) to use the mouse in Celeste menus: the pause menu, options and mod options, the main menu, file select, chapter select, the chapter panel, and the journal. Hover selects a row, left click confirms it or steps the value under the cursor, right click goes back, and the wheel scrolls long lists. The list stays still while you hold the key and recenters on the selection when you let go. In chapter select and the chapter panel, click once to select and again to open. On Linux desktops that move windows with Alt+drag, such as Cinnamon, the desktop takes Alt+clicks before the game does; bind another key in the popup or change the desktop's window-move key. On by default. | None |
 | Streamer Mode | Toggle | Replace full local filesystem paths with filenames. | None |
 | Logging | Toggle | Write local Akron diagnostic logs to `Saves/AkronLogs`. | Goldberry/Hardlist clear |
 | Automatic Error Reports | Toggle | Send selected Akron error reports through Sentry. On by default when configured; turn off here. Unavailable without a configured destination. See [error reporting](/reference/error-reporting) for the exact data sent. | None |
@@ -49,6 +50,7 @@ Rows with a triangle expose the controls listed below.
 | Theme | Button in levels | Allow the floating activation button in active levels. | None |
 | Theme | Button in menus | Allow the floating activation button outside active levels. | None |
 | Theme | Search autofocus | Focus Akron search automatically when the overlay opens. | None |
+| Menu Mouse | Cursor | Set the hold input that turns on Menu Mouse in menus. | None |
 | Logging | Normal | Record normal events only. Quietest level. | Goldberry/Hardlist clear |
 | Logging | Diagnostic | Record normal events plus one 60-second summary line counting feature uses and policy checks. The default. | Goldberry/Hardlist clear |
 | Logging | Verbose | Record one line per feature use instead of the 60-second summary. Louder than Diagnostic. | Goldberry/Hardlist clear |

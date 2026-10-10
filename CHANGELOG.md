@@ -8,6 +8,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Added
 
+- Add **Menu Mouse** to the Interface tab. Hold `Left Alt` (or the bind in its popup) in a Celeste menu to point and click: hover selects, left click confirms or steps the value under the cursor, right click goes back, and the wheel scrolls. Works in the pause menu, options and mod options, the main menu, file select, chapter select, the chapter panel, and the journal. On by default.
 - Add Automatic Error Reports for selected Akron startup, overlay, settings and StartPos failures. Reporting is on by default when a Sentry destination is configured, with an opt-out in the Interface tab. Existing saved Off choices are preserved. Reports send only bounded Akron stack details and the mod version. Local logging and Send diagnostics keep their existing behavior.
 
 ### Changed
@@ -15,6 +16,10 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 - Trim Akron's entry in Celeste's mod options to an **Enabled** switch and the menu bind. Streamer Mode, Safe Mode, and Send diagnostics stay in the overlay, and action binds are set by right-clicking overlay rows.
 - Turning **Enabled** off removes Akron's overlay, HUD, hotkeys, interop, error reports, and debug console commands on the next launch. Only its mod options entry stays, so it can be turned back on there.
 - Add a **Hold** bind row to the Fast Lookout popup, set with its **Bind** button. The hold starts unbound, and Everest's keyboard and controller config used to be the only place to set it. Keyboard keys in this hold now act as one chord, like Akron's other binds: a hold saved as two separate keys needs both held, so bind it again if you meant either key. Controller and mouse buttons still work on their own.
+
+### Fixed
+
+- Ignore Click Teleport clicks while the game is paused, including the click that unpauses it, so a click on the pause menu never moves Madeline or toggles Cursor Zoom. Cursor Tools, Cursor Zoom, Entity Inspector and Free Camera mouse control also stand down while Menu Mouse is driving a menu.
 
 ## Akron Beta 84
 

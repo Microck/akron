@@ -170,6 +170,7 @@ public partial class AkronModuleSettings {
         settings.ClickTeleportCursor = EnsureButtonBinding(settings.ClickTeleportCursor, CreateLeftAltHoldBinding);
         settings.CursorZoomHold = EnsureButtonBinding(settings.CursorZoomHold, CreateLeftAltHoldBinding);
         settings.CursorToolsHold = EnsureButtonBinding(settings.CursorToolsHold, CreateLeftAltHoldBinding);
+        settings.MenuMouseHold = EnsureButtonBinding(settings.MenuMouseHold, CreateLeftAltHoldBinding);
     }
 
     private static ButtonBinding EnsureButtonBinding(ButtonBinding binding, Func<ButtonBinding> defaultFactory) {

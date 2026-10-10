@@ -30,6 +30,7 @@ public partial class AkronModuleSettings {
             LagPauserIgnoreSpeedrunToolLoadStates = LagPauserIgnoreSpeedrunToolLoadStates,
             LowDistractionOverlay = IsLowDistractionActive(),
             PauseGameplayInMenu = PauseGameplayInMenu,
+            MenuMouse = MenuMouse,
             OverlayOpacity = OverlayOpacity,
             OverlayThemePreset = OverlayThemePreset,
             OverlayScale = OverlayScale,

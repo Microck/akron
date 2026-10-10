@@ -828,7 +828,8 @@ public sealed class ModuleSettingsTests
             ["EntityInspectorCursorHold"] = ((XnaButtons)0, Keys.LeftAlt),
             ["ClickTeleportCursor"] = ((XnaButtons)0, Keys.LeftAlt),
             ["CursorZoomHold"] = ((XnaButtons)0, Keys.LeftAlt),
-            ["CursorToolsHold"] = ((XnaButtons)0, Keys.LeftAlt)
+            ["CursorToolsHold"] = ((XnaButtons)0, Keys.LeftAlt),
+            ["MenuMouseHold"] = ((XnaButtons)0, Keys.LeftAlt)
         };
 
         foreach (PropertyInfo property in typeof(AkronModuleSettings).GetProperties())
@@ -1363,24 +1364,28 @@ public sealed class ModuleSettingsTests
     }
 
     [Theory]
-    [InlineData(false, true, false, false)]
-    [InlineData(true, false, false, false)]
-    [InlineData(true, true, true, false)]
-    [InlineData(true, true, false, true)]
-    public void CursorToolsHoldRequiresSettingBindingAndHiddenOverlay(bool enabled, bool bindingHeld, bool overlayVisible, bool expected)
+    [InlineData(false, true, false, false, false)]
+    [InlineData(true, false, false, false, false)]
+    [InlineData(true, true, true, false, false)]
+    [InlineData(true, true, false, false, true)]
+    // Menu Mouse driving a menu owns the shared Left Alt hold.
+    [InlineData(true, true, false, true, false)]
+    public void CursorToolsHoldRequiresSettingBindingHiddenOverlayAndNoMenuMouse(bool enabled, bool bindingHeld, bool overlayVisible, bool menuMouseOwnsCursor, bool expected)
     {
-        Assert.Equal(expected, AkronModule.ShouldUseCursorToolsHold(enabled, bindingHeld, overlayVisible));
+        Assert.Equal(expected, AkronModule.ShouldUseCursorToolsHold(enabled, bindingHeld, overlayVisible, menuMouseOwnsCursor));
     }
 
     [Theory]
-    [InlineData(false, true, false, true, false)]
-    [InlineData(true, false, false, true, false)]
-    [InlineData(true, true, true, true, false)]
-    [InlineData(true, true, false, false, false)]
-    [InlineData(true, true, false, true, true)]
-    public void EntityInspectorCursorRequiresInspectorHoldHiddenOverlayAndPolicy(bool entityInspector, bool bindingHeld, bool overlayVisible, bool policyAllowed, bool expected)
+    [InlineData(false, true, false, true, false, false)]
+    [InlineData(true, false, false, true, false, false)]
+    [InlineData(true, true, true, true, false, false)]
+    [InlineData(true, true, false, false, false, false)]
+    [InlineData(true, true, false, true, false, true)]
+    // Menu Mouse driving a menu owns the shared Left Alt hold.
+    [InlineData(true, true, false, true, true, false)]
+    public void EntityInspectorCursorRequiresInspectorHoldHiddenOverlayPolicyAndNoMenuMouse(bool entityInspector, bool bindingHeld, bool overlayVisible, bool policyAllowed, bool menuMouseOwnsCursor, bool expected)
     {
-        Assert.Equal(expected, AkronModule.ShouldShowEntityInspectorCursor(entityInspector, bindingHeld, overlayVisible, policyAllowed));
+        Assert.Equal(expected, AkronModule.ShouldShowEntityInspectorCursor(entityInspector, bindingHeld, overlayVisible, policyAllowed, menuMouseOwnsCursor));
     }
 
     [Theory]
@@ -1404,13 +1409,30 @@ public sealed class ModuleSettingsTests
         Assert.Equal(expected, AkronModule.IsClickTeleportCursorActive(clickTeleportEnabled, clickTeleportHoldActive, cursorToolsHeld, cursorToolsClickTeleport));
     }
 
-    [Theory]
-    [InlineData(false, true, true, true)]
-    [InlineData(false, true, false, false)]
-    [InlineData(true, false, false, true)]
-    public void CursorToolsFreeCameraUsesMouseControlByDefault(bool freeCameraMouseControl, bool cursorToolsHeld, bool cursorToolsFreeCamera, bool expected)
+    [Fact]
+    public void InputHeldThroughAGatedFrameIsNotAFreshPress()
     {
-        Assert.Equal(expected, AkronModule.IsFreeCameraMouseControlEffectiveEnabled(freeCameraMouseControl, cursorToolsHeld, cursorToolsFreeCamera));
+        bool lastDown = false;
+
+        // Paused: the Alt+click lands on the pause menu, not the room.
+        Assert.False(AkronModule.TrackFreshPress(down: true, gated: true, ref lastDown));
+        // Unpaused by that click, still held: no teleport, no Cursor Zoom toggle.
+        Assert.False(AkronModule.TrackFreshPress(down: true, gated: false, ref lastDown));
+        Assert.False(AkronModule.TrackFreshPress(down: false, gated: false, ref lastDown));
+        // A new press while live counts once.
+        Assert.True(AkronModule.TrackFreshPress(down: true, gated: false, ref lastDown));
+        Assert.False(AkronModule.TrackFreshPress(down: true, gated: false, ref lastDown));
+    }
+
+    [Theory]
+    [InlineData(false, true, true, false, true)]
+    [InlineData(false, true, false, false, false)]
+    [InlineData(true, false, false, false, true)]
+    // Menu Mouse driving a menu owns the pointer, even for the saved mouse-control setting.
+    [InlineData(true, false, false, true, false)]
+    public void CursorToolsFreeCameraUsesMouseControlByDefault(bool freeCameraMouseControl, bool cursorToolsHeld, bool cursorToolsFreeCamera, bool menuMouseOwnsCursor, bool expected)
+    {
+        Assert.Equal(expected, AkronModule.IsFreeCameraMouseControlEffectiveEnabled(freeCameraMouseControl, cursorToolsHeld, cursorToolsFreeCamera, menuMouseOwnsCursor));
     }
 
     [Theory]

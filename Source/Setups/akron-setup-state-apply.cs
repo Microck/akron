@@ -28,6 +28,7 @@ public partial class AkronModuleSettings {
         LagPauserRepeatCooldownMs = ClampLagPauserWindowMs(resolved.LagPauserRepeatCooldownMs);
         LagPauserIgnoreSpeedrunToolLoadStates = resolved.LagPauserIgnoreSpeedrunToolLoadStates;
         PauseGameplayInMenu = resolved.PauseGameplayInMenu;
+        MenuMouse = resolved.MenuMouse;
         OverlayOpacity = ClampOverlayOpacity(resolved.OverlayOpacity);
         OverlayThemePreset = resolved.OverlayThemePreset;
         OverlayScale = ClampOverlayScale(resolved.OverlayScale);

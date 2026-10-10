@@ -78,6 +78,8 @@ public static partial class AkronCommands {
         Log("safe-mode: " + AkronModule.Settings.SafeMode.ToString().ToLowerInvariant());
         Log("consume-menu-input: " + AkronModule.Settings.ConsumeGameplayInputInMenu.ToString().ToLowerInvariant());
         Log("pause-gameplay-in-menu: " + AkronModule.Settings.PauseGameplayInMenu.ToString().ToLowerInvariant());
+        Log("menu-mouse: " + AkronModule.Settings.MenuMouse.ToString().ToLowerInvariant());
+        Log("menu-mouse-hold: " + AkronModuleSettings.DescribeBinding(AkronModule.Settings.MenuMouseHold));
         Log("overlay-opacity: " + AkronModule.Settings.OverlayOpacity.ToString(CultureInfo.InvariantCulture));
         Log("overlay-theme: " + AkronOverlayThemes.CurrentDisplayName());
         Log("allow-pause-buffering: " + AkronModule.Settings.AllowPauseBuffering.ToString().ToLowerInvariant());

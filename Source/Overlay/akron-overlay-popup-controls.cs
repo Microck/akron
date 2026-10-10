@@ -94,6 +94,8 @@ public sealed partial class AkronOverlay {
                 DrawClickTeleportPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Cursor Tools", StringComparison.OrdinalIgnoreCase)) {
                 DrawCursorToolsPopupControls(popupId);
+            } else if (string.Equals(entry.Label, "Menu Mouse", StringComparison.OrdinalIgnoreCase)) {
+                DrawMenuMousePopupControls(popupId);
             } else if (string.Equals(entry.Label, "Camera Offset", StringComparison.OrdinalIgnoreCase)) {
                 DrawCameraOffsetPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Cursor Zoom", StringComparison.OrdinalIgnoreCase)) {
