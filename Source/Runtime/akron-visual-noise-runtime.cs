@@ -30,7 +30,7 @@ public partial class AkronModule {
 
     private static bool ShouldSuppressBackdropVisuals() {
         return (Settings.HideSnow || Settings.HideWindSnow) &&
-               TryUse(AkronFeatureKind.ReducedVisualNoise);
+               TryUseRuntime(AkronFeatureKind.ReducedVisualNoise);
     }
 
     private static bool ShouldHideBackdrop(Backdrop backdrop) {
@@ -76,11 +76,11 @@ public partial class AkronModule {
     }
 
     private static bool ShouldHideWaterfalls() {
-        return Settings.HideWaterfalls && TryUse(AkronFeatureKind.ReducedVisualNoise);
+        return Settings.HideWaterfalls && TryUseRuntime(AkronFeatureKind.ReducedVisualNoise);
     }
 
     private static void ReflectionTentaclesOnRender(On.Celeste.ReflectionTentacles.orig_Render orig, ReflectionTentacles self) {
-        if (!Settings.HideTentacles || !TryUse(AkronFeatureKind.ReducedVisualNoise)) {
+        if (!Settings.HideTentacles || !TryUseRuntime(AkronFeatureKind.ReducedVisualNoise)) {
             orig(self);
         }
     }
@@ -135,7 +135,7 @@ public partial class AkronModule {
     }
 
     private static void HeatWaveOnRenderDisplacement(On.Celeste.HeatWave.orig_RenderDisplacement orig, HeatWave self, Level level) {
-        if (!Settings.HideHeatDistortion || !TryUse(AkronFeatureKind.ReducedVisualNoise)) {
+        if (!Settings.HideHeatDistortion || !TryUseRuntime(AkronFeatureKind.ReducedVisualNoise)) {
             orig(self, level);
         }
     }

@@ -51,7 +51,7 @@ internal static class AkronDeloadSimulator {
 
     public static bool TrySimulate(Level level, float beforeDeloadSeconds, out int steps) {
         steps = 0;
-        if (!Claims.TryClaim(level)) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.DeloadSimulation).Allowed || !Claims.TryClaim(level)) {
             return false;
         }
 

@@ -133,7 +133,7 @@ public static class AkronPracticeStats {
 
     private static void FinalizeRoom(Level level, string roomName) {
         long roomTime = GetCurrentRoomStatTime(level);
-        if (string.IsNullOrWhiteSpace(roomName) || roomTime <= 0) {
+        if (string.IsNullOrWhiteSpace(roomName) || roomTime <= 0 || !AkronPolicy.CanUse(AkronFeatureKind.RoomStatTracker).Allowed) {
             return;
         }
 

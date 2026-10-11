@@ -13,6 +13,7 @@ public static partial class AkronCommands {
         Player player = level?.Tracker.GetEntity<Player>();
         AkronModuleSession session = AkronModule.Session;
         Log("scene: " + (Engine.Scene?.GetType().Name ?? "null"));
+        LogMapRestrictions();
         Log("overlay: " + (AkronModule.IsOverlayVisible ? "visible" : "hidden"));
         Log("overlays: " + SafeStatusValue(() => AkronModule.Settings.DescribePresentationOverlays(), "unavailable"));
         Log("attempt: " + (session == null ? "unavailable" : AkronModuleSettings.FormatStatus(session.AttemptStatus)));
@@ -427,5 +428,13 @@ public static partial class AkronCommands {
             Log("stamina: " + player.Stamina.ToString("0.##", CultureInfo.InvariantCulture));
             Log("dashes: " + player.Dashes.ToString(CultureInfo.InvariantCulture));
         }
+    }
+
+    private static void LogMapRestrictions() {
+        Log("map-restriction-version: " + AkronPolicy.MapRestrictionVersion.ToString(CultureInfo.InvariantCulture));
+        Log("map-restrictions: " + (AkronPolicy.HasMapRestrictions ? string.Join(",", AkronPolicy.RestrictedFeatures) : "none"));
+        Log("map-restriction-settings: configured values below are preserved; restricted effects are suppressed");
+        Log("freeze-map-suppressed: " + AkronPolicy.IsMapRestricted(AkronFeatureKind.Freeze).ToString().ToLowerInvariant());
+        Log("timescale-map-suppressed: " + AkronPolicy.IsMapRestricted(AkronFeatureKind.Timescale).ToString().ToLowerInvariant());
     }
 }

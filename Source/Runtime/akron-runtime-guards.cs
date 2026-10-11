@@ -26,7 +26,7 @@ public partial class AkronModule {
     private static bool lagPauserRepeatCooldownPending;
 
     private static void LevelOnPause(Level level, int startIndex, bool minimal, bool quickReset) {
-        if (level == null || !Settings.PauseTracker || !TryUse(AkronFeatureKind.PauseTracker)) {
+        if (level == null || !Settings.PauseTracker || !TryUseRuntime(AkronFeatureKind.PauseTracker)) {
             return;
         }
 
@@ -54,14 +54,14 @@ public partial class AkronModule {
             lagPauserRepeatCooldownPending = false;
             SuppressLagPauserForWindow(Settings.LagPauserRepeatCooldownMs);
         }
-        if (level != null && Settings.PauseTracker && Session.PauseTrackerCurrentPauseStartedAt >= 0f) {
+        if (level != null && Settings.PauseTracker && AkronPolicy.CanUse(AkronFeatureKind.PauseTracker).Allowed && Session.PauseTrackerCurrentPauseStartedAt >= 0f) {
             Session.PauseTrackerPausedSeconds += Math.Max(0f, level.RawTimeActive - Session.PauseTrackerCurrentPauseStartedAt);
             Session.PauseTrackerCurrentPauseStartedAt = -1f;
         }
 
         if (level == null ||
             !Settings.PauseCountdown ||
-            !TryUse(AkronFeatureKind.PauseCountdown)) {
+            !TryUseRuntime(AkronFeatureKind.PauseCountdown)) {
             ClearPauseCountdown();
             return;
         }
@@ -79,6 +79,11 @@ public partial class AkronModule {
     }
 
     private static bool UpdatePauseCountdown(Level level) {
+        if (!Settings.PauseCountdown || !AkronPolicy.CanUse(AkronFeatureKind.PauseCountdown).Allowed) {
+            ClearPauseCountdown();
+            return false;
+        }
+
         float remaining = GetPauseCountdownRemaining();
         if (remaining <= 0f) {
             ClearPauseCountdown();
@@ -235,7 +240,8 @@ public partial class AkronModule {
         if (proofRecorderGuardWarningShown ||
             !Settings.ProofRecorderGuard ||
             !Settings.SubmissionMode ||
-            !AkronPolicy.CanUse(AkronFeatureKind.ProofRecorderGuard).Allowed) {
+            !AkronPolicy.CanUse(AkronFeatureKind.ProofRecorderGuard).Allowed ||
+            !AkronPolicy.CanUse(AkronFeatureKind.SubmissionMode).Allowed) {
             return;
         }
 
@@ -274,7 +280,7 @@ public partial class AkronModule {
         if (!Settings.DeathPbLossPrompt ||
             Session.DeathPbLossPromptShown ||
             level?.Session == null ||
-            !TryUse(AkronFeatureKind.DeathPbLossRestart)) {
+            !TryUseRuntime(AkronFeatureKind.DeathPbLossRestart)) {
             return;
         }
 

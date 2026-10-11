@@ -41,7 +41,7 @@ public sealed partial class AkronOverlay {
         bool keybindInput = action.Entry.Control == OverlayEntryControl.Keybind || action.Entry.Control == OverlayEntryControl.KeybindReadOnly;
         bool searchInput = action.Entry.Control == OverlayEntryControl.SearchInput;
         bool buttonOnly = !stateOnly && !hasOptionsPopup && ShouldDrawActionSideBars(action.Entry);
-        bool entryEnabled = action.Entry.Enabled();
+        bool entryEnabled = action.Entry.Enabled() && (!action.Entry.FeatureKind.HasValue || AkronPolicy.CanUse(action.Entry.FeatureKind.Value).Allowed);
         Color activeColor = ResolveActionActiveColor(action.Entry, selected || hovered);
 
         if (hovered) {

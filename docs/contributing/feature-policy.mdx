@@ -108,6 +108,55 @@ Policy is enforced through:
 - Feature registry tests.
 - [Clean vs cheat classifications](/concepts/clean-vs-cheat).
 
+## Map-authored feature restrictions
+
+A map can suppress selected Akron features without changing the player's saved preferences. This is independent of the clean/cheat classification. A restricted feature is unavailable even if its saved toggle is on, a setup enables it, or restored session state requests it.
+
+In Lönn, place **Akron Feature Restrictions** (`Akron/featureRestrictions`) in any room. Set its `features` string to comma-separated, case-sensitive `AkronFeatureKind` identities, for example:
+
+```text
+Freeze,FrameAdvance,Timescale,StartPosTools,RespawnTime,Invincibility
+```
+
+Use the exact identity names in [the feature registry](https://github.com/Microck/Akron/blob/main/Source/Core/AkronFeatureRegistry.cs), not translated labels, commands, numeric enum values, or setting names. For example, the Frame Stepper setting belongs to `FrameAdvance`. Whitespace around identities and empty entries are ignored. Repeated identities have no additional effect. Unknown identities produce an Everest log warning and are ignored; other valid entries still apply. Check the log before shipping a map.
+
+The declaration has no region, nodes, flag conditions, or executable commands. Akron reads declarations from **every room** and takes their union before loading gameplay entities. A marker in an unvisited room applies from the start. Marker position and whether the current room spawns it do not change policy. No marker, or an empty `features` value, leaves all features available.
+
+Restrictions cover the current map side. They persist through room transitions, death, room reload, chapter restart and save-and-quit/reentry. Leaving for a menu, entering another map, or unloading Akron removes the old map's restrictions. Pending frame steps, StartPos actions and captures do not transfer into the next map. Restrictions are compiled from map data rather than stored in Akron's savestate/session payload. Restart the map after editing its declaration.
+
+Direct chapter reloads retain policy through the outgoing level's end and every loader frame, including reloads that reuse the same session. Constructing a detached loader does not change the live map's policy. A cancelled StartPos death restore falls back to ordinary respawn only while its original dead body still belongs to the current room; stale callbacks cannot reload a replacement room or player.
+
+StartPos snapshots record whether Akron owned the saved global timescale. Loading a snapshot cannot restore a denied Akron timescale or replace the active map's clock with it. Independently owned saved timing remains part of the restored simulation. This changes the snapshot format to v12; capture older StartPos snapshots again.
+
+The overlay retains the configured value and marks restricted rows as map-suppressed. `akron_status` lists the policy version and restricted identities separately from configured values. Commands and hotkeys cannot override map policy. Ongoing effects use the same policy, so a pre-enabled feature does not bypass the declaration. Suppression never saves replacement preferences. Akron releases timing and other reversible state it owns; it does not repeatedly reset another mod's clock.
+
+The `Logging` identity suppresses Akron's own log-file writes. Warnings and errors still reach the Everest log when warning/error mirroring is enabled, so map restrictions cannot hide diagnostics needed to report a failure.
+
+Each identity is independent. To suppress a preset's individual effects, list those effects as well as any bundle action you want to deny. For example, use `MapVersionStamp`, `PauseTracker`, `ProofRecorderGuard` and `EndScreenHelper` when those independently configured features must be off, rather than assuming `SubmissionMode` recursively suppresses them. For independent freeze and stepping control, `Freeze` suppresses the freeze itself and `FrameAdvance` suppresses stepping while leaving an allowed freeze intact. `CaptureCheatOptions` denies room and chapter scanners because they move the player and restore simulation clocks, even with their optional freeze/hide settings off. Ordinary screenshots remain available; use `ScreenshotTool` to deny those too.
+
+This is an Akron contract, not a sandbox for other mods. It governs Akron's effect and integration entry points, not independent commands or features in Speedrun Tool, CelesteTAS or other helpers. It does not undo irreversible actions performed before entering the map, such as save unlocks or previously spawned entities.
+
+Akron's EVM integration requires the randomizer mutation observer so it can track and release randomized changes. If the installed EVM assembly lacks that capability, Akron logs a warning and leaves EVM state untouched rather than making untracked writes.
+
+### Integration API
+
+Code integrations can qualify support without private-field access:
+
+- `AkronPolicy.MapRestrictionVersion` is `1` for this contract.
+- `AkronPolicy.HasMapRestrictions` reports whether any valid identities are restricted.
+- `AkronPolicy.RestrictedFeatures` exposes the read-only current identity list.
+- `AkronPolicy.IsMapRestricted(feature)` reports the map declaration's decision.
+- `AkronPolicy.CanUse(feature)` returns the effective decision and a user-facing reason.
+- `AkronFeatureRegistry.TryResolveIdentity(identity, out feature)` resolves the same exact names used by map declarations.
+
+Future runtime features must gate actual effects with this policy. Use `TryUse` for an explicit user action and `TryUseRuntime` for recurring effects so denied features do not create a toast every frame. Do not implement restrictions by mutating saved settings or by detouring setting getters.
+
+Permission checks are separate from use classification. Use `CanUse` when an action only disables or resets an effect, such as resetting Timescale to normal speed. Resetting an inactive effect must not mark an otherwise clean attempt as Cheat.
+
+### Verification
+
+`FeatureRegistryTests` covers all registered identities, map-wide union, identity validation, policy reentry, retained preferences, independent freeze/step decisions and timing ownership release. Live verification must also exercise enabled-on-entry and mid-map changes, deferred StartPos/capture cancellation, ordinary death and room transitions, menu return, reentry and unload. External integrations, rendered HUD/media and audio require their own live cases; parser tests do not prove those effects.
+
 ## Writing policy reasons
 
 Good reasons say what behavior affects policy:

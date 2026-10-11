@@ -29,6 +29,7 @@ public partial class AkronModule {
 
     private static void ApplyAutoKill(Level level, Player player) {
         if (!Settings.AutoKill ||
+            !AkronPolicy.CanUse(AkronFeatureKind.AutoKill).Allowed ||
             player == null ||
             player.Dead ||
             level.Transitioning ||
@@ -70,7 +71,7 @@ public partial class AkronModule {
     }
 
     private static void ApplyAutoDeafen(Level level, Player player) {
-        if (!Settings.AutoDeafen) {
+        if (!Settings.AutoDeafen || !AkronPolicy.CanUse(AkronFeatureKind.AutoDeafen).Allowed) {
             AkronActions.RestoreAutoDeafen();
             return;
         }
@@ -97,9 +98,9 @@ public partial class AkronModule {
     // Celeste's own Assist invincibility counts: Player.Die(evenIfInvincible: false) is a no-op
     // under it, so without this check Auto Kill would keep asking for a death that never happens.
     private static bool IsAutoKillBlockedByPlayerProtection() {
-        return Settings.Noclip && TryUse(AkronFeatureKind.Noclip) ||
+        return Settings.Noclip && TryUseRuntime(AkronFeatureKind.Noclip) ||
                Settings.NoclipAccuracy && AkronPolicy.CanUse(AkronFeatureKind.HazardAccuracy).Allowed ||
-               Settings.Invincibility && TryUse(AkronFeatureKind.Invincibility) ||
+               Settings.Invincibility && TryUseRuntime(AkronFeatureKind.Invincibility) ||
                global::Celeste.SaveData.Instance?.Assists.Invincible == true;
     }
 

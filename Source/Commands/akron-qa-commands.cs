@@ -85,6 +85,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_area_complete", "trigger Level.RegisterAreaComplete for Akron proof automation")]
     public static void QaAreaComplete(string _ = "") {
+        if (!AkronModule.TryUse(AkronFeatureKind.InstantComplete)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -184,11 +187,12 @@ public static partial class AkronCommands {
     // it, and not at all in the other two, which is recorded in that script's own header.
     [Command("akron_qa_pixel_checkpoint", "capture and hash Celeste's next rendered 320x180 room buffer: <tag>")]
     public static void QaPixelCheckpoint(string tag = "checkpoint") {
-        if (RequireLevel() == null) {
+        Level level = RequireLevel();
+        if (level == null) {
             return;
         }
 
-        if (!AkronCapture.RequestGameplayBufferQaCapture(tag, out string normalizedTag)) {
+        if (!AkronCapture.RequestGameplayBufferQaCapture(level, tag, out string normalizedTag)) {
             Log("usage: akron_qa_pixel_checkpoint <tag>");
             return;
         }
@@ -263,6 +267,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_screenshake", "set a deterministic screenshake vector for visual tuning QA: <intensity> [x] [y]")]
     public static void QaScreenshake(string intensityText = "100", string xText = "6", string yText = "0") {
+        if (!AkronModule.TryUse(AkronFeatureKind.Screenshake)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -372,6 +379,12 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_player_state", "set controlled player/session state for StartPos QA: <x> <y> [deaths] [time] [speed-x] [speed-y] [dashes] [stamina] [facing]")]
     public static void QaPlayerState(string xText = "", string yText = "", string deathsText = "", string timeText = "", string speedXText = "0", string speedYText = "0", string dashesText = "", string staminaText = "", string facingText = "") {
+        if (!AkronModule.TryUse(AkronFeatureKind.StartPosTools) ||
+            !AkronModule.TryUse(AkronFeatureKind.MovementStatMutation) ||
+            !AkronModule.TryUse(AkronFeatureKind.RoomWarp) ||
+            !AkronModule.TryUse(AkronFeatureKind.SafeModeStats)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -435,6 +448,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_session_state", "set controlled room/session state for StartPos QA: <flag> <counter> <value>")]
     public static void QaSessionState(string flag = "akron_qa_flag", string counter = "akron_qa_counter", string valueText = "1") {
+        if (!AkronModule.TryUse(AkronFeatureKind.FlagInspector)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -454,6 +470,12 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_startpos_edge_capture", "set player/session edge state and capture StartPos in one frame: <slot> <x> <y> <speed-x> <speed-y> <dashes> <stamina> <facing> [flag] [counter] [value] [pixel-tag]")]
     public static void QaStartPosEdgeCapture(string slotText = "1", string xText = "", string yText = "", string speedXText = "0", string speedYText = "0", string dashesText = "1", string staminaText = "110", string facingText = "right", string flag = "akron_qa_flag", string counter = "akron_qa_counter", string valueText = "1", string pixelTag = "") {
+        if (!AkronModule.TryUse(AkronFeatureKind.StartPosTools) ||
+            !AkronModule.TryUse(AkronFeatureKind.MovementStatMutation) ||
+            !AkronModule.TryUse(AkronFeatureKind.RoomWarp) ||
+            !AkronModule.TryUse(AkronFeatureKind.FlagInspector)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -592,6 +614,7 @@ public static partial class AkronCommands {
                     AkronAutomationService.RecordOutput("qa-session-time: " + currentLevel.Session.Time.ToString(CultureInfo.InvariantCulture));
                     if (!string.IsNullOrWhiteSpace(pixelTag)) {
                         if (AkronCapture.RequestGameplayBufferQaCapture(
+                                currentLevel,
                                 pixelTag,
                                 out string normalizedTag,
                                 AkronAutomationService.CompleteDeferredRun)) {
@@ -1030,6 +1053,9 @@ public static partial class AkronCommands {
                 ";skip-callback=" + (callbackField?.GetValue(level) != null));
             return;
         }
+        if (!AkronModule.TryUse(AkronFeatureKind.CutsceneSkip)) {
+            return;
+        }
 
         if (NormalizeToken(action) == "noskip") {
             // A cutscene flag with nothing stored to end it, the state Skip Cutscene must leave alone.
@@ -1077,6 +1103,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_enter_level", "enter a vanilla level for Akron live automation: [area-id] [normal|b|c] [save-slot]")]
     public static void QaEnterLevel(string areaIdText = "0", string modeText = "normal", string slotText = "") {
+        if (!AkronModule.TryUse(AkronFeatureKind.RoomWarp)) {
+            return;
+        }
         if (!int.TryParse(areaIdText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int areaId)) {
             Log("qa-enter-level: invalid-area area=" + areaIdText);
             return;
@@ -1109,6 +1138,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_reenter_level", "enter a vanilla level with the current SaveData: [area-id] [normal|b|c]")]
     public static void QaReenterLevel(string areaIdText = "0", string modeText = "normal") {
+        if (!AkronModule.TryUse(AkronFeatureKind.RoomWarp)) {
+            return;
+        }
         if (SaveData.Instance == null) {
             Log("qa-reenter-level: missing-save-data");
             return;
@@ -1141,6 +1173,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_enter_map", "enter a loaded map for Akron live automation: [sid] [normal|b|c]")]
     public static void QaEnterMap(string sid = "", string modeText = "normal") {
+        if (!AkronModule.TryUse(AkronFeatureKind.RoomWarp)) {
+            return;
+        }
         if (string.IsNullOrWhiteSpace(sid)) {
             Log("qa-enter-map: missing sid");
             return;
@@ -1169,6 +1204,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_warp_room", "warp to a room in the current loaded map for Akron live automation: [room-name]")]
     public static void QaWarpRoom(string roomName = "") {
+        if (!AkronModule.TryUse(AkronFeatureKind.RoomWarp)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -1186,7 +1224,7 @@ public static partial class AkronCommands {
         }
 
         level.OnEndOfFrame += () => {
-            if (Engine.Scene != level) {
+            if (Engine.Scene != level || !AkronPolicy.CanUse(AkronFeatureKind.RoomWarp).Allowed) {
                 return;
             }
 
@@ -1210,6 +1248,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_inspector_pin_world", "pin the entity inspector at a world coordinate for Akron live automation: x y")]
     public static void QaInspectorPinWorld(string x = "", string y = "") {
+        if (!AkronModule.TryUse(AkronFeatureKind.EntityInspector)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -1246,6 +1287,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_inspector_controls", "exercise Entity Inspector copy/properties/close controls for Akron live automation")]
     public static void QaInspectorControls(string _ = "") {
+        if (!AkronModule.TryUse(AkronFeatureKind.EntityInspector)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -1256,6 +1300,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_inspector_scan_targets", "scan visible Entity Inspector targets for Akron live automation: [step-pixels] [limit] [max-per-type]")]
     public static void QaInspectorScanTargets(string stepPixels = "40", string limit = "80", string maxPerType = "8") {
+        if (!AkronModule.TryUse(AkronFeatureKind.EntityInspector)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -1275,6 +1322,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_inspector_probe_screen", "show Entity Inspector hit-test diagnostics at screen coordinates: [x] [y]")]
     public static void QaInspectorProbeScreen(string x = "", string y = "") {
+        if (!AkronModule.TryUse(AkronFeatureKind.EntityInspector)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -1297,6 +1347,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_refill_clarity_probe", "spawn a custom refill-like QA probe and enable Refill Clarity: [x] [y] [one-use|reusable]")]
     public static void QaRefillClarityProbe(string x = "", string y = "", string mode = "one-use") {
+        if (!AkronModule.TryUse(AkronFeatureKind.EntitySpawn) || !AkronModule.TryUse(AkronFeatureKind.RefillClarity)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -1321,6 +1374,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_refill_clarity_dash_crystal", "spawn a real dash crystal and enable Refill Clarity: [x] [y] [one-use|reusable] [one-dash|two-dash]")]
     public static void QaRefillClarityDashCrystal(string x = "", string y = "", string mode = "one-use", string dashMode = "one-dash") {
+        if (!AkronModule.TryUse(AkronFeatureKind.EntitySpawn) || !AkronModule.TryUse(AkronFeatureKind.RefillClarity)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -1620,6 +1676,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_invincibility_hazard", "invoke loaded hazard contact for QA: rising-lava|sandwich-lava|crush")]
     public static void QaInvincibilityHazard(string hazard = "rising-lava") {
+        if (!AkronModule.TryUse(AkronFeatureKind.RetryHotkey)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -2063,6 +2122,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_cursor_zoom_frame", "apply one Cursor Zoom frame for live QA: [percent] [screen-x] [screen-y]")]
     public static void QaCursorZoomFrame(string percentText = "50", string screenXText = "640", string screenYText = "360") {
+        if (!AkronModule.TryUse(AkronFeatureKind.CursorZoom)) {
+            return;
+        }
         Level level = RequireLevel();
         if (level == null) {
             return;
@@ -2245,6 +2307,9 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_freeze_frame", "trigger a Celeste freeze frame and report Engine.FreezeTimer: [seconds]")]
     public static void QaFreezeFrame(string secondsText = "0.2") {
+        if (!AkronModule.TryUse(AkronFeatureKind.FreezeFrames)) {
+            return;
+        }
         if (!float.TryParse(secondsText, NumberStyles.Float, CultureInfo.InvariantCulture, out float seconds)) {
             Log("usage: akron_qa_freeze_frame <seconds>");
             return;
@@ -2310,18 +2375,27 @@ public static partial class AkronCommands {
 
         switch (NormalizeToken(action)) {
             case "lowstamina":
+                if (!AkronModule.TryUse(AkronFeatureKind.MovementStatMutation)) {
+                    return;
+                }
                 // This intentionally creates the drain state that Infinite Stamina
                 // should repair on the next normal Level.Update.
                 player.Stamina = 1f;
                 Log("qa-probe: low-stamina");
                 break;
             case "zerodash":
+                if (!AkronModule.TryUse(AkronFeatureKind.MovementStatMutation)) {
+                    return;
+                }
                 // This intentionally creates the depleted dash state that Infinite
                 // Dash should repair on the next normal Level.Update.
                 player.Dashes = 0;
                 Log("qa-probe: zero-dash");
                 break;
             case "startdash":
+                if (!AkronModule.TryUse(AkronFeatureKind.MovementStatMutation) || !AkronModule.TryUse(AkronFeatureKind.InputAssistShortcut)) {
+                    return;
+                }
                 // Physical key injection is unreliable on the remote Xorg/Steam
                 // stack, so this invokes Celeste's own dash entrypoint directly.
                 // It still exercises the same Player.StartDash resource transition
@@ -2333,12 +2407,18 @@ public static partial class AkronCommands {
                 Log("qa-probe-dash-state: " + dashState.ToString(CultureInfo.InvariantCulture));
                 break;
             case "rightspeed":
+                if (!AkronModule.TryUse(AkronFeatureKind.MovementStatMutation)) {
+                    return;
+                }
                 // This creates deterministic horizontal motion so freeze/pause
                 // tests can compare player position instead of relying on timers.
                 player.Speed = new Vector2(180f, 0f);
                 Log("qa-probe: right-speed");
                 break;
             case "nearestspike":
+                if (!AkronModule.TryUse(AkronFeatureKind.RoomWarp)) {
+                    return;
+                }
                 if (!TryMovePlayerToNearestSpikes(level, player)) {
                     Log("qa-probe: no spikes found");
                     return;
@@ -2346,16 +2426,25 @@ public static partial class AkronCommands {
                 Log("qa-probe: nearest-spike");
                 break;
             case "forcedeath":
+                if (!AkronModule.TryUse(AkronFeatureKind.RetryHotkey)) {
+                    return;
+                }
                 // This exercises the same Player.Die hook used by spike hazards,
                 // without depending on a specific room's spike geometry.
                 player.Die(Vector2.UnitY, evenIfInvincible: false, registerDeathInStats: false);
                 Log("qa-probe: force-death");
                 break;
             case "forcedeathstats":
+                if (!AkronModule.TryUse(AkronFeatureKind.RetryHotkey)) {
+                    return;
+                }
                 player.Die(Vector2.UnitY, evenIfInvincible: false, registerDeathInStats: true);
                 Log("qa-probe: force-death-stats");
                 break;
             case "visualnoise":
+                if (!AkronModule.TryUse(AkronFeatureKind.ReducedVisualNoise)) {
+                    return;
+                }
                 Glitch.Value = 1f;
                 Distort.Anxiety = 1f;
                 Distort.GameRate = 0.5f;

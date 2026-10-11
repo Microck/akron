@@ -286,7 +286,29 @@ public static partial class AkronInternalRecorder {
         }
     }
 
+    public static void ApplyMapRestrictions() {
+        if (AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed) {
+            return;
+        }
+
+        lock (Sync) {
+            PendingClipSaves.Clear();
+            manualReplayBufferEnabled = false;
+        }
+        if (IsRecording) {
+            Stop();
+        }
+        if (IsReplayBuffering) {
+            StopReplayBuffer(false);
+        }
+    }
+
     public static void Update(Scene scene) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed) {
+            ApplyMapRestrictions();
+            return;
+        }
+
         if (scene == null) {
             return;
         }
@@ -326,6 +348,11 @@ public static partial class AkronInternalRecorder {
     }
 
     private static void CaptureFrame(Scene scene, bool captureManualRecording) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed) {
+            ApplyMapRestrictions();
+            return;
+        }
+
         if (scene == null) {
             return;
         }

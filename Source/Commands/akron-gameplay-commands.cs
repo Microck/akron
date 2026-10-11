@@ -265,6 +265,9 @@ public static partial class AkronCommands {
             return;
         }
 
+        if (!AkronModule.TryUse(AkronFeatureKind.Freeze) || !AkronModule.TryUse(AkronFeatureKind.FrameAdvance)) {
+            return;
+        }
         session.StepFrameRequested = true;
         Log("step-frame: requested");
     }

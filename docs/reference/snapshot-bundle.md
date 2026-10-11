@@ -2,7 +2,7 @@
 
 The setup v10 transport keeps each reconstruction document byte-for-byte intact.
 It does not parse and rewrite JSON numbers, strings, object order, or graph nodes.
-Local saves use gzip with `akron-reconstruction-v11`. Recapture older StartPos
+Local saves use gzip with `akron-reconstruction-v12`. Recapture older StartPos
 slots, then re-export their setup packs.
 
 ## Wire contract

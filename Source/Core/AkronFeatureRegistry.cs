@@ -114,6 +114,25 @@ public static class AkronFeatureRegistry
 
     private static readonly FeatureDefinition?[] DefinitionByKind = BuildDefinitionByKind();
     private static readonly AkronStatus[] ClassificationByKind = BuildClassificationByKind();
+    private static readonly Dictionary<string, AkronFeatureKind> KindByIdentity = BuildKindByIdentity();
+
+    // Map declarations use stable enum identities, never translated UI labels or numeric enum values.
+    public static bool TryResolveIdentity(string identity, out AkronFeatureKind kind)
+    {
+        return KindByIdentity.TryGetValue(identity ?? string.Empty, out kind);
+    }
+
+    internal static int FeatureCapacity => DefinitionByKind.Length;
+
+    private static Dictionary<string, AkronFeatureKind> BuildKindByIdentity()
+    {
+        Dictionary<string, AkronFeatureKind> identities = new(StringComparer.Ordinal);
+        foreach (AkronFeatureKind kind in Definitions.Keys)
+        {
+            identities.Add(kind.ToString(), kind);
+        }
+        return identities;
+    }
 
     // Row classifications come from the row's feature kind, so a row cannot show a class its
     // feature never records. Popup checkboxes have no kind of their own, which is why this

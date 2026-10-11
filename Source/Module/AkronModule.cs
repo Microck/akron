@@ -179,6 +179,9 @@ public partial class AkronModule : EverestModule {
             // Drain restart copies while the game and save APIs are still alive.
             Engine.Instance.Exiting += EngineOnExiting;
         }
+        On.Celeste.Level.LoadLevel += LevelOnLoadLevelForMapPolicy;
+        On.Celeste.LevelEnter.ctor += LevelEnterOnConstructForMapPolicy;
+        On.Monocle.Engine.OnSceneTransition += EngineOnSceneTransitionForMapPolicy;
         On.Celeste.Level.Begin += LevelOnBegin;
         On.Celeste.Level.End += LevelOnEnd;
         On.Celeste.Level.UpdateTime += LevelOnUpdateTime;
@@ -335,6 +338,11 @@ public partial class AkronModule : EverestModule {
         AkronScreenshotScanner.Unload();
         AkronNativeSavestateSupport.Reset();
         AkronSaveLoadService.ClearRuntimeState();
+        LeaveMapPolicy();
+        AkronPolicy.UnloadMapRestrictions();
+        On.Celeste.Level.LoadLevel -= LevelOnLoadLevelForMapPolicy;
+        On.Celeste.LevelEnter.ctor -= LevelEnterOnConstructForMapPolicy;
+        On.Monocle.Engine.OnSceneTransition -= EngineOnSceneTransitionForMapPolicy;
         On.Celeste.Level.Begin -= LevelOnBegin;
         On.Celeste.Level.End -= LevelOnEnd;
         On.Celeste.Level.UpdateTime -= LevelOnUpdateTime;
@@ -417,6 +425,8 @@ public partial class AkronModule : EverestModule {
         AkronActions.RestoreAutoDeafen();
         AkronActions.RestoreLowVolumeBypass();
         AkronRuntimeOptions.Reset();
+        AkronMotionSmoothingInterop.RestoreOriginalSettings();
+        AkronExtendedVariants.RestoreOriginalSettings();
         AkronOverlayBlur.Unload();
         AkronImGuiRenderer.Shutdown();
         deferredScreenWipeAction = null;
@@ -424,9 +434,7 @@ public partial class AkronModule : EverestModule {
         if (AkronInternalRecorder.IsRecording) {
             AkronInternalRecorder.Stop();
         }
-#pragma warning disable CS0618
-        Engine.TimeRate = 1f;
-#pragma warning restore CS0618
+        ReleaseTimescale();
         // AkronLog holds the log file open for the whole session, so unload has to release the handle.
         // Reloading the mod would otherwise leave a second appender on the same file.
         AkronLog.CloseLogFile();
@@ -452,7 +460,9 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void LevelOnBegin(On.Celeste.Level.orig_Begin orig, Level self) {
-        AkronActions.ClearStartPosInputWait();
+        EnterMapPolicy(self.Session);
+        ApplyPendingMapPolicyEffects();
+        ClearPendingPolicyActions();
         try {
             orig(self);
         } catch (NullReferenceException ex) when (ex.StackTrace?.IndexOf("DustEdges.BeforeRender", StringComparison.Ordinal) >= 0) {
@@ -494,6 +504,9 @@ public partial class AkronModule : EverestModule {
         // them from the first frame of the next level, so restoring here costs nothing.
         RestoreNativeAssistInvincibility();
         AkronActions.RestoreAutoDeafen();
+        // Keep restrictions until the engine installs its next scene. In particular,
+        // a same-session LevelLoader restart must not open an unrestricted interval.
+        ResetMapPolicyEffects();
         orig(self);
     }
 
@@ -502,6 +515,8 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void LevelOnUpdate(On.Celeste.Level.orig_Update orig, Level self) {
+        EnterMapPolicy(self.Session);
+        ApplyPendingMapPolicyEffects();
         if (freshRoomInitializationUpdateDepth > 0) {
             orig(self);
             return;
@@ -532,10 +547,13 @@ public partial class AkronModule : EverestModule {
         if (AkronActions.StartPosFrameGeneration != startPosFrameGeneration) {
             return;
         }
-        if (Settings.InputViewer || Settings.InputHistoryPanel || Settings.InputHistoryShowOnDeath || Settings.ShowTaps) {
+        if ((Settings.InputViewer && AkronPolicy.CanUse(AkronFeatureKind.InputViewer).Allowed) ||
+            ((Settings.InputHistoryPanel || Settings.InputHistoryShowOnDeath) && AkronPolicy.CanUse(AkronFeatureKind.InputHistory).Allowed) ||
+            (Settings.ShowTaps && AkronPolicy.CanUse(AkronFeatureKind.ShowTaps).Allowed)) {
             AkronInputHistory.RecordFrame();
         }
-        if (Settings.InputsPerSecondCounter || Settings.CustomHudLabels) {
+        if ((Settings.InputsPerSecondCounter && AkronPolicy.CanUse(AkronFeatureKind.InputsPerSecondCounter).Allowed) ||
+            (Settings.CustomHudLabels && AkronPolicy.CanUse(AkronFeatureKind.CustomHudLabels).Allowed)) {
             AkronInputHistory.RecordInputsPerSecondFrame();
         }
         UpdateDeathStatsTimer();
@@ -551,11 +569,11 @@ public partial class AkronModule : EverestModule {
             if (AkronActions.StartPosFrameGeneration != startPosFrameGeneration) {
                 return;
             }
-            if (Overlay.SearchOwnsGameplayInputThisFrame) {
+            if (Overlay.SearchOwnsGameplayInputThisFrame && AkronPolicy.CanUse(AkronFeatureKind.Freeze).Allowed) {
                 AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
                 return;
             }
-            if (Settings.PauseGameplayInMenu) {
+            if (Settings.PauseGameplayInMenu && AkronPolicy.CanUse(AkronFeatureKind.Freeze).Allowed) {
                 AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
                 return;
             }
@@ -588,7 +606,7 @@ public partial class AkronModule : EverestModule {
             return;
         }
 
-        if (Session.FreezeGameplay && !Session.StepFrameRequested) {
+        if (IsGameplayFreezeEffective(Session) && !(CanStepGameplay(Session, Settings) && Session.StepFrameRequested)) {
             AkronRuntimeOptions.HoldSceneClockForSkippedLevelUpdate(self);
             if (!overlayUpdated) {
                 Overlay?.Update();
@@ -599,7 +617,8 @@ public partial class AkronModule : EverestModule {
         // MInput.Disabled makes every virtual input read as released for this update, so the
         // level still runs (timers, entities) while Madeline gets no input behind the open
         // overlay. The overlay itself read the keyboard and mouse directly before this point.
-        bool blockGameplayInput = overlayUpdated && Overlay?.Visible == true && Settings.ConsumeGameplayInputInMenu;
+        bool blockGameplayInput = overlayUpdated && Overlay?.Visible == true &&
+                                  (Settings.ConsumeGameplayInputInMenu || Overlay.SearchOwnsGameplayInputThisFrame);
         bool previousInputDisabled = MInput.Disabled;
         if (blockGameplayInput) {
             MInput.Disabled = true;
@@ -675,7 +694,7 @@ public partial class AkronModule : EverestModule {
         bool freezeTimerDuringPause = ShouldFreezeTimerDuringPause(self);
         bool canFreezeTimer = freezeTimerEnabled &&
                               freezeTimerDuringPause &&
-                              TryUse(AkronFeatureKind.PauseTimerFreeze);
+                              TryUseRuntime(AkronFeatureKind.PauseTimerFreeze);
         if (ShouldReleasePauseTimerFreezeStop(pauseTimerFreezeStoppedTimer, freezeTimerEnabled, canFreezeTimer, freezeTimerDuringPause)) {
             self.TimerStopped = false;
             pauseTimerFreezeStoppedTimer = false;
@@ -841,6 +860,17 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void EngineOnUpdate(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime) {
+        if (Engine.Scene is Level policyLevel) {
+            EnterMapPolicy(policyLevel.Session);
+        } else if (Engine.Scene is not LevelLoader && Engine.Scene is not LevelEnter && AkronPolicy.HasMapRestrictions) {
+            LeaveMapPolicy();
+        }
+        ApplyPendingMapPolicyEffects();
+        if (Engine.Scene is Level) {
+            ApplyTimescale(Session);
+        } else {
+            ReleaseTimescale();
+        }
         AkronDiagnosticsMenu.CloseIfSceneChanged(Engine.Scene);
         // First thing in the hook, so the recorded interval spans a whole engine
         // update including everything Akron itself adds to the frame.
@@ -882,7 +912,7 @@ public partial class AkronModule : EverestModule {
             Overlay.Active = false;
             Overlay.Update();
             UpdateOverlayCursorState();
-            if (Overlay.SearchOwnsGameplayInputThisFrame || Settings.PauseGameplayInMenu) {
+            if ((Overlay.SearchOwnsGameplayInputThisFrame || Settings.PauseGameplayInMenu) && AkronPolicy.CanUse(AkronFeatureKind.Freeze).Allowed) {
                 return;
             }
         } else {
@@ -1579,7 +1609,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void AutoSavingNoticeOnUpdate(On.Celeste.AutoSavingNotice.orig_Update orig, AutoSavingNotice self, Scene scene) {
-        if (ShouldSuppressSavingNotice(AkronCapture.IsCapturingGameFrame, Settings.AutosaveHideSavingIcon)) {
+        if (ShouldSuppressSavingNotice(AkronCapture.IsCapturingGameFrame, Settings.AutosaveHideSavingIcon && AkronPolicy.CanUse(AkronFeatureKind.Autosave).Allowed)) {
             self.Display = false;
             self.StillVisible = false;
             return;
@@ -1589,7 +1619,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void AutoSavingNoticeOnRender(On.Celeste.AutoSavingNotice.orig_Render orig, AutoSavingNotice self, Scene scene) {
-        if (ShouldSuppressSavingNotice(AkronCapture.IsCapturingGameFrame, Settings.AutosaveHideSavingIcon)) {
+        if (ShouldSuppressSavingNotice(AkronCapture.IsCapturingGameFrame, Settings.AutosaveHideSavingIcon && AkronPolicy.CanUse(AkronFeatureKind.Autosave).Allowed)) {
             return;
         }
 
@@ -1601,7 +1631,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void SaveLoadIconOnShow(On.Celeste.SaveLoadIcon.orig_Show orig, Scene scene) {
-        if (ShouldSuppressSaveLoadIcon(AkronCapture.IsCapturingGameFrame, Settings.AutosaveHideSavingIcon)) {
+        if (ShouldSuppressSaveLoadIcon(AkronCapture.IsCapturingGameFrame, Settings.AutosaveHideSavingIcon && AkronPolicy.CanUse(AkronFeatureKind.Autosave).Allowed)) {
             return;
         }
 
@@ -1609,7 +1639,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void SaveLoadIconOnRender(On.Celeste.SaveLoadIcon.orig_Render orig, SaveLoadIcon self) {
-        if (ShouldSuppressSaveLoadIcon(AkronCapture.IsCapturingGameFrame, Settings.AutosaveHideSavingIcon)) {
+        if (ShouldSuppressSaveLoadIcon(AkronCapture.IsCapturingGameFrame, Settings.AutosaveHideSavingIcon && AkronPolicy.CanUse(AkronFeatureKind.Autosave).Allowed)) {
             return;
         }
 
@@ -1634,7 +1664,7 @@ public partial class AkronModule : EverestModule {
             // Read the completed 320x180 room buffer before Akron draws its HUD.
             // StartPos restoration tests need exact game pixels without timer text or
             // desktop compositor noise.
-            AkronCapture.CapturePendingGameplayBufferQaFrame();
+            AkronCapture.CapturePendingGameplayBufferQaFrame(level);
             renderedStartPosFrameGeneration = AkronActions.StartPosFrameGeneration;
             AkronInternalRecorder.CaptureFrame(level);
             if (deathWipeRenderSuppressionActive && level.Transitioning) {
@@ -1693,7 +1723,7 @@ public partial class AkronModule : EverestModule {
                     Draw.SpriteBatch.End();
                 }
             }
-        } else if (inspectorPinVisible && TryUse(AkronFeatureKind.EntityInspector)) {
+        } else if (inspectorPinVisible && TryUseRuntime(AkronFeatureKind.EntityInspector)) {
             AkronEntityInspector.RenderInspectorPinImGui(inspectorPinLevel);
         }
     }
@@ -1725,14 +1755,15 @@ public partial class AkronModule : EverestModule {
             AkronLog.Normal(nameof(AkronModule), "proof sidecar write failed: " + exception.Message);
         }
 
-        if (Settings.ProofModeOverlay || Settings.EndScreenHelper || Session.AttemptStatus != AkronStatus.GoldberryHardlistClean) {
+        if (AkronPolicy.CanUse(AkronFeatureKind.EndScreenHelper).Allowed &&
+            (Settings.ProofModeOverlay || Settings.EndScreenHelper || Session.AttemptStatus != AkronStatus.GoldberryHardlistClean)) {
             AkronProof.ShowProofPanel(self, "area-complete", path);
         }
     }
 
 
     private static void RenderVisualTuningTint() {
-        if (!Settings.ScreenTint || !TryUse(AkronFeatureKind.VisualTuning)) {
+        if (!Settings.ScreenTint || !TryUseRuntime(AkronFeatureKind.VisualTuning)) {
             return;
         }
 

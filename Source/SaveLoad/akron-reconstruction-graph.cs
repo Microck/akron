@@ -77,7 +77,10 @@ internal sealed class AkronReconstructionDocument {
     //   room graph. Older documents cannot distinguish an absent style from
     //   one never captured, or preserve aliases between it and mod controllers.
     //   They are refused rather than restoring a partial room.
-    public const string CurrentFormat = "akron-reconstruction-v11";
+    // v11 -> v12: records global-clock ownership so an allowed StartPos load
+    //   cannot re-enable a map-denied Akron timescale. Older snapshots do not
+    //   distinguish Akron timing from independently owned timing.
+    public const string CurrentFormat = "akron-reconstruction-v12";
 
     public string Format { get; set; } = CurrentFormat;
     // Every distinct type name in this document, in first-use order, shared by the
@@ -12487,7 +12490,7 @@ internal static class AkronStartPosReconstruction {
     // Tracks AkronReconstructionDocument.CurrentFormat. A snapshot written against a
     // different fresh-room baseline gets a different path, so no read can reach it and
     // no write can replace it in place.
-    private const string SnapshotFileNamePrefix = "v11-";
+    private const string SnapshotFileNamePrefix = "v12-";
     // Internal so the snapshot-report command can glob the same files this writes.
     internal const string SnapshotFileNameSuffix = ".json.gz";
 

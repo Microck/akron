@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using Celeste.Mod;
+using MonoMod.RuntimeDetour;
 using Monocle;
 
 namespace Celeste.Mod.Akron;
@@ -35,6 +36,7 @@ public static class AkronExtendedVariants {
     private static MethodInfo setVariantValueMethod;
     private static MethodInfo resetExtendedVariantsMethod;
     private static MethodInfo resetVanillaVariantsMethod;
+    private static MethodInfo changeRandomVariantMethod;
     private static FieldInfo variantHandlersField;
     private static FieldInfo instanceField;
     private static PropertyInfo settingsProperty;
@@ -42,6 +44,271 @@ public static class AkronExtendedVariants {
     private static Dictionary<string, VariantMetadata> optionMetadataByName;
     private static Dictionary<string, VariantMetadata> optionMetadataByLabel;
     private static IReadOnlyList<VariantMetadata> optionMetadata;
+    private static ExternalState originalState;
+    private static ExternalState lastAppliedState;
+    private static Hook randomizerHook;
+    private static ExternalState suppressedState;
+    private static readonly HashSet<string> ownedSettings = new();
+    private static readonly HashSet<object> ownedVariants = new();
+    private static readonly HashSet<FieldInfo> ownedAssistFields = new();
+    private static readonly FieldInfo[] AssistFields = typeof(global::Celeste.Assists).GetFields(BindingFlags.Instance | BindingFlags.Public);
+
+    // These are the user-owned EVM surfaces Akron writes. Trigger dictionaries
+    // belong to the map and are deliberately absent from the snapshot.
+    private static readonly string[] OwnedSettingNames = {
+        "MasterSwitch", "ChangeVariantsRandomly", "RerollMode",
+        "DisplayEnabledVariantsToScreen", "ChangeVariantsInterval", "MaxEnabledVariants"
+    };
+
+    public static void ApplyMapRestrictions() {
+        if (originalState == null) {
+            return;
+        }
+        if (!AkronPolicy.CanUse(AkronFeatureKind.ExtendedVariantMode).Allowed) {
+            if (suppressedState == null) {
+                suppressedState = CaptureExternalState();
+                RestoreExternalState(originalState);
+            }
+        } else if (suppressedState != null) {
+            RestoreExternalState(suppressedState);
+            suppressedState = null;
+        }
+    }
+
+    public static void RestoreOriginalSettings() {
+        randomizerHook?.Dispose();
+        randomizerHook = null;
+        if (originalState != null && suppressedState == null) {
+            RestoreExternalState(originalState);
+        }
+        originalState = null;
+        lastAppliedState = null;
+        suppressedState = null;
+        ownedSettings.Clear();
+        ownedAssistFields.Clear();
+        ownedVariants.Clear();
+    }
+
+    private static ExternalState BeginExternalChange() {
+        // Only randomized writes need an observer. This mutation boundary runs when
+        // EVM rolls variants, not on every player update or on map-authored triggers.
+        if (randomizerHook == null) {
+            randomizerHook = new Hook(changeRandomVariantMethod, (Action<Action<bool>, bool>)ChangeRandomVariants);
+        }
+        return CaptureExternalState();
+    }
+
+    private static void ChangeRandomVariants(Action<bool> orig, bool disableOnly) {
+        if (!ownedSettings.Contains("ChangeVariantsRandomly") || suppressedState != null) {
+            orig(disableOnly);
+            return;
+        }
+        ExternalState before = CaptureExternalState();
+        try {
+            orig(disableOnly);
+        } finally {
+            TrackExternalChange(before);
+        }
+    }
+
+    private static void TrackExternalChange(ExternalState before) {
+        ExternalState after = CaptureExternalState();
+        originalState ??= before;
+        lastAppliedState ??= after;
+        foreach (var entry in after.Settings) {
+            PropertyInfo property = entry.Key;
+            if (ValuesMatch(before.Settings[property], entry.Value)) continue;
+            if (!ownedSettings.Contains(property.Name) || !ValuesMatch(lastAppliedState.Settings[property], before.Settings[property])) {
+                originalState.Settings[property] = before.Settings[property];
+            }
+            ownedSettings.Add(property.Name);
+            lastAppliedState.Settings[property] = entry.Value;
+        }
+
+        HashSet<object> changedCandidates = new(before.Variants.Keys);
+        changedCandidates.UnionWith(after.Variants.Keys);
+        changedCandidates.UnionWith(before.UserOverrides);
+        changedCandidates.UnionWith(after.UserOverrides);
+        foreach (object variant in changedCandidates) {
+            if (VariantStateMatches(before, after, variant)) continue;
+            if (!ownedVariants.Contains(variant) || !VariantStateMatches(lastAppliedState, before, variant)) {
+                CopyVariantState(originalState, before, variant);
+            }
+            ownedVariants.Add(variant);
+            CopyVariantState(lastAppliedState, after, variant);
+        }
+
+        if (after.SaveData == null) return;
+        if (!ReferenceEquals(lastAppliedState.SaveData, after.SaveData)) {
+            ownedAssistFields.Clear();
+        }
+        object originalAssists = originalState.Assists;
+        object appliedAssists = lastAppliedState.Assists;
+        foreach (FieldInfo field in AssistFields) {
+            if (Equals(field.GetValue(before.Assists), field.GetValue(after.Assists))) continue;
+            if (!ownedAssistFields.Contains(field) || !Equals(field.GetValue(appliedAssists), field.GetValue(before.Assists))) {
+                field.SetValue(originalAssists, field.GetValue(before.Assists));
+                if (before.VanillaAssists != null) {
+                    originalState.VanillaAssists ??= before.VanillaAssists;
+                    field.SetValue(originalState.VanillaAssists, field.GetValue(before.VanillaAssists));
+                }
+            }
+            ownedAssistFields.Add(field);
+            field.SetValue(appliedAssists, field.GetValue(after.Assists));
+            if (after.VanillaAssists != null) {
+                lastAppliedState.VanillaAssists ??= after.VanillaAssists;
+                field.SetValue(lastAppliedState.VanillaAssists, field.GetValue(after.VanillaAssists));
+            }
+        }
+        originalState.SaveData = lastAppliedState.SaveData = after.SaveData;
+        originalState.Assists = (global::Celeste.Assists)originalAssists;
+        lastAppliedState.Assists = (global::Celeste.Assists)appliedAssists;
+    }
+
+    private static bool VariantStateMatches(ExternalState expected, ExternalState actual, object variant) {
+        return expected.Variants.TryGetValue(variant, out object expectedValue) == actual.Variants.TryGetValue(variant, out object actualValue) &&
+            ValuesMatch(expectedValue, actualValue) &&
+            (!ReferenceEquals(VariantSession(expected, variant), VariantSession(actual, variant)) ||
+                expected.UserOverrides.Contains(variant) == actual.UserOverrides.Contains(variant));
+    }
+
+    private static object VariantSession(ExternalState state, object variant) =>
+        state.VariantSessions.TryGetValue(variant, out object session) ? session : state.Session;
+
+    private static void CopyVariantState(ExternalState target, ExternalState source, object variant) {
+        if (source.Variants.TryGetValue(variant, out object value)) target.Variants[variant] = value;
+        else target.Variants.Remove(variant);
+        if (source.UserOverrides.Contains(variant)) target.UserOverrides.Add(variant);
+        else target.UserOverrides.Remove(variant);
+        target.VariantSessions[variant] = VariantSession(source, variant);
+    }
+
+    private static ExternalState CaptureExternalState() {
+        object settings = GetSettings();
+        ExternalState state = new ExternalState();
+        foreach (string name in OwnedSettingNames) {
+            PropertyInfo property = settings.GetType().GetProperty(name);
+            if (property?.CanRead == true && property.CanWrite) {
+                state.Settings[property] = property.GetValue(settings);
+            }
+        }
+        if (settings.GetType().GetProperty("EnabledVariants")?.GetValue(settings) is IDictionary variants) {
+            foreach (DictionaryEntry entry in variants) {
+                state.Variants[entry.Key] = entry.Value is bool[][] matrix
+                    ? matrix.Select(row => (bool[])row.Clone()).ToArray()
+                    : entry.Value;
+            }
+        }
+        state.Session = moduleType.GetProperty("Session", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+        if (state.Session?.GetType().GetField("VariantsOverridenByUser")?.GetValue(state.Session) is IEnumerable overridden) {
+            foreach (object variant in overridden) {
+                state.UserOverrides.Add(variant);
+            }
+        }
+        CaptureVanillaState(state);
+        return state;
+    }
+
+    private static void RestoreExternalState(ExternalState state) {
+        ExternalState current = CaptureExternalState();
+        object settings = GetSettings();
+        object instance = GetInstance();
+        object session = moduleType.GetProperty("Session", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+        object userOverrides = session?.GetType().GetField("VariantsOverridenByUser")?.GetValue(session);
+        MethodInfo removeOverride = userOverrides?.GetType().GetMethod("Remove");
+        MethodInfo addOverride = userOverrides?.GetType().GetMethod("Add");
+        RestoreOwnedAssists(state, current);
+        if (settings.GetType().GetProperty("EnabledVariants")?.GetValue(settings) is IDictionary variants) {
+            foreach (object variant in ownedVariants.ToArray()) {
+                // An independent EVM edit takes ownership, both before suppression
+                // and while the map has temporarily restored the previous value.
+                if (!VariantStateMatches(lastAppliedState, current, variant)) {
+                    ownedVariants.Remove(variant);
+                    continue;
+                }
+                if (state.Variants.TryGetValue(variant, out object value)) {
+                    variants[variant] = value;
+                } else {
+                    variants.Remove(variant);
+                }
+                removeOverride?.Invoke(userOverrides, new[] { variant });
+                if (ReferenceEquals(session, VariantSession(state, variant)) && state.UserOverrides.Contains(variant)) {
+                    addOverride?.Invoke(userOverrides, new[] { variant });
+                }
+                object handler = GetHandler(variant);
+                handler?.GetType().GetMethod("VariantValueChanged")?.Invoke(handler, Array.Empty<object>());
+            }
+        }
+        foreach (var entry in state.Settings) {
+            if (ownedSettings.Contains(entry.Key.Name) && !ValuesMatch(current.Settings[entry.Key], lastAppliedState.Settings[entry.Key])) {
+                ownedSettings.Remove(entry.Key.Name);
+            }
+            if (ownedSettings.Contains(entry.Key.Name)) {
+                entry.Key.SetValue(settings, entry.Value);
+            }
+        }
+        bool mapRequiresHooks = moduleType.GetField("forceEnabled", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(instance) is true;
+        bool hooksEnabled = ReadSettingsProperty<bool>("MasterSwitch") || mapRequiresHooks;
+        moduleType.GetMethod(hooksEnabled ? "HookStuff" : "UnhookStuff", BindingFlags.Instance | BindingFlags.Public)?.Invoke(instance, Array.Empty<object>());
+        Type randomizer = moduleType.Assembly.GetType("ExtendedVariants.VariantRandomizer");
+        randomizer?.GetMethod("UpdateCountersFromSettings", BindingFlags.Public | BindingFlags.Static)?.Invoke(null, Array.Empty<object>());
+        randomizer?.GetMethod("RefreshEnabledVariantsDisplayList", BindingFlags.Public | BindingFlags.Static)?.Invoke(null, Array.Empty<object>());
+        lastAppliedState = CaptureExternalState();
+    }
+
+    private sealed class ExternalState {
+        public readonly Dictionary<PropertyInfo, object> Settings = new();
+        public readonly Dictionary<object, object> Variants = new();
+        public readonly HashSet<object> UserOverrides = new();
+        public readonly Dictionary<object, object> VariantSessions = new();
+        public object Session;
+        public global::Celeste.SaveData SaveData;
+        public global::Celeste.Assists Assists;
+        public object VanillaAssists;
+    }
+
+    private static FieldInfo VanillaAssistsField() {
+        return moduleType.Assembly.GetType("ExtendedVariants.Variants.Vanilla.AbstractVanillaVariant")
+            ?.GetField("vanillaAssists", BindingFlags.NonPublic | BindingFlags.Static);
+    }
+
+    private static void CaptureVanillaState(ExternalState state) {
+        state.SaveData = global::Celeste.SaveData.Instance;
+        if (state.SaveData != null) {
+            state.Assists = state.SaveData.Assists;
+            state.VanillaAssists = VanillaAssistsField()?.GetValue(null);
+        }
+    }
+
+    private static void RestoreOwnedAssists(ExternalState target, ExternalState current) {
+        if (current.SaveData == null || !ReferenceEquals(current.SaveData, target.SaveData) ||
+            !ReferenceEquals(current.SaveData, lastAppliedState.SaveData)) {
+            ownedAssistFields.Clear();
+            return;
+        }
+        object assists = current.Assists;
+        foreach (FieldInfo field in ownedAssistFields.ToArray()) {
+            // EVM rebuilds vanillaAssists each update/render. A cache refresh is
+            // not an independent preference edit and must not release ownership.
+            if (!Equals(field.GetValue(assists), field.GetValue(lastAppliedState.Assists))) {
+                ownedAssistFields.Remove(field);
+                continue;
+            }
+            field.SetValue(assists, field.GetValue(target.Assists));
+            if (current.VanillaAssists != null && target.VanillaAssists != null) {
+                field.SetValue(current.VanillaAssists, field.GetValue(target.VanillaAssists));
+            }
+        }
+        current.SaveData.Assists = (global::Celeste.Assists)assists;
+        VanillaAssistsField()?.SetValue(null, current.VanillaAssists);
+    }
+
+    private static bool CanChange(out string message) {
+        AkronPolicyDecision decision = AkronPolicy.CanUse(AkronFeatureKind.ExtendedVariantMode);
+        message = decision.Message;
+        return decision.Allowed;
+    }
+
 
     static AkronExtendedVariants() {
         // A missing optional mod is the common path. Keep that failure cheap, but
@@ -64,24 +331,39 @@ public static class AkronExtendedVariants {
         }
     }
 
+    internal static string DescribeSavedSetting(string name) {
+        if (suppressedState != null && ownedSettings.Contains(name)) {
+            foreach (var entry in suppressedState.Settings) {
+                if (entry.Key.Name == name) {
+                    return FormatValue(entry.Value);
+                }
+            }
+        }
+        return Available ? FormatValue(ReadSettingsProperty<bool>(name)) : "EVM missing";
+    }
+
     public static bool MasterSwitch {
         get => Available && ReadSettingsProperty<bool>("MasterSwitch");
         set {
-            if (!Available) {
+            if (!AkronPolicy.CanUse(AkronFeatureKind.ExtendedVariantMode).Allowed || !Available) {
                 return;
             }
 
-            object settings = GetSettings();
-            PropertyInfo property = settings?.GetType().GetProperty("MasterSwitch", BindingFlags.Instance | BindingFlags.Public);
-            property?.SetValue(settings, value, null);
-
-            // EVM only loads the expensive hooks while its master switch is on.
-            // Calling the same public hook toggles its own menu uses keeps Akron
-            // from maintaining a second physics implementation.
-            object instance = GetInstance();
-            MethodInfo method = moduleType.GetMethod(value ? "HookStuff" : "UnhookStuff", BindingFlags.Instance | BindingFlags.Public);
-            method?.Invoke(instance, Array.Empty<object>());
+            ExternalState before = BeginExternalChange();
+            SetMasterSwitch(value);
+            TrackExternalChange(before);
         }
+    }
+
+    private static void SetMasterSwitch(bool value) {
+        object settings = GetSettings();
+        PropertyInfo masterSwitch = settings.GetType().GetProperty("MasterSwitch");
+        if (Equals(masterSwitch.GetValue(settings), value)) return;
+        masterSwitch.SetValue(settings, value);
+        // Reuse EVM's own hook lifecycle instead of maintaining a second set of physics hooks.
+        object instance = GetInstance();
+        moduleType.GetMethod(value ? "HookStuff" : "UnhookStuff", BindingFlags.Instance | BindingFlags.Public)
+            .Invoke(instance, Array.Empty<object>());
     }
 
     public static bool RandomizerEnabled {
@@ -148,6 +430,7 @@ public static class AkronExtendedVariants {
     }
 
     public static bool TryToggleBoolean(string name, out string message) {
+        if (!CanChange(out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option?.CurrentValue is bool current) {
             SetVariantValue(option.Name, !current);
@@ -160,6 +443,7 @@ public static class AkronExtendedVariants {
     }
 
     public static bool TryToggleConfigured(string name, out string message) {
+        if (!CanChange(out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
             message = "Unknown variant: " + name;
@@ -193,6 +477,7 @@ public static class AkronExtendedVariants {
     }
 
     public static bool TrySetFromText(string name, string rawValue, out string message) {
+        if (!CanChange(out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
             message = "Unknown variant: " + name;
@@ -209,6 +494,7 @@ public static class AkronExtendedVariants {
     }
 
     public static bool TrySetValue(string name, object value, out string message) {
+        if (!CanChange(out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
             message = "Unknown variant: " + name;
@@ -221,6 +507,7 @@ public static class AkronExtendedVariants {
     }
 
     public static bool TrySetConfiguredValue(string name, object value, out string message) {
+        if (!CanChange(out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
             message = "Unknown variant: " + name;
@@ -239,6 +526,7 @@ public static class AkronExtendedVariants {
     }
 
     public static bool TrySetConfiguredFromText(string name, string rawValue, out string message) {
+        if (!CanChange(out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
             message = "Unknown variant: " + name;
@@ -261,6 +549,7 @@ public static class AkronExtendedVariants {
     }
 
     public static bool TryResetConfigured(string name, out string message) {
+        if (!CanChange(out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
             message = "Unknown variant: " + name;
@@ -284,6 +573,12 @@ public static class AkronExtendedVariants {
     public static string DescribeConfiguredState(AkronExtendedVariantOption option) {
         if (option == null) {
             return string.Empty;
+        }
+        if (suppressedState != null && optionMetadataByName != null &&
+            optionMetadataByName.TryGetValue(option.Name, out VariantMetadata metadata) && ownedVariants.Contains(metadata.Variant)) {
+            object saved = suppressedState.Variants.TryGetValue(metadata.Variant, out object value) ? value : option.DefaultValue;
+            return saved is bool ? FormatValue(saved) :
+                (ValuesMatch(saved, option.DefaultValue) ? "Off" : "On") + " | " + FormatValue(saved);
         }
 
         if (option.CurrentValue is bool) {
@@ -313,14 +608,18 @@ public static class AkronExtendedVariants {
     }
 
     public static void ResetExtended() {
-        if (Available) {
+        if (AkronPolicy.CanUse(AkronFeatureKind.ExtendedVariantMode).Allowed && Available) {
+            ExternalState before = BeginExternalChange();
             resetExtendedVariantsMethod?.Invoke(GetInstance(), Array.Empty<object>());
+            TrackExternalChange(before);
         }
     }
 
     public static void ResetVanilla() {
-        if (Available) {
+        if (AkronPolicy.CanUse(AkronFeatureKind.ExtendedVariantMode).Allowed && Available) {
+            ExternalState before = BeginExternalChange();
             resetVanillaVariantsMethod?.Invoke(GetInstance(), Array.Empty<object>());
+            TrackExternalChange(before);
         }
     }
 
@@ -353,13 +652,15 @@ public static class AkronExtendedVariants {
     }
 
     private static void SetVariantValue(string name, object value) {
-        if (!Available) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.ExtendedVariantMode).Allowed || !Available) {
             return;
         }
 
-        MasterSwitch = true;
+        ExternalState before = BeginExternalChange();
+        SetMasterSwitch(true);
         object variant = ParseVariant(name);
         setVariantValueMethod?.Invoke(null, new[] { variant, value });
+        TrackExternalChange(before);
     }
 
     private static bool TryConvertText(AkronExtendedVariantOption option, string rawValue, out object converted, out string message) {
@@ -704,13 +1005,15 @@ public static class AkronExtendedVariants {
     }
 
     private static void WriteSettingsProperty(string name, object value) {
-        if (!Available) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.ExtendedVariantMode).Allowed || !Available) {
             return;
         }
 
+        ExternalState before = BeginExternalChange();
         object settings = GetSettings();
         PropertyInfo property = settings?.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.Public);
         property?.SetValue(settings, value, null);
+        TrackExternalChange(before);
     }
 
     private static bool ResolveTypes() {
@@ -722,7 +1025,8 @@ public static class AkronExtendedVariants {
             settingsProperty != null &&
             variantHandlersField != null &&
             getCurrentVariantValueMethod != null &&
-            setVariantValueMethod != null) {
+            setVariantValueMethod != null &&
+            changeRandomVariantMethod != null) {
             return true;
         }
 
@@ -754,6 +1058,14 @@ public static class AkronExtendedVariants {
         setVariantValueMethod = uiEntriesType.GetMethod("SetVariantValue", BindingFlags.Static | BindingFlags.Public);
         resetExtendedVariantsMethod = moduleType.GetMethod("ResetExtendedVariantsToDefaultSettings", BindingFlags.Instance | BindingFlags.Public);
         resetVanillaVariantsMethod = moduleType.GetMethod("ResetVanillaVariantsToDefaultSettings", BindingFlags.Instance | BindingFlags.Public);
+        changeRandomVariantMethod = assembly.GetType("ExtendedVariants.VariantRandomizer")?.GetMethod(
+            "changeVariantNow", BindingFlags.Static | BindingFlags.NonPublic, null, new[] { typeof(bool) }, null);
+        if (changeRandomVariantMethod?.ReturnType != typeof(void)) {
+            changeRandomVariantMethod = null;
+            failedResolveAssemblyCount = assemblies.Length;
+            Logger.Log(LogLevel.Warn, nameof(AkronExtendedVariants), "EVM integration unavailable: this assembly lacks the required changeVariantNow(bool) observer. No EVM settings were changed.");
+            return false;
+        }
         bool resolved = GetInstance() != null &&
                GetSettings() != null &&
                variantHandlersField != null &&

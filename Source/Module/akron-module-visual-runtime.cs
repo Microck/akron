@@ -9,6 +9,9 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
+    private static Level transitionSpeedLevel;
+    private static float previousTransitionDuration;
+
     // Cursor Tools and Menu Mouse share the Left Alt default. While Menu Mouse drives a
     // menu it owns the cursor, so the hold must not also pan, zoom or freeze the level
     // behind it (freezing would stop the pause menu from updating at all).
@@ -17,7 +20,7 @@ public partial class AkronModule {
     }
 
     internal static bool IsCursorToolsHoldActive() {
-        return ShouldUseCursorToolsHold(
+        return AkronPolicy.CanUse(AkronFeatureKind.CursorTools).Allowed && ShouldUseCursorToolsHold(
             Settings.CursorTools,
             Settings.CursorToolsHold?.Check ?? false,
             IsOverlayVisible,
@@ -151,7 +154,7 @@ public partial class AkronModule {
 
         Vector2? capturedTarget = pendingClickTeleportTarget;
         pendingClickTeleportTarget = null;
-        if (!capturedTarget.HasValue || !TryUse(AkronFeatureKind.ClickTeleport)) {
+        if (!capturedTarget.HasValue || !TryUseRuntime(AkronFeatureKind.ClickTeleport)) {
             return;
         }
 
@@ -167,7 +170,7 @@ public partial class AkronModule {
             player == null ||
             player.Dead ||
             IsOverlayVisible ||
-            !TryUse(AkronFeatureKind.ClickTeleport)) {
+            !TryUseRuntime(AkronFeatureKind.ClickTeleport)) {
             return false;
         }
 
@@ -243,16 +246,17 @@ public partial class AkronModule {
 
     private static void UpdateCursorZoom(Level level) {
         bool cursorToolsHoldActive = IsCursorToolsHoldActive();
-        bool cursorZoomEnabled = IsCursorZoomEffectiveEnabled();
+        bool cursorZoomAllowed = AkronPolicy.CanUse(AkronFeatureKind.CursorZoom).Allowed;
+        bool cursorZoomEnabled = IsCursorZoomEffectiveEnabled() && cursorZoomAllowed;
         bool bindDown = Settings.CursorZoomHold?.Check ?? false;
         // Menu Mouse reads the same wheel; like the overlay, it pauses zoom input.
-        bool gated = !cursorZoomEnabled || IsOverlayVisible || AkronMenuMouse.ShowsCursor || !AkronPolicy.CanUse(AkronFeatureKind.CursorZoom).Allowed;
+        bool gated = !cursorZoomEnabled || IsOverlayVisible || AkronMenuMouse.ShowsCursor;
         bool bindPressed = TrackFreshPress(Settings.CursorZoom && bindDown, gated, ref cursorZoomLastBindDown);
         if (gated) {
             cursorZoomHadScrollSample = false;
             if (!cursorZoomEnabled) {
                 cursorZoomToggleActive = false;
-                DeactivateCursorZoom(level);
+                DeactivateCursorZoom(level, resetPreference: cursorZoomAllowed);
             }
             return;
         }
@@ -272,7 +276,7 @@ public partial class AkronModule {
             return;
         }
 
-        if (!TryUse(AkronFeatureKind.CursorZoom)) {
+        if (!TryUseRuntime(AkronFeatureKind.CursorZoom)) {
             return;
         }
 
@@ -294,7 +298,7 @@ public partial class AkronModule {
     }
 
     internal static void ApplyCursorZoomFrame(Level level, Vector2 mouseScreenPosition) {
-        if (level == null) {
+        if (level == null || !AkronPolicy.CanUse(AkronFeatureKind.CursorZoom).Allowed) {
             return;
         }
 
@@ -322,13 +326,13 @@ public partial class AkronModule {
         cursorZoomOwnedByExtendedCamera = false;
     }
 
-    private static void DeactivateCursorZoom(Level level) {
+    private static void DeactivateCursorZoom(Level level, bool resetPreference = true) {
         cursorZoomHadScrollSample = false;
         if (!cursorZoomApplied) {
             return;
         }
 
-        if (Settings.CursorZoomResetOnDeactivate) {
+        if (resetPreference && Settings.CursorZoomResetOnDeactivate) {
             Settings.CursorZoomPercent = 100;
         }
 
@@ -435,16 +439,30 @@ public partial class AkronModule {
     }
 
     private static void ApplyTransitionSpeed(Level level) {
-        if (!IsTransitionSpeedEffective(Settings)) {
+        if (!IsTransitionSpeedEffective(Settings) || !AkronPolicy.CanUse(AkronFeatureKind.TransitionSpeed).Allowed) {
+            RestoreTransitionSpeed();
             return;
         }
 
         float multiplier = AkronModuleSettings.ClampTransitionSpeedMultiplier(Settings.TransitionSpeedMultiplier);
-        if (!TryUse(AkronFeatureKind.TransitionSpeed)) {
+        if (!TryUseRuntime(AkronFeatureKind.TransitionSpeed)) {
             return;
         }
 
+        if (transitionSpeedLevel != level) {
+            RestoreTransitionSpeed();
+            transitionSpeedLevel = level;
+            previousTransitionDuration = level.NextTransitionDuration;
+        }
+
         level.NextTransitionDuration = TransitionDurationForSpeedMultiplier(multiplier);
+    }
+
+    internal static void RestoreTransitionSpeed() {
+        if (transitionSpeedLevel != null) {
+            transitionSpeedLevel.NextTransitionDuration = previousTransitionDuration;
+            transitionSpeedLevel = null;
+        }
     }
 
     internal static float TransitionDurationForSpeedMultiplier(float multiplier) {
@@ -467,10 +485,10 @@ public partial class AkronModule {
 
         ApplyPlayerVisibilityOverride(player);
 
-        if (Settings.TrailVisibility == AkronTrailVisibility.Hidden && TryUse(AkronFeatureKind.CustomTrail)) {
+        if (Settings.TrailVisibility == AkronTrailVisibility.Hidden && TryUseRuntime(AkronFeatureKind.CustomTrail)) {
             forcedTrailFrame = 0;
             TrailManager.Clear();
-        } else if ((Settings.TrailVisibility == AkronTrailVisibility.Always || Settings.CustomTrail) && TryUse(AkronFeatureKind.CustomTrail)) {
+        } else if ((Settings.TrailVisibility == AkronTrailVisibility.Always || Settings.CustomTrail) && TryUseRuntime(AkronFeatureKind.CustomTrail)) {
             int cuttingRate = AkronModuleSettings.ClampTrailCuttingRate(Settings.TrailCuttingRate);
             forcedTrailFrame = (forcedTrailFrame + 1) % cuttingRate;
             if (forcedTrailFrame == 0) {
@@ -535,6 +553,7 @@ public partial class AkronModule {
     }
 
     private static void PlayerOnUpdateHair(On.Celeste.Player.orig_UpdateHair orig, Player self, bool applyGravity) {
+        RestoreMadelineVisualOverrides();
         orig(self, applyGravity);
         ApplyMadelineVisualOverrides(self);
     }

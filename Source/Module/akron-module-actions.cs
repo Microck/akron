@@ -11,7 +11,7 @@ namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
     private static void Retry(Level level, bool confirmed = false) {
-        if (!TryUse(AkronFeatureKind.RetryHotkey)) {
+        if (level == null || Engine.Scene != level || !TryUse(AkronFeatureKind.RetryHotkey)) {
             return;
         }
 
@@ -140,7 +140,7 @@ public partial class AkronModule {
     }
 
     private static void ReloadRoom(Level level, bool confirmed = false) {
-        if (!TryUse(AkronFeatureKind.RoomReload)) {
+        if (level == null || Engine.Scene != level || !TryUse(AkronFeatureKind.RoomReload)) {
             return;
         }
 
@@ -150,7 +150,7 @@ public partial class AkronModule {
         }
 
         level.OnEndOfFrame += () => {
-            if (Engine.Scene != level) {
+            if (Engine.Scene != level || !AkronPolicy.CanUse(AkronFeatureKind.RoomReload).Allowed) {
                 return;
             }
 
@@ -167,7 +167,7 @@ public partial class AkronModule {
         }
 
         level.OnEndOfFrame += () => {
-            if (Engine.Scene is Level) {
+            if (Engine.Scene == level && AkronPolicy.CanUse(AkronFeatureKind.DebugMapLauncher).Allowed) {
                 Engine.Scene = new MapEditor(level.Session.Area);
                 Engine.Commands.Open = false;
             }
@@ -175,7 +175,7 @@ public partial class AkronModule {
     }
 
     private static void ReloadChapter(Level level, bool confirmed = false) {
-        if (!TryUse(AkronFeatureKind.ChapterReload)) {
+        if (level == null || Engine.Scene != level || !TryUse(AkronFeatureKind.ChapterReload)) {
             return;
         }
 
@@ -187,6 +187,9 @@ public partial class AkronModule {
         AkronPolicy.ResetAttempt("Chapter reload ended the previous attempt.");
         AkronPracticeStats.ResetAttemptTimer();
         level.OnEndOfFrame += () => {
+            if (Engine.Scene != level || !AkronPolicy.CanUse(AkronFeatureKind.ChapterReload).Allowed) {
+                return;
+            }
             Engine.Scene = new LevelLoader(level.Session.Restart());
         };
     }
@@ -245,6 +248,18 @@ public partial class AkronModule {
         return true;
     }
 
+    internal static bool TryUseRuntime(AkronFeatureKind feature) {
+        AkronPolicyDecision decision = AkronPolicy.CanUse(feature);
+        if (!decision.Allowed) {
+            return false;
+        }
+
+        AkronLog.RecordPolicyCheck(feature, decision);
+        AkronPolicy.RecordFeatureUse(feature);
+        AkronLog.RecordFeatureUse(feature);
+        return true;
+    }
+
     private static void ShowConfirmPrompt(Level level, string title, string body, Action confirmedAction) {
         if (level == null) {
             return;
@@ -254,7 +269,11 @@ public partial class AkronModule {
             level,
             title,
             body,
-            new AkronPromptOption("Confirm", confirmedAction)
+            new AkronPromptOption("Confirm", () => {
+                if (Engine.Scene == level) {
+                    confirmedAction();
+                }
+            })
         );
     }
 

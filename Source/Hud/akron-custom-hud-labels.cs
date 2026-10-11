@@ -35,7 +35,7 @@ public static partial class AkronCustomHudLabels {
         if (!AkronModule.Settings.LabelSystemVisible ||
             !AkronModule.Settings.CustomHudLabels ||
             AkronModule.IsOverlayVisible ||
-            !AkronModule.TryUse(AkronFeatureKind.CustomHudLabels)) {
+            !AkronModule.TryUseRuntime(AkronFeatureKind.CustomHudLabels)) {
             return;
         }
 

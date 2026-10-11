@@ -385,6 +385,12 @@ public sealed partial class AkronOverlay {
         string state = SafeDescribeEntryValue(entry);
         string control = DescribeEntryControl(entry);
         string classification = DescribeEntryClassification(entry);
+        if (entry.FeatureKind.HasValue) {
+            AkronPolicyDecision decision = AkronPolicy.CanUse(entry.FeatureKind.Value);
+            if (!decision.Allowed) {
+                state = "Saved: " + state + " / Effective: suppressed. " + decision.Message;
+            }
+        }
         if (string.IsNullOrWhiteSpace(classification)) {
             return control + " / " + state;
         }
@@ -434,6 +440,9 @@ public sealed partial class AkronOverlay {
 
     private static string SafeDescribeEntryValue(ActionEntry entry) {
         try {
+            if (!entry.IsToggle && entry.FeatureKind.HasValue && !AkronPolicy.CanUse(entry.FeatureKind.Value).Allowed) {
+                return "Map-suppressed";
+            }
             if (entry.Control == OverlayEntryControl.NumericInput) {
                 return (entry.Value?.Invoke() ?? "Ready") + " / " + FormatNumericEntryValue(entry);
             }

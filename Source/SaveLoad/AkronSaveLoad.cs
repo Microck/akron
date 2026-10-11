@@ -794,6 +794,9 @@ public static partial class AkronSaveLoadService {
         }
 
         string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
+        if (!CanUseRuntimeState(normalizedSlotName)) {
+            return AkronSaveLoadResult.Blocked;
+        }
         CurrentSlotName = normalizedSlotName;
         if (ShouldBrokerRuntimeState(normalizedSlotName)) {
             AkronSaveLoadResult brokerResult = AkronSpeedrunToolBroker.Save(normalizedSlotName);
@@ -1458,8 +1461,10 @@ public static partial class AkronSaveLoadService {
         if (level == null) {
             return AkronSaveLoadResult.Failed;
         }
-
         string normalizedSlotName = NormalizeRuntimeSlotName(slotName);
+        if (!CanUseRuntimeState(normalizedSlotName)) {
+            return AkronSaveLoadResult.Blocked;
+        }
         CurrentSlotName = normalizedSlotName;
         if (ShouldBrokerRuntimeState(normalizedSlotName)) {
             AkronSaveLoadResult brokerResult = AkronSpeedrunToolBroker.Load(normalizedSlotName);
@@ -1867,6 +1872,7 @@ public static partial class AkronSaveLoadService {
             return false;
         }
         if (!float.IsFinite(state.EngineTimeRate) ||
+            state.EngineTimeRateOwnedByAkron && !float.IsFinite(state.EngineTimeRateBeforeAkron) ||
             !float.IsFinite(state.GlitchValue) ||
             !float.IsFinite(state.DistortAnxiety) ||
             !float.IsFinite(state.DistortGameRate)) {
@@ -1875,9 +1881,7 @@ public static partial class AkronSaveLoadService {
         }
         Settings.Instance.GrabMode = state.GrabMode;
         Settings.Instance.CrouchDashMode = state.CrouchDashMode;
-#pragma warning disable CS0618
-        Engine.TimeRate = state.EngineTimeRate;
-#pragma warning restore CS0618
+        AkronModule.RestoreSnapshotTimescale(state.EngineTimeRate, state.EngineTimeRateOwnedByAkron, state.EngineTimeRateBeforeAkron);
         Glitch.Value = state.GlitchValue;
         Distort.Anxiety = state.DistortAnxiety;
         Distort.GameRate = state.DistortGameRate;
@@ -2221,6 +2225,13 @@ public static partial class AkronSaveLoadService {
         return !slotName.StartsWith(AkronActions.StartPosStateSlotPrefix, StringComparison.Ordinal);
     }
 
+    private static bool CanUseRuntimeState(string slotName) {
+        return ShouldBrokerRuntimeState(slotName)
+            ? AkronPolicy.CanUse(AkronFeatureKind.Savestates).Allowed &&
+              AkronPolicy.CanUse(AkronFeatureKind.BrokeredSavestates).Allowed
+            : AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed;
+    }
+
     internal static void SaveStaticMembers(Dictionary<Type, Dictionary<string, object>> savedValues, Type type, params string[] memberNames) {
         SaveStaticMemberValues(savedValues, type, memberNames);
     }
@@ -2286,6 +2297,8 @@ public static partial class AkronSaveLoadService {
 #pragma warning disable CS0618
             saveSlot.EngineTimeRate = Engine.TimeRate;
 #pragma warning restore CS0618
+            saveSlot.EngineTimeRateOwnedByAkron = AkronModule.OwnsCurrentTimescale;
+            saveSlot.EngineTimeRateBeforeAkron = AkronModule.TimescaleBeforeAkron;
             saveSlot.GlitchValue = Glitch.Value;
             saveSlot.DistortAnxiety = Distort.Anxiety;
             saveSlot.DistortGameRate = Distort.GameRate;
@@ -2329,6 +2342,8 @@ public static partial class AkronSaveLoadService {
 #pragma warning disable CS0618
             saveSlot.EngineTimeRate = Engine.TimeRate;
 #pragma warning restore CS0618
+            saveSlot.EngineTimeRateOwnedByAkron = AkronModule.OwnsCurrentTimescale;
+            saveSlot.EngineTimeRateBeforeAkron = AkronModule.TimescaleBeforeAkron;
             saveSlot.GlitchValue = Glitch.Value;
             saveSlot.DistortAnxiety = Distort.Anxiety;
             saveSlot.DistortGameRate = Distort.GameRate;
@@ -2483,9 +2498,7 @@ public static partial class AkronSaveLoadService {
 
             Settings.Instance.GrabMode = saveSlot.GrabMode;
             Settings.Instance.CrouchDashMode = saveSlot.CrouchDashMode;
-#pragma warning disable CS0618
-            Engine.TimeRate = saveSlot.EngineTimeRate;
-#pragma warning restore CS0618
+            AkronModule.RestoreSnapshotTimescale(saveSlot.EngineTimeRate, saveSlot.EngineTimeRateOwnedByAkron, saveSlot.EngineTimeRateBeforeAkron);
             Glitch.Value = saveSlot.GlitchValue;
             Distort.Anxiety = saveSlot.DistortAnxiety;
             Distort.GameRate = saveSlot.DistortGameRate;

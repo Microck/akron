@@ -95,7 +95,7 @@ internal sealed class AkronFrozenDeathSprite : Entity {
 
     public override void Update() {
         base.Update();
-        if (Scene is not Level level) {
+        if (Scene is not Level level || !AkronPolicy.CanUse(AkronFeatureKind.DeathVisuals).Allowed) {
             RemoveSelf();
             return;
         }
@@ -108,7 +108,7 @@ internal sealed class AkronFrozenDeathSprite : Entity {
     }
 
     public override void Render() {
-        if (AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
+        if (AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe() || !AkronPolicy.CanUse(AkronFeatureKind.DeathVisuals).Allowed) {
             return;
         }
 

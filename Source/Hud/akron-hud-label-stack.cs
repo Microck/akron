@@ -19,7 +19,7 @@ public static partial class AkronHudRenderer {
         void CustomLabels(ref float y);
     }
 
-    // The renderer passes AkronModule.TryUse so every drawn frame records; the planner passes
+    // The renderer passes AkronModule.TryUseRuntime so every drawn frame records; the planner passes
     // a CanUse check so measuring a label never records a use.
     private delegate bool LabelUseGate(AkronFeatureKind kind);
 

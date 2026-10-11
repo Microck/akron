@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Celeste.Mod;
@@ -17,6 +18,7 @@ public static class AkronMotionSmoothingInterop {
     private static bool warnedApplyFailure;
     private static bool modulesProbeFailed;
     private static bool? loaded;
+    private static readonly Dictionary<string, (PropertyInfo Property, object Original, object Applied)> overrides = new();
 
     public static bool Loaded => loaded ??= IsModLoaded();
 
@@ -32,23 +34,26 @@ public static class AkronMotionSmoothingInterop {
             }
 
             AkronFrameBypassRates rates = AkronRuntimeOptions.ResolveCurrentFrameBypassRates();
-            Set(settings, "Enabled", rates.Active);
-            Set(settings, "FrameRate", rates.DrawRate);
+            bool fpsAllowed = AkronPolicy.CanUse(AkronFeatureKind.FpsBypass).Allowed;
+            bool tpsAllowed = AkronPolicy.CanUse(AkronFeatureKind.TpsBypass).Allowed;
+            bool ownsEnabled = fpsAllowed && AkronModule.Settings.FpsBypass || tpsAllowed && AkronModule.Settings.TpsBypass;
+            Set(settings, "Enabled", rates.Active, fpsAllowed && tpsAllowed || ownsEnabled);
+            Set(settings, "FrameRate", rates.DrawRate, fpsAllowed);
             SetEnum(settings, "UnlockCameraStrategy", AkronModule.Settings.FrameBypassCameraSmoothing switch {
                 AkronCameraSmoothingMode.Fancy => "Hires",
                 AkronCameraSmoothingMode.Fast => "Unlock",
                 _ => "Off"
-            });
-            Set(settings, "RenderMadelineWithSubpixels", AkronModule.Settings.FrameBypassSubpixelMadeline);
-            Set(settings, "RenderBackgroundHires", AkronModule.Settings.FrameBypassSmoothBackground);
-            Set(settings, "RenderForegroundHires", AkronModule.Settings.FrameBypassSmoothForeground);
-            Set(settings, "HideStretchedEdges", AkronModule.Settings.FrameBypassHideStretchedEdges);
-            SetEnum(settings, "ObjectSmoothing", AkronModule.Settings.FrameBypassObjectSmoothing.ToString());
-            SetEnum(settings, "FramerateIncreaseMethod", AkronModule.Settings.FrameBypassMethod.ToString());
-            Set(settings, "TasMode", AkronModule.Settings.FrameBypassTasMode);
-            Set(settings, "SillyMode", AkronModule.Settings.FrameBypassSillyMode);
-            Set(settings, "GameSpeed", (double) rates.UpdateRate);
-            Set(settings, "GameSpeedInLevelOnly", true);
+            }, fpsAllowed);
+            Set(settings, "RenderMadelineWithSubpixels", AkronModule.Settings.FrameBypassSubpixelMadeline, fpsAllowed);
+            Set(settings, "RenderBackgroundHires", AkronModule.Settings.FrameBypassSmoothBackground, fpsAllowed);
+            Set(settings, "RenderForegroundHires", AkronModule.Settings.FrameBypassSmoothForeground, fpsAllowed);
+            Set(settings, "HideStretchedEdges", AkronModule.Settings.FrameBypassHideStretchedEdges, fpsAllowed);
+            SetEnum(settings, "ObjectSmoothing", AkronModule.Settings.FrameBypassObjectSmoothing.ToString(), fpsAllowed);
+            SetEnum(settings, "FramerateIncreaseMethod", AkronModule.Settings.FrameBypassMethod.ToString(), fpsAllowed);
+            Set(settings, "TasMode", AkronModule.Settings.FrameBypassTasMode, fpsAllowed);
+            Set(settings, "SillyMode", AkronModule.Settings.FrameBypassSillyMode, fpsAllowed);
+            Set(settings, "GameSpeed", (double) rates.UpdateRate, tpsAllowed);
+            Set(settings, "GameSpeedInLevelOnly", true, tpsAllowed);
             ApplySettings();
         } catch (Exception exception) {
             if (warnedApplyFailure) {
@@ -57,6 +62,48 @@ public static class AkronMotionSmoothingInterop {
 
             warnedApplyFailure = true;
             Logger.Log(LogLevel.Warn, nameof(AkronModule), "Failed to apply Akron Motion Smoothing settings: " + exception.Message);
+        }
+    }
+
+    public static void RestoreOriginalSettings() {
+        if (overrides.Count == 0) {
+            return;
+        }
+        object settings = GetSettings();
+        if (settings == null) {
+            return;
+        }
+        foreach (var saved in overrides.Values) {
+            if (Equals(saved.Property.GetValue(settings), saved.Applied)) {
+                saved.Property.SetValue(settings, saved.Original);
+            }
+        }
+        overrides.Clear();
+        ApplySettings();
+    }
+
+    private static void Set(object settings, string propertyName, object value, bool allowed) {
+        settingsType ??= settings.GetType();
+        PropertyInfo property = settingsType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+        if (property == null || !property.CanRead || !property.CanWrite) {
+            return;
+        }
+        if (!allowed) {
+            if (overrides.Remove(propertyName, out var saved) && Equals(property.GetValue(settings), saved.Applied)) {
+                property.SetValue(settings, saved.Original);
+            }
+            return;
+        }
+        object original = overrides.TryGetValue(propertyName, out var previous) ? previous.Original : property.GetValue(settings);
+        overrides[propertyName] = (property, original, value);
+        property.SetValue(settings, value);
+    }
+
+    private static void SetEnum(object settings, string propertyName, string valueName, bool allowed) {
+        settingsType ??= settings.GetType();
+        PropertyInfo property = settingsType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+        if (property != null) {
+            Set(settings, propertyName, allowed ? Enum.Parse(property.PropertyType, valueName) : null, allowed);
         }
     }
 
@@ -106,22 +153,6 @@ public static class AkronMotionSmoothingInterop {
         }
     }
 
-    private static void Set(object settings, string propertyName, object value) {
-        settingsType ??= settings.GetType();
-        PropertyInfo property = settingsType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
-        property?.SetValue(settings, value);
-    }
-
-    private static void SetEnum(object settings, string propertyName, string valueName) {
-        settingsType ??= settings.GetType();
-        PropertyInfo property = settingsType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
-        if (property == null) {
-            return;
-        }
-
-        object value = Enum.Parse(property.PropertyType, valueName);
-        property.SetValue(settings, value);
-    }
 
     private static bool IsModLoaded() {
         return AppDomain.CurrentDomain.GetAssemblies().Any(assembly => string.Equals(assembly.GetName().Name, "MotionSmoothing", StringComparison.OrdinalIgnoreCase)) ||

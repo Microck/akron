@@ -132,7 +132,8 @@ public sealed partial class AkronOverlay {
             new OverlayEntry(
                 "Extended Variants Master",
                 () => AkronExtendedVariants.Available,
-                () => AkronExtendedVariants.Available ? AkronExtendedVariants.StatusSummary : "EVM missing",
+                () => !AkronExtendedVariants.Available ? "EVM missing" : AkronPolicy.CanUse(AkronFeatureKind.ExtendedVariantMode).Allowed
+                    ? AkronExtendedVariants.StatusSummary : AkronExtendedVariants.DescribeSavedSetting("MasterSwitch"),
                 () => {
                     if (!AkronExtendedVariants.Available) {
                         Engine.Scene?.Add(new AkronToast("Extended Variant Mode is not loaded."));
@@ -154,15 +155,18 @@ public sealed partial class AkronOverlay {
             new OverlayEntry(
                 "Extended Variants Randomizer",
                 () => AkronExtendedVariants.Available,
-                () => AkronExtendedVariants.RandomizerEnabled ? "On" : "Off",
+                () => AkronExtendedVariants.DescribeSavedSetting("ChangeVariantsRandomly"),
                 () => ApplyOptionsPopupDelta("Extended Variants Randomizer", 1),
                 BuildSearchTerms("Extended Variants Randomizer", new[] { "extended variant mode", "randomizer" }),
-                true),
-            Action("Reset Extended", () => AkronExtendedVariants.Available, () => "Defaults", () => {
+                true,
+                featureKind: AkronFeatureKind.ExtendedVariantMode),
+            Action("Reset Extended", AkronFeatureKind.ExtendedVariantMode, () => AkronExtendedVariants.Available, () => "Defaults", () => {
+                if (!AkronPolicy.CanUse(AkronFeatureKind.ExtendedVariantMode).Allowed) return;
                 AkronExtendedVariants.ResetExtended();
                 Engine.Scene?.Add(new AkronToast("Extended variants reset."));
             }, "extended variant mode", "reset"),
-            Action("Reset Vanilla", () => AkronExtendedVariants.Available, () => "Defaults", () => {
+            Action("Reset Vanilla", AkronFeatureKind.ExtendedVariantMode, () => AkronExtendedVariants.Available, () => "Defaults", () => {
+                if (!AkronPolicy.CanUse(AkronFeatureKind.ExtendedVariantMode).Allowed) return;
                 AkronExtendedVariants.ResetVanilla();
                 Engine.Scene?.Add(new AkronToast("Vanilla variants reset."));
             }, "extended variant mode", "reset")
@@ -189,7 +193,8 @@ public sealed partial class AkronOverlay {
                         }
                     },
                     BuildSearchTerms(label, new[] { "extended variant mode", option.Name, option.TypeName }),
-                    true));
+                    true,
+                    featureKind: AkronFeatureKind.ExtendedVariantMode));
             } else {
                 entries.Add(new OverlayEntry(
                     label,
@@ -197,7 +202,8 @@ public sealed partial class AkronOverlay {
                     () => AkronExtendedVariants.DescribeConfiguredState(AkronExtendedVariants.GetOption(option.Name)),
                     () => ApplyOptionsPopupDelta(label, 1),
                     BuildSearchTerms(label, new[] { "extended variant mode", option.Name, option.TypeName }),
-                    true));
+                    true,
+                    featureKind: AkronFeatureKind.ExtendedVariantMode));
             }
         }
 

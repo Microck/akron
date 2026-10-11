@@ -72,7 +72,8 @@ public static partial class AkronActions {
 
     internal static void BeginStartPosInputWait(Level level, bool waitingForWipe) {
         ClearStartPosInputWait();
-        if (level == null || !AkronModule.Settings.StartPosWaitForInput) {
+        if (level == null || !AkronModule.Settings.StartPosWaitForInput ||
+            !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
             return;
         }
 
@@ -96,7 +97,8 @@ public static partial class AkronActions {
         if (!StartPosInputWait.Active) {
             return false;
         }
-        if (!AkronModule.Settings.StartPosWaitForInput || !ReferenceEquals(level, startPosInputWaitLevel)) {
+        if (!AkronModule.Settings.StartPosWaitForInput || !ReferenceEquals(level, startPosInputWaitLevel) ||
+            !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
             ClearStartPosInputWait();
             return false;
         }

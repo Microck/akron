@@ -60,7 +60,7 @@ public static partial class AkronHudRenderer {
 
         RenderPresentationOverlayChips(level);
 
-        if (settings.HideAkronHud) {
+        if (settings.HideAkronHud && AkronPolicy.CanUse(AkronFeatureKind.HudVisibility).Allowed) {
             return;
         }
 
@@ -71,12 +71,12 @@ public static partial class AkronHudRenderer {
         // bars and numbers have no Labels-tab row and keep a fixed place above the ordered
         // stack, which WalkLabelStack draws in the player's row order.
         if (player != null && (settings.StaminaBar || settings.ResourceBars && settings.ResourceStaminaBar) &&
-            AkronModule.TryUse(AkronFeatureKind.ResourceBars)) {
+            AkronModule.TryUseRuntime(AkronFeatureKind.ResourceBars)) {
             RenderStaminaBars(level, player, HudEdgePadding, ref y);
         }
 
         if (player != null && (settings.DashBar || settings.ResourceBars && settings.ResourceDashPips) &&
-            AkronModule.TryUse(AkronFeatureKind.ResourceBars)) {
+            AkronModule.TryUseRuntime(AkronFeatureKind.ResourceBars)) {
             RenderDashBar(level, player, HudEdgePadding, ref y);
         }
 
@@ -88,34 +88,34 @@ public static partial class AkronHudRenderer {
         // "Displays already-current player speed above Madeline" - on installs with the
         // speed number off. Every other element on this screen short-circuits the same way.
         if (player != null && settings.DashNumber &&
-            ShouldRenderDashNumber(settings, AkronModule.TryUse(AkronFeatureKind.ResourceBars))) {
+            ShouldRenderDashNumber(settings, AkronModule.TryUseRuntime(AkronFeatureKind.ResourceBars))) {
             RenderDashNumber(level, player);
         }
 
         if (player != null && settings.SpeedNumber &&
-            ShouldRenderSpeedNumber(settings, AkronModule.TryUse(AkronFeatureKind.SpeedNumber))) {
+            ShouldRenderSpeedNumber(settings, AkronModule.TryUseRuntime(AkronFeatureKind.SpeedNumber))) {
             RenderSpeedNumber(level, player);
         }
 
-        if (settings.ShowTaps && AkronModule.TryUse(AkronFeatureKind.ShowTaps)) {
+        if (settings.ShowTaps && AkronModule.TryUseRuntime(AkronFeatureKind.ShowTaps)) {
             RenderTapDisplay(ref y);
         }
 
         if (labelsVisible) {
-            WalkLabelStack(level, player, settings, AkronModule.TryUse, new DrawLabelStackSink(level, player), ref y);
+            WalkLabelStack(level, player, settings, AkronModule.TryUseRuntime, new DrawLabelStackSink(level, player), ref y);
         }
 
-        if (labelsVisible && AkronSaveLoadService.HasSlot(settings.ActiveSavestateSlot)) {
+        if (labelsVisible && AkronPolicy.CanUse(AkronFeatureKind.Savestates).Allowed && AkronSaveLoadService.HasSlot(settings.ActiveSavestateSlot)) {
             DrawText("SRT slot " + settings.ActiveSavestateSlot + ": saved", HudEdgePadding, ref y, Color.White);
         }
 
-        if (labelsVisible && settings.EntityInspector && AkronModule.TryUse(AkronFeatureKind.EntityInspector)) {
+        if (labelsVisible && settings.EntityInspector && AkronModule.TryUseRuntime(AkronFeatureKind.EntityInspector)) {
             DrawText("Entity: " + AkronEntityInspector.Describe(level), HudEdgePadding, ref y, Color.White);
         }
 
         if (labelsVisible &&
             (settings.InputHistoryPanel || settings.InputHistoryShowOnDeath && AkronInputHistory.DeathPinned) &&
-            AkronModule.TryUse(AkronFeatureKind.InputHistory)) {
+            AkronModule.TryUseRuntime(AkronFeatureKind.InputHistory)) {
             RenderInputHistory(ref y);
         }
         } finally {
@@ -170,7 +170,7 @@ public static partial class AkronHudRenderer {
     private static void RenderTriggerViewer(Level level) {
         if (level == null ||
             !AkronModule.Settings.ShowTriggers ||
-            !AkronModule.TryUse(AkronFeatureKind.TriggerViewer)) {
+            !AkronModule.TryUseRuntime(AkronFeatureKind.TriggerViewer)) {
             return;
         }
 
@@ -182,7 +182,7 @@ public static partial class AkronHudRenderer {
     }
 
     private static void RenderPauseCountdown() {
-        if (!AkronModule.IsPauseCountdownActive) {
+        if (!AkronModule.IsPauseCountdownActive || !AkronPolicy.CanUse(AkronFeatureKind.PauseCountdown).Allowed) {
             return;
         }
 
@@ -206,7 +206,7 @@ public static partial class AkronHudRenderer {
         AkronModuleSettings settings = AkronModule.Settings;
         if (settings == null ||
             !settings.LabelSystemVisible ||
-            settings.HideAkronHud ||
+            settings.HideAkronHud && AkronPolicy.CanUse(AkronFeatureKind.HudVisibility).Allowed ||
             !settings.HudCheatIndicator) {
             return false;
         }
@@ -294,11 +294,12 @@ public static partial class AkronHudRenderer {
 
     private static void RenderPresentationOverlayChips(Level level) {
         List<(string Label, Color Color)> chips = new List<(string Label, Color Color)>();
-        if (AkronModule.Settings.ProofModeOverlay) {
+        if (AkronModule.Settings.ProofModeOverlay &&
+            (!AkronModule.Settings.SubmissionMode || AkronPolicy.CanUse(AkronFeatureKind.SubmissionMode).Allowed)) {
             chips.Add(("Proof-mode", Color.CornflowerBlue));
         }
 
-        if (AkronModule.Settings.IsLowDistractionActive()) {
+        if (AkronModule.Settings.IsLowDistractionActive() && AkronPolicy.CanUse(AkronFeatureKind.ReducedVisualNoise).Allowed) {
             chips.Add(("Low-distraction", Color.SlateBlue));
         }
 

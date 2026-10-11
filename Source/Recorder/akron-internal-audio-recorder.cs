@@ -56,6 +56,11 @@ public static class AkronInternalAudioRecorder {
 
     private static bool TryStart(AkronModuleSettings settings, AudioCapturePurpose purpose, out string warning) {
         warning = string.Empty;
+        AkronPolicyDecision decision = AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder);
+        if (!decision.Allowed) {
+            warning = decision.Message;
+            return false;
+        }
         List<TrackRequest> trackRequests = BuildTrackRequests(settings);
         if (trackRequests.Count == 0) {
             return false;
@@ -255,6 +260,9 @@ public static class AkronInternalAudioRecorder {
         float[] samples = new float[sampleCount];
         Marshal.Copy(inputBuffer, samples, 0, sampleCount);
         Marshal.Copy(samples, 0, outputBuffer, sampleCount);
+        if (!AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed) {
+            return RESULT.OK;
+        }
 
         byte[] pcm = new byte[sampleCount * 2];
         float currentGain;

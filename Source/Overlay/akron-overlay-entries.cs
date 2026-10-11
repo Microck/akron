@@ -917,10 +917,16 @@ public sealed partial class AkronOverlay {
     }
 
     private string DescribeRenderedEntryValue(ActionEntry entry) {
-        return entry.Value();
+        return !entry.IsToggle && entry.FeatureKind.HasValue && !AkronPolicy.CanUse(entry.FeatureKind.Value).Allowed
+            ? "Map-suppressed"
+            : entry.Value();
     }
 
     private static string DescribeSelectedFlag(Level level) {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.FlagInspector).Allowed) {
+            return "Map-suppressed";
+        }
+
         if (level == null) {
             return "No level";
         }
@@ -1012,39 +1018,18 @@ public sealed partial class AkronOverlay {
 
     private static void SetTimescaleMultiplier(float multiplier) {
         AkronModuleSession session = AkronModule.Session;
-        if (session == null) {
-            return;
+        if (AkronActions.TrySetTimescaleMultiplier(session, multiplier)) {
+            Engine.Scene?.Add(new AkronToast("Timescale value: " + session.TimescaleMultiplier.ToString("0.0x")));
         }
-
-        float next = Calc.Clamp((float) Math.Round(multiplier, 1), 0.1f, 2f);
-        if (session.TimescaleEnabled && next != 1f && !AkronModule.TryUse(AkronFeatureKind.Timescale)) {
-            return;
-        }
-
-        AkronActions.ConfigureTimescaleMultiplier(session, next);
-        if (next == 1f && session.TimescaleEnabled) {
-#pragma warning disable CS0618
-            Engine.TimeRate = 1f;
-#pragma warning restore CS0618
-        }
-        Engine.Scene?.Add(new AkronToast("Timescale value: " + next.ToString("0.0x")));
     }
 
     private static void SetTimescaleEnabled(bool enabled) {
-        AkronModuleSession session = AkronModule.Session;
-        if (session == null) {
-            return;
-        }
+        AkronActions.TrySetTimescaleEnabled(AkronModule.Session, enabled);
+    }
 
-        if (enabled && session.TimescaleMultiplier != 1f && !AkronModule.TryUse(AkronFeatureKind.Timescale)) {
-            return;
-        }
-
-        session.TimescaleEnabled = enabled;
-        if (!enabled) {
-#pragma warning disable CS0618
-            Engine.TimeRate = 1f;
-#pragma warning restore CS0618
+    private static void ResetTimescale() {
+        if (AkronActions.TryResetTimescale(AkronModule.Session)) {
+            Engine.Scene?.Add(new AkronToast("Timescale reset."));
         }
     }
 

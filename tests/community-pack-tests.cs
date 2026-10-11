@@ -343,7 +343,8 @@ public sealed class CommunityPackTests {
     [Fact]
     public void BeginRefreshLoadsFileIndexWithoutBlockingCaller() {
         string path = Path.Combine(Path.GetTempPath(), "akron-community-index-" + Guid.NewGuid().ToString("N") + ".json");
-        File.WriteAllText(path, """
+        string downloadUrl = new Uri(Path.Combine(Path.GetTempPath(), "file-refresh.akr")).AbsoluteUri;
+        File.WriteAllText(path, $$"""
         {
           "format": "akron-community-pack-index-v3",
           "version": 3,
@@ -353,7 +354,7 @@ public sealed class CommunityPackTests {
               "title": "File refresh pack",
               "section": "AutoKill",
               "mapSid": "Maps/Current",
-              "downloadUrl": "file:///tmp/file-refresh.akr",
+              "downloadUrl": {{JsonSerializer.Serialize(downloadUrl)}},
               "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
               "sizeBytes": 1234
             }

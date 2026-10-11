@@ -216,7 +216,7 @@ public static partial class AkronEntityInspector {
 
     public static void RenderHitboxes(Level level, Player player) {
         AkronModuleSettings settings = AkronModule.Settings;
-        if (!AkronModule.TryUse(AkronFeatureKind.HitboxViewer)) {
+        if (!AkronModule.TryUseRuntime(AkronFeatureKind.HitboxViewer)) {
             return;
         }
 
@@ -227,7 +227,7 @@ public static partial class AkronEntityInspector {
         player ??= FindPlayer(level);
 
         try {
-            bool deathHitboxVisible = settings.HitboxShowLastDeath && HasVisibleLastDeathObjectHitbox(AkronModule.Session) && AkronModule.TryUse(AkronFeatureKind.DeathHitboxes);
+            bool deathHitboxVisible = settings.HitboxShowLastDeath && HasVisibleLastDeathObjectHitbox(AkronModule.Session) && AkronModule.TryUseRuntime(AkronFeatureKind.DeathHitboxes);
             if (ShouldRenderLiveHitboxes(settings.HitboxViewer, deathHitboxVisible, settings.HitboxShowAllOnDeath)) {
                 if (settings.HitboxShowSolids) {
                     DrawVisibleSolidTiles(level);
@@ -265,7 +265,7 @@ public static partial class AkronEntityInspector {
                 }
             }
 
-            if (settings.HitboxShowLastDeath && HasVisibleLastDeathHitbox() && AkronModule.TryUse(AkronFeatureKind.DeathHitboxes)) {
+            if (settings.HitboxShowLastDeath && HasVisibleLastDeathHitbox() && AkronModule.TryUseRuntime(AkronFeatureKind.DeathHitboxes)) {
                 if (!settings.HitboxShowAllOnDeath) {
                     Color deathColor = ColorFromRgb(settings.HitboxDeathColor);
                     if (CanRenderDeathColliderSnapshot(
@@ -620,7 +620,7 @@ public static partial class AkronEntityInspector {
         }
 
         if (entity is Trigger) {
-            return settings.HitboxShowTriggers;
+            return settings.HitboxShowTriggers && AkronPolicy.CanUse(AkronFeatureKind.TriggerViewer).Allowed;
         }
 
         if (IsHazard(entity)) {
