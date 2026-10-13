@@ -38,6 +38,8 @@ Rows with a triangle expose the controls listed below.
 
 **Room Timer** and **Room Stat Tracker** share offset, scale, opacity, line spacing, and shadow settings. Changing those controls in either popup changes both HUD surfaces. Their text colors remain separate.
 
+The Room Stat Tracker's **Alive time** follows the current attempt's session-clock epoch. If native respawn rewinds that clock, its Alive baseline and frozen-time offsets restart in the new epoch. This does not reset room statistics or change the selected freeze mode.
+
 | Option | Menu control | What it changes | Classification |
 |---|---|---|---|
 | Visible | Offset X | Bulk-edit horizontal offset for every label row. | None |
