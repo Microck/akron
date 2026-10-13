@@ -263,8 +263,11 @@ public partial class AkronModule {
         return null;
     }
 
-    private static void PlayerOnUpdate(On.Celeste.Player.orig_Update orig, Player self) {
-        if (!Settings.Noclip || !TryUseRuntime(AkronFeatureKind.Noclip)) {
+    private static void PlayerOnUpdate(On.Celeste.Player.orig_Update orig, Player self)
+    {
+        if (!Settings.Noclip || !TryUseRuntime(AkronFeatureKind.Noclip) ||
+            ShouldPreserveNativePlayerUpdateForNoclip(self.StateMachine.State))
+        {
             RestoreNoclipDepth();
             bool wasGrounded = self.OnGround();
             int dashesBefore = self.Dashes;
@@ -278,6 +281,13 @@ public partial class AkronModule {
         }
 
         ApplyNoclip(self);
+    }
+
+    internal static bool ShouldPreserveNativePlayerUpdateForNoclip(int state)
+    {
+        // The native respawn tween is a player component. Let its normal update
+        // finish the lifecycle; forcing a state change would skip its cleanup.
+        return state == Player.StIntroRespawn;
     }
 
     private static void CelesteOnFreeze(On.Celeste.Celeste.orig_Freeze orig, float time) {
@@ -665,15 +675,20 @@ public partial class AkronModule {
         Audio.Play("event:/game/general/assist_screenbottom", player.Position);
     }
 
-    private static void PlayerOnAdded(On.Celeste.Player.orig_Added orig, Player self, Scene scene) {
+    private static void PlayerOnAdded(On.Celeste.Player.orig_Added orig, Player self, Scene scene)
+    {
         orig(self, scene);
+        AkronPracticeStats.NotifyPlayerRespawn(scene as Level);
         SuppressLagPauserForRecovery();
         AkronInternalRecorder.NotifyPlayerRespawn(scene as Level);
         AkronPracticeCounters.OnRespawn(scene as Level);
         AkronAutosave.NotifyRespawn(scene as Level);
-        if (Settings.DashCountRefillOnRoomEntry) {
+        if (Settings.DashCountRefillOnRoomEntry)
+        {
             ApplyDashCountOverride(self, true);
-        } else {
+        }
+        else
+        {
             ApplyDashCountOverride(self, false);
         }
         EnsureRespawnCameraContainsPlayer(scene as Level, self);

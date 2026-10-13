@@ -667,7 +667,7 @@ public partial class AkronModule : EverestModule {
         }
 
         Session levelEnterSession = LevelEnterSessionField?.GetValue(self) as Session;
-        bool postcardSkipAvailable = Settings.SkipPostcards && self.Tracker.GetEntity<Postcard>() != null;
+        bool postcardSkipAvailable = Settings.SkipPostcards && ContainsLevelEnterPostcard(self.Entities);
         bool introSkipAvailable = Settings.SkipIntro &&
                                   levelEnterSession != null &&
                                   levelEnterSession.StartedFromBeginning &&
@@ -691,6 +691,25 @@ public partial class AkronModule : EverestModule {
 
         Engine.Scene = new LevelLoader(levelEnterSession);
         Engine.Scene?.Add(new AkronToast("Skipped level intro."));
+    }
+
+    internal static bool ContainsLevelEnterPostcard(IEnumerable<Entity> entities)
+    {
+        // Postcard is not tracked. Tracker.GetEntity<Postcard>() indexes a missing
+        // type key and throws during chapter entry, even before Confirm is held.
+        // Inspect only this scene's active entities so absence remains a normal state.
+        if (entities == null)
+        {
+            return false;
+        }
+        foreach (Entity entity in entities)
+        {
+            if (entity is Postcard)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void LevelOnUpdateTime(On.Celeste.Level.orig_UpdateTime orig, Level self) {
