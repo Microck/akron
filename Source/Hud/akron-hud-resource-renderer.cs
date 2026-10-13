@@ -405,14 +405,17 @@ public static partial class AkronHudRenderer {
         return settings.SpeedNumber && speedNumberAllowed;
     }
 
-    private static void RenderPlayerNumber(Level level, Player player, string text, int offsetY, int opacityPercent, int textColor, int outlineColor) {
+    private static void RenderPlayerNumber(Level level, Player player, string text, int offsetY, int opacityPercent, int textColor, int outlineColor)
+    {
         Vector2 position = AkronScreenProjection.WorldToHud(level, player.Position + new Vector2(0f, PlayerNumberAnchorOffsetY));
-        if (SaveData.Instance != null && SaveData.Instance.Assists.MirrorMode) {
-            position.X = 1920f - position.X;
-        }
-        if (Input.MoveY.Inverted) {
-            position.Y = 1080f - position.Y + 96f;
-        }
+        Vector2 viewportOrigin = AkronScreenProjection.CurrentViewportOffset();
+        var viewport = Engine.Instance?.GraphicsDevice?.Viewport ?? Engine.Viewport;
+        var anchor = PlayerNumberViewportAnchor(position.X, position.Y, viewportOrigin.X, viewportOrigin.Y,
+            viewport.Width > 0 ? viewport.Width : 1920,
+            viewport.Height > 0 ? viewport.Height : 1080,
+            SaveData.Instance != null && SaveData.Instance.Assists.MirrorMode,
+            Input.MoveY.Inverted);
+        position = new Vector2(anchor.X, anchor.Y);
 
         float scale = 0.32f;
         Vector2 size = ActiveFont.Measure(text) * scale;
@@ -426,5 +429,21 @@ public static partial class AkronHudRenderer {
             ColorFromRgb(textColor) * opacity,
             2f,
             ColorFromRgb(outlineColor) * opacity);
+    }
+
+    internal static (float X, float Y) PlayerNumberViewportAnchor(
+        float screenX, float screenY, float originX, float originY,
+        float viewportWidth, float viewportHeight, bool mirror, bool inverted)
+    {
+        // WorldToHud returns window coordinates, but this identity SpriteBatch
+        // is already inside the graphics viewport. Remove its origin once;
+        // reflecting the resulting local coordinates also needs local extents.
+        float x = screenX - originX;
+        float y = screenY - originY;
+        if (mirror)
+            x = viewportWidth - x;
+        if (inverted)
+            y = viewportHeight - y + 96f;
+        return (x, y);
     }
 }
