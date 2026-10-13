@@ -23,6 +23,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Materialize deep StartPos diagnostic paths iteratively so restore does not exhaust a small worker stack in Debug builds.
 - Keep editor-navigation keys inside focused Akron text and numeric editors instead of also opening Speedrun Tool's slot UI; release text ownership when editing ends without changing SRT bindings.
 - Defer confirmed Speedrun Tool restores until the engine update finishes, avoiding changes to the pause-menu entity list while it is being iterated.
 - Rebase Room Stat Tracker's Alive timer when native respawn rewinds the session clock, so it does not remain at zero until the previous clock value is reached.
