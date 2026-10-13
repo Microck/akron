@@ -26,7 +26,10 @@ public partial class AkronModule {
         KeyboardState previousKeyboard = previousStartPosHotkeyKeyboard;
         previousStartPosHotkeyKeyboard = keyboard;
 
-        if (AkronDiagnosticsMenu.IsOpen) return;
+        if (AkronDiagnosticsMenu.IsOpen) {
+            RefreshOverlayToggleKeyboardState();
+            return;
+        }
 
         if (Overlay?.IsTransientMouseUiActive == true && IsOverlayTogglePressed()) {
             Overlay.CancelTransientMouseUiForOverlayToggle();
@@ -361,7 +364,7 @@ public partial class AkronModule {
         return normalizedKeys.Count == 1 && normalizedKeys[0] == Keys.Tab;
     }
 
-    private static void RefreshOverlayToggleKeyboardState() {
+    internal static void RefreshOverlayToggleKeyboardState() {
         AkronModuleSettings.EnsureCurrentOverlayToggleDefault(Settings);
         previousOverlayToggleKeyboard = Keyboard.GetState();
     }
@@ -617,26 +620,35 @@ public partial class AkronModule {
         cursorVisibilityCaptured = false;
     }
 
-    private static bool IsOverlayTogglePressed() {
+    private static bool IsOverlayTogglePressed()
+    {
         AkronModuleSettings.EnsureCurrentOverlayToggleDefault(Settings);
         ButtonBinding binding = Settings.ToggleOverlay;
-        if (binding == null) {
+        if (binding == null)
+        {
             return false;
         }
 
         KeyboardState keyboard = Keyboard.GetState();
         KeyboardState previousKeyboard = previousOverlayToggleKeyboard;
+        // Consume keyboard edges while typing too, so leaving an editor does not
+        // replay a toggle key that is still held.
         previousOverlayToggleKeyboard = keyboard;
 
-        if (IsKeyboardBindingPressed(binding.Keys, keyboard, previousKeyboard)) {
+        if (!(Overlay?.Visible == true && AkronImGuiRenderer.WantTextInput) &&
+            IsKeyboardBindingPressed(binding.Keys, keyboard, previousKeyboard))
+        {
             return true;
         }
 
         if (binding.Buttons != null &&
             Input.Gamepad >= 0 &&
-            Input.Gamepad < MInput.GamePads.Length) {
-            foreach (Buttons button in binding.Buttons) {
-                if (MInput.GamePads[Input.Gamepad].Pressed(button)) {
+            Input.Gamepad < MInput.GamePads.Length)
+        {
+            foreach (Buttons button in binding.Buttons)
+            {
+                if (MInput.GamePads[Input.Gamepad].Pressed(button))
+                {
                     return true;
                 }
             }
