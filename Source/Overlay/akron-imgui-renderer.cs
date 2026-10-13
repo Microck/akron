@@ -330,7 +330,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         WantCaptureKeyboard = exposeCapture && io.WantCaptureKeyboard;
         WantTextInput = exposeCapture && io.WantTextInput;
         WantCaptureMouse = exposeCapture && io.WantCaptureMouse;
-        SetTextInputActive(AkronDiagnosticsMenu.AcceptsTextInput && WantTextInput && AkronOverlay.IsGameWindowInputActive());
+        SetTextInputActive(WantTextInput && AkronOverlay.IsGameWindowInputActive());
         if (!renderDiagnosticLogged) {
             renderDiagnosticLogged = true;
             ImDrawDataPtr diagnosticDrawData = ImGui.GetDrawData();
@@ -446,7 +446,8 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     }
 
     // Everest treats a subscription as active text entry. SRT suppresses hotkeys while
-    // this handler is registered, so keep it only while a diagnostics field has focus.
+    // this handler is registered. Reserve it for any focused ImGui text/numeric
+    // editor, not just Diagnostics; merely opening or hovering the overlay is insufficient.
     private void SetTextInputActive(bool active) {
         if (textInputSubscribed == active) return;
         if (active) TextInput.OnInput += QueueTextInput;
