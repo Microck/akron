@@ -15,6 +15,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 ### Changed
 
 - Let native respawn finish after Retry while Noclip remains enabled.
+- Hide the retained native HUD image, including the chapter timer, when Hide Vanilla HUD is enabled.
 
 - Trim Akron's entry in Celeste's mod options to an **Enabled** switch and the menu bind. Streamer Mode, Safe Mode, and Send diagnostics stay in the overlay, and action binds are set by right-clicking overlay rows.
 - Turning **Enabled** off removes Akron's overlay, HUD, hotkeys, interop, error reports, and debug console commands on the next launch. Only its mod options entry stays, so it can be turned back on there.
@@ -23,12 +24,20 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Keep overlay-toggle key state current while Level diagnostics owns input, avoiding a stale toggle when the dialog closes.
+
+- Defer confirmed Speedrun Tool restores until the engine update finishes, avoiding changes to the pause-menu entity list while it is being iterated.
+- Materialize deep StartPos diagnostic paths iteratively so restore does not exhaust a small worker stack in Debug builds.
 - Keep underlying Light and Bloom renderer baselines in newly captured native StartPos snapshots so temporary overrides do not become restoration defaults.
 - Restore Light Level and Bloom Level independently when switched off, without requiring Screen Tint or another visual effect to be disabled.
-- Materialize deep StartPos diagnostic paths iteratively so restore does not exhaust a small worker stack in Debug builds.
-- Keep editor-navigation keys inside focused Akron text and numeric editors instead of also opening Speedrun Tool's slot UI; release text ownership when editing ends without changing SRT bindings.
-- Defer confirmed Speedrun Tool restores until the engine update finishes, avoiding changes to the pause-menu entity list while it is being iterated.
 - Rebase Room Stat Tracker's Alive timer when native respawn rewinds the session clock, so it does not remain at zero until the previous clock value is reached.
+- Keep editor-navigation keys inside focused Akron text and numeric editors instead of also opening Speedrun Tool's slot UI; release text ownership when editing ends without changing SRT bindings.
+- Keep the overlay open when its keyboard toggle is typed into a focused text editor; release and press the key again after leaving the editor to toggle normally.
+- Prevent **Skip Postcards** from throwing a missing-tracker-key error during chapter entry by finding postcards in the entering scene's entity list.
+- Read Control Display layout undo (Ctrl+Z) through the editor's input stream, while leaving text-field undo to its active editor.
+- Keep fixed stamina and dash HUD anchors relative to the active viewport when the window size changes.
+- Convert Dash Number and Speed Number projections to viewport-local coordinates so letterboxing does not apply its origin twice; mirrored/inverted number anchors use the active viewport extents.
+- Keep native Save and Quit and Continue linked to the live session after a warm StartPos load, so later session time and progress are not saved through an obsolete session reference.
 - Ignore Click Teleport clicks while the game is paused, including the click that unpauses it, so a click on the pause menu never moves Madeline or toggles Cursor Zoom. Cursor Tools, Cursor Zoom, Entity Inspector and Free Camera mouse control also stand down while Menu Mouse is driving a menu.
 - Right-clicking SRT Slot Previous/Next, Timescale Decrease/Increase, Frame Stepper Step Once, Open Debug Map, the FPS Bypass row, and FPS Bypass Smooth Camera now edits and clears the real hotkey, including one saved from Everest's old keyboard and controller screens. The Grab Mode popup gets a **Cycle** button for the grab-mode cycling hotkey.
 
