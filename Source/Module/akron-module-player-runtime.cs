@@ -263,8 +263,11 @@ public partial class AkronModule {
         return null;
     }
 
-    private static void PlayerOnUpdate(On.Celeste.Player.orig_Update orig, Player self) {
-        if (!Settings.Noclip || !TryUseRuntime(AkronFeatureKind.Noclip)) {
+    private static void PlayerOnUpdate(On.Celeste.Player.orig_Update orig, Player self)
+    {
+        if (!Settings.Noclip || !TryUseRuntime(AkronFeatureKind.Noclip) ||
+            ShouldPreserveNativePlayerUpdateForNoclip(self.StateMachine.State))
+        {
             RestoreNoclipDepth();
             bool wasGrounded = self.OnGround();
             int dashesBefore = self.Dashes;
@@ -278,6 +281,13 @@ public partial class AkronModule {
         }
 
         ApplyNoclip(self);
+    }
+
+    internal static bool ShouldPreserveNativePlayerUpdateForNoclip(int state)
+    {
+        // The native respawn tween is a player component. Let its normal update
+        // finish the lifecycle; forcing a state change would skip its cleanup.
+        return state == Player.StIntroRespawn;
     }
 
     private static void CelesteOnFreeze(On.Celeste.Celeste.orig_Freeze orig, float time) {
