@@ -665,15 +665,20 @@ public partial class AkronModule {
         Audio.Play("event:/game/general/assist_screenbottom", player.Position);
     }
 
-    private static void PlayerOnAdded(On.Celeste.Player.orig_Added orig, Player self, Scene scene) {
+    private static void PlayerOnAdded(On.Celeste.Player.orig_Added orig, Player self, Scene scene)
+    {
         orig(self, scene);
+        AkronPracticeStats.NotifyPlayerRespawn(scene as Level);
         SuppressLagPauserForRecovery();
         AkronInternalRecorder.NotifyPlayerRespawn(scene as Level);
         AkronPracticeCounters.OnRespawn(scene as Level);
         AkronAutosave.NotifyRespawn(scene as Level);
-        if (Settings.DashCountRefillOnRoomEntry) {
+        if (Settings.DashCountRefillOnRoomEntry)
+        {
             ApplyDashCountOverride(self, true);
-        } else {
+        }
+        else
+        {
             ApplyDashCountOverride(self, false);
         }
         EnsureRespawnCameraContainsPlayer(scene as Level, self);
