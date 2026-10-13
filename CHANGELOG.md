@@ -23,6 +23,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Release diagnostics text ownership immediately on close, including a close during rendering, so a fresh overlay-toggle press is not swallowed by stale editor focus.
+
 - Keep overlay-toggle key state current while Level diagnostics owns input, avoiding a stale toggle when the dialog closes.
 
 - Keep the overlay open when its keyboard toggle is typed into a focused text editor; release and press the key again after leaving the editor to toggle normally.

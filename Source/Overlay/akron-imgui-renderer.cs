@@ -33,6 +33,7 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     private static bool nativeResolverRegistered;
     private static IntPtr nativeLibraryHandle;
     private static bool inputSessionRequested;
+    private static uint inputSessionRevision;
 
     private readonly GraphicsDevice graphicsDevice;
     private readonly IntPtr context;
@@ -104,6 +105,8 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     internal static bool IsInitialized => instance != null;
 
     internal static void EndTextInputSession() {
+        unchecked { inputSessionRevision++; }
+        WantTextInput = false;
         instance?.SetTextInputActive(false);
     }
 
@@ -310,7 +313,17 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         loadedTextures.Remove(textureId);
     }
 
+    private static void PublishInputCapture(uint frameRevision, bool keyboard, bool text, bool mouse) {
+        // A dialog may end its session from drawLayout. Never republish that frame's
+        // old ImGui ownership after Close has already returned control to the game.
+        bool currentSession = frameRevision == inputSessionRevision;
+        WantCaptureKeyboard = currentSession && keyboard;
+        WantTextInput = currentSession && text;
+        WantCaptureMouse = currentSession && mouse;
+    }
+
     private void RenderFrame(Action drawLayout, bool exposeCapture) {
+        uint frameRevision = inputSessionRevision;
         long frameStart = Stopwatch.GetTimestamp();
         bool beginningInputSession = inputSessionRequested;
         UpdateInput(beginningInputSession);
@@ -327,9 +340,8 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         long imguiEnd = Stopwatch.GetTimestamp();
 
         ImGuiIOPtr io = ImGui.GetIO();
-        WantCaptureKeyboard = exposeCapture && io.WantCaptureKeyboard;
-        WantTextInput = exposeCapture && io.WantTextInput;
-        WantCaptureMouse = exposeCapture && io.WantCaptureMouse;
+        PublishInputCapture(frameRevision, exposeCapture && io.WantCaptureKeyboard,
+            exposeCapture && io.WantTextInput, exposeCapture && io.WantCaptureMouse);
         SetTextInputActive(WantTextInput && AkronOverlay.IsGameWindowInputActive());
         if (!renderDiagnosticLogged) {
             renderDiagnosticLogged = true;

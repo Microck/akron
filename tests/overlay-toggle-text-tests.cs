@@ -72,3 +72,74 @@ public sealed class OverlayToggleDiagnosticsTests
     }
 
 }
+
+[Collection(AkronSharedStateCollection.Name)]
+public sealed class OverlayInputSessionReleaseTests
+{
+    [Fact]
+    public void EndingTextInputImmediatelyReleasesPublishedOwnership()
+    {
+        var property = typeof(AkronImGuiRenderer).GetProperty(nameof(AkronImGuiRenderer.WantTextInput))!;
+        bool original = AkronImGuiRenderer.WantTextInput;
+        try
+        {
+            property.SetValue(null, true);
+            AkronImGuiRenderer.EndTextInputSession();
+            Assert.False(AkronImGuiRenderer.WantTextInput);
+        }
+        finally
+        {
+            property.SetValue(null, original);
+        }
+    }
+
+    [Fact]
+    public void RendererBindsCaptureToSessionBeforeInvokingLayout()
+    {
+        using ModuleDefinition module = ModuleDefinition.ReadModule(typeof(AkronModule).Assembly.Location);
+        MethodDefinition render = module.GetType(typeof(AkronImGuiRenderer).FullName).Methods
+            .Single(method => method.Name == "RenderFrame");
+        var instructions = render.Body.Instructions.ToList();
+        int revision = instructions.FindIndex(instruction => instruction.OpCode == OpCodes.Ldsfld &&
+            instruction.Operand is FieldReference field && field.Name == "inputSessionRevision");
+        int layout = instructions.FindIndex(instruction => instruction.Operand is MethodReference method &&
+            method.Name == "Invoke" && method.DeclaringType.FullName == "System.Action");
+        int publish = instructions.FindIndex(instruction => instruction.Operand is MethodReference method &&
+            method.Name == "PublishInputCapture");
+        Assert.True(revision >= 0 && layout > revision && publish > layout);
+    }
+
+    [Fact]
+    public void EndedSessionRejectsOldFrameCaptureAndAllowsNextFrame()
+    {
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+        var revision = typeof(AkronImGuiRenderer).GetField("inputSessionRevision", flags);
+        var publish = typeof(AkronImGuiRenderer).GetMethod("PublishInputCapture", flags);
+        Assert.NotNull(revision);
+        Assert.NotNull(publish);
+        object originalRevision = revision.GetValue(null)!;
+        bool keyboard = AkronImGuiRenderer.WantCaptureKeyboard;
+        bool text = AkronImGuiRenderer.WantTextInput;
+        bool mouse = AkronImGuiRenderer.WantCaptureMouse;
+        try
+        {
+            publish.Invoke(null, new[] { originalRevision, (object) true, true, true });
+            Assert.True(AkronImGuiRenderer.WantTextInput);
+            AkronImGuiRenderer.EndTextInputSession();
+            // Closing from drawLayout must not republish that frame's stale ImGui IO.
+            publish.Invoke(null, new[] { originalRevision, (object) true, true, true });
+            Assert.False(AkronImGuiRenderer.WantCaptureKeyboard);
+            Assert.False(AkronImGuiRenderer.WantTextInput);
+            Assert.False(AkronImGuiRenderer.WantCaptureMouse);
+            publish.Invoke(null, new[] { revision.GetValue(null)!, (object) true, true, true });
+            Assert.True(AkronImGuiRenderer.WantCaptureKeyboard);
+            Assert.True(AkronImGuiRenderer.WantTextInput);
+            Assert.True(AkronImGuiRenderer.WantCaptureMouse);
+        }
+        finally
+        {
+            revision.SetValue(null, originalRevision);
+            publish.Invoke(null, new[] { originalRevision, (object) keyboard, text, mouse });
+        }
+    }
+}
