@@ -26,7 +26,10 @@ public partial class AkronModule {
         KeyboardState previousKeyboard = previousStartPosHotkeyKeyboard;
         previousStartPosHotkeyKeyboard = keyboard;
 
-        if (AkronDiagnosticsMenu.IsOpen) return;
+        if (AkronDiagnosticsMenu.IsOpen) {
+            RefreshOverlayToggleKeyboardState();
+            return;
+        }
 
         if (Overlay?.IsTransientMouseUiActive == true && IsOverlayTogglePressed()) {
             Overlay.CancelTransientMouseUiForOverlayToggle();

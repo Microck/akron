@@ -23,6 +23,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Keep overlay-toggle key state current while Level diagnostics owns input, avoiding a stale toggle when the dialog closes.
+
 - Keep the overlay open when its keyboard toggle is typed into a focused text editor; release and press the key again after leaving the editor to toggle normally.
 - Keep underlying Light and Bloom renderer baselines in newly captured native StartPos snapshots so temporary overrides do not become restoration defaults.
 - Restore Light Level and Bloom Level independently when switched off, without requiring Screen Tint or another visual effect to be disabled.

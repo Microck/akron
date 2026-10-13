@@ -29,3 +29,32 @@ public sealed class OverlayToggleTextTests
             instruction.Operand is Instruction target && instructions.IndexOf(target) > keyboard);
     }
 }
+
+public sealed class OverlayToggleDiagnosticsTests
+{
+    [Theory]
+    [InlineData("HandleHotkeys")]
+    [InlineData("HandleGlobalOverlayHotkeys")]
+    public void DiagnosticsGuardConsumesToggleStateBeforeReturning(string methodName)
+    {
+        // Reference-only FNA cannot provide live keyboard state. Verify both scene routes
+        // consume the snapshot inside the diagnostics guard; native held-key QA is separate.
+        using ModuleDefinition module = ModuleDefinition.ReadModule(typeof(AkronModule).Assembly.Location);
+        MethodDefinition handler = module.GetType(typeof(AkronModule).FullName).Methods
+            .Single(method => method.Name == methodName);
+        var instructions = handler.Body.Instructions.ToList();
+        int guard = instructions.FindIndex(instruction => instruction.Operand is MethodReference method &&
+            method.Name == "get_IsOpen" && method.DeclaringType.Name == "AkronDiagnosticsMenu");
+        Assert.True(guard >= 0);
+        int branch = instructions.FindIndex(guard + 1,
+            instruction => instruction.OpCode.FlowControl == FlowControl.Cond_Branch);
+        Assert.True(branch > guard);
+        Instruction continuation = Assert.IsType<Instruction>(instructions[branch].Operand);
+        int continuationIndex = instructions.IndexOf(continuation);
+        int refresh = instructions.FindIndex(branch + 1, instruction => instruction.Operand is MethodReference method &&
+            method.Name == "RefreshOverlayToggleKeyboardState");
+        Assert.InRange(refresh, branch + 1, continuationIndex - 1);
+        Assert.DoesNotContain(instructions.Skip(branch + 1).Take(continuationIndex - branch - 1),
+            instruction => instruction.Operand is MethodReference method && method.Name == "IsOverlayTogglePressed");
+    }
+}
