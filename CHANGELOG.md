@@ -14,6 +14,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Changed
 
+- Hide the retained native HUD image, including the chapter timer, when Hide Vanilla HUD is enabled.
 - Let native respawn finish after Retry while Noclip remains enabled.
 
 - Trim Akron's entry in Celeste's mod options to an **Enabled** switch and the menu bind. Streamer Mode, Safe Mode, and Send diagnostics stay in the overlay, and action binds are set by right-clicking overlay rows.

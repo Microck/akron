@@ -11,7 +11,6 @@ namespace Celeste.Mod.Akron;
 
 public static class AkronRuntimeOptions {
     private const float FreeCameraMouseDeadzone = 0.08f;
-    private static bool vanillaHudHidden;
     private static bool audioPitchApplied;
     private static Level screenshakeLevel;
     private static bool previousScreenshakeDisabled;
@@ -20,14 +19,12 @@ public static class AkronRuntimeOptions {
     private static int previousFreeCameraPlayerState;
     private static readonly Dictionary<Entity, bool> HiddenPauseMenuVisibility = new Dictionary<Entity, bool>();
     private static readonly Dictionary<object, bool> HiddenPauseHudVisibility = new Dictionary<object, bool>();
-    private static readonly Dictionary<object, bool> HiddenHudVisibility = new Dictionary<object, bool>();
     private static readonly Dictionary<string, object> SafeModeStatSnapshot = new Dictionary<string, object>();
     private static string safeModeSnapshotArea = string.Empty;
     private static readonly AkronVisualTuningOverrides VisualTuningOverrides = new();
 
     public static void Reset() {
         RestorePauseMenuVisibility();
-        RestoreHudVisibility();
         RestoreFreeCameraPlayerControl();
         RestoreVisualTuning();
         RestoreScreenshake();
@@ -260,23 +257,14 @@ public static class AkronRuntimeOptions {
         instance.setPitch(pitch);
     }
 
-    private static void ApplyHudVisibility(Level level) {
-        if (level == null) {
-            return;
+    private static void ApplyHudVisibility(Level level)
+    {
+        if (level != null && AkronModule.Settings.HideVanillaHud)
+        {
+            AkronModule.TryUseRuntime(AkronFeatureKind.HudVisibility);
         }
-
-        if (!AkronModule.Settings.HideVanillaHud) {
-            RestoreHudVisibility();
-            return;
-        }
-
-        if (!AkronModule.TryUseRuntime(AkronFeatureKind.HudVisibility)) {
-            RestoreHudVisibility();
-            return;
-        }
-
-        vanillaHudHidden = true;
-        SetHudRendererVisibility(level, false, HiddenHudVisibility);
+        // Only final compositing is suppressed. Keep native buffers refreshing
+        // and do not capture false visibility into another owner's save state.
     }
 
     internal static void ApplyPauseMenuVisibility(Level level) {
@@ -414,17 +402,10 @@ public static class AkronRuntimeOptions {
         VisualTuningOverrides.Reset();
     }
 
-    private static void RestoreHudVisibility() {
-        if (!vanillaHudHidden) {
-            return;
-        }
-
-        foreach ((object renderer, bool visible) in HiddenHudVisibility) {
-            SetVisible(renderer, visible);
-        }
-
-        HiddenHudVisibility.Clear();
-        vanillaHudHidden = false;
+    internal static bool IsCurrentVanillaHudRenderer(object renderer, object hudRenderer, object subHudRenderer)
+    {
+        return renderer != null &&
+               (ReferenceEquals(renderer, hudRenderer) || ReferenceEquals(renderer, subHudRenderer));
     }
 
     private static void SetHudRendererVisibility(Level level, bool visible, Dictionary<object, bool> visibilitySnapshot) {
