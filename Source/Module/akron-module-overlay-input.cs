@@ -364,7 +364,7 @@ public partial class AkronModule {
         return normalizedKeys.Count == 1 && normalizedKeys[0] == Keys.Tab;
     }
 
-    private static void RefreshOverlayToggleKeyboardState() {
+    internal static void RefreshOverlayToggleKeyboardState() {
         AkronModuleSettings.EnsureCurrentOverlayToggleDefault(Settings);
         previousOverlayToggleKeyboard = Keyboard.GetState();
     }

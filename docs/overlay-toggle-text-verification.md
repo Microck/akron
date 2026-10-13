@@ -60,3 +60,5 @@ export was performed. This is not human review or full input-system acceptance.
 ## Review follow-up: diagnostics ownership
 
 The Level diagnostics early return now refreshes the overlay-toggle keyboard snapshot, matching the global-scene route. A toggle key held while Cancel or Send closes diagnostics is already recorded as held rather than becoming a synthetic press afterward. Two compiled-wiring regressions cover both Level and global guards; the Level case fails before the correction. Reference-only FNA cannot execute live keyboard-state reads, so these managed checks are not native held-key evidence. Fresh live diagnostics-close verification remains pending.
+
+The shared diagnostics Close path also refreshes keyboard state before releasing the dialog owner. This covers a key press seen by the later ImGui render poll after the update guard already sampled input. A third before-failing compiled-wiring regression verifies that close-boundary refresh precedes owner release. Actual native held-key delivery across Cancel remains a separate pending QA case.

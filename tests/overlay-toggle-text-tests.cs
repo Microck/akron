@@ -57,4 +57,18 @@ public sealed class OverlayToggleDiagnosticsTests
         Assert.DoesNotContain(instructions.Skip(branch + 1).Take(continuationIndex - branch - 1),
             instruction => instruction.Operand is MethodReference method && method.Name == "IsOverlayTogglePressed");
     }
+    [Fact]
+    public void DiagnosticsCloseConsumesToggleBeforeReleasingItsOwner()
+    {
+        using ModuleDefinition module = ModuleDefinition.ReadModule(typeof(AkronModule).Assembly.Location);
+        MethodDefinition close = module.GetType(typeof(AkronDiagnosticsMenu).FullName).Methods
+            .Single(method => method.Name == "Close");
+        var instructions = close.Body.Instructions.ToList();
+        int refresh = instructions.FindIndex(instruction => instruction.Operand is MethodReference method &&
+            method.Name == "RefreshOverlayToggleKeyboardState" && method.DeclaringType.FullName == typeof(AkronModule).FullName);
+        int release = instructions.FindIndex(instruction => instruction.OpCode == OpCodes.Stsfld &&
+            instruction.Operand is FieldReference field && field.Name == "ownerScene");
+        Assert.True(refresh >= 0 && release > refresh);
+    }
+
 }
