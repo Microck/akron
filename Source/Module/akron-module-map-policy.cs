@@ -51,8 +51,10 @@ public partial class AkronModule
 
     private static void LevelOnLoadLevelForMapPolicy(On.Celeste.Level.orig_LoadLevel orig, Level self, Player.IntroTypes intro, bool isFromLoader)
     {
-        // Only policy is scoped here. Global render/audio/recorder cleanup belongs to
-        // the engine thread when Level.Begin installs the incoming scene's policy.
+        // Release only this active visual owner's overrides before native room
+        // values are installed. Detached snapshot loaders cannot pass that guard.
+        // Other global cleanup still belongs to the engine-thread scene lifecycle.
+        AkronRuntimeOptions.BeforeVisualTuningLevelLoad(self);
         AkronMapFeatureRestrictions previous = AkronPolicy.EnterMapLoadScope(self.Session.MapData);
         try
         {

@@ -1,5 +1,69 @@
 # Speedrun Tool hotkey verification
 
+## Focused normal editor regression (#274)
+
+The proposed #274 follow-up extends text ownership to all focused ImGui text
+and numeric editors, including Control Display's layout editor. It does not
+reserve keyboard input simply because the overlay is open or hovered, and it
+does not change SRT bindings or the Diagnostics Unicode input route.
+
+The Release build and 2,046-test suite pass, including a new compiled-code wiring
+check. The existing startup and focus-release tests also pass. These checks do
+not prove SRT event suppression in the game. The bounded native comparison below
+now covers the numeric-editor regression; broader focus lifecycle acceptance
+remains pending. The September 30 evidence belongs to the earlier fix.
+
+Verify the following on an isolated installation with the exact versions recorded:
+
+- With SRT's original Tab binding retained, focus Control Display's numeric Width
+  editor and press native Tab once. Height should receive editor focus and the
+  SRT slot interface should stay closed.
+- Click away, close the editor, and confirm SRT's Tab action works again.
+- Check repeated focus/blur and overlay close/reopen, game-window focus loss,
+  Diagnostics Unicode typing and its release paths, and neutral overlay hovering.
+- Compare saved SRT bindings before/after; do not rewrite them to hide overlap.
+
+### Native numeric-editor comparison, 2026-10-12
+
+AI-operated live verification used restored Celeste 1.4.0.0-fna, Everest
+1.6580.0, and official Speedrun Tool 3.27.21 on the cloud desktop. The unchanged
+comparison was main `2cee797dd3d7f07abed74bd09fd6a16ebf4e4ec2`; the private
+candidate also contained proposed fixes for #279 and #278. Their DLL hashes are
+respectively `e29186cda4c0e2c9eb34a270812781f8cf03c167078518a13e50005eeedd6da2`
+and `ea61d1ebe5e502ac7a818de9b94e4745bf6c6da93e646b8b07619234368d7a9a`.
+Neither package's unchanged beta84 label identifies the historical release.
+
+Both scored processes had identical 11-file starting Saves trees, unchanged SRT
+bindings, and no observer installed. K opened Akron; SRT retained its original
+Tab binding. Actual Control Display Width accepted typed `36` to `37`, with a
+visible caret, before Tab was pressed.
+
+- Unmodified main: Tab selected Height but also opened SRT's slot grid beneath
+  Akron. Native screenshots preserve both the active editor and the conflict.
+- Candidate: Tab selected Height while SRT's grid remained closed.
+- Candidate release control: Shift+Tab returned to Width, which was restored to
+  `36`. Clicking away closed the editor while keeping Akron open; Tab then
+  opened SRT normally. Suppression was not blanket overlay-open blocking.
+
+Both processes saved and exited normally with code 0. Post-exit settings were
+preserved before original settings were restored on the closed disposable
+profiles. Final provider YAML and bindings were identical.
+
+The input route required a tiny supported native drag within the target. A
+separate read-only diagnostic observed that instantaneous clicks missed the
+polled Pressed state, while the tiny drag delivered it. That observer was removed
+before both scored runs. A failed windowed MIT-SHM preparation is retained
+separately and is not attributed to Akron. These diagnostic runs are not fix
+acceptance evidence.
+
+This establishes one ordinary numeric Width-to-Height transfer and release,
+not every editor, repeated focus stress, window-focus loss, Diagnostics Unicode,
+controller hotkeys, minus-sign input, or human testing. Those checks remain open.
+Original screenshots, logs and identities are preserved in
+`Akron-274-Native-Numeric-Focus-Comparison-20261012.zip`.
+
+## Earlier diagnostics-only fix
+
 The fix preserves Speedrun Tool's bindings and registers Akron's diagnostics text
 handler only while an editable field has focus. Closing diagnostics, changing
 scenes, resetting overlay input, or a renderer failure releases the handler.
