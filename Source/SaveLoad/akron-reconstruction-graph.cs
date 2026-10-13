@@ -169,16 +169,41 @@ internal sealed class AkronReconstructionNode {
     // Full diagnostic paths grow quadratically with graph depth. Keep the
     // compact first-owner edge on disk and rebuild this text after loading.
     [JsonIgnore]
-    public string Path {
-        get {
+    public string Path
+    {
+        get
+        {
             if (!DiagnosticPathReady || !string.IsNullOrWhiteSpace(diagnosticPath) ||
-                DiagnosticPathParent == null) {
+                DiagnosticPathParent == null)
+            {
                 return diagnosticPath;
             }
-            diagnosticPath = AkronReconstructionGraph.MaterializeDiagnosticPath(this);
+            // Normal restore visits parents first. Avoid a temporary stack when
+            // the immediate parent already has its complete diagnostic path.
+            if (!string.IsNullOrWhiteSpace(DiagnosticPathParent.diagnosticPath))
+            {
+                diagnosticPath = AkronReconstructionGraph.MaterializeDiagnosticPath(this);
+                return diagnosticPath;
+            }
+            // Materialize parents first without recursing through their getters.
+            // A deep saved graph must not consume the restore worker's call stack.
+            Stack<AkronReconstructionNode> pending = new();
+            AkronReconstructionNode node = this;
+            while (node != null && node.DiagnosticPathReady &&
+                   string.IsNullOrWhiteSpace(node.diagnosticPath) && node.DiagnosticPathParent != null)
+            {
+                pending.Push(node);
+                node = node.DiagnosticPathParent;
+            }
+            while (pending.Count > 0)
+            {
+                node = pending.Pop();
+                node.diagnosticPath = AkronReconstructionGraph.MaterializeDiagnosticPath(node);
+            }
             return diagnosticPath;
         }
-        set {
+        set
+        {
             diagnosticPath = value;
             DiagnosticPathParent = null;
             DiagnosticPathLength = string.IsNullOrWhiteSpace(value) ? -1 : value.Length;
