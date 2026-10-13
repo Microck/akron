@@ -295,15 +295,20 @@ public sealed partial class AkronOverlay {
         }, popupId, tooltip);
     }
 
-    private void HandleInputBoardEditorShortcuts(IReadOnlyList<AkronInputBoardElement> elements) {
+    private void HandleInputBoardEditorShortcuts(IReadOnlyList<AkronInputBoardElement> elements)
+    {
         bool itemEditingActive = ImGui.GetIO().WantTextInput || ImGui.IsAnyItemActive();
-        if (!itemEditingActive && IsControlDown() && MInput.Keyboard.Pressed(Keys.Z)) {
+        // Read the chord from one editor input stream, rather than mixing a raw
+        // Control snapshot with an update-scoped keyboard edge during rendering.
+        if (!itemEditingActive && ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, repeat: false))
+        {
             RestoreInputBoardUndoSnapshot();
             inputBoardKeyboardMoveUndoCaptured = false;
             return;
         }
 
-        if (itemEditingActive || elements == null || elements.Count == 0) {
+        if (itemEditingActive || elements == null || elements.Count == 0)
+        {
             inputBoardKeyboardMoveUndoCaptured = false;
             return;
         }
@@ -311,23 +316,28 @@ public sealed partial class AkronOverlay {
         KeyboardState keyboard = Keyboard.GetState();
         int dx = 0;
         int dy = 0;
-        if (keyboard.IsKeyDown(Keys.Left)) {
+        if (keyboard.IsKeyDown(Keys.Left))
+        {
             dx--;
         }
 
-        if (keyboard.IsKeyDown(Keys.Right)) {
+        if (keyboard.IsKeyDown(Keys.Right))
+        {
             dx++;
         }
 
-        if (keyboard.IsKeyDown(Keys.Up)) {
+        if (keyboard.IsKeyDown(Keys.Up))
+        {
             dy--;
         }
 
-        if (keyboard.IsKeyDown(Keys.Down)) {
+        if (keyboard.IsKeyDown(Keys.Down))
+        {
             dy++;
         }
 
-        if (dx == 0 && dy == 0) {
+        if (dx == 0 && dy == 0)
+        {
             inputBoardKeyboardMoveUndoCaptured = false;
             return;
         }
@@ -336,11 +346,13 @@ public sealed partial class AkronOverlay {
         int step = IsShiftDown() ? 10 : 1;
         int nextX = Calc.Clamp(element.X + dx * step, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition);
         int nextY = Calc.Clamp(element.Y + dy * step, AkronInputBoard.MinimumPosition, AkronInputBoard.MaximumPosition);
-        if (nextX == element.X && nextY == element.Y) {
+        if (nextX == element.X && nextY == element.Y)
+        {
             return;
         }
 
-        if (!inputBoardKeyboardMoveUndoCaptured) {
+        if (!inputBoardKeyboardMoveUndoCaptured)
+        {
             CaptureInputBoardUndoSnapshot();
             inputBoardKeyboardMoveUndoCaptured = true;
         }
