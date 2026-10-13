@@ -14,6 +14,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Changed
 
+- Hide the retained native HUD image, including the chapter timer, when Hide Vanilla HUD is enabled.
+
 - Trim Akron's entry in Celeste's mod options to an **Enabled** switch and the menu bind. Streamer Mode, Safe Mode, and Send diagnostics stay in the overlay, and action binds are set by right-clicking overlay rows.
 - Turning **Enabled** off removes Akron's overlay, HUD, hotkeys, interop, error reports, and debug console commands on the next launch. Only its mod options entry stays, so it can be turned back on there.
 - Add a **Hold** bind row to the Fast Lookout popup, set with its **Bind** button. The hold starts unbound, and Everest's keyboard and controller config used to be the only place to set it. Keyboard keys in this hold now act as one chord, like Akron's other binds: a hold saved as two separate keys needs both held, so bind it again if you meant either key. Controller and mouse buttons still work on their own.
