@@ -23,6 +23,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Defer confirmed Speedrun Tool restores until the engine update finishes, avoiding changes to the pause-menu entity list while it is being iterated.
 - Rebase Room Stat Tracker's Alive timer when native respawn rewinds the session clock, so it does not remain at zero until the previous clock value is reached.
 - Ignore Click Teleport clicks while the game is paused, including the click that unpauses it, so a click on the pause menu never moves Madeline or toggles Cursor Zoom. Cursor Tools, Cursor Zoom, Entity Inspector and Free Camera mouse control also stand down while Menu Mouse is driving a menu.
 - Right-clicking SRT Slot Previous/Next, Timescale Decrease/Increase, Frame Stepper Step Once, Open Debug Map, the FPS Bypass row, and FPS Bypass Smooth Camera now edits and clears the real hotkey, including one saved from Everest's old keyboard and controller screens. The Grab Mode popup gets a **Cycle** button for the grab-mode cycling hotkey.
