@@ -199,14 +199,45 @@ public partial class AkronModule {
         Engine.Scene?.Add(new AkronToast(DescribeSaveLoadResult("Save", result, Settings.ActiveSavestateSlot)));
     }
 
-    private static void LoadState(Level level, bool confirmed = false) {
-        if (Settings.ConfirmLoadState && !confirmed) {
+    private static void LoadState(Level level, bool confirmed = false)
+    {
+        if (Settings.ConfirmLoadState && !confirmed)
+        {
             ShowConfirmPrompt(level, "CONFIRM SPEEDRUN TOOL RESTORE", "Restore Speedrun Tool slot " + Settings.ActiveSavestateSlot + "?", () => LoadState(level, confirmed: true));
             return;
         }
 
-        AkronSaveLoadResult result = AkronSaveLoadService.Load(level, Settings.ActiveSavestateSlot);
-        Engine.Scene?.Add(new AkronToast(DescribeSaveLoadResult("Load", result, Settings.ActiveSavestateSlot)));
+        int slot = Settings.ActiveSavestateSlot;
+        if (confirmed)
+        {
+            Session requestedSession = level?.Session;
+            // A native prompt runs inside Level.Update's pause-entity iteration.
+            // SRT replaces that entity graph, so wait until all update wrappers
+            // and temporary random scopes have finished before invoking it.
+            ScheduleAfterStableEngineUpdate(() =>
+            {
+                if (IsConfirmedStateLoadContextCurrent(level, requestedSession, Engine.Scene))
+                {
+                    LoadStateNow(level, slot);
+                }
+            });
+            return;
+        }
+
+        LoadStateNow(level, slot);
+    }
+
+    internal static bool IsConfirmedStateLoadContextCurrent(Level level, Session session, Scene scene)
+    {
+        return level != null && session != null &&
+               ReferenceEquals(level, scene) && ReferenceEquals(level.Session, session);
+    }
+
+    private static void LoadStateNow(Level level, int slot)
+    {
+        // The service rechecks policy when the queued action actually executes.
+        AkronSaveLoadResult result = AkronSaveLoadService.Load(level, slot);
+        Engine.Scene?.Add(new AkronToast(DescribeSaveLoadResult("Load", result, slot)));
     }
 
     private static void ShiftSavestateSlot(int delta) {

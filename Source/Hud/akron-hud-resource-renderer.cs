@@ -270,14 +270,34 @@ public static partial class AkronHudRenderer {
         RenderInlineDashBar(player, position.X, ref inlineY, maxDashes, availableColor, emptyColor, lineColor);
     }
 
-    private static Vector2 HudAnchorPosition(AkronStaminaHudPosition position) {
-        return position switch {
-            AkronStaminaHudPosition.TopLeft => Settings.Instance.SpeedrunClock == SpeedrunType.Off ? new Vector2(48f, 48f) : new Vector2(48f, 146f),
-            AkronStaminaHudPosition.TopCenter => new Vector2(810f, 48f),
-            AkronStaminaHudPosition.BottomRight => new Vector2(1572f, 997f),
-            AkronStaminaHudPosition.BottomCenter => new Vector2(810f, 997f),
-            AkronStaminaHudPosition.BottomLeft => new Vector2(48f, 997f),
-            _ => new Vector2(1572f, 48f)
+    private static Vector2 HudAnchorPosition(AkronStaminaHudPosition position)
+    {
+        // This pass uses an identity SpriteBatch transform. Its coordinates are
+        // local to the active graphics viewport, whose origin is applied by FNA.
+        var viewport = Engine.Instance?.GraphicsDevice?.Viewport ?? Engine.Viewport;
+        var anchor = ResourceHudAnchorCoordinates(position,
+            viewport.Width > 0 ? viewport.Width : 1920,
+            viewport.Height > 0 ? viewport.Height : 1080,
+            Settings.Instance.SpeedrunClock != SpeedrunType.Off);
+        return new Vector2(anchor.X, anchor.Y);
+    }
+
+    internal static (float X, float Y) ResourceHudAnchorCoordinates(
+        AkronStaminaHudPosition position, float viewportWidth, float viewportHeight, bool clockVisible)
+    {
+        // Keep the existing nominal bar footprint, margins and user offsets.
+        // Ring/pip styles and overlap calculations share this same anchor.
+        float center = (viewportWidth - HudResourceWidth) / 2f;
+        float right = viewportWidth - HudResourceWidth - 48f;
+        float bottom = viewportHeight - HudResourceHeight - 48f;
+        return position switch
+        {
+            AkronStaminaHudPosition.TopLeft => (48f, clockVisible ? 146f : 48f),
+            AkronStaminaHudPosition.TopCenter => (center, 48f),
+            AkronStaminaHudPosition.BottomRight => (right, bottom),
+            AkronStaminaHudPosition.BottomCenter => (center, bottom),
+            AkronStaminaHudPosition.BottomLeft => (48f, bottom),
+            _ => (right, 48f)
         };
     }
 
@@ -385,14 +405,17 @@ public static partial class AkronHudRenderer {
         return settings.SpeedNumber && speedNumberAllowed;
     }
 
-    private static void RenderPlayerNumber(Level level, Player player, string text, int offsetY, int opacityPercent, int textColor, int outlineColor) {
+    private static void RenderPlayerNumber(Level level, Player player, string text, int offsetY, int opacityPercent, int textColor, int outlineColor)
+    {
         Vector2 position = AkronScreenProjection.WorldToHud(level, player.Position + new Vector2(0f, PlayerNumberAnchorOffsetY));
-        if (SaveData.Instance != null && SaveData.Instance.Assists.MirrorMode) {
-            position.X = 1920f - position.X;
-        }
-        if (Input.MoveY.Inverted) {
-            position.Y = 1080f - position.Y + 96f;
-        }
+        Vector2 viewportOrigin = AkronScreenProjection.CurrentViewportOffset();
+        var viewport = Engine.Instance?.GraphicsDevice?.Viewport ?? Engine.Viewport;
+        var anchor = PlayerNumberViewportAnchor(position.X, position.Y, viewportOrigin.X, viewportOrigin.Y,
+            viewport.Width > 0 ? viewport.Width : 1920,
+            viewport.Height > 0 ? viewport.Height : 1080,
+            SaveData.Instance != null && SaveData.Instance.Assists.MirrorMode,
+            Input.MoveY.Inverted);
+        position = new Vector2(anchor.X, anchor.Y);
 
         float scale = 0.32f;
         Vector2 size = ActiveFont.Measure(text) * scale;
@@ -406,5 +429,21 @@ public static partial class AkronHudRenderer {
             ColorFromRgb(textColor) * opacity,
             2f,
             ColorFromRgb(outlineColor) * opacity);
+    }
+
+    internal static (float X, float Y) PlayerNumberViewportAnchor(
+        float screenX, float screenY, float originX, float originY,
+        float viewportWidth, float viewportHeight, bool mirror, bool inverted)
+    {
+        // WorldToHud returns window coordinates, but this identity SpriteBatch
+        // is already inside the graphics viewport. Remove its origin once;
+        // reflecting the resulting local coordinates also needs local extents.
+        float x = screenX - originX;
+        float y = screenY - originY;
+        if (mirror)
+            x = viewportWidth - x;
+        if (inverted)
+            y = viewportHeight - y + 96f;
+        return (x, y);
     }
 }

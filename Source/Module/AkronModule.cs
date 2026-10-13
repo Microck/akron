@@ -191,6 +191,8 @@ public partial class AkronModule : EverestModule {
         AkronEngineGarbageCollection.Load();
         On.Celeste.GameplayRenderer.Render += GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent += HudRendererOnRenderContent;
+        On.Celeste.HiresRenderer.Render += HiresRendererOnRender;
+        IL.Celeste.Level.Render += LevelOnRenderForSubHudVisibility;
         On.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiOnRender;
         On.Celeste.MiniTextbox.Render += MiniTextboxOnRender;
         On.Celeste.BackdropRenderer.Render += BackdropRendererOnRender;
@@ -352,6 +354,8 @@ public partial class AkronModule : EverestModule {
         AkronEngineGarbageCollection.Unload();
         On.Celeste.GameplayRenderer.Render -= GameplayRendererOnRender;
         On.Celeste.HudRenderer.RenderContent -= HudRendererOnRenderContent;
+        On.Celeste.HiresRenderer.Render -= HiresRendererOnRender;
+        IL.Celeste.Level.Render -= LevelOnRenderForSubHudVisibility;
         On.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiOnRender;
         On.Celeste.MiniTextbox.Render -= MiniTextboxOnRender;
         if (captureSuppressionHooksInstalled) {
@@ -663,7 +667,7 @@ public partial class AkronModule : EverestModule {
         }
 
         Session levelEnterSession = LevelEnterSessionField?.GetValue(self) as Session;
-        bool postcardSkipAvailable = Settings.SkipPostcards && self.Tracker.GetEntity<Postcard>() != null;
+        bool postcardSkipAvailable = Settings.SkipPostcards && ContainsLevelEnterPostcard(self.Entities);
         bool introSkipAvailable = Settings.SkipIntro &&
                                   levelEnterSession != null &&
                                   levelEnterSession.StartedFromBeginning &&
@@ -687,6 +691,25 @@ public partial class AkronModule : EverestModule {
 
         Engine.Scene = new LevelLoader(levelEnterSession);
         Engine.Scene?.Add(new AkronToast("Skipped level intro."));
+    }
+
+    internal static bool ContainsLevelEnterPostcard(IEnumerable<Entity> entities)
+    {
+        // Postcard is not tracked. Tracker.GetEntity<Postcard>() indexes a missing
+        // type key and throws during chapter entry, even before Confirm is held.
+        // Inspect only this scene's active entities so absence remains a normal state.
+        if (entities == null)
+        {
+            return false;
+        }
+        foreach (Entity entity in entities)
+        {
+            if (entity is Postcard)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void LevelOnUpdateTime(On.Celeste.Level.orig_UpdateTime orig, Level self) {
@@ -1470,6 +1493,56 @@ public partial class AkronModule : EverestModule {
         } finally {
             Draw.SpriteBatch.End();
         }
+    }
+
+    private static void HiresRendererOnRender(On.Celeste.HiresRenderer.orig_Render orig, HiresRenderer self, Scene scene)
+    {
+        if (!ShouldSuppressNativeHudRender(self, scene))
+        {
+            orig(self, scene);
+        }
+    }
+
+    private static void LevelOnRenderForSubHudVisibility(ILContext context)
+    {
+        ILCursor cursor = new ILCursor(context);
+        // Everest's sub-HUD has its own renderer and is called directly by Level.
+        // Gate that public Level call site rather than hooking Everest internals.
+        if (!cursor.TryGotoNext(MoveType.Before,
+                instruction => instruction.MatchLdarg(0),
+                instruction => instruction.MatchLdfld<Level>(nameof(Level.SubHudRenderer)),
+                instruction => instruction.MatchLdarg(0),
+                instruction => instruction.MatchCallvirt<Renderer>(nameof(Renderer.Render))))
+        {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule),
+                "Could not install SubHUD render visibility hook.");
+            return;
+        }
+
+        int callStart = cursor.Index;
+        ILLabel afterRender = cursor.DefineLabel();
+        cursor.Index += 4;
+        cursor.MarkLabel(afterRender);
+        cursor.Index = callStart;
+        // Existing branches to this call must also run the visibility predicate.
+        cursor.MoveAfterLabels();
+        cursor.Emit(OpCodes.Ldarg_0);
+        cursor.EmitDelegate<Func<Level, bool>>(ShouldSuppressSubHudRender);
+        cursor.Emit(OpCodes.Brtrue, afterRender);
+    }
+
+    private static bool ShouldSuppressSubHudRender(Level level)
+    {
+        return ShouldSuppressNativeHudRender(level.SubHudRenderer, level);
+    }
+
+    private static bool ShouldSuppressNativeHudRender(Renderer renderer, Scene scene)
+    {
+        // Resolve the current renderers here: an SRT restore can replace them
+        // after Level.Update and before this render pass.
+        return scene is Level level && Settings.HideVanillaHud &&
+               AkronPolicy.CanUse(AkronFeatureKind.HudVisibility).Allowed &&
+               AkronRuntimeOptions.IsCurrentVanillaHudRenderer(renderer, level.HudRenderer, level.SubHudRenderer);
     }
 
     private static void HudRendererOnRenderContent(On.Celeste.HudRenderer.orig_RenderContent orig, HudRenderer self, Scene scene) {
