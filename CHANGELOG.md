@@ -23,6 +23,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Read Control Display layout undo (Ctrl+Z) through the editor's input stream, while leaving text-field undo to its active editor.
 - Prevent **Skip Postcards** from throwing a missing-tracker-key error during chapter entry by finding postcards in the entering scene's entity list.
 - Release diagnostics text ownership immediately on close, including a close during rendering, so a fresh overlay-toggle press is not swallowed by stale editor focus.
 - Keep overlay-toggle key state current while Level diagnostics owns input, avoiding a stale toggle when the dialog closes.
