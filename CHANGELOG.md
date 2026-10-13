@@ -24,6 +24,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Keep fixed stamina and dash HUD anchors relative to the active viewport when the window size changes.
 - Read Control Display layout undo (Ctrl+Z) through the editor's input stream, while leaving text-field undo to its active editor.
 - Prevent **Skip Postcards** from throwing a missing-tracker-key error during chapter entry by finding postcards in the entering scene's entity list.
 - Release diagnostics text ownership immediately on close, including a close during rendering, so a fresh overlay-toggle press is not swallowed by stale editor focus.
