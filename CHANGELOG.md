@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Release diagnostics text ownership immediately on close, including a close during rendering, so a fresh overlay-toggle press is not swallowed by stale editor focus.
+
 - Keep overlay-toggle key state current while Level diagnostics owns input, avoiding a stale toggle when the dialog closes.
 
 - Defer confirmed Speedrun Tool restores until the engine update finishes, avoiding changes to the pause-menu entity list while it is being iterated.
