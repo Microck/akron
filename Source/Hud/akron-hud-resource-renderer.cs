@@ -270,14 +270,34 @@ public static partial class AkronHudRenderer {
         RenderInlineDashBar(player, position.X, ref inlineY, maxDashes, availableColor, emptyColor, lineColor);
     }
 
-    private static Vector2 HudAnchorPosition(AkronStaminaHudPosition position) {
-        return position switch {
-            AkronStaminaHudPosition.TopLeft => Settings.Instance.SpeedrunClock == SpeedrunType.Off ? new Vector2(48f, 48f) : new Vector2(48f, 146f),
-            AkronStaminaHudPosition.TopCenter => new Vector2(810f, 48f),
-            AkronStaminaHudPosition.BottomRight => new Vector2(1572f, 997f),
-            AkronStaminaHudPosition.BottomCenter => new Vector2(810f, 997f),
-            AkronStaminaHudPosition.BottomLeft => new Vector2(48f, 997f),
-            _ => new Vector2(1572f, 48f)
+    private static Vector2 HudAnchorPosition(AkronStaminaHudPosition position)
+    {
+        // This pass uses an identity SpriteBatch transform. Its coordinates are
+        // local to the active graphics viewport, whose origin is applied by FNA.
+        var viewport = Engine.Instance?.GraphicsDevice?.Viewport ?? Engine.Viewport;
+        var anchor = ResourceHudAnchorCoordinates(position,
+            viewport.Width > 0 ? viewport.Width : 1920,
+            viewport.Height > 0 ? viewport.Height : 1080,
+            Settings.Instance.SpeedrunClock != SpeedrunType.Off);
+        return new Vector2(anchor.X, anchor.Y);
+    }
+
+    internal static (float X, float Y) ResourceHudAnchorCoordinates(
+        AkronStaminaHudPosition position, float viewportWidth, float viewportHeight, bool clockVisible)
+    {
+        // Keep the existing nominal bar footprint, margins and user offsets.
+        // Ring/pip styles and overlap calculations share this same anchor.
+        float center = (viewportWidth - HudResourceWidth) / 2f;
+        float right = viewportWidth - HudResourceWidth - 48f;
+        float bottom = viewportHeight - HudResourceHeight - 48f;
+        return position switch
+        {
+            AkronStaminaHudPosition.TopLeft => (48f, clockVisible ? 146f : 48f),
+            AkronStaminaHudPosition.TopCenter => (center, 48f),
+            AkronStaminaHudPosition.BottomRight => (right, bottom),
+            AkronStaminaHudPosition.BottomCenter => (center, bottom),
+            AkronStaminaHudPosition.BottomLeft => (48f, bottom),
+            _ => (right, 48f)
         };
     }
 

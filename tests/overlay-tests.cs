@@ -26,6 +26,23 @@ public sealed class OverlayTests {
     }
 
     [Fact]
+    public void FocusedNormalEditorsReserveTextInputWithoutADiagnosticsOnlyGate()
+    {
+        // The same RenderFrame path serves normal numeric editors and Diagnostics.
+        // Verify its compiled wiring without needing a graphics device. Native Tab
+        // delivery and SRT suppression still require the in-game regression check.
+        using ModuleDefinition module = ModuleDefinition.ReadModule(typeof(AkronOverlay).Assembly.Location);
+        TypeDefinition renderer = module.GetType(typeof(AkronImGuiRenderer).FullName);
+        MethodDefinition render = renderer.Methods.Single(method => method.Name == "RenderFrame");
+        MethodReference[] calls = render.Body.Instructions.Select(instruction => instruction.Operand)
+            .OfType<MethodReference>().ToArray();
+        Assert.Contains(calls, method => method.DeclaringType.FullName == typeof(AkronImGuiRenderer).FullName && method.Name == "get_WantTextInput");
+        Assert.Contains(calls, method => method.DeclaringType.FullName == typeof(AkronOverlay).FullName && method.Name == "IsGameWindowInputActive");
+        Assert.Contains(calls, method => method.DeclaringType.FullName == typeof(AkronImGuiRenderer).FullName && method.Name == "SetTextInputActive");
+        Assert.DoesNotContain(calls, method => method.DeclaringType.FullName == typeof(AkronDiagnosticsMenu).FullName && method.Name == "get_AcceptsTextInput");
+    }
+
+    [Fact]
     public void TextInputFocusPreservesPendingUnicodeAndReleaseClearsIt() {
         // Exercise the renderer's session state without creating a graphics device.
         // Everest's actual event dispatch and SRT require the in-game check.
