@@ -2489,6 +2489,10 @@ public static partial class AkronSaveLoadService {
                 level.Session.DeathsInCurrentLevel = Math.Max(currentDeathsInRoom, level.Session.DeathsInCurrentLevel);
             }
 
+            // A warm Level clone replaces its Session but retains global SaveData.
+            // Native Save and Quit/Continue must follow that restored live session.
+            RelinkRestoredSaveSession(SaveData.Instance, level.Session, restoreGlobalSaveData);
+
             // These are room simulation clocks, not cumulative player stats.
             // Restore them exactly so time-driven visuals and entity behavior
             // resume from the Set frame. Session and save-file time remain
