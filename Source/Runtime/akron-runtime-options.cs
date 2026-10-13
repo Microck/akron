@@ -23,13 +23,7 @@ public static class AkronRuntimeOptions {
     private static readonly Dictionary<object, bool> HiddenHudVisibility = new Dictionary<object, bool>();
     private static readonly Dictionary<string, object> SafeModeStatSnapshot = new Dictionary<string, object>();
     private static string safeModeSnapshotArea = string.Empty;
-    private static Level visualTuningLevel;
-    private static string visualTuningRoom = string.Empty;
-    private static object visualTuningLighting;
-    private static object visualTuningBloom;
-    private static float? visualTuningLightingAlpha;
-    private static float? visualTuningBloomBase;
-    private static float? visualTuningBloomStrength;
+    private static readonly AkronVisualTuningOverrides VisualTuningOverrides = new();
 
     public static void Reset() {
         RestorePauseMenuVisibility();
@@ -372,85 +366,41 @@ public static class AkronRuntimeOptions {
         }
     }
 
-    private static void ApplyVisualTuning(Level level) {
-        if (level == null || !ShouldApplyVisualTuning()) {
+    private static void ApplyVisualTuning(Level level)
+    {
+        if (level == null)
+        {
             RestoreVisualTuning();
             return;
         }
 
-        CaptureVisualTuningBaseline(level);
-
-        if (AkronModule.Settings.LightLevel) {
-            object lighting = GetMember(level, "Lighting");
-            if (lighting != null) {
-                float light = AkronModuleSettings.ClampLightLevelPercent(AkronModule.Settings.LightLevelPercent) / 100f;
-                SetMember(lighting, "Alpha", Calc.Clamp(1f - light, 0f, 1f));
-            }
-        }
-
-        if (AkronModule.Settings.BloomLevel) {
-            object bloom = GetMember(level, "Bloom");
-            if (bloom != null) {
-                float amount = AkronModuleSettings.ClampBloomLevelPercent(AkronModule.Settings.BloomLevelPercent) / 100f;
-                SetMember(bloom, "Base", Calc.Clamp(Math.Min(amount, 1f), 0f, 1f));
-                SetMember(bloom, "Strength", Math.Max(1f, amount));
-            }
-        }
+        bool allowed = ShouldApplyVisualTuning();
+        float light = AkronModuleSettings.ClampLightLevelPercent(AkronModule.Settings.LightLevelPercent) / 100f;
+        float bloom = AkronModuleSettings.ClampBloomLevelPercent(AkronModule.Settings.BloomLevelPercent) / 100f;
+        VisualTuningOverrides.Apply(level, level.Session?.Level ?? string.Empty,
+            GetMember(level, "Lighting"), GetMember(level, "Bloom"),
+            allowed && AkronModule.Settings.LightLevel, Math.Clamp(1f - light, 0f, 1f),
+            allowed && AkronModule.Settings.BloomLevel, Math.Clamp(bloom, 0f, 1f), Math.Max(1f, bloom));
     }
 
-    private static bool ShouldApplyVisualTuning() {
-        if (!AkronModule.Settings.LightLevel && !AkronModule.Settings.BloomLevel && !AkronModule.Settings.ScreenTint) {
+    private static bool ShouldApplyVisualTuning()
+    {
+        if (!AkronModule.Settings.LightLevel && !AkronModule.Settings.BloomLevel && !AkronModule.Settings.ScreenTint)
+        {
             return false;
         }
 
         return AkronModule.TryUseRuntime(AkronFeatureKind.VisualTuning);
     }
 
-    private static void CaptureVisualTuningBaseline(Level level) {
-        string room = level.Session?.Level ?? string.Empty;
-        if (ReferenceEquals(visualTuningLevel, level) && string.Equals(visualTuningRoom, room, StringComparison.Ordinal)) {
-            return;
-        }
-
-        RestoreVisualTuning();
-        visualTuningLevel = level;
-        visualTuningRoom = room;
-        visualTuningLighting = GetMember(level, "Lighting");
-        visualTuningBloom = GetMember(level, "Bloom");
-
-        if (TryGetMemberValue(visualTuningLighting, "Alpha", out object alpha) && alpha is float lightingAlpha) {
-            visualTuningLightingAlpha = lightingAlpha;
-        }
-
-        if (TryGetMemberValue(visualTuningBloom, "Base", out object bloomBase) && bloomBase is float baseValue) {
-            visualTuningBloomBase = baseValue;
-        }
-
-        if (TryGetMemberValue(visualTuningBloom, "Strength", out object bloomStrength) && bloomStrength is float strengthValue) {
-            visualTuningBloomStrength = strengthValue;
-        }
+    internal static void BeforeVisualTuningLevelLoad(Level level)
+    {
+        VisualTuningOverrides.BeforeLevelLoad(level, Engine.Scene);
     }
 
-    private static void RestoreVisualTuning() {
-        if (visualTuningLighting != null && visualTuningLightingAlpha.HasValue) {
-            SetMember(visualTuningLighting, "Alpha", visualTuningLightingAlpha.Value);
-        }
-
-        if (visualTuningBloom != null && visualTuningBloomBase.HasValue) {
-            SetMember(visualTuningBloom, "Base", visualTuningBloomBase.Value);
-        }
-
-        if (visualTuningBloom != null && visualTuningBloomStrength.HasValue) {
-            SetMember(visualTuningBloom, "Strength", visualTuningBloomStrength.Value);
-        }
-
-        visualTuningLevel = null;
-        visualTuningRoom = string.Empty;
-        visualTuningLighting = null;
-        visualTuningBloom = null;
-        visualTuningLightingAlpha = null;
-        visualTuningBloomBase = null;
-        visualTuningBloomStrength = null;
+    private static void RestoreVisualTuning()
+    {
+        VisualTuningOverrides.Reset();
     }
 
     private static void RestoreHudVisibility() {
