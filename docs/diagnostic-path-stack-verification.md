@@ -44,3 +44,25 @@ This is ordinary capture/publication/warm-load compatibility. It neither
 reproduces the Debug small-stack failure nor proves full state identity,
 clock/stat preservation, cold reload or real deep-map behavior. The separate
 automated baseline/candidate comparison establishes the reported test fix.
+
+
+## Review follow-up: cached-parent allocations
+
+A second Codex review identified an avoidable Stack and backing-array allocation
+for each ordinary parent-first path materialization. The getter now calls the
+existing materializer directly when its immediate parent already has a nonblank
+cached path; uncached ancestor chains retain iterative traversal.
+
+A new allocation regression compares 1024 cached-parent getters with direct
+materialization, after warming both paths. The original reviewed implementation
+allocated 139264 bytes versus 49152 bytes for direct materialization and failed
+the regression. The corrected implementation passes. Initial full Debug and
+Release suites both passed 2046 tests before integrating the already-merged
+Alive fix. This is a managed allocation observation, not a native hitch benchmark.
+The native package identities above belong to the earlier implementation; no new
+native run is claimed for this fast path.
+
+After integrating the already-merged Alive change and preserving both changelog
+entries, full Debug and Release suites passed 2058 tests each; the final Release
+run used ContinuousIntegrationBuild=true. The focused regression demonstrably
+fails the pre-fast-path source and passes the corrected source.

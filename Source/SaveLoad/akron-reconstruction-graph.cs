@@ -178,6 +178,13 @@ internal sealed class AkronReconstructionNode {
             {
                 return diagnosticPath;
             }
+            // Normal restore visits parents first. Avoid a temporary stack when
+            // the immediate parent already has its complete diagnostic path.
+            if (!string.IsNullOrWhiteSpace(DiagnosticPathParent.diagnosticPath))
+            {
+                diagnosticPath = AkronReconstructionGraph.MaterializeDiagnosticPath(this);
+                return diagnosticPath;
+            }
             // Materialize parents first without recursing through their getters.
             // A deep saved graph must not consume the restore worker's call stack.
             Stack<AkronReconstructionNode> pending = new();
