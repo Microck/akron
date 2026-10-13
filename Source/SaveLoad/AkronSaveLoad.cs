@@ -2260,6 +2260,7 @@ public static partial class AkronSaveLoadService {
             if (includeLevelSnapshot) {
                 saveSlot.SavedLevel = (Level) RuntimeHelpers.GetUninitializedObject(typeof(Level));
                 saveSlot.SavedLevelEventInstances = AkronDeepClone.CopyIntoDormant(level, saveSlot.SavedLevel);
+                AkronRuntimeOptions.PrepareVisualTuningSnapshot(level, saveSlot.SavedLevel);
                 ClearDeadCutsceneSkipCallback(saveSlot.SavedLevel);
             }
             saveSlot.SessionState = (Session) DeepClone(level.Session);

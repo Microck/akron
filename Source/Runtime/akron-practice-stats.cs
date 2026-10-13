@@ -109,11 +109,42 @@ public static class AkronPracticeStats {
         return Math.Max(0, GetCurrentAliveTime(level) - GetFrozenDuration(level.Session.Time, AkronModule.Session.RoomStatAliveFrozenStartedAt, AkronModule.Session.RoomStatAliveFrozenDuration));
     }
 
-    public static void NotifyRespawnTimerReset(Level level) {
+    public static void NotifyRespawnTimerReset(Level level)
+    {
         long now = level?.Session?.Time ?? 0;
-        AkronModule.Session.RoomStatAliveStartedAt = now;
-        AkronModule.Session.RoomStatAliveFrozenDuration = 0;
-        AkronModule.Session.RoomStatAliveFrozenStartedAt = level != null && IsRoomStatFreezeActive(level) ? now : -1;
+        ResetAliveTimer(AkronModule.Session, now, level != null && IsRoomStatFreezeActive(level));
+    }
+
+    internal static void NotifyPlayerRespawn(Level level)
+    {
+        AkronModuleSession session = AkronModule.TryGetSession();
+        if (level?.Session == null || session == null || level.Session.Time >= session.RoomStatAliveStartedAt)
+        {
+            return;
+        }
+
+        // Native first-room Reload can rewind Session.Time after PlayerOnDie reset
+        // this baseline. Reconcile only that future baseline when a player returns;
+        // ordinary additions and coherent restored timers retain their elapsed time.
+        RebaseAliveTimerAfterRespawn(session, level.Session.Time, IsRoomStatFreezeActive(level));
+    }
+
+    internal static bool RebaseAliveTimerAfterRespawn(AkronModuleSession session, long now, bool frozen)
+    {
+        if (session == null || now >= session.RoomStatAliveStartedAt)
+        {
+            return false;
+        }
+
+        ResetAliveTimer(session, now, frozen);
+        return true;
+    }
+
+    private static void ResetAliveTimer(AkronModuleSession session, long now, bool frozen)
+    {
+        session.RoomStatAliveStartedAt = now;
+        session.RoomStatAliveFrozenDuration = 0;
+        session.RoomStatAliveFrozenStartedAt = frozen ? now : -1;
     }
 
     public static void NotifyRoomStrawberryCollected() {
