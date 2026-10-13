@@ -194,6 +194,6 @@ public sealed class RestoredSaveSessionTests
         }
     }
 
-    private static string FindRoot([CallerFilePath] string path = "") =>
-        Path.GetDirectoryName(Path.GetDirectoryName(path))!;
+    private static string FindRoot() =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../.."));
 }
