@@ -617,26 +617,35 @@ public partial class AkronModule {
         cursorVisibilityCaptured = false;
     }
 
-    private static bool IsOverlayTogglePressed() {
+    private static bool IsOverlayTogglePressed()
+    {
         AkronModuleSettings.EnsureCurrentOverlayToggleDefault(Settings);
         ButtonBinding binding = Settings.ToggleOverlay;
-        if (binding == null) {
+        if (binding == null)
+        {
             return false;
         }
 
         KeyboardState keyboard = Keyboard.GetState();
         KeyboardState previousKeyboard = previousOverlayToggleKeyboard;
+        // Consume keyboard edges while typing too, so leaving an editor does not
+        // replay a toggle key that is still held.
         previousOverlayToggleKeyboard = keyboard;
 
-        if (IsKeyboardBindingPressed(binding.Keys, keyboard, previousKeyboard)) {
+        if (!(Overlay?.Visible == true && AkronImGuiRenderer.WantTextInput) &&
+            IsKeyboardBindingPressed(binding.Keys, keyboard, previousKeyboard))
+        {
             return true;
         }
 
         if (binding.Buttons != null &&
             Input.Gamepad >= 0 &&
-            Input.Gamepad < MInput.GamePads.Length) {
-            foreach (Buttons button in binding.Buttons) {
-                if (MInput.GamePads[Input.Gamepad].Pressed(button)) {
+            Input.Gamepad < MInput.GamePads.Length)
+        {
+            foreach (Buttons button in binding.Buttons)
+            {
+                if (MInput.GamePads[Input.Gamepad].Pressed(button))
+                {
                     return true;
                 }
             }
