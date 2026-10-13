@@ -371,6 +371,8 @@ internal static class AkronDiagnosticsMenu {
 
     private static void Close() {
         if (!IsOpen) return;
+        // Draw can poll input after the update guard, so consume the closing frame too.
+        AkronModule.RefreshOverlayToggleKeyboardState();
         Scene scene = ownerScene;
         ownerScene = null;
         AkronImGuiRenderer.EndTextInputSession();
