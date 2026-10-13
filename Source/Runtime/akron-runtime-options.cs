@@ -393,6 +393,17 @@ public static class AkronRuntimeOptions {
         return AkronModule.TryUseRuntime(AkronFeatureKind.VisualTuning);
     }
 
+    internal static void PrepareVisualTuningSnapshot(Level source, Level snapshot)
+    {
+        if (source == null || snapshot == null || ReferenceEquals(source, snapshot))
+        {
+            return;
+        }
+        VisualTuningOverrides.CopyBaselinesToSnapshot(source,
+            GetMember(source, "Lighting"), GetMember(source, "Bloom"),
+            GetMember(snapshot, "Lighting"), GetMember(snapshot, "Bloom"));
+    }
+
     internal static void BeforeVisualTuningLevelLoad(Level level)
     {
         VisualTuningOverrides.BeforeLevelLoad(level, Engine.Scene);

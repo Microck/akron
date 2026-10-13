@@ -43,6 +43,21 @@ internal sealed class AkronVisualTuningOverrides
         bloomStrength.Apply(bloom, bloomEnabled, strength);
     }
 
+    internal void CopyBaselinesToSnapshot(object level, object sourceLighting, object sourceBloom,
+        object capturedLighting, object capturedBloom)
+    {
+        if (!ReferenceEquals(owner, level))
+        {
+            return;
+        }
+
+        // Snapshots carry the underlying renderer values, not transient Akron
+        // overrides. Never release or write the live renderer during capture.
+        light.CopyBaselineToSnapshot(sourceLighting, capturedLighting);
+        bloomBase.CopyBaselineToSnapshot(sourceBloom, capturedBloom);
+        bloomStrength.CopyBaselineToSnapshot(sourceBloom, capturedBloom);
+    }
+
     internal void BeforeLevelLoad(object level, object activeScene)
     {
         // Detached snapshot loaders must never release the active scene's state.
@@ -118,6 +133,24 @@ internal sealed class AkronVisualTuningOverrides
             baseline = Read();
             lastWritten = baseline;
             return true;
+        }
+
+        internal void CopyBaselineToSnapshot(object source, object captured)
+        {
+            if (target == null || !ReferenceEquals(target, source) || captured == null ||
+                ReferenceEquals(source, captured) || !Read().Equals(lastWritten))
+            {
+                return;
+            }
+
+            var snapshot = new FloatOverride(memberName);
+            if (snapshot.Acquire(captured) && snapshot.Read().Equals(lastWritten))
+            {
+                snapshot.Write(baseline);
+            }
+            // This temporary accessor never owns an applied override, so do not
+            // Release it (which would undo the baseline copied into the snapshot).
+            snapshot.Clear();
         }
 
         internal void ReleaseForRoomChange(object incomingRenderer)
