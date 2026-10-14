@@ -24,6 +24,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Align Show Triggers with native collider regions in letterboxed windows by applying the viewport origin once.
 - Keep native Save and Quit and Continue linked to the live session after a warm StartPos load, so later session time and progress are not saved through an obsolete session reference.
 - Convert Dash Number and Speed Number projections to viewport-local coordinates so letterboxing does not apply its origin twice; mirrored/inverted number anchors use the active viewport extents.
 - Keep fixed stamina and dash HUD anchors relative to the active viewport when the window size changes.

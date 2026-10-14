@@ -9,7 +9,8 @@ using System.Linq;
 
 namespace Celeste.Mod.Akron;
 
-public static partial class AkronHudRenderer {
+public static partial class AkronHudRenderer
+{
     private const float PlayerGravity = 900f;
     private const float PlayerMaxRun = 90f;
     private const float PlayerRunAccel = 1000f;
@@ -24,16 +25,19 @@ public static partial class AkronHudRenderer {
     private static AkronHudRect? currentLabelPlayerHudRect;
     private static bool currentAnyHudLabelObstructed;
 
-    public static void Render(Level level, bool ignoreDeathWipeSuppression = false) {
+    public static void Render(Level level, bool ignoreDeathWipeSuppression = false)
+    {
         AkronModuleSettings settings = AkronModule.Settings;
         Player player = level.Tracker.GetEntity<Player>();
 
-        if (AkronCapture.IsCapturingGameFrame) {
+        if (AkronCapture.IsCapturingGameFrame)
+        {
             return;
         }
 
         if (AkronModule.ShouldHideAkronRenderSurfacesAfterStateTransition() ||
-            !ignoreDeathWipeSuppression && AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe()) {
+            !ignoreDeathWipeSuppression && AkronModule.ShouldHideAkronRenderSurfacesBehindDeathWipe())
+        {
             return;
         }
 
@@ -44,7 +48,8 @@ public static partial class AkronHudRenderer {
 
         // Modal Akron prompts should suppress the rest of Akron's HUD layer so
         // the prompt reads like a single focused surface rather than stacked UI.
-        if (AkronPromptMenu.IsOpen) {
+        if (AkronPromptMenu.IsOpen)
+        {
             return;
         }
 
@@ -53,72 +58,86 @@ public static partial class AkronHudRenderer {
         currentLabelPlayerHudRect = ResolvePlayerHudRect(level, player);
         float labelStartY = HudEdgePadding + TopLeftIndicatorReservedHeight();
         currentAnyHudLabelObstructed = CalculateAnyHudLabelObstructed(level, player, settings, labelStartY);
-        try {
-        if (ShouldShowIndicator()) {
-            RenderIndicator(level);
-        }
+        try
+        {
+            if (ShouldShowIndicator())
+            {
+                RenderIndicator(level);
+            }
 
-        RenderPresentationOverlayChips(level);
+            RenderPresentationOverlayChips(level);
 
-        if (settings.HideAkronHud && AkronPolicy.CanUse(AkronFeatureKind.HudVisibility).Allowed) {
-            return;
-        }
+            if (settings.HideAkronHud && AkronPolicy.CanUse(AkronFeatureKind.HudVisibility).Allowed)
+            {
+                return;
+            }
 
-        float y = labelStartY;
-        bool labelsVisible = settings.LabelSystemVisible;
-        // Every element below checks its setting before TryUse: TryUse records, so it must not
-        // run for an element that is switched off. See the DashNumber comment further down. The
-        // bars and numbers have no Labels-tab row and keep a fixed place above the ordered
-        // stack, which WalkLabelStack draws in the player's row order.
-        if (player != null && (settings.StaminaBar || settings.ResourceBars && settings.ResourceStaminaBar) &&
-            AkronModule.TryUseRuntime(AkronFeatureKind.ResourceBars)) {
-            RenderStaminaBars(level, player, HudEdgePadding, ref y);
-        }
+            float y = labelStartY;
+            bool labelsVisible = settings.LabelSystemVisible;
+            // Every element below checks its setting before TryUse: TryUse records, so it must not
+            // run for an element that is switched off. See the DashNumber comment further down. The
+            // bars and numbers have no Labels-tab row and keep a fixed place above the ordered
+            // stack, which WalkLabelStack draws in the player's row order.
+            if (player != null && (settings.StaminaBar || settings.ResourceBars && settings.ResourceStaminaBar) &&
+                AkronModule.TryUseRuntime(AkronFeatureKind.ResourceBars))
+            {
+                RenderStaminaBars(level, player, HudEdgePadding, ref y);
+            }
 
-        if (player != null && (settings.DashBar || settings.ResourceBars && settings.ResourceDashPips) &&
-            AkronModule.TryUseRuntime(AkronFeatureKind.ResourceBars)) {
-            RenderDashBar(level, player, HudEdgePadding, ref y);
-        }
+            if (player != null && (settings.DashBar || settings.ResourceBars && settings.ResourceDashPips) &&
+                AkronModule.TryUseRuntime(AkronFeatureKind.ResourceBars))
+            {
+                RenderDashBar(level, player, HudEdgePadding, ref y);
+            }
 
-        // The settings check is repeated in front of TryUse on purpose. TryUse is not a
-        // question, it records a feature use and can raise a policy toast, and C# evaluates
-        // it before ShouldRenderDashNumber can decide the element is switched off. As an
-        // argument it therefore ran on every HUD frame whatever the setting said, which
-        // recorded about sixty uses a second and pinned the attempt status to Cheat -
-        // "Displays already-current player speed above Madeline" - on installs with the
-        // speed number off. Every other element on this screen short-circuits the same way.
-        if (player != null && settings.DashNumber &&
-            ShouldRenderDashNumber(settings, AkronModule.TryUseRuntime(AkronFeatureKind.ResourceBars))) {
-            RenderDashNumber(level, player);
-        }
+            // The settings check is repeated in front of TryUse on purpose. TryUse is not a
+            // question, it records a feature use and can raise a policy toast, and C# evaluates
+            // it before ShouldRenderDashNumber can decide the element is switched off. As an
+            // argument it therefore ran on every HUD frame whatever the setting said, which
+            // recorded about sixty uses a second and pinned the attempt status to Cheat -
+            // "Displays already-current player speed above Madeline" - on installs with the
+            // speed number off. Every other element on this screen short-circuits the same way.
+            if (player != null && settings.DashNumber &&
+                ShouldRenderDashNumber(settings, AkronModule.TryUseRuntime(AkronFeatureKind.ResourceBars)))
+            {
+                RenderDashNumber(level, player);
+            }
 
-        if (player != null && settings.SpeedNumber &&
-            ShouldRenderSpeedNumber(settings, AkronModule.TryUseRuntime(AkronFeatureKind.SpeedNumber))) {
-            RenderSpeedNumber(level, player);
-        }
+            if (player != null && settings.SpeedNumber &&
+                ShouldRenderSpeedNumber(settings, AkronModule.TryUseRuntime(AkronFeatureKind.SpeedNumber)))
+            {
+                RenderSpeedNumber(level, player);
+            }
 
-        if (settings.ShowTaps && AkronModule.TryUseRuntime(AkronFeatureKind.ShowTaps)) {
-            RenderTapDisplay(ref y);
-        }
+            if (settings.ShowTaps && AkronModule.TryUseRuntime(AkronFeatureKind.ShowTaps))
+            {
+                RenderTapDisplay(ref y);
+            }
 
-        if (labelsVisible) {
-            WalkLabelStack(level, player, settings, AkronModule.TryUseRuntime, new DrawLabelStackSink(level, player), ref y);
-        }
+            if (labelsVisible)
+            {
+                WalkLabelStack(level, player, settings, AkronModule.TryUseRuntime, new DrawLabelStackSink(level, player), ref y);
+            }
 
-        if (labelsVisible && AkronPolicy.CanUse(AkronFeatureKind.Savestates).Allowed && AkronSaveLoadService.HasSlot(settings.ActiveSavestateSlot)) {
-            DrawText("SRT slot " + settings.ActiveSavestateSlot + ": saved", HudEdgePadding, ref y, Color.White);
-        }
+            if (labelsVisible && AkronPolicy.CanUse(AkronFeatureKind.Savestates).Allowed && AkronSaveLoadService.HasSlot(settings.ActiveSavestateSlot))
+            {
+                DrawText("SRT slot " + settings.ActiveSavestateSlot + ": saved", HudEdgePadding, ref y, Color.White);
+            }
 
-        if (labelsVisible && settings.EntityInspector && AkronModule.TryUseRuntime(AkronFeatureKind.EntityInspector)) {
-            DrawText("Entity: " + AkronEntityInspector.Describe(level), HudEdgePadding, ref y, Color.White);
-        }
+            if (labelsVisible && settings.EntityInspector && AkronModule.TryUseRuntime(AkronFeatureKind.EntityInspector))
+            {
+                DrawText("Entity: " + AkronEntityInspector.Describe(level), HudEdgePadding, ref y, Color.White);
+            }
 
-        if (labelsVisible &&
-            (settings.InputHistoryPanel || settings.InputHistoryShowOnDeath && AkronInputHistory.DeathPinned) &&
-            AkronModule.TryUseRuntime(AkronFeatureKind.InputHistory)) {
-            RenderInputHistory(ref y);
+            if (labelsVisible &&
+                (settings.InputHistoryPanel || settings.InputHistoryShowOnDeath && AkronInputHistory.DeathPinned) &&
+                AkronModule.TryUseRuntime(AkronFeatureKind.InputHistory))
+            {
+                RenderInputHistory(ref y);
+            }
         }
-        } finally {
+        finally
+        {
             currentLabelPlayerHudRect = previousLabelPlayerHudRect;
             currentAnyHudLabelObstructed = previousAnyHudLabelObstructed;
         }
@@ -126,67 +145,93 @@ public static partial class AkronHudRenderer {
 
     // Pure visibility check: the label stack walk records the use, and the obstruction
     // planner calls this too, where nothing may be recorded.
-    private static bool ShouldRenderRoomStatTracker(Level level) {
-        if (level == null) {
+    private static bool ShouldRenderRoomStatTracker(Level level)
+    {
+        if (level == null)
+        {
             return false;
         }
 
         return !AkronModule.Settings.RoomStatHideIfGolden || !level.Session.GrabbedGolden;
     }
 
-    private static IEnumerable<string> FormatRoomStatTracker(Level level) {
+    private static IEnumerable<string> FormatRoomStatTracker(Level level)
+    {
         AkronModuleSettings settings = AkronModule.Settings;
         List<string> parts = new List<string>();
-        if (settings.RoomStatShowRoomName) {
+        if (settings.RoomStatShowRoomName)
+        {
             parts.Add("Room " + level.Session.Level);
         }
 
-        if (settings.RoomStatShowDeaths) {
+        if (settings.RoomStatShowDeaths)
+        {
             parts.Add("Deaths " + FormatHudNumber(AkronModule.Session.DeathsSinceRoomTransition));
         }
 
-        if (settings.RoomStatShowInGameTime) {
+        if (settings.RoomStatShowInGameTime)
+        {
             parts.Add("Time " + FormatHudTicks(AkronPracticeStats.GetCurrentRoomStatTime(level)));
         }
 
-        if (settings.RoomStatShowStrawberries) {
+        if (settings.RoomStatShowStrawberries)
+        {
             parts.Add("Berries " + FormatHudNumber(AkronModule.Session.RoomStatStrawberries));
         }
 
-        if (settings.RoomStatShowAliveTime) {
+        if (settings.RoomStatShowAliveTime)
+        {
             parts.Add("Alive " + FormatHudTicks(AkronPracticeStats.GetCurrentRoomStatAliveTime(level)));
         }
 
-        if (parts.Count == 0) {
+        if (parts.Count == 0)
+        {
             yield break;
         }
 
         const int maxPartsPerLine = 3;
-        for (int index = 0; index < parts.Count; index += maxPartsPerLine) {
+        for (int index = 0; index < parts.Count; index += maxPartsPerLine)
+        {
             yield return string.Join("  ", parts.Skip(index).Take(maxPartsPerLine));
         }
     }
 
-    private static void RenderTriggerViewer(Level level) {
+    private static void RenderTriggerViewer(Level level)
+    {
         if (level == null ||
             !AkronModule.Settings.ShowTriggers ||
-            !AkronModule.TryUseRuntime(AkronFeatureKind.TriggerViewer)) {
+            !AkronModule.TryUseRuntime(AkronFeatureKind.TriggerViewer))
+        {
             return;
         }
 
-        foreach (Trigger trigger in level.Tracker.GetEntities<Trigger>()) {
-            if (trigger.Collider != null) {
-                DrawWorldRect(level, ColliderWorldBounds(trigger.Collider), ColorFromRgb(AkronModule.Settings.HitboxTriggerColor), 0.08f, 5);
+        foreach (Trigger trigger in level.Tracker.GetEntities<Trigger>())
+        {
+            if (trigger.Collider != null)
+            {
+                AkronHudRect windowRect = AkronScreenProjection.WorldToHudRect(level, ColliderWorldBounds(trigger.Collider));
+                Vector2 viewportOrigin = AkronScreenProjection.CurrentViewportOffset();
+                // This final HUD pass already targets Engine.Viewport. Apply its
+                // origin only once, without changing gameplay-buffer consumers.
+                DrawProjectedRect(TriggerViewportRect(windowRect, viewportOrigin.X, viewportOrigin.Y),
+                    ColorFromRgb(AkronModule.Settings.HitboxTriggerColor), 0.08f, 5);
             }
         }
     }
 
-    private static void RenderPauseCountdown() {
-        if (!AkronModule.IsPauseCountdownActive || !AkronPolicy.CanUse(AkronFeatureKind.PauseCountdown).Allowed) {
+    internal static AkronHudRect TriggerViewportRect(AkronHudRect windowRect, float originX, float originY)
+    {
+        return new AkronHudRect(windowRect.X - originX, windowRect.Y - originY, windowRect.Width, windowRect.Height);
+    }
+
+    private static void RenderPauseCountdown()
+    {
+        if (!AkronModule.IsPauseCountdownActive || !AkronPolicy.CanUse(AkronFeatureKind.PauseCountdown).Allowed)
+        {
             return;
         }
 
-        string text = Math.Max(1, (int) Math.Ceiling(AkronModule.PauseCountdownRemaining)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string text = Math.Max(1, (int)Math.Ceiling(AkronModule.PauseCountdownRemaining)).ToString(System.Globalization.CultureInfo.InvariantCulture);
         float scale = 1.1f;
         Vector2 size = ActiveFont.Measure(text) * scale;
         Vector2 position = new Vector2(960f - size.X / 2f, 540f - size.Y / 2f);
@@ -194,25 +239,30 @@ public static partial class AkronHudRenderer {
         ActiveFont.Draw(text, position, Vector2.Zero, Vector2.One * scale, Color.White);
     }
 
-    private static Rectangle ColliderWorldBounds(Collider collider) {
+    private static Rectangle ColliderWorldBounds(Collider collider)
+    {
         return new Rectangle(
-            (int) Math.Floor(collider.AbsoluteX),
-            (int) Math.Floor(collider.AbsoluteY),
-            (int) Math.Ceiling(collider.Width),
-            (int) Math.Ceiling(collider.Height));
+            (int)Math.Floor(collider.AbsoluteX),
+            (int)Math.Floor(collider.AbsoluteY),
+            (int)Math.Ceiling(collider.Width),
+            (int)Math.Ceiling(collider.Height));
     }
 
-    private static bool ShouldShowIndicator() {
+    private static bool ShouldShowIndicator()
+    {
         AkronModuleSettings settings = AkronModule.Settings;
         if (settings == null ||
             !settings.LabelSystemVisible ||
             settings.HideAkronHud && AkronPolicy.CanUse(AkronFeatureKind.HudVisibility).Allowed ||
-            !settings.HudCheatIndicator) {
+            !settings.HudCheatIndicator)
+        {
             return false;
         }
 
-        if (settings.HudCheatIndicatorOnlyFlagged) {
-            if (settings.HudCheatIndicatorStyle == AkronHudCheatIndicatorStyle.Dot) {
+        if (settings.HudCheatIndicatorOnlyFlagged)
+        {
+            if (settings.HudCheatIndicatorStyle == AkronHudCheatIndicatorStyle.Dot)
+            {
                 return AkronPolicy.IsMegaHackStyleCheatIndicatorFlagged(AkronModule.Session.AttemptStatus);
             }
 
@@ -223,7 +273,8 @@ public static partial class AkronHudRenderer {
         return true;
     }
 
-    private static void RenderIndicator(Level level) {
+    private static void RenderIndicator(Level level)
+    {
         bool safeModeRedactsCleanStatus = AkronModule.Settings.SafeMode && AkronModule.Session.AttemptStatus == AkronStatus.GoldberryHardlistClean;
         string text = AkronPolicy.GetLegitimacySensitiveStatusLabel(AkronModule.Session.AttemptStatus);
         Color color = GetIndicatorColor(AkronModule.Session.AttemptStatus, safeModeRedactsCleanStatus);
@@ -231,7 +282,8 @@ public static partial class AkronHudRenderer {
         float configuredScale = AkronModuleSettings.ClampPercent(AkronModule.Settings.HudCheatIndicatorScale, 50, 250) / 100f;
         float scale = configuredScale * 0.45f;
         float opacity = CalculateHudCheatIndicatorOpacity(AkronModule.Settings);
-        if (AkronModule.Settings.HudCheatIndicatorStyle == AkronHudCheatIndicatorStyle.Dot) {
+        if (AkronModule.Settings.HudCheatIndicatorStyle == AkronHudCheatIndicatorStyle.Dot)
+        {
             RenderIndicatorDot(color, opacity, configuredScale);
             return;
         }
@@ -248,11 +300,13 @@ public static partial class AkronHudRenderer {
 
     // One palette for both styles. The dot used to map everything but the two clean states to
     // red, which painted a fresh Unclassified attempt as flagged and ignored Safe Mode.
-    private static Color GetIndicatorColor(AkronStatus status, bool safeModeRedactsCleanStatus) {
+    private static Color GetIndicatorColor(AkronStatus status, bool safeModeRedactsCleanStatus)
+    {
         return ColorFromRgb(AkronPolicy.GetStatusColorRgb(status, safeModeRedactsCleanStatus));
     }
 
-    private static void RenderIndicatorDot(Color color, float opacity, float configuredScale) {
+    private static void RenderIndicatorDot(Color color, float opacity, float configuredScale)
+    {
         float radius = MathHelper.Clamp(5f * configuredScale, 3f, 14f);
         Vector2 diameter = Vector2.One * (radius * 2f);
         Vector2 position = AnchorBoxPosition(AkronModule.Settings.HudCheatIndicatorAnchor, diameter);
@@ -262,26 +316,31 @@ public static partial class AkronHudRenderer {
         DrawFilledHudCircle(center, radius, color * opacity);
     }
 
-    private static void DrawFilledHudCircle(Vector2 center, float radius, Color color) {
-        int pixelRadius = Math.Max(1, (int) Math.Ceiling(radius));
-        for (int y = -pixelRadius; y <= pixelRadius; y++) {
-            float halfWidth = (float) Math.Sqrt(Math.Max(0f, radius * radius - y * y));
+    private static void DrawFilledHudCircle(Vector2 center, float radius, Color color)
+    {
+        int pixelRadius = Math.Max(1, (int)Math.Ceiling(radius));
+        for (int y = -pixelRadius; y <= pixelRadius; y++)
+        {
+            float halfWidth = (float)Math.Sqrt(Math.Max(0f, radius * radius - y * y));
             Draw.Rect(
-                (float) Math.Floor(center.X - halfWidth),
-                (float) Math.Floor(center.Y + y),
-                (float) Math.Ceiling(halfWidth * 2f),
+                (float)Math.Floor(center.X - halfWidth),
+                (float)Math.Floor(center.Y + y),
+                (float)Math.Ceiling(halfWidth * 2f),
                 1f,
                 color);
         }
     }
 
-    private static float TopLeftIndicatorReservedHeight() {
-        if (AkronModule.Settings.HudCheatIndicatorAnchor != AkronHudAnchor.TopLeft || !ShouldShowIndicator()) {
+    private static float TopLeftIndicatorReservedHeight()
+    {
+        if (AkronModule.Settings.HudCheatIndicatorAnchor != AkronHudAnchor.TopLeft || !ShouldShowIndicator())
+        {
             return 0f;
         }
 
         float configuredScale = AkronModuleSettings.ClampPercent(AkronModule.Settings.HudCheatIndicatorScale, 50, 250) / 100f;
-        if (AkronModule.Settings.HudCheatIndicatorStyle == AkronHudCheatIndicatorStyle.Dot) {
+        if (AkronModule.Settings.HudCheatIndicatorStyle == AkronHudCheatIndicatorStyle.Dot)
+        {
             float radius = MathHelper.Clamp(5f * configuredScale, 3f, 14f);
             return radius * 2f + 8f;
         }
@@ -292,18 +351,22 @@ public static partial class AkronHudRenderer {
         return textSize.Y + 20f;
     }
 
-    private static void RenderPresentationOverlayChips(Level level) {
+    private static void RenderPresentationOverlayChips(Level level)
+    {
         List<(string Label, Color Color)> chips = new List<(string Label, Color Color)>();
         if (AkronModule.Settings.ProofModeOverlay &&
-            (!AkronModule.Settings.SubmissionMode || AkronPolicy.CanUse(AkronFeatureKind.SubmissionMode).Allowed)) {
+            (!AkronModule.Settings.SubmissionMode || AkronPolicy.CanUse(AkronFeatureKind.SubmissionMode).Allowed))
+        {
             chips.Add(("Proof-mode", Color.CornflowerBlue));
         }
 
-        if (AkronModule.Settings.IsLowDistractionActive() && AkronPolicy.CanUse(AkronFeatureKind.ReducedVisualNoise).Allowed) {
+        if (AkronModule.Settings.IsLowDistractionActive() && AkronPolicy.CanUse(AkronFeatureKind.ReducedVisualNoise).Allowed)
+        {
             chips.Add(("Low-distraction", Color.SlateBlue));
         }
 
-        if (chips.Count == 0) {
+        if (chips.Count == 0)
+        {
             return;
         }
 
@@ -311,7 +374,8 @@ public static partial class AkronHudRenderer {
         bool bottomAligned = AkronModule.Settings.IndicatorCorner is IndicatorCorner.BottomLeft or IndicatorCorner.BottomRight;
         float y = bottomAligned ? 944f : 72f;
 
-        foreach ((string label, Color color) in chips) {
+        foreach ((string label, Color color) in chips)
+        {
             float scale = 0.34f;
             float width = ActiveFont.Measure(label).X * scale + 24f;
             float x = rightAligned ? 1920f - width - 48f : 48f;
@@ -322,8 +386,10 @@ public static partial class AkronHudRenderer {
         }
     }
 
-    private static Vector2 AnchorBoxPosition(AkronHudAnchor anchor, Vector2 size) {
-        Vector2 position = anchor switch {
+    private static Vector2 AnchorBoxPosition(AkronHudAnchor anchor, Vector2 size)
+    {
+        Vector2 position = anchor switch
+        {
             AkronHudAnchor.TopLeft => new Vector2(HudEdgePadding, HudEdgePadding),
             AkronHudAnchor.TopCenter => new Vector2(960f - size.X / 2f, HudEdgePadding),
             AkronHudAnchor.TopRight => new Vector2(1920f - HudEdgePadding - size.X, HudEdgePadding),
@@ -339,34 +405,42 @@ public static partial class AkronHudRenderer {
         return position + new Vector2(AkronModule.Settings.IndicatorOffsetX, AkronModule.Settings.IndicatorOffsetY);
     }
 
-    private static void DrawText(string text, float x, ref float y, Color color) {
+    private static void DrawText(string text, float x, ref float y, Color color)
+    {
         DrawText(text, x, ref y, color, null);
     }
 
-    private static void DrawText(string text, float x, ref float y, Color color, AkronHudLabelStyleSettings style) {
+    private static void DrawText(string text, float x, ref float y, Color color, AkronHudLabelStyleSettings style)
+    {
         style = AkronModuleSettings.CloneLabelStyle(style);
         Vector2 position = new Vector2(x + style.OffsetX, y + style.OffsetY);
         DrawTextAt(text, position, color, style);
         y += 34f * (style.Scale / 100f) * (AkronModuleSettings.ClampCustomLabelLineSpacing(style.LineSpacing) / 100f);
     }
 
-    private static void DrawTextAt(string text, Vector2 position, Color color, AkronHudLabelStyleSettings style) {
+    private static void DrawTextAt(string text, Vector2 position, Color color, AkronHudLabelStyleSettings style)
+    {
         style = AkronModuleSettings.CloneLabelStyle(style);
         float scale = 0.42f * (style.Scale / 100f);
         ApplyLabelPlayerOverlap(text, scale, ref position, ref style);
         float opacity = AkronModuleSettings.ClampOpacity(style.Opacity) / 100f;
         Color textColor = color * opacity;
-        if (style.Shadow) {
+        if (style.Shadow)
+        {
             Color shadow = ColorFromRgb(style.ShadowColor) * (AkronModuleSettings.ClampOpacity(style.ShadowOpacity) / 100f * opacity);
             ActiveFont.Draw(text, position + new Vector2(style.ShadowOffsetX, style.ShadowOffsetY), Vector2.Zero, Vector2.One * scale, shadow);
             ActiveFont.DrawOutline(text, position, Vector2.Zero, Vector2.One * scale, textColor, 2f, shadow);
-        } else {
+        }
+        else
+        {
             ActiveFont.Draw(text, position, Vector2.Zero, Vector2.One * scale, textColor);
         }
     }
 
-    internal static float CalculateHudCheatIndicatorOpacity(AkronModuleSettings settings) {
-        if (settings == null) {
+    internal static float CalculateHudCheatIndicatorOpacity(AkronModuleSettings settings)
+    {
+        if (settings == null)
+        {
             return 1f;
         }
 
@@ -375,29 +449,36 @@ public static partial class AkronHudRenderer {
         return indicatorOpacity / 100f * (labelOpacity / 100f);
     }
 
-    private static Color ColorFromRgb(int rgb) {
+    private static Color ColorFromRgb(int rgb)
+    {
         return new Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
     }
 
-    public static string FormatHudTicks(long ticks) {
+    public static string FormatHudTicks(long ticks)
+    {
         return System.TimeSpan.FromTicks(ticks).ToString(@"mm\:ss\.fff");
     }
 
-    public static string FormatHudNumber(int value) {
-        if (AkronModule.Settings.NoShortNumbers || Math.Abs(value) < 10000) {
+    public static string FormatHudNumber(int value)
+    {
+        if (AkronModule.Settings.NoShortNumbers || Math.Abs(value) < 10000)
+        {
             return value.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        if (Math.Abs(value) >= 1000000) {
+        if (Math.Abs(value) >= 1000000)
+        {
             return (value / 1000000f).ToString("0.0M", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         return (value / 1000f).ToString("0.0K", System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    private static bool ShouldShowDeathStats(Level level) {
+    private static bool ShouldShowDeathStats(Level level)
+    {
         AkronDeathStatsVisibility visibility = AkronModule.Settings.DeathStatsVisibility;
-        return visibility switch {
+        return visibility switch
+        {
             AkronDeathStatsVisibility.Always => true,
             AkronDeathStatsVisibility.AfterDeath => AkronModule.Session.DeathStatsAfterDeathTimer > 0f,
             AkronDeathStatsVisibility.InMenu => level.Paused && level.PauseMainMenuOpen,
@@ -406,17 +487,20 @@ public static partial class AkronHudRenderer {
         };
     }
 
-    private static string FormatCurrentDeathStats(Level level) {
-        if (level == null) {
+    private static string FormatCurrentDeathStats(Level level)
+    {
+        if (level == null)
+        {
             return string.Empty;
         }
 
-        int mode = (int) level.Session.Area.Mode;
+        int mode = (int)level.Session.Area.Mode;
         string bestDeaths = "-";
         if (level.Session.OldStats != null &&
             mode >= 0 &&
             mode < level.Session.OldStats.Modes.Length &&
-            level.Session.OldStats.Modes[mode].SingleRunCompleted) {
+            level.Session.OldStats.Modes[mode].SingleRunCompleted)
+        {
             bestDeaths = level.Session.OldStats.Modes[mode].BestDeaths.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
@@ -431,7 +515,8 @@ public static partial class AkronHudRenderer {
             AkronModule.Session.DeathsSinceRoomTransition);
     }
 
-    public static string FormatDeathStatsText(string format, int currentDeaths, string bestDeaths, int areaDeaths, int totalDeaths, int deathsSinceLevelLoad, int deathsSinceRoomTransition) {
+    public static string FormatDeathStatsText(string format, int currentDeaths, string bestDeaths, int areaDeaths, int totalDeaths, int deathsSinceLevelLoad, int deathsSinceRoomTransition)
+    {
         string normalized = AkronModuleSettings.NormalizeDeathStatsFormat(format);
         return normalized
             .Replace("$C", FormatDeathTokenNumber(currentDeaths))
@@ -442,12 +527,15 @@ public static partial class AkronHudRenderer {
             .Replace("$S", FormatDeathTokenNumber(deathsSinceRoomTransition));
     }
 
-    private static string FormatDeathTokenNumber(int value) {
+    private static string FormatDeathTokenNumber(int value)
+    {
         return value.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    public static int GetCurrentMapDeathTotal(Level level) {
-        if (level == null) {
+    public static int GetCurrentMapDeathTotal(Level level)
+    {
+        if (level == null)
+        {
             return 0;
         }
 
@@ -457,17 +545,20 @@ public static partial class AkronHudRenderer {
         if (saveData == null ||
             area.ID < 0 ||
             area.ID >= saveData.Areas_Safe.Count ||
-            (int) area.Mode < 0 ||
-            (int) area.Mode >= saveData.Areas_Safe[area.ID].Modes.Length) {
+            (int)area.Mode < 0 ||
+            (int)area.Mode >= saveData.Areas_Safe[area.ID].Modes.Length)
+        {
             return sessionTotal;
         }
 
-        int mapTotal = saveData.Areas_Safe[area.ID].Modes[(int) area.Mode].Deaths;
+        int mapTotal = saveData.Areas_Safe[area.ID].Modes[(int)area.Mode].Deaths;
         return System.Math.Max(mapTotal, sessionTotal);
     }
 
-    public static int GetSessionMapDeathTotal(Level level) {
-        if (level == null) {
+    public static int GetSessionMapDeathTotal(Level level)
+    {
+        if (level == null)
+        {
             return 0;
         }
 
@@ -477,10 +568,12 @@ public static partial class AkronHudRenderer {
             IsDeathTransitionActive(level));
     }
 
-    public static int GetSessionMapDeathTotal(int sessionDeaths, int roomDeaths, bool deathTransitionActive) {
+    public static int GetSessionMapDeathTotal(int sessionDeaths, int roomDeaths, bool deathTransitionActive)
+    {
         int safeSessionDeaths = System.Math.Max(0, sessionDeaths);
         int safeRoomDeaths = System.Math.Max(0, roomDeaths);
-        if (deathTransitionActive) {
+        if (deathTransitionActive)
+        {
             // During the death-body / wipe handoff Celeste has already applied the
             // current death to Session.Deaths, while DeathsInCurrentLevel can still
             // carry the same death. Adding both makes the pre-wipe label briefly
@@ -492,8 +585,10 @@ public static partial class AkronHudRenderer {
         return safeSessionDeaths + safeRoomDeaths;
     }
 
-    private static bool IsDeathTransitionActive(Level level) {
-        if (level == null) {
+    private static bool IsDeathTransitionActive(Level level)
+    {
+        if (level == null)
+        {
             return false;
         }
 
