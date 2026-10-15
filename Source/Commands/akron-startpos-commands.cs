@@ -127,7 +127,7 @@ public static partial class AkronCommands {
                     return;
                 }
                 AkronModule.Settings.StartPosConfiguredDashes = AkronModuleSettings.ClampStartPosDashes(dashes);
-                AkronActions.ApplyStartPosConfiguration(AkronActions.GetActiveStartPos());
+                AkronActions.ApplyStartPosConfigurationEdit(AkronActions.GetActiveStartPos(), dashes: AkronModule.Settings.StartPosConfiguredDashes);
                 break;
             case "stamina":
             case "staminapercent":
@@ -136,7 +136,7 @@ public static partial class AkronCommands {
                     return;
                 }
                 AkronModule.Settings.StartPosConfiguredStaminaPercent = AkronModuleSettings.ClampStartPosStaminaPercent(staminaPercent);
-                AkronActions.ApplyStartPosConfiguration(AkronActions.GetActiveStartPos());
+                AkronActions.ApplyStartPosConfigurationEdit(AkronActions.GetActiveStartPos(), staminaPercent: AkronModule.Settings.StartPosConfiguredStaminaPercent);
                 break;
             case "slots":
             case "slotcount":
@@ -152,7 +152,7 @@ public static partial class AkronCommands {
                     return;
                 }
                 AkronModule.Settings.StartPosConfiguredFacing = facing;
-                AkronActions.ApplyStartPosConfiguration(AkronActions.GetActiveStartPos());
+                AkronActions.ApplyStartPosConfigurationEdit(AkronActions.GetActiveStartPos(), facing: AkronModule.Settings.StartPosConfiguredFacing);
                 break;
             case "idle":
                 if (!TryParseBoolean(value, out bool idle)) {
@@ -160,7 +160,7 @@ public static partial class AkronCommands {
                     return;
                 }
                 AkronModule.Settings.StartPosConfiguredIdle = idle;
-                AkronActions.ApplyStartPosConfiguration(AkronActions.GetActiveStartPos());
+                AkronActions.ApplyStartPosConfigurationEdit(AkronActions.GetActiveStartPos(), idle: AkronModule.Settings.StartPosConfiguredIdle);
                 break;
             case "grab":
                 if (!TryParseBoolean(value, out bool grab)) {
@@ -168,7 +168,7 @@ public static partial class AkronCommands {
                     return;
                 }
                 AkronModule.Settings.StartPosConfiguredGrab = grab;
-                AkronActions.ApplyStartPosConfiguration(AkronActions.GetActiveStartPos());
+                AkronActions.ApplyStartPosConfigurationEdit(AkronActions.GetActiveStartPos(), grab: AkronModule.Settings.StartPosConfiguredGrab);
                 break;
             case "label":
                 if (!TryParseBoolean(value, out bool label)) {

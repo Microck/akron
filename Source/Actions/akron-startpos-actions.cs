@@ -1101,16 +1101,12 @@ public static partial class AkronActions {
     }
 
     public static void ApplyStartPosConfiguration(AkronStartPos startPos) {
-        if (startPos == null) {
-            return;
-        }
-
-        startPos.UsesSpawnConfig = true;
-        startPos.Dashes = AkronModuleSettings.ClampStartPosDashes(AkronModule.Settings.StartPosConfiguredDashes);
-        startPos.StaminaPercent = AkronModuleSettings.ClampStartPosStaminaPercent(AkronModule.Settings.StartPosConfiguredStaminaPercent);
-        startPos.Facing = AkronModule.Settings.StartPosConfiguredFacing;
-        startPos.Idle = AkronModule.Settings.StartPosConfiguredIdle;
-        startPos.Grab = AkronModule.Settings.StartPosConfiguredGrab;
+        ApplyStartPosConfigurationEdit(startPos,
+            dashes: AkronModule.Settings.StartPosConfiguredDashes,
+            staminaPercent: AkronModule.Settings.StartPosConfiguredStaminaPercent,
+            facing: AkronModule.Settings.StartPosConfiguredFacing,
+            idle: AkronModule.Settings.StartPosConfiguredIdle,
+            grab: AkronModule.Settings.StartPosConfiguredGrab);
     }
 
     internal static void RestoreStartPosAfterDeath(Level level, Session requestedSession, PlayerDeadBody deadBody, AkronStartPos startPos) {

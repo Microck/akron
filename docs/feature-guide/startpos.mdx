@@ -147,3 +147,9 @@ contains these controls:
 | Idle speed | Clear speed after spawning so the StartPos begins idle. | Cheat |
 | Spawn grabbing | Attempt to enter Celeste's climb/grab state after spawning. | Cheat |
 | Preview opacity | Set mouse placement preview opacity. | Cheat |
+
+## Editing existing spawn settings
+
+Changing a captured slot’s Dashes, Stamina %, Facing, Idle speed, or Spawn grabbing updates that slot’s spawn metadata without recapturing its room snapshot. Edits remain across repeated loads and restarts. Changing one field preserves the other fields on that slot, even when the configured defaults differ. An empty selected slot changes only the defaults.
+
+If the restart copy is still being created, edits are retained on that pending capture and saved when it finishes. If committed metadata cannot be saved, the slot keeps its previous in-memory configuration and shows a failure message.
