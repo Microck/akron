@@ -353,7 +353,14 @@ public static class AkronCapture {
 
     internal static void SaveTexture(Stream stream, Texture2D texture, int width, int height) {
         if (AkronModuleSettings.NormalizeScreenshotScannerImageFormat(AkronModule.Settings.ScreenshotScannerImageFormat) == AkronScreenshotImageFormat.Jpeg) {
-            texture.SaveAsJpeg(stream, width, height);
+            if (texture.Width != width || texture.Height != height || texture.Format != SurfaceFormat.Color)
+                throw new ArgumentException("JPEG capture requires an exact-size RGBA texture.", nameof(texture));
+            if (width <= 0 || height <= 0 || width > ushort.MaxValue || height > ushort.MaxValue ||
+                (long) width * height > MaxCapturePixels)
+                throw new ArgumentOutOfRangeException(nameof(width), "JPEG dimensions exceed the capture bounds.");
+            byte[] rgba = new byte[checked(width * height * 4)];
+            texture.GetData(rgba);
+            AkronJpegEncoder.Write(stream, rgba, width, height);
             return;
         }
 
