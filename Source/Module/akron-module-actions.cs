@@ -141,7 +141,7 @@ public partial class AkronModule {
     }
 
     private static void ReloadRoom(Level level, bool confirmed = false) {
-        if (level == null || Engine.Scene != level || !TryUse(AkronFeatureKind.RoomReload)) {
+        if (level == null || level.Completed || Engine.Scene != level || !TryUse(AkronFeatureKind.RoomReload)) {
             return;
         }
 
@@ -151,7 +151,7 @@ public partial class AkronModule {
         }
 
         level.OnEndOfFrame += () => {
-            if (Engine.Scene != level || !AkronPolicy.CanUse(AkronFeatureKind.RoomReload).Allowed) {
+            if (Engine.Scene != level || level.Completed || !AkronPolicy.CanUse(AkronFeatureKind.RoomReload).Allowed) {
                 return;
             }
 
@@ -160,6 +160,9 @@ public partial class AkronModule {
             level.Session.RespawnPoint = level.GetSpawnPoint(level.Camera.Position);
             ClearCustomDeathParticleBursts();
             bool wasPaused = level.Paused;
+            // Player.Removed dispatches trigger leave callbacks. Queue players
+            // first so those callbacks run before UnloadLevel detaches triggers.
+            level.Tracker.GetEntitiesCopy<Player>().ForEach(entity => entity.RemoveSelf());
             level.Reload();
             if (wasPaused && Engine.Scene == level && level.Paused) {
                 // Reload removes the native pause menu. End its pause only after

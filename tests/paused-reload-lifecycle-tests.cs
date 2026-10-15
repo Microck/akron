@@ -16,6 +16,11 @@ public sealed class PausedReloadLifecycleTests {
         string action = source.Split("private static void ReloadRoom(")[1]
             .Split("private static void OpenDebugMap(")[0];
         Assert.Contains("bool wasPaused = level.Paused;", action);
+        Assert.Contains("level == null || level.Completed || Engine.Scene != level", action);
+        Assert.Contains("Engine.Scene != level || level.Completed || !AkronPolicy.CanUse", action);
+        Assert.Contains("level.Tracker.GetEntitiesCopy<Player>().ForEach(entity => entity.RemoveSelf());", action);
+        Assert.True(action.IndexOf("GetEntitiesCopy<Player>()", StringComparison.Ordinal) <
+                    action.IndexOf("level.Reload();", StringComparison.Ordinal));
         Assert.Contains("if (wasPaused && Engine.Scene == level && level.Paused)", action);
         Assert.True(action.IndexOf("level.Reload();", StringComparison.Ordinal) <
                     action.IndexOf("level.Unpause();", StringComparison.Ordinal));
