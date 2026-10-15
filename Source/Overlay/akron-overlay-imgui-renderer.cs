@@ -12,8 +12,10 @@ using NumericsVector4 = System.Numerics.Vector4;
 
 namespace Celeste.Mod.Akron;
 
-public sealed partial class AkronOverlay {
-    private void DrawImGuiMenu() {
+public sealed partial class AkronOverlay
+{
+    private void DrawImGuiMenu()
+    {
         float scale = CurrentOverlayScale();
         ApplyOverlayThemePreset(scale);
         imguiOptionsPopupAnchorRects.Clear();
@@ -35,7 +37,8 @@ public sealed partial class AkronOverlay {
         float displayHeight = ImGui.GetIO().DisplaySize.Y / scale;
 
         List<float> columnXPositions = CalculateActionColumnXPositions(menuLeft, menuColumnWidth, menuColumnGap, displayWidth);
-        if (columnXPositions.Count == 0) {
+        if (columnXPositions.Count == 0)
+        {
             DrawImGuiBindingCapturePopup();
             DrawInternalRecorderExperimentalWarningPopup();
             AkronDiagnosticsMenu.Draw();
@@ -43,21 +46,25 @@ public sealed partial class AkronOverlay {
         }
 
         string[] visibleTabs = GetVisibleTabs();
-        bool searchActive = !string.IsNullOrWhiteSpace(searchQuery);
-        if (searchExpandedWindowsLastFrame && !searchActive) {
-            foreach (string toggleableTitle in GetToggleableSections()) {
+        BeginSearchCollapseFrame();
+        if (searchExpandedWindowsLastFrame && !searchActiveForImGuiDraw)
+        {
+            foreach (string toggleableTitle in GetToggleableSections())
+            {
                 pendingImGuiCollapseSync.Add(toggleableTitle);
             }
         }
-        searchExpandedWindowsLastFrame = searchActive;
+        searchExpandedWindowsLastFrame = searchActiveForImGuiDraw;
         Dictionary<string, List<ActionEntry>> actionEntriesByTab = BuildVisibleTabActionEntries(visibleTabs, level);
         ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, actionEntriesByTab, columnXPositions.Count, menuTop, displayHeight);
         List<float> columnBottoms = columnXPositions.Select(_ => menuTop).ToList();
         List<int> columnSectionCounts = columnXPositions.Select(_ => 0).ToList();
-        for (int tabIndex = 0; tabIndex < visibleTabs.Length; tabIndex++) {
+        for (int tabIndex = 0; tabIndex < visibleTabs.Length; tabIndex++)
+        {
             string tabName = visibleTabs[tabIndex];
             List<ActionEntry> entries = actionEntriesByTab[tabName];
-            if (!string.IsNullOrWhiteSpace(searchQuery) && entries.Count == 0) {
+            if (!string.IsNullOrWhiteSpace(searchQuery) && entries.Count == 0)
+            {
                 continue;
             }
 
@@ -81,7 +88,8 @@ public sealed partial class AkronOverlay {
         AkronDiagnosticsMenu.Draw();
     }
 
-    private void DrawStartPosPlacementEditor() {
+    private void DrawStartPosPlacementEditor()
+    {
         float scale = CurrentOverlayScale();
         ApplyOverlayThemePreset(scale);
         pendingImGuiTextTooltip = string.Empty;
@@ -97,22 +105,25 @@ public sealed partial class AkronOverlay {
             ImGuiWindowFlags.AlwaysAutoResize);
 
         NumericsVector2 panelPos = ImGui.GetWindowPos();
-        AkronModule.Settings.StartPosPlacementPanelX = Calc.Clamp((int) Math.Round(panelPos.X), 0, 1920);
-        AkronModule.Settings.StartPosPlacementPanelY = Calc.Clamp((int) Math.Round(panelPos.Y), 0, 1080);
+        AkronModule.Settings.StartPosPlacementPanelX = Calc.Clamp((int)Math.Round(panelPos.X), 0, 1920);
+        AkronModule.Settings.StartPosPlacementPanelY = Calc.Clamp((int)Math.Round(panelPos.Y), 0, 1080);
         startPosPlacementPanelMin = panelPos;
         startPosPlacementPanelMax = new NumericsVector2(panelPos.X + ImGui.GetWindowWidth(), panelPos.Y + ImGui.GetWindowHeight());
 
         bool minimized = AkronModule.Settings.StartPosPlacementPanelMinimized;
-        if (ImGui.Button(minimized ? "Expand##startpos_placement_min" : "Minimize##startpos_placement_min", new NumericsVector2(92f, 0f))) {
+        if (ImGui.Button(minimized ? "Expand##startpos_placement_min" : "Minimize##startpos_placement_min", new NumericsVector2(92f, 0f)))
+        {
             AkronModule.Settings.StartPosPlacementPanelMinimized = !minimized;
             minimized = !minimized;
         }
         ImGui.SameLine();
-        if (ImGui.Button("Done##startpos_placement_done", new NumericsVector2(92f, 0f))) {
+        if (ImGui.Button("Done##startpos_placement_done", new NumericsVector2(92f, 0f)))
+        {
             EndStartPosPlacement(true);
         }
 
-        if (!minimized) {
+        if (!minimized)
+        {
             ImGui.Separator();
             ImGui.TextUnformatted("Click the shadow to place the active StartPos.");
             ImGui.TextUnformatted("Placed shadows stay visible and less opaque.");
@@ -132,11 +143,13 @@ public sealed partial class AkronOverlay {
         DrawPendingImGuiItemTooltip();
     }
 
-    private void DrawActionWindow(string title, float x, float y, float width, List<ActionEntry> entries, int tabIndex) {
+    private void DrawActionWindow(string title, float x, float y, float width, List<ActionEntry> entries, int tabIndex)
+    {
         long start = Stopwatch.GetTimestamp();
         float displayHeight = ImGui.GetIO().DisplaySize.Y / CurrentOverlayScale();
         bool needsScrolling = entries.Count > CalculateVisibleActionRows(y, displayHeight);
-        if (!BeginFixedWindow(title, x, y, width, CalculateActionSectionHeight(entries.Count, y, displayHeight), needsScrolling)) {
+        if (!BeginFixedWindow(title, x, y, width, CalculateActionSectionHeight(entries.Count, y, displayHeight), needsScrolling))
+        {
             ImGui.End();
             AkronPerformanceTelemetry.RecordOverlayWindowCost(title, ElapsedMilliseconds(start, Stopwatch.GetTimestamp()));
             return;
@@ -148,13 +161,17 @@ public sealed partial class AkronOverlay {
         AkronPerformanceTelemetry.RecordOverlayWindowCost(title, ElapsedMilliseconds(start, Stopwatch.GetTimestamp()));
     }
 
-    private static double ElapsedMilliseconds(long start, long end) {
+    private static double ElapsedMilliseconds(long start, long end)
+    {
         return (end - start) * 1000.0 / Stopwatch.Frequency;
     }
 
-    private void DrawImGuiActionRows(List<ActionEntry> entries, int tabIndex, bool clipped) {
-        if (!clipped || entries.Count == 0) {
-            for (int index = 0; index < entries.Count; index++) {
+    private void DrawImGuiActionRows(List<ActionEntry> entries, int tabIndex, bool clipped)
+    {
+        if (!clipped || entries.Count == 0)
+        {
+            for (int index = 0; index < entries.Count; index++)
+            {
                 DrawImGuiActionEntry(entries[index], index, tabIndex);
             }
 
@@ -164,24 +181,38 @@ public sealed partial class AkronOverlay {
         float itemHeight = Math.Max(1f, ImGui.GetFrameHeight() + ImGui.GetStyle().ItemSpacing.Y);
         float scrollY = Math.Max(0f, ImGui.GetScrollY());
         float visibleHeight = Math.Max(itemHeight, ImGui.GetWindowHeight());
-        int first = Calc.Clamp((int) Math.Floor(scrollY / itemHeight), 0, entries.Count);
-        int last = Calc.Clamp((int) Math.Ceiling((scrollY + visibleHeight) / itemHeight) + 1, first, entries.Count);
+        int first = Calc.Clamp((int)Math.Floor(scrollY / itemHeight), 0, entries.Count);
+        int last = Calc.Clamp((int)Math.Ceiling((scrollY + visibleHeight) / itemHeight) + 1, first, entries.Count);
 
-        if (first > 0) {
+        if (first > 0)
+        {
             ImGui.Dummy(new NumericsVector2(1f, first * itemHeight));
         }
 
-        for (int index = first; index < last; index++) {
+        for (int index = first; index < last; index++)
+        {
             DrawImGuiActionEntry(entries[index], index, tabIndex);
         }
 
         int remaining = entries.Count - last;
-        if (remaining > 0) {
+        if (remaining > 0)
+        {
             ImGui.Dummy(new NumericsVector2(1f, remaining * itemHeight));
         }
     }
 
-    private bool BeginFixedWindow(string title, float x, float y, float width, float height, bool allowScrollbar = false) {
+    // Search text can change inside Interface while later panels are still drawing.
+    // Keep collapse persistence on one state for the entire pass; the next frame
+    // restores saved preferences before a cleared query can persist window state.
+    private bool searchActiveForImGuiDraw;
+
+    internal void BeginSearchCollapseFrame()
+    {
+        searchActiveForImGuiDraw = !string.IsNullOrWhiteSpace(searchQuery);
+    }
+
+    private bool BeginFixedWindow(string title, float x, float y, float width, float height, bool allowScrollbar = false)
+    {
         float scale = CurrentOverlayScale();
         ImGui.SetNextWindowPos(new NumericsVector2(x * scale, y * scale), ImGuiCond.Always);
         ImGui.SetNextWindowSize(new NumericsVector2(width * scale, height * scale), ImGuiCond.Always);
@@ -189,11 +220,14 @@ public sealed partial class AkronOverlay {
         // A search shows its matches: a window that is collapsed stays collapsed in the stored
         // state, but is drawn open while the query is active. The stored state is not read back
         // from ImGui during a search, so the forced expansion is never persisted.
-        bool searching = !string.IsNullOrWhiteSpace(searchQuery);
-        if (searching) {
+        bool searching = searchActiveForImGuiDraw;
+        if (searching)
+        {
             pendingImGuiCollapseSync.Remove(title);
             ImGui.SetNextWindowCollapsed(false, ImGuiCond.Always);
-        } else if (pendingImGuiCollapseSync.Remove(title)) {
+        }
+        else if (pendingImGuiCollapseSync.Remove(title))
+        {
             ImGui.SetNextWindowCollapsed(collapsedWindowTitles.Contains(title), ImGuiCond.Always);
         }
 
@@ -202,7 +236,8 @@ public sealed partial class AkronOverlay {
             ImGuiWindowFlags.NoMove |
             ImGuiWindowFlags.NoSavedSettings |
             ImGuiWindowFlags.NoFocusOnAppearing;
-        if (!allowScrollbar) {
+        if (!allowScrollbar)
+        {
             // MegaHack-style panels should only scroll when their rows overflow the available screen height.
             flags |= ImGuiWindowFlags.NoScrollbar;
         }
@@ -213,9 +248,11 @@ public sealed partial class AkronOverlay {
 
         // Clicking the header is the other way a window collapses, next to ToggleWindowCollapse.
         // Both persist, so a header click survives a scene change and a restart.
-        if (!searching) {
+        if (!searching)
+        {
             bool changed = ImGui.IsWindowCollapsed() ? collapsedWindowTitles.Add(title) : collapsedWindowTitles.Remove(title);
-            if (changed) {
+            if (changed)
+            {
                 PersistWindowCollapseState();
             }
         }
@@ -223,15 +260,18 @@ public sealed partial class AkronOverlay {
         return visible;
     }
 
-    internal static float CurrentOverlayScale() {
+    internal static float CurrentOverlayScale()
+    {
         return AkronModuleSettings.ClampOverlayScale(AkronModule.Settings.OverlayScale) / 100f;
     }
 
-    private static float ScaleImGuiValue(float value) {
+    private static float ScaleImGuiValue(float value)
+    {
         return value * CurrentOverlayScale();
     }
 
-    internal static void ApplyOverlayThemePreset(float scale) {
+    internal static void ApplyOverlayThemePreset(float scale)
+    {
         ImGui.GetIO().FontGlobalScale = scale;
         ImGui.StyleColorsDark();
 
@@ -256,26 +296,27 @@ public sealed partial class AkronOverlay {
         style.WindowMinSize = new NumericsVector2(32f, 32f);
         style.ScaleAllSizes(scale);
 
-        style.Colors[(int) ImGuiCol.WindowBg] = ToImGuiColor(theme.WindowColor);
-        style.Colors[(int) ImGuiCol.TitleBg] = ToImGuiColor(theme.HeaderColor);
-        style.Colors[(int) ImGuiCol.TitleBgActive] = ToImGuiColor(theme.HeaderHoverColor);
-        style.Colors[(int) ImGuiCol.TitleBgCollapsed] = ToImGuiColor(theme.HeaderColor);
-        style.Colors[(int) ImGuiCol.Text] = ToImGuiColor(theme.TextColor);
-        style.Colors[(int) ImGuiCol.FrameBg] = AkronImGuiTheme.FrameBackground;
-        style.Colors[(int) ImGuiCol.FrameBgHovered] = AkronImGuiTheme.ButtonHovered;
-        style.Colors[(int) ImGuiCol.FrameBgActive] = AkronImGuiTheme.ButtonActive;
-        style.Colors[(int) ImGuiCol.Button] = AkronImGuiTheme.FrameBackground;
-        style.Colors[(int) ImGuiCol.ButtonHovered] = ToImGuiColor(theme.HeaderHoverColor, 0.32f);
-        style.Colors[(int) ImGuiCol.ButtonActive] = ToImGuiColor(theme.HeaderHoverColor, 0.48f);
-        style.Colors[(int) ImGuiCol.Header] = AkronImGuiTheme.FrameBackground;
-        style.Colors[(int) ImGuiCol.HeaderHovered] = AkronImGuiTheme.ButtonHovered;
-        style.Colors[(int) ImGuiCol.HeaderActive] = AkronImGuiTheme.ButtonActive;
-        style.Colors[(int) ImGuiCol.PopupBg] = ToImGuiColor(theme.WindowColor);
+        style.Colors[(int)ImGuiCol.WindowBg] = ToImGuiColor(theme.WindowColor);
+        style.Colors[(int)ImGuiCol.TitleBg] = ToImGuiColor(theme.HeaderColor);
+        style.Colors[(int)ImGuiCol.TitleBgActive] = ToImGuiColor(theme.HeaderHoverColor);
+        style.Colors[(int)ImGuiCol.TitleBgCollapsed] = ToImGuiColor(theme.HeaderColor);
+        style.Colors[(int)ImGuiCol.Text] = ToImGuiColor(theme.TextColor);
+        style.Colors[(int)ImGuiCol.FrameBg] = AkronImGuiTheme.FrameBackground;
+        style.Colors[(int)ImGuiCol.FrameBgHovered] = AkronImGuiTheme.ButtonHovered;
+        style.Colors[(int)ImGuiCol.FrameBgActive] = AkronImGuiTheme.ButtonActive;
+        style.Colors[(int)ImGuiCol.Button] = AkronImGuiTheme.FrameBackground;
+        style.Colors[(int)ImGuiCol.ButtonHovered] = ToImGuiColor(theme.HeaderHoverColor, 0.32f);
+        style.Colors[(int)ImGuiCol.ButtonActive] = ToImGuiColor(theme.HeaderHoverColor, 0.48f);
+        style.Colors[(int)ImGuiCol.Header] = AkronImGuiTheme.FrameBackground;
+        style.Colors[(int)ImGuiCol.HeaderHovered] = AkronImGuiTheme.ButtonHovered;
+        style.Colors[(int)ImGuiCol.HeaderActive] = AkronImGuiTheme.ButtonActive;
+        style.Colors[(int)ImGuiCol.PopupBg] = ToImGuiColor(theme.WindowColor);
         style.Colors[(int) ImGuiCol.PlotHistogram] = AkronImGuiTheme.Accent;
         style.Colors[(int) ImGuiCol.PlotHistogramHovered] = AkronImGuiTheme.AccentHovered;
     }
 
-    private static NumericsVector4 ToImGuiColor(int rgb, float alpha = 1f) {
+    private static NumericsVector4 ToImGuiColor(int rgb, float alpha = 1f)
+    {
         int clamped = AkronModuleSettings.ClampRgb(rgb);
         return new NumericsVector4(
             ((clamped >> 16) & 0xFF) / 255f,
@@ -284,12 +325,14 @@ public sealed partial class AkronOverlay {
             Calc.Clamp(alpha, 0f, 1f));
     }
 
-    private static Color ColorFromRgb(int rgb) {
+    private static Color ColorFromRgb(int rgb)
+    {
         int clamped = AkronModuleSettings.ClampRgb(rgb);
         return new Color((clamped >> 16) & 0xFF, (clamped >> 8) & 0xFF, clamped & 0xFF);
     }
 
-    private void DrawImGuiActionEntry(ActionEntry entry, int index, int tabIndex) {
+    private void DrawImGuiActionEntry(ActionEntry entry, int index, int tabIndex)
+    {
         bool selected = selectedPanel == SelectionPanel.Actions &&
                         selectedActionIndex == index &&
                         selectedTabIndex == tabIndex;
@@ -304,36 +347,56 @@ public sealed partial class AkronOverlay {
         bool backgroundRowInputBlocked = IsBackgroundActionRowInputBlocked();
 
         ImGui.BeginGroup();
-        if (backgroundRowInputBlocked) {
+        if (backgroundRowInputBlocked)
+        {
             ImGui.PushStyleVar(ImGuiStyleVar.DisabledAlpha, 1f);
             ImGui.BeginDisabled();
         }
 
         bool pressed;
-        try {
-            if (entry.Control == OverlayEntryControl.GroupHeader) {
+        try
+        {
+            if (entry.Control == OverlayEntryControl.GroupHeader)
+            {
                 pressed = DrawImGuiGroupHeaderEntry(entry, id, entryEnabled);
-            } else if (entry.Control == OverlayEntryControl.SearchInput) {
+            }
+            else if (entry.Control == OverlayEntryControl.SearchInput)
+            {
                 pressed = DrawImGuiSearchEntry(entry, id, entryEnabled);
-            } else if (entry.Control == OverlayEntryControl.Keybind || entry.Control == OverlayEntryControl.KeybindReadOnly) {
+            }
+            else if (entry.Control == OverlayEntryControl.Keybind || entry.Control == OverlayEntryControl.KeybindReadOnly)
+            {
                 pressed = DrawImGuiKeybindEntry(entry, id, entryEnabled, entry.Control == OverlayEntryControl.KeybindReadOnly);
-            } else if (entry.Control == OverlayEntryControl.StartPosActions) {
+            }
+            else if (entry.Control == OverlayEntryControl.StartPosActions)
+            {
                 optionPress = DrawImGuiStartPosEntry(entry, id, activeState, entryEnabled);
                 pressed = optionPress != OptionEntryPress.None;
-            } else if (entry.Control == OverlayEntryControl.NumericInput) {
+            }
+            else if (entry.Control == OverlayEntryControl.NumericInput)
+            {
                 optionPress = DrawImGuiNumericEntry(entry, id, activeState, entryEnabled, hasOptionsPopup);
                 pressed = optionPress != OptionEntryPress.None;
-            } else if (entry.Control == OverlayEntryControl.Selector) {
+            }
+            else if (entry.Control == OverlayEntryControl.Selector)
+            {
                 optionPress = DrawImGuiSelectorEntry(entry, id, activeState, entryEnabled, hasOptionsPopup);
                 pressed = optionPress != OptionEntryPress.None;
-            } else if (hasOptionsPopup) {
+            }
+            else if (hasOptionsPopup)
+            {
                 optionPress = DrawImGuiOptionEntry(entry, id, activeState, entryEnabled);
                 pressed = optionPress != OptionEntryPress.None;
-            } else {
+            }
+            else
+            {
                 pressed = DrawImGuiPlainEntry(entry, id, activeState, entryEnabled);
             }
-        } finally {
-            if (backgroundRowInputBlocked) {
+        }
+        finally
+        {
+            if (backgroundRowInputBlocked)
+            {
                 ImGui.EndDisabled();
                 ImGui.PopStyleVar();
             }
@@ -351,63 +414,82 @@ public sealed partial class AkronOverlay {
                                        rowHovered &&
                                        (ImGui.IsMouseClicked(ImGuiMouseButton.Right) ||
                                         (ImGui.IsMouseClicked(ImGuiMouseButton.Left) && IsShiftDown()));
-        if (rowHovered && !backgroundRowInputBlocked) {
+        if (rowHovered && !backgroundRowInputBlocked)
+        {
             selectedPanel = SelectionPanel.Actions;
             selectedActionIndex = index;
-            if (tabIndex >= 0) {
+            if (tabIndex >= 0)
+            {
                 selectedTabIndex = tabIndex;
             }
         }
 
         DrawLabelRowReorderTarget(entry, rowHovered && !backgroundRowInputBlocked, rowActive && !backgroundRowInputBlocked, rowMin, rowMax);
 
-        if ((pressed || bindingContextRequested) && searchInputActive && entry.Control != OverlayEntryControl.SearchInput) {
+        if ((pressed || bindingContextRequested) && searchInputActive && entry.Control != OverlayEntryControl.SearchInput)
+        {
             searchInputActive = false;
             searchInputUsesImGui = false;
             ClearSearchInputFocusRequest();
         }
 
-        if (pressed && entryEnabled && !labelRowDragActive && !backgroundRowInputBlocked && !bindingContextRequested && entry.Control != OverlayEntryControl.SearchInput) {
+        if (pressed && entryEnabled && !labelRowDragActive && !backgroundRowInputBlocked && !bindingContextRequested && entry.Control != OverlayEntryControl.SearchInput)
+        {
             selectedPanel = SelectionPanel.Actions;
             selectedActionIndex = index;
-            if (tabIndex >= 0) {
+            if (tabIndex >= 0)
+            {
                 selectedTabIndex = tabIndex;
             }
 
-            if (optionPress == OptionEntryPress.Dropdown) {
+            if (optionPress == OptionEntryPress.Dropdown)
+            {
                 // The selector's value box owns the dropdown interaction. It has
                 // already opened and rendered its popup in the row renderer.
-            } else if (entry.IsAddCustomLabelRow) {
+            }
+            else if (entry.IsAddCustomLabelRow)
+            {
                 AkronCustomHudLabel label = AkronCustomHudLabels.AddCustom();
                 AkronModule.Settings.LabelRowOrder.Add(AkronModuleSettings.BuildCustomLabelRowKey(label.Id));
                 AkronModule.Settings.LabelRowOrder = AkronModuleSettings.NormalizeLabelRowOrder(AkronModule.Settings.LabelRowOrder, AkronModule.Settings.CustomHudLabelDefinitions);
                 InvalidateDisplayActionEntryCache();
-            } else if (hasOptionsPopup && (optionPress == OptionEntryPress.Arrow || IsSettingsOnlyOptionsRow(entry.Label))) {
+            }
+            else if (hasOptionsPopup && (optionPress == OptionEntryPress.Arrow || IsSettingsOnlyOptionsRow(entry.Label)))
+            {
                 SelectCustomHudLabel(entry.CustomHudLabelId);
                 OpenOptionsPopup(entry.OptionsPopupKey);
                 openedImGuiOptionsPopupThisFrame = true;
-            } else if (entry.Control == OverlayEntryControl.Keybind) {
+            }
+            else if (entry.Control == OverlayEntryControl.Keybind)
+            {
                 StartBindingCaptureForEntry(entry);
-            } else if (ShouldWarnBeforeInternalRecorderAction(entry)) {
+            }
+            else if (ShouldWarnBeforeInternalRecorderAction(entry))
+            {
                 pendingInternalRecorderExperimentalAction = entry;
                 internalRecorderExperimentalWarningDontShowAgain = false;
                 ImGui.OpenPopup(GetInternalRecorderExperimentalWarningPopupId());
-            } else {
+            }
+            else
+            {
                 ExecuteActionEntry(entry, "imgui");
             }
         }
 
         DrawImGuiBindingContext(entry, bindingContextRequested);
         DrawImGuiActionTooltip(entry, rowHovered && !backgroundRowInputBlocked && !optionButtonHovered);
-        if (hasOptionsPopup) {
+        if (hasOptionsPopup)
+        {
             RecordImGuiOptionsPopupAnchor(entry, rowMin, rowMax);
-            if (IsOptionsPopupOpen(entry.OptionsPopupKey)) {
+            if (IsOptionsPopupOpen(entry.OptionsPopupKey))
+            {
                 pendingImGuiOptionsPopupEntry = entry;
             }
         }
     }
 
-    private bool IsBackgroundActionRowInputBlocked() {
+    private bool IsBackgroundActionRowInputBlocked()
+    {
         return IsAnyOptionsPopupOpen() ||
                communityPackBrowserOpen ||
                uploadPackWindowOpen ||
@@ -416,10 +498,12 @@ public sealed partial class AkronOverlay {
                IsBackgroundActionRowsSuppressedAfterPopupClose();
     }
 
-    private static bool IsImGuiOptionsButtonHovered(ActionEntry entry, NumericsVector2 rowMin, NumericsVector2 rowMax) {
+    private static bool IsImGuiOptionsButtonHovered(ActionEntry entry, NumericsVector2 rowMin, NumericsVector2 rowMax)
+    {
         if (entry == null ||
             !entry.HasOptionsPopup &&
-            entry.Control != OverlayEntryControl.StartPosActions) {
+            entry.Control != OverlayEntryControl.StartPosActions)
+        {
             return false;
         }
 
@@ -434,14 +518,18 @@ public sealed partial class AkronOverlay {
                mouse.Y <= rowMax.Y;
     }
 
-    private void DrawPendingImGuiOptionsPopup() {
-        if (pendingImGuiOptionsPopupEntry != null) {
+    private void DrawPendingImGuiOptionsPopup()
+    {
+        if (pendingImGuiOptionsPopupEntry != null)
+        {
             DrawImGuiOptionsPopup(pendingImGuiOptionsPopupEntry);
         }
     }
 
-    private void RecordImGuiOptionsPopupAnchor(ActionEntry entry, NumericsVector2 rowMin, NumericsVector2 rowMax) {
-        if (entry == null || string.IsNullOrWhiteSpace(entry.OptionsPopupKey)) {
+    private void RecordImGuiOptionsPopupAnchor(ActionEntry entry, NumericsVector2 rowMin, NumericsVector2 rowMax)
+    {
+        if (entry == null || string.IsNullOrWhiteSpace(entry.OptionsPopupKey))
+        {
             return;
         }
 
@@ -452,19 +540,24 @@ public sealed partial class AkronOverlay {
             Math.Max(1f, rowMax.Y - rowMin.Y));
     }
 
-    private void DrawLabelRowReorderTarget(ActionEntry entry, bool rowHovered, bool rowActive, NumericsVector2 rowMin, NumericsVector2 rowMax) {
-        if (!entry.Reorderable || !string.Equals(entry.Tab, "Labels", StringComparison.OrdinalIgnoreCase)) {
+    private void DrawLabelRowReorderTarget(ActionEntry entry, bool rowHovered, bool rowActive, NumericsVector2 rowMin, NumericsVector2 rowMax)
+    {
+        if (!entry.Reorderable || !string.Equals(entry.Tab, "Labels", StringComparison.OrdinalIgnoreCase))
+        {
             return;
         }
 
-        if (rowHovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left)) {
+        if (rowHovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        {
             draggingLabelRowKey = entry.RowOrderKey;
             labelRowDragStart = ImGui.GetMousePos();
             labelRowDragActive = false;
         }
 
-        if (rowActive && ImGui.IsMouseDragging(ImGuiMouseButton.Left, 4f)) {
-            if (string.IsNullOrWhiteSpace(draggingLabelRowKey)) {
+        if (rowActive && ImGui.IsMouseDragging(ImGuiMouseButton.Left, 4f))
+        {
+            if (string.IsNullOrWhiteSpace(draggingLabelRowKey))
+            {
                 draggingLabelRowKey = entry.RowOrderKey;
                 labelRowDragStart = rowMin;
             }
@@ -475,7 +568,8 @@ public sealed partial class AkronOverlay {
         bool draggingThisEntry = string.Equals(draggingLabelRowKey, entry.RowOrderKey, StringComparison.OrdinalIgnoreCase);
         float dragDistanceSquared = NumericsVector2.DistanceSquared(ImGui.GetMousePos(), labelRowDragStart);
         if (draggingThisEntry &&
-            (ImGui.IsMouseDragging(ImGuiMouseButton.Left, 4f) || dragDistanceSquared > 16f)) {
+            (ImGui.IsMouseDragging(ImGuiMouseButton.Left, 4f) || dragDistanceSquared > 16f))
+        {
             labelRowDragActive = true;
         }
 
@@ -485,41 +579,48 @@ public sealed partial class AkronOverlay {
                          (labelRowDragActive || dragDistanceSquared > 16f);
         if (rowHovered &&
             dragReady &&
-            !string.Equals(draggingLabelRowKey, entry.RowOrderKey, StringComparison.OrdinalIgnoreCase)) {
+            !string.Equals(draggingLabelRowKey, entry.RowOrderKey, StringComparison.OrdinalIgnoreCase))
+        {
             ImGui.GetWindowDrawList().AddRect(
                 rowMin,
                 rowMax,
                 AkronImGuiTheme.ToU32(AkronImGuiTheme.Accent));
-            if (mouseDown || mouseReleased) {
+            if (mouseDown || mouseReleased)
+            {
                 bool afterTarget = ImGui.GetMousePos().Y > (rowMin.Y + rowMax.Y) * 0.5f;
                 MoveLabelRow(draggingLabelRowKey, entry.RowOrderKey, afterTarget);
                 labelRowDragActive = true;
             }
         }
 
-        if (mouseReleased || !mouseDown && !string.IsNullOrWhiteSpace(draggingLabelRowKey)) {
+        if (mouseReleased || !mouseDown && !string.IsNullOrWhiteSpace(draggingLabelRowKey))
+        {
             draggingLabelRowKey = string.Empty;
             labelRowDragActive = false;
         }
     }
 
-    private void MoveLabelRow(string draggedKey, string targetKey, bool afterTarget) {
+    private void MoveLabelRow(string draggedKey, string targetKey, bool afterTarget)
+    {
         if (string.IsNullOrWhiteSpace(draggedKey) ||
             string.IsNullOrWhiteSpace(targetKey) ||
-            string.Equals(draggedKey, targetKey, StringComparison.OrdinalIgnoreCase)) {
+            string.Equals(draggedKey, targetKey, StringComparison.OrdinalIgnoreCase))
+        {
             return;
         }
 
         List<string> order = AkronModuleSettings.NormalizeLabelRowOrder(AkronModule.Settings.LabelRowOrder, AkronModule.Settings.CustomHudLabelDefinitions);
         int from = order.FindIndex(key => string.Equals(key, draggedKey, StringComparison.OrdinalIgnoreCase));
         int to = order.FindIndex(key => string.Equals(key, targetKey, StringComparison.OrdinalIgnoreCase));
-        if (from < 0 || to < 0 || from == to) {
+        if (from < 0 || to < 0 || from == to)
+        {
             return;
         }
 
         string key = order[from];
         order.RemoveAt(from);
-        if (from < to) {
+        if (from < to)
+        {
             to--;
         }
 
@@ -528,29 +629,35 @@ public sealed partial class AkronOverlay {
         InvalidateDisplayActionEntryCache();
     }
 
-    private void SelectCustomHudLabel(string id) {
-        if (string.IsNullOrWhiteSpace(id) || AkronModule.Settings.CustomHudLabelDefinitions == null) {
+    private void SelectCustomHudLabel(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id) || AkronModule.Settings.CustomHudLabelDefinitions == null)
+        {
             return;
         }
 
         int index = AkronModule.Settings.CustomHudLabelDefinitions.FindIndex(label => string.Equals(label.Id, id, StringComparison.OrdinalIgnoreCase));
-        if (index >= 0) {
+        if (index >= 0)
+        {
             AkronModule.Settings.CustomHudLabelIndex = index;
         }
     }
 
-    private void InvalidateDisplayActionEntryCache() {
+    private void InvalidateDisplayActionEntryCache()
+    {
         displayActionEntryCache.Clear();
         InvalidateBindableActionCache();
     }
 
-    private static void InvalidateBindableActionCache() {
+    private static void InvalidateBindableActionCache()
+    {
         bindableActionCache.Clear();
         bindableActionCacheLevel = null;
         bindableActionCacheRevision = -1;
     }
 
-    private bool DrawImGuiKeybindEntry(ActionEntry entry, string id, bool entryEnabled, bool readOnly) {
+    private bool DrawImGuiKeybindEntry(ActionEntry entry, string id, bool entryEnabled, bool readOnly)
+    {
         NumericsVector4 textColor = !entryEnabled ? AkronImGuiTheme.DisabledText : AkronImGuiTheme.Foreground;
         NumericsVector4 boxColor = AkronImGuiTheme.FrameBackground;
         float availableWidth = ImGui.GetContentRegionAvail().X;
@@ -576,13 +683,14 @@ public sealed partial class AkronOverlay {
         ImGui.GetWindowDrawList().AddRectFilled(valueMin, valueMax, AkronImGuiTheme.ToU32(boxColor));
         string value = TruncateImGuiTextToWidth(SafeDescribeEntryValue(entry), Math.Max(16f, valueMax.X - valueMin.X - 8f));
         NumericsVector2 valueSize = ImGui.CalcTextSize(value);
-            ImGui.GetWindowDrawList().AddText(
-                new NumericsVector2(valueMin.X + Math.Max(ScaleImGuiValue(4f), ((valueMax.X - valueMin.X) - valueSize.X) * 0.5f), valueMin.Y + ScaleImGuiValue(3f)),
-            AkronImGuiTheme.ToU32(textColor),
-            value);
+        ImGui.GetWindowDrawList().AddText(
+            new NumericsVector2(valueMin.X + Math.Max(ScaleImGuiValue(4f), ((valueMax.X - valueMin.X) - valueSize.X) * 0.5f), valueMin.Y + ScaleImGuiValue(3f)),
+        AkronImGuiTheme.ToU32(textColor),
+        value);
 
         bool clearPressed = false;
-        if (!readOnly) {
+        if (!readOnly)
+        {
             ImGui.SameLine(0f, 2f);
             NumericsVector4 clearColor = HasClearableBinding(entry) ? textColor : AkronImGuiTheme.Muted;
             ImGui.PushStyleColor(ImGuiCol.Text, clearColor);
@@ -591,7 +699,8 @@ public sealed partial class AkronOverlay {
         }
         ImGui.PopStyleColor(3);
 
-        if (clearPressed && HasClearableBinding(entry)) {
+        if (clearPressed && HasClearableBinding(entry))
+        {
             ClearBindingForEntry(entry);
             return false;
         }
@@ -599,7 +708,8 @@ public sealed partial class AkronOverlay {
         return !readOnly && (labelPressed || valuePressed) && entryEnabled;
     }
 
-    private bool DrawImGuiPlainEntry(ActionEntry entry, string id, bool activeState, bool entryEnabled) {
+    private bool DrawImGuiPlainEntry(ActionEntry entry, string id, bool activeState, bool entryEnabled)
+    {
         NumericsVector4 textColor = !entryEnabled ? AkronImGuiTheme.DisabledText : activeState ? AkronImGuiTheme.Accent : AkronImGuiTheme.Foreground;
         NumericsVector4 indicatorColor = !entryEnabled ? AkronImGuiTheme.Muted : activeState ? AkronImGuiTheme.Accent : AkronImGuiTheme.Muted;
         bool actionControl = ShouldDrawActionSideBars(entry);
@@ -613,7 +723,8 @@ public sealed partial class AkronOverlay {
         bool pressed = ImGui.Button("##plain_row" + id, new NumericsVector2(ImGui.GetContentRegionAvail().X, 0f));
         NumericsVector2 min = ImGui.GetItemRectMin();
         NumericsVector2 max = ImGui.GetItemRectMax();
-        if (actionControl) {
+        if (actionControl)
+        {
             DrawImGuiActionSideBars(min, max, indicatorColor);
             string centeredLabel = TruncateImGuiTextToWidth(entry.Label, Math.Max(24f, max.X - min.X - 22f));
             NumericsVector2 textSize = ImGui.CalcTextSize(centeredLabel);
@@ -621,7 +732,9 @@ public sealed partial class AkronOverlay {
                 new NumericsVector2(min.X + Math.Max(ScaleImGuiValue(10f), ((max.X - min.X) - textSize.X) * 0.5f), min.Y + ScaleImGuiValue(3f)),
                 AkronImGuiTheme.ToU32(textColor),
                 centeredLabel);
-        } else {
+        }
+        else
+        {
             ImGui.GetWindowDrawList().AddText(
                 new NumericsVector2(min.X, min.Y + ScaleImGuiValue(3f)),
                 AkronImGuiTheme.ToU32(textColor),
@@ -637,7 +750,8 @@ public sealed partial class AkronOverlay {
         return pressed;
     }
 
-    private bool DrawImGuiGroupHeaderEntry(ActionEntry entry, string id, bool entryEnabled) {
+    private bool DrawImGuiGroupHeaderEntry(ActionEntry entry, string id, bool entryEnabled)
+    {
         bool expanded = IsSoundGroupExpanded(entry.SoundGroupLabel);
         NumericsVector4 textColor = !entryEnabled ? AkronImGuiTheme.DisabledText : AkronImGuiTheme.Foreground;
         NumericsVector4 indicatorColor = entryEnabled ? AkronImGuiTheme.Accent : AkronImGuiTheme.Muted;
@@ -671,12 +785,14 @@ public sealed partial class AkronOverlay {
         return pressed;
     }
 
-    private static void DrawImGuiDisclosureTriangle(NumericsVector2 min, NumericsVector2 max, bool expanded, NumericsVector4 color) {
+    private static void DrawImGuiDisclosureTriangle(NumericsVector2 min, NumericsVector2 max, bool expanded, NumericsVector4 color)
+    {
         float centerY = (min.Y + max.Y) * 0.5f;
         float scale = CurrentOverlayScale();
         float left = min.X + 5f * scale;
         uint packed = AkronImGuiTheme.ToU32(color);
-        if (expanded) {
+        if (expanded)
+        {
             ImGui.GetWindowDrawList().AddTriangleFilled(
                 new NumericsVector2(left, centerY - 3f * scale),
                 new NumericsVector2(left + 8f * scale, centerY - 3f * scale),
@@ -692,7 +808,8 @@ public sealed partial class AkronOverlay {
             packed);
     }
 
-    private OptionEntryPress DrawImGuiStartPosEntry(ActionEntry entry, string id, bool activeState, bool entryEnabled) {
+    private OptionEntryPress DrawImGuiStartPosEntry(ActionEntry entry, string id, bool activeState, bool entryEnabled)
+    {
         NumericsVector4 indicatorColor = !entryEnabled ? AkronImGuiTheme.Muted : activeState ? AkronImGuiTheme.Accent : AkronImGuiTheme.Muted;
         float availableWidth = ImGui.GetContentRegionAvail().X;
         float arrowWidth = Math.Min(30f, Math.Max(24f, availableWidth * 0.12f));
@@ -707,7 +824,8 @@ public sealed partial class AkronOverlay {
             entryEnabled && level != null,
             PopupActionKey("StartPos", "Set"),
             "StartPos / Set");
-        if (setPressed && level != null) {
+        if (setPressed && level != null)
+        {
             AkronActions.SetStartPos(level);
         }
 
@@ -719,7 +837,8 @@ public sealed partial class AkronOverlay {
             entryEnabled && level != null,
             PopupActionKey("StartPos", "Load"),
             "StartPos / Load");
-        if (loadPressed && level != null) {
+        if (loadPressed && level != null)
+        {
             AkronActions.LoadStartPos(level);
         }
 
@@ -731,7 +850,8 @@ public sealed partial class AkronOverlay {
             entryEnabled,
             PopupActionKey("StartPos", "Clear"),
             "StartPos / Clear");
-        if (clearPressed) {
+        if (clearPressed)
+        {
             AkronActions.ClearActiveStartPos();
         }
 
@@ -754,11 +874,13 @@ public sealed partial class AkronOverlay {
             AkronImGuiTheme.ToU32(indicatorColor));
         ImGui.PopStyleColor(3);
 
-        if (arrowPressed) {
+        if (arrowPressed)
+        {
             return OptionEntryPress.Arrow;
         }
 
-        if (setPressed || loadPressed || clearPressed) {
+        if (setPressed || loadPressed || clearPressed)
+        {
             searchInputActive = false;
             searchInputUsesImGui = false;
             ClearSearchInputFocusRequest();
@@ -767,30 +889,38 @@ public sealed partial class AkronOverlay {
         return OptionEntryPress.None;
     }
 
-    private bool DrawStartPosActionButton(string label, string id, float width, bool enabled, string actionKey, string displayName) {
+    private bool DrawStartPosActionButton(string label, string id, float width, bool enabled, string actionKey, string displayName)
+    {
         ImGui.PushStyleColor(ImGuiCol.Button, AkronImGuiTheme.FrameBackground);
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, enabled ? AkronImGuiTheme.ButtonHovered : AkronImGuiTheme.FrameBackground);
         ImGui.PushStyleColor(ImGuiCol.ButtonActive, enabled ? AkronImGuiTheme.ButtonActive : AkronImGuiTheme.FrameBackground);
-        if (!enabled) {
+        if (!enabled)
+        {
             ImGui.PushStyleColor(ImGuiCol.Text, AkronImGuiTheme.DisabledText);
         }
 
         bool pressed = ImGui.Button(label + id, new NumericsVector2(width, 0f)) && enabled;
         bool bindRequested = ImGui.IsItemHovered() &&
                              (ImGui.IsMouseClicked(ImGuiMouseButton.Right) || ImGui.IsMouseClicked(ImGuiMouseButton.Left) && IsShiftDown());
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.DelayNormal)) {
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.DelayNormal))
+        {
             DrawImGuiItemTooltip(label + " StartPos\nRight-click or Shift-click to bind.");
         }
 
-        if (!enabled) {
+        if (!enabled)
+        {
             ImGui.PopStyleColor();
         }
         ImGui.PopStyleColor(3);
 
-        if (bindRequested) {
-            if (TryGetDefaultButtonBinding(actionKey, out _)) {
+        if (bindRequested)
+        {
+            if (TryGetDefaultButtonBinding(actionKey, out _))
+            {
                 StartButtonBindingCapture(actionKey, displayName, binding => TrySetDefaultButtonBinding(actionKey, binding));
-            } else {
+            }
+            else
+            {
                 StartBindingCapture(actionKey, displayName);
             }
             return false;
@@ -799,26 +929,32 @@ public sealed partial class AkronOverlay {
         return pressed;
     }
 
-    private static string TruncateImGuiTextToWidth(string text, float maxWidth) {
-        if (string.IsNullOrEmpty(text)) {
+    private static string TruncateImGuiTextToWidth(string text, float maxWidth)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
             return text;
         }
 
-        int widthKey = Math.Max(0, (int) Math.Ceiling(maxWidth));
+        int widthKey = Math.Max(0, (int)Math.Ceiling(maxWidth));
         (string Text, int Width) cacheKey = (text, widthKey);
-        if (imguiTextTruncationCache.TryGetValue(cacheKey, out string cached)) {
+        if (imguiTextTruncationCache.TryGetValue(cacheKey, out string cached))
+        {
             return cached;
         }
 
-        if (ImGui.CalcTextSize(text).X <= maxWidth) {
+        if (ImGui.CalcTextSize(text).X <= maxWidth)
+        {
             CacheImGuiTruncatedText(cacheKey, text);
             return text;
         }
 
         const string suffix = "...";
-        for (int length = text.Length - 1; length > 0; length--) {
+        for (int length = text.Length - 1; length > 0; length--)
+        {
             string candidate = text[..length].TrimEnd() + suffix;
-            if (ImGui.CalcTextSize(candidate).X <= maxWidth) {
+            if (ImGui.CalcTextSize(candidate).X <= maxWidth)
+            {
                 CacheImGuiTruncatedText(cacheKey, candidate);
                 return candidate;
             }
@@ -828,23 +964,28 @@ public sealed partial class AkronOverlay {
         return suffix;
     }
 
-    private static void CacheImGuiTruncatedText((string Text, int Width) key, string value) {
-        if (imguiTextTruncationCache.Count > 1024) {
+    private static void CacheImGuiTruncatedText((string Text, int Width) key, string value)
+    {
+        if (imguiTextTruncationCache.Count > 1024)
+        {
             imguiTextTruncationCache.Clear();
         }
 
         imguiTextTruncationCache[key] = value;
     }
 
-    private static bool ShouldReadEntryValueForActiveState(ActionEntry entry) {
-        if (entry == null) {
+    private static bool ShouldReadEntryValueForActiveState(ActionEntry entry)
+    {
+        if (entry == null)
+        {
             return false;
         }
 
         if (entry.Control == OverlayEntryControl.Action && !entry.IsToggle ||
             entry.Control == OverlayEntryControl.Keybind ||
             entry.Control == OverlayEntryControl.KeybindReadOnly ||
-            entry.Control == OverlayEntryControl.GroupHeader) {
+            entry.Control == OverlayEntryControl.GroupHeader)
+        {
             return false;
         }
 
@@ -853,7 +994,8 @@ public sealed partial class AkronOverlay {
                entry.Control == OverlayEntryControl.Selector;
     }
 
-    private static void DrawImGuiActionSideBars(NumericsVector2 min, NumericsVector2 max, NumericsVector4 color) {
+    private static void DrawImGuiActionSideBars(NumericsVector2 min, NumericsVector2 max, NumericsVector4 color)
+    {
         uint packed = AkronImGuiTheme.ToU32(color);
         ImGui.GetWindowDrawList().AddRectFilled(
             new NumericsVector2(min.X + 1f, min.Y + 1f),
