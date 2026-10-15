@@ -521,13 +521,16 @@ public static class AkronExtendedVariants {
         StoreConfiguredValue(option.Name, SerializeValue(value));
         if (applyCurrent ?? !option.IsDefault) {
             SetVariantValue(option.Name, value);
-            message = option.Label + ": on | " + FormatValue(value);
+            message = FormatAppliedConfiguredValueMessage(option.Label, value, option.DefaultValue);
         } else {
             message = option.Label + ": configured | " + FormatValue(value);
         }
 
         return true;
     }
+
+    internal static string FormatAppliedConfiguredValueMessage(string label, object value, object defaultValue) =>
+        label + (ValuesMatch(value, defaultValue) ? ": off | " : ": on | ") + FormatValue(value);
 
     public static bool TrySetConfiguredFromText(string name, string rawValue, out string message) {
         if (!CanChange(out message)) return false;

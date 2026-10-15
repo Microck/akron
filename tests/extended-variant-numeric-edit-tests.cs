@@ -75,6 +75,19 @@ public sealed class ExtendedVariantNumericEditTests {
         Assert.Contains("SetVariantValue(option.Name, value)", body);
     }
 
+    [Theory]
+    [InlineData(1f, 1f, "Zoom: off | 1")]
+    [InlineData(1.5f, 1f, "Zoom: on | 1.5")]
+    public void AppliedMessageReflectsActualDefaultState(float value, float defaultValue, string expected) {
+        Assert.Equal(expected, AkronExtendedVariants.FormatAppliedConfiguredValueMessage("Zoom", value, defaultValue));
+    }
+
+    [Fact]
+    public void IntegerDefaultMessageIsOff() {
+        Assert.Equal("Jumps: off | 1", AkronExtendedVariants.FormatAppliedConfiguredValueMessage("Jumps", 1, 1));
+        Assert.Equal("Jumps: on | 3", AkronExtendedVariants.FormatAppliedConfiguredValueMessage("Jumps", 3, 1));
+    }
+
     private static string Read(string path) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
         "../../../../Source", path));
 }

@@ -20,3 +20,8 @@ The overlay captures activation after drawing each input but before handling its
 Release/Debug native-reference tests:2391 passed each with `AKRON_NATIVE_EVEREST_TESTS=1`. New tests cover keyed intent lifetime, original public signature and actual source wiring/event ordering. They are not presented as fake-provider integration tests. Native tests above provide the actual installed-provider acceptance.
 
 Bounds: no claim for simultaneous external randomizer/provider edits, every numeric option, controller input, stepper default-crossing changes, or transactional Escape rollback. This change intentionally covers numeric text gestures, not string/enum/boolean editors.
+
+## Review correction / QA105
+The second review found that applying the default still emitted an `on | 1` toast despite the panel correctly showing Off. The applied-value message now uses the same default comparison as option state. Three additional message tests cover float and integer defaults/nondefaults (2394 native tests pass in each Release/Debug run).
+
+QA105 package `c1a2aca7e00adabbe85013b58edbdc27de72edb54ffe63bf7839457fb3123be7` was checked natively: enabled Zoom0.5 → intermediate1 shows both panel Off and toast `off | 1`; continuing the same edit to1.5 shows On/current1.5 and `on | 1.5`; a separate gesture ending at1 shows Off and `off | 1` after defocus. No mutation semantics changed in this revision.
