@@ -4,6 +4,7 @@ using System.Linq;
 using Celeste;
 using FMOD.Studio;
 using Microsoft.Xna.Framework;
+using Mono.Cecil;
 using Mono.Cecil.Cil;
 using MonoMod.Cil;
 using Monocle;
@@ -858,22 +859,45 @@ public partial class AkronModule {
     }
 
     private static void LookoutRoutineIlHook(ILContext il) {
+        // RuntimeDetour gives the manipulator a DMD wrapper, whose declaring
+        // type differs from the original coroutine fields' declaring type.
+        PatchLookoutMovementReads(il, ResolveLookoutRoutineMethod()?.DeclaringType?.FullName?.Replace('+', '/'));
+    }
+
+    internal static void PatchLookoutMovementReads(ILContext il, string coroutineTypeName) {
+        // The coroutine caches these vanilla values before its movement loop.
+        // Scale reads, not initialization, so hold changes take effect in the
+        // active interaction without compounding an already scaled field.
+        var accelerationFields = new HashSet<string>(StringComparer.Ordinal);
+        var speedFields = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Instruction instruction in il.Body.Instructions) {
+            if ((instruction.MatchLdcR4(800f) || instruction.MatchLdcR4(240f)) &&
+                instruction.Next?.OpCode == OpCodes.Stfld &&
+                instruction.Next.Operand is FieldReference field &&
+                field.FieldType.MetadataType == MetadataType.Single &&
+                field.DeclaringType.FullName == coroutineTypeName) {
+                (instruction.MatchLdcR4(800f) ? accelerationFields : speedFields).Add(field.FullName);
+            }
+        }
+        fastLookoutPatchedMovementReadCount = 0;
+        if (accelerationFields.Count != 1 || speedFields.Count != 1 || accelerationFields.Overlaps(speedFields)) {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule),
+                "Could not identify both Lookout cached movement fields; Fast Lookout is disabled.");
+            return;
+        }
+
+        var movementFields = new HashSet<string>(accelerationFields, StringComparer.Ordinal);
+        movementFields.UnionWith(speedFields);
         ILCursor cursor = new ILCursor(il);
-        int patched = 0;
-        while (cursor.TryGotoNext(MoveType.After, instruction => instruction.MatchLdcR4(800f))) {
+        while (cursor.TryGotoNext(MoveType.After, instruction =>
+                   instruction.OpCode == OpCodes.Ldfld &&
+                   instruction.Operand is FieldReference field && movementFields.Contains(field.FullName))) {
             cursor.EmitDelegate<Func<float, float>>(ApplyFastLookoutMultiplier);
-            patched++;
+            fastLookoutPatchedMovementReadCount++;
         }
-
-        cursor.Index = 0;
-        while (cursor.TryGotoNext(MoveType.After, instruction => instruction.MatchLdcR4(240f))) {
-            cursor.EmitDelegate<Func<float, float>>(ApplyFastLookoutMultiplier);
-            patched++;
-        }
-
-        fastLookoutPatchedConstantCount = patched;
-        if (patched == 0) {
-            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Could not find Lookout movement constants; Fast Lookout is disabled.");
+        if (fastLookoutPatchedMovementReadCount == 0) {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule),
+                "Could not find Lookout cached movement reads; Fast Lookout is disabled.");
         }
     }
 
@@ -891,7 +915,7 @@ public partial class AkronModule {
         return vanillaValue * AkronModuleSettings.ClampFastLookoutMultiplier(Settings.FastLookoutMultiplier);
     }
 
-    internal static int FastLookoutPatchedConstantCount => fastLookoutPatchedConstantCount;
+    internal static int FastLookoutPatchedMovementReadCount => fastLookoutPatchedMovementReadCount;
 
     internal static float ApplyFastLookoutMultiplierForQa(float vanillaValue, bool holdPressed) {
         return ApplyFastLookoutMultiplier(vanillaValue, holdPressed);

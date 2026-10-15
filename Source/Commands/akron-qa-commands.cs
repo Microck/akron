@@ -313,7 +313,7 @@ public static partial class AkronCommands {
         Log("qa-fast-lookout-enabled: " + AkronModule.Settings.FastLookout.ToString().ToLowerInvariant());
         Log("qa-fast-lookout-hold-forced: " + holdPressed.ToString().ToLowerInvariant());
         Log("qa-fast-lookout-live-hold: " + AkronModule.IsFastLookoutHoldHeld().ToString().ToLowerInvariant());
-        Log("qa-fast-lookout-patched-constants: " + AkronModule.FastLookoutPatchedConstantCount.ToString(CultureInfo.InvariantCulture));
+        Log("qa-fast-lookout-patched-movement-reads: " + AkronModule.FastLookoutPatchedMovementReadCount.ToString(CultureInfo.InvariantCulture));
         Log("qa-fast-lookout-multiplier: " + AkronModuleSettings.ClampFastLookoutMultiplier(AkronModule.Settings.FastLookoutMultiplier).ToString(CultureInfo.InvariantCulture));
         Log("qa-fast-lookout-vanilla-value: " + vanillaValue.ToString("0.###", CultureInfo.InvariantCulture));
         Log("qa-fast-lookout-result: " + result.ToString("0.###", CultureInfo.InvariantCulture));
