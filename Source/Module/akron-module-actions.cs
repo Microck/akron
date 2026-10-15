@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Reflection;
 using System.Text;
 using Celeste;
 using Celeste.Editor;
@@ -158,8 +159,52 @@ public partial class AkronModule {
             AkronPracticeStats.ResetAttemptTimer();
             level.Session.RespawnPoint = level.GetSpawnPoint(level.Camera.Position);
             ClearCustomDeathParticleBursts();
+            bool wasPaused = level.Paused;
             level.Reload();
+            if (wasPaused && Engine.Scene == level && level.Paused) {
+                // Reload removes the native pause menu. End its pause only after
+                // the old menu is gone, so Unpause cannot attach a settings-save
+                // coroutine to a menu that this reload is about to destroy.
+                level.Unpause();
+                // The discarded menu cannot end its audio effects. Do this
+                // before notifying subscribers rather than waiting for Update.
+                level.EndPauseEffects();
+                NotifyLevelUnpausedAfterReload(level);
+            }
         };
+    }
+
+    // Everest keeps the event raiser internal. Resolve that exact dispatcher,
+    // rather than capturing its event field, so later subscribers are included.
+    private static readonly Action<Level> everestLevelUnpause = ResolveEverestLevelUnpause(typeof(Everest.Events.Level));
+
+    internal static Action<Level> ResolveEverestLevelUnpause(Type dispatcherType) {
+        try {
+            MethodInfo method = dispatcherType.GetMethod("Unpause",
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+                null, new[] { typeof(Level) }, null);
+            return method?.ReturnType == typeof(void) ? method.CreateDelegate<Action<Level>>() : null;
+        } catch (ArgumentException) {
+            return null;
+        } catch (MemberAccessException) {
+            return null;
+        }
+    }
+    private static bool missingEverestUnpauseWarningLogged;
+
+    internal static void NotifyLevelUnpausedAfterReload(Level level) {
+        if (everestLevelUnpause != null) {
+            everestLevelUnpause(level);
+            return;
+        }
+        // Preserve Akron's own recovery on an incompatible Everest version,
+        // while explicitly reporting that global lifecycle delivery is missing.
+        if (!missingEverestUnpauseWarningLogged) {
+            missingEverestUnpauseWarningLogged = true;
+            Logger.Log(LogLevel.Warn, nameof(AkronModule),
+                "Everest's unpause dispatcher is unavailable; paused Reload Room can only notify Akron.");
+        }
+        LevelOnUnpause(level);
     }
 
     private static void OpenDebugMap(Level level) {
