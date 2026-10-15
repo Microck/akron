@@ -9,6 +9,8 @@ using Monocle;
 namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
+    private static readonly AkronCameraZoomLease cursorZoomLease = new();
+    private static bool cursorZoomReleaseWarningShown;
     private static Level transitionSpeedLevel;
     private static float previousTransitionDuration;
 
@@ -301,6 +303,9 @@ public partial class AkronModule {
         if (level == null || !AkronPolicy.CanUse(AkronFeatureKind.CursorZoom).Allowed) {
             return;
         }
+        if (cursorZoomLease.HasOwner && !cursorZoomLease.IsOwner(level) && !ReleaseCursorZoomOverride(level)) {
+            return;
+        }
 
         Settings.CursorZoomPercent = AkronModuleSettings.ClampCursorZoomPercent(Settings.CursorZoomPercent, Settings.CursorZoomAllowZoomOut);
         float zoom = Settings.CursorZoomPercent / 100f;
@@ -310,20 +315,44 @@ public partial class AkronModule {
                 level.Camera.Position,
                 level.Zoom,
                 level.Tracker.GetEntity<Player>()?.Center);
+            // Capture before calling a foreign provider: even a failed call may have mutated the camera.
+            cursorZoomLease.Capture(level, level.Camera.Viewport);
+            cursorZoomApplied = true;
+            cursorZoomOwnedByExtendedCamera = true;
             if (AkronInterop.TryForceExtendedCameraFocus(level, worldCenter, zoom)) {
-                cursorZoomApplied = true;
-                cursorZoomOwnedByExtendedCamera = true;
+                return;
+            }
+            if (!ReleaseCursorZoomOverride(level)) return;
+        }
+
+        // Keep ECD automatic interpolation suppressed while a native override owns its camera.
+        // This also covers direct >=100% activation on a metadata-enabled ECD map.
+        if (cursorZoomLease.HasOwner || AkronInterop.AreExtendedCameraHooksActive()) {
+            if (!cursorZoomLease.HasOwner) cursorZoomLease.Capture(level, level.Camera.Viewport);
+            cursorZoomApplied = true;
+            cursorZoomOwnedByExtendedCamera = true;
+            try {
+                if (!cursorZoomLease.TryPrepareNative(level,
+                    viewport => level.Camera.Viewport = viewport,
+                    () => level.ResetZoom(),
+                    () => AkronInterop.TrySetExtendedCameraAutomaticZooming(false))) {
+                    WarnCursorZoomRelease("Could not suspend Extended Camera Dynamics automatic zooming.");
+                    ReleaseCursorZoomOverride(level);
+                    return;
+                }
+            } catch (Exception exception) {
+                WarnCursorZoomRelease(exception.Message);
+                ReleaseCursorZoomOverride(level);
                 return;
             }
         }
-
         zoom = ClampNativeCursorZoom(zoom);
         cursorZoomFocusGamePosition = ClampCursorZoomFocus(AkronScreenProjection.MouseScreenToGame(mouseScreenPosition), zoom);
         level.Zoom = zoom;
         level.ZoomTarget = zoom;
         level.ZoomFocusPoint = cursorZoomFocusGamePosition;
         cursorZoomApplied = true;
-        cursorZoomOwnedByExtendedCamera = false;
+        cursorZoomOwnedByExtendedCamera = cursorZoomLease.HasOwner;
     }
 
     private static void DeactivateCursorZoom(Level level, bool resetPreference = true) {
@@ -336,14 +365,44 @@ public partial class AkronModule {
             Settings.CursorZoomPercent = 100;
         }
 
-        if (ShouldResetCursorZoomLevelState(cursorZoomApplied, cursorZoomOwnedByExtendedCamera)) {
-            ResetCursorZoomLevelState(level);
-        } else if (cursorZoomOwnedByExtendedCamera) {
-            AkronInterop.TryRestoreExtendedCameraAutomaticZooming();
-        }
+        ReleaseCursorZoomOverride(level);
+    }
 
-        cursorZoomApplied = false;
-        cursorZoomOwnedByExtendedCamera = false;
+    private static bool ReleaseCursorZoomOverride(Level level) {
+        try {
+            if (cursorZoomLease.HasOwner) {
+                if (!cursorZoomLease.TryRelease(level,
+                    viewport => level.Camera.Viewport = viewport,
+                    () => level.ResetZoom(),
+                    AkronInterop.TryRestoreExtendedCameraAutomaticZooming)) {
+                    WarnCursorZoomRelease("Extended Camera Dynamics automatic zoom restoration is unavailable.");
+                    return false;
+                }
+            } else if (cursorZoomApplied) {
+                ResetCursorZoomLevelState(level);
+            }
+            cursorZoomApplied = false;
+            cursorZoomOwnedByExtendedCamera = false;
+            cursorZoomReleaseWarningShown = false;
+            return true;
+        } catch (Exception exception) {
+            WarnCursorZoomRelease(exception.Message);
+            return false;
+        }
+    }
+
+    private static void WarnCursorZoomRelease(string reason) {
+        if (cursorZoomReleaseWarningShown) return;
+        cursorZoomReleaseWarningShown = true;
+        Logger.Log(LogLevel.Warn, nameof(AkronModule), "Cursor Zoom release remains pending: " + reason);
+    }
+
+    private static void ReleaseCursorZoomOnSceneChange() {
+        if (cursorZoomLease.HasOwner && !cursorZoomLease.IsOwner(Engine.Scene)) {
+            // Only restore provider-global automatic mode; never apply an old viewport to a new scene.
+            ReleaseCursorZoomOverride(Engine.Scene as Level);
+            cursorZoomToggleActive = false;
+        }
     }
 
     private static Vector2 ClampCursorZoomFocus(Vector2 focus, float zoom) {
@@ -394,17 +453,11 @@ public partial class AkronModule {
 
     internal static void ResetCursorZoom(Level level) {
         cursorZoomHadScrollSample = false;
-        bool restoreExtendedCameraZoom = cursorZoomOwnedByExtendedCamera;
-        cursorZoomApplied = false;
-        cursorZoomOwnedByExtendedCamera = false;
+        bool hadOverride = cursorZoomApplied || cursorZoomLease.HasOwner;
         cursorZoomToggleActive = false;
         cursorZoomLastBindDown = false;
-        if (restoreExtendedCameraZoom) {
-            AkronInterop.TryRestoreExtendedCameraAutomaticZooming();
-            return;
-        }
-
-        ResetCursorZoomLevelState(level);
+        if (!ReleaseCursorZoomOverride(level)) return;
+        if (!hadOverride) ResetCursorZoomLevelState(level);
     }
 
     internal static string DescribeCursorZoom(Level level) {
