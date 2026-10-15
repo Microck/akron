@@ -32,3 +32,9 @@ On an incompatible Everest build with no bindable dispatcher, a one-time warning
 Release and Debug each pass 2,362 tests. Isolated event tests verify current and late-added subscribers are each called once per notification and subscriber exceptions are not reflection-wrapped. These are automated tests, not a claim of live third-party-mod acceptance.
 
 QA91 used Release ZIP `f3f7c4e1bf35f1daf84f066162091e5d49ffdd65aaaa5cd0fab4c6396f9c8b66` in the native Old Site 12d fixture. Direct paused Reload resumed responsive gameplay and allowed the native pause menu to reopen. With Pause Timer set to 3, reload progressed through its countdown and returned to gameplay. No unavailable-dispatcher fallback warning appeared in the native log. This validates the native recovery/countdown path; it does not inspect arbitrary third-party subscribers in the running game.
+
+## CI reference compatibility
+
+GitHub builds against stripped game reference assemblies. Their Everest event bodies are no-ops, so executing real event tests against those references is not a valid integration test. The native tests are now explicitly marked `NativeEverest` and skipped unless `AKRON_NATIVE_EVEREST_TESTS=1` is set with executable game references. They remain enabled in local native-reference Release and Debug runs. CI runs separate executable event fixtures through the same exact-signature resolver, covering current/late subscribers, single delivery, exception identity, and incompatible signatures. Emitted-code checks tie that resolver to the real Everest type and ensure direct exception-preserving invocation.
+
+The updated native-reference suites pass 2,369 tests in Release and Debug, including both native event tests. Default mode reports those two integration tests as skipped, never passed. This test-only compatibility correction and resolver parameterization do not add new live third-party-mod coverage; QA91 remains the native gameplay evidence above.

@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
 
+[Collection("Native Everest lifecycle")]
 public sealed class PausedReloadLifecycleTests {
     [Fact]
     public void ReloadEndsAnExistingPauseAfterReplacingTheRoom() {
@@ -35,7 +36,8 @@ public sealed class PausedReloadLifecycleTests {
         Assert.Contains(calls, call => call.DeclaringType.FullName == "Celeste.Level" && call.Name == "Unpause");
         Assert.Contains(calls, call => call.DeclaringType.FullName == typeof(AkronModule).FullName && call.Name == "NotifyLevelUnpausedAfterReload");
     }
-    [Fact]
+    [NativeEverestFact]
+    [Trait("Category", "NativeEverest")]
     public void ReloadNotificationInvokesCurrentGlobalSubscribersOnce() {
         int first = 0;
         int second = 0;
@@ -57,7 +59,8 @@ public sealed class PausedReloadLifecycleTests {
         }
     }
 
-    [Fact]
+    [NativeEverestFact]
+    [Trait("Category", "NativeEverest")]
     public void ReloadNotificationPreservesNativeSubscriberExceptionSemantics() {
         var expected = new InvalidOperationException("test subscriber");
         global::Celeste.Mod.Everest.Events.Level.UnpauseHandler handler = level => throw expected;
@@ -70,4 +73,85 @@ public sealed class PausedReloadLifecycleTests {
         }
     }
 
+    [Fact]
+    public void ProductionWiringBindsEverestAndDirectlyInvokesTheDispatcher() {
+        using var assembly = AssemblyDefinition.ReadAssembly(typeof(AkronModule).Assembly.Location);
+        var root = assembly.MainModule.GetType(typeof(AkronModule).FullName);
+        var initializer = root.Methods.Single(method => method.Name == ".cctor");
+        Assert.Contains(initializer.Body.Instructions, instruction =>
+            instruction.Operand is TypeReference type && type.FullName == "Celeste.Mod.Everest/Events/Level");
+        Assert.Contains(initializer.Body.Instructions, instruction =>
+            instruction.Operand is MethodReference method && method.Name == "ResolveEverestLevelUnpause");
+        var notify = root.Methods.Single(method => method.Name == "NotifyLevelUnpausedAfterReload");
+        Assert.Empty(notify.Body.ExceptionHandlers);
+        Assert.Contains(notify.Body.Instructions, instruction =>
+            instruction.Operand is MethodReference method && method.Name == "Invoke" &&
+            method.DeclaringType.FullName.StartsWith("System.Action`1", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ResolvedDispatcherIncludesLateSubscribersAndInvokesEachOnce() {
+        var dispatch = AkronModule.ResolveEverestLevelUnpause(typeof(EventFixture));
+        Assert.NotNull(dispatch);
+        int first = 0, second = 0;
+        Action<Level> one = _ => first++;
+        Action<Level> two = _ => second++;
+        EventFixture.OnUnpause += one;
+        try {
+            dispatch(null!);
+            EventFixture.OnUnpause += two;
+            dispatch(null!);
+            Assert.Equal(2, first);
+            Assert.Equal(1, second);
+        } finally {
+            EventFixture.OnUnpause -= one;
+            EventFixture.OnUnpause -= two;
+        }
+    }
+
+    [Fact]
+    public void ResolvedDispatcherPreservesSubscriberExceptionIdentity() {
+        var dispatch = AkronModule.ResolveEverestLevelUnpause(typeof(EventFixture));
+        Assert.NotNull(dispatch);
+        var expected = new InvalidOperationException("fixture subscriber");
+        Action<Level> handler = _ => throw expected;
+        EventFixture.OnUnpause += handler;
+        try {
+            Assert.Same(expected, Assert.Throws<InvalidOperationException>(() => dispatch(null!)));
+        } finally {
+            EventFixture.OnUnpause -= handler;
+        }
+    }
+
+    [Theory]
+    [InlineData(typeof(MissingFixture))]
+    [InlineData(typeof(WrongReturnFixture))]
+    [InlineData(typeof(WrongParameterFixture))]
+    [InlineData(typeof(InstanceFixture))]
+    public void IncompatibleDispatcherIsNotBound(Type dispatcherType) {
+        Assert.Null(AkronModule.ResolveEverestLevelUnpause(dispatcherType));
+    }
+
+    private static class EventFixture {
+        internal static event Action<Level>? OnUnpause;
+        private static void Unpause(Level level) => OnUnpause?.Invoke(level);
+    }
+    private sealed class MissingFixture { }
+    private sealed class WrongReturnFixture { private static int Unpause(Level level) => 0; }
+    private sealed class WrongParameterFixture { private static void Unpause(string level) { } }
+    private sealed class InstanceFixture { private void Unpause(Level level) { } }
+
 }
+
+
+// CI uses reference-only game assemblies whose event bodies are stripped. These
+// integration tests must be explicitly enabled with an executable native runtime.
+public sealed class NativeEverestFactAttribute : FactAttribute {
+    public NativeEverestFactAttribute() {
+        if (Environment.GetEnvironmentVariable("AKRON_NATIVE_EVEREST_TESTS") != "1")
+            Skip = "Requires native Everest bodies; set AKRON_NATIVE_EVEREST_TESTS=1 with native references.";
+    }
+}
+
+[CollectionDefinition("Native Everest lifecycle", DisableParallelization = true)]
+public sealed class NativeEverestLifecycleCollection { }

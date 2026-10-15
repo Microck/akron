@@ -173,11 +173,11 @@ public partial class AkronModule {
 
     // Everest keeps the event raiser internal. Resolve that exact dispatcher,
     // rather than capturing its event field, so later subscribers are included.
-    private static readonly Action<Level> everestLevelUnpause = ResolveEverestLevelUnpause();
+    private static readonly Action<Level> everestLevelUnpause = ResolveEverestLevelUnpause(typeof(Everest.Events.Level));
 
-    private static Action<Level> ResolveEverestLevelUnpause() {
+    internal static Action<Level> ResolveEverestLevelUnpause(Type dispatcherType) {
         try {
-            MethodInfo method = typeof(Everest.Events.Level).GetMethod("Unpause",
+            MethodInfo method = dispatcherType.GetMethod("Unpause",
                 BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
                 null, new[] { typeof(Level) }, null);
             return method?.ReturnType == typeof(void) ? method.CreateDelegate<Action<Level>>() : null;
