@@ -27,8 +27,9 @@ public partial class AkronModule {
         customDeathParticleRenderHookCalls++;
         if (self != null && customDeathBursts.TryGetValue(self, out var burst)) {
             // Keep the native component and callbacks alive. Disabling the custom
-            // feature or a renderer failure restores its vanilla rendering.
-            if (!ShouldUseCustomDeathParticles() || burst.RenderFailed) {
+            // feature restores its vanilla rendering. A failed custom renderer
+            // falls back inside the independent owner, including after respawn.
+            if (!ShouldUseCustomDeathParticles()) {
                 vanillaDeathParticleDrawDepth++;
                 try {
                     orig(self);
@@ -259,6 +260,10 @@ public partial class AkronModule {
             if (!IsValid) {
                 return;
             }
+            if (RenderFailed) {
+                RenderVanillaFallback();
+                return;
+            }
             try {
                 RenderDeathParticleAppearance(Position, appearance,
                     ResolveDeathParticleLifetimeProgress(age, duration), age / VanillaDeathParticleDurationSeconds);
@@ -268,6 +273,23 @@ public partial class AkronModule {
                     Logger.Log(LogLevel.Warn, nameof(AkronModule), "Custom death burst rendering failed: " + exception);
                 }
                 RenderFailed = true;
+                RenderVanillaFallback();
+            }
+        }
+
+        private void RenderVanillaFallback() {
+            // The native dead body may already be gone. Keep a drawable fallback
+            // here rather than relying on its component to render again.
+            try {
+                vanillaDeathParticleDrawDepth++;
+                try {
+                    DeathEffect.Draw(Position, appearance.Primary,
+                        ResolveDeathParticleLifetimeProgress(age, duration));
+                } finally {
+                    vanillaDeathParticleDrawDepth--;
+                }
+            } catch (Exception exception) {
+                Logger.Log(LogLevel.Warn, nameof(AkronModule), "Vanilla death burst fallback failed: " + exception);
                 Cancel();
             }
         }

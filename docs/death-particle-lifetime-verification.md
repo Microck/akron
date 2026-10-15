@@ -51,3 +51,9 @@ Follow-up Release package SHA-256: `b25eb02a54cbb2b09b189800e616788618974fedb6fb
 - Repeated Set attempts while the restart copy was pending were rejected. Native pause allowed its background copy to complete. Paused capture failures and pending attempts are excluded from acceptance.
 
 These results supplement the core lifetime checks above. They do not establish exact duration, forced renderer failure, SpeedrunTool behavior, or all transition paths.
+
+## Renderer fallback follow-up
+
+A second review found that a custom-render failure after the native dead body disappeared could not fall back through that dead body's component. The independent entity now owns a persistent vanilla fallback using DeathEffect.Draw under the recursion bypass. It retains its age/duration and remains the sole renderer while customization is enabled; disabling customization still restores native component rendering. If vanilla drawing itself fails, the cosmetic is cancelled safely. This exceptional branch is source/structural coverage; no live renderer exception was injected or reproduced. The preceding b25 package live results predate this additional fallback-only correction.
+
+QA73 ordinary-path regression used final Release ZIP `8f58a673208be1cc5d9c90b08a36ab3388cebe8b14e8e65e01d7e739b7ebc3f9`. A real spike death with Square/3 retained a substantial pit tail beside the respawned player; native pause retained that tail and switching customization off cleared it. Defaults were restored and the session exited through Save and Quit and Exit. Both Release and Debug pass 2,357 tests. This smoke test validates the normal owner/disable path after the fallback edit; it does not exercise a thrown renderer.

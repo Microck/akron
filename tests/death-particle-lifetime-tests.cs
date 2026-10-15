@@ -46,6 +46,10 @@ public sealed class DeathParticleLifetimeTests {
         Assert.Contains("session.Level == room && !owner.Transitioning", runtime);
         Assert.Contains("AkronSaveLoadService.IgnoreSaveState(this)", runtime);
         Assert.Contains("vanillaDeathParticleDrawDepth--", runtime);
+        Assert.Contains("if (RenderFailed)", runtime);
+        Assert.Contains("private void RenderVanillaFallback()", runtime);
+        Assert.Contains("DeathEffect.Draw(Position, appearance.Primary,", runtime);
+        Assert.DoesNotContain("!ShouldUseCustomDeathParticles() || burst.RenderFailed", runtime);
         Assert.Contains("public override void Added(Scene scene)", runtime);
         string transition = File.ReadAllText(Path.Combine(root, "Runtime/akron-render-transition-suppression.cs"));
         Assert.DoesNotContain("ClearCustomDeathParticleBursts();", transition);
