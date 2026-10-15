@@ -388,21 +388,35 @@ public static partial class AkronHudRenderer
 
     private static Vector2 AnchorBoxPosition(AkronHudAnchor anchor, Vector2 size)
     {
-        Vector2 position = anchor switch
-        {
-            AkronHudAnchor.TopLeft => new Vector2(HudEdgePadding, HudEdgePadding),
-            AkronHudAnchor.TopCenter => new Vector2(960f - size.X / 2f, HudEdgePadding),
-            AkronHudAnchor.TopRight => new Vector2(1920f - HudEdgePadding - size.X, HudEdgePadding),
-            AkronHudAnchor.MiddleLeft => new Vector2(HudEdgePadding, 540f - size.Y / 2f),
-            AkronHudAnchor.Center => new Vector2(960f - size.X / 2f, 540f - size.Y / 2f),
-            AkronHudAnchor.MiddleRight => new Vector2(1920f - HudEdgePadding - size.X, 540f - size.Y / 2f),
-            AkronHudAnchor.BottomLeft => new Vector2(HudEdgePadding, 1080f - HudEdgePadding - size.Y),
-            AkronHudAnchor.BottomCenter => new Vector2(960f - size.X / 2f, 1080f - HudEdgePadding - size.Y),
-            AkronHudAnchor.BottomRight => new Vector2(1920f - HudEdgePadding - size.X, 1080f - HudEdgePadding - size.Y),
-            _ => new Vector2(1920f - HudEdgePadding - size.X, HudEdgePadding)
-        };
+        // The final HUD pass is viewport-local; FNA applies the viewport origin.
+        var viewport = Engine.Instance?.GraphicsDevice?.Viewport ?? Engine.Viewport;
+        var position = HudBoxAnchorCoordinates(anchor, size.X, size.Y,
+            viewport.Width > 0 ? viewport.Width : 1920,
+            viewport.Height > 0 ? viewport.Height : 1080);
+        return new Vector2(position.X + AkronModule.Settings.IndicatorOffsetX,
+            position.Y + AkronModule.Settings.IndicatorOffsetY);
+    }
 
-        return position + new Vector2(AkronModule.Settings.IndicatorOffsetX, AkronModule.Settings.IndicatorOffsetY);
+    internal static (float X, float Y) HudBoxAnchorCoordinates(
+        AkronHudAnchor anchor, float boxWidth, float boxHeight, float viewportWidth, float viewportHeight)
+    {
+        float center = (viewportWidth - boxWidth) / 2f;
+        float middle = (viewportHeight - boxHeight) / 2f;
+        float right = viewportWidth - HudEdgePadding - boxWidth;
+        float bottom = viewportHeight - HudEdgePadding - boxHeight;
+        return anchor switch
+        {
+            AkronHudAnchor.TopLeft => (HudEdgePadding, HudEdgePadding),
+            AkronHudAnchor.TopCenter => (center, HudEdgePadding),
+            AkronHudAnchor.TopRight => (right, HudEdgePadding),
+            AkronHudAnchor.MiddleLeft => (HudEdgePadding, middle),
+            AkronHudAnchor.Center => (center, middle),
+            AkronHudAnchor.MiddleRight => (right, middle),
+            AkronHudAnchor.BottomLeft => (HudEdgePadding, bottom),
+            AkronHudAnchor.BottomCenter => (center, bottom),
+            AkronHudAnchor.BottomRight => (right, bottom),
+            _ => (right, HudEdgePadding)
+        };
     }
 
     private static void DrawText(string text, float x, ref float y, Color color)
