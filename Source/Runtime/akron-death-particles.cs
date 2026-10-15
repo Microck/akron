@@ -183,8 +183,9 @@ public partial class AkronModule {
             disposed = true;
             customDeathBurstCaptureDepth--;
             foreach (var burst in bursts) {
-                // Preparing a first StartPos temporarily reloads and then rolls
-                // back this same room. That capture must not consume cosmetics.
+                // Capture preparation or a failed cold restore can reload and
+                // roll back this room. Successful rollback preserves cosmetics;
+                // a committed target restore or failed rollback cancels them.
                 if ((!mutationStarted || restored) && Engine.Scene == level && level.Session.Level == room) {
                     burst.RebindAfterCapture(level);
                 } else {
