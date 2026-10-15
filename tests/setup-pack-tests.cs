@@ -62,12 +62,15 @@ public sealed class SetupPackTests {
             AkronSetupPacks.Write(source, sourceSession, path, "Whole", AkronSetupSection.Whole);
             AkronSetupPack pack = AkronSetupPacks.Read(path);
             AkronModuleSettings target = new AkronModuleSettings {
-                RecordingOutputFolder = "/trusted/target"
+                RecordingOutputFolder = "/trusted/target",
+                CursorZoomHold = AkronModuleSettings.CreateLeftAltHoldBinding()
             };
+            var originalCursorBinding = target.CursorZoomHold;
             AkronModuleSession targetSession = new AkronModuleSession();
 
             AkronSetupPacks.Apply(target, targetSession, pack);
 
+            Assert.Same(originalCursorBinding, target.CursorZoomHold);
             Assert.Equal("Ctrl+R", target.MenuActionBindings["Shortcuts/Retry"]);
             AkronStartPos imported = Assert.Single(targetSession.StartPositions).Value;
             Assert.Equal(3, Assert.Single(targetSession.StartPositions).Key);
@@ -650,12 +653,18 @@ public sealed class SetupPackTests {
         Assert.Equal(AkronActions.GetStartPosStateSlotName("New/Map", 2), imported.StateSlotName);
     }
 
-    [Fact]
-    public void FailedStartPosMetadataSaveRestoresSettingsAndSessionState() {
+    [Theory]
+    [InlineData(AkronSetupSection.StartPos)]
+    [InlineData(AkronSetupSection.Whole)]
+    public void FailedStartPosMetadataSaveRestoresSettingsAndSessionState(AkronSetupSection section) {
         AkronModuleSettings settings = new AkronModuleSettings {
             SmartStartPos = false,
-            StartPosSlotCount = 3
+            StartPosSlotCount = 3,
+            CursorZoomHold = AkronModuleSettings.CreateLeftAltHoldBinding(),
+            ToggleOverlay = AkronModuleSettings.CreateDefaultOverlayToggleBinding()
         };
+        var originalCursorBinding = settings.CursorZoomHold;
+        var originalOverlayBinding = settings.ToggleOverlay;
         Dictionary<int, AkronStartPos> previousStartPositions = new Dictionary<int, AkronStartPos> {
             [2] = new AkronStartPos {
                 Position = new Vector2(1f, 2f),
@@ -669,7 +678,11 @@ public sealed class SetupPackTests {
             LastLoadedStartPosSlot = 2
         };
         AkronSetupPack pack = new AkronSetupPack {
-            Section = AkronSetupSection.StartPos,
+            Section = section,
+            ButtonBindings = new Dictionary<string, AkronButtonBindingPack> {
+                [nameof(AkronModuleSettings.CursorZoomHold)] = new() { Keys = new() { "F8" } },
+                [nameof(AkronModuleSettings.ToggleOverlay)] = new()
+            },
             ArchiveMapSid = "Map/A",
             State = new AkronSetupState {
                 SmartStartPos = true,
@@ -689,9 +702,11 @@ public sealed class SetupPackTests {
             settings,
             session,
             pack,
-            AkronSetupSection.StartPos,
+            section,
             persistStartPosMetadata: () => false));
 
+        Assert.Same(originalCursorBinding, settings.CursorZoomHold);
+        Assert.Same(originalOverlayBinding, settings.ToggleOverlay);
         Assert.False(settings.SmartStartPos);
         Assert.Equal(3, settings.StartPosSlotCount);
         Assert.Same(previousStartPositions, session.StartPositions);
