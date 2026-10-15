@@ -75,7 +75,7 @@ public partial class AkronModuleSettings {
         }
     }
 
-    // Returns whether the binding was replaced, so an import can tell the player that the
+    // Returns whether the binding was reset, so an import can tell the player that the
     // pack's Open Menu binding was not kept.
     public static bool EnsureCurrentOverlayToggleDefault(AkronModuleSettings settings) {
         if (settings == null) {
@@ -87,7 +87,20 @@ public partial class AkronModuleSettings {
             return false;
         }
 
-        settings.ToggleOverlay = CreateDefaultOverlayToggleBinding();
+        if (binding == null) {
+            settings.ToggleOverlay = CreateDefaultOverlayToggleBinding();
+        } else {
+            // Native remapping rows and initialized input nodes retain this Binding.
+            // Reset its contents in place so clearing a row does not detach it from
+            // the setting that runtime input and subsequent saves actually use.
+            binding.Keys ??= new List<Keys>();
+            binding.Buttons ??= new List<Buttons>();
+            binding.MouseButtons ??= new List<MInput.MouseData.MouseButtons>();
+            binding.Keys.Clear();
+            binding.Keys.Add(Keys.Tab);
+            binding.Buttons.Clear();
+            binding.MouseButtons.Clear();
+        }
         return true;
     }
 
