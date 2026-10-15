@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Fade golden berry sprites using premultiplied color modulation, preserve their native/custom tint, and restore it after rendering instead of leaving a bright sprite at zero opacity.
+
 - Preserve JPEG capture geometry at screen widths that are not divisible by four, including merged room exports, using a tightly packed managed encoder.
 
 - Exclude native pause and native frozen updates from Auto Kill’s attempt timer, and prevent timer or area kills while native gameplay is suspended.

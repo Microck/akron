@@ -238,6 +238,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.RisingLava.OnPlayer += RisingLavaOnPlayer;
         On.Celeste.SandwichLava.OnPlayer += SandwichLavaOnPlayer;
         On.Celeste.Strawberry.OnCollect += StrawberryOnCollect;
+        On.Monocle.Image.Render += GoldenSpriteOnRender;
         On.Celeste.Celeste.Freeze += CelesteOnFreeze;
         On.Celeste.UserIO.SaveHandler += UserIOOnSaveHandler;
         On.FMOD.Studio.EventDescription.createInstance += EventDescriptionOnCreateInstance;
@@ -407,6 +408,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.RisingLava.OnPlayer -= RisingLavaOnPlayer;
         On.Celeste.SandwichLava.OnPlayer -= SandwichLavaOnPlayer;
         On.Celeste.Strawberry.OnCollect -= StrawberryOnCollect;
+        On.Monocle.Image.Render -= GoldenSpriteOnRender;
         On.Celeste.Celeste.Freeze -= CelesteOnFreeze;
         On.Celeste.UserIO.SaveHandler -= UserIOOnSaveHandler;
         On.FMOD.Studio.EventDescription.createInstance -= EventDescriptionOnCreateInstance;
@@ -594,7 +596,6 @@ public partial class AkronModule : EverestModule {
         RefreshRefillClaritySprites(self);
         ApplyEnabledRuntimeFeatures(self);
         UpdateLagPauser(self);
-        UpdateGoldenTransparency(self);
         AkronAutosave.Update(self);
         AkronActions.ApplyLowVolumeBypass();
         UpdateNoclipAccuracyTintTimer();

@@ -249,25 +249,31 @@ public partial class AkronModule {
         Engine.Scene?.Add(new AkronToast("Submission mode: proof recorder is not armed.", forceVisible: true));
     }
 
-    private static void UpdateGoldenTransparency(Level level) {
-        if (level == null) {
+    private static void GoldenSpriteOnRender(On.Monocle.Image.orig_Render orig, Image self) {
+        if (self is not Sprite || self.Entity is not Strawberry { Golden: true } ||
+            !Settings.GoldenTransparency || !AkronPolicy.CanUse(AkronFeatureKind.GoldenTransparency).Allowed) {
+            orig(self);
             return;
         }
 
-        byte alpha = (byte) (Settings.GoldenTransparency && AkronPolicy.CanUse(AkronFeatureKind.GoldenTransparency).Allowed
-            ? Calc.Clamp(AkronModuleSettings.ClampGoldenTransparencyOpacity(Settings.GoldenTransparencyOpacity), 0, 100) * 255 / 100
-            : 255);
-
-        foreach (Strawberry strawberry in level.Entities.OfType<Strawberry>()) {
-            if (!strawberry.Golden) {
-                continue;
-            }
-
-            foreach (Sprite sprite in strawberry.Components.OfType<Sprite>()) {
-                Color color = sprite.Color;
-                sprite.Color = new Color(color.R, color.G, color.B, alpha);
-            }
+        int opacity = AkronModuleSettings.ClampGoldenTransparencyOpacity(Settings.GoldenTransparencyOpacity);
+        if (opacity == 100) {
+            orig(self);
+            return;
         }
+
+        Color original = self.Color;
+        try {
+            self.Color = ModulateGoldenSpriteColor(original, opacity);
+            orig(self);
+        } finally {
+            // Rendering must not own the sprite's persistent/custom tint or compound its opacity.
+            self.Color = original;
+        }
+    }
+
+    internal static Color ModulateGoldenSpriteColor(Color original, int opacity) {
+        return original * (AkronModuleSettings.ClampGoldenTransparencyOpacity(opacity) / 100f);
     }
 
     private static void UpdateDeathStatsTimer() {
