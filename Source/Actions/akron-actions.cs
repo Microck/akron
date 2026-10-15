@@ -120,7 +120,7 @@ public static partial class AkronActions {
         PlayerInventory inventory = level.Session.Inventory;
         inventory.Dashes = dashes;
         level.Session.Inventory = inventory;
-        level.Session.Dashes = dashes;
+        // Session.Dashes is usage, not inventory capacity; leave native statistics alone.
         player.Dashes = dashes;
         ApplySetInventoryJumps(jumps);
         Engine.Scene?.Add(new AkronToast(
@@ -153,7 +153,6 @@ public static partial class AkronActions {
             PlayerInventory inventory = level.Session.Inventory;
             inventory.Dashes = AkronModuleSettings.ClampSetInventoryDashes(snapshot.SessionInventoryDashes);
             level.Session.Inventory = inventory;
-            level.Session.Dashes = AkronModuleSettings.ClampSetInventoryDashes(snapshot.SessionDashes);
         }
 
         if (player != null) {
@@ -170,7 +169,6 @@ public static partial class AkronActions {
     private static AkronSetInventorySnapshot CaptureSetInventorySnapshot(Level level, Player player) {
         return new AkronSetInventorySnapshot {
             SessionInventoryDashes = level.Session.Inventory.Dashes,
-            SessionDashes = level.Session.Dashes,
             PlayerDashes = player.Dashes,
             JumpHack = AkronModule.Settings.JumpHack,
             JumpHackInfinite = AkronModule.Settings.JumpHackInfinite,

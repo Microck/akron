@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Keep Set Inventory capacity changes and death restoration from fabricating or overwriting native dash usage statistics.
+
 - Keep Extended Variant Mode option popups and row toggles separate from same-named Akron controls, including Dash Count.
 
 - Reserve expanded space for Search results from collapsed sections so following panels do not cover matching rows. Clearing Search keeps the saved collapse preferences.
