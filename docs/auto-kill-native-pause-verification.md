@@ -4,9 +4,9 @@
 
 Issue #221: Engine.DeltaTime remains positive during native pause, so the attempt accumulator incorrectly counted pause-menu time. Auto Kill also ran before native Level.Update without a native suspension guard.
 
-The update hook now samples native Paused/wasPaused/Frozen immediately before the native delegate. Only attempt accumulation is skipped if either the before or after state is suspended. Room-stat freeze accounting and room transitions still run. The public one-argument OnLevelUpdate signature is retained. Auto Kill checks native suspension before its recording/action path, covering timer and area execution. Positive finite scaled delta advances only for active updates.
+The update hook now samples native Paused/wasPaused/Frozen immediately before the native delegate. Only attempt accumulation is skipped if either the before or after state is suspended. Room-stat freeze accounting and room transitions still run. The public one-argument OnLevelUpdate signature is retained. Auto Kill now executes after the native delegate establishes pause state, but before attempt-time advancement. It checks native suspension before its recording/action path, covering timer and area execution. The deferred action also requires unchanged player, session, StartPos generation, current/next scene identity and an incomplete level. Positive finite scaled delta advances only for active updates.
 
-Transition and cutscene accounting is unchanged; their existing execution guards remain. Akron-specific freeze/countdown early-return ordering is outside this narrow change. No all-freeze-mode certification is claimed.
+Transition and cutscene accounting is unchanged; their existing execution guards remain. The deferred placement also skips Auto Kill on Akron freeze/countdown early returns; these paths have not all been live-certified. Area checks now use post-movement positions. No all-freeze-mode or all-area-interaction certification is claimed.
 
 ## Baseline
 
@@ -23,3 +23,13 @@ This demonstrates that the long pause no longer spends the attempt, while active
 ## Tests and limits
 
 Release and Debug each passed 2,286 tests. Added behavioral tests cover native suspension flags, thousands of excluded updates, both pause-boundary directions, remaining active delta, unchanged fired state and unrelated counters, invalid delta and missing session. Cecil routing checks supplement those behaviors. They are structural checks, not live area-mode, native frozen-state, arbitrary provider, or death-rearm certification. Native actions use ordinary keyboard/mouse controls, without runtime getters or injected state. Owner-authorized human-QA exception applies; no human testing is claimed.
+
+## Review follow-up
+
+The initial PR review identified the pause-opening boundary: a pre-native kill could run before native pause input was processed. The successor moves evaluation after both native update routes and rejects stale lifecycle ownership. Structural regression checks require the deferred action after native/input-scoped updates, before attempt statistics, and no Auto Kill call in the pre-native runtime feature path.
+
+Successor Release SHA-256: d1309464aeafc3b5a58de6dc9f9ccb62e5481131e4ff6bbbfcab300155e5625f. Both suites pass 2,286 tests. QA54 rechecked the exact successor with the original 60 s timer. On an aged active attempt, Alive showed 106.165 s before native pause. Enabling the already-due timer while paused left Deaths 0 and that age unchanged; resume produced the Auto kill triggered at 60s toast and one death. Auto Kill was disabled after this controlled event.
+
+A fresh native Retry then reset the next scored attempt. Native pause held from 10:13:38.870 to 10:15:06.307 UTC (87.437 s), with Deaths 2 / Alive 25.755 unchanged. Resume stayed alive; a later observation still showed Deaths 2 with about 56 s active age. The next observation showed Deaths 3 after normal active expiry, and Auto Kill was disabled before another threshold. No movement or environmental hazard was introduced during these waits. This supports due-while-paused protection, fresh pause exclusion, resume, active expiry and re-arming across the controlled events. It does not establish exact same-frame pause-input timing, area-mode behavior, or millisecond threshold precision.
+
+Sixteen original screenshots, timestamp receipts and final profiles/logs are retained locally. Settings restored except backup timestamp and ordering of the same collapsed-section set. Exit 0 and retained window-absence receipt. Saved totals increased by four deaths (two controlled timer deaths, one native Retry and one unassigned incidental death); jumps and dashes were unchanged. QA52 remains historical evidence for the earlier 93bf artifact.

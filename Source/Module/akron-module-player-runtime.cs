@@ -400,7 +400,6 @@ public partial class AkronModule {
             RestoreNativeAssistInvincibility();
         }
 
-        ApplyAutoKill(level, player);
         ApplyAutoDeafen(level, player);
         ApplyStartPosMousePlacement(level, player);
         UpdateCursorZoom(level);

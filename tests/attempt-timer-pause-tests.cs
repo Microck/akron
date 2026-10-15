@@ -72,6 +72,20 @@ public sealed class AttemptTimerPauseTests {
         int sample = Array.IndexOf(update, "IsNativeAttemptSuspended");
         Assert.True(sample >= 0 && sample < Array.IndexOf(update, "Run"));
         Assert.True(sample < Array.IndexOf(update, "OnLevelUpdate"));
+        int postKill = Array.IndexOf(update, "ApplyAutoKillAfterNativeUpdate");
+        Assert.True(postKill > Array.IndexOf(update, "Run"));
+        var updateMethod = module.Methods.Single(m => m.Name == "LevelOnUpdate");
+        var nativeCall = updateMethod.Body.Instructions.Last(i => i.Operand is MethodReference m &&
+            m.FullName.Contains("orig_Update::Invoke"));
+        var postCall = updateMethod.Body.Instructions.Single(i => i.Operand is MethodReference m &&
+            m.Name == "ApplyAutoKillAfterNativeUpdate");
+        Assert.True(nativeCall.Offset < postCall.Offset);
+        Assert.True(postKill < Array.IndexOf(update, "OnLevelUpdate"));
+        Assert.DoesNotContain("ApplyAutoKill", Calls(module.Methods.Single(m => m.Name == "ApplyEnabledRuntimeFeatures")));
+        var deferred = Calls(module.Methods.Single(m => m.Name == "ApplyAutoKillAfterNativeUpdate"));
+        Assert.Contains("get_NextScene", deferred);
+        Assert.Contains("get_StartPosFrameGeneration", deferred);
+        Assert.True(Array.IndexOf(deferred, "GetEntity") < Array.IndexOf(deferred, "ApplyAutoKill"));
         var stats = assembly.MainModule.GetType(typeof(AkronPracticeStats).FullName);
         var after = Calls(stats.Methods.Single(m => m.Name == "OnLevelUpdate" && m.Parameters.Count == 2));
         Assert.Contains("UpdateRoomStatFreeze", after);

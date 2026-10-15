@@ -27,6 +27,21 @@ public partial class AkronModule {
                 .ToList();
     }
 
+    private static void ApplyAutoKillAfterNativeUpdate(Level level, Player expectedPlayer,
+        global::Celeste.Session expectedSession, ulong expectedStartPosGeneration, bool suspendedBefore) {
+        if (suspendedBefore || expectedPlayer == null ||
+            !ReferenceEquals(Engine.Scene, level) || !ReferenceEquals(Engine.NextScene, level) ||
+            !ReferenceEquals(level.Session, expectedSession) || level.Completed ||
+            AkronActions.StartPosFrameGeneration != expectedStartPosGeneration) {
+            return;
+        }
+        Player player = level.Tracker.GetEntity<Player>();
+        if (!ReferenceEquals(player, expectedPlayer) || !ReferenceEquals(player.Scene, level)) {
+            return;
+        }
+        ApplyAutoKill(level, player);
+    }
+
     private static void ApplyAutoKill(Level level, Player player) {
         if (!Settings.AutoKill ||
             AkronPracticeStats.IsNativeAttemptSuspended(level) ||

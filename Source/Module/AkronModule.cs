@@ -626,11 +626,17 @@ public partial class AkronModule : EverestModule {
         bool blockGameplayInput = overlayUpdated && Overlay?.Visible == true &&
                                   (Settings.ConsumeGameplayInputInMenu || Overlay.SearchOwnsGameplayInputThisFrame);
         bool nativeAttemptSuspendedBeforeUpdate = AkronPracticeStats.IsNativeAttemptSuspended(self);
+        Player autoKillPlayerBeforeUpdate = Settings.AutoKill ? self.Tracker.GetEntity<Player>() : null;
+        global::Celeste.Session autoKillSessionBeforeUpdate = self.Session;
         if (blockGameplayInput) {
             AkronGameplayInputScope.Run(orig, self);
         } else {
             orig(self);
         }
+        // Native pause input is processed inside orig. Defer automatic death until
+        // both sides of that boundary are known, without acting on a replaced scene.
+        ApplyAutoKillAfterNativeUpdate(self, autoKillPlayerBeforeUpdate,
+            autoKillSessionBeforeUpdate, startPosFrameGeneration, nativeAttemptSuspendedBeforeUpdate);
         RememberNativeFreezeFrameForLagPauser();
         AkronRuntimeOptions.ApplyScreenshakeAfterLevelUpdate(self);
         ApplyJumpHackAfterPlayerUpdate(self);
