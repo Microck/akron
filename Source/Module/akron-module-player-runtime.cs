@@ -888,6 +888,24 @@ public partial class AkronModule {
 
         var movementFields = new HashSet<string>(accelerationFields, StringComparer.Ordinal);
         movementFields.UnionWith(speedFields);
+        // Preflight the complete supported layout before mutating any IL.
+        // Native MoveNext consumes acceleration three times and maximum speed
+        // three times (including the node path). Partial layouts must not apply.
+        foreach (string fieldName in movementFields) {
+            int reads = 0;
+            foreach (Instruction instruction in il.Body.Instructions) {
+                if (instruction.OpCode == OpCodes.Ldfld &&
+                    instruction.Operand is FieldReference field && field.FullName == fieldName) {
+                    reads++;
+                }
+            }
+            if (reads != 3) {
+                Logger.Log(LogLevel.Warn, nameof(AkronModule),
+                    "Unsupported Lookout movement read coverage; Fast Lookout is disabled.");
+                return;
+            }
+        }
+
         ILCursor cursor = new ILCursor(il);
         while (cursor.TryGotoNext(MoveType.After, instruction =>
                    instruction.OpCode == OpCodes.Ldfld &&

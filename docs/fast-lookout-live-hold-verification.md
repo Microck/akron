@@ -15,3 +15,9 @@ QA94 corrected Release ZIP SHA256 `216167dbdbea2f96bbeacdccb0bdd9bd6dd9bb8daebf9
 No missing-field/read warning appeared in corrected startup. Native Save and Quit and Exit completed. Fast Lookout and Noclip were Off afterwards, with Q retained as the isolated fixture binding. Original screenshots, package/runtime hashes, before/after profile copies and audit receipts are preserved.
 
 Release and Debug each passed 2,375 native-reference tests at the tested candidate. Five IL fixture cases cover normal read rewriting, missing maximum-speed initializer, ambiguous acceleration initializer, DMD wrapper ownership and wrong original owner. Native node-path Lookouts, controller/mouse holds, other game versions and exact sub-frame input timing are not live-verified.
+
+## Review follow-up: reject partial read layouts
+
+The hook now preflights all read sites before mutating any IL and requires the supported native three acceleration and three maximum-speed reads. Missing either field's reads or a partially removed set disables the whole patch. Eight fixture cases include these failures and assert the instruction list remains unchanged when rejected. Release and Debug each pass 2,378 native-reference tests.
+
+Final integration QA97 repeated late-held and released native pans, then encountered a separate CameraTargetTrigger.OnLeave null dereference inside native Reload while checking a combined room flow. This occurs before unpause/audio cleanup and is under separate investigation; QA97 is not a passed combined integration run. The earlier bounded QA94 Lookout matrix remains the live acceptance evidence.
