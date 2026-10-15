@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Honor Shift for US number-row punctuation in ordinary overlay text fields, matching the existing shifted-letter and punctuation handling.
+
 - Stop cached directional input from moving Madeline behind the overlay when Block Gameplay Input is on, while leaving the level simulation running.
 
 - Anchor the StartPos HUD and cheat indicator within the active gameplay viewport, keeping centered and right/bottom-aligned labels visible at non-1080p sizes and in letterboxed windows.

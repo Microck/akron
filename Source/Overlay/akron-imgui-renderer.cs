@@ -678,13 +678,17 @@ internal sealed class AkronImGuiRenderer : IDisposable {
 
     private static bool TryGetInputCharacter(KeyboardState keyboard, Keys key, out char character) {
         bool shift = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+        return TryGetInputCharacter(key, shift, out character);
+    }
+
+    internal static bool TryGetInputCharacter(Keys key, bool shift, out char character) {
         if (key >= Keys.A && key <= Keys.Z) {
             character = (char) ((shift ? 'A' : 'a') + (key - Keys.A));
             return true;
         }
 
         if (key >= Keys.D0 && key <= Keys.D9) {
-            character = (char) ('0' + (key - Keys.D0));
+            character = shift ? ")!@#$%^&*("[key - Keys.D0] : (char) ('0' + (key - Keys.D0));
             return true;
         }
 
