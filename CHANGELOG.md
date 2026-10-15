@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Resume gameplay after Reload Room is invoked from the native pause menu, and close Akron pause accounting so the removed menu cannot leave the room stuck.
+
 - Fix Custom Death Particles duration: short bursts expire cleanly, and long bursts can finish after ordinary respawn without delaying gameplay.
 
 - Make Custom Trail opacity control transparency rather than fade lifetime. Zero opacity emits no custom snapshots; other opacity values keep the same 0.45-second native fade duration.

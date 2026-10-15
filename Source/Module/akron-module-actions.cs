@@ -158,7 +158,15 @@ public partial class AkronModule {
             AkronPracticeStats.ResetAttemptTimer();
             level.Session.RespawnPoint = level.GetSpawnPoint(level.Camera.Position);
             ClearCustomDeathParticleBursts();
+            bool wasPaused = level.Paused;
             level.Reload();
+            if (wasPaused && Engine.Scene == level && level.Paused) {
+                // Reload removes the native pause menu. End its pause only after
+                // the old menu is gone, so Unpause cannot attach a settings-save
+                // coroutine to a menu that this reload is about to destroy.
+                level.Unpause();
+                LevelOnUnpause(level);
+            }
         };
     }
 
