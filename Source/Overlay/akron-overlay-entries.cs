@@ -832,6 +832,28 @@ public sealed partial class AkronOverlay {
         return string.Join(" ", terms.Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
+    private const string ExtendedVariantPopupPrefix = "ExtendedVariant:";
+
+    internal static string ExtendedVariantPopupKey(string name) => ExtendedVariantPopupPrefix + name;
+
+    internal static bool TryGetExtendedVariantPopupName(string key, out string name) {
+        name = string.Empty;
+        if (key == null || !key.StartsWith(ExtendedVariantPopupPrefix, StringComparison.Ordinal) ||
+            key.Length == ExtendedVariantPopupPrefix.Length) {
+            return false;
+        }
+        name = key.Substring(ExtendedVariantPopupPrefix.Length);
+        return true;
+    }
+
+    private static void ToggleExtendedVariantOption(string name) {
+        if (!AkronModule.TryUse(AkronFeatureKind.ExtendedVariantMode)) {
+            return;
+        }
+        AkronExtendedVariants.TryToggleConfigured(name, out string message);
+        Engine.Scene?.Add(new AkronToast(message));
+    }
+
     private static string ToExtendedVariantEntryLabel(AkronExtendedVariantOption option) {
         return option.Label;
     }

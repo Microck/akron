@@ -34,7 +34,7 @@ public sealed partial class AkronOverlay {
         bool stateOnly = action.Entry.IsToggle || onState || offState;
         bool enabledState = action.Entry.Active?.Invoke() ?? (stateOnly && onState);
         bool hasOptionsPopup = action.Entry.HasOptionsPopup;
-        bool popupOpen = IsOptionsPopupOpen(action.Entry.Label);
+        bool popupOpen = IsOptionsPopupOpen(action.Entry.OptionsPopupKey);
         bool accentState = enabledState || popupOpen;
         bool numericInput = action.Entry.Control == OverlayEntryControl.NumericInput;
         bool selectorInput = action.Entry.Control == OverlayEntryControl.Selector;
