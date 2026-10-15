@@ -83,6 +83,8 @@ public class AkronModuleSession : EverestModuleSession {
     // Whether Noclip was on when the last death marker was recorded; the OnNoclipDeath label event reads it.
     public bool LastDeathDuringNoclip { get; set; }
     public string LastScreenshotPath { get; set; } = string.Empty;
+    // Dashes discarded by native death reloads, retained only for the practice HUD.
+    public int AkronRetainedDashCount { get; set; }
     public int AkronDashCountAtLevelStart { get; set; }
     public int AkronJumpCount { get; set; }
     public int AkronJumpCountAtLevelStart { get; set; }

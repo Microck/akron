@@ -183,6 +183,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.LevelEnter.ctor += LevelEnterOnConstructForMapPolicy;
         On.Monocle.Engine.OnSceneTransition += EngineOnSceneTransitionForMapPolicy;
         On.Celeste.Level.Begin += LevelOnBegin;
+        On.Celeste.Level.Reload += AkronPracticeCounters.OnLevelReload;
         On.Celeste.Level.End += LevelOnEnd;
         On.Celeste.Level.UpdateTime += LevelOnUpdateTime;
         On.Celeste.Level.Update += LevelOnUpdate;
@@ -346,6 +347,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.LevelEnter.ctor -= LevelEnterOnConstructForMapPolicy;
         On.Monocle.Engine.OnSceneTransition -= EngineOnSceneTransitionForMapPolicy;
         On.Celeste.Level.Begin -= LevelOnBegin;
+        On.Celeste.Level.Reload -= AkronPracticeCounters.OnLevelReload;
         On.Celeste.Level.End -= LevelOnEnd;
         On.Celeste.Level.UpdateTime -= LevelOnUpdateTime;
         On.Celeste.Level.Update -= LevelOnUpdate;
