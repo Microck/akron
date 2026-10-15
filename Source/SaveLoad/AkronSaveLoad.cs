@@ -686,7 +686,8 @@ public static partial class AkronSaveLoadService {
         bool saveTimeAndDeaths,
         bool capturePersistentResources = true,
         bool prepareForRestore = true,
-        bool preserveInspectorState = false
+        bool preserveInspectorState = false,
+        bool preserveDeathBurstBindings = false
     ) {
         LastPersistentSnapshotError = string.Empty;
         if (level == null) {
@@ -750,6 +751,9 @@ public static partial class AkronSaveLoadService {
             }
             if (preserveInspectorState) {
                 saveSlot.InspectorPinRollback = new AkronEntityInspector.InspectorPinRollbackState();
+            }
+            if (preserveDeathBurstBindings) {
+                saveSlot.DeathBurstRollback = new AkronModule.DeathBurstRollbackState(level);
             }
             if (prepareForRestore) {
                 PrepareSlotPreClone(saveSlot);
@@ -1088,7 +1092,8 @@ public static partial class AkronSaveLoadService {
             saveTimeAndDeaths: true,
             capturePersistentResources: false,
             prepareForRestore: false,
-            preserveInspectorState: true);
+            preserveInspectorState: true,
+            preserveDeathBurstBindings: true);
         if (rollback == null) {
             LastPersistentSnapshotError = "could not preserve the live room before preparing StartPos";
             CurrentSlotName = currentSlotName;
@@ -1381,6 +1386,10 @@ public static partial class AkronSaveLoadService {
                 return AkronSaveLoadResult.SessionMismatch;
             }
 
+            if (rollback) {
+                saveSlot.DeathBurstRollback?.Restore(level);
+            }
+
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
                 if (saveSlot.ActionState.TryGetValue(action.Id, out Dictionary<Type, Dictionary<string, object>> savedValues)) {
                     action.LoadState?.Invoke((Dictionary<Type, Dictionary<string, object>>) DeepClone(savedValues), level);
@@ -1583,7 +1592,8 @@ public static partial class AkronSaveLoadService {
                 rollbackSlotName,
                 saveTimeAndDeaths: true,
                 capturePersistentResources: false,
-                preserveInspectorState: true);
+                preserveInspectorState: true,
+                preserveDeathBurstBindings: true);
         } catch (Exception exception) {
             CurrentSlotName = slotName;
             AkronTelemetry.Capture(exception, AkronFailurePhase.StartPosCapture);
