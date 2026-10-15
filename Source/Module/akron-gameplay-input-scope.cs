@@ -58,7 +58,7 @@ internal static class AkronGameplayInputScope {
         private readonly int integerCurrent, integerPrevious;
         internal Snapshot(VirtualInput input) {
             this.input = input;
-            current = previous = raw = previousRaw = Vector2.Zero;
+            current = previous = raw = previousRaw = default(Vector2);
             integerCurrent = integerPrevious = 0;
             switch (input) {
                 case VirtualIntegerAxis axis:
@@ -66,8 +66,8 @@ internal static class AkronGameplayInputScope {
                     integerPrevious = axis.PreviousValue;
                     break;
                 case VirtualAxis axis:
-                    current = new Vector2((float)AxisValue.GetValue(axis), 0);
-                    previous = new Vector2((float)AxisPrevious.GetValue(axis), 0);
+                    current = new Vector2 { X = (float)AxisValue.GetValue(axis) };
+                    previous = new Vector2 { X = (float)AxisPrevious.GetValue(axis) };
                     break;
                 case VirtualJoystick joystick:
                     current = (Vector2)JoystickValue.GetValue(joystick);
@@ -88,10 +88,10 @@ internal static class AkronGameplayInputScope {
                     AxisPrevious.SetValue(axis, neutral ? 0 : previous.X);
                     break;
                 case VirtualJoystick joystick:
-                    JoystickValue.SetValue(joystick, neutral ? Vector2.Zero : current);
-                    JoystickPrevious.SetValue(joystick, neutral ? Vector2.Zero : previous);
-                    joystick.value = neutral ? Vector2.Zero : raw;
-                    joystick.previousValue = neutral ? Vector2.Zero : previousRaw;
+                    JoystickValue.SetValue(joystick, neutral ? default(Vector2) : current);
+                    JoystickPrevious.SetValue(joystick, neutral ? default(Vector2) : previous);
+                    joystick.value = neutral ? default(Vector2) : raw;
+                    joystick.previousValue = neutral ? default(Vector2) : previousRaw;
                     break;
             }
         }

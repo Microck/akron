@@ -16,6 +16,12 @@ public sealed class GameplayInputScopeTests {
     private static void Set(object target, string name, object value) => Field(target.GetType(), name).SetValue(target, value);
     private static T Get<T>(object target, string name) => (T)Field(target.GetType(), name).GetValue(target)!;
 
+    private static Vector2 V(float x, float y) => new Vector2 { X = x, Y = y };
+    private static void AssertVector(Vector2 expected, Vector2 actual) {
+        Assert.Equal(expected.X, actual.X);
+        Assert.Equal(expected.Y, actual.Y);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
@@ -30,10 +36,10 @@ public sealed class GameplayInputScopeTests {
         Set(axis, "<Value>k__BackingField", .75f);
         Set(axis, "<PreviousValue>k__BackingField", -.25f);
         var joystick = Empty<VirtualJoystick>();
-        Set(joystick, "<Value>k__BackingField", new Vector2(.3f, .7f));
-        Set(joystick, "<PreviousValue>k__BackingField", new Vector2(-.3f, -.7f));
-        Set(joystick, "value", new Vector2(.2f, .8f));
-        Set(joystick, "previousValue", new Vector2(-.2f, -.8f));
+        Set(joystick, "<Value>k__BackingField", V(.3f, .7f));
+        Set(joystick, "<PreviousValue>k__BackingField", V(-.3f, -.7f));
+        Set(joystick, "value", V(.2f, .8f));
+        Set(joystick, "previousValue", V(-.2f, -.8f));
         var inputs = new List<VirtualInput> { integer, axis, joystick };
         try {
             MInput.Disabled = disabled;
@@ -44,7 +50,7 @@ public sealed class GameplayInputScopeTests {
                 Assert.Equal(0f, Get<float>(axis, "<Value>k__BackingField"));
                 Assert.Equal(0f, Get<float>(axis, "<PreviousValue>k__BackingField"));
                 foreach (string name in new[] { "<Value>k__BackingField", "<PreviousValue>k__BackingField", "value", "previousValue" })
-                    Assert.Equal(Vector2.Zero, Get<Vector2>(joystick, name));
+                    AssertVector(default, Get<Vector2>(joystick, name));
                 // Changing the registry must not change restoration targets.
                 inputs.Clear();
                 if (throws) throw new InvalidOperationException("fixture");
@@ -56,10 +62,10 @@ public sealed class GameplayInputScopeTests {
             Assert.Equal(int.MinValue, integer.PreviousValue);
             Assert.Equal(.75f, Get<float>(axis, "<Value>k__BackingField"));
             Assert.Equal(-.25f, Get<float>(axis, "<PreviousValue>k__BackingField"));
-            Assert.Equal(new Vector2(.3f,.7f), Get<Vector2>(joystick, "<Value>k__BackingField"));
-            Assert.Equal(new Vector2(-.3f,-.7f), Get<Vector2>(joystick, "<PreviousValue>k__BackingField"));
-            Assert.Equal(new Vector2(.2f,.8f), Get<Vector2>(joystick, "value"));
-            Assert.Equal(new Vector2(-.2f,-.8f), Get<Vector2>(joystick, "previousValue"));
+            AssertVector(V(.3f,.7f), Get<Vector2>(joystick, "<Value>k__BackingField"));
+            AssertVector(V(-.3f,-.7f), Get<Vector2>(joystick, "<PreviousValue>k__BackingField"));
+            AssertVector(V(.2f,.8f), Get<Vector2>(joystick, "value"));
+            AssertVector(V(-.2f,-.8f), Get<Vector2>(joystick, "previousValue"));
         } finally { MInput.Disabled = original; }
     }
 
