@@ -150,7 +150,7 @@ public sealed partial class AkronOverlay {
     private static void SetActiveStartPosDashes(int dashes) {
         AkronModule.Settings.StartPosConfiguredDashes = AkronModuleSettings.ClampStartPosDashes(dashes);
         if (AkronActions.GetActiveStartPos() is AkronStartPos startPos) {
-            AkronActions.ApplyStartPosConfiguration(startPos);
+            AkronActions.ApplyStartPosConfigurationEdit(startPos, dashes: AkronModule.Settings.StartPosConfiguredDashes);
         }
     }
 
@@ -161,7 +161,7 @@ public sealed partial class AkronOverlay {
     private static void SetActiveStartPosStaminaPercent(int staminaPercent) {
         AkronModule.Settings.StartPosConfiguredStaminaPercent = AkronModuleSettings.ClampStartPosStaminaPercent(staminaPercent);
         if (AkronActions.GetActiveStartPos() is AkronStartPos startPos) {
-            AkronActions.ApplyStartPosConfiguration(startPos);
+            AkronActions.ApplyStartPosConfigurationEdit(startPos, staminaPercent: AkronModule.Settings.StartPosConfiguredStaminaPercent);
         }
     }
 
@@ -172,7 +172,7 @@ public sealed partial class AkronOverlay {
     private static void SetActiveStartPosFacing(AkronStartPosFacing facing) {
         AkronModule.Settings.StartPosConfiguredFacing = facing;
         if (AkronActions.GetActiveStartPos() is AkronStartPos startPos) {
-            AkronActions.ApplyStartPosConfiguration(startPos);
+            AkronActions.ApplyStartPosConfigurationEdit(startPos, facing: AkronModule.Settings.StartPosConfiguredFacing);
         }
     }
 
@@ -183,7 +183,7 @@ public sealed partial class AkronOverlay {
     private static void SetActiveStartPosIdle(bool idle) {
         AkronModule.Settings.StartPosConfiguredIdle = idle;
         if (AkronActions.GetActiveStartPos() is AkronStartPos startPos) {
-            AkronActions.ApplyStartPosConfiguration(startPos);
+            AkronActions.ApplyStartPosConfigurationEdit(startPos, idle: AkronModule.Settings.StartPosConfiguredIdle);
         }
     }
 
@@ -194,7 +194,7 @@ public sealed partial class AkronOverlay {
     private static void SetActiveStartPosGrab(bool grab) {
         AkronModule.Settings.StartPosConfiguredGrab = grab;
         if (AkronActions.GetActiveStartPos() is AkronStartPos startPos) {
-            AkronActions.ApplyStartPosConfiguration(startPos);
+            AkronActions.ApplyStartPosConfigurationEdit(startPos, grab: AkronModule.Settings.StartPosConfiguredGrab);
         }
     }
 

@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Keep edited StartPos spawn settings across repeated loads and restarts without recapturing the room; editing one field preserves the slot’s other settings.
+
 - Make Safe Mode freeze file-wide death and jump totals, and recapture each guard independently when it is enabled again.
 
 - Keep Set Inventory capacity changes and death restoration from fabricating or overwriting native dash usage statistics.
