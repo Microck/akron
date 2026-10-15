@@ -459,6 +459,8 @@ public enum AkronCoreModeClickBehavior {
 
 public sealed class AkronSetInventorySnapshot {
     public int SessionInventoryDashes { get; set; }
+    // Legacy serialized field retained for compatibility; inventory capture/restore
+    // must never read or write the native dash usage counter.
     public int SessionDashes { get; set; }
     public int PlayerDashes { get; set; }
     public bool JumpHack { get; set; }
