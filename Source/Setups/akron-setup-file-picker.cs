@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 namespace Celeste.Mod.Akron;
 
@@ -157,7 +158,7 @@ public static partial class AkronSetupPacks {
                     : AkronSetupFilePickerResult.Selected;
             }
 
-            if (IsFilePickerCancel(process.ExitCode, stdout, stderr)) {
+            if (IsFilePickerCancel(process.ExitCode, stdout, stderr, fileName, arguments)) {
                 return AkronSetupFilePickerResult.Canceled;
             }
 
@@ -169,12 +170,38 @@ public static partial class AkronSetupPacks {
         }
     }
 
-    private static bool IsFilePickerCancel(int exitCode, string stdout, string stderr) {
+    internal static bool IsFilePickerCancel(int exitCode, string stdout, string stderr, string fileName, IReadOnlyList<string> arguments) {
+        if (exitCode == 1 && string.IsNullOrWhiteSpace(stdout) &&
+            IsZenityPicker(fileName, arguments) && HasOnlyZenityTransientParentDiagnostic(stderr)) {
+            return true;
+        }
+
         string text = ((stdout ?? string.Empty) + " " + (stderr ?? string.Empty)).Trim();
         return exitCode == 1 &&
                (string.IsNullOrWhiteSpace(text) ||
                 text.IndexOf("cancel", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 text.IndexOf("No file selected", StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    private static bool IsZenityPicker(string fileName, IReadOnlyList<string> arguments) {
+        string command = Path.GetFileName(fileName ?? string.Empty);
+        return command == "zenity" ||
+               command == "flatpak-spawn" && arguments != null && arguments.Count >= 2 &&
+               arguments[0] == "--host" && Path.GetFileName(arguments[1]) == "zenity";
+    }
+
+    private static bool HasOnlyZenityTransientParentDiagnostic(string stderr) {
+        if (string.IsNullOrWhiteSpace(stderr)) {
+            return false;
+        }
+
+        // Zenity can emit this GTK informational diagnostic even when the user cancels.
+        // Accept only that known line (with GTK's normal process/time prefix), not arbitrary
+        // stderr or a warning mixed with a real launch, display, or argument error.
+        const string pattern = @"^(?:\(zenity:[0-9]+\):\s*)?Gtk-Message:\s*(?:[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?:\s*)?GtkDialog mapped without a transient parent\. This is discouraged\.$";
+        return stderr.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .All(line => Regex.IsMatch(line.Trim(), pattern, RegexOptions.CultureInvariant));
     }
 
     private static string EnsureDirectorySeparator(string path) {
