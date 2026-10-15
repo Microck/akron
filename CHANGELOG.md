@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Anchor the StartPos HUD and cheat indicator within the active gameplay viewport, keeping centered and right/bottom-aligned labels visible at non-1080p sizes and in letterboxed windows.
+
 - Hide both fill and outline for depleted dash pips when Empty pips is disabled.
 
 - Back up and restore Celeste's active save folder instead of assuming saves are inside the installation. Leave old installation-root archives untouched.
