@@ -577,7 +577,9 @@ public partial class AkronModule {
 
         if (ShouldCorrectGroundDashBeforeHair(Settings.GroundRefillRules, Settings.GroundDashRefill,
                 player.Dead, context.WasGrounded, player.OnGround(), context.DashesBefore, player.Dashes) &&
-            TryUseRuntime(AkronFeatureKind.GroundRefillRules)) {
+            AkronPolicy.CanUse(AkronFeatureKind.GroundRefillRules).Allowed) {
+            // The retained post-update path records feature use once. This early
+            // correction only authorizes it, avoiding duplicate runtime telemetry.
             // Native hair selection and Akron's palette must see the same charges
             // that survive the end-of-update correction. Do not simulate hair twice.
             player.Dashes = context.DashesBefore;

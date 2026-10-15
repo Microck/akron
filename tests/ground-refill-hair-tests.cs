@@ -42,7 +42,11 @@ public sealed class GroundRefillHairTests {
                 .Any(i => i.OpCode == OpCodes.Stsfld && i.Operand is FieldReference f && f.Name == "groundRefillUpdateContext"));
         Assert.Contains(update.Body.Instructions, i => i.Operand is MethodReference m && m.Name == "ApplyGroundRefillRulesAfterPlayerUpdate");
         var correctionMethod = module.Methods.Single(m => m.Name == "ApplyGroundDashRuleBeforeHair");
-        Assert.Contains(correctionMethod.Body.Instructions, i => i.Operand is MethodReference m && m.Name == "TryUseRuntime");
+        Assert.Contains(correctionMethod.Body.Instructions, i => i.Operand is MethodReference m && m.Name == "CanUse");
+        Assert.DoesNotContain(correctionMethod.Body.Instructions, i => i.Operand is MethodReference m &&
+            (m.Name == "TryUseRuntime" || m.Name == "RecordFeatureUse" || m.Name == "RecordPolicyCheck"));
+        var fallback = module.Methods.Single(m => m.Name == "ApplyGroundRefillRulesAfterPlayerUpdate");
+        Assert.Single(fallback.Body.Instructions, i => i.Operand is MethodReference m && m.Name == "TryUseRuntime");
         Assert.DoesNotContain(correctionMethod.Body.Instructions, i => i.OpCode == OpCodes.Stfld &&
             i.Operand is FieldReference f && f.Name != "Dashes");
     }
