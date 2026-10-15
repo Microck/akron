@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Back up and restore Celeste's active save folder instead of assuming saves are inside the installation. Leave old installation-root archives untouched.
+
 - Preserve saved collapsed panels when clearing overlay Search.
 
 - Align Show Triggers with native collider regions in letterboxed windows by applying the viewport origin once.

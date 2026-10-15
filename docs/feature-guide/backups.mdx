@@ -3,7 +3,9 @@ title: Backups
 description: Create, browse, restore, and clean up Akron save backups.
 ---
 
-The Backups tab keeps ZIP snapshots of Celeste's `Saves` folder. Akron stores them in `Saves/AkronBackups`, then excludes that folder from later snapshots so each archive contains save data and no older backup ZIPs.
+The Backups tab keeps ZIP snapshots of Celeste's active `Saves` folder, including supported `EVEREST_SAVEPATH` and platform-specific save locations. Akron stores them in `Saves/AkronBackups`, then excludes that folder from later snapshots so each archive contains save data and no older backup ZIPs.
+
+When updating from a version that used the installation's `Saves` folder, old archives stay in that old folder. They are not migrated into the active backup list: they may contain logs without your actual saves. Create a fresh backup after updating. Do not copy an unverified old archive into the new backup folder or restore it over current saves. This change does not migrate Akron's other installation-local catalogs.
 
 A backup holds your save files. It leaves out the folders Akron itself runs out of, and a restore leaves those folders exactly where they are:
 
