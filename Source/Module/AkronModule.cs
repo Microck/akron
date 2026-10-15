@@ -618,21 +618,15 @@ public partial class AkronModule : EverestModule {
             return;
         }
         Session.StepFrameRequested = false;
-        // MInput.Disabled makes every virtual input read as released for this update, so the
-        // level still runs (timers, entities) while Madeline gets no input behind the open
-        // overlay. The overlay itself read the keyboard and mouse directly before this point.
+        // Buttons consult MInput.Disabled, but directional virtual inputs cache
+        // their values before this callback. Neutralize both for the level only;
+        // the overlay continues to read the real keyboard and mouse above.
         bool blockGameplayInput = overlayUpdated && Overlay?.Visible == true &&
                                   (Settings.ConsumeGameplayInputInMenu || Overlay.SearchOwnsGameplayInputThisFrame);
-        bool previousInputDisabled = MInput.Disabled;
         if (blockGameplayInput) {
-            MInput.Disabled = true;
-        }
-        try {
+            AkronGameplayInputScope.Run(orig, self);
+        } else {
             orig(self);
-        } finally {
-            if (blockGameplayInput) {
-                MInput.Disabled = previousInputDisabled;
-            }
         }
         RememberNativeFreezeFrameForLagPauser();
         AkronRuntimeOptions.ApplyScreenshakeAfterLevelUpdate(self);
