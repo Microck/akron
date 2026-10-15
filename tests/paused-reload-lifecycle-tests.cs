@@ -18,11 +18,10 @@ public sealed class PausedReloadLifecycleTests {
         Assert.Contains("bool wasPaused = level.Paused;", action);
         Assert.Contains("level == null || level.Completed || Engine.Scene != level", action);
         Assert.Contains("Engine.Scene != level || level.Completed || !AkronPolicy.CanUse", action);
-        Assert.Contains("level.Tracker.GetEntitiesCopy<Player>().ForEach(entity => entity.RemoveSelf());", action);
-        Assert.True(action.IndexOf("GetEntitiesCopy<Player>()", StringComparison.Ordinal) <
-                    action.IndexOf("level.Reload();", StringComparison.Ordinal));
+        Assert.Contains("RunRoomReloadWithTeardown(level, level.Reload);", action);
+        Assert.DoesNotContain("RemoveSelf", action);
         Assert.Contains("if (wasPaused && Engine.Scene == level && level.Paused)", action);
-        Assert.True(action.IndexOf("level.Reload();", StringComparison.Ordinal) <
+        Assert.True(action.IndexOf("RunRoomReloadWithTeardown(level, level.Reload);", StringComparison.Ordinal) <
                     action.IndexOf("level.Unpause();", StringComparison.Ordinal));
         Assert.True(action.IndexOf("level.Unpause();", StringComparison.Ordinal) <
                     action.IndexOf("NotifyLevelUnpausedAfterReload(level);", StringComparison.Ordinal));

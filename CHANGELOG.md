@@ -24,7 +24,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
-- Remove players before room triggers during Reload Room so active camera-trigger leave callbacks retain a valid scene. Completed rooms ignore the action.
+- Order native room-unload entities with players first during Reload Room so camera-trigger leave callbacks retain a valid scene, without removing players when another hook cancels reload. Completed rooms ignore the action.
 
 - Apply Fast Lookout hold changes during an active lookout interaction instead of caching the entry-time hold state.
 
