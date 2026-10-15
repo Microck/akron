@@ -77,4 +77,29 @@ public sealed class DeathParticleLifetimeTests {
         int reloadEnd = actions.IndexOf("private static void OpenDebugMap", reloadStart, StringComparison.Ordinal);
         Assert.Contains("ClearCustomDeathParticleBursts();", actions[reloadStart..reloadEnd]);
     }
+    [Fact]
+    public void RollbackRebindsNativeEffectsBeforeCallbacksWithoutRevivingOwners() {
+        var root = Path.Combine(AppContext.BaseDirectory, "../../../../Source");
+        string runtime = File.ReadAllText(Path.Combine(root, "Runtime/akron-death-particles.cs"));
+        string saveLoad = File.ReadAllText(Path.Combine(root, "SaveLoad/AkronSaveLoad.cs"));
+        int start = runtime.IndexOf("internal sealed class DeathBurstRollbackState", StringComparison.Ordinal);
+        int end = runtime.IndexOf("internal static DeathBurstCaptureScope", start, StringComparison.Ordinal);
+        string mapping = runtime[start..end];
+        Assert.Contains("AkronDeepClone.GetKnownClone(effect)", mapping);
+        Assert.Contains("AkronDeepClone.GetKnownClone(binding.Effect)", mapping);
+        Assert.Contains("customDeathBursts.TryGetValue(effect, out var burst)", mapping);
+        Assert.Contains("customDeathBursts.Add(effect, binding.Burst)", mapping);
+        Assert.DoesNotContain("activeCustomDeathBursts", mapping);
+        Assert.DoesNotContain("new CustomDeathParticleBurst", mapping);
+        Assert.DoesNotContain("level.Add", mapping);
+        Assert.Contains("bool preserveDeathBurstBindings = false", saveLoad);
+        Assert.Equal(2, saveLoad.Split("preserveDeathBurstBindings: true").Length - 1);
+        Assert.True(saveLoad.IndexOf("saveSlot.DeathBurstRollback =", StringComparison.Ordinal) <
+                    saveLoad.IndexOf("PrepareSlotPreClone(saveSlot);", StringComparison.Ordinal));
+        int restore = saveLoad.IndexOf("saveSlot.DeathBurstRollback?.Restore(level);", StringComparison.Ordinal);
+        int callbacks = saveLoad.IndexOf("action.LoadState?.Invoke", restore, StringComparison.Ordinal);
+        int clear = saveLoad.IndexOf("AkronDeepClone.ClearSharedState();", restore, StringComparison.Ordinal);
+        Assert.True(restore < callbacks && callbacks < clear);
+    }
+
 }

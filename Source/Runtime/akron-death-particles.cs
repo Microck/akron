@@ -154,6 +154,34 @@ public partial class AkronModule {
         customDeathBursts = new ConditionalWeakTable<DeathEffect, CustomDeathParticleBurst>();
     }
 
+    // Ephemeral rollback metadata uses the same two clone maps as the native
+    // graph. Position/order matching is unsafe when multiple corpses overlap.
+    internal sealed class DeathBurstRollbackState {
+        private readonly List<(DeathEffect Effect, CustomDeathParticleBurst Burst)> bindings = new();
+
+        internal DeathBurstRollbackState(Level level) {
+            foreach (var body in AkronEntityListInternals.GetAll(level.Entities)
+                         .Concat(level.Entities).Distinct().OfType<PlayerDeadBody>()) {
+                if (PlayerDeadBodyDeathEffectField?.GetValue(body) is DeathEffect effect &&
+                    customDeathBursts.TryGetValue(effect, out var burst) &&
+                    AkronDeepClone.GetKnownClone(effect) is DeathEffect savedEffect) {
+                    // Expired owners are intentional suppression markers too.
+                    bindings.Add((savedEffect, burst));
+                }
+            }
+        }
+
+        internal void Restore(Level level) {
+            foreach (var binding in bindings) {
+                if (AkronDeepClone.GetKnownClone(binding.Effect) is DeathEffect effect &&
+                    effect.Entity is PlayerDeadBody body && body.Scene == level) {
+                    customDeathBursts.Remove(effect);
+                    customDeathBursts.Add(effect, binding.Burst);
+                }
+            }
+        }
+    }
+
     internal static DeathBurstCaptureScope PreserveCustomDeathBurstsForCapture(Level level) {
         return new DeathBurstCaptureScope(level);
     }
