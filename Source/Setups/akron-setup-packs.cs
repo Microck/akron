@@ -1643,22 +1643,39 @@ public static partial class AkronSetupPacks {
         }
     }
 
-    private static void ApplyButtonBindings(AkronModuleSettings settings, Dictionary<string, AkronButtonBindingPack> bindings) {
+    private static void ApplyButtonBindings(AkronModuleSettings settings, Dictionary<string, AkronButtonBindingPack> bindings, bool restoreSnapshot = false) {
         if (bindings == null) {
             return;
         }
 
         foreach (PropertyInfo property in ButtonBindingProperties) {
-            if (bindings.TryGetValue(property.Name, out AkronButtonBindingPack binding)) {
-                property.SetValue(settings, BuildButtonBinding(binding));
+            if (!bindings.TryGetValue(property.Name, out AkronButtonBindingPack pack)) {
+                continue;
             }
-        }
 
-        // A pack exported with Open Menu unbound would otherwise leave the recipient with no
-        // keyboard way into the overlay. Load re-seeds the same default; Import tells the player.
-        if (bindings.TryGetValue(nameof(AkronModuleSettings.ToggleOverlay), out AkronButtonBindingPack toggle) &&
-            PackOverlayToggleNeedsDefault(toggle)) {
-            settings.ToggleOverlay = AkronModuleSettings.CreateDefaultOverlayToggleBinding();
+            List<Keys> keys = ParseEnumList<Keys>(pack?.Keys).Where(key => key != Keys.None).ToList();
+            List<Buttons> buttons = ParseEnumList<Buttons>(pack?.Buttons).Where(button => button != 0).ToList();
+            List<MInput.MouseData.MouseButtons> mouseButtons = ParseEnumList<MInput.MouseData.MouseButtons>(pack?.MouseButtons);
+            // Import-only safety fallback. A rollback must restore the captured inputs without this normalization.
+            if (!restoreSnapshot && property.Name == nameof(AkronModuleSettings.ToggleOverlay) &&
+                PackOverlayToggleNeedsDefault(pack)) {
+                keys = new List<Keys> { Keys.Tab };
+                buttons.Clear();
+                mouseButtons.Clear();
+            }
+
+            ButtonBinding target = (ButtonBinding)property.GetValue(settings);
+            if (target == null) {
+                target = new ButtonBinding(0, Keys.None);
+                property.SetValue(settings, target);
+            }
+
+            // Everest's initialized VirtualButton retains this wrapper's Binding object.
+            // Replacing the wrapper leaves Check/Pressed disconnected until a restart.
+            // Null wrappers keep the normal Everest input-initialization lifecycle.
+            target.Keys = keys;
+            target.Buttons = buttons;
+            target.MouseButtons = mouseButtons;
         }
     }
 
@@ -1679,15 +1696,6 @@ public static partial class AkronSetupPacks {
         }
 
         return PackOverlayToggleNeedsDefault(toggle);
-    }
-
-    private static ButtonBinding BuildButtonBinding(AkronButtonBindingPack pack) {
-        ButtonBinding binding = new ButtonBinding(0, Keys.None) {
-            Keys = ParseEnumList<Keys>(pack?.Keys).Where(key => key != Keys.None).ToList(),
-            Buttons = ParseEnumList<Buttons>(pack?.Buttons).Where(button => button != 0).ToList(),
-            MouseButtons = ParseEnumList<MInput.MouseData.MouseButtons>(pack?.MouseButtons).ToList()
-        };
-        return binding;
     }
 
     private static List<T> ParseEnumList<T>(IEnumerable<string> values) where T : struct, Enum {
@@ -2033,7 +2041,7 @@ public static partial class AkronSetupPacks {
             }
 
             settings.ApplySetupPackState(previousSettings);
-            ApplyButtonBindings(settings, previousButtonBindings);
+            ApplyButtonBindings(settings, previousButtonBindings, restoreSnapshot: true);
             settings.MenuActionBindings = new Dictionary<string, string>(
                 previousMenuActionBindings,
                 StringComparer.Ordinal);

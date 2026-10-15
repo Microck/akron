@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Keep existing input bindings connected when importing a setup, so controls such as Cursor Zoom work immediately without restarting Celeste. Apply the same identity-preserving update when rolling back a failed setup import.
+
 - Fade golden berry sprites using premultiplied color modulation, preserve their native/custom tint, and restore it after rendering instead of leaving a bright sprite at zero opacity.
 
 - Preserve JPEG capture geometry at screen widths that are not divisible by four, including merged room exports, using a tightly packed managed encoder.
