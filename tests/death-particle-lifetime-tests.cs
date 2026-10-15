@@ -64,6 +64,14 @@ public sealed class DeathParticleLifetimeTests {
         Assert.Contains("(!mutationStarted || restored)", runtime);
         Assert.Contains("deathBurstCapture.MarkMutationStarted();", saveLoad);
         Assert.Contains("deathBurstCapture.MarkRestored();", saveLoad);
+        int coldStart = saveLoad.IndexOf("private static AkronSaveLoadResult RestorePersistentRuntimeState(", StringComparison.Ordinal);
+        int coldEnd = saveLoad.IndexOf("private static AkronSaveLoadResult CacheRestoredRuntimeState", coldStart, StringComparison.Ordinal);
+        string coldRestore = saveLoad[coldStart..coldEnd];
+        Assert.DoesNotContain("ClearCustomDeathParticleBursts();", coldRestore);
+        Assert.Contains("using var deathBurstRollback = AkronModule.PreserveCustomDeathBurstsForCapture(level);", coldRestore);
+        Assert.Contains("deathBurstRollback.MarkMutationStarted();", coldRestore);
+        Assert.Contains("if (rollbackResult == AkronSaveLoadResult.Success)", coldRestore);
+        Assert.Contains("deathBurstRollback.MarkRestored();", coldRestore);
         string actions = File.ReadAllText(Path.Combine(root, "Module/akron-module-actions.cs"));
         int reloadStart = actions.IndexOf("private static void ReloadRoom(", StringComparison.Ordinal);
         int reloadEnd = actions.IndexOf("private static void OpenDebugMap", reloadStart, StringComparison.Ordinal);
