@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Treat Cancel from Zenity as normal setup-picker cancellation when GTK emits its harmless transient-parent diagnostic, while retaining failures for other diagnostic output.
+
 - Keep existing input bindings connected when importing a setup, so controls such as Cursor Zoom work immediately without restarting Celeste. Apply the same identity-preserving update when rolling back a failed setup import.
 
 - Fade golden berry sprites using premultiplied color modulation, preserve their native/custom tint, and restore it after rendering instead of leaving a bright sprite at zero opacity.
