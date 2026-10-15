@@ -166,6 +166,9 @@ public partial class AkronModule {
                 // the old menu is gone, so Unpause cannot attach a settings-save
                 // coroutine to a menu that this reload is about to destroy.
                 level.Unpause();
+                // The discarded menu cannot end its audio effects. Do this
+                // before notifying subscribers rather than waiting for Update.
+                level.EndPauseEffects();
                 NotifyLevelUnpausedAfterReload(level);
             }
         };

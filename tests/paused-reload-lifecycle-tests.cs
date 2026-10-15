@@ -21,6 +21,10 @@ public sealed class PausedReloadLifecycleTests {
                     action.IndexOf("level.Unpause();", StringComparison.Ordinal));
         Assert.True(action.IndexOf("level.Unpause();", StringComparison.Ordinal) <
                     action.IndexOf("NotifyLevelUnpausedAfterReload(level);", StringComparison.Ordinal));
+        Assert.True(action.IndexOf("level.Unpause();", StringComparison.Ordinal) <
+                    action.IndexOf("level.EndPauseEffects();", StringComparison.Ordinal));
+        Assert.True(action.IndexOf("level.EndPauseEffects();", StringComparison.Ordinal) <
+                    action.IndexOf("NotifyLevelUnpausedAfterReload(level);", StringComparison.Ordinal));
         Assert.Contains("Engine.Scene != level", action);
     }
 
@@ -34,6 +38,7 @@ public sealed class PausedReloadLifecycleTests {
             method.Name.Contains("ReloadRoom", StringComparison.Ordinal));
         var calls = closure.Body.Instructions.Select(i => i.Operand).OfType<MethodReference>().ToArray();
         Assert.Contains(calls, call => call.DeclaringType.FullName == "Celeste.Level" && call.Name == "Unpause");
+        Assert.Contains(calls, call => call.DeclaringType.FullName == "Celeste.Level" && call.Name == "EndPauseEffects");
         Assert.Contains(calls, call => call.DeclaringType.FullName == typeof(AkronModule).FullName && call.Name == "NotifyLevelUnpausedAfterReload");
     }
     [NativeEverestFact]
