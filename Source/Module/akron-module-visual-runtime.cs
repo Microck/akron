@@ -553,6 +553,7 @@ public partial class AkronModule {
     }
 
     private static void PlayerOnUpdateHair(On.Celeste.Player.orig_UpdateHair orig, Player self, bool applyGravity) {
+        ApplyGroundDashRuleBeforeHair(self);
         RestoreMadelineVisualOverrides();
         orig(self, applyGravity);
         ApplyMadelineVisualOverrides(self);

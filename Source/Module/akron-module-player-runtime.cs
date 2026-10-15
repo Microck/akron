@@ -263,6 +263,26 @@ public partial class AkronModule {
         return null;
     }
 
+    [ThreadStatic]
+    private static GroundRefillUpdateContext groundRefillUpdateContext;
+
+    private readonly struct GroundRefillUpdateContext {
+        public readonly Player Player;
+        public readonly Scene Scene;
+        public readonly global::Celeste.Session NativeSession;
+        public readonly bool WasGrounded;
+        public readonly int DashesBefore;
+
+        public GroundRefillUpdateContext(Player player, Scene scene, global::Celeste.Session nativeSession,
+            bool wasGrounded, int dashesBefore) {
+            Player = player;
+            Scene = scene;
+            NativeSession = nativeSession;
+            WasGrounded = wasGrounded;
+            DashesBefore = dashesBefore;
+        }
+    }
+
     private static void PlayerOnUpdate(On.Celeste.Player.orig_Update orig, Player self)
     {
         if (!Settings.Noclip || !TryUseRuntime(AkronFeatureKind.Noclip) ||
@@ -272,7 +292,14 @@ public partial class AkronModule {
             bool wasGrounded = self.OnGround();
             int dashesBefore = self.Dashes;
             float staminaBefore = self.Stamina;
-            orig(self);
+            GroundRefillUpdateContext previousContext = groundRefillUpdateContext;
+            groundRefillUpdateContext = new GroundRefillUpdateContext(self, self.Scene, (self.Scene as Level)?.Session,
+                wasGrounded, dashesBefore);
+            try {
+                orig(self);
+            } finally {
+                groundRefillUpdateContext = previousContext;
+            }
             ApplyAkronSpikeGroundRefill(self);
             ApplyGroundRefillRulesAfterPlayerUpdate(self, wasGrounded, dashesBefore, staminaBefore);
             ApplyPlayerVisibilityOverride(self);
@@ -536,6 +563,31 @@ public partial class AkronModule {
         if (player.Dashes > target) {
             player.Dashes = target;
         }
+    }
+
+    private static void ApplyGroundDashRuleBeforeHair(Player player) {
+        GroundRefillUpdateContext context = groundRefillUpdateContext;
+        if (!ReferenceEquals(context.Player, player) || player == null ||
+            !ReferenceEquals(context.Scene, player.Scene) ||
+            !ReferenceEquals(context.NativeSession, (player.Scene as Level)?.Session) ||
+            player.Dead || !Settings.GroundRefillRules || Settings.GroundDashRefill ||
+            player.Dashes <= context.DashesBefore) {
+            return;
+        }
+
+        if (ShouldCorrectGroundDashBeforeHair(Settings.GroundRefillRules, Settings.GroundDashRefill,
+                player.Dead, context.WasGrounded, player.OnGround(), context.DashesBefore, player.Dashes) &&
+            TryUseRuntime(AkronFeatureKind.GroundRefillRules)) {
+            // Native hair selection and Akron's palette must see the same charges
+            // that survive the end-of-update correction. Do not simulate hair twice.
+            player.Dashes = context.DashesBefore;
+        }
+    }
+
+    internal static bool ShouldCorrectGroundDashBeforeHair(bool enabled, bool dashRefillAllowed,
+        bool dead, bool wasGrounded, bool isGrounded, int dashesBefore, int currentDashes) {
+        return enabled && !dashRefillAllowed && !dead && (wasGrounded || isGrounded) &&
+               currentDashes > dashesBefore;
     }
 
     private static void ApplyGroundRefillRulesAfterPlayerUpdate(Player player, bool wasGrounded, int dashesBefore, float staminaBefore) {
