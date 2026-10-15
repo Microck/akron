@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Reflection;
 using System.Text;
 using Celeste;
 using Celeste.Editor;
@@ -165,9 +166,42 @@ public partial class AkronModule {
                 // the old menu is gone, so Unpause cannot attach a settings-save
                 // coroutine to a menu that this reload is about to destroy.
                 level.Unpause();
-                LevelOnUnpause(level);
+                NotifyLevelUnpausedAfterReload(level);
             }
         };
+    }
+
+    // Everest keeps the event raiser internal. Resolve that exact dispatcher,
+    // rather than capturing its event field, so later subscribers are included.
+    private static readonly Action<Level> everestLevelUnpause = ResolveEverestLevelUnpause();
+
+    private static Action<Level> ResolveEverestLevelUnpause() {
+        try {
+            MethodInfo method = typeof(Everest.Events.Level).GetMethod("Unpause",
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+                null, new[] { typeof(Level) }, null);
+            return method?.ReturnType == typeof(void) ? method.CreateDelegate<Action<Level>>() : null;
+        } catch (ArgumentException) {
+            return null;
+        } catch (MemberAccessException) {
+            return null;
+        }
+    }
+    private static bool missingEverestUnpauseWarningLogged;
+
+    internal static void NotifyLevelUnpausedAfterReload(Level level) {
+        if (everestLevelUnpause != null) {
+            everestLevelUnpause(level);
+            return;
+        }
+        // Preserve Akron's own recovery on an incompatible Everest version,
+        // while explicitly reporting that global lifecycle delivery is missing.
+        if (!missingEverestUnpauseWarningLogged) {
+            missingEverestUnpauseWarningLogged = true;
+            Logger.Log(LogLevel.Warn, nameof(AkronModule),
+                "Everest's unpause dispatcher is unavailable; paused Reload Room can only notify Akron.");
+        }
+        LevelOnUnpause(level);
     }
 
     private static void OpenDebugMap(Level level) {

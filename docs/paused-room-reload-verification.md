@@ -2,9 +2,9 @@
 
 ## Change
 
-Reload Room removes the native TextMenu during Level.Reload but leaves the same Level paused. With no menu left to handle Resume, gameplay remains stuck and a fresh pause menu cannot open. The action now remembers whether the level was paused and, after Reload, invokes native Level.Unpause plus Akron's existing unpause handler if the same level is still current and paused. This runs after the removed menu is gone, avoiding a settings-save coroutine attached to a menu that is about to be destroyed. Unpaused reload does not take the extra path. Confirmation approve already closes its prompt before queuing reload; cancel never reloads.
+Reload Room removes the native TextMenu during Level.Reload but leaves the same Level paused. With no menu left to handle Resume, gameplay remains stuck and a fresh pause menu cannot open. The action now remembers whether the level was paused and, after Reload, invokes native Level.Unpause followed by Everest's global unpause dispatcher if the same level is still current and paused. This runs after the removed menu is gone, avoiding a settings-save coroutine attached to a menu that is about to be destroyed. Unpaused reload does not take the extra path. Confirmation approve already closes its prompt before queuing reload; cancel never reloads.
 
-The own unpause handler closes Pause Tracker timing, updates autosave/lag-pauser state and starts configured Pause Timer behavior. This is not a new global Everest event emission. Native Mod Options persistence and arbitrary third-party pause replacement during LoadLevel are not covered by this narrow correction.
+Akron's existing OnUnpause subscription closes Pause Tracker timing, updates autosave/lag-pauser state and starts configured Pause Timer behavior. Other subscribers receive the same global notification. Native Mod Options persistence and arbitrary third-party pause replacement during LoadLevel are not covered by this narrow correction.
 
 ## Native evidence
 
@@ -22,3 +22,13 @@ Release and Debug each pass 2,359 tests. Added source and emitted-code checks gu
 ## Final integration smoke
 
 QA74 repeated the direct paused Reload, responsive native jump, and reopening of the pause menu after incorporating the final #319 renderer fallback. Final ZIP SHA-256: `0d8ba7f867316d9159fe3d79c666bdd7a1ef2effa37fbb84cc8d5740a9e3066c`. Release and Debug each pass 2,359 tests. The unchanged original settings were retained; native Save and Quit and Exit completed. This is an integration smoke, not a rerun of every QA72 case.
+
+## Global lifecycle review follow-up
+
+The initial fix called only Akron's private unpause handler. Review identified that other Everest subscribers would miss the matching global event because Reload destroyed the native menu callbacks. The corrected path uses a cached typed delegate to Everest's internal `Unpause(Level)` dispatcher immediately after native unpause, allowing the existing Akron subscription to account once. It resolves the exact signature through reflection because the dispatcher is not public in the mod reference API. It reads the current subscriber list at invocation, not a captured list. Subscriber exceptions retain native propagation semantics.
+
+On an incompatible Everest build with no bindable dispatcher, a one-time warning explicitly reports degraded own-handler-only accounting. This is not a claim of global delivery on unknown versions. The verified native/reference assembly is Everest 1.6580.0. Native Mod Options persistence and arbitrary pause replacement remain outside scope.
+
+Release and Debug each pass 2,362 tests. Isolated event tests verify current and late-added subscribers are each called once per notification and subscriber exceptions are not reflection-wrapped. These are automated tests, not a claim of live third-party-mod acceptance.
+
+QA91 used Release ZIP `f3f7c4e1bf35f1daf84f066162091e5d49ffdd65aaaa5cd0fab4c6396f9c8b66` in the native Old Site 12d fixture. Direct paused Reload resumed responsive gameplay and allowed the native pause menu to reopen. With Pause Timer set to 3, reload progressed through its countdown and returned to gameplay. No unavailable-dispatcher fallback warning appeared in the native log. This validates the native recovery/countdown path; it does not inspect arbitrary third-party subscribers in the running game.
