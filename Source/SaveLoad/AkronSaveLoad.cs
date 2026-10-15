@@ -1596,10 +1596,14 @@ public static partial class AkronSaveLoadService {
             return AkronSaveLoadResult.Failed;
         }
 
+        // Keep ignored cosmetics until the transaction outcome is known. A failed
+        // cold reconstruction can roll back to the same live room and must not
+        // erase a burst that the rollback snapshot deliberately excludes.
+        using var deathBurstRollback = AkronModule.PreserveCustomDeathBurstsForCapture(level);
         AkronSaveLoadResult restoreResult;
         AkronSaveLoadSlotLease freshBaseline = null;
         try {
-            AkronModule.ClearCustomDeathParticleBursts();
+            deathBurstRollback.MarkMutationStarted();
             AkronIgnoreSaveStateComponent.RemoveAll(level);
             try {
                 restoreResult = RestorePersistentRuntimeStateCore(level, document, out freshBaseline);
@@ -1638,6 +1642,9 @@ public static partial class AkronSaveLoadService {
                 allowDeadPlayer: true,
                 freshBaselineStateSlotName: null,
                 rollback: true);
+            if (rollbackResult == AkronSaveLoadResult.Success) {
+                deathBurstRollback.MarkRestored();
+            }
             // A successful rollback is indistinguishable from "the button did nothing"
             // unless the message says so. Name the outcome, not just the failure.
             LastPersistentSnapshotError = rollbackResult == AkronSaveLoadResult.Success
