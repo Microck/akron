@@ -68,15 +68,16 @@ public sealed partial class AkronOverlay {
             return;
         }
 
+        bool searching = !string.IsNullOrWhiteSpace(searchQuery);
         string[] visibleTabs = GetVisibleTabs();
         Dictionary<string, List<ActionEntry>> actionEntriesByTab = BuildVisibleTabActionEntries(visibleTabs, level);
-        ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, actionEntriesByTab, columnXPositions.Count, menuTop, ScreenHeight);
+        ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, actionEntriesByTab, columnXPositions.Count, menuTop, ScreenHeight, searching);
         List<float> columnBottoms = columnXPositions.Select(_ => menuTop).ToList();
         List<int> columnSectionCounts = columnXPositions.Select(_ => 0).ToList();
         for (int tabIndex = 0; tabIndex < visibleTabs.Length; tabIndex++) {
             string tabName = visibleTabs[tabIndex];
             List<ActionEntry> tabEntries = actionEntriesByTab[tabName];
-            if (!string.IsNullOrWhiteSpace(searchQuery) && tabEntries.Count == 0) {
+            if (searching && tabEntries.Count == 0) {
                 continue;
             }
 
@@ -85,11 +86,11 @@ public sealed partial class AkronOverlay {
             float y = columnBottoms[columnIndex];
             float sectionScreenHeight = GetSectionScreenHeight(tabName, columnIndex, externalPlacementPlan, ScreenHeight);
             float height = CalculateActionSectionHeight(tabEntries.Count, y, sectionScreenHeight);
-            SectionLayout actionSection = CreateSectionLayout(tabName, x, y, menuColumnWidth, height);
+            SectionLayout actionSection = CreateSectionLayout(tabName, x, y, menuColumnWidth, height, searching);
             lastSections.Add(actionSection);
             BuildActionLayouts(actionSection, tabEntries, tabIndex, useScrolling: ShouldUseFallbackScrolling(actionSection, tabEntries.Count));
 
-            columnBottoms[columnIndex] = y + GetStackedActionSectionHeight(tabName, height) + ColumnStackGap;
+            columnBottoms[columnIndex] = y + GetStackedActionSectionHeight(tabName, height, searching) + ColumnStackGap;
             columnSectionCounts[columnIndex]++;
         }
     }
@@ -241,7 +242,7 @@ public sealed partial class AkronOverlay {
         return FindShortestColumn(columnBottoms, cappedColumns, index => true);
     }
 
-    private ExternalToolPlacementPlan BuildExternalToolPlacementPlan(string[] visibleTabs, IReadOnlyDictionary<string, List<ActionEntry>> actionEntriesByTab, int availableColumns, float menuTop, float screenHeight) {
+    private ExternalToolPlacementPlan BuildExternalToolPlacementPlan(string[] visibleTabs, IReadOnlyDictionary<string, List<ActionEntry>> actionEntriesByTab, int availableColumns, float menuTop, float screenHeight, bool searching) {
         ExternalToolPlacementPlan plan = new ExternalToolPlacementPlan(availableColumns);
         if (!visibleTabs.Any(IsExternalToolTab)) {
             return plan;
@@ -254,13 +255,13 @@ public sealed partial class AkronOverlay {
             if (!actionEntriesByTab.TryGetValue(tabName, out List<ActionEntry> entries)) {
                 continue;
             }
-            if (!string.IsNullOrWhiteSpace(searchQuery) && entries.Count == 0) {
+            if (searching && entries.Count == 0) {
                 continue;
             }
 
             int columnIndex = GetActionColumnIndex(tabName, availableColumns);
             float height = CalculateActionSectionHeight(entries.Count, columnBottoms[columnIndex], screenHeight);
-            columnBottoms[columnIndex] += GetStackedActionSectionHeight(tabName, height) + ColumnStackGap;
+            columnBottoms[columnIndex] += GetStackedActionSectionHeight(tabName, height, searching) + ColumnStackGap;
             columnSectionCounts[columnIndex]++;
         }
 
@@ -268,13 +269,13 @@ public sealed partial class AkronOverlay {
             if (!actionEntriesByTab.TryGetValue(tabName, out List<ActionEntry> entries)) {
                 continue;
             }
-            if (!string.IsNullOrWhiteSpace(searchQuery) && entries.Count == 0) {
+            if (searching && entries.Count == 0) {
                 continue;
             }
 
             int columnIndex = GetActionColumnIndex(tabName, availableColumns, columnBottoms, columnSectionCounts, screenHeight);
             float height = CalculateActionSectionHeight(entries.Count, columnBottoms[columnIndex], screenHeight);
-            float reservedHeight = GetStackedActionSectionHeight(tabName, height) + ColumnStackGap;
+            float reservedHeight = GetStackedActionSectionHeight(tabName, height, searching) + ColumnStackGap;
             plan.SetColumn(tabName, columnIndex);
             plan.ReservedHeightByColumn[columnIndex] += reservedHeight;
             columnBottoms[columnIndex] += reservedHeight;
@@ -306,8 +307,14 @@ public sealed partial class AkronOverlay {
         return Math.Max(minimumSectionScreenHeight, screenHeight - reservedHeight);
     }
 
-    private float GetStackedActionSectionHeight(string tabName, float expandedHeight) {
-        return collapsedWindowTitles.Contains(tabName) ? HeaderHeight : expandedHeight;
+    private float GetStackedActionSectionHeight(string tabName, float expandedHeight, bool searching) {
+        return IsSectionCollapsedForLayout(tabName, searching) ? HeaderHeight : expandedHeight;
+    }
+
+    private bool IsSectionCollapsedForLayout(string title, bool searching) {
+        // Search expands windows temporarily; reserve the same body height without
+        // changing the user's saved collapse preference.
+        return !searching && collapsedWindowTitles.Contains(title);
     }
 
     private sealed class ExternalToolPlacementPlan {
@@ -365,8 +372,8 @@ public sealed partial class AkronOverlay {
         return Math.Max(1, (int) Math.Floor((availableBodyHeight + rowGap) / (rowHeight + rowGap)));
     }
 
-    private SectionLayout CreateSectionLayout(string title, float x, float y, float width, float height) {
-        bool collapsed = collapsedWindowTitles.Contains(title);
+    private SectionLayout CreateSectionLayout(string title, float x, float y, float width, float height, bool searching) {
+        bool collapsed = IsSectionCollapsedForLayout(title, searching);
         Rectangle headerRect = Rect(x, y, width, HeaderHeight);
         float bodyHeight = collapsed ? 0f : Math.Max(0f, height - HeaderHeight);
         Rectangle bodyRect = Rect(x, y + HeaderHeight, width, bodyHeight);

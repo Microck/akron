@@ -56,14 +56,14 @@ public sealed partial class AkronOverlay
         }
         searchExpandedWindowsLastFrame = searchActiveForImGuiDraw;
         Dictionary<string, List<ActionEntry>> actionEntriesByTab = BuildVisibleTabActionEntries(visibleTabs, level);
-        ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, actionEntriesByTab, columnXPositions.Count, menuTop, displayHeight);
+        ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, actionEntriesByTab, columnXPositions.Count, menuTop, displayHeight, searchActiveForImGuiDraw);
         List<float> columnBottoms = columnXPositions.Select(_ => menuTop).ToList();
         List<int> columnSectionCounts = columnXPositions.Select(_ => 0).ToList();
         for (int tabIndex = 0; tabIndex < visibleTabs.Length; tabIndex++)
         {
             string tabName = visibleTabs[tabIndex];
             List<ActionEntry> entries = actionEntriesByTab[tabName];
-            if (!string.IsNullOrWhiteSpace(searchQuery) && entries.Count == 0)
+            if (searchActiveForImGuiDraw && entries.Count == 0)
             {
                 continue;
             }
@@ -74,7 +74,7 @@ public sealed partial class AkronOverlay
             float sectionScreenHeight = GetSectionScreenHeight(tabName, columnIndex, externalPlacementPlan, displayHeight);
             float height = CalculateActionSectionHeight(entries.Count, y, sectionScreenHeight);
             DrawActionWindow(tabName, x, y, menuColumnWidth, entries, tabIndex);
-            columnBottoms[columnIndex] = y + GetStackedActionSectionHeight(tabName, height) + ColumnStackGap;
+            columnBottoms[columnIndex] = y + GetStackedActionSectionHeight(tabName, height, searchActiveForImGuiDraw) + ColumnStackGap;
             columnSectionCounts[columnIndex]++;
         }
 
