@@ -21,6 +21,8 @@ public static class AkronRuntimeOptions {
     private static readonly Dictionary<object, bool> HiddenPauseHudVisibility = new Dictionary<object, bool>();
     private static readonly Dictionary<string, object> SafeModeStatSnapshot = new Dictionary<string, object>();
     private static string safeModeSnapshotArea = string.Empty;
+    private static object safeModeSnapshotSaveData;
+    private static object safeModeSnapshotModeStats;
     private static readonly AkronVisualTuningOverrides VisualTuningOverrides = new();
 
     public static void Reset() {
@@ -32,8 +34,7 @@ public static class AkronRuntimeOptions {
         AkronEarAid.ReconcileVolumeOverrides(restore: true);
         AkronModule.RestoreTransitionSpeed();
         AkronModule.RestoreMadelineVisualOverrides();
-        SafeModeStatSnapshot.Clear();
-        safeModeSnapshotArea = string.Empty;
+        ClearSafeModeStatSnapshot();
     }
 
     public static void Apply(Level level, Player player) {
@@ -557,43 +558,60 @@ public static class AkronRuntimeOptions {
     private static void ApplySafeModeStatFreeze(Level level) {
         if (level == null ||
             !AkronModule.Settings.SafeMode ||
-            !AnySafeModeStatFreezeEnabled()) {
-            SafeModeStatSnapshot.Clear();
-            safeModeSnapshotArea = string.Empty;
+            !AnySafeModeStatFreezeEnabled() ||
+            !AkronModule.TryUseRuntime(AkronFeatureKind.SafeModeStats)) {
+            ClearSafeModeStatSnapshot();
             return;
         }
 
-        if (!AkronModule.TryUseRuntime(AkronFeatureKind.SafeModeStats)) {
-            SafeModeStatSnapshot.Clear();
-            safeModeSnapshotArea = string.Empty;
+        ApplySafeModeStatFreezeState(
+            SaveData.Instance,
+            GetAreaModeStats(level),
+            level.Session.Area.GetSID() + ":" + level.Session.Area.Mode,
+            AkronModule.Settings.SafeModeFreezeAttempts,
+            AkronModule.Settings.SafeModeFreezeJumps,
+            AkronModule.Settings.SafeModeFreezeBestRun);
+    }
+
+    internal static void ApplySafeModeStatFreezeState(object saveData, object modeStats,
+        string areaKey, bool freezeDeaths, bool freezeJumps, bool freezeBestRun) {
+        if (saveData == null || (!freezeDeaths && !freezeJumps && !freezeBestRun)) {
+            ClearSafeModeStatSnapshot();
             return;
         }
 
-        string areaKey = level.Session.Area.GetSID() + ":" + level.Session.Area.Mode;
-        object modeStats = GetAreaModeStats(level);
-        if (modeStats == null) {
-            return;
-        }
-
-        if (safeModeSnapshotArea != areaKey) {
-            SafeModeStatSnapshot.Clear();
+        // A save or stats object can be replaced without changing the area SID.
+        if (!ReferenceEquals(safeModeSnapshotSaveData, saveData) ||
+            !ReferenceEquals(safeModeSnapshotModeStats, modeStats) ||
+            safeModeSnapshotArea != areaKey) {
+            ClearSafeModeStatSnapshot();
+            safeModeSnapshotSaveData = saveData;
+            safeModeSnapshotModeStats = modeStats;
             safeModeSnapshotArea = areaKey;
-            CaptureStat(modeStats, "Deaths");
-            CaptureStat(modeStats, "Jumps");
-            CaptureStat(modeStats, "BestTime");
-            CaptureStat(modeStats, "BestFullClearTime");
-            return;
         }
 
-        if (AkronModule.Settings.SafeModeFreezeAttempts) {
-            RestoreStat(modeStats, "Deaths");
-        }
-        if (AkronModule.Settings.SafeModeFreezeJumps) {
-            RestoreStat(modeStats, "Jumps");
-        }
-        if (AkronModule.Settings.SafeModeFreezeBestRun) {
-            RestoreStat(modeStats, "BestTime");
-            RestoreStat(modeStats, "BestFullClearTime");
+        FreezeStat(saveData, "TotalDeaths", "file:TotalDeaths", freezeDeaths);
+        FreezeStat(modeStats, "Deaths", "area:Deaths", freezeDeaths);
+        FreezeStat(saveData, "TotalJumps", "file:TotalJumps", freezeJumps);
+        FreezeStat(modeStats, "BestTime", "area:BestTime", freezeBestRun);
+        FreezeStat(modeStats, "BestFullClearTime", "area:BestFullClearTime", freezeBestRun);
+    }
+
+    private static void ClearSafeModeStatSnapshot() {
+        SafeModeStatSnapshot.Clear();
+        safeModeSnapshotArea = string.Empty;
+        safeModeSnapshotSaveData = null;
+        safeModeSnapshotModeStats = null;
+    }
+
+    private static void FreezeStat(object target, string name, string key, bool enabled) {
+        if (!enabled || target == null) {
+            SafeModeStatSnapshot.Remove(key);
+        } else if (SafeModeStatSnapshot.TryGetValue(key, out object value)) {
+            SetMember(target, name, value);
+        } else if (TryGetMemberValue(target, name, out value)) {
+            // Capture when this guard is enabled, not when a different guard was enabled.
+            SafeModeStatSnapshot[key] = value;
         }
     }
 
@@ -614,18 +632,6 @@ public static class AkronRuntimeOptions {
         AreaStats stats = SaveData.Instance.Areas[area.ID];
         int mode = (int) area.Mode;
         return mode >= 0 && mode < stats.Modes.Length ? stats.Modes[mode] : null;
-    }
-
-    private static void CaptureStat(object target, string name) {
-        if (TryGetMemberValue(target, name, out object value)) {
-            SafeModeStatSnapshot[name] = value;
-        }
-    }
-
-    private static void RestoreStat(object target, string name) {
-        if (SafeModeStatSnapshot.TryGetValue(name, out object value)) {
-            SetMember(target, name, value);
-        }
     }
 
     private static object GetMember(object target, string name) {

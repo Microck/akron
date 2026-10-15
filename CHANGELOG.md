@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Make Safe Mode freeze file-wide death and jump totals, and recapture each guard independently when it is enabled again.
+
 - Keep Set Inventory capacity changes and death restoration from fabricating or overwriting native dash usage statistics.
 
 - Keep Extended Variant Mode option popups and row toggles separate from same-named Akron controls, including Dash Count.

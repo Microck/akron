@@ -13,7 +13,7 @@ The Global tab contains session-wide options.
 | FPS Bypass | Numeric input | Raise the draw cadence or enable Motion Smoothing's smoothing pipeline while keeping Celeste physics at 60 TPS when TPS Bypass is off. | Normal clear |
 | TPS Bypass | Numeric input | Change the simulation tick cadence. | Cheat |
 | Safe Mode | Toggle | Safe Mode indicator plus optional local stat guards for deaths, jumps, and best-run fields. | None |
-| Freeze Attempts | Toggle | Restore the current save slot's death counter while Safe Mode is active. | Cheat |
+| Freeze Attempts | Toggle | Restore the current save slot's total deaths and current area-mode deaths while Safe Mode is active. | Cheat |
 | Submission Mode | Toggle | Enable recording metadata defaults and related warning surfaces without changing gameplay itself. | Goldberry/Hardlist clear |
 | Pause Buffering | Toggle | Choose whether configured hotkeys can fire while Celeste is paused. | Cheat |
 | Autosave | Toggle | Save the active Celeste file automatically at configured triggers, with optional settings saves. | Goldberry/Hardlist clear |
@@ -43,9 +43,9 @@ Rows with a triangle expose the controls listed below.
 | Frame Stepper | Hold key repeats | When enabled, holding the step key advances frames repeatedly. | Cheat |
 | Frame Stepper | Delay | Frames to wait before hold-repeat starts. | Cheat |
 | Frame Stepper | Every | Frames between repeated steps after the delay. | Cheat |
-| Safe Mode | Freeze deaths | Restore the current save slot's death counter while Safe Mode is active. | None |
-| Safe Mode | Freeze jumps | Restore the current save slot's jump counter while Safe Mode is active. | None |
-| Safe Mode | Freeze best run | Restore the current save slot's best-run fields while Safe Mode is active. | None |
+| Safe Mode | Freeze deaths | Restore the current save slot's total deaths and current area-mode deaths while Safe Mode is active. | None |
+| Safe Mode | Freeze jumps | Restore the current save slot's total jumps while Safe Mode is active. | None |
+| Safe Mode | Freeze best run | Restore the current area-mode best-time and best-full-clear-time fields while Safe Mode is active. | None |
 | Autosave | Interval | Seconds between automatic save attempts. | Goldberry/Hardlist clear |
 | Autosave | Minimum delay | When Avoid gameplay is on, block automatic saves until this cooldown has passed after entering a level or completing a save. | Goldberry/Hardlist clear |
 | Autosave | Level load | Autosave when a level starts or reloads. Room transitions do not trigger it. | Goldberry/Hardlist clear |
@@ -57,3 +57,5 @@ Rows with a triangle expose the controls listed below.
 | Autosave | Hide saving icon | Hide Celeste's save and load icons while this setting is on. | Goldberry/Hardlist clear |
 | Autosave | Save now | Save the current file immediately through Akron's autosave path, even when Autosave is off or the minimum-delay cooldown is active. | Goldberry/Hardlist clear |
 | Transition Speed | Speed | Adjust the next room-transition speed multiplier. Values below 1x are slower and values above 1x are faster. | Cheat |
+
+Safe Mode stat guards capture their baseline when each guard becomes active. Turning one guard off allows its counters to change; turning it back on captures the new values without rolling back that interval. Guard snapshots reset when the active save or area stats change. Restoration happens during level updates; this is not a guarantee against every same-frame save or exit path.
