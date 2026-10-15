@@ -7,6 +7,9 @@ using Celeste;
 using Celeste.Editor;
 using Microsoft.Xna.Framework;
 using Monocle;
+using Mono.Cecil;
+using Mono.Cecil.Cil;
+using MonoMod.Cil;
 
 namespace Celeste.Mod.Akron;
 
@@ -141,7 +144,7 @@ public partial class AkronModule {
     }
 
     private static void ReloadRoom(Level level, bool confirmed = false) {
-        if (level == null || Engine.Scene != level || !TryUse(AkronFeatureKind.RoomReload)) {
+        if (level == null || level.Completed || Engine.Scene != level || !TryUse(AkronFeatureKind.RoomReload)) {
             return;
         }
 
@@ -151,7 +154,7 @@ public partial class AkronModule {
         }
 
         level.OnEndOfFrame += () => {
-            if (Engine.Scene != level || !AkronPolicy.CanUse(AkronFeatureKind.RoomReload).Allowed) {
+            if (Engine.Scene != level || level.Completed || !AkronPolicy.CanUse(AkronFeatureKind.RoomReload).Allowed) {
                 return;
             }
 
@@ -160,7 +163,7 @@ public partial class AkronModule {
             level.Session.RespawnPoint = level.GetSpawnPoint(level.Camera.Position);
             ClearCustomDeathParticleBursts();
             bool wasPaused = level.Paused;
-            level.Reload();
+            RunRoomReloadWithTeardown(level, level.Reload);
             if (wasPaused && Engine.Scene == level && level.Paused) {
                 // Reload removes the native pause menu. End its pause only after
                 // the old menu is gone, so Unpause cannot attach a settings-save
@@ -172,6 +175,61 @@ public partial class AkronModule {
                 NotifyLevelUnpausedAfterReload(level);
             }
         };
+    }
+
+    [ThreadStatic]
+    private static Level roomReloadTeardownLevel;
+
+    internal static void RunRoomReloadWithTeardown(Level level, Action reload) {
+        Level previous = roomReloadTeardownLevel;
+        roomReloadTeardownLevel = level;
+        try {
+            reload();
+        } finally {
+            roomReloadTeardownLevel = previous;
+        }
+    }
+
+    internal static List<Entity> OrderRoomReloadEntities(List<Entity> entities, Level level) {
+        if (level == null || !ReferenceEquals(level, roomReloadTeardownLevel) || entities == null) {
+            return entities;
+        }
+        // Reorder only native-selected entities; retain Global exclusions and
+        // leave the caller's list untouched if a downstream hook vetoes unload.
+        var ordered = new List<Entity>(entities.Count);
+        foreach (Entity entity in entities) {
+            if (entity is Player) ordered.Add(entity);
+        }
+        foreach (Entity entity in entities) {
+            if (entity is not Player) ordered.Add(entity);
+        }
+        return ordered;
+    }
+
+    internal static void LevelOnUnloadLevelForRoomReload(ILContext il) {
+        Instruction unload = null;
+        foreach (Instruction instruction in il.Body.Instructions) {
+            if ((instruction.OpCode == OpCodes.Call || instruction.OpCode == OpCodes.Callvirt) &&
+                instruction.Operand is MethodReference method &&
+                method.DeclaringType.FullName == "Celeste.Level" && method.Name == "UnloadEntities" &&
+                !method.HasGenericParameters && method.HasThis && method.Parameters.Count == 1 &&
+                method.Parameters[0].ParameterType.FullName == "System.Collections.Generic.List`1<Monocle.Entity>" &&
+                method.ReturnType.MetadataType == MetadataType.Void) {
+                if (unload != null) {
+                    Logger.Log(LogLevel.Warn, nameof(AkronModule), "Ambiguous native unload call; Reload Room ordering hook disabled.");
+                    return;
+                }
+                unload = instruction;
+            }
+        }
+        if (unload == null) {
+            Logger.Log(LogLevel.Warn, nameof(AkronModule), "Native unload call unavailable; Reload Room ordering hook disabled.");
+            return;
+        }
+        var cursor = new ILCursor(il);
+        cursor.Goto(unload, MoveType.Before);
+        cursor.Emit(OpCodes.Ldarg_0);
+        cursor.EmitDelegate<Func<List<Entity>, Level, List<Entity>>>(OrderRoomReloadEntities);
     }
 
     // Everest keeps the event raiser internal. Resolve that exact dispatcher,

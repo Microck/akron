@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Order native room-unload entities with players first during Reload Room so camera-trigger leave callbacks retain a valid scene, without removing players when another hook cancels reload. Completed rooms ignore the action.
+
 - Apply Fast Lookout hold changes during an active lookout interaction instead of caching the entry-time hold state.
 
 - Refresh existing dream-block appearance immediately when Dream State is toggled, without requiring Retry to synchronize native block state.
