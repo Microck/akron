@@ -12,6 +12,7 @@ public partial class AkronModule {
     private const float VanillaDeathParticleDurationSeconds = 0.834f;
     private static ConditionalWeakTable<DeathEffect, CustomDeathParticleBurst> customDeathBursts = new();
     private static readonly List<CustomDeathParticleBurst> activeCustomDeathBursts = new();
+    private static int customDeathBurstCaptureDepth;
     private static int vanillaDeathParticleDrawDepth;
     private static bool customDeathParticleRenderWarningLogged;
     private static int customDeathParticleRenderHookCalls;
@@ -134,7 +135,10 @@ public partial class AkronModule {
         level.Add(burst);
     }
 
-    private static void ClearCustomDeathParticleBursts() {
+    internal static void ClearCustomDeathParticleBursts() {
+        if (customDeathBurstCaptureDepth > 0) {
+            return;
+        }
         foreach (var burst in activeCustomDeathBursts.ToArray()) {
             burst.Cancel();
         }
@@ -149,13 +153,53 @@ public partial class AkronModule {
         customDeathBursts = new ConditionalWeakTable<DeathEffect, CustomDeathParticleBurst>();
     }
 
+    internal static DeathBurstCaptureScope PreserveCustomDeathBurstsForCapture(Level level) {
+        return new DeathBurstCaptureScope(level);
+    }
+
+    internal sealed class DeathBurstCaptureScope : IDisposable {
+        private readonly Level level;
+        private readonly string room;
+        private readonly CustomDeathParticleBurst[] bursts;
+        private bool disposed;
+        private bool mutationStarted;
+        private bool restored;
+
+        internal void MarkMutationStarted() => mutationStarted = true;
+        internal void MarkRestored() => restored = true;
+
+        internal DeathBurstCaptureScope(Level level) {
+            this.level = level;
+            room = level.Session.Level;
+            bursts = activeCustomDeathBursts.Where(burst => burst.Scene == level).ToArray();
+            customDeathBurstCaptureDepth++;
+        }
+
+        public void Dispose() {
+            if (disposed) {
+                return;
+            }
+            disposed = true;
+            customDeathBurstCaptureDepth--;
+            foreach (var burst in bursts) {
+                // Preparing a first StartPos temporarily reloads and then rolls
+                // back this same room. That capture must not consume cosmetics.
+                if ((!mutationStarted || restored) && Engine.Scene == level && level.Session.Level == room) {
+                    burst.RebindAfterCapture(level);
+                } else {
+                    burst.Cancel();
+                }
+            }
+        }
+    }
+
     internal static float ResolveDeathParticleLifetimeProgress(float age, float duration) {
         return Math.Max(0f, Math.Min(1f, age / AkronModuleSettings.ClampDeathParticleDurationSeconds(duration)));
     }
 
     private sealed class CustomDeathParticleBurst : Entity {
         private readonly Level owner;
-        private readonly Session session;
+        private Session session;
         private readonly string room;
         private readonly DeathParticleAppearance appearance;
         private readonly float duration;
@@ -180,6 +224,12 @@ public partial class AkronModule {
 
         private bool IsValid => !cancelled && Scene == owner && owner.Session == session &&
             session.Level == room && !owner.Transitioning && ShouldUseCustomDeathParticles();
+
+        internal void RebindAfterCapture(Level level) {
+            if (!cancelled && Scene == owner && owner == level && level.Session.Level == room) {
+                session = level.Session;
+            }
+        }
 
         internal void Cancel() {
             cancelled = true;

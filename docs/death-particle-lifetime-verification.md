@@ -4,7 +4,7 @@
 
 The previous implementation scaled rendered progress but left ownership with the native death component and dead body. Long bursts ended with their owner before completing; short geometric bursts could remain as a final ring until the wipe.
 
-The actual PlayerDeadBody update now detects creation of its DeathEffect and creates a separate, non-colliding cosmetic entity. Position, appearance and configured duration are captured at that point. The original component, Duration, Percent, callbacks, coroutine waits, End and respawn timing remain untouched. Only its rendering is replaced. The cosmetic entity survives ordinary same-Level death reload, renders behind the native wipe, and expires independently in gameplay time. It supports the Retry update path while genuine pause/freeze stops its age. Room/session changes, disabling the feature, No Death Effect, state transitions and level exit clear remaining bursts. Render failure uses a scoped bypass to reach genuine vanilla drawing.
+The actual PlayerDeadBody update now detects creation of its DeathEffect and creates a separate, non-colliding cosmetic entity. Position, appearance and configured duration are captured at that point. The original component, Duration, Percent, callbacks, coroutine waits, End and respawn timing remain untouched. Only its rendering is replaced. The cosmetic entity survives ordinary same-Level death reload, renders behind the native wipe, and expires independently in gameplay time. It supports the Retry update path while genuine pause/freeze stops its age. Room/session changes, disabling the feature, No Death Effect, actual state restores, explicit room reload and level exit clear remaining bursts. Saving state does not clear a live burst, including the temporary reload/rollback used to prepare a first StartPos baseline. Render failure uses a scoped bypass to reach genuine vanilla drawing.
 
 This does not turn static respawn-intro drawing into another independent burst. External savestate handling clears restored cosmetic clones; it does not promise those systems never capture them.
 
@@ -37,3 +37,17 @@ A native StartPos load attempted while paused was rejected by the existing pause
 ## Automated and source checks
 
 Release and Debug each pass 2,357 tests. New tests check independent age/duration progress and inspect emitted code to ensure the owner does not write native DeathEffect or PlayerDeadBody fields. Structural checks cover Retry/pause tags, state cleanup, save exclusion and fallback wiring. These do not replace native rendering tests. Read-only source/IL review found and helped resolve Retry update, fallback recursion and state/level cleanup gaps before the tested candidate was frozen.
+
+## Review follow-up: capture versus restore
+
+Review identified that the shared render-suppression helper also runs after saves, and that explicit Reload Room retains the same Level/session/room identity. Clearing moved from that generic helper to actual native/persistent restore boundaries and SpeedrunTool load callbacks. Explicit Reload Room clears immediately before the native reload. A narrowly scoped capture bracket preserves original cosmetic entities through temporary first-Set baseline preparation and rebinds their session only after successful rollback; failed rollback cancels them.
+
+Follow-up Release package SHA-256: `b25eb02a54cbb2b09b189800e616788618974fedb6fb105a53fcd1c5c9d6d0b0`. Release and Debug each pass 2,357 tests.
+
+- QA69 old package: a visible paused Retry tail remained after explicit Reload Room. QA70 follow-up: the equivalent reload cleared the tail. Both runs exposed the separate paused-menu softlock tracked in #320; neither counts as a successful gameplay-resume check.
+- Normal-speed first-Set recordings were inconclusive: a substantial ring disappeared around capture, but recorder stalls/dropped frames prevent distinguishing premature clearing from elapsed simulation time. These are not preservation passes.
+- QA71 used the unchanged follow-up package and native Timescale 0.1 to extend observation. After a real spike death and respawn, setting Slot 2 left a substantial separate pit ring visible beside the returned player. Immediately pausing showed both the ring and the “StartPos 2 captured” toast. This directly verifies post-respawn save preservation. Source tracing establishes that ordinary Level.LoadLevel clears the shared baseline cache, so this sequence also exercises first-baseline preparation; no injected getter or lifecycle call was used.
+- After native unpause, Load 2 succeeded. The completed “Loaded StartPos 2” observation showed no tail in the unobscured lower pit region. The overlay obscured part of the view; the immediately preceding action screenshot was pending and is not the completion evidence.
+- Repeated Set attempts while the restart copy was pending were rejected. Native pause allowed its background copy to complete. Paused capture failures and pending attempts are excluded from acceptance.
+
+These results supplement the core lifetime checks above. They do not establish exact duration, forced renderer failure, SpeedrunTool behavior, or all transition paths.

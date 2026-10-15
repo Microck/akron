@@ -48,6 +48,21 @@ public sealed class DeathParticleLifetimeTests {
         Assert.Contains("vanillaDeathParticleDrawDepth--", runtime);
         Assert.Contains("public override void Added(Scene scene)", runtime);
         string transition = File.ReadAllText(Path.Combine(root, "Runtime/akron-render-transition-suppression.cs"));
-        Assert.Contains("ClearCustomDeathParticleBursts();", transition);
+        Assert.DoesNotContain("ClearCustomDeathParticleBursts();", transition);
+        string saveLoad = File.ReadAllText(Path.Combine(root, "SaveLoad/AkronSaveLoad.cs"));
+        int saveStart = saveLoad.IndexOf("public static AkronSaveLoadResult SaveRuntimeState(", StringComparison.Ordinal);
+        int saveEnd = saveLoad.IndexOf("private static bool IsStartPosSlotName", saveStart, StringComparison.Ordinal);
+        Assert.DoesNotContain("ClearCustomDeathParticleBursts", saveLoad[saveStart..saveEnd]);
+        Assert.Contains("AkronModule.ClearCustomDeathParticleBursts();", saveLoad);
+        Assert.Contains("using var deathBurstCapture = AkronModule.PreserveCustomDeathBurstsForCapture(level);", saveLoad);
+        Assert.Contains("customDeathBurstCaptureDepth > 0", runtime);
+        Assert.Contains("burst.RebindAfterCapture(level)", runtime);
+        Assert.Contains("(!mutationStarted || restored)", runtime);
+        Assert.Contains("deathBurstCapture.MarkMutationStarted();", saveLoad);
+        Assert.Contains("deathBurstCapture.MarkRestored();", saveLoad);
+        string actions = File.ReadAllText(Path.Combine(root, "Module/akron-module-actions.cs"));
+        int reloadStart = actions.IndexOf("private static void ReloadRoom(", StringComparison.Ordinal);
+        int reloadEnd = actions.IndexOf("private static void OpenDebugMap", reloadStart, StringComparison.Ordinal);
+        Assert.Contains("ClearCustomDeathParticleBursts();", actions[reloadStart..reloadEnd]);
     }
 }

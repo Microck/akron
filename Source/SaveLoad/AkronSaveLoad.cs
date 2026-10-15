@@ -1079,6 +1079,7 @@ public static partial class AkronSaveLoadService {
             return null;
         }
 
+        using var deathBurstCapture = AkronModule.PreserveCustomDeathBurstsForCapture(level);
         string currentSlotName = CurrentSlotName;
         string room = level.Session.Level;
         AkronSaveLoadSlot rollback = CaptureRuntimeState(
@@ -1098,6 +1099,7 @@ public static partial class AkronSaveLoadService {
         List<Entity> ghosts = AkronSnapshotExclusion.DetachFromLevel(level);
         AkronIgnoreSaveStateComponent.RemoveAll(level);
         try {
+            deathBurstCapture.MarkMutationStarted();
             if (TryLoadFreshRoom(level, room, out string error)) {
                 baseline = CaptureFreshRuntimeState(
                     level, "Akron fresh-room baseline " + room,
@@ -1123,6 +1125,7 @@ public static partial class AkronSaveLoadService {
                     baseline = null;
                     throw new InvalidOperationException("Could not restore the live room after preparing StartPos: " + result);
                 }
+                deathBurstCapture.MarkRestored();
             } catch {
                 baseline?.Dispose();
                 throw;
@@ -1355,6 +1358,7 @@ public static partial class AkronSaveLoadService {
         if (suppressLagPauserForStartPos) {
             AkronModule.SuppressLagPauserForNativeStartPosRestore();
         }
+        AkronModule.ClearCustomDeathParticleBursts();
         AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
         AkronIgnoreSaveStateComponent.RemoveAll(level);
         // The snapshot this restore writes back was captured without the room's
@@ -1595,6 +1599,7 @@ public static partial class AkronSaveLoadService {
         AkronSaveLoadResult restoreResult;
         AkronSaveLoadSlotLease freshBaseline = null;
         try {
+            AkronModule.ClearCustomDeathParticleBursts();
             AkronIgnoreSaveStateComponent.RemoveAll(level);
             try {
                 restoreResult = RestorePersistentRuntimeStateCore(level, document, out freshBaseline);
