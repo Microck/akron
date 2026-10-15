@@ -54,12 +54,15 @@ public static class AkronPracticeStats {
         AkronModule.Session.DeathPbLossPromptShown = false;
     }
 
-    public static void OnLevelUpdate(Level level) {
+    public static void OnLevelUpdate(Level level) => OnLevelUpdate(level, false);
+
+    internal static void OnLevelUpdate(Level level, bool nativeSuspendedBeforeUpdate) {
         UpdateRoomStatFreeze(level);
 
-        // Engine.DeltaTime is zero while the game is paused or frozen, so this measures time
-        // actually played on the attempt and only ever moves forward.
-        AkronModule.Session.AttemptElapsedSeconds += Engine.DeltaTime;
+        // Native pause does not zero Engine.DeltaTime. Exclude suspended updates,
+        // including an update that opens or closes pause inside the native delegate.
+        AdvanceAttemptTimer(AkronModule.Session, Engine.DeltaTime,
+            nativeSuspendedBeforeUpdate, IsNativeAttemptSuspended(level));
 
         if (AkronModule.Session.TrackedRoom == level.Session.Level) {
             return;
@@ -67,6 +70,20 @@ public static class AkronPracticeStats {
 
         FinalizeRoom(level, AkronModule.Session.TrackedRoom);
         BeginTrackingRoom(level);
+    }
+
+    internal static bool IsNativeAttemptSuspended(Level level) =>
+        level == null || IsNativeAttemptSuspended(level.Paused, level.wasPaused, level.Frozen);
+
+    internal static bool IsNativeAttemptSuspended(bool paused, bool wasPaused, bool frozen) =>
+        paused || wasPaused || frozen;
+
+    internal static void AdvanceAttemptTimer(AkronModuleSession session, float deltaTime,
+        bool suspendedBefore, bool suspendedAfter) {
+        if (session != null && !suspendedBefore && !suspendedAfter &&
+            deltaTime > 0f && !float.IsNaN(deltaTime) && !float.IsInfinity(deltaTime)) {
+            session.AttemptElapsedSeconds += deltaTime;
+        }
     }
 
     // A warp is not a visit: the room was left part way, so its time is not a best-time

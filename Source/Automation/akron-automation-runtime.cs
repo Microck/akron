@@ -29,6 +29,7 @@ public partial class AkronModule {
 
     private static void ApplyAutoKill(Level level, Player player) {
         if (!Settings.AutoKill ||
+            AkronPracticeStats.IsNativeAttemptSuspended(level) ||
             !AkronPolicy.CanUse(AkronFeatureKind.AutoKill).Allowed ||
             player == null ||
             player.Dead ||
