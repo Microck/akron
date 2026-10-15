@@ -157,6 +157,7 @@ public partial class AkronModule {
             AkronPolicy.ResetAttempt("Room reload ended the previous attempt.");
             AkronPracticeStats.ResetAttemptTimer();
             level.Session.RespawnPoint = level.GetSpawnPoint(level.Camera.Position);
+            ClearCustomDeathParticleBursts();
             level.Reload();
         };
     }

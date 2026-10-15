@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Fix Custom Death Particles duration: short bursts expire cleanly, and long bursts can finish after ordinary respawn without delaying gameplay. Preserve live tails when a failed StartPos load rolls back successfully.
+
 - Make Custom Trail opacity control transparency rather than fade lifetime. Zero opacity emits no custom snapshots; other opacity values keep the same 0.45-second native fade duration.
 
 - Treat Cancel from Zenity as normal setup-picker cancellation when GTK emits its harmless transient-parent diagnostic, while retaining failures for other diagnostic output.

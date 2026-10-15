@@ -200,6 +200,7 @@ public static class AkronInterop {
             }
 
             Action<Dictionary<Type, Dictionary<string, object>>, Level> afterLoadState = (_, _) => {
+                AkronModule.ClearCustomDeathParticleBursts();
                 AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
                 AkronModule.SuppressLagPauserForSpeedrunToolLoadState();
             };
@@ -208,6 +209,7 @@ public static class AkronInterop {
                 AkronModule.SuppressLagPauserForSpeedrunToolLoadState();
             };
             Action<Level> beforeLoadState = _ => {
+                AkronModule.ClearCustomDeathParticleBursts();
                 AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
                 AkronModule.SuppressLagPauserForSpeedrunToolLoadState();
             };
