@@ -150,7 +150,7 @@ public static partial class AkronCommands {
         LogCoreModeSettings(level);
     }
 
-    [Command("akron_set_inventory", "control Set Inventory: status|apply|dashes <0-5>|jumps <0-99>|restore on|off")]
+    [Command("akron_set_inventory", "control Set Inventory: status|apply|dashes <0-5>|jumps <0-99>|restore on|off; applied jumps persist across chapter restarts")]
     public static void SetInventory(string action = "status", string value = "") {
         switch (NormalizeToken(action)) {
             case "":
@@ -362,6 +362,7 @@ public static partial class AkronCommands {
         Log("set-inventory-jumps: " + AkronModuleSettings.ClampSetInventoryJumps(AkronModule.Settings.SetInventoryJumps).ToString(CultureInfo.InvariantCulture));
         Log("set-inventory-restore-on-death: " + AkronModule.Settings.SetInventoryRestoreOnDeath.ToString().ToLowerInvariant());
         Log("set-inventory-restore-armed: " + (AkronModule.Session?.SetInventoryRestoreSnapshot != null).ToString().ToLowerInvariant());
+        Log("set-inventory-jumps-scope: Air Jumps settings persist across chapter restarts; optional death restore returns pre-click values.");
     }
 
     private static void LogCoreModeSettings(Level level) {

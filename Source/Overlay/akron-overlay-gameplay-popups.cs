@@ -177,7 +177,7 @@ public sealed partial class AkronOverlay {
             0,
             99,
             popupId,
-            "Extra air jumps applied through Akron's Air Jumps setting. Zero disables extra jumps.");
+            "Set changes Air Jumps settings. Positive values enable limited extra jumps; zero disables Air Jumps. These settings persist across chapter restarts.");
 
         bool restoreOnDeath = AkronModule.Settings.SetInventoryRestoreOnDeath;
         if (ImGui.Checkbox("Restore on Death##" + popupId, ref restoreOnDeath)) {
@@ -193,9 +193,9 @@ public sealed partial class AkronOverlay {
         }
         DrawPopupTooltip("Apply the configured inventory to Madeline now. Restore on Death controls whether a snapshot is armed.");
 
-        ImGui.TextUnformatted(AkronModule.Settings.SetInventoryRestoreOnDeath
+        ImGui.TextWrapped(AkronModule.Settings.SetInventoryRestoreOnDeath
             ? "Restore snapshot is captured on apply."
-            : "Chapter restart returns to map defaults.");
+            : "Jumps changes Air Jumps settings. Chapter restart does not reset them.");
     }
 
     private void DrawDreamStatePopupControls(string popupId) {
