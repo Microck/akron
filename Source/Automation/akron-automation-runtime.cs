@@ -28,10 +28,11 @@ public partial class AkronModule {
     }
 
     private static void ApplyAutoKillAfterNativeUpdate(Level level, Player expectedPlayer,
-        global::Celeste.Session expectedSession, ulong expectedStartPosGeneration, bool suspendedBefore) {
+        global::Celeste.Session expectedSession, string expectedRoom, ulong expectedStartPosGeneration, bool suspendedBefore) {
         if (suspendedBefore || expectedPlayer == null ||
             !ReferenceEquals(Engine.Scene, level) || !ReferenceEquals(Engine.NextScene, level) ||
-            !ReferenceEquals(level.Session, expectedSession) || level.Completed ||
+            !ReferenceEquals(level.Session, expectedSession) ||
+            !string.Equals(level.Session.Level, expectedRoom, StringComparison.Ordinal) || level.Completed ||
             AkronActions.StartPosFrameGeneration != expectedStartPosGeneration) {
             return;
         }

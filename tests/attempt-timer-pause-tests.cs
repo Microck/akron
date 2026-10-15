@@ -85,6 +85,9 @@ public sealed class AttemptTimerPauseTests {
         var deferred = Calls(module.Methods.Single(m => m.Name == "ApplyAutoKillAfterNativeUpdate"));
         Assert.Contains("get_NextScene", deferred);
         Assert.Contains("get_StartPosFrameGeneration", deferred);
+        Assert.Contains("Equals", deferred);
+        Assert.Contains(module.Methods.Single(m => m.Name == "ApplyAutoKillAfterNativeUpdate").Body.Instructions,
+            i => i.Operand is FieldReference f && f.Name == "Level" && f.DeclaringType.FullName == "Celeste.Session");
         Assert.True(Array.IndexOf(deferred, "GetEntity") < Array.IndexOf(deferred, "ApplyAutoKill"));
         var stats = assembly.MainModule.GetType(typeof(AkronPracticeStats).FullName);
         var after = Calls(stats.Methods.Single(m => m.Name == "OnLevelUpdate" && m.Parameters.Count == 2));
