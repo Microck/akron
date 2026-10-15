@@ -207,6 +207,15 @@ public static partial class AkronActions {
         PlayerInventory inventory = level.Session.Inventory;
         inventory.DreamDash = !inventory.DreamDash;
         level.Session.Inventory = inventory;
+        // Existing blocks cache their dream-dash state and particle palette in
+        // Added. Use native refresh methods instead of waiting for a room reload.
+        foreach (DreamBlock block in level.Entities.OfType<DreamBlock>().ToArray()) {
+            if (inventory.DreamDash) {
+                block.ActivateNoRoutine();
+            } else {
+                block.DeactivateNoRoutine();
+            }
+        }
         Engine.Scene?.Add(new AkronToast("Dream State: " + (inventory.DreamDash ? "On" : "Off") + "."));
     }
 

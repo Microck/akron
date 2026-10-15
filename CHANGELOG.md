@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Refresh existing dream-block appearance immediately when Dream State is toggled, without requiring Retry to synchronize native block state.
+
 - Resume gameplay after Reload Room is invoked from the native pause menu, and close Akron pause accounting so the removed menu cannot leave the room stuck.
 
 - Fix Custom Death Particles duration: short bursts expire cleanly, and long bursts can finish after ordinary respawn without delaying gameplay. Preserve live tails when a failed StartPos load rolls back successfully.
