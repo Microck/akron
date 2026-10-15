@@ -493,12 +493,22 @@ public partial class AkronModule {
             forcedTrailFrame = (forcedTrailFrame + 1) % cuttingRate;
             if (forcedTrailFrame == 0) {
                 Color color = ResolveForcedTrailColor(player);
-                float opacity = Settings.CustomTrail ? AkronModuleSettings.ClampOpacity(Settings.CustomTrailOpacity) / 100f : 0.45f;
-                TrailManager.Add(player, color, opacity);
+                float opacity = ResolveForcedTrailOpacity(Settings.CustomTrail, Settings.CustomTrailOpacity);
+                if (opacity > 0f) {
+                    // The third argument is lifetime, not opacity. Scale the full
+                    // premultiplied color while keeping the fade duration stable.
+                    TrailManager.Add(player, color * opacity, ForcedTrailDurationSeconds);
+                }
             }
         } else {
             forcedTrailFrame = 0;
         }
+    }
+
+    internal const float ForcedTrailDurationSeconds = 0.45f;
+
+    internal static float ResolveForcedTrailOpacity(bool customTrail, int opacityPercent) {
+        return customTrail ? AkronModuleSettings.ClampOpacity(opacityPercent) / 100f : 1f;
     }
 
     private static Vector2 ClampCameraToRoom(Level level, Vector2 position) {
