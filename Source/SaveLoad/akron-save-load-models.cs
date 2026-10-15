@@ -73,6 +73,7 @@ public sealed class AkronSaveLoadSlot {
     internal List<EventInstance> SavedLevelEventInstances { get; set; }
     internal List<EventInstance> PreClonedEventInstances { get; set; }
     internal AkronEntityInspector.InspectorPinRollbackState InspectorPinRollback { get; set; }
+    internal AkronModule.DeathBurstRollbackState DeathBurstRollback { get; set; }
     public Vector2 PlayerPosition { get; set; }
     public Vector2 PlayerSpeed { get; set; }
     public int PlayerState { get; set; }
