@@ -506,7 +506,11 @@ public static class AkronExtendedVariants {
         return true;
     }
 
-    public static bool TrySetConfiguredValue(string name, object value, out string message) {
+    public static bool TrySetConfiguredValue(string name, object value, out string message) =>
+        TrySetConfiguredValue(name, value, null, out message);
+
+    // A numeric text gesture keeps its activation-time intent across intermediate defaults.
+    public static bool TrySetConfiguredValue(string name, object value, bool? applyCurrent, out string message) {
         if (!CanChange(out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
@@ -515,15 +519,18 @@ public static class AkronExtendedVariants {
         }
 
         StoreConfiguredValue(option.Name, SerializeValue(value));
-        if (!option.IsDefault) {
+        if (applyCurrent ?? !option.IsDefault) {
             SetVariantValue(option.Name, value);
-            message = option.Label + ": on | " + FormatValue(value);
+            message = FormatAppliedConfiguredValueMessage(option.Label, value, option.DefaultValue);
         } else {
             message = option.Label + ": configured | " + FormatValue(value);
         }
 
         return true;
     }
+
+    internal static string FormatAppliedConfiguredValueMessage(string label, object value, object defaultValue) =>
+        label + (ValuesMatch(value, defaultValue) ? ": off | " : ": on | ") + FormatValue(value);
 
     public static bool TrySetConfiguredFromText(string name, string rawValue, out string message) {
         if (!CanChange(out message)) return false;

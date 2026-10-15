@@ -896,12 +896,12 @@ public sealed partial class AkronOverlay {
         }
     }
 
-    private static void SetExtendedVariantConfiguredValue(AkronExtendedVariantOption option, object value) {
+    private static void SetExtendedVariantConfiguredValue(AkronExtendedVariantOption option, object value, bool? applyCurrent = null) {
         if (option == null || !AkronModule.TryUse(AkronFeatureKind.ExtendedVariantMode)) {
             return;
         }
 
-        if (AkronExtendedVariants.TrySetConfiguredValue(option.Name, value, out string message)) {
+        if (AkronExtendedVariants.TrySetConfiguredValue(option.Name, value, applyCurrent, out string message)) {
             AkronExtendedVariants.RecordVariantCheatUseIfUserControlled(option.Name);
             Engine.Scene?.Add(new AkronToast(message));
         }

@@ -813,7 +813,10 @@ public sealed partial class AkronOverlay {
         float maximum,
         string format,
         string popupId,
-        string tooltip) {
+        string tooltip,
+        Action onTextActivated = null,
+        Action<float> textSetter = null,
+        Action onTextDeactivated = null) {
         const float valueWidth = 58f;
         float controlsWidth = PopupStepperButtonWidth * 2f + valueWidth + ImGui.GetStyle().ItemSpacing.X * 2f;
         DrawPopupRowLabel(label, CalculatePopupLabelWidth(controlsWidth));
@@ -826,15 +829,18 @@ public sealed partial class AkronOverlay {
         ImGui.SameLine();
         float value = getter();
         ImGui.PushItemWidth(valueWidth);
-        if (ImGui.InputFloat("##" + label + popupId, ref value, 0f, 0f, format)) {
+        bool textChanged = ImGui.InputFloat("##" + label + popupId, ref value, 0f, 0f, format);
+        if (ImGui.IsItemActivated()) onTextActivated?.Invoke();
+        if (textChanged) {
             float next = Calc.Clamp(value, minimum, maximum);
-            setter(next);
+            (textSetter ?? setter)(next);
             AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
         if (ImGui.IsItemActive()) {
             MarkValueEditFreeze();
         }
+        if (ImGui.IsItemDeactivated()) onTextDeactivated?.Invoke();
         ImGui.PopItemWidth();
         DrawPopupTooltip(tooltip, label);
         ImGui.SameLine();
@@ -859,7 +865,10 @@ public sealed partial class AkronOverlay {
         string tooltip,
         string bindingPopupLabel = null,
         string decrementActionName = null,
-        string incrementActionName = null) {
+        string incrementActionName = null,
+        Action onTextActivated = null,
+        Action<int> textSetter = null,
+        Action onTextDeactivated = null) {
         const float valueWidth = 58f;
         float controlsWidth = PopupStepperButtonWidth * 2f + valueWidth + ImGui.GetStyle().ItemSpacing.X * 2f;
         DrawPopupRowLabel(label, CalculatePopupLabelWidth(controlsWidth));
@@ -873,15 +882,18 @@ public sealed partial class AkronOverlay {
         ImGui.SameLine();
         int value = getter();
         ImGui.PushItemWidth(valueWidth);
-        if (ImGui.InputInt("##" + label + popupId, ref value, 0, 0)) {
+        bool textChanged = ImGui.InputInt("##" + label + popupId, ref value, 0, 0);
+        if (ImGui.IsItemActivated()) onTextActivated?.Invoke();
+        if (textChanged) {
             int next = Calc.Clamp(value, minimum, maximum);
-            setter(next);
+            (textSetter ?? setter)(next);
             AkronShowcaseMarkers.MarkPopupDetail(activeOptionsPopupLabel, label, "number", next.ToString(CultureInfo.InvariantCulture));
             MarkValueEditFreeze();
         }
         if (ImGui.IsItemActive()) {
             MarkValueEditFreeze();
         }
+        if (ImGui.IsItemDeactivated()) onTextDeactivated?.Invoke();
         ImGui.PopItemWidth();
         DrawPopupTooltip(tooltip, label);
         ImGui.SameLine();

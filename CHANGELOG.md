@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Keep an enabled Extended Variant active while typing a numeric value through its default. Editing a variant that starts off still only configures it.
+
 - Order native room-unload entities with players first during Reload Room so camera-trigger leave callbacks retain a valid scene, without removing players when another hook cancels reload. Completed rooms ignore the action.
 
 - Apply Fast Lookout hold changes during an active lookout interaction instead of caching the entry-time hold state.
