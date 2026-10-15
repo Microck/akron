@@ -218,6 +218,9 @@ public static partial class AkronHudRenderer {
 
     private static void RenderDashPips(Player player, float x, ref float y, int maxDashes, Color availableColor, Color emptyColor, Color lineColor, bool showLabel, float scale) {
         for (int index = 0; index < maxDashes; index++) {
+            if (!ShouldDrawDashPip(index, player.Dashes, AkronModule.Settings.DashBarShowEmptyPips)) {
+                continue;
+            }
             float pipX = x + index * 22f * scale;
             Color color = index < player.Dashes ? availableColor : emptyColor;
             Draw.Rect(pipX, y + 3f * scale, 16f * scale, 16f * scale, color * 0.94f);
@@ -229,6 +232,10 @@ public static partial class AkronHudRenderer {
             ActiveFont.Draw("DASH", new Vector2(x + maxDashes * 22f + 4f, y - 1f), Vector2.Zero, Vector2.One * 0.30f, availableColor);
         }
         y += 28f * scale;
+    }
+
+    internal static bool ShouldDrawDashPip(int index, int dashes, bool showEmptyPips) {
+        return index < dashes || showEmptyPips;
     }
 
     private static void RenderPlayerDashBar(Level level, Player player, int maxDashes, Color availableColor, Color emptyColor, Color fillColor, Color lineColor) {
