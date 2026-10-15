@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Keep native and custom hair colors aligned with the remaining dash count when **Ground Refills** blocks a ground dash refill.
+
 - Keep the replacement overlay key after clearing **Menu Bind (Keyboard)**; the native editor, live hotkey and saved setting now use the same binding.
 
 - Preserve Dash Stats across native Retry when **Do not reset on death** is enabled, without changing Celeste’s native dash statistics or file totals.
