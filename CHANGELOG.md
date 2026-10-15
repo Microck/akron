@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Preserve Dash Stats across native Retry when **Do not reset on death** is enabled, without changing Celeste’s native dash statistics or file totals.
+
 - Keep edited StartPos spawn settings across repeated loads and restarts without recapturing the room; editing one field preserves the slot’s other settings.
 
 - Make Safe Mode freeze file-wide death and jump totals, and recapture each guard independently when it is enabled again.
