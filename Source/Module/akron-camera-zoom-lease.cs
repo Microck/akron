@@ -8,6 +8,7 @@ internal sealed class AkronCameraZoomLease {
     private object owner;
     private Viewport originalViewport;
     private bool cameraResetCompleted;
+    private bool nativePrepared;
     internal bool HasOwner => owner != null;
     internal bool IsOwner(object scene) => owner != null && ReferenceEquals(owner, scene);
 
@@ -16,11 +17,32 @@ internal sealed class AkronCameraZoomLease {
             if (!ReferenceEquals(owner, scene)) throw new InvalidOperationException("Release the previous camera owner first.");
             // A new force after a failed automatic-mode restore needs another camera reset.
             cameraResetCompleted = false;
+            nativePrepared = false;
             return;
         }
         owner = scene ?? throw new ArgumentNullException(nameof(scene));
         originalViewport = viewport;
         cameraResetCompleted = false;
+        nativePrepared = false;
+    }
+
+    internal bool TryPrepareNative(object scene, Action<Viewport> restoreViewport,
+        Action resetZoom, Func<bool> suppressAutomatic) {
+        if (!IsOwner(scene)) return false;
+        // Any new preparation may partially mutate the camera before throwing.
+        cameraResetCompleted = false;
+        if (!nativePrepared) {
+            restoreViewport(originalViewport);
+            resetZoom();
+        }
+        // Reassert suppression before each native write, without resetting the camera every frame.
+        if (!suppressAutomatic()) {
+            nativePrepared = false;
+            return false;
+        }
+        nativePrepared = true;
+        cameraResetCompleted = false;
+        return true;
     }
 
     internal bool TryRelease(object currentScene, Action<Viewport> restoreViewport,
@@ -35,6 +57,7 @@ internal sealed class AkronCameraZoomLease {
         if (!restoreAutomatic()) return false;
         owner = null;
         cameraResetCompleted = false;
+        nativePrepared = false;
         return true;
     }
 }

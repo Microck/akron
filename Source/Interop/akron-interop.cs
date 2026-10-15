@@ -145,7 +145,9 @@ public static class AkronInterop {
         }
     }
 
-    public static bool TryRestoreExtendedCameraAutomaticZooming() {
+    public static bool TryRestoreExtendedCameraAutomaticZooming() => TrySetExtendedCameraAutomaticZooming(true);
+
+    internal static bool TrySetExtendedCameraAutomaticZooming(bool enabled) {
         if (!ExtendedCameraDynamicsLoaded) {
             return false;
         }
@@ -157,10 +159,10 @@ public static class AkronInterop {
                 return false;
             }
 
-            extendedCameraAutomaticZoomingProperty.SetValue(null, true);
+            extendedCameraAutomaticZoomingProperty.SetValue(null, enabled);
             return true;
         } catch (Exception exception) {
-            LogExtendedCameraDynamicsWarning("Failed to restore Extended Camera Dynamics automatic zooming: " + exception.Message);
+            LogExtendedCameraDynamicsWarning("Failed to set Extended Camera Dynamics automatic zooming: " + exception.Message);
             return false;
         }
     }

@@ -24,7 +24,7 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
-- Release Cursor Zoom below100% cleanly when Extended Camera Dynamics applies the view, restoring its map camera or the ordinary viewport when toggled off.
+- Release Cursor Zoom below100% cleanly when Extended Camera Dynamics applies the view, restoring its map camera or the ordinary viewport when toggled off. Keep camera ownership when switching to native zoom so an active ECD map cannot interpolate over the requested scale.
 
 - Keep an enabled Extended Variant active while typing a numeric value through its default. Editing a variant that starts off still only configures it.
 

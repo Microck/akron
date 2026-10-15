@@ -325,15 +325,34 @@ public partial class AkronModule {
             if (!ReleaseCursorZoomOverride(level)) return;
         }
 
-        // Release ECD's viewport/automatic mode before handing control to the native >=100% path.
-        if (cursorZoomLease.HasOwner && !ReleaseCursorZoomOverride(level)) return;
+        // Keep ECD automatic interpolation suppressed while a native override owns its camera.
+        // This also covers direct >=100% activation on a metadata-enabled ECD map.
+        if (cursorZoomLease.HasOwner || AkronInterop.AreExtendedCameraHooksActive()) {
+            if (!cursorZoomLease.HasOwner) cursorZoomLease.Capture(level, level.Camera.Viewport);
+            cursorZoomApplied = true;
+            cursorZoomOwnedByExtendedCamera = true;
+            try {
+                if (!cursorZoomLease.TryPrepareNative(level,
+                    viewport => level.Camera.Viewport = viewport,
+                    () => level.ResetZoom(),
+                    () => AkronInterop.TrySetExtendedCameraAutomaticZooming(false))) {
+                    WarnCursorZoomRelease("Could not suspend Extended Camera Dynamics automatic zooming.");
+                    ReleaseCursorZoomOverride(level);
+                    return;
+                }
+            } catch (Exception exception) {
+                WarnCursorZoomRelease(exception.Message);
+                ReleaseCursorZoomOverride(level);
+                return;
+            }
+        }
         zoom = ClampNativeCursorZoom(zoom);
         cursorZoomFocusGamePosition = ClampCursorZoomFocus(AkronScreenProjection.MouseScreenToGame(mouseScreenPosition), zoom);
         level.Zoom = zoom;
         level.ZoomTarget = zoom;
         level.ZoomFocusPoint = cursorZoomFocusGamePosition;
         cursorZoomApplied = true;
-        cursorZoomOwnedByExtendedCamera = false;
+        cursorZoomOwnedByExtendedCamera = cursorZoomLease.HasOwner;
     }
 
     private static void DeactivateCursorZoom(Level level, bool resetPreference = true) {
