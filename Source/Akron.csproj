@@ -23,6 +23,7 @@
     <ItemGroup>
         <!-- Runtime must be included explicitly: the item defaults exclude it. Keep SDK build/native hooks out of this shared game process. -->
         <PackageReference Include="Sentry" Version="6.12.0" PrivateAssets="all" IncludeAssets="compile;runtime" ExcludeAssets="" />
+        <PackageReference Include="StbImageWriteSharp" Version="1.16.7" PrivateAssets="all" IncludeAssets="compile;runtime" ExcludeAssets="" />
         <PackageReference Include="ImGui.NET" Version="1.91.6.1" PrivateAssets="all" ExcludeAssets="" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" ExcludeAssets="" />
         <PackageReference Include="MonoMod.RuntimeDetour" Version="25.3.1" PrivateAssets="all" ExcludeAssets="runtime" />

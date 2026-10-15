@@ -68,6 +68,12 @@
         "resolved": "6.12.0",
         "contentHash": "7IRSoMWSxzjD204mFrQs0+kU7/ZAQRcqNdiFB8tN9R8CxgwZvP/rrD2nuWmQnFleQwA3yZYcpR8m3EtGfP5x5w=="
       },
+      "StbImageWriteSharp": {
+        "type": "Direct",
+        "requested": "[1.16.7, )",
+        "resolved": "1.16.7",
+        "contentHash": "NF9kOxi0iS9VunklnRKgOpAWC2knCGKRjdy7RT6XAqYNyb7LQfyPHPdl4l1fJw7TFYKrGQzQOmK1XpBONC2MoA=="
+      },
       "AsmResolver": {
         "type": "Transitive",
         "resolved": "6.0.0-beta.1",
