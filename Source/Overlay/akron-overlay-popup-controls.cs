@@ -17,7 +17,10 @@ public sealed partial class AkronOverlay {
         activeOptionsPopupLabel = entry.Label;
         activeOptionsPopupFeatureKind = entry.FeatureKind;
         try {
-            if (entry.IsCustomHudLabelRow) {
+            if (entry.FeatureKind == AkronFeatureKind.ExtendedVariantMode &&
+                TryGetExtendedVariantPopupName(entry.OptionsPopupKey, out string variantName)) {
+                DrawExtendedVariantOptionPopupControls(AkronExtendedVariants.GetOption(variantName), popupId);
+            } else if (entry.IsCustomHudLabelRow) {
                 SelectCustomHudLabel(entry.CustomHudLabelId);
                 DrawCustomHudLabelsPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Timescale", StringComparison.OrdinalIgnoreCase)) {

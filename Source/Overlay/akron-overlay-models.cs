@@ -120,7 +120,7 @@ public sealed partial class AkronOverlay {
                               entry.Control != OverlayEntryControl.KeybindReadOnly &&
                               entry.Control != OverlayEntryControl.SearchInput &&
                               entry.Control != OverlayEntryControl.GroupHeader &&
-                              (entry.ForceOptionsPopup || AkronOverlay.HasOptionsPopup(Label));
+                              (entry.ForceOptionsPopup || AkronOverlay.HasOptionsPopup(OptionsPopupKey));
         }
 
         public string Tab { get; }

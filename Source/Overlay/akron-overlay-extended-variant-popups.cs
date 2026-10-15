@@ -65,7 +65,10 @@ public sealed partial class AkronOverlay {
     }
 
     private void DrawExtendedVariantPopupControls(string label, string popupId) {
-        AkronExtendedVariantOption option = GetExtendedVariantOptionFromLabel(label);
+        DrawExtendedVariantOptionPopupControls(GetExtendedVariantOptionFromLabel(label), popupId);
+    }
+
+    private void DrawExtendedVariantOptionPopupControls(AkronExtendedVariantOption option, string popupId) {
         if (option == null) {
             ImGui.TextWrapped("External variant option is unavailable.");
             return;

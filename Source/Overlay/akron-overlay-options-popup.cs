@@ -47,8 +47,8 @@ public sealed partial class AkronOverlay {
             return;
         }
 
-        ActionLayout anchor = lastVisibleActionRows.FirstOrDefault(action => string.Equals(action.Entry.Label, openOptionsLabel, StringComparison.OrdinalIgnoreCase));
-        if (anchor == null || !HasOptionsPopup(anchor.Entry.Label)) {
+        ActionLayout anchor = lastVisibleActionRows.FirstOrDefault(action => string.Equals(action.Entry.OptionsPopupKey, openOptionsLabel, StringComparison.OrdinalIgnoreCase));
+        if (anchor == null || !anchor.Entry.HasOptionsPopup) {
             return;
         }
 
@@ -165,6 +165,11 @@ public sealed partial class AkronOverlay {
     }
 
     private static bool HasOptionsPopup(string label) {
+        if (TryGetExtendedVariantPopupName(label, out string variantName)) {
+            AkronExtendedVariantOption option = AkronExtendedVariants.GetOption(variantName);
+            return option != null && option.CurrentValue is not bool;
+        }
+
         return string.Equals(label, "Overlay Appearance", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Theme", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Logging", StringComparison.OrdinalIgnoreCase) ||
@@ -303,6 +308,11 @@ public sealed partial class AkronOverlay {
     }
 
     private static string DescribeOptionsPopupValue(string label) {
+        if (TryGetExtendedVariantPopupName(label, out string variantName)) {
+            AkronExtendedVariantOption option = AkronExtendedVariants.GetOption(variantName);
+            return option == null ? string.Empty : AkronExtendedVariants.DescribeConfiguredState(option);
+        }
+
         if (string.Equals(label, "Timescale", StringComparison.OrdinalIgnoreCase)) {
             AkronModuleSession session = AkronModule.Session;
             return session == null ? "Unavailable" : session.TimescaleMultiplier.ToString("0.0x");
@@ -687,6 +697,11 @@ public sealed partial class AkronOverlay {
     }
 
     private static void ApplyOptionsPopupDelta(string label, int delta) {
+        if (TryGetExtendedVariantPopupName(label, out string variantName)) {
+            ToggleExtendedVariantOption(variantName);
+            return;
+        }
+
         if (string.Equals(label, "Timescale", StringComparison.OrdinalIgnoreCase)) {
             AkronActions.AdjustTimescale(delta * 0.1f);
             return;

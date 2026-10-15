@@ -135,8 +135,7 @@ public sealed partial class AkronOverlay {
         }
 
         foreach (ActionLayout action in lastVisibleActionRows) {
-            if (string.Equals(action.Entry.OptionsPopupKey, popupKey, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(action.Entry.Label, popupKey, StringComparison.OrdinalIgnoreCase)) {
+            if (string.Equals(action.Entry.OptionsPopupKey, popupKey, StringComparison.OrdinalIgnoreCase)) {
                 rect = action.Rect;
                 return true;
             }

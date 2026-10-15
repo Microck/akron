@@ -194,16 +194,19 @@ public sealed partial class AkronOverlay {
                     },
                     BuildSearchTerms(label, new[] { "extended variant mode", option.Name, option.TypeName }),
                     true,
-                    featureKind: AkronFeatureKind.ExtendedVariantMode));
+                    featureKind: AkronFeatureKind.ExtendedVariantMode,
+                    optionsPopupKey: ExtendedVariantPopupKey(option.Name)));
             } else {
                 entries.Add(new OverlayEntry(
                     label,
                     () => AkronExtendedVariants.Available,
                     () => AkronExtendedVariants.DescribeConfiguredState(AkronExtendedVariants.GetOption(option.Name)),
-                    () => ApplyOptionsPopupDelta(label, 1),
+                    () => ToggleExtendedVariantOption(option.Name),
                     BuildSearchTerms(label, new[] { "extended variant mode", option.Name, option.TypeName }),
                     true,
-                    featureKind: AkronFeatureKind.ExtendedVariantMode));
+                    featureKind: AkronFeatureKind.ExtendedVariantMode,
+                    forceOptionsPopup: true,
+                    optionsPopupKey: ExtendedVariantPopupKey(option.Name)));
             }
         }
 
