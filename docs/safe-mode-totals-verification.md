@@ -33,6 +33,6 @@ Exact Release package SHA-256: `e1cfb9740199a81616b6e44ed51d3c24c4742c6c170ea2b9
 - Safe Mode master Off with guard preferences still On: ordinary jump reached 6 and native Retry reached 10 deaths.
 - Restored all changed preferences through native UI before normal Save and Quit.
 
-Unedited screenshots and launch/profile receipts are retained separately. Best-run chapter completion, raw intermediate area-mode counters, save switching, map-policy transitions, and same-frame disk persistence are not native acceptance claims from this run. A transitional jump screenshot without HUD is retained separately from its settled follow-up.
+Unedited screenshots and launch/profile receipts are retained separately. Best-run chapter completion, raw intermediate area-mode counters, save switching, map-policy transitions, and same-frame disk persistence are not native acceptance claims from this run. The first jump observation was transitional; its separately saved capture and designated settled follow-up are both retained.
 
 After normal Save and Quit, the saved file contains 11 deaths / 6 jumps, versus the last HUD's 10 / 6. As in the baseline, the additional saved death is unresolved. All guards were already Off during exit; the run does not claim guarded save/exit persistence. Akron settings differ only in the backup timestamp.
