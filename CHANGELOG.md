@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Exclude native pause and native frozen updates from Auto Kill’s attempt timer, and prevent timer or area kills while native gameplay is suspended.
+
 - Keep native and custom hair colors aligned with the remaining dash count when **Ground Refills** blocks a ground dash refill.
 
 - Keep the replacement overlay key after clearing **Menu Bind (Keyboard)**; the native editor, live hotkey and saved setting now use the same binding.

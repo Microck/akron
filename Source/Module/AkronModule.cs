@@ -625,16 +625,24 @@ public partial class AkronModule : EverestModule {
         // the overlay continues to read the real keyboard and mouse above.
         bool blockGameplayInput = overlayUpdated && Overlay?.Visible == true &&
                                   (Settings.ConsumeGameplayInputInMenu || Overlay.SearchOwnsGameplayInputThisFrame);
+        bool nativeAttemptSuspendedBeforeUpdate = AkronPracticeStats.IsNativeAttemptSuspended(self);
+        Player autoKillPlayerBeforeUpdate = Settings.AutoKill ? self.Tracker.GetEntity<Player>() : null;
+        global::Celeste.Session autoKillSessionBeforeUpdate = self.Session;
+        string autoKillRoomBeforeUpdate = self.Session.Level;
         if (blockGameplayInput) {
             AkronGameplayInputScope.Run(orig, self);
         } else {
             orig(self);
         }
+        // Native pause input is processed inside orig. Defer automatic death until
+        // both sides of that boundary are known, without acting on a replaced scene.
+        ApplyAutoKillAfterNativeUpdate(self, autoKillPlayerBeforeUpdate,
+            autoKillSessionBeforeUpdate, autoKillRoomBeforeUpdate, startPosFrameGeneration, nativeAttemptSuspendedBeforeUpdate);
         RememberNativeFreezeFrameForLagPauser();
         AkronRuntimeOptions.ApplyScreenshakeAfterLevelUpdate(self);
         ApplyJumpHackAfterPlayerUpdate(self);
         ClearLastDeathHitboxAfterRespawn(self);
-        AkronPracticeStats.OnLevelUpdate(self);
+        AkronPracticeStats.OnLevelUpdate(self, nativeAttemptSuspendedBeforeUpdate);
         UpdateProofRecorderGuard(self);
     }
 
