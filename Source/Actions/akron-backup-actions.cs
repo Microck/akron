@@ -1396,7 +1396,9 @@ public static class AkronBackupActions {
     }
 
     private static string GetSavesFolder() {
-        return Path.Combine(Everest.PathGame, "Saves");
+        // Follow Celeste's cached active save root, including EVEREST_SAVEPATH and XDG.
+        // Do not migrate old installation-root archives: they may omit the real saves.
+        return Everest.PathSettings;
     }
 
     internal static string FormatBackupTextForDisplay(string text, string backupFolder, bool streamerMode) {
