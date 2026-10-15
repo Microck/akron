@@ -1,0 +1,39 @@
+# Custom Death Particles lifetime verification (#225)
+
+## Change
+
+The previous implementation scaled rendered progress but left ownership with the native death component and dead body. Long bursts ended with their owner before completing; short geometric bursts could remain as a final ring until the wipe.
+
+The actual PlayerDeadBody update now detects creation of its DeathEffect and creates a separate, non-colliding cosmetic entity. Position, appearance and configured duration are captured at that point. The original component, Duration, Percent, callbacks, coroutine waits, End and respawn timing remain untouched. Only its rendering is replaced. The cosmetic entity survives ordinary same-Level death reload, renders behind the native wipe, and expires independently in gameplay time. It supports the Retry update path while genuine pause/freeze stops its age. Room/session changes, disabling the feature, No Death Effect, state transitions and level exit clear remaining bursts. Render failure uses a scoped bypass to reach genuine vanilla drawing.
+
+This does not turn static respawn-intro drawing into another independent burst. External savestate handling clears restored cosmetic clones; it does not promise those systems never capture them.
+
+## Native baseline and candidate
+
+Both used Linux Celeste 1.4.0.0 / Everest 1.6580.0, isolated copies of the same original profile, and the initial Forsaken City room's left ledge/spike pit. Ordinary spike deaths used a rightward walk; Retry checks used the native pause menu. No runtime getters, injected state or synthetic lifecycle calls were used. Respawn modifiers and assist mode remained off.
+
+- QA67 baseline ZIP SHA-256: `f3a1c9fbd7a5d0b94529b2da0f0447e27f263de369a095f14acd14bdfa881544`.
+- QA68 candidate ZIP SHA-256: `c24f5807eaf09b3685d022f912d66919b1f8fba383d1be606714345e7f684a2c`.
+- Shared Celeste.dll SHA-256: `eb2d2ac4bfb62c3aa0227f0b566a37d43eabb6827512fe9d9c311484b17b9d72`.
+
+Actual live results:
+
+1. Baseline Square / 3.00: compact burst covered by the ordinary wipe, absent at the death position after respawn. Candidate: a separate square ring remains over the spike pit while the player is already back at spawn, then shrinks and disappears. The separate spawn-intro effect is distinguishable from the retained death-position tail.
+2. Baseline Square / 0.10: outward red ring remains until covered by the wipe. Candidate: a brief visible square burst disappears while the death area is still unobscured, before the wipe arrives.
+3. Square / 0.834: ordinary outward burst, wipe and respawn, with no lingering pit tail afterward.
+4. Native Retry / Square / 3.00: burst progresses through Retry and remains briefly after respawn. With the remaining tail paused, identical particle positions were visible at wall-clock 12:02:54 and 12:03:22. Resuming allowed it to finish; it was gone at 12:03:24.
+5. Repeated Retry tails: enabling No Death Effect while paused cleared a visible tail. A subsequent tail also cleared when Custom Death Particles was switched off while paused.
+6. Vanilla shape / 3.00: a distinct round tail remained over the death pit after the player respawned, then disappeared.
+7. Customization off: ordinary native burst and respawn returned, with no retained tail. Defaults were restored through the UI to Off / Vanilla / 0.834, with No Death Effect off and unchanged colors/respawn settings. Save and Quit followed by Exit ended the process successfully at 16:14:26 UTC.
+
+Five candidate MKV/MP4 recording pairs and original screenshot sequences were preserved locally. Capture resolution, audio-off recording, an unused F5 stop binding and built-in clock labels were explicit prelaunch fixture edits; these remain separate from the tested gameplay settings and are not a claim of full original-profile rollback.
+
+## Limits and unverified cases
+
+The native recorder reports dropped frames. CFR timestamps and frame-count differences are not actual elapsed game time. The chapter timer freezes/resets during death and advances during genuine pause, so it cannot measure particle age. Exact 0.10/0.834/3.00-second timing and exact respawn latency were not calibrated. The live claims are visible progression, relative termination, ownership across respawn, pause behavior and cleanup.
+
+A native StartPos load attempted while paused was rejected by the existing paused/transition/cutscene guard. It did not run, so this is not a live save-load cleanup pass. Room-transition cleanup, SpeedrunTool restore, forced renderer failure, additional shape/color combinations and other platforms remain source/structural coverage rather than live acceptance in this run. No claim of those cases passing is made.
+
+## Automated and source checks
+
+Release and Debug each pass 2,357 tests. New tests check independent age/duration progress and inspect emitted code to ensure the owner does not write native DeathEffect or PlayerDeadBody fields. Structural checks cover Retry/pause tags, state cleanup, save exclusion and fallback wiring. These do not replace native rendering tests. Read-only source/IL review found and helped resolve Retry update, fallback recursion and state/level cleanup gaps before the tested candidate was frozen.

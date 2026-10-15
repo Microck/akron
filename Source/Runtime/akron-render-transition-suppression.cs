@@ -9,6 +9,7 @@ public partial class AkronModule {
     private static ulong stateTransitionRenderSuppressionLastUpdateFrame;
 
     internal static void SuppressAkronRenderSurfacesAfterStateTransition() {
+        ClearCustomDeathParticleBursts();
         stateTransitionRenderSuppressionFrames = Math.Max(
             stateTransitionRenderSuppressionFrames,
             StateTransitionRenderSuppressionFrames);

@@ -170,6 +170,7 @@ public partial class AkronModule {
 
     private static void PlayerDeadBodyOnUpdate(On.Celeste.PlayerDeadBody.orig_Update orig, PlayerDeadBody self) {
         orig(self);
+        EnsureCustomDeathParticleBurst(self);
         if (Settings.NoDeathEffect && AkronPolicy.CanUse(AkronFeatureKind.DeathVisuals).Allowed && noDeathEffectBodies.Contains(self) && self.Scene is Level level) {
             SuppressDeathEffects(level, self, null);
         }
