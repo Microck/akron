@@ -19,3 +19,7 @@ QA144 corrected Release package969620e4f90a89b68ac9b6889bf330352190fd9d74ad4603e
 These are native recorded trajectories and displayed input/Speed, not endpoint-only assertions. Capture gaps are explicitly qualified; interpolated Vel is not used as logical Speed. No all-platform, exhaustive wall/coyote/dash compatibility or frame-perfect acquisition claim. A separate 205-frame input-only extension after normal Retry directly captured a second grounded jump and one replenished extra jump after landing, with the next press denied. Held Jump showed a decreasing vanilla jump countdown rather than newly triggered impulses. This does not prove same-instance savestate restoration. Raw media and runtime assets remain private.
 
 Release and Debug each pass 2,501 tests against native Everest references. Predicate and source-boundary tests complement, rather than replace, the live acceptance above.
+
+## SRT review correction
+
+The first review found that a static Player field was eligible for Speedrun Tool module Entity-field cloning. Identity now uses WeakReference<Player>, created only while the feature is effective, and inactive/dead state clears it. A reflection regression test verifies the field cannot be selected as an Entity static. Revised Release and Debug each pass 2,502 tests. Revised Release archive:442f8fca0e6e97b5baffb88d0571c348deaada34b32645e11cd6d09661a1c9d4. Native SRT round-trip and finite-jump retest are pending on this revision; QA144 remains evidence for the preceding build.

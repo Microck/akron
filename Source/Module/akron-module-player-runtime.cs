@@ -488,18 +488,15 @@ public partial class AkronModule {
     }
 
     private static void ApplyJumpHackAfterPlayerUpdate(Player player, bool wasGrounded, bool nativeJumpConsumed) {
-        if (!ReferenceEquals(jumpHackPlayer, player)) {
-            jumpHackAirJumpsUsed = 0;
-            jumpHackPlayer = player;
-        }
-        if (player == null || player.Dead || player.Scene is not Level) {
-            jumpHackAirJumpsUsed = 0;
+        if (player == null || player.Dead || player.Scene is not Level ||
+            !Settings.JumpHack || !AkronPolicy.CanUse(AkronFeatureKind.MovementStatMutation).Allowed) {
+            ResetAirJumpQuota();
             return;
         }
 
-        if (!Settings.JumpHack || !AkronPolicy.CanUse(AkronFeatureKind.MovementStatMutation).Allowed) {
+        if (jumpHackPlayer == null || !jumpHackPlayer.TryGetTarget(out Player owner) || !ReferenceEquals(owner, player)) {
             jumpHackAirJumpsUsed = 0;
-            return;
+            jumpHackPlayer = new WeakReference<Player>(player);
         }
 
         bool grounded = player.OnGround();

@@ -85,7 +85,8 @@ public partial class AkronModule : EverestModule {
     private static int fastLookoutPatchedMovementReadCount;
     private static bool startPosPlacementLastLeftDown;
     private static int jumpHackAirJumpsUsed;
-    private static Player jumpHackPlayer;
+    // SRT snapshots static Entity fields on EverestModule; identity is not savestate data.
+    private static WeakReference<Player> jumpHackPlayer;
     private static readonly Dictionary<PlayerDeadBody, float> respawnTimeElapsed = new Dictionary<PlayerDeadBody, float>();
     private static readonly HashSet<PlayerDeadBody> noDeathEffectBodies = new HashSet<PlayerDeadBody>();
     private static bool renderCoreDiagnosticLogged;

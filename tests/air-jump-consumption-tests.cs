@@ -40,7 +40,7 @@ public sealed class AirJumpConsumptionTests {
         Assert.Contains("On.Monocle.VirtualButton.ConsumeBuffer += VirtualButtonOnConsumeBufferForAirJumps", module);
         Assert.Contains("On.Monocle.VirtualButton.ConsumeBuffer -= VirtualButtonOnConsumeBufferForAirJumps", module);
         string source = File.ReadAllText(Path.Combine(root, "akron-module-player-runtime.cs"));
-        Assert.Contains("!ReferenceEquals(jumpHackPlayer, player)", source);
+        Assert.Contains("!ReferenceEquals(owner, player)", source);
         Assert.Contains("if (wasGrounded || grounded) jumpHackAirJumpsUsed = 0", source);
         Assert.Contains("jumpHackAirJumpsUsed++", source);
         Assert.Contains("[ThreadStatic]", source);
@@ -50,5 +50,12 @@ public sealed class AirJumpConsumptionTests {
         int death = source.IndexOf("if (deadBody != null || self.Dead)", StringComparison.Ordinal);
         Assert.True(death >= 0);
         Assert.Contains("ResetAirJumpQuota();", source.Substring(death, 150));
+    }
+    [Fact]
+    public void PlayerIdentityDoesNotBecomeAnSrtClonedEntityStatic() {
+        var field = typeof(AkronModule).GetField("jumpHackPlayer", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        Assert.Equal(typeof(WeakReference<Player>), field.FieldType);
+        Assert.False(typeof(Monocle.Entity).IsAssignableFrom(field.FieldType));
     }
 }
