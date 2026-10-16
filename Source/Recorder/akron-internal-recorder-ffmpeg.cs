@@ -32,7 +32,7 @@ public static partial class AkronInternalRecorder {
         args.Add("-c:v");
         args.Add(AkronModuleSettings.GetRecordingCodecArgument(spec.Codec));
         AddEncoderPerformanceArguments(args, settings, spec);
-        AddRateControlArguments(args, settings);
+        AddRateControlArguments(args, settings, spec);
         AddKeyframeAndFilterArguments(args, settings, spec);
         args.Add("-y");
         args.Add(outputPath);
@@ -45,7 +45,7 @@ public static partial class AkronInternalRecorder {
         args.Add("-c:v");
         args.Add(AkronModuleSettings.GetRecordingCodecArgument(spec.Codec));
         AddEncoderPerformanceArguments(args, settings, spec);
-        AddRateControlArguments(args, settings);
+        AddRateControlArguments(args, settings, spec);
         AddKeyframeAndFilterArguments(args, settings, spec);
         // Preserve the capture frame grid even when an encoder uses B-frames.
         // Muxer timestamp shifting otherwise offsets CSV starts from frame indices.
@@ -95,7 +95,7 @@ public static partial class AkronInternalRecorder {
         }
     }
 
-    private static void AddRateControlArguments(List<string> args, AkronModuleSettings settings) {
+    private static void AddRateControlArguments(List<string> args, AkronModuleSettings settings, RecorderSpec spec) {
         int bitrate = AkronModuleSettings.ClampRecordingBitrateMbps(settings.RecordingBitrateMbps);
         switch (settings.RecordingRateControl) {
             case AkronRecordingRateControl.Cbr:
@@ -115,8 +115,10 @@ public static partial class AkronInternalRecorder {
                 args.Add(GetQuantizer(settings));
                 break;
             case AkronRecordingRateControl.Lossless:
-                args.Add("-qp");
-                args.Add("0");
+                // VP9 ignores the generic qp option; use its explicit lossless control.
+                // The captured spec, not mutable/default export settings, owns the codec.
+                args.Add(spec.Codec == AkronRecordingCodec.LibVpxVp9 ? "-lossless" : "-qp");
+                args.Add(spec.Codec == AkronRecordingCodec.LibVpxVp9 ? "1" : "0");
                 break;
             default:
                 args.Add("-crf");
