@@ -78,6 +78,8 @@ public static class AkronInternalAudioRecorder {
             return false;
         }
 
+        List<CapturedTrack> startedTracks = new List<CapturedTrack>();
+        bool publishedTracks = false;
         try {
             FMOD.System lowLevel;
             RESULT result = Audio.System.getLowLevelSystem(out lowLevel);
@@ -94,7 +96,6 @@ public static class AkronInternalAudioRecorder {
             int captureSampleRate = result == RESULT.OK && detectedSampleRate > 0 ? detectedSampleRate : 48000;
 
             List<string> failures = new List<string>();
-            List<CapturedTrack> startedTracks = new List<CapturedTrack>();
             foreach (TrackRequest request in trackRequests) {
                 if (TryStartTrack(lowLevel, request, purpose, captureSampleRate, rawSpeakers, out CapturedTrack track, out string trackWarning)) {
                     startedTracks.Add(track);
@@ -112,6 +113,7 @@ public static class AkronInternalAudioRecorder {
 
             lock (Sync) {
                 ActiveTracks.AddRange(startedTracks);
+                publishedTracks = true;
                 lastError = string.Empty;
             }
 
@@ -123,7 +125,11 @@ public static class AkronInternalAudioRecorder {
         } catch (Exception ex) {
             warning = ex.Message;
             lastError = ex.Message;
-            Stop();
+            if (publishedTracks) Stop(purpose);
+            else StopTracks(startedTracks);
+            foreach (CapturedTrack track in startedTracks) {
+                try { if (File.Exists(track.RawPath)) File.Delete(track.RawPath); } catch { }
+            }
             return false;
         }
     }

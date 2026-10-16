@@ -80,7 +80,7 @@ public sealed class RecorderCaptureSpecTests {
         Assert.Contains("manualCadence.TrySchedule", manual);
         Assert.Contains("replayCadence.TrySchedule(now, replayCapturedFrames > 0, out missedReplayFrames)", manual);
         Assert.Contains("replayDroppedFrames += missedReplayFrames", manual);
-        Assert.Contains("replayCapturedFrames++;", manual);
+        Assert.Contains("replayCapturedFrames += activeReplayTimeline.WriteSample", manual);
         Assert.Contains("!replayWarningShown", manual);
         Assert.Contains("replayCapturedFrames = 0", replay);
         Assert.Contains("replayDroppedFrames = 0", replay);

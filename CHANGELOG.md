@@ -1,5 +1,7 @@
 # Changelog
 
+- Trim replay clips to their requested timed window instead of saving whole extra segments; preserve replay timing through missed samples and export clips in the background.
+
 - Keep offscreen overlay sections reachable with section navigation at smaller window sizes and larger UI scales.
 
 - Handle invalid recorder output directories without escaping into the overlay; failed replay starts disarm cleanly.
