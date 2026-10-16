@@ -9,7 +9,7 @@ namespace Celeste.Mod.Akron;
 
 internal sealed record AkronReplaySegment(string Path, double Start, double End);
 internal sealed record AkronReplayWindow(IReadOnlyList<AkronReplaySegment> Segments,
-    long FirstFrame, long EndFrame, int Framerate, DateTime OriginUtc)
+    long FirstFrame, long EndFrame, int Framerate, DateTime OriginUtc, bool IsPartial)
 {
     internal long FrameCount => EndFrame - FirstFrame;
     internal double Duration => FrameCount / (double)Framerate;
@@ -49,8 +49,10 @@ internal static class AkronReplayWindows
         segments = segments.Select(segment => new AkronReplaySegment(segment.Path,
             SnapMediaFrame(segment.Start, fps) / (double)fps, SnapMediaFrame(segment.End, fps) / (double)fps)).ToList();
         // Half-open frame grid: each endpoint rounds upward by less than one frame.
-        long first = Math.Max(0, (long)Math.Ceiling((requestedStart - originUtc).TotalSeconds * fps - 0.000001));
-        long end = Math.Min(capturedFrames, (long)Math.Ceiling((requestedEnd - originUtc).TotalSeconds * fps - 0.000001));
+        long requestedFirst = (long)Math.Ceiling((requestedStart - originUtc).TotalSeconds * fps - 0.000001);
+        long requestedLast = (long)Math.Ceiling((requestedEnd - originUtc).TotalSeconds * fps - 0.000001);
+        long first = Math.Max(0, requestedFirst);
+        long end = Math.Min(capturedFrames, requestedLast);
         first = Math.Max(first, SnapMediaFrame(segments[0].Start, fps));
         end = Math.Min(end, SnapMediaFrame(segments[^1].End, fps));
         if (end <= first) throw new InvalidDataException("Requested replay history is no longer available.");
@@ -66,7 +68,7 @@ internal static class AkronReplayWindows
             cursor = Math.Max(cursor, segment.End);
         }
         if (cursor + 0.001 < until) throw new InvalidDataException("Replay window has incomplete media.");
-        return new AkronReplayWindow(selected, first, end, fps, originUtc);
+        return new AkronReplayWindow(selected, first, end, fps, originUtc, first > requestedFirst || end < requestedLast);
     }
 
     internal static long SnapMediaFrame(double seconds, int fps)

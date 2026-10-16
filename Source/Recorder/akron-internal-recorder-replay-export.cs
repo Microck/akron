@@ -231,9 +231,7 @@ public static partial class AkronInternalRecorder
             publishedSidecar = true;
             CheckReplayExportGeneration(snapshot);
             published = true;
-            bool partial = window.StartUtc > request.Window.StartUtc.AddSeconds(1d / snapshot.Spec.Framerate) ||
-                window.EndUtc < request.Window.EndUtc.AddSeconds(-1d / snapshot.Spec.Framerate);
-            PublishReplayExport(snapshot, publishedPath, null, partial);
+            PublishReplayExport(snapshot, publishedPath, null, window.IsPartial);
         }
         finally {
             DeleteRecordedAudioFiles(sliced);

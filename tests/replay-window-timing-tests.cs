@@ -82,6 +82,20 @@ public sealed class ReplayWindowTimingTests
         Assert.InRange((window.EndUtc - Origin.AddSeconds(end)).TotalSeconds, -0.000001, 1d / 30);
     }
 
+    [Theory]
+    [InlineData(0.1, 1.0, 0.0, 1.0, true)]
+    [InlineData(0.0, 0.9, 0.0, 1.0, true)]
+    [InlineData(0.0, 1.0, 0.01, 0.91, false)]
+    [InlineData(0.0, 1.0, -0.1, 1.0, true)]
+    [InlineData(0.0, 1.0, 0.0, 1.1, true)]
+    public void PartialStatusUsesRequestedFrameGrid(double availableStart, double availableEnd,
+        double requestedStart, double requestedEnd, bool partial)
+    {
+        var window = AkronReplayWindows.Plan(new[] { new AkronReplaySegment("a", availableStart, availableEnd) },
+            Origin, 10, (long)Math.Round(availableEnd * 10), Origin.AddSeconds(requestedStart), Origin.AddSeconds(requestedEnd));
+        Assert.Equal(partial, window.IsPartial);
+    }
+
     [Fact]
     public void MissingEarlyHistoryClampsActualBoundsButInteriorGapFails()
     {
