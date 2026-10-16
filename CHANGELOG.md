@@ -1,5 +1,7 @@
 # Changelog
 
+- Keep the selected Control Display label style when changing layouts through the console command.
+
 - Preserve keyboard-only and unbound Control Display labels when applying game-action label presets.
 
 - Count Escape in the inputs-per-second menu/pause channel, without double-counting overlapping pause sources.
