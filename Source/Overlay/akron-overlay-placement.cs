@@ -33,6 +33,7 @@ public sealed partial class AkronOverlay {
 
         MouseState mouse = Mouse.GetState();
         if (MInput.Keyboard.Pressed(Keys.Escape) || MInput.Keyboard.Pressed(Keys.Back) || mouse.RightButton == ButtonState.Pressed) {
+            if (mouse.RightButton == ButtonState.Pressed) AkronImGuiRenderer.SuppressRightMouseUntilRelease();
             EndStartPosPlacement(true);
             Engine.Scene?.Add(new AkronToast("StartPos placement closed."));
             return true;

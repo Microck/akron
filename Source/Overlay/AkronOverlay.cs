@@ -368,6 +368,10 @@ public sealed partial class AkronOverlay : Entity {
             uploadPackWindowOpen = false;
         }
 
+        // Placement owns raw right-click cancellation, including its empty cleanup frames.
+        // Never queue a down sampled between Update and Render for the restored overlay.
+        if (startPosPlacementActive) AkronImGuiRenderer.SuppressRightMouseUntilRelease();
+
         bool overlaySurfaceRequested = ShouldRenderOverlaySurface(
             Visible,
             AkronPromptMenu.IsOpen,
