@@ -102,10 +102,10 @@ public sealed partial class AkronOverlay {
                 value => SetExtendedVariantConfiguredValue(option, value),
                 -1,
                 1,
-                -100000,
+                AkronExtendedVariants.GetIntegerMinimum(option.Name),
                 100000,
                 popupId,
-                "Integer external variant value. The variant provider validates the gameplay meaning.",
+                "Integer external variant value. Badeline Boss Node Count requires at least 1; use documented ranges for other variants.",
                 onTextActivated: () => extendedVariantNumericEdit.Begin(popupId + ":" + option.Name + ":int", !option.IsDefault),
                 textSetter: value => SetExtendedVariantConfiguredValue(option, value, extendedVariantNumericEdit.Get(popupId + ":" + option.Name + ":int")),
                 onTextDeactivated: () => extendedVariantNumericEdit.End(popupId + ":" + option.Name + ":int"));
