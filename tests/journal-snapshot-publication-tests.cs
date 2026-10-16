@@ -46,7 +46,10 @@ public sealed class JournalSnapshotPublicationTests : IDisposable {
 
     [Fact]
     public void ConcurrentReservationsKeepAllSnapshots() {
-        Parallel.For(0, 20, i => AkronActions.WriteUniqueJournalSnapshot(directory, i.ToString(), timestamp));
+        string[] paths = new string[20];
+        Parallel.For(0, paths.Length, i => paths[i] = AkronActions.WriteUniqueJournalSnapshot(directory, i.ToString(), timestamp));
+        Assert.Equal(paths.Length, paths.Distinct(StringComparer.Ordinal).Count());
+        for (int i = 0; i < paths.Length; i++) Assert.Equal(i.ToString(), File.ReadAllText(paths[i]));
         string[] payloads = Directory.GetFiles(directory, "akron-journal-*.json").Select(File.ReadAllText).ToArray();
         Assert.Equal(20, payloads.Length);
         Assert.Equal(Enumerable.Range(0, 20).OrderBy(i => i), payloads.Select(int.Parse).OrderBy(i => i));

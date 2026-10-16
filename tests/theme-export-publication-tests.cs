@@ -32,7 +32,10 @@ public sealed class ThemeExportPublicationTests : IDisposable {
 
     [Fact]
     public void ConcurrentExportsPublishCompleteDistinctArchives() {
-        Parallel.For(0, 12, i => AkronArchive.WriteUniqueSinglePayloadArchive(Target, Manifest(i), "theme.json", i.ToString()));
+        string[] paths = new string[12];
+        Parallel.For(0, paths.Length, i => paths[i] = AkronArchive.WriteUniqueSinglePayloadArchive(Target, Manifest(i), "theme.json", i.ToString()));
+        Assert.Equal(paths.Length, paths.Distinct(StringComparer.Ordinal).Count());
+        for (int i = 0; i < paths.Length; i++) Assert.Equal(i.ToString(), Read(paths[i]));
         string[] files = Directory.GetFiles(directory, "*.akr");
         Assert.Equal(12, files.Length);
         Assert.Equal(Enumerable.Range(0, 12), files.Select(Read).Select(int.Parse).OrderBy(i => i));
