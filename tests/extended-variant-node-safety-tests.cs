@@ -12,15 +12,18 @@ public sealed class ExtendedVariantNodeSafetyTests {
     [InlineData(0)]
     [InlineData(-1)]
     [InlineData(int.MinValue)]
+    [InlineData(6)]
+    [InlineData(100000)]
+    [InlineData(int.MaxValue)]
     public void UnsafeNodeCountsAreRejected(int count) {
         Assert.False(AkronExtendedVariants.TryValidateGameplayValue("BadelineBossNodeCount", count, out string message));
-        Assert.Contains("at least 1", message);
+        Assert.Contains("from 1 to 5", message);
     }
 
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
-    [InlineData(100000)]
+    [InlineData(5)]
     public void ValidNodeCountsRemainAvailable(int count) =>
         Assert.True(AkronExtendedVariants.TryValidateGameplayValue("badelinebossnodecount", count, out _));
 
@@ -38,11 +41,14 @@ public sealed class ExtendedVariantNodeSafetyTests {
     public void OtherVariantsKeepTheirExistingSemantics(string name, int value) {
         Assert.True(AkronExtendedVariants.TryValidateGameplayValue(name, value, out _));
         Assert.Equal(-100000, AkronExtendedVariants.GetIntegerMinimum(name));
+        Assert.Equal(100000, AkronExtendedVariants.GetIntegerMaximum(name));
     }
 
     [Fact]
     public void PopupUsesNamedMinimum() {
         Assert.Equal(1, AkronExtendedVariants.GetIntegerMinimum("BadelineBossNodeCount"));
+        Assert.Equal(5, AkronExtendedVariants.GetIntegerMaximum("BadelineBossNodeCount"));
+        Assert.Contains("AkronExtendedVariants.GetIntegerMaximum(option.Name)", Read("Overlay/akron-overlay-extended-variant-popups.cs"));
         Assert.Contains("AkronExtendedVariants.GetIntegerMinimum(option.Name)", Read("Overlay/akron-overlay-extended-variant-popups.cs"));
     }
 
@@ -51,7 +57,7 @@ public sealed class ExtendedVariantNodeSafetyTests {
         var method = typeof(AkronExtendedVariants).GetMethod("TryApplyVariantValue", BindingFlags.NonPublic | BindingFlags.Static);
         object[] args = { "BadelineBossNodeCount", 0, null };
         Assert.False((bool)method.Invoke(null, args)); // no initialized module/provider needed
-        Assert.Contains("at least 1", (string)args[2]);
+        Assert.Contains("from 1 to 5", (string)args[2]);
         using var assembly = AssemblyDefinition.ReadAssembly(typeof(AkronModule).Assembly.Location);
         var compiled = assembly.MainModule.GetType(typeof(AkronExtendedVariants).FullName).Methods.Single(m => m.Name == "TryApplyVariantValue");
         var calls = compiled.Body.Instructions.Select(i => i.Operand).OfType<MethodReference>().ToArray();

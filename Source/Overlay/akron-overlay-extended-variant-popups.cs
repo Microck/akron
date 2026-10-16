@@ -103,9 +103,9 @@ public sealed partial class AkronOverlay {
                 -1,
                 1,
                 AkronExtendedVariants.GetIntegerMinimum(option.Name),
-                100000,
+                AkronExtendedVariants.GetIntegerMaximum(option.Name),
                 popupId,
-                "Integer external variant value. Badeline Boss Node Count requires at least 1; use documented ranges for other variants.",
+                "Integer external variant value. Badeline Boss Node Count requires 1 to 5; use documented ranges for other variants.",
                 onTextActivated: () => extendedVariantNumericEdit.Begin(popupId + ":" + option.Name + ":int", !option.IsDefault),
                 textSetter: value => SetExtendedVariantConfiguredValue(option, value, extendedVariantNumericEdit.Get(popupId + ":" + option.Name + ":int")),
                 onTextDeactivated: () => extendedVariantNumericEdit.End(popupId + ":" + option.Name + ":int"));

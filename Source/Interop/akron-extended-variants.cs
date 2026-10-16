@@ -701,13 +701,17 @@ public static class AkronExtendedVariants {
     internal static int GetIntegerMinimum(string name) =>
         string.Equals(name, "BadelineBossNodeCount", StringComparison.OrdinalIgnoreCase) ? 1 : -100000;
 
+    // Match the pinned EVM option's advertised 1..5 node scale.
+    internal static int GetIntegerMaximum(string name) =>
+        string.Equals(name, "BadelineBossNodeCount", StringComparison.OrdinalIgnoreCase) ? 5 : 100000;
+
     // EVM allocates the boss node array and immediately indexes its last element.
     // Reject unsafe values before storage or enabling/invoking the external provider.
     internal static bool TryValidateGameplayValue(string name, object value, out string message) {
         message = string.Empty;
         if (string.Equals(name, "BadelineBossNodeCount", StringComparison.OrdinalIgnoreCase) &&
-            (value is not int count || count < 1)) {
-            message = "Badeline Boss Node Count must be an integer of at least 1.";
+            (value is not int count || count < 1 || count > 5)) {
+            message = "Badeline Boss Node Count must be an integer from 1 to 5.";
             return false;
         }
         return true;
