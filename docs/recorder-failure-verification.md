@@ -63,3 +63,36 @@ Revised native Release and Debug each pass 2,492 tests. Revised Release SHA-256:
 `031619cb611cddb9a59bbad45d5faf9dcf87a9dc6c6dc882dbdc4d23cd125324`.
 Final-package collision and audio-extension native acceptance is pending. QA139
 above remains evidence for the earlier package, not this revision.
+
+## Native collision and audio extension
+
+QA140 validated the collision revision above using a fixed timestamp-free template
+and WebM throughout: VP9 success, x264 rejection, then VP9 success. The prior
+video, audio-derived video and sidecar remained byte-identical after rejection and
+recovery. The failed attempt reserved a suffixed 262-byte file with no sidecar.
+
+The isolated test runtime used same-library FMOD aliases and SDL 2.28.5's disk
+audio backend to /dev/null, allowing real mixer/capture operation without a sound
+card. Full Mix produced nonempty PCM and a valid VP9/Opus WebM: 4,320,960 bytes,
+26.249 seconds, 1,575 video frames, full audio/video decode exit 0. A read-only
+filesystem observation during the rejected attempt saw its own audio file grow to
+106,496 bytes and then disappear after cleanup. Recovery produced another valid
+VP9/Opus WebM: 4,414,453 bytes, 26.449 seconds and 1,587 video frames. Its capture
+file was also cleaned. This extends the earlier unavailable-audio result; it does
+not claim physical speaker output or exact A/V synchronization.
+
+## Replay-only failure review correction
+
+A further review identified that a replay write/pruning failure could reject a
+healthy manual recording through the shared catch. QA140 reproduced this by
+starting VP9 manual recording, selecting H.264 NVENC for the newly started replay
+encoder, then starting replay. Manual capture stopped and its otherwise valid
+6,477,878-byte VP9 video (42.050 seconds, 2,523 frames, decode exit 0) received no
+sidecar. Changing codec does not change the already-running manual process.
+
+Replay write/prune and replay cleanup now have their own guarded failure boundary;
+replay is disarmed while the successful manual frame and recording continue.
+Common frame acquisition and manual-write failures still reject manual output.
+Revised native Release and Debug each pass 2,493 tests. Final-package native
+revalidation is pending for Release
+`601f610f32eabc3d39f5f72cd134ba6f932e936b7536e91497994268c562e79a`.

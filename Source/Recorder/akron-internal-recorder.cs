@@ -444,8 +444,20 @@ public static partial class AkronInternalRecorder {
             }
 
             if (activeReplayProcess != null && activeReplayInput != null) {
-                activeReplayInput.Write(frame, 0, frame.Length);
-                PruneReplaySegments(settings);
+                try {
+                    activeReplayInput.Write(frame, 0, frame.Length);
+                    PruneReplaySegments(settings);
+                } catch (Exception replayError) {
+                    // A replay-only failure must not reject or stop a healthy manual encode.
+                    // The public stop also disarms auto-start, preventing a restart loop.
+                    string replayMessage = replayError.Message;
+                    try {
+                        StopReplayBuffer();
+                    } catch (Exception cleanupError) {
+                        replayMessage += " | " + cleanupError.Message;
+                    }
+                    lastError = replayMessage;
+                }
             }
 
             capturedFrames++;

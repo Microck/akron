@@ -146,6 +146,24 @@ public sealed class EncoderCompletionTests {
         Assert.Equal(2, optional.Split("outputPath = AkronEncoderCompletion.ReserveOutputPath(outputPath);").Length - 1);
     }
 
+    [Fact]
+    public void ReplayWriteAndPruningHaveIndependentFailureBoundary() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Recorder/akron-internal-recorder.cs"));
+        int start = source.IndexOf("if (activeReplayProcess != null && activeReplayInput != null) {");
+        Assert.True(start >= 0);
+        int end = source.IndexOf("capturedFrames++;", start);
+        Assert.True(end > start);
+        string replay = source.Substring(start, end - start);
+        Assert.Contains("try {\n                    activeReplayInput.Write", replay);
+        Assert.Contains("PruneReplaySegments(settings);", replay);
+        Assert.Contains("catch (Exception replayError)", replay);
+        Assert.Contains("StopReplayBuffer();", replay);
+        Assert.Contains("catch (Exception cleanupError)", replay);
+        Assert.DoesNotContain("Stop(captureError)", replay);
+        Assert.DoesNotContain("Stop();", replay);
+        Assert.Contains("lastError = replayMessage;", replay);
+    }
+
     private sealed class ThrowingStream : MemoryStream {
         public bool DisposeAttempted { get; private set; }
         public override void Flush() => throw new IOException("flush failed");
