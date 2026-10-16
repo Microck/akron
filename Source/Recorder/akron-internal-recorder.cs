@@ -562,8 +562,11 @@ public static partial class AkronInternalRecorder {
         return Path.Combine(folder, filename + AkronModuleSettings.GetRecordingContainerExtension(format));
     }
 
-    private static string ResolveOutputFolder(AkronModuleSettings settings) =>
-        ResolveAbsoluteOutputFolder(settings.RecordingOutputFolder, Everest.PathGame, Environment.CurrentDirectory);
+    private static string ResolveOutputFolder(AkronModuleSettings settings) {
+        // Custom folders do not depend on Everest's game-path accessor (also absent in stripped test refs).
+        string gameFolder = string.IsNullOrWhiteSpace(settings.RecordingOutputFolder) ? Everest.PathGame : null;
+        return ResolveAbsoluteOutputFolder(settings.RecordingOutputFolder, gameFolder, Environment.CurrentDirectory);
+    }
 
     internal static string ResolveAbsoluteOutputFolder(string configuredFolder, string gameFolder, string currentDirectory) {
         string folder = string.IsNullOrWhiteSpace(configuredFolder)

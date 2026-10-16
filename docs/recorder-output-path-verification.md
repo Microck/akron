@@ -47,3 +47,14 @@ full decode exit 0. Both were started through the native recorder UI and stopped
 with its native F5 binding. Folder selection and auto-remux were changed through
 the running GUI; no runtime state injection was used. Default output and remux Off
 were retained at cleanup.
+
+## CI compatibility correction
+
+The original candidate passed native testing but failed two stripped-reference CI
+tests because custom folders unnecessarily evaluated Everest.PathGame. The
+resolver now reads that accessor only for blank/default folders. A pure regression
+test verifies that custom folders need no game directory. Revised native Release
+and Debug runs pass all 2,477 tests. Final-package native revalidation is pending.
+
+Revised Release package SHA-256:
+`3da8a223295f019417b5c004e50815951aaac1e296d8ab448b1ed39aa9ebe29a`.

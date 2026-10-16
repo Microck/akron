@@ -34,9 +34,16 @@ public sealed class RecorderOutputPathTests {
     }
 
     [Fact]
+    public void CustomFolderDoesNotRequireGameDirectory() {
+        string cwd = Path.Combine(Root, "cwd");
+        Assert.Equal(Path.Combine(cwd, "custom"), AkronInternalRecorder.ResolveAbsoluteOutputFolder("custom", null!, cwd));
+    }
+
+    [Fact]
     public void RecorderOutputBuilderUsesAbsoluteResolutionBeforeFfmpegSetup() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Recorder/akron-internal-recorder.cs"));
-        Assert.Contains("ResolveAbsoluteOutputFolder(settings.RecordingOutputFolder, Everest.PathGame, Environment.CurrentDirectory)", source);
+        Assert.Contains("string.IsNullOrWhiteSpace(settings.RecordingOutputFolder) ? Everest.PathGame : null", source);
+        Assert.Contains("ResolveAbsoluteOutputFolder(settings.RecordingOutputFolder, gameFolder, Environment.CurrentDirectory)", source);
         Assert.Contains("string folder = ResolveOutputFolder(AkronModule.Settings);", source);
         Assert.Contains("WorkingDirectory = ResolveFfmpegWorkingDirectory(outputDirectory)", source);
     }
