@@ -922,10 +922,26 @@ public static partial class AkronActions {
         }
     }
 
-    private static string FindLatestJournalSnapshot(string directory) {
+    internal static string FindLatestJournalSnapshot(string directory) {
         return Directory.EnumerateFiles(directory, "akron-journal-*.json")
             .OrderByDescending(File.GetLastWriteTimeUtc)
+            .ThenByDescending(path => JournalSnapshotOrder(path).Timestamp, StringComparer.Ordinal)
+            .ThenByDescending(path => JournalSnapshotOrder(path).Suffix)
+            .ThenByDescending(Path.GetFileName, StringComparer.Ordinal)
             .FirstOrDefault();
+    }
+
+    private static (string Timestamp, int Suffix) JournalSnapshotOrder(string path) {
+        const string prefix = "akron-journal-";
+        string name = Path.GetFileNameWithoutExtension(path);
+        if (!name.StartsWith(prefix, StringComparison.Ordinal)) return (string.Empty, -1);
+        string tail = name.Substring(prefix.Length);
+        if (tail.Length < 15 || !DateTime.TryParseExact(tail.Substring(0, 15), "yyyyMMdd-HHmmss",
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out _)) return (string.Empty, -1);
+        if (tail.Length == 15) return (tail, 0);
+        return tail.Length > 16 && tail[15] == '-' && int.TryParse(tail.Substring(16),
+            NumberStyles.None, CultureInfo.InvariantCulture, out int suffix)
+            ? (tail.Substring(0, 15), suffix) : (string.Empty, -1);
     }
 
     private static string BuildJournalSnapshotSummary(Level level) {

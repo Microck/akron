@@ -66,6 +66,36 @@ public sealed class JournalSnapshotPublicationTests : IDisposable {
     }
 
     [Fact]
+    public void EqualModificationTimesUseNumericSuffixOrdering() {
+        string latest = null;
+        for (int i = 0; i < 12; i++) {
+            latest = AkronActions.WriteUniqueJournalSnapshot(directory, i.ToString(), timestamp);
+            File.SetLastWriteTimeUtc(latest, timestamp);
+        }
+        Assert.EndsWith("-11.json", latest);
+        Assert.Equal(latest, AkronActions.FindLatestJournalSnapshot(directory));
+    }
+
+    [Fact]
+    public void CoarseTimestampsOrderDifferentSecondsBeforeSuffixes() {
+        string first = AkronActions.WriteUniqueJournalSnapshot(directory, "old", timestamp);
+        string suffix = AkronActions.WriteUniqueJournalSnapshot(directory, "old suffix", timestamp);
+        string latest = AkronActions.WriteUniqueJournalSnapshot(directory, "later", timestamp.AddSeconds(1));
+        foreach (string path in new[] { first, suffix, latest }) File.SetLastWriteTimeUtc(path, timestamp);
+        Assert.Equal(latest, AkronActions.FindLatestJournalSnapshot(directory));
+    }
+
+    [Fact]
+    public void ActualModificationTimeRemainsPrimaryAndEmptyDirectoryIsSupported() {
+        Assert.Null(AkronActions.FindLatestJournalSnapshot(directory));
+        string first = AkronActions.WriteUniqueJournalSnapshot(directory, "first", timestamp);
+        string laterName = AkronActions.WriteUniqueJournalSnapshot(directory, "later name", timestamp.AddSeconds(1));
+        File.SetLastWriteTimeUtc(laterName, timestamp);
+        File.SetLastWriteTimeUtc(first, timestamp.AddSeconds(10));
+        Assert.Equal(first, AkronActions.FindLatestJournalSnapshot(directory));
+    }
+
+    [Fact]
     public void ActualActionSelectsPreviousBeforeReservingNewSnapshot() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Actions/akron-actions.cs"));
         string method = source.Split("public static void WriteJournalSnapshotCompare(Level level)")[1].Split("internal static string WriteUniqueJournalSnapshot")[0];
