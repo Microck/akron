@@ -57,6 +57,7 @@ internal static partial class AkronScreenProjection {
         // outside the vanilla 320x180 camera rectangle. Zoom-aware tools can
         // opt out of clamping the intermediate game coordinate so targeting
         // matches the wider rendered view.
+        // Editors may freeze the level before cursor zoom updates. Invert the focus actually rendered.
         if (AkronModule.TryGetExtendedCursorProjection(level, out Vector2 cameraPosition, out float extendedZoom)) {
             return AkronCursorCameraRenderScope.Unproject(MouseScreenToGame(mouseScreenPosition, clampToViewport), cameraPosition, extendedZoom);
         }

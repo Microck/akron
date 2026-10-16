@@ -31,3 +31,9 @@ QA123 is explicitly invalid and excluded: a storage-deduplicated entry-assembly 
 ## Boundaries
 
 This is bounded native camera behavior, not universal ECD/map compatibility. Initial interpolation is distinct from steady pointer response. No exact timing claim is made from dropped-frame video. Scanner exclusion, projection inverses and exceptional disposal have automated coverage; no claim of fresh native full-map stitching, every HUD/point tool, injected rendering failure or all scene-transition combinations is made.
+
+## Review correction: current gameplay pointer
+
+Review found that Click Teleport captures its target before UpdateCursorZoom. Its inverse now predicts the current clamped mouse focus instead of using the previous frame's focus. General editor/placement inversion intentionally keeps the actual cached rendered focus because those modes can freeze the update. The final package is `f657eff85bbabd1bcabb61a3e1d8f94e8a029213492235528012142fa8a69fcb`; native Release and Debug each pass 2,453 tests. A fresh-pointer regression and source wiring checks cover that distinction.
+
+QA127 could not qualify teleport input after a live Cursor binding change: new binding wrappers were uninitialized. This separate existing bug is tracked in #333. QA128 restarted with persisted V, activated150% zoom, moved from upper-right to a V+mouse click at(600,650), and visibly produced “Teleported to cursor.” This verifies native dispatch on the final package; the player is not clearly separable afterward, so it is not pixel-perfect destination or same-engine-frame timing acceptance. The recorded control and unit/order evidence must not be conflated. A native Retry cleaned up the disposable room; teleport was disabled and its default LeftAlt binding restored, zoom disabled/reset100/Hold.

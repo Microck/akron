@@ -75,6 +75,24 @@ public sealed class CursorCameraRenderTests {
         Assert.True(body.IndexOf("RunAfterEngineUpdateActions();", StringComparison.Ordinal) < body.IndexOf("using IDisposable cursorRenderScope", StringComparison.Ordinal));
         Assert.True(body.IndexOf("cursorRenderScope?.Dispose();", StringComparison.Ordinal) < body.IndexOf("Overlay.RenderImGui()", StringComparison.Ordinal));
         Assert.Contains("BeginExtendedCursorRender(level)", Read("Source/Tools/akron-capture.cs"));
-        Assert.Contains("TryGetExtendedCursorProjection", Read("Source/Tools/akron-screen-projection.cs"));
+        string projection = Read("Source/Tools/akron-screen-projection.cs");
+        Assert.Contains("out float extendedZoom))", projection);
+        Assert.DoesNotContain("out float extendedZoom,", projection);
+    }
+    [Fact]
+    public void InputProjectionUsesCurrentPointerBeforeZoomUpdate() {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        const string path = "Source/Module/akron-module-visual-runtime.cs";
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, path))) dir = dir.Parent;
+        Assert.NotNull(dir);
+        string runtime = File.ReadAllText(Path.Combine(dir!.FullName, path));
+        Assert.Contains("out float extendedZoom, mouseGamePosition)", runtime);
+        Assert.Contains("inputFocus.HasValue ? ClampCursorZoomFocus(inputFocus.Value, zoom)", runtime);
+        Vector2 old = AkronCursorCameraRenderScope.Offset(V(106.66667f, 120), 1.5f);
+        Vector2 fresh = AkronCursorCameraRenderScope.Offset(V(213.33333f, 60), 1.5f);
+        Vector2 oldTarget = AkronCursorCameraRenderScope.Unproject(V(258, 40), old, 1.5f);
+        Vector2 freshTarget = AkronCursorCameraRenderScope.Unproject(V(258, 40), fresh, 1.5f);
+        Assert.Equal(106.66666f, freshTarget.X - oldTarget.X, 3);
+        Assert.Equal(-60f, freshTarget.Y - oldTarget.Y, 3);
     }
 }
