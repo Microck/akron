@@ -300,9 +300,21 @@ public static class AkronOverlayThemes {
             ? Directory.GetFiles(directory, "*" + AkronArchive.Extension, SearchOption.TopDirectoryOnly)
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .ThenByDescending(ReadThemeCreatedAt)
+                .ThenByDescending(path => ThemePublicationOrder(path).Stem, StringComparer.Ordinal)
+                .ThenByDescending(path => ThemePublicationOrder(path).Suffix)
                 .ThenByDescending(Path.GetFileName, StringComparer.Ordinal)
                 .FirstOrDefault()
             : null;
+    }
+
+    private static (string Stem, int Suffix) ThemePublicationOrder(string path) {
+        string name = Path.GetFileNameWithoutExtension(path);
+        int separator = name.LastIndexOf('-');
+        if (separator >= 0 && int.TryParse(name.Substring(separator + 1), System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out int suffix)) {
+            return (name.Substring(0, separator), suffix);
+        }
+        return (name, 0);
     }
 
     private static DateTime ReadThemeCreatedAt(string path) {

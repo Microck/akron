@@ -95,7 +95,16 @@ public static class AkronArchive {
             }
             string stem = Path.Combine(Path.GetDirectoryName(path) ?? ".", Path.GetFileNameWithoutExtension(path));
             string extension = Path.GetExtension(path);
-            for (int suffix = 0; ; suffix = checked(suffix + 1)) {
+            int highestSuffix = File.Exists(path) ? 0 : -1;
+            foreach (string existing in Directory.EnumerateFiles(Path.GetDirectoryName(path) ?? ".")) {
+                string existingStem = Path.Combine(Path.GetDirectoryName(path) ?? ".", Path.GetFileNameWithoutExtension(existing));
+                if (string.Equals(Path.GetExtension(existing), extension, StringComparison.Ordinal) &&
+                    existingStem.StartsWith(stem + "-", StringComparison.Ordinal) &&
+                    int.TryParse(existingStem.Substring(stem.Length + 1), NumberStyles.None, CultureInfo.InvariantCulture, out int value)) {
+                    highestSuffix = Math.Max(highestSuffix, value);
+                }
+            }
+            for (int suffix = checked(highestSuffix + 1); ; suffix = checked(suffix + 1)) {
                 string candidate = suffix == 0 ? path : stem + "-" + suffix.ToString(CultureInfo.InvariantCulture) + extension;
                 try {
                     File.Move(temporaryPath, candidate, overwrite: false);
@@ -105,7 +114,15 @@ public static class AkronArchive {
                 }
             }
         } finally {
-            try { File.Delete(temporaryPath); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            if (!preserveExisting) {
+                // Keep the existing replacement API's cleanup failure reporting unchanged.
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            } else {
+                try { File.Delete(temporaryPath); }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
+                    Logger.Log(LogLevel.Warn, nameof(AkronArchive), "Failed to clean staged unique archive: " + ex.Message);
+                }
+            }
         }
     }
 

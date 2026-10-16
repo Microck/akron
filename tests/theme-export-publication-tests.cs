@@ -94,6 +94,31 @@ public sealed class ThemeExportPublicationTests : IDisposable {
     }
 
     [Fact]
+    public void EqualManifestAndFileTimesUseNumericSuffixWithoutReusingDeletedHoles() {
+        string latest = null;
+        for (int i = 0; i < 12; i++) {
+            latest = AkronArchive.WriteUniqueSinglePayloadArchive(Target, Manifest(), "theme.json", i.ToString());
+            File.SetLastWriteTimeUtc(latest, time);
+        }
+        Assert.EndsWith("-11.akr", latest);
+        Assert.Equal(latest, AkronOverlayThemes.FindLatestTheme(directory));
+        File.Delete(Path.Combine(directory, "theme-20261016T194407Z-1.akr"));
+        string newest = AkronArchive.WriteUniqueSinglePayloadArchive(Target, Manifest(), "theme.json", "newest");
+        File.SetLastWriteTimeUtc(newest, time);
+        Assert.EndsWith("-12.akr", newest);
+        Assert.Equal(newest, AkronOverlayThemes.FindLatestTheme(directory));
+    }
+
+    [Fact]
+    public void CleanupKeepsLegacyPropagationAndReportsUniqueFailure() {
+        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Packs/akron-archive.cs"));
+        string cleanup = source.Split("        } finally {")[1].Split("    public static string ReadSinglePayloadArchive")[0];
+        Assert.Contains("if (!preserveExisting)", cleanup);
+        Assert.Contains("if (File.Exists(temporaryPath)) File.Delete(temporaryPath);", cleanup);
+        Assert.Contains("Logger.Log(LogLevel.Warn", cleanup);
+    }
+
+    [Fact]
     public void ActualThemeExportUsesReturnedUniquePath() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-themes.cs"));
         string method = source.Split("public static string ExportCurrentTheme")[1].Split("public static bool ImportTheme")[0];
