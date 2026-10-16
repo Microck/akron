@@ -46,6 +46,14 @@ public sealed partial class AkronOverlay {
             return true;
         }
 
+        // Placement owns gameplay input, so Level.Update skips ordinary runtime features.
+        // Pan before converting the click to world coordinates without advancing gameplay.
+        if (!AkronImGuiRenderer.WantCaptureKeyboard && !AkronImGuiRenderer.WantTextInput &&
+            !AkronImGuiRenderer.WantCaptureMouse &&
+            Engine.Scene is Level placementLevel && AkronPolicy.CanUse(AkronFeatureKind.Freeze).Allowed) {
+            AkronRuntimeOptions.ApplyFreeCameraForStartPosPlacement(placementLevel);
+        }
+
         if (!leftPressed || Engine.Scene is not Level level || !AkronPolicy.CanUse(AkronFeatureKind.StartPosTools).Allowed) {
             return true;
         }
