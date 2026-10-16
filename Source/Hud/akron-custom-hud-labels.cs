@@ -411,7 +411,8 @@ public static partial class AkronCustomHudLabels {
         }
 
         if (settings.CustomHudLabelObstructionMode == AkronLabelObstructionMode.Move) {
-            position = layout.PositionForAnchor(AkronModuleSettings.NormalizeCustomLabelObstructedAnchor(settings.CustomHudLabelObstructedAnchor), size) +
+            // Reserve each relocated label in the destination stack, just like normal placement.
+            position = layout.NextObstructed(AkronModuleSettings.NormalizeCustomLabelObstructedAnchor(settings.CustomHudLabelObstructedAnchor), size) +
                        new Vector2(settings.CustomHudLabelObstructedOffsetX, settings.CustomHudLabelObstructedOffsetY);
             return;
         }
@@ -655,6 +656,7 @@ public static partial class AkronCustomHudLabels {
         private readonly float screenHeight;
         private readonly Dictionary<AkronHudAnchor, float> cursors = new Dictionary<AkronHudAnchor, float>();
         private readonly float topStartY;
+        private readonly Dictionary<AkronHudAnchor, float> occupiedBottoms = new Dictionary<AkronHudAnchor, float>();
 
         public LabelLayout(int padding, int gap, float screenWidth, float screenHeight, float occupiedTopLeftY) {
             this.padding = padding;
@@ -675,7 +677,22 @@ public static partial class AkronCustomHudLabels {
                 TopLeftY += advance;
             }
             cursors[anchor] = cursor + advance;
+            float bottom = position.Y + size.Y;
+            occupiedBottoms[anchor] = occupiedBottoms.TryGetValue(anchor, out float previousBottom) ? Math.Max(previousBottom, bottom) : bottom;
 
+            return position;
+        }
+
+        public Vector2 NextObstructed(AkronHudAnchor anchor, Vector2 size) {
+            bool occupied = occupiedBottoms.TryGetValue(anchor, out float previousBottom);
+            Vector2 position = Next(anchor, size);
+            if (occupied && (anchor == AkronHudAnchor.MiddleLeft || anchor == AkronHudAnchor.Center || anchor == AkronHudAnchor.MiddleRight)) {
+                // Each middle-anchored label normally centers its own height. For
+                // relocation, reserve the actual preceding bottom instead so labels
+                // of different heights also clear ordinary destination occupants.
+                position.Y = Math.Max(position.Y, previousBottom + gap);
+                occupiedBottoms[anchor] = position.Y + size.Y;
+            }
             return position;
         }
 
@@ -686,15 +703,15 @@ public static partial class AkronCustomHudLabels {
 
         private Vector2 PositionForAnchor(AkronHudAnchor anchor, Vector2 size, float cursor) {
             return anchor switch {
-                AkronHudAnchor.TopCenter => new Vector2(screenWidth / 2f - size.X / 2f, padding + cursor),
-                AkronHudAnchor.TopRight => new Vector2(screenWidth - padding - size.X, padding + cursor),
-                AkronHudAnchor.MiddleLeft => new Vector2(padding, screenHeight / 2f - size.Y / 2f + cursor),
-                AkronHudAnchor.Center => new Vector2(screenWidth / 2f - size.X / 2f, screenHeight / 2f - size.Y / 2f + cursor),
-                AkronHudAnchor.MiddleRight => new Vector2(screenWidth - padding - size.X, screenHeight / 2f - size.Y / 2f + cursor),
-                AkronHudAnchor.BottomLeft => new Vector2(padding, screenHeight - padding - size.Y - cursor),
-                AkronHudAnchor.BottomCenter => new Vector2(screenWidth / 2f - size.X / 2f, screenHeight - padding - size.Y - cursor),
-                AkronHudAnchor.BottomRight => new Vector2(screenWidth - padding - size.X, screenHeight - padding - size.Y - cursor),
-                _ => new Vector2(padding, topStartY + cursor)
+                AkronHudAnchor.TopCenter => new Vector2 { X = screenWidth / 2f - size.X / 2f, Y = padding + cursor },
+                AkronHudAnchor.TopRight => new Vector2 { X = screenWidth - padding - size.X, Y = padding + cursor },
+                AkronHudAnchor.MiddleLeft => new Vector2 { X = padding, Y = screenHeight / 2f - size.Y / 2f + cursor },
+                AkronHudAnchor.Center => new Vector2 { X = screenWidth / 2f - size.X / 2f, Y = screenHeight / 2f - size.Y / 2f + cursor },
+                AkronHudAnchor.MiddleRight => new Vector2 { X = screenWidth - padding - size.X, Y = screenHeight / 2f - size.Y / 2f + cursor },
+                AkronHudAnchor.BottomLeft => new Vector2 { X = padding, Y = screenHeight - padding - size.Y - cursor },
+                AkronHudAnchor.BottomCenter => new Vector2 { X = screenWidth / 2f - size.X / 2f, Y = screenHeight - padding - size.Y - cursor },
+                AkronHudAnchor.BottomRight => new Vector2 { X = screenWidth - padding - size.X, Y = screenHeight - padding - size.Y - cursor },
+                _ => new Vector2 { X = padding, Y = topStartY + cursor }
             };
         }
     }
