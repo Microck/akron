@@ -38,8 +38,13 @@ internal static partial class AkronScreenProjection {
     }
 
     public static Vector2 WorldToHud(Level level, Vector2 worldPosition) {
-        Vector2 gamePosition = level.Camera.CameraToScreen(worldPosition);
-        Vector2 zoomedGamePosition = ApplyLevelZoom(gamePosition, CurrentLevelZoom(level), CurrentLevelZoomFocus(level));
+        Vector2 zoomedGamePosition;
+        if (AkronModule.TryGetExtendedCursorProjection(level, out Vector2 cameraPosition, out float extendedZoom)) {
+            zoomedGamePosition = AkronCursorCameraRenderScope.Project(worldPosition, cameraPosition, extendedZoom);
+        } else {
+            Vector2 gamePosition = level.Camera.CameraToScreen(worldPosition);
+            zoomedGamePosition = ApplyLevelZoom(gamePosition, CurrentLevelZoom(level), CurrentLevelZoomFocus(level));
+        }
         float scale = CurrentViewportScale();
         Vector2 offset = CurrentViewportOffset();
         return CreateVector2(
@@ -52,6 +57,9 @@ internal static partial class AkronScreenProjection {
         // outside the vanilla 320x180 camera rectangle. Zoom-aware tools can
         // opt out of clamping the intermediate game coordinate so targeting
         // matches the wider rendered view.
+        if (AkronModule.TryGetExtendedCursorProjection(level, out Vector2 cameraPosition, out float extendedZoom)) {
+            return AkronCursorCameraRenderScope.Unproject(MouseScreenToGame(mouseScreenPosition, clampToViewport), cameraPosition, extendedZoom);
+        }
         Vector2 gamePosition = RemoveLevelZoom(level, MouseScreenToGame(mouseScreenPosition, clampToViewport));
         return ScreenGameToWorld(level, gamePosition);
     }
