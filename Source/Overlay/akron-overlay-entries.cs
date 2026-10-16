@@ -892,8 +892,8 @@ public sealed partial class AkronOverlay {
 
         if (AkronExtendedVariants.TrySetValue(option.Name, value, out string message)) {
             AkronExtendedVariants.RecordVariantCheatUseIfUserControlled(option.Name);
-            Engine.Scene?.Add(new AkronToast(message));
         }
+        if (!string.IsNullOrEmpty(message)) Engine.Scene?.Add(new AkronToast(message));
     }
 
     private static void SetExtendedVariantConfiguredValue(AkronExtendedVariantOption option, object value, bool? applyCurrent = null) {
@@ -903,8 +903,8 @@ public sealed partial class AkronOverlay {
 
         if (AkronExtendedVariants.TrySetConfiguredValue(option.Name, value, applyCurrent, out string message)) {
             AkronExtendedVariants.RecordVariantCheatUseIfUserControlled(option.Name);
-            Engine.Scene?.Add(new AkronToast(message));
         }
+        if (!string.IsNullOrEmpty(message)) Engine.Scene?.Add(new AkronToast(message));
     }
 
     private static void SetExtendedVariantConfiguredFromText(AkronExtendedVariantOption option, string value) {
@@ -925,9 +925,8 @@ public sealed partial class AkronOverlay {
             return;
         }
 
-        if (AkronExtendedVariants.TryResetConfigured(option.Name, out string message)) {
-            Engine.Scene?.Add(new AkronToast(message));
-        }
+        AkronExtendedVariants.TryResetConfigured(option.Name, out string message);
+        if (!string.IsNullOrEmpty(message)) Engine.Scene?.Add(new AkronToast(message));
     }
 
     private bool MatchesSearch(string tab, ActionEntry entry) {

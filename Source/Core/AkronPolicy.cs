@@ -330,7 +330,7 @@ public static class AkronPolicy
 
     internal static bool ShouldFlagExtendedVariantOption(AkronExtendedVariantOption option)
     {
-        return option != null && !option.IsDefault && !option.IsMapDefined;
+        return option != null && string.IsNullOrEmpty(option.UnavailableReason) && !option.IsDefault && !option.IsMapDefined;
     }
 
     private static AkronStatus Max(AkronStatus left, AkronStatus right)

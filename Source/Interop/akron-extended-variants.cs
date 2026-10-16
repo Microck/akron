@@ -19,6 +19,7 @@ public sealed class AkronExtendedVariantOption {
     public bool IsDefault { get; set; }
     public bool IsMapDefined { get; set; }
     public string ConfiguredValueText { get; set; } = string.Empty;
+    public string UnavailableReason { get; set; } = string.Empty;
 }
 
 public static class AkronExtendedVariants {
@@ -430,10 +431,10 @@ public static class AkronExtendedVariants {
     }
 
     public static bool TryToggleBoolean(string name, out string message) {
-        if (!CanChange(out message)) return false;
+        if (!CanChangeVariant(name, out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option?.CurrentValue is bool current) {
-            SetVariantValue(option.Name, !current);
+            if (!TryApplyVariantValue(option.Name, !current, out message)) return false;
             message = option.Label + ": " + (!current ? "on" : "off");
             return true;
         }
@@ -443,7 +444,7 @@ public static class AkronExtendedVariants {
     }
 
     public static bool TryToggleConfigured(string name, out string message) {
-        if (!CanChange(out message)) return false;
+        if (!CanChangeVariant(name, out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
             message = "Unknown variant: " + name;
@@ -455,8 +456,8 @@ public static class AkronExtendedVariants {
         }
 
         if (!option.IsDefault) {
+            if (!TryApplyVariantValue(option.Name, option.DefaultValue, out message)) return false;
             StoreConfiguredValue(option.Name, SerializeValue(option.CurrentValue));
-            SetVariantValue(option.Name, option.DefaultValue);
             message = option.Label + ": off | " + FormatValue(option.CurrentValue);
             return true;
         }
@@ -471,13 +472,13 @@ public static class AkronExtendedVariants {
             return false;
         }
 
-        SetVariantValue(option.Name, configured);
+        if (!TryApplyVariantValue(option.Name, configured, out message)) return false;
         message = option.Label + ": on | " + FormatValue(configured);
         return true;
     }
 
     public static bool TrySetFromText(string name, string rawValue, out string message) {
-        if (!CanChange(out message)) return false;
+        if (!CanChangeVariant(name, out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
             message = "Unknown variant: " + name;
@@ -485,7 +486,7 @@ public static class AkronExtendedVariants {
         }
 
         if (TryConvertText(option, rawValue, out object converted, out message)) {
-            SetVariantValue(option.Name, converted);
+            if (!TryApplyVariantValue(option.Name, converted, out message)) return false;
             message = option.Label + ": " + FormatValue(converted);
             return true;
         }
@@ -494,14 +495,14 @@ public static class AkronExtendedVariants {
     }
 
     public static bool TrySetValue(string name, object value, out string message) {
-        if (!CanChange(out message)) return false;
+        if (!CanChangeVariant(name, out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
             message = "Unknown variant: " + name;
             return false;
         }
 
-        SetVariantValue(option.Name, value);
+        if (!TryApplyVariantValue(option.Name, value, out message)) return false;
         message = option.Label + ": " + FormatValue(value);
         return true;
     }
@@ -511,18 +512,19 @@ public static class AkronExtendedVariants {
 
     // A numeric text gesture keeps its activation-time intent across intermediate defaults.
     public static bool TrySetConfiguredValue(string name, object value, bool? applyCurrent, out string message) {
-        if (!CanChange(out message)) return false;
+        if (!CanChangeVariant(name, out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
             message = "Unknown variant: " + name;
             return false;
         }
 
-        StoreConfiguredValue(option.Name, SerializeValue(value));
         if (applyCurrent ?? !option.IsDefault) {
-            SetVariantValue(option.Name, value);
+            if (!TryApplyVariantValue(option.Name, value, out message)) return false;
+            StoreConfiguredValue(option.Name, SerializeValue(value));
             message = FormatAppliedConfiguredValueMessage(option.Label, value, option.DefaultValue);
         } else {
+            StoreConfiguredValue(option.Name, SerializeValue(value));
             message = option.Label + ": configured | " + FormatValue(value);
         }
 
@@ -533,7 +535,7 @@ public static class AkronExtendedVariants {
         label + (ValuesMatch(value, defaultValue) ? ": off | " : ": on | ") + FormatValue(value);
 
     public static bool TrySetConfiguredFromText(string name, string rawValue, out string message) {
-        if (!CanChange(out message)) return false;
+        if (!CanChangeVariant(name, out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
             message = "Unknown variant: " + name;
@@ -544,11 +546,12 @@ public static class AkronExtendedVariants {
             return false;
         }
 
-        StoreConfiguredValue(option.Name, SerializeConfiguredText(converted, rawValue));
         if (!option.IsDefault) {
-            SetVariantValue(option.Name, converted);
+            if (!TryApplyVariantValue(option.Name, converted, out message)) return false;
+            StoreConfiguredValue(option.Name, SerializeConfiguredText(converted, rawValue));
             message = option.Label + ": on | " + FormatValue(converted);
         } else {
+            StoreConfiguredValue(option.Name, SerializeConfiguredText(converted, rawValue));
             message = option.Label + ": configured | " + FormatValue(converted);
         }
 
@@ -556,15 +559,15 @@ public static class AkronExtendedVariants {
     }
 
     public static bool TryResetConfigured(string name, out string message) {
-        if (!CanChange(out message)) return false;
+        if (!CanChangeVariant(name, out message)) return false;
         AkronExtendedVariantOption option = GetOption(name);
         if (option == null) {
             message = "Unknown variant: " + name;
             return false;
         }
 
+        if (!TryApplyVariantValue(option.Name, option.DefaultValue, out message)) return false;
         RemoveConfiguredValue(option.Name);
-        SetVariantValue(option.Name, option.DefaultValue);
         message = option.Label + ": reset";
         return true;
     }
@@ -581,9 +584,14 @@ public static class AkronExtendedVariants {
         if (option == null) {
             return string.Empty;
         }
+        if (!string.IsNullOrEmpty(option.UnavailableReason)) return option.UnavailableReason;
         if (suppressedState != null && optionMetadataByName != null &&
-            optionMetadataByName.TryGetValue(option.Name, out VariantMetadata metadata) && ownedVariants.Contains(metadata.Variant)) {
-            object saved = suppressedState.Variants.TryGetValue(metadata.Variant, out object value) ? value : option.DefaultValue;
+            optionMetadataByName.TryGetValue(option.Name, out VariantMetadata metadata) &&
+            (ownedVariants.Contains(metadata.Variant) || (AkronVanillaVariantRouting.AssistField(option.Name) is FieldInfo ownedAssist && ownedAssistFields.Contains(ownedAssist)))) {
+            FieldInfo assist = AkronVanillaVariantRouting.HasVanillaBase(GetHandler(metadata.Variant)?.GetType())
+                ? AkronVanillaVariantRouting.AssistField(option.Name) : null;
+            object saved = assist != null ? assist.GetValue(suppressedState.Assists)
+                : suppressedState.Variants.TryGetValue(metadata.Variant, out object value) ? value : option.DefaultValue;
             return saved is bool ? FormatValue(saved) :
                 (ValuesMatch(saved, option.DefaultValue) ? "Off" : "On") + " | " + FormatValue(saved);
         }
@@ -658,16 +666,45 @@ public static class AkronExtendedVariants {
         return value.ToString();
     }
 
-    private static void SetVariantValue(string name, object value) {
-        if (!AkronPolicy.CanUse(AkronFeatureKind.ExtendedVariantMode).Allowed || !Available) {
-            return;
-        }
+    private static bool CanChangeVariant(string name, out string message) {
+        if (!CanChange(out message)) return false;
+        AkronExtendedVariantOption option = GetOption(name);
+        if (option == null) { message = "Unknown or unavailable variant: " + name; return false; }
+        if (!string.IsNullOrEmpty(option.UnavailableReason)) { message = option.UnavailableReason; return false; }
+        return true;
+    }
 
-        ExternalState before = BeginExternalChange();
-        SetMasterSwitch(true);
+    private static bool TryResolveWriteRoute(object variant, out FieldInfo assist, out MethodInfo setter, out string error) {
+        assist = null; setter = setVariantValueMethod; error = string.Empty;
+        object handler = GetHandler(variant);
+        string name = variant.ToString();
+        bool vanilla = AkronVanillaVariantRouting.HasVanillaBase(handler?.GetType());
+        if (!vanilla && !AkronVanillaVariantRouting.IsKnownVanilla(name)) return setter != null;
+        return AkronVanillaVariantRouting.TryResolveAccess(handler?.GetType(),
+            moduleType.Assembly.GetType(AkronVanillaVariantRouting.BaseTypeName),
+            moduleType.Assembly.GetType("ExtendedVariants.UI.VanillaVariantOptions"), variantEnumType, name,
+            global::Celeste.SaveData.Instance != null, out assist, out setter, out error);
+    }
+
+    private static bool TryApplyVariantValue(string name, object value, out string message) {
+        if (!CanChange(out message) || !Available) return false;
         object variant = ParseVariant(name);
-        setVariantValueMethod?.Invoke(null, new[] { variant, value });
-        TrackExternalChange(before);
+        if (!TryResolveWriteRoute(variant, out FieldInfo assist, out MethodInfo setter, out message)) return false;
+        if (assist != null && (value == null || !assist.FieldType.IsInstanceOfType(value))) {
+            message = name + ": invalid vanilla assist value type."; return false;
+        }
+        ExternalState before = BeginExternalChange();
+        try {
+            SetMasterSwitch(true);
+            setter.Invoke(null, new[] { variant, value });
+            return true;
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Warn, nameof(AkronExtendedVariants), "Could not apply " + name + ": " + exception);
+            message = name + ": provider rejected the change.";
+            return false;
+        } finally {
+            TrackExternalChange(before);
+        }
     }
 
     private static bool TryConvertText(AkronExtendedVariantOption option, string rawValue, out object converted, out string message) {
@@ -873,16 +910,16 @@ public static class AkronExtendedVariants {
     }
 
     private static AkronExtendedVariantOption BuildOption(VariantMetadata metadata) {
-        object current = GetCurrentValue(metadata.Variant);
-        object mapDefined = GetCurrentMapDefinedValue(metadata.Variant, metadata.DefaultValue);
+        object current = ReadCurrentValue(metadata, out string unavailable, out bool mapApplied);
         return new AkronExtendedVariantOption {
             Name = metadata.Name,
             Label = metadata.Label,
             TypeName = metadata.TypeName,
             CurrentValue = current,
+            UnavailableReason = unavailable,
             DefaultValue = metadata.DefaultValue,
             IsDefault = ValuesMatch(current, metadata.DefaultValue),
-            IsMapDefined = !ValuesMatch(mapDefined, metadata.DefaultValue) && ValuesMatch(current, mapDefined),
+            IsMapDefined = mapApplied,
             ConfiguredValueText = GetConfiguredValueText(metadata.Name)
         };
     }
@@ -968,9 +1005,47 @@ public static class AkronExtendedVariants {
         return value.ToString();
     }
 
-    private static object GetCurrentValue(object variant) {
-        object triggerManager = GetTriggerManager();
-        return getCurrentVariantValueMethod?.Invoke(triggerManager, new[] { variant });
+    private static object ReadCurrentValue(VariantMetadata metadata, out string error, out bool mapApplied) {
+        error = string.Empty;
+        mapApplied = false;
+        try {
+            if (!TryResolveWriteRoute(metadata.Variant, out FieldInfo assist, out _, out error)) return null;
+            if (assist == null) {
+                object current = getCurrentVariantValueMethod?.Invoke(GetTriggerManager(), new[] { metadata.Variant });
+                object mapValue = GetCurrentMapDefinedValue(metadata.Variant, metadata.DefaultValue);
+                mapApplied = !ValuesMatch(mapValue, metadata.DefaultValue) && ValuesMatch(current, mapValue);
+                return current;
+            }
+            if (metadata.DefaultValue == null || !assist.FieldType.IsInstanceOfType(metadata.DefaultValue)) {
+                error = metadata.Name + ": vanilla assist type contract unavailable."; return null;
+            }
+            object player = assist.GetValue(global::Celeste.SaveData.Instance.Assists);
+            bool inLevel = Engine.Scene is Level;
+            Type vanillaType = moduleType.Assembly.GetType(AkronVanillaVariantRouting.BaseTypeName);
+            FieldInfo hooksField = vanillaType?.GetField("vanillaVariantsHooked", BindingFlags.Static | BindingFlags.NonPublic);
+            if (inLevel && hooksField?.FieldType != typeof(bool)) {
+                error = metadata.Name + ": vanilla hook state unavailable."; return null;
+            }
+            bool hooks = hooksField?.GetValue(null) is true;
+            object session = moduleType.GetProperty("Session", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+            bool overridden = false;
+            if (inLevel && hooks && session != null) {
+                if (session.GetType().GetField("VariantsOverridenByUser")?.GetValue(session) is not IEnumerable overrides) {
+                    error = metadata.Name + ": vanilla override state unavailable."; return null;
+                }
+                foreach (object entry in overrides) if (Equals(entry, metadata.Variant)) { overridden = true; break; }
+            }
+            if (inLevel && hooks && session != null && getCurrentMapDefinedVariantValueMethod == null) {
+                error = metadata.Name + ": map-defined vanilla value unavailable."; return null;
+            }
+            object map = inLevel && hooks && session != null
+                ? GetCurrentMapDefinedValue(metadata.Variant, metadata.DefaultValue) : metadata.DefaultValue;
+            mapApplied = AkronVanillaVariantRouting.IsMapApplied(map, metadata.DefaultValue, inLevel, hooks, session != null, overridden);
+            return mapApplied ? map : player;
+        } catch (Exception exception) {
+            error = metadata.Name + ": current value unavailable (" + exception.GetType().Name + ").";
+            return null;
+        }
     }
 
     private static object GetCurrentMapDefinedValue(object variant, object defaultValue) {
@@ -1126,7 +1201,22 @@ public static class AkronExtendedVariants {
     private static int GetChangedOptionCount() {
         object settings = GetSettings();
         object enabled = settings?.GetType().GetProperty("EnabledVariants", BindingFlags.Instance | BindingFlags.Public)?.GetValue(settings, null);
-        return enabled is IDictionary dictionary ? dictionary.Count : GetOptions().Count(option => !option.IsDefault);
+        if (enabled is not IDictionary dictionary) return GetOptions().Count(option => string.IsNullOrEmpty(option.UnavailableReason) && !option.IsDefault);
+        int count = 0;
+        foreach (object key in dictionary.Keys)
+            if (!AkronVanillaVariantRouting.HasVanillaBase(GetHandler(key)?.GetType()) && !AkronVanillaVariantRouting.IsKnownVanilla(key.ToString())) count++;
+        if (global::Celeste.SaveData.Instance != null && EnsureOptionMetadata()) {
+            foreach (VariantMetadata option in optionMetadata) {
+                if (!AkronVanillaVariantRouting.HasVanillaBase(GetHandler(option.Variant)?.GetType())) continue;
+                // Match per-entry availability, but count the persistent player preference,
+                // not a temporary map-applied value.
+                ReadCurrentValue(option, out string unavailable, out _);
+                if (!string.IsNullOrEmpty(unavailable)) continue;
+                FieldInfo field = AkronVanillaVariantRouting.AssistField(option.Name);
+                if (field != null && !ValuesMatch(field.GetValue(global::Celeste.SaveData.Instance.Assists), option.DefaultValue)) count++;
+            }
+        }
+        return count;
     }
 
     private static string FormatVariantLabel(string name) {

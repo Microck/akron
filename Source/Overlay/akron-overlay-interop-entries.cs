@@ -188,9 +188,8 @@ public sealed partial class AkronOverlay {
                             return;
                         }
 
-                        if (AkronExtendedVariants.TryToggleBoolean(option.Name, out string message)) {
-                            Engine.Scene?.Add(new AkronToast(message));
-                        }
+                        AkronExtendedVariants.TryToggleBoolean(option.Name, out string message);
+                        if (!string.IsNullOrEmpty(message)) Engine.Scene?.Add(new AkronToast(message));
                     },
                     BuildSearchTerms(label, new[] { "extended variant mode", option.Name, option.TypeName }),
                     true,

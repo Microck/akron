@@ -68,11 +68,11 @@ public sealed class ExtendedVariantNumericEditTests {
         int start = interop.IndexOf("public static bool TrySetConfiguredValue(string name, object value, bool?", StringComparison.Ordinal);
         int end = interop.IndexOf("public static bool TrySetConfiguredFromText", start, StringComparison.Ordinal);
         string body = interop.Substring(start, end - start);
-        Assert.Contains("if (!CanChange(out message)) return false;", body);
+        Assert.Contains("if (!CanChangeVariant(name, out message)) return false;", body);
         Assert.Contains("GetOption(name)", body);
         Assert.Contains("StoreConfiguredValue(option.Name, SerializeValue(value))", body);
         Assert.Contains("if (applyCurrent ?? !option.IsDefault)", body);
-        Assert.Contains("SetVariantValue(option.Name, value)", body);
+        Assert.Contains("if (!TryApplyVariantValue(option.Name, value, out message)) return false;", body);
     }
 
     [Theory]
