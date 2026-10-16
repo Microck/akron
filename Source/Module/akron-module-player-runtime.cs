@@ -116,7 +116,7 @@ public partial class AkronModule {
             respawnTimeElapsed[deadBody] = 0f;
         }
         if (deadBody != null || self.Dead) {
-            ResetAirJumpQuota();
+            ResetAirJumpQuota(self);
             if (registerDeathInStats) {
                 Session.DeathsSinceLevelLoad++;
                 Session.DeathsSinceRoomTransition++;
@@ -332,8 +332,7 @@ public partial class AkronModule {
                 ReferenceEquals(currentLevel.Tracker.GetEntity<Player>(), self)) {
                 ApplyJumpHackAfterPlayerUpdate(self, wasGrounded, nativeJumpConsumed);
             } else {
-                jumpHackAirJumpsUsed = 0;
-                jumpHackPlayer = null;
+                ResetAirJumpQuota(self);
             }
             ApplyAkronSpikeGroundRefill(self);
             ApplyGroundRefillRulesAfterPlayerUpdate(self, wasGrounded, dashesBefore, staminaBefore);
@@ -342,8 +341,7 @@ public partial class AkronModule {
             return;
         }
 
-        jumpHackAirJumpsUsed = 0;
-        jumpHackPlayer = null;
+        ResetAirJumpQuota(self);
         ApplyNoclip(self);
     }
 
@@ -482,25 +480,26 @@ public partial class AkronModule {
         }
     }
 
-    private static void ResetAirJumpQuota() {
-        jumpHackAirJumpsUsed = 0;
-        jumpHackPlayer = null;
+    private static void ResetAirJumpQuota(Player player) {
+        AkronAirJumpQuota quota = player?.Get<AkronAirJumpQuota>();
+        if (quota != null) quota.Used = 0;
     }
 
     private static void ApplyJumpHackAfterPlayerUpdate(Player player, bool wasGrounded, bool nativeJumpConsumed) {
         if (player == null || player.Dead || player.Scene is not Level ||
             !Settings.JumpHack || !AkronPolicy.CanUse(AkronFeatureKind.MovementStatMutation).Allowed) {
-            ResetAirJumpQuota();
+            ResetAirJumpQuota(player);
             return;
         }
 
-        if (jumpHackPlayer == null || !jumpHackPlayer.TryGetTarget(out Player owner) || !ReferenceEquals(owner, player)) {
-            jumpHackAirJumpsUsed = 0;
-            jumpHackPlayer = new WeakReference<Player>(player);
+        AkronAirJumpQuota quota = player.Get<AkronAirJumpQuota>();
+        if (quota == null) {
+            quota = new AkronAirJumpQuota();
+            player.Add(quota);
         }
 
         bool grounded = player.OnGround();
-        if (wasGrounded || grounded) jumpHackAirJumpsUsed = 0;
+        if (wasGrounded || grounded) quota.Used = 0;
         if (grounded) return;
 
         if (ShouldPreserveVanillaJumpForAirJump(GetPlayerJumpGraceTimer(player), nativeJumpConsumed) ||
@@ -518,7 +517,7 @@ public partial class AkronModule {
         }
 
         if (!Settings.JumpHackInfinite &&
-            jumpHackAirJumpsUsed >= AkronModuleSettings.ClampJumpHackExtraJumps(Settings.JumpHackExtraJumps)) {
+            quota.Used >= AkronModuleSettings.ClampJumpHackExtraJumps(Settings.JumpHackExtraJumps)) {
             return;
         }
 
@@ -536,7 +535,7 @@ public partial class AkronModule {
             } else {
                 player.Jump();
             }
-            jumpHackAirJumpsUsed++;
+            quota.Used++;
         } finally {
             airJumpUpdateContext = previousContext;
         }

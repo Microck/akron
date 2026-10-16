@@ -23,3 +23,9 @@ Release and Debug each pass 2,501 tests against native Everest references. Predi
 ## SRT review correction
 
 The first review found that a static Player field was eligible for Speedrun Tool module Entity-field cloning. Identity now uses WeakReference<Player>, created only while the feature is effective, and inactive/dead state clears it. A reflection regression test verifies the field cannot be selected as an Entity static. Revised Release and Debug each pass 2,502 tests. Revised Release archive:442f8fca0e6e97b5baffb88d0571c348deaada34b32645e11cd6d09661a1c9d4. Native SRT round-trip and finite-jump retest are pending on this revision; QA144 remains evidence for the preceding build.
+
+## Airborne SRT restore correction
+
+The next review identified that replacing the weak owner after an airborne SRT load reset a spent quota. QA146 reproduced this using real TAS/SRT controls: save at paused frame66 after the one extra jump was spent, continue through third press69 to frame70, restore the same snapshot and repeat. Before restore, frame70 SpeedY was -30 atY132.75; after restore it was -90 atY131.75, demonstrating an incorrectly renewed jump. SRT logs confirm the matching save/load slot and snapshot. The script contains only inputs and a breakpoint; the UI/hotkeys perform the genuine save/load.
+
+Quota now lives in an inactive, invisible per-player AkronAirJumpQuota component. It is cloned with the player by SRT, with no static Entity owner or weak-identity reset. Ground/death/off/noclip cleanup targets the affected player. No Added/Awake callback resets cloned state. Release/Debug each pass 2,502 tests. New package:c3037f188999651a1879137260a878c981a01987c825d9e768f34304b32d8e1f. Identical native restore acceptance is next; earlier QA144/146 evidence retains its original package scope.

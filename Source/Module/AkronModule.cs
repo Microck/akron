@@ -84,9 +84,6 @@ public partial class AkronModule : EverestModule {
     private static bool captureSuppressionHooksInstalled;
     private static int fastLookoutPatchedMovementReadCount;
     private static bool startPosPlacementLastLeftDown;
-    private static int jumpHackAirJumpsUsed;
-    // SRT snapshots static Entity fields on EverestModule; identity is not savestate data.
-    private static WeakReference<Player> jumpHackPlayer;
     private static readonly Dictionary<PlayerDeadBody, float> respawnTimeElapsed = new Dictionary<PlayerDeadBody, float>();
     private static readonly HashSet<PlayerDeadBody> noDeathEffectBodies = new HashSet<PlayerDeadBody>();
     private static bool renderCoreDiagnosticLogged;
@@ -323,7 +320,7 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Unload() {
-        ResetAirJumpQuota();
+        ResetAirJumpQuota((Engine.Scene as Level)?.Tracker.GetEntity<Player>());
         airJumpUpdateContext = default;
         if (!EnabledThisSession) {
             On.Monocle.Commands.ProcessMethod -= SkipAkronCommandsWhileDisabled;
