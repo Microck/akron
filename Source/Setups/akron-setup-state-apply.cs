@@ -68,9 +68,6 @@ public partial class AkronModuleSettings {
         RoomLabels = resolved.RoomLabels;
         LabelSystemVisible = resolved.LabelSystemVisible;
         RoomLabelColor = ClampRgb(resolved.RoomLabelColor);
-        StaminaWidget = resolved.StaminaWidget;
-        SpeedWidget = resolved.SpeedWidget;
-        DashWidget = resolved.DashWidget;
         InputViewer = resolved.InputViewer;
         InputHistoryTextColor = ClampRgb(resolved.InputHistoryTextColor);
         InputHistoryEventColor = ClampRgb(resolved.InputHistoryEventColor);

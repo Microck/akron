@@ -7,9 +7,6 @@ public static class AkronFeatureRegistry
 {
     private static readonly Dictionary<AkronFeatureKind, FeatureDefinition> Definitions = new Dictionary<AkronFeatureKind, FeatureDefinition> {
         { AkronFeatureKind.RoomLabelOverlay, new FeatureDefinition(AkronFeatureKind.RoomLabelOverlay, AkronStatus.RegularClean, "Room labels", "Passive room information only.") },
-        { AkronFeatureKind.StaminaWidget, new FeatureDefinition(AkronFeatureKind.StaminaWidget, AkronStatus.Cheat, "Stamina widget", "Displays already-current player state.") },
-        { AkronFeatureKind.SpeedWidget, new FeatureDefinition(AkronFeatureKind.SpeedWidget, AkronStatus.Cheat, "Speed widget", "Displays already-current player state.") },
-        { AkronFeatureKind.DashWidget, new FeatureDefinition(AkronFeatureKind.DashWidget, AkronStatus.Cheat, "Dash widget", "Displays already-current player state.") },
         { AkronFeatureKind.InputViewer, new FeatureDefinition(AkronFeatureKind.InputViewer, AkronStatus.GoldberryHardlistClean, "Input viewer", "Displays local inputs without changing gameplay.") },
         { AkronFeatureKind.InputHistory, new FeatureDefinition(AkronFeatureKind.InputHistory, AkronStatus.GoldberryHardlistClean, "Input history", "Displays recent local input state without changing gameplay.") },
         { AkronFeatureKind.ResourceBars, new FeatureDefinition(AkronFeatureKind.ResourceBars, AkronStatus.Cheat, "Resource bars", "Displays already-current player stamina and dash resources.") },

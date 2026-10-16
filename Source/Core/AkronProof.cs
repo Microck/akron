@@ -64,9 +64,6 @@ public static class AkronProof {
         builder.AppendLine("  },");
         builder.AppendLine("  \"activeFeatures\": {");
         AppendJson(builder, "roomLabels", Effective(settings.RoomLabels, AkronFeatureKind.RoomLabelOverlay).ToString().ToLowerInvariant(), true, true);
-        AppendJson(builder, "staminaWidget", Effective(settings.StaminaWidget, AkronFeatureKind.StaminaWidget).ToString().ToLowerInvariant(), true, true);
-        AppendJson(builder, "speedWidget", Effective(settings.SpeedWidget, AkronFeatureKind.SpeedWidget).ToString().ToLowerInvariant(), true, true);
-        AppendJson(builder, "dashWidget", Effective(settings.DashWidget, AkronFeatureKind.DashWidget).ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "inputViewer", Effective(settings.InputViewer, AkronFeatureKind.InputViewer).ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "roomTimerWidget", Effective(settings.RoomTimerWidget, AkronFeatureKind.RoomTimer).ToString().ToLowerInvariant(), true, true);
         AppendJson(builder, "deathStatsWidget", Effective(settings.DeathStatsWidget, AkronFeatureKind.DeathStats).ToString().ToLowerInvariant(), true, true);
@@ -199,9 +196,6 @@ public static class AkronProof {
         if (Effective(settings.GoldenTransparency, AkronFeatureKind.GoldenTransparency)) yield return "GoldenTransparency";
         if (Effective(settings.LagPauser, AkronFeatureKind.LagPauser)) yield return "LagPauser";
         if (session.UsedJournalSnapshotCompare) yield return "JournalSnapshotCompare";
-        if (Effective(settings.StaminaWidget, AkronFeatureKind.StaminaWidget)) yield return "StaminaWidget";
-        if (Effective(settings.SpeedWidget, AkronFeatureKind.SpeedWidget)) yield return "SpeedWidget";
-        if (Effective(settings.DashWidget, AkronFeatureKind.DashWidget)) yield return "DashWidget";
         if (Effective(settings.InputViewer, AkronFeatureKind.InputViewer)) yield return "InputViewer";
         if (Effective(settings.RoomTimerWidget, AkronFeatureKind.RoomTimer)) yield return "RoomTimerWidget";
         if (Effective(settings.DeathStatsWidget, AkronFeatureKind.DeathStats)) yield return "DeathStatsWidget";

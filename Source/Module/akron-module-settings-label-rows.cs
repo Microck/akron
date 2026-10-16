@@ -25,9 +25,6 @@ public partial class AkronModuleSettings {
         "Room Stat Tracker",
         "Attempts",
         "No Short Numbers",
-        "Stamina Widget",
-        "Speed Widget",
-        "Dash Widget"
     };
 
     public static ButtonBinding CreateDefaultOverlayToggleBinding() {
@@ -143,7 +140,17 @@ public partial class AkronModuleSettings {
 
         EnsureCurrentOverlayToggleDefault(settings);
         EnsureCurrentButtonBindingDefaults(settings);
-        settings.MenuActionBindings ??= new Dictionary<string, string>();
+        settings.MenuActionBindings = RemoveRetiredWidgetBindings(settings.MenuActionBindings);
+        settings.LabelRowOrder = NormalizeLabelRowOrder(settings.LabelRowOrder, settings.CustomHudLabelDefinitions);
+    }
+
+    public static Dictionary<string, string> RemoveRetiredWidgetBindings(IDictionary<string, string> bindings) {
+        Dictionary<string, string> result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, string> pair in bindings ?? new Dictionary<string, string>()) {
+            if (pair.Key is "Labels/Stamina Widget" or "Labels/Speed Widget" or "Labels/Dash Widget") continue;
+            result.Add(pair.Key, pair.Value);
+        }
+        return result;
     }
 
     private static void EnsureCurrentButtonBindingDefaults(AkronModuleSettings settings) {
