@@ -487,11 +487,27 @@ public static partial class AkronInternalRecorder {
             }
         }
 
-        foreach (FileInfo file in Directory.EnumerateFiles(replayDirectory, "segment-*.mkv").Select(path => new FileInfo(path))) {
-            if (file.LastWriteTimeUtc < keepAfter) {
-                TryDeleteFile(file.FullName);
-            }
+        foreach (FileInfo file in SelectReplaySegmentsToPrune(
+            Directory.EnumerateFiles(replayDirectory, "segment-*.mkv").Select(path => new FileInfo(path)), keepAfter)) {
+            TryDeleteFile(file.FullName);
         }
+    }
+
+    internal static FileInfo[] SelectReplaySegmentsToPrune(IEnumerable<FileInfo> files, DateTime keepAfter) {
+        var segments = files.Select(file => {
+            string stem = Path.GetFileNameWithoutExtension(file.Name);
+            long index = stem.StartsWith("segment-", StringComparison.Ordinal) &&
+                long.TryParse(stem.Substring("segment-".Length), NumberStyles.None, CultureInfo.InvariantCulture, out long parsed)
+                ? parsed : -1;
+            return (File: file, Index: index);
+        }).Where(segment => segment.Index >= 0).ToArray();
+        if (segments.Length == 0) return Array.Empty<FileInfo>();
+
+        // The segment muxer writes increasing sequence numbers. Its newest file may
+        // still be open with buffered data and an old mtime: never unlink that file.
+        long activeIndex = segments.Max(segment => segment.Index);
+        return segments.Where(segment => segment.Index < activeIndex && segment.File.LastWriteTimeUtc < keepAfter)
+            .Select(segment => segment.File).ToArray();
     }
 
     private static void PruneOldReplayDirectories(string folder) {
