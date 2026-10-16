@@ -85,6 +85,7 @@ public partial class AkronModule : EverestModule {
     private static int fastLookoutPatchedMovementReadCount;
     private static bool startPosPlacementLastLeftDown;
     private static int jumpHackAirJumpsUsed;
+    private static Player jumpHackPlayer;
     private static readonly Dictionary<PlayerDeadBody, float> respawnTimeElapsed = new Dictionary<PlayerDeadBody, float>();
     private static readonly HashSet<PlayerDeadBody> noDeathEffectBodies = new HashSet<PlayerDeadBody>();
     private static bool renderCoreDiagnosticLogged;
@@ -227,6 +228,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Player.DashBegin += PlayerOnDashBegin;
         On.Celeste.Player.Render += PlayerOnRender;
         On.Celeste.Player.Update += PlayerOnUpdate;
+        On.Monocle.VirtualButton.ConsumeBuffer += VirtualButtonOnConsumeBufferForAirJumps;
         On.Celeste.Player.Jump += PlayerOnJump;
         On.Celeste.Player.SuperJump += PlayerOnSuperJump;
         On.Celeste.Player.UpdateHair += PlayerOnUpdateHair;
@@ -320,6 +322,8 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Unload() {
+        ResetAirJumpQuota();
+        airJumpUpdateContext = default;
         if (!EnabledThisSession) {
             On.Monocle.Commands.ProcessMethod -= SkipAkronCommandsWhileDisabled;
             return;
@@ -400,6 +404,7 @@ public partial class AkronModule : EverestModule {
         On.Celeste.Player.DashBegin -= PlayerOnDashBegin;
         On.Celeste.Player.Render -= PlayerOnRender;
         On.Celeste.Player.Update -= PlayerOnUpdate;
+        On.Monocle.VirtualButton.ConsumeBuffer -= VirtualButtonOnConsumeBufferForAirJumps;
         On.Celeste.Player.Jump -= PlayerOnJump;
         On.Celeste.Player.SuperJump -= PlayerOnSuperJump;
         On.Celeste.Player.UpdateHair -= PlayerOnUpdateHair;
@@ -651,7 +656,6 @@ public partial class AkronModule : EverestModule {
             autoKillSessionBeforeUpdate, autoKillRoomBeforeUpdate, startPosFrameGeneration, nativeAttemptSuspendedBeforeUpdate);
         RememberNativeFreezeFrameForLagPauser();
         AkronRuntimeOptions.ApplyScreenshakeAfterLevelUpdate(self);
-        ApplyJumpHackAfterPlayerUpdate(self);
         ClearLastDeathHitboxAfterRespawn(self);
         AkronPracticeStats.OnLevelUpdate(self, nativeAttemptSuspendedBeforeUpdate);
         UpdateProofRecorderGuard(self);
