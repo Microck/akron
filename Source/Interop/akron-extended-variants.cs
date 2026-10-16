@@ -519,6 +519,8 @@ public static class AkronExtendedVariants {
             return false;
         }
 
+        if (!TryValidateGameplayValue(option.Name, value, out message)) return false;
+
         if (applyCurrent ?? !option.IsDefault) {
             if (!TryApplyVariantValue(option.Name, value, out message)) return false;
             StoreConfiguredValue(option.Name, SerializeValue(value));
@@ -696,7 +698,27 @@ public static class AkronExtendedVariants {
             global::Celeste.SaveData.Instance != null, out assist, out setter, out error);
     }
 
+    internal static int GetIntegerMinimum(string name) =>
+        string.Equals(name, "BadelineBossNodeCount", StringComparison.OrdinalIgnoreCase) ? 1 : -100000;
+
+    // Match the pinned EVM option's advertised 1..5 node scale.
+    internal static int GetIntegerMaximum(string name) =>
+        string.Equals(name, "BadelineBossNodeCount", StringComparison.OrdinalIgnoreCase) ? 5 : 100000;
+
+    // EVM allocates the boss node array and immediately indexes its last element.
+    // Reject unsafe values before storage or enabling/invoking the external provider.
+    internal static bool TryValidateGameplayValue(string name, object value, out string message) {
+        message = string.Empty;
+        if (string.Equals(name, "BadelineBossNodeCount", StringComparison.OrdinalIgnoreCase) &&
+            (value is not int count || count < 1 || count > 5)) {
+            message = "Badeline Boss Node Count must be an integer from 1 to 5.";
+            return false;
+        }
+        return true;
+    }
+
     private static bool TryApplyVariantValue(string name, object value, out string message) {
+        if (!TryValidateGameplayValue(name, value, out message)) return false;
         if (!CanChange(out message) || !Available) return false;
         object variant = ParseVariant(name);
         if (!TryResolveWriteRoute(variant, out FieldInfo assist, out MethodInfo setter, out message)) return false;
@@ -735,7 +757,7 @@ public static class AkronExtendedVariants {
         if (option.CurrentValue is int) {
             if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int integer)) {
                 converted = integer;
-                return true;
+                return TryValidateGameplayValue(option.Name, converted, out message);
             }
 
             message = "Use an integer for " + option.Label;
