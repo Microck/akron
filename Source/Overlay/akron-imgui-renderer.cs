@@ -34,6 +34,9 @@ internal sealed class AkronImGuiRenderer : IDisposable {
     private static IntPtr nativeLibraryHandle;
     private static bool inputSessionRequested;
     private static uint inputSessionRevision;
+    private static readonly AkronMouseButtonReleaseGate rightMouseReleaseGate = new();
+
+    internal static void SuppressRightMouseUntilRelease() => rightMouseReleaseGate.SuppressUntilRelease();
 
     private readonly GraphicsDevice graphicsDevice;
     private readonly IntPtr context;
@@ -404,7 +407,9 @@ internal sealed class AkronImGuiRenderer : IDisposable {
         MouseState mouse = Mouse.GetState();
         io.AddMousePosEvent(mouse.X, mouse.Y);
         io.AddMouseButtonEvent(0, acceptsInput && mouse.LeftButton == ButtonState.Pressed);
-        io.AddMouseButtonEvent(1, acceptsInput && mouse.RightButton == ButtonState.Pressed);
+        // A transient editor may have consumed this press before restoring the main overlay.
+        bool rightDown = rightMouseReleaseGate.Filter(mouse.RightButton == ButtonState.Pressed);
+        io.AddMouseButtonEvent(1, acceptsInput && rightDown);
         io.AddMouseButtonEvent(2, acceptsInput && mouse.MiddleButton == ButtonState.Pressed);
         io.AddMouseButtonEvent(3, acceptsInput && mouse.XButton1 == ButtonState.Pressed);
         io.AddMouseButtonEvent(4, acceptsInput && mouse.XButton2 == ButtonState.Pressed);
