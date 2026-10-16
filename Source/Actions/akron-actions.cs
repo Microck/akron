@@ -903,30 +903,46 @@ public static partial class AkronActions {
     }
 
     internal static string WriteUniqueJournalSnapshot(string directory, string summary, DateTime timestampUtc) {
-        string timestamp = timestampUtc.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-        string stem = "akron-journal-" + timestamp;
-        int highestSuffix = Directory.EnumerateFiles(directory, stem + "*.json")
-            .Select(JournalSnapshotOrder)
-            .Where(order => order.Timestamp == timestamp)
-            .Select(order => order.Suffix)
-            .DefaultIfEmpty(-1)
-            .Max();
-        // Do not reuse holes: suffix order must remain chronological when mtimes tie.
-        for (int suffix = checked(highestSuffix + 1); ; suffix = checked(suffix + 1)) {
-            string name = stem + (suffix == 0 ? string.Empty : "-" + suffix.ToString(CultureInfo.InvariantCulture)) + ".json";
-            string path = Path.Combine(directory, name);
-            FileStream stream;
-            try {
-                // Reserve atomically: an existing snapshot must never be truncated.
-                stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-            } catch (IOException) when (File.Exists(path)) {
-                continue;
+        return WriteUniqueJournalSnapshot(directory, writer => writer.Write(summary), timestampUtc);
+    }
+
+    internal static string WriteUniqueJournalSnapshot(string directory, Action<TextWriter> write, DateTime timestampUtc) {
+        string temporary = Path.Combine(directory, ".akron-journal-" + Guid.NewGuid().ToString("N") + ".tmp");
+        bool ownsTemporary = false;
+        try {
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
+                ownsTemporary = true;
+                using (var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false), 1024, leaveOpen: true)) {
+                    write(writer);
+                }
+                stream.Flush(flushToDisk: true);
             }
-            using (stream)
-            using (var writer = new StreamWriter(stream)) {
-                writer.Write(summary);
+
+            string timestamp = timestampUtc.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+            string stem = "akron-journal-" + timestamp;
+            int highestSuffix = Directory.EnumerateFiles(directory, stem + "*.json")
+                .Select(JournalSnapshotOrder)
+                .Where(order => order.Timestamp == timestamp)
+                .Select(order => order.Suffix)
+                .DefaultIfEmpty(-1)
+                .Max();
+            // Do not reuse holes: suffix order must remain chronological when mtimes tie.
+            for (int suffix = checked(highestSuffix + 1); ; suffix = checked(suffix + 1)) {
+                string name = stem + (suffix == 0 ? string.Empty : "-" + suffix.ToString(CultureInfo.InvariantCulture)) + ".json";
+                string path = Path.Combine(directory, name);
+                try {
+                    // Same-directory publication is atomic and never overwrites an existing snapshot.
+                    File.Move(temporary, path, overwrite: false);
+                    return path;
+                } catch (IOException) when (File.Exists(path)) {
+                    continue;
+                }
             }
-            return path;
+        } finally {
+            if (ownsTemporary) {
+                // A failed write must not enter the snapshot catalog or hide its original error.
+                try { File.Delete(temporary); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
         }
     }
 

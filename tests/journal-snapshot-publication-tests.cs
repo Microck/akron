@@ -59,6 +59,35 @@ public sealed class JournalSnapshotPublicationTests : IDisposable {
     }
 
     [Fact]
+    public void FailedPartialWriteNeverEntersCatalogAndCleansTemporary() {
+        string previous = AkronActions.WriteUniqueJournalSnapshot(directory, "previous", timestamp);
+        var failure = new IOException("simulated write failure");
+        IOException observed = Assert.Throws<IOException>(() => AkronActions.WriteUniqueJournalSnapshot(directory, writer => {
+            writer.Write("partial");
+            writer.Flush();
+            Assert.Equal(previous, AkronActions.FindLatestJournalSnapshot(directory));
+            Assert.Single(Directory.GetFiles(directory, "akron-journal-*.json"));
+            throw failure;
+        }, timestamp));
+        Assert.Same(failure, observed);
+        Assert.Single(Directory.GetFiles(directory));
+        Assert.Equal("previous", File.ReadAllText(previous));
+    }
+
+    [Fact]
+    public void SnapshotIsInvisibleUntilWriterCompletes() {
+        string path = AkronActions.WriteUniqueJournalSnapshot(directory, writer => {
+            writer.Write("complete");
+            writer.Flush();
+            Assert.Null(AkronActions.FindLatestJournalSnapshot(directory));
+            Assert.Empty(Directory.GetFiles(directory, "akron-journal-*.json"));
+        }, timestamp);
+        Assert.Equal(path, AkronActions.FindLatestJournalSnapshot(directory));
+        Assert.Equal("complete", File.ReadAllText(path));
+        Assert.Single(Directory.GetFiles(directory));
+    }
+
+    [Fact]
     public void SummaryRemainsUtf8() {
         string summary = "{\"room\":\"雪 montaña\"}";
         string path = AkronActions.WriteUniqueJournalSnapshot(directory, summary, timestamp);
