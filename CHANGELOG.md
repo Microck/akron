@@ -1,5 +1,7 @@
 # Changelog
 
+- Display the assigned input, rather than the feature value, in row binding context menus.
+
 - Honor VP9 Lossless rate control for manual recordings, replay capture and replay exports.
 
 - Trim replay clips to their requested timed window instead of saving whole extra segments; preserve replay timing through missed samples and export clips in the background.
