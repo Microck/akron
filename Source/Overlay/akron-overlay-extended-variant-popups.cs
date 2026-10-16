@@ -164,8 +164,10 @@ public sealed partial class AkronOverlay {
             return;
         }
 
-        if (option.CurrentValue is string currentString) {
-            string value = currentString;
+        if (option.CurrentValue is string) {
+            // Off variants keep their configured text separately from the provider's current value.
+            // Feed InputText the same model its setter updates to avoid a changed callback every frame.
+            string value = AkronExtendedVariants.GetStringEditorValue(option, AkronModule.Settings.ExtendedVariantConfiguredValues);
             if (DrawPopupInputText("Value", ref value, 96, popupId, 160f)) {
                 SetExtendedVariantConfiguredValue(option, value);
                 MarkValueEditFreeze();
