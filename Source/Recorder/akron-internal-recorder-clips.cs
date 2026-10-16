@@ -12,16 +12,7 @@ public static partial class AkronInternalRecorder {
     private const string ClipSidecarExtension = ".akrclip";
 
     public static IEnumerable<AkronRecordingClipInfo> ListClips(AkronModuleSettings settings) {
-        string folder = ResolveOutputFolder(settings);
-        if (!Directory.Exists(folder)) {
-            return Enumerable.Empty<AkronRecordingClipInfo>();
-        }
-
-        IEnumerable<string> clips = Directory.EnumerateFiles(folder)
-            .Where(path => IsRecordingFile(path))
-            .Where(path => !path.Contains(Path.DirectorySeparatorChar + ".replay-", StringComparison.Ordinal));
-
-        IEnumerable<AkronRecordingClipInfo> infos = ApplyClipFilter(clips.Select(ReadClipInfo), settings.RecordingClipBrowserFilter);
+        IEnumerable<AkronRecordingClipInfo> infos = ApplyClipFilter(EnumerateClipCatalog(settings), settings.RecordingClipBrowserFilter);
         return settings.RecordingClipBrowserSort switch {
             AkronRecordingClipSort.Chapter => infos.OrderBy(info => info.Chapter).ThenByDescending(info => info.CreatedUtc),
             AkronRecordingClipSort.Room => infos.OrderBy(info => info.Room).ThenByDescending(info => info.CreatedUtc),
@@ -30,6 +21,17 @@ public static partial class AkronInternalRecorder {
             AkronRecordingClipSort.Favorite => infos.OrderByDescending(info => info.Favorite).ThenByDescending(info => info.CreatedUtc),
             _ => infos.OrderByDescending(info => info.CreatedUtc)
         };
+    }
+
+    private static IEnumerable<AkronRecordingClipInfo> EnumerateClipCatalog(AkronModuleSettings settings) {
+        string folder = ResolveOutputFolder(settings);
+        if (!Directory.Exists(folder)) {
+            return Enumerable.Empty<AkronRecordingClipInfo>();
+        }
+        return Directory.EnumerateFiles(folder)
+            .Where(IsRecordingFile)
+            .Where(path => !path.Contains(Path.DirectorySeparatorChar + ".replay-", StringComparison.Ordinal))
+            .Select(ReadClipInfo);
     }
 
     private static IEnumerable<AkronRecordingClipInfo> ApplyClipFilter(IEnumerable<AkronRecordingClipInfo> clips, AkronRecordingClipFilter filter) {
@@ -74,7 +76,7 @@ public static partial class AkronInternalRecorder {
     }
 
     private static IEnumerable<AkronRecordingClipInfo> SelectCompletionClips(AkronModuleSettings settings, string chapter) {
-        return ListClips(settings)
+        return EnumerateClipCatalog(settings)
             .Where(clip => string.IsNullOrWhiteSpace(chapter) || string.Equals(clip.Chapter, chapter, StringComparison.OrdinalIgnoreCase))
             .Where(IsCompletionClip)
             .OrderBy(clip => clip.StartUtc == DateTime.MinValue ? clip.CreatedUtc : clip.StartUtc)
