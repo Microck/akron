@@ -97,7 +97,8 @@ public static class AkronInputHistory {
         bool currentTalk = Input.Talk.Check;
         bool currentConfirm = Input.MenuConfirm.Check;
         bool currentCancel = Input.MenuCancel.Check;
-        bool currentPause = Input.Pause.Check;
+        // Escape and the configured pause binding are two sources for one menu action.
+        bool currentPause = Input.Pause.Check || Input.ESC.Check;
         int pressedThisFrame = 0;
 
         if (settings.InputsPerSecondCountMovement) {
