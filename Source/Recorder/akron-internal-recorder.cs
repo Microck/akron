@@ -96,6 +96,14 @@ public static partial class AkronInternalRecorder {
             Directory.CreateDirectory(outputDirectory);
         }
 
+        try {
+            outputPath = AkronEncoderCompletion.ReserveOutputPath(outputPath);
+        } catch (Exception ex) {
+            lastError = ex.Message;
+            Engine.Scene?.Add(new AkronToast(AkronEncoderCompletion.FailureToast(lastError)));
+            return;
+        }
+
         ProcessStartInfo startInfo = new ProcessStartInfo {
             FileName = ResolveFfmpegPath(),
             Arguments = BuildFfmpegArguments(settings, spec, outputPath),

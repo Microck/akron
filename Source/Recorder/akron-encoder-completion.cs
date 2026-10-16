@@ -38,6 +38,24 @@ internal static class AkronEncoderCompletion {
         return string.IsNullOrEmpty(detail) ? "Recording failed." : "Recording failed: " + detail;
     }
 
+    // Reserve a fresh destination atomically, protecting existing video and sidecar paths.
+    // FFmpeg may overwrite only the empty file owned by this recording attempt.
+    internal static string ReserveOutputPath(string requestedPath) {
+        string directory = Path.GetDirectoryName(requestedPath) ?? string.Empty;
+        string stem = Path.GetFileNameWithoutExtension(requestedPath);
+        string extension = Path.GetExtension(requestedPath);
+        for (int suffix = 0; ; suffix++) {
+            string candidate = suffix == 0 ? requestedPath : Path.Combine(directory, stem + "-" + suffix + extension);
+            if (File.Exists(candidate + ".akrclip")) continue;
+            try {
+                using FileStream reservation = new FileStream(candidate, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+                return candidate;
+            } catch (IOException) when (File.Exists(candidate)) {
+                // An earlier recording or concurrent reservation owns this name.
+            }
+        }
+    }
+
     internal static bool HasNonemptyOutput(string path) => File.Exists(path) && new FileInfo(path).Length > 0;
 
     // Separate cleanup operations so one broken pipe cannot skip process termination.

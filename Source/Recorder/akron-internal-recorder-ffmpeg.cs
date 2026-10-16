@@ -154,6 +154,7 @@ public static partial class AkronInternalRecorder {
         error = string.Empty;
 
         try {
+            outputPath = AkronEncoderCompletion.ReserveOutputPath(outputPath);
             ProcessStartInfo startInfo = new ProcessStartInfo {
                 FileName = ResolveFfmpegPath(),
                 Arguments = JoinArguments(new[] {
@@ -272,6 +273,7 @@ public static partial class AkronInternalRecorder {
         }
 
         try {
+            outputPath = AkronEncoderCompletion.ReserveOutputPath(outputPath);
             ProcessStartInfo startInfo = new ProcessStartInfo {
                 FileName = ResolveFfmpegPath(),
                 Arguments = BuildAudioMuxArguments(videoPath, tracks, outputPath),

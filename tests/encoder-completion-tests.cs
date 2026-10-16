@@ -114,6 +114,38 @@ public sealed class EncoderCompletionTests {
         Assert.Equal("Recording failed.", AkronEncoderCompletion.FailureToast(null!));
     }
 
+    [Fact]
+    public void FreshReservationsNeverOverwriteExistingVideoOrOrphanedSidecar() {
+        string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        Directory.CreateDirectory(directory);
+        try {
+            string requested = Path.Combine(directory, "clip.mkv");
+            File.WriteAllText(requested, "previous successful video");
+            File.WriteAllText(requested + ".akrclip", "previous metadata");
+            File.WriteAllText(Path.Combine(directory, "clip-1.mkv.akrclip"), "orphaned metadata");
+            string first = AkronEncoderCompletion.ReserveOutputPath(requested);
+            string second = AkronEncoderCompletion.ReserveOutputPath(requested);
+            Assert.Equal(Path.Combine(directory, "clip-2.mkv"), first);
+            Assert.Equal(Path.Combine(directory, "clip-3.mkv"), second);
+            Assert.Equal(0, new FileInfo(first).Length);
+            Assert.Equal("previous successful video", File.ReadAllText(requested));
+            Assert.Equal("previous metadata", File.ReadAllText(requested + ".akrclip"));
+            Assert.Equal(Path.Combine(directory, "fresh.mp4"), AkronEncoderCompletion.ReserveOutputPath(Path.Combine(directory, "fresh.mp4")));
+        } finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void ManualAndOptionalOutputsUseFreshReservationsBeforeEncoderStart() {
+        string root = Path.Combine(AppContext.BaseDirectory, "../../../../Source/Recorder");
+        string manual = File.ReadAllText(Path.Combine(root, "akron-internal-recorder.cs"));
+        int reservation = manual.IndexOf("ReserveOutputPath(outputPath)");
+        Assert.True(reservation >= 0);
+        Assert.True(reservation < manual.IndexOf("Process.Start(startInfo)"));
+        string optional = File.ReadAllText(Path.Combine(root, "akron-internal-recorder-ffmpeg.cs"));
+        Assert.Contains("outputPath = AkronEncoderCompletion.ReserveOutputPath(outputPath);", optional);
+        Assert.Equal(2, optional.Split("outputPath = AkronEncoderCompletion.ReserveOutputPath(outputPath);").Length - 1);
+    }
+
     private sealed class ThrowingStream : MemoryStream {
         public bool DisposeAttempted { get; private set; }
         public override void Flush() => throw new IOException("flush failed");

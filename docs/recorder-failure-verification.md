@@ -48,3 +48,18 @@ Nonempty output plus exit 0 is the encoder completion contract, not a full decod
 in the game loop. Offline full decode remains part of QA. No frame-perfect timing
 claim. Replay encoder finalization, start-time path exceptions, optional mux
 end-to-end timeout behavior and sidecar container metadata are not claimed fixed.
+
+## Filename-collision review correction
+
+A failed recording could overwrite a previous successful clip when a custom
+template reused its path. Manual, remux and audio-derived destinations now reserve
+a fresh file with CreateNew, adding a numeric suffix when media or its sidecar
+already exists. FFmpeg overwrites only that attempt's empty reservation. Existing
+media and sidecars remain untouched. Failed attempts can retain empty or partial
+files for recovery; they are not published as the last successful clip. The clip
+browser may still list retained media files, which is not changed here.
+
+Revised native Release and Debug each pass 2,492 tests. Revised Release SHA-256:
+`031619cb611cddb9a59bbad45d5faf9dcf87a9dc6c6dc882dbdc4d23cd125324`.
+Final-package collision and audio-extension native acceptance is pending. QA139
+above remains evidence for the earlier package, not this revision.
