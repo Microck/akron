@@ -11,6 +11,7 @@ namespace Celeste.Mod.Akron;
 public partial class AkronModule {
     private static readonly AkronCameraZoomLease cursorZoomLease = new();
     private static bool cursorZoomReleaseWarningShown;
+    private static Camera cursorZoomRenderCamera;
     private static Level transitionSpeedLevel;
     private static float previousTransitionDuration;
 
@@ -215,6 +216,9 @@ public partial class AkronModule {
 
     internal static Vector2 MouseScreenToWorldForClickTeleport(Level level, Vector2 mouseScreenPosition) {
         Vector2 mouseGamePosition = AkronScreenProjection.MouseScreenToGame(mouseScreenPosition);
+        if (TryGetExtendedCursorProjection(level, out Vector2 cameraPosition, out float extendedZoom, mouseGamePosition)) {
+            return AkronCursorCameraRenderScope.Unproject(mouseGamePosition, cameraPosition, extendedZoom);
+        }
         float zoom = CurrentClickTeleportLevelZoom(level);
         Vector2 focus = CurrentClickTeleportZoomFocus(level, mouseGamePosition, zoom);
         return AkronScreenProjection.ScreenGameToWorld(
@@ -353,6 +357,43 @@ public partial class AkronModule {
         level.ZoomFocusPoint = cursorZoomFocusGamePosition;
         cursorZoomApplied = true;
         cursorZoomOwnedByExtendedCamera = cursorZoomLease.HasOwner;
+    }
+
+    internal static bool TryGetExtendedCursorProjection(Level level, out Vector2 cameraPosition, out float zoom, Vector2? inputFocus = null) {
+        cameraPosition = default;
+        zoom = level?.Zoom ?? 1f;
+        if (level == null || AkronScreenshotScanner.IsScanning || !cursorZoomApplied || !cursorZoomLease.IsOwner(level) ||
+            !float.IsFinite(zoom) || zoom < 1f ||
+            !AkronPolicy.CanUse(AkronFeatureKind.CursorZoom).Allowed ||
+            !AkronInterop.AreExtendedCameraHooksActive()) return false;
+        cameraPosition = level.Camera.Position;
+        bool physicallyShifted = ReferenceEquals(cursorZoomRenderCamera, level.Camera);
+        if (physicallyShifted && inputFocus.HasValue) {
+            Vector2 previousOffset = AkronCursorCameraRenderScope.Offset(cursorZoomFocusGamePosition, zoom);
+            cameraPosition.X -= previousOffset.X;
+            cameraPosition.Y -= previousOffset.Y;
+        }
+        if (!physicallyShifted || inputFocus.HasValue) {
+            Vector2 focus = inputFocus.HasValue ? ClampCursorZoomFocus(inputFocus.Value, zoom) : cursorZoomFocusGamePosition;
+            Vector2 offset = AkronCursorCameraRenderScope.Offset(focus, zoom);
+            cameraPosition.X += offset.X;
+            cameraPosition.Y += offset.Y;
+        }
+        return true;
+    }
+
+    internal static IDisposable BeginExtendedCursorRender(Level level) {
+        if (cursorZoomRenderCamera != null ||
+            !TryGetExtendedCursorProjection(level, out Vector2 position, out _)) return null;
+        Camera camera = level.Camera;
+        Vector2 original = camera.Position;
+        return new AkronCursorCameraRenderScope(() => {
+            cursorZoomRenderCamera = camera;
+            camera.Position = position;
+        }, () => {
+            try { camera.Position = original; }
+            finally { cursorZoomRenderCamera = null; }
+        });
     }
 
     private static void DeactivateCursorZoom(Level level, bool resetPreference = true) {

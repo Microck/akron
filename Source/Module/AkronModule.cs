@@ -1744,6 +1744,7 @@ public partial class AkronModule : EverestModule {
         // returned. A helper can therefore release a temporary random scope
         // before a deferred StartPos capture or restore checks for stability.
         RunAfterEngineUpdateActions();
+        using IDisposable cursorRenderScope = BeginExtendedCursorRender(Engine.Scene as Level);
         orig(self);
         UpdateStateTransitionRenderSuppression();
         Scene scene = Engine.Scene;
@@ -1801,6 +1802,8 @@ public partial class AkronModule : EverestModule {
             }
         }
 
+        // UI callbacks can reset or replace state in this same scene. Restore before them.
+        cursorRenderScope?.Dispose();
         bool overlayImGuiFrameRequested = overlayVisible || Overlay?.NeedsImGuiFrame == true;
         if (overlayImGuiFrameRequested) {
             bool overlayImGuiRendered = Overlay.RenderImGui();
