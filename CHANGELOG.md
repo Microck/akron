@@ -1,5 +1,7 @@
 # Changelog
 
+- Honor VP9 Lossless rate control for manual recordings, replay capture and replay exports.
+
 - Trim replay clips to their requested timed window instead of saving whole extra segments; preserve replay timing through missed samples and export clips in the background.
 
 - Keep offscreen overlay sections reachable with section navigation at smaller window sizes and larger UI scales.
