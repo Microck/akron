@@ -902,6 +902,8 @@ public static partial class AkronActions {
         Engine.Scene?.Add(new AkronToast("Journal snapshot: " + compare));
     }
 
+    private static readonly object JournalSnapshotPublicationGate = new();
+
     internal static string WriteUniqueJournalSnapshot(string directory, string summary, DateTime timestampUtc) {
         return WriteUniqueJournalSnapshot(directory, writer => writer.Write(summary), timestampUtc);
     }
@@ -918,24 +920,27 @@ public static partial class AkronActions {
                 stream.Flush(flushToDisk: true);
             }
 
-            string timestamp = timestampUtc.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-            string stem = "akron-journal-" + timestamp;
-            int highestSuffix = Directory.EnumerateFiles(directory, stem + "*.json")
-                .Select(JournalSnapshotOrder)
-                .Where(order => order.Timestamp == timestamp)
-                .Select(order => order.Suffix)
-                .DefaultIfEmpty(-1)
-                .Max();
-            // Do not reuse holes: suffix order must remain chronological when mtimes tie.
-            for (int suffix = checked(highestSuffix + 1); ; suffix = checked(suffix + 1)) {
-                string name = stem + (suffix == 0 ? string.Empty : "-" + suffix.ToString(CultureInfo.InvariantCulture)) + ".json";
-                string path = Path.Combine(directory, name);
-                try {
-                    // Same-directory publication is atomic and never overwrites an existing snapshot.
-                    File.Move(temporary, path, overwrite: false);
-                    return path;
-                } catch (IOException) when (File.Exists(path)) {
-                    continue;
+            lock (JournalSnapshotPublicationGate) {
+                string timestamp = timestampUtc.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+                string stem = "akron-journal-" + timestamp;
+                int highestSuffix = Directory.EnumerateFiles(directory, stem + "*.json")
+                    .Select(JournalSnapshotOrder)
+                    .Where(order => order.Timestamp == timestamp)
+                    .Select(order => order.Suffix)
+                    .DefaultIfEmpty(-1)
+                    .Max();
+                // Do not reuse holes: suffix order must remain chronological when mtimes tie.
+                for (int suffix = checked(highestSuffix + 1); ; suffix = checked(suffix + 1)) {
+                    string name = stem + (suffix == 0 ? string.Empty : "-" + suffix.ToString(CultureInfo.InvariantCulture)) + ".json";
+                    string path = Path.Combine(directory, name);
+                    try {
+                        // The gate serializes cooperating in-process publishers. On Unix,
+                        // File.Move(false) alone can race between its existence check and rename.
+                        File.Move(temporary, path, overwrite: false);
+                        return path;
+                    } catch (IOException) when (File.Exists(path)) {
+                        continue;
+                    }
                 }
             }
         } finally {

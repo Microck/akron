@@ -24,6 +24,7 @@ public sealed class AkronArchiveTarget {
 }
 
 public static class AkronArchive {
+    private static readonly object UniqueArchivePublicationGate = new();
     public const string Format = "akron-archive";
     public const int FormatVersion = 1;
     public const string Extension = ".akr";
@@ -93,24 +94,28 @@ public static class AkronArchive {
                 File.Move(temporaryPath, path, overwrite: true);
                 return path;
             }
-            string stem = Path.Combine(Path.GetDirectoryName(path) ?? ".", Path.GetFileNameWithoutExtension(path));
-            string extension = Path.GetExtension(path);
-            int highestSuffix = File.Exists(path) ? 0 : -1;
-            foreach (string existing in Directory.EnumerateFiles(Path.GetDirectoryName(path) ?? ".")) {
-                string existingStem = Path.Combine(Path.GetDirectoryName(path) ?? ".", Path.GetFileNameWithoutExtension(existing));
-                if (string.Equals(Path.GetExtension(existing), extension, StringComparison.Ordinal) &&
-                    existingStem.StartsWith(stem + "-", StringComparison.Ordinal) &&
-                    int.TryParse(existingStem.Substring(stem.Length + 1), NumberStyles.None, CultureInfo.InvariantCulture, out int value)) {
-                    highestSuffix = Math.Max(highestSuffix, value);
+            // File.Move(false) is not a cross-process no-clobber primitive on Unix.
+            // Serialize this process's unique publishers after staging is complete.
+            lock (UniqueArchivePublicationGate) {
+                string stem = Path.Combine(Path.GetDirectoryName(path) ?? ".", Path.GetFileNameWithoutExtension(path));
+                string extension = Path.GetExtension(path);
+                int highestSuffix = File.Exists(path) ? 0 : -1;
+                foreach (string existing in Directory.EnumerateFiles(Path.GetDirectoryName(path) ?? ".")) {
+                    string existingStem = Path.Combine(Path.GetDirectoryName(path) ?? ".", Path.GetFileNameWithoutExtension(existing));
+                    if (string.Equals(Path.GetExtension(existing), extension, StringComparison.Ordinal) &&
+                        existingStem.StartsWith(stem + "-", StringComparison.Ordinal) &&
+                        int.TryParse(existingStem.Substring(stem.Length + 1), NumberStyles.None, CultureInfo.InvariantCulture, out int value)) {
+                        highestSuffix = Math.Max(highestSuffix, value);
+                    }
                 }
-            }
-            for (int suffix = checked(highestSuffix + 1); ; suffix = checked(suffix + 1)) {
-                string candidate = suffix == 0 ? path : stem + "-" + suffix.ToString(CultureInfo.InvariantCulture) + extension;
-                try {
-                    File.Move(temporaryPath, candidate, overwrite: false);
-                    return candidate;
-                } catch (IOException) when (File.Exists(candidate)) {
-                    continue;
+                for (int suffix = checked(highestSuffix + 1); ; suffix = checked(suffix + 1)) {
+                    string candidate = suffix == 0 ? path : stem + "-" + suffix.ToString(CultureInfo.InvariantCulture) + extension;
+                    try {
+                        File.Move(temporaryPath, candidate, overwrite: false);
+                        return candidate;
+                    } catch (IOException) when (File.Exists(candidate)) {
+                        continue;
+                    }
                 }
             }
         } finally {
