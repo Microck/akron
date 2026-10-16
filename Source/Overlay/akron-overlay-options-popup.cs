@@ -135,6 +135,7 @@ public sealed partial class AkronOverlay {
     }
 
     private void CloseOptionsPopup() {
+        pendingSectionOptionsReveal = null;
         openOptionsLabel = string.Empty;
     }
 
