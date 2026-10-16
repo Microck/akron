@@ -182,7 +182,11 @@ public static partial class AkronInternalRecorder {
                 return false;
             }
 
-            return File.Exists(outputPath);
+            if (!AkronEncoderCompletion.HasNonemptyOutput(outputPath)) {
+                error = "FFmpeg produced no nonempty output file.";
+                return false;
+            }
+            return true;
         } catch (Exception ex) {
             error = ex.Message;
             return false;
@@ -290,7 +294,11 @@ public static partial class AkronInternalRecorder {
                 return false;
             }
 
-            return File.Exists(outputPath);
+            if (!AkronEncoderCompletion.HasNonemptyOutput(outputPath)) {
+                error = "FFmpeg produced no nonempty output file.";
+                return false;
+            }
+            return true;
         } catch (Exception ex) {
             error = ex.Message;
             return false;
