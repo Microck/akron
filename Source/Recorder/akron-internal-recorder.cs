@@ -24,9 +24,9 @@ public static partial class AkronInternalRecorder {
     private static Stream ffmpegInput;
     private static AkronEncoderDiagnostics ffmpegDiagnostics;
     private static Stopwatch captureClock;
-    private static double nextFrameSeconds;
+    private static AkronCaptureCadence manualCadence;
     private static string activePath = string.Empty;
-    private static RecorderSpec activeSpec;
+    private static RecorderSpec manualSpec;
     private static int sourceWidth;
     private static int sourceHeight;
     private static Color[] captureSourceBuffer = Array.Empty<Color>();
@@ -49,8 +49,8 @@ public static partial class AkronInternalRecorder {
 
     public static string LastError => lastError;
     public static string LastClipPath => lastClipPath;
-    public static long CapturedFrames => capturedFrames;
-    public static long DroppedFrames => droppedFrames;
+    public static long CapturedFrames => IsRecording || !IsReplayBuffering ? capturedFrames : replayCapturedFrames;
+    public static long DroppedFrames => IsRecording || !IsReplayBuffering ? droppedFrames : replayDroppedFrames;
     public static string DescribeStatus() {
         if (IsRecording) {
             return "Recording " + capturedFrames.ToString(CultureInfo.InvariantCulture) + "f";
@@ -66,8 +66,9 @@ public static partial class AkronInternalRecorder {
             return "Error";
         }
 
-        return droppedFrames > 0
-            ? droppedFrames.ToString(CultureInfo.InvariantCulture) + " dropped"
+        long visibleDroppedFrames = DroppedFrames;
+        return visibleDroppedFrames > 0
+            ? visibleDroppedFrames.ToString(CultureInfo.InvariantCulture) + " dropped"
             : "OK";
     }
 
@@ -133,7 +134,8 @@ public static partial class AkronInternalRecorder {
                 ffmpegDiagnostics = diagnostics;
                 EnsureCaptureClock();
                 activePath = outputPath;
-                activeSpec = spec;
+                manualSpec = spec;
+                manualCadence = new AkronCaptureCadence(spec.Framerate, captureClock.Elapsed.TotalSeconds);
                 sourceWidth = 0;
                 sourceHeight = 0;
                 capturedFrames = 0;
@@ -193,6 +195,7 @@ public static partial class AkronInternalRecorder {
             startedUtc = recordingStartUtc == DateTime.MinValue ? endedUtc : recordingStartUtc;
             ffmpegProcess = null;
             ffmpegInput = null;
+            manualCadence = null;
             activePath = string.Empty;
             recordingStartUtc = DateTime.MinValue;
             autoStopAtSeconds = -1d;
@@ -396,36 +399,43 @@ public static partial class AkronInternalRecorder {
         Stream recordingInput;
         Process activeReplayProcess;
         Stream activeReplayInput;
-        Stopwatch activeClock;
+        RecorderSpec recordingSpec;
+        RecorderSpec replayFrameSpec;
+        bool manualDue;
+        bool replayDue;
+        long missedManualFrames = 0;
+        long missedReplayFrames = 0;
         lock (Sync) {
             recordingProcess = captureManualRecording ? ffmpegProcess : null;
             recordingInput = captureManualRecording ? ffmpegInput : null;
+            recordingSpec = manualSpec;
             activeReplayProcess = replayProcess;
             activeReplayInput = replayInput;
-            activeClock = captureClock;
+            replayFrameSpec = replaySpec;
+            if (captureClock == null) return;
+            double now = captureClock.Elapsed.TotalSeconds;
+            manualDue = recordingProcess != null && recordingInput != null && manualCadence != null &&
+                manualCadence.TrySchedule(now, capturedFrames > 0, out missedManualFrames);
+            replayDue = activeReplayProcess != null && activeReplayInput != null && replayCadence != null &&
+                replayCadence.TrySchedule(now, replayCapturedFrames > 0, out missedReplayFrames);
         }
 
-        if (recordingProcess == null && activeReplayProcess == null ||
-            activeClock == null ||
-            recordingInput == null && activeReplayInput == null) {
-            return;
-        }
-
-        double now = activeClock.Elapsed.TotalSeconds;
-        double frameInterval = 1d / Math.Max(1, spec.Framerate);
-        if (now + frameInterval * 0.25d < nextFrameSeconds) {
-            return;
-        }
-
-        if (now > nextFrameSeconds + frameInterval * 1.5d && capturedFrames > 0) {
-            droppedFrames += Math.Max(1, (long) Math.Floor((now - nextFrameSeconds) / frameInterval));
+        if (!manualDue && !replayDue) return;
+        if (missedManualFrames > 0) {
+            droppedFrames += missedManualFrames;
             if (settings.RecordingDroppedFrameWarning && !warningShown) {
                 warningShown = true;
                 Engine.Scene?.Add(new AkronToast("Recorder is dropping frames."));
             }
         }
 
-        nextFrameSeconds = now + frameInterval;
+        if (missedReplayFrames > 0) {
+            replayDroppedFrames += missedReplayFrames;
+            if (settings.RecordingDroppedFrameWarning && !replayWarningShown) {
+                replayWarningShown = true;
+                Engine.Scene?.Add(new AkronToast("Replay buffer is dropping frames."));
+            }
+        }
 
         try {
             GraphicsDevice graphicsDevice = Engine.Instance.GraphicsDevice;
@@ -437,15 +447,18 @@ public static partial class AkronInternalRecorder {
 
             Color[] source = EnsureCaptureSourceBuffer(sourceWidth * sourceHeight);
             graphicsDevice.GetBackBufferData(viewport.Bounds, source, 0, source.Length);
-            byte[] frame = BuildFrameBytes(source, sourceWidth, sourceHeight, spec.Width, spec.Height);
-
-            if (recordingProcess != null && recordingInput != null) {
+            // Each encoder keeps the byte geometry and cadence used in its launch arguments.
+            // BuildFrameBytes reuses a buffer: finish each write before rebuilding for another sink.
+            if (manualDue) {
+                byte[] frame = BuildFrameBytes(source, sourceWidth, sourceHeight, recordingSpec.Width, recordingSpec.Height);
                 recordingInput.Write(frame, 0, frame.Length);
             }
 
-            if (activeReplayProcess != null && activeReplayInput != null) {
+            if (replayDue) {
                 try {
-                    activeReplayInput.Write(frame, 0, frame.Length);
+                    byte[] replayFrame = BuildFrameBytes(source, sourceWidth, sourceHeight, replayFrameSpec.Width, replayFrameSpec.Height);
+                    activeReplayInput.Write(replayFrame, 0, replayFrame.Length);
+                    replayCapturedFrames++;
                     PruneReplaySegments(settings);
                 } catch (Exception replayError) {
                     // A replay-only failure must not reject or stop a healthy manual encode.
@@ -460,7 +473,7 @@ public static partial class AkronInternalRecorder {
                 }
             }
 
-            capturedFrames++;
+            if (manualDue) capturedFrames++;
         } catch (Exception ex) {
             string captureError = ex.Message;
             StopReplayBuffer();
@@ -514,7 +527,8 @@ public static partial class AkronInternalRecorder {
     private static void ResetCaptureClockIfIdle() {
         if (ffmpegProcess == null && replayProcess == null) {
             captureClock = null;
-            nextFrameSeconds = 0d;
+            manualCadence = null;
+            replayCadence = null;
             sourceWidth = 0;
             sourceHeight = 0;
             captureSourceBuffer = Array.Empty<Color>();

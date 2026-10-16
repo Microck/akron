@@ -16,6 +16,11 @@ public static partial class AkronInternalRecorder {
 
     private static Process replayProcess;
     private static Stream replayInput;
+    private static RecorderSpec replaySpec;
+    private static AkronCaptureCadence replayCadence;
+    private static long replayCapturedFrames;
+    private static long replayDroppedFrames;
+    private static bool replayWarningShown;
     private static string replayDirectory = string.Empty;
     private static bool manualReplayBufferEnabled;
     private static DateTime lastReplayPruneUtc = DateTime.MinValue;
@@ -421,7 +426,7 @@ public static partial class AkronInternalRecorder {
         }
 
         lock (Sync) {
-            if (replayProcess != null && activeSpec.Equals(spec)) {
+            if (replayProcess != null && replaySpec.Equals(spec)) {
                 return;
             }
         }
@@ -456,15 +461,13 @@ public static partial class AkronInternalRecorder {
                 replayProcess = process;
                 replayInput = process.StandardInput.BaseStream;
                 replayDirectory = directory;
-                activeSpec = spec;
+                replaySpec = spec;
                 EnsureCaptureClock();
-                if (ffmpegProcess == null) {
-                    nextFrameSeconds = 0d;
-                    capturedFrames = 0;
-                    droppedFrames = 0;
-                }
+                replayCadence = new AkronCaptureCadence(spec.Framerate, captureClock.Elapsed.TotalSeconds);
+                replayCapturedFrames = 0;
+                replayDroppedFrames = 0;
+                replayWarningShown = false;
                 lastError = string.Empty;
-                warningShown = false;
             }
 
             bool audioStarted = AkronInternalAudioRecorder.TryStartReplayBuffer(settings, out string audioWarning);
@@ -486,6 +489,7 @@ public static partial class AkronInternalRecorder {
             input = replayInput;
             replayProcess = null;
             replayInput = null;
+            replayCadence = null;
             ResetCaptureClockIfIdle();
         }
 
