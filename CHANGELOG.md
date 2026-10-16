@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Show Noclip speed feedback only when the effective value changes, preventing repeated clamp toasts while editing.
+
 - Preserve native ground and other handled jumps without spending the finite Air Jumps allowance.
 
 - Report failed internal recordings honestly, retain the previous successful clip, and clean temporary audio instead of publishing failed encoder output as saved.
