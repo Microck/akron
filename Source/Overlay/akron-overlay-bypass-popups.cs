@@ -174,7 +174,7 @@ public sealed partial class AkronOverlay
             "Player/Fast Lookout Hold",
             "Fast Lookout / Hold",
             "fast-lookout",
-            AkronModule.Settings.FastLookoutHold,
+            () => AkronModule.Settings.FastLookoutHold,
             value => AkronModule.Settings.FastLookoutHold = value,
             AkronModuleSettings.CreateEmptyButtonBinding(),
             popupId,

@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Apply cursor-hold popup rebinding, Clear and Default immediately without replacing registered input bindings.
+
 - Make Cursor Zoom follow the pointer on maps using active Extended Camera Dynamics hooks, without accumulating camera offsets between frames.
 
 - Close Akron’s menu after a confirmed CelesteTAS handoff so its input blocking or pause setting cannot suppress playback. Keep the menu open and report rejected files or disabled/unavailable CelesteTAS.
