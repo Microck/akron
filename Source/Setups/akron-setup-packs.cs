@@ -488,6 +488,14 @@ public static partial class AkronSetupPacks {
                 prepared?.Commit();
             }
             stateTransaction?.Commit();
+            // Whole import is now committed. Its explicit Restore Off replaces the
+            // old death policy as well as settings; an obsolete snapshot must not
+            // overwrite the imported Air Jumps values on the next death.
+            // Keep this after commit so failed imports preserve their armed state,
+            // and outside generic settings apply so unrelated scopes leave it alone.
+            if (!settings.SetInventoryRestoreOnDeath && session != null) {
+                session.SetInventoryRestoreSnapshot = null;
+            }
             if (imported != null && prepared != null && AkronModule.Instance != null) {
                 AkronActions.RefreshStartPositionsAfterSnapshotImport(pack.ArchiveMapSid, session);
             }
