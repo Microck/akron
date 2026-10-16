@@ -27,9 +27,6 @@ public partial class AkronModuleSettings {
     public bool RoomLabels { get; set; }
     public bool LabelSystemVisible { get; set; }
     public int RoomLabelColor { get; set; } = 0xFFFFFF;
-    public bool StaminaWidget { get; set; }
-    public bool SpeedWidget { get; set; }
-    public bool DashWidget { get; set; }
     public bool InputViewer { get; set; }
     public bool InputHistoryPanel { get; set; }
     public int InputHistoryLength { get; set; } = 8;

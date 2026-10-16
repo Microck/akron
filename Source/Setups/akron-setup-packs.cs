@@ -264,9 +264,6 @@ public static partial class AkronSetupPacks {
         nameof(AkronSetupState.RoomLabels),
         nameof(AkronSetupState.LabelSystemVisible),
         nameof(AkronSetupState.RoomLabelColor),
-        nameof(AkronSetupState.StaminaWidget),
-        nameof(AkronSetupState.SpeedWidget),
-        nameof(AkronSetupState.DashWidget),
         nameof(AkronSetupState.InputViewer),
         nameof(AkronSetupState.InputHistoryTextColor),
         nameof(AkronSetupState.InputHistoryEventColor),
@@ -417,7 +414,7 @@ public static partial class AkronSetupPacks {
             // Capture the complete in-memory setup so callers can re-scope it.
             // SerializePortablePack strips fields outside the archive section.
             ButtonBindings = CaptureButtonBindings(settings),
-            MenuActionBindings = new Dictionary<string, string>(settings.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal),
+            MenuActionBindings = AkronModuleSettings.RemoveRetiredWidgetBindings(settings.MenuActionBindings),
             StartPositions = startPositions,
             SnapshotSourcePaths = snapshotSourcePaths,
             ArchiveMapSid = mapSid
@@ -474,7 +471,7 @@ public static partial class AkronSetupPacks {
             }
             ApplyPortableWholeState(settings, pack.State);
             ApplyButtonBindings(settings, pack.ButtonBindings);
-            settings.MenuActionBindings = new Dictionary<string, string>(pack.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal);
+            settings.MenuActionBindings = AkronModuleSettings.RemoveRetiredWidgetBindings(pack.MenuActionBindings);
             if (imported != null) {
                 AkronActions.ReplaceAllStartPositions(
                     imported,
@@ -523,7 +520,7 @@ public static partial class AkronSetupPacks {
         settings.ApplySetupPackState(merged);
         if (section == AkronSetupSection.Keybinds) {
             ApplyButtonBindings(settings, pack.ButtonBindings);
-            settings.MenuActionBindings = new Dictionary<string, string>(pack.MenuActionBindings ?? new Dictionary<string, string>(), StringComparer.Ordinal);
+            settings.MenuActionBindings = AkronModuleSettings.RemoveRetiredWidgetBindings(pack.MenuActionBindings);
         } else if (importedForMap != null) {
             AkronActions.ReplaceAllStartPositions(
                 importedForMap,
@@ -743,6 +740,7 @@ public static partial class AkronSetupPacks {
             MaxSnapshotAttachmentsBytes,
             out manifest,
             out string[] attachmentNames);
+        payload = RemoveLegacyWidgetPackFields(payload);
         ValidatePortablePackJson(payload);
         AkronSetupPack pack = JsonSerializer.Deserialize<AkronSetupPack>(payload, JsonOptions);
         RequireCurrentPackFormat(pack);
@@ -762,6 +760,8 @@ public static partial class AkronSetupPacks {
                 pack.SnapshotBundleSha256 != pack.SnapshotBundleSha256.ToLowerInvariant()) {
             throw new InvalidDataException("Setup pack has an invalid snapshot bundle checksum.");
         }
+        pack.MenuActionBindings = AkronModuleSettings.RemoveRetiredWidgetBindings(pack.MenuActionBindings);
+        pack.State.LabelRowOrder = AkronModuleSettings.NormalizeLabelRowOrder(pack.State.LabelRowOrder, pack.State.CustomHudLabelDefinitions);
         pack.ArchiveMapSid = manifest.Target.MapSid;
         pack.ArchivePath = path;
         return pack;
@@ -1178,6 +1178,16 @@ public static partial class AkronSetupPacks {
             }
         }
 
+        if (state["labelRowOrder"] is JsonArray rows) {
+            for (int i = rows.Count - 1; i >= 0; i--) {
+                if (rows[i] is JsonValue value && value.TryGetValue(out string name) &&
+                    name is "Stamina Widget" or "Speed Widget" or "Dash Widget") rows.RemoveAt(i);
+            }
+        }
+        if (root["menuActionBindings"] is JsonObject menuBindings) {
+            foreach (string key in new[] { "Labels/Stamina Widget", "Labels/Speed Widget", "Labels/Dash Widget" }) menuBindings.Remove(key);
+        }
+
         if (pack.Section is not AkronSetupSection.Keybinds and not AkronSetupSection.Whole) {
             root.Remove("buttonBindings");
             root.Remove("menuActionBindings");
@@ -1189,6 +1199,55 @@ public static partial class AkronSetupPacks {
         }
 
         return root.ToJsonString(JsonOptions);
+    }
+
+    private static string RemoveLegacyWidgetPackFields(string payload) {
+        using JsonDocument document = JsonDocument.Parse(payload);
+        JsonElement root = document.RootElement;
+        if (root.ValueKind == JsonValueKind.Object) {
+            string[] names = root.EnumerateObject().Select(property => property.Name).ToArray();
+            if (names.Length != names.Distinct(StringComparer.Ordinal).Count())
+                throw new InvalidDataException("Setup pack contains duplicate top-level properties.");
+        }
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty("format", out JsonElement format) || format.ValueKind != JsonValueKind.String ||
+            format.GetString() != SetupPackFormat ||
+            !root.TryGetProperty("section", out JsonElement sectionElement) || sectionElement.ValueKind != JsonValueKind.String ||
+            !Enum.TryParse(sectionElement.GetString(), false, out AkronSetupSection section) ||
+            section is not (AkronSetupSection.Hud or AkronSetupSection.Whole) ||
+            !root.TryGetProperty("state", out JsonElement state) || state.ValueKind != JsonValueKind.Object) return payload;
+
+        HashSet<string> retired = new HashSet<string>(StringComparer.Ordinal) { "staminaWidget", "speedWidget", "dashWidget" };
+        if (!state.EnumerateObject().Any(property => retired.Contains(property.Name))) return payload;
+        // Accept only the complete previous v10 schema. Duplicate, partial, unknown
+        // or mistyped retired fields must not be silently repaired by migration.
+        HashSet<string> previousProperties = GetStateJsonPropertyNames(section);
+        previousProperties.UnionWith(retired);
+        RequireExactJsonProperties(state, previousProperties, "Legacy setup pack state");
+        foreach (string name in retired) {
+            if (state.GetProperty(name).ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new InvalidDataException("Legacy widget field must be a boolean: " + name);
+        }
+        using MemoryStream output = new MemoryStream();
+        using (Utf8JsonWriter writer = new Utf8JsonWriter(output)) {
+            writer.WriteStartObject();
+            foreach (JsonProperty property in root.EnumerateObject()) {
+                writer.WritePropertyName(property.Name);
+                if (property.Name == "state") {
+                    writer.WriteStartObject();
+                    foreach (JsonProperty item in property.Value.EnumerateObject()) {
+                        if (!retired.Contains(item.Name)) item.WriteTo(writer);
+                    }
+                    writer.WriteEndObject();
+                } else {
+                    property.Value.WriteTo(writer);
+                }
+            }
+            writer.WriteEndObject();
+        }
+        // Normal strict validation/deserialization still checks the entire result.
+        // The archive itself, checksums and timestamps remain untouched.
+        return Encoding.UTF8.GetString(output.ToArray());
     }
 
     private static void ValidatePortablePackJson(string payload) {

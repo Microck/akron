@@ -14,9 +14,6 @@ public sealed partial class AkronOverlay {
         }
 
         Dictionary<string, OverlayEntry> rows = new Dictionary<string, OverlayEntry>(StringComparer.OrdinalIgnoreCase) {
-            ["Stamina Widget"] = LabelPolicyToggle("Stamina Widget", AkronFeatureKind.StaminaWidget, () => settings.LabelSystemVisible, () => settings.StaminaWidget, value => settings.StaminaWidget = value),
-            ["Speed Widget"] = LabelPolicyToggle("Speed Widget", AkronFeatureKind.SpeedWidget, () => settings.LabelSystemVisible, () => settings.SpeedWidget, value => settings.SpeedWidget = value),
-            ["Dash Widget"] = LabelPolicyToggle("Dash Widget", AkronFeatureKind.DashWidget, () => settings.LabelSystemVisible, () => settings.DashWidget, value => settings.DashWidget = value),
             ["Death Stats"] = LabelPolicyToggle("Death Stats", AkronFeatureKind.DeathStats, () => settings.LabelSystemVisible, () => settings.DeathStatsWidget, value => settings.DeathStatsWidget = value),
             ["Room"] = LabelPolicyToggle("Room", AkronFeatureKind.RoomLabelOverlay, () => settings.LabelSystemVisible, () => settings.RoomLabels, value => settings.RoomLabels = value),
             ["Status"] = LabelPolicyToggle("Status", AkronFeatureKind.StatusLabels, () => settings.LabelSystemVisible, () => settings.StatusLabelsWidget, value => settings.StatusLabelsWidget = value),

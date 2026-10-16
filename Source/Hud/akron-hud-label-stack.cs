@@ -124,21 +124,7 @@ public static partial class AkronHudRenderer {
                     sink.StartPosLabel(ref y);
                 }
                 break;
-            case "Stamina Widget":
-                if (player != null && settings.StaminaWidget && use(AkronFeatureKind.StaminaWidget)) {
-                    sink.Text("Stamina: " + player.Stamina.ToString("0"), Color.White, null, ref y);
-                }
-                break;
-            case "Speed Widget":
-                if (player != null && settings.SpeedWidget && use(AkronFeatureKind.SpeedWidget)) {
-                    sink.Text("Speed: " + player.Speed.Length().ToString("0.0"), Color.White, null, ref y);
-                }
-                break;
-            case "Dash Widget":
-                if (player != null && settings.DashWidget && use(AkronFeatureKind.DashWidget)) {
-                    sink.Text("Dashes: " + player.Dashes, Color.White, null, ref y);
-                }
-                break;
+
         }
     }
 
