@@ -90,6 +90,16 @@ public static partial class AkronInternalRecorder {
                string.Equals(clip.Kind, "checkpoint-clear", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static AkronRecordingContainerFormat PublishedClipContainer(string path, AkronRecordingContainerFormat fallback) {
+        return Path.GetExtension(path)?.ToLowerInvariant() switch {
+            ".mkv" => AkronRecordingContainerFormat.Mkv,
+            ".mp4" => AkronRecordingContainerFormat.Mp4,
+            ".mov" => AkronRecordingContainerFormat.Mov,
+            ".webm" => AkronRecordingContainerFormat.WebM,
+            _ => fallback
+        };
+    }
+
     private static void WriteClipSidecar(string clipPath, string kind, AkronRecordingContainerFormat format, DateTime startUtc, DateTime endUtc, Scene scene = null) {
         if (string.IsNullOrWhiteSpace(clipPath)) {
             return;
@@ -99,7 +109,7 @@ public static partial class AkronInternalRecorder {
         string sidecar = clipPath + ClipSidecarExtension;
         List<string> lines = new List<string> {
             "kind=" + kind,
-            "format=" + AkronModuleSettings.FormatRecordingContainer(format),
+            "format=" + AkronModuleSettings.FormatRecordingContainer(PublishedClipContainer(clipPath, format)),
             "chapter=" + SanitizeToken(level?.Session?.Area.GetSID() ?? string.Empty),
             "room=" + SanitizeToken(level?.Session?.Level ?? string.Empty),
             "createdUtc=" + DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
