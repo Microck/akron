@@ -77,6 +77,10 @@ public sealed partial class AkronOverlay {
         }
 
         ImGui.TextUnformatted(option.Label);
+        if (!string.IsNullOrEmpty(option.UnavailableReason)) {
+            ImGui.TextWrapped(option.UnavailableReason);
+            return;
+        }
         ImGui.TextUnformatted("State: " + (option.IsDefault ? "Off" : "On"));
         ImGui.TextUnformatted("Configured: " + AkronExtendedVariants.FormatValue(AkronExtendedVariants.GetConfiguredOrCurrentValue(option)));
         ImGui.TextUnformatted("Current: " + AkronExtendedVariants.FormatValue(option.CurrentValue));
