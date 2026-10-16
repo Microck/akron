@@ -252,7 +252,7 @@ public static class AkronOverlayThemes {
         Directory.CreateDirectory(GetThemeDirectory());
         string fileName = SanitizeFileName(definition.Name) + "-" + DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ", System.Globalization.CultureInfo.InvariantCulture) + AkronArchive.Extension;
         string path = Path.Combine(GetThemeDirectory(), fileName);
-        AkronArchive.WriteSinglePayloadArchive(path, manifest, ThemeArchivePayload, JsonSerializer.Serialize(definition, ThemeJsonOptions));
+        path = AkronArchive.WriteUniqueSinglePayloadArchive(path, manifest, ThemeArchivePayload, JsonSerializer.Serialize(definition, ThemeJsonOptions));
         Engine.Scene?.Add(new AkronToast("Exported theme " + definition.Name + "."));
         return path;
     }
@@ -285,11 +285,7 @@ public static class AkronOverlayThemes {
     }
 
     public static string ImportLatestTheme() {
-        string path = Directory.Exists(GetThemeDirectory())
-            ? Directory.GetFiles(GetThemeDirectory(), "*" + AkronArchive.Extension, SearchOption.TopDirectoryOnly)
-                .OrderByDescending(File.GetLastWriteTimeUtc)
-                .FirstOrDefault()
-            : null;
+        string path = FindLatestTheme(GetThemeDirectory());
         if (string.IsNullOrWhiteSpace(path)) {
             Engine.Scene?.Add(new AkronToast("No theme packs found."));
             return string.Empty;
@@ -297,6 +293,39 @@ public static class AkronOverlayThemes {
 
         ImportTheme(path);
         return path;
+    }
+
+    internal static string FindLatestTheme(string directory) {
+        return Directory.Exists(directory)
+            ? Directory.GetFiles(directory, "*" + AkronArchive.Extension, SearchOption.TopDirectoryOnly)
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .ThenByDescending(ReadThemeCreatedAt)
+                .ThenByDescending(path => ThemePublicationOrder(path).Stem, StringComparer.Ordinal)
+                .ThenByDescending(path => ThemePublicationOrder(path).Suffix)
+                .ThenByDescending(Path.GetFileName, StringComparer.Ordinal)
+                .FirstOrDefault()
+            : null;
+    }
+
+    private static (string Stem, int Suffix) ThemePublicationOrder(string path) {
+        string name = Path.GetFileNameWithoutExtension(path);
+        int separator = name.LastIndexOf('-');
+        if (separator >= 0 && int.TryParse(name.Substring(separator + 1), System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out int suffix)) {
+            return (name.Substring(0, separator), suffix);
+        }
+        return (name, 0);
+    }
+
+    private static DateTime ReadThemeCreatedAt(string path) {
+        try {
+            AkronArchive.ReadSinglePayloadArchive(path, ThemeArchiveKind, ThemeArchivePayload, MaxThemePayloadBytes, out AkronArchiveManifest manifest);
+            return DateTime.TryParse(manifest.CreatedAt, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind, out DateTime created) ? created.ToUniversalTime() : DateTime.MinValue;
+        } catch (InvalidDataException) { return DateTime.MinValue; }
+        catch (IOException) { return DateTime.MinValue; }
+        catch (UnauthorizedAccessException) { return DateTime.MinValue; }
+        catch (JsonException) { return DateTime.MinValue; }
     }
 
     public static string GetThemeDirectory() {
