@@ -15,3 +15,7 @@ Manual and replay counters and warning state are separate. Replay-only drop feed
 ## Verification status
 
 Corrected-package native acceptance is pending. Required checks include the width-mutation control/recovery, FPS mutation, and manual/replay coexistence at differing launch specifications. No native acceptance is inferred from automated scheduling/source tests or successful FFmpeg decode alone.
+
+## Review correction: retain diagnostics after replay stops
+
+The first published candidate fixed geometry but selected old manual counters after a replay-only stop. QA153 genuinely reproduced this through the native Everest console: prior manual3382frames/3drops; running replay2106frames/1drop; stop-replay incorrectly returned3382/3. The revised diagnostic selection retains the most recently stopped sink while idle, prioritizes active manual recording, and otherwise selects active replay. Start/stop bookkeeping changes only for a real process, so no-op stops do not erase the last result. Eight selection cases and source lifecycle guards are covered. Revised native validation is pending.

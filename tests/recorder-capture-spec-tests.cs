@@ -6,6 +6,19 @@ using Xunit;
 namespace Celeste.Mod.Akron.Tests;
 
 public sealed class RecorderCaptureSpecTests {
+    [Theory]
+    [InlineData(false, false, false, false)]
+    [InlineData(false, false, true, true)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, true, true, true)]
+    [InlineData(true, false, false, false)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, true, true, false)]
+    public void DiagnosticsRetainLastIdleSinkAndPreferActiveManual(bool manual, bool replay, bool lastReplay, bool expected) {
+        Assert.Equal(expected, AkronInternalRecorder.ShouldUseReplayDiagnostics(manual, replay, lastReplay));
+    }
+
     [Fact]
     public void ConcurrentCadencesKeepTheirLaunchRatesAndDeadlines() {
         var manual = new AkronCaptureCadence(30, 10);
@@ -75,5 +88,8 @@ public sealed class RecorderCaptureSpecTests {
         Assert.DoesNotContain("activeSpec", manual + replay);
         Assert.DoesNotContain("capturedFrames =", replay);
         Assert.DoesNotContain("manualCadence =", replay);
+        Assert.Contains("if (process != null) lastCaptureWasReplay = false;", manual);
+        Assert.Contains("if (process != null && ffmpegProcess == null) lastCaptureWasReplay = true;", replay);
+        Assert.Contains("if (ffmpegProcess == null) lastCaptureWasReplay = true;", replay);
     }
 }

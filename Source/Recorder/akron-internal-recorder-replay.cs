@@ -462,6 +462,7 @@ public static partial class AkronInternalRecorder {
                 replayInput = process.StandardInput.BaseStream;
                 replayDirectory = directory;
                 replaySpec = spec;
+                if (ffmpegProcess == null) lastCaptureWasReplay = true;
                 EnsureCaptureClock();
                 replayCadence = new AkronCaptureCadence(spec.Framerate, captureClock.Elapsed.TotalSeconds);
                 replayCapturedFrames = 0;
@@ -486,6 +487,7 @@ public static partial class AkronInternalRecorder {
         Stream input;
         lock (Sync) {
             process = replayProcess;
+            if (process != null && ffmpegProcess == null) lastCaptureWasReplay = true;
             input = replayInput;
             replayProcess = null;
             replayInput = null;

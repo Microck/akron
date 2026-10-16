@@ -36,6 +36,7 @@ public static partial class AkronInternalRecorder {
     private static string lastError = string.Empty;
     private static string lastClipPath = string.Empty;
     private static bool warningShown;
+    private static bool lastCaptureWasReplay;
     private static DateTime recordingStartUtc = DateTime.MinValue;
     private static double autoStopAtSeconds = -1d;
 
@@ -49,8 +50,20 @@ public static partial class AkronInternalRecorder {
 
     public static string LastError => lastError;
     public static string LastClipPath => lastClipPath;
-    public static long CapturedFrames => IsRecording || !IsReplayBuffering ? capturedFrames : replayCapturedFrames;
-    public static long DroppedFrames => IsRecording || !IsReplayBuffering ? droppedFrames : replayDroppedFrames;
+    public static long CapturedFrames {
+        get {
+            lock (Sync) return ShouldUseReplayDiagnostics(ffmpegProcess != null, replayProcess != null, lastCaptureWasReplay)
+                ? replayCapturedFrames : capturedFrames;
+        }
+    }
+    public static long DroppedFrames {
+        get {
+            lock (Sync) return ShouldUseReplayDiagnostics(ffmpegProcess != null, replayProcess != null, lastCaptureWasReplay)
+                ? replayDroppedFrames : droppedFrames;
+        }
+    }
+    internal static bool ShouldUseReplayDiagnostics(bool manualActive, bool replayActive, bool lastWasReplay) =>
+        !manualActive && (replayActive || lastWasReplay);
     public static string DescribeStatus() {
         if (IsRecording) {
             return "Recording " + capturedFrames.ToString(CultureInfo.InvariantCulture) + "f";
@@ -135,6 +148,7 @@ public static partial class AkronInternalRecorder {
                 EnsureCaptureClock();
                 activePath = outputPath;
                 manualSpec = spec;
+                lastCaptureWasReplay = false;
                 manualCadence = new AkronCaptureCadence(spec.Framerate, captureClock.Elapsed.TotalSeconds);
                 sourceWidth = 0;
                 sourceHeight = 0;
@@ -188,6 +202,7 @@ public static partial class AkronInternalRecorder {
         DateTime endedUtc = DateTime.UtcNow;
         lock (Sync) {
             process = ffmpegProcess;
+            if (process != null) lastCaptureWasReplay = false;
             input = ffmpegInput;
             diagnostics = ffmpegDiagnostics;
             ffmpegDiagnostics = null;
