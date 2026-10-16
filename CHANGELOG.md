@@ -1,5 +1,7 @@
 # Changelog
 
+- Handle invalid recorder output directories without escaping into the overlay; failed replay starts disarm cleanly.
+
 - Fix arrow-key free-camera movement while Place StartPos freezes gameplay.
 
 All notable user-facing changes to Akron should be recorded here.
