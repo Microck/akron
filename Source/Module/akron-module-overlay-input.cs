@@ -427,7 +427,9 @@ public partial class AkronModule {
         EnsureOverlay(scene);
         if (ensureVisible) {
             bool wasVisible = Overlay.Visible;
-            Overlay.ResetTransientUiState();
+            if (!wasVisible) {
+                Overlay.ResetTransientUiState();
+            }
             Overlay.PrewarmLayout(scene as Level);
             Overlay.Visible = true;
             Overlay.Active = Overlay.Visible && Settings.ConsumeGameplayInputInMenu;
