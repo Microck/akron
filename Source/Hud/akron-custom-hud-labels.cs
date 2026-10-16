@@ -703,15 +703,15 @@ public static partial class AkronCustomHudLabels {
 
         private Vector2 PositionForAnchor(AkronHudAnchor anchor, Vector2 size, float cursor) {
             return anchor switch {
-                AkronHudAnchor.TopCenter => new Vector2(screenWidth / 2f - size.X / 2f, padding + cursor),
-                AkronHudAnchor.TopRight => new Vector2(screenWidth - padding - size.X, padding + cursor),
-                AkronHudAnchor.MiddleLeft => new Vector2(padding, screenHeight / 2f - size.Y / 2f + cursor),
-                AkronHudAnchor.Center => new Vector2(screenWidth / 2f - size.X / 2f, screenHeight / 2f - size.Y / 2f + cursor),
-                AkronHudAnchor.MiddleRight => new Vector2(screenWidth - padding - size.X, screenHeight / 2f - size.Y / 2f + cursor),
-                AkronHudAnchor.BottomLeft => new Vector2(padding, screenHeight - padding - size.Y - cursor),
-                AkronHudAnchor.BottomCenter => new Vector2(screenWidth / 2f - size.X / 2f, screenHeight - padding - size.Y - cursor),
-                AkronHudAnchor.BottomRight => new Vector2(screenWidth - padding - size.X, screenHeight - padding - size.Y - cursor),
-                _ => new Vector2(padding, topStartY + cursor)
+                AkronHudAnchor.TopCenter => new Vector2 { X = screenWidth / 2f - size.X / 2f, Y = padding + cursor },
+                AkronHudAnchor.TopRight => new Vector2 { X = screenWidth - padding - size.X, Y = padding + cursor },
+                AkronHudAnchor.MiddleLeft => new Vector2 { X = padding, Y = screenHeight / 2f - size.Y / 2f + cursor },
+                AkronHudAnchor.Center => new Vector2 { X = screenWidth / 2f - size.X / 2f, Y = screenHeight / 2f - size.Y / 2f + cursor },
+                AkronHudAnchor.MiddleRight => new Vector2 { X = screenWidth - padding - size.X, Y = screenHeight / 2f - size.Y / 2f + cursor },
+                AkronHudAnchor.BottomLeft => new Vector2 { X = padding, Y = screenHeight - padding - size.Y - cursor },
+                AkronHudAnchor.BottomCenter => new Vector2 { X = screenWidth / 2f - size.X / 2f, Y = screenHeight - padding - size.Y - cursor },
+                AkronHudAnchor.BottomRight => new Vector2 { X = screenWidth - padding - size.X, Y = screenHeight - padding - size.Y - cursor },
+                _ => new Vector2 { X = padding, Y = topStartY + cursor }
             };
         }
     }

@@ -21,7 +21,7 @@ public sealed class CustomLabelMoveLayoutTests {
         Type type = typeof(AkronCustomHudLabels).GetNestedType("LabelLayout", BindingFlags.NonPublic)!;
         object layout = Activator.CreateInstance(type, new object[] { 10, 6, 1280f, 720f, 50f })!;
         MethodInfo next = type.GetMethod("NextObstructed")!;
-        Vector2 Place(float width, float height) => (Vector2)next.Invoke(layout, new object[] { anchor, new Vector2(width, height) })!;
+        Vector2 Place(float width, float height) => (Vector2)next.Invoke(layout, new object[] { anchor, new Vector2 { X = width, Y = height } })!;
         Vector2 first = Place(150, 20);
         Vector2 second = Place(230, 35);
         Vector2 third = Place(90, 12);
@@ -42,10 +42,10 @@ public sealed class CustomLabelMoveLayoutTests {
     public void MovedLabelsClearExistingMiddleDestinationOccupants(AkronHudAnchor anchor) {
         Type type = typeof(AkronCustomHudLabels).GetNestedType("LabelLayout", BindingFlags.NonPublic)!;
         object layout = Activator.CreateInstance(type, new object[] { 10, 6, 1280f, 720f, 50f })!;
-        Vector2 resident = (Vector2)type.GetMethod("Next")!.Invoke(layout, new object[] { anchor, new Vector2(150, 20) })!;
-        Vector2 moved = (Vector2)type.GetMethod("NextObstructed")!.Invoke(layout, new object[] { anchor, new Vector2(230, 35) })!;
+        Vector2 resident = (Vector2)type.GetMethod("Next")!.Invoke(layout, new object[] { anchor, new Vector2 { X = 150, Y = 20 } })!;
+        Vector2 moved = (Vector2)type.GetMethod("NextObstructed")!.Invoke(layout, new object[] { anchor, new Vector2 { X = 230, Y = 35 } })!;
         Assert.True(moved.Y >= resident.Y + 20 + 6);
-        Vector2 third = (Vector2)type.GetMethod("NextObstructed")!.Invoke(layout, new object[] { anchor, new Vector2(90, 50) })!;
+        Vector2 third = (Vector2)type.GetMethod("NextObstructed")!.Invoke(layout, new object[] { anchor, new Vector2 { X = 90, Y = 50 } })!;
         Assert.True(third.Y >= moved.Y + 35 + 6);
     }
 
