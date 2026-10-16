@@ -424,6 +424,14 @@ public static class AkronRuntimeOptions {
         }
     }
 
+    internal static void ApplyFreeCameraForStartPosPlacement(Level level) {
+        if (level != null && AkronModule.IsFreeCameraEffectiveEnabled() &&
+            AkronModule.TryUseRuntime(AkronFeatureKind.FreeCamera)) {
+            // Placement already freezes gameplay. Do not capture or change player state.
+            MoveFreeCamera(level);
+        }
+    }
+
     private static void ApplyFreeCamera(Level level, Player player) {
         if (level == null || !AkronModule.IsFreeCameraEffectiveEnabled()) {
             RestoreFreeCameraPlayerControl();
@@ -436,6 +444,10 @@ public static class AkronRuntimeOptions {
         }
 
         LockFreeCameraPlayerControl(player);
+        MoveFreeCamera(level);
+    }
+
+    private static void MoveFreeCamera(Level level) {
         if (AkronModule.ShouldSuppressFreeCameraMovementForClickTeleport()) {
             level.Camera.Position = ClampCameraToRoom(level, level.Camera.Position);
             return;
