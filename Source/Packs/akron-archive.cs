@@ -42,12 +42,23 @@ public static class AkronArchive {
         WritePayloadArchive(path, manifest, payloadEntryName, payloadJson, new Dictionary<string, string>());
     }
 
+    public static string WriteUniqueSinglePayloadArchive(string path, AkronArchiveManifest manifest, string payloadEntryName, string payloadJson) {
+        return WritePayloadArchiveCore(path, manifest, payloadEntryName, payloadJson, new Dictionary<string, string>(), preserveExisting: true);
+    }
+
     public static void WritePayloadArchive(
         string path,
         AkronArchiveManifest manifest,
         string payloadEntryName,
         string payloadJson,
         IReadOnlyDictionary<string, string> attachmentPaths
+    ) {
+        WritePayloadArchiveCore(path, manifest, payloadEntryName, payloadJson, attachmentPaths, preserveExisting: false);
+    }
+
+    private static string WritePayloadArchiveCore(
+        string path, AkronArchiveManifest manifest, string payloadEntryName, string payloadJson,
+        IReadOnlyDictionary<string, string> attachmentPaths, bool preserveExisting
     ) {
         if (string.IsNullOrWhiteSpace(path)) {
             throw new ArgumentException("Archive path is required.", nameof(path));
@@ -78,9 +89,23 @@ public static class AkronArchive {
                     WriteFileEntry(archive, attachment.Key, attachment.Value);
                 }
             }
-            File.Move(temporaryPath, path, overwrite: true);
+            if (!preserveExisting) {
+                File.Move(temporaryPath, path, overwrite: true);
+                return path;
+            }
+            string stem = Path.Combine(Path.GetDirectoryName(path) ?? ".", Path.GetFileNameWithoutExtension(path));
+            string extension = Path.GetExtension(path);
+            for (int suffix = 0; ; suffix = checked(suffix + 1)) {
+                string candidate = suffix == 0 ? path : stem + "-" + suffix.ToString(CultureInfo.InvariantCulture) + extension;
+                try {
+                    File.Move(temporaryPath, candidate, overwrite: false);
+                    return candidate;
+                } catch (IOException) when (File.Exists(candidate)) {
+                    continue;
+                }
+            }
         } finally {
-            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            try { File.Delete(temporaryPath); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
     }
 
