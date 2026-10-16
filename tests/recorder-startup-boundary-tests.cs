@@ -39,7 +39,8 @@ public sealed class RecorderStartupBoundaryTests {
         Assert.Contains("DisarmReplayBufferAutoStart(settings);", failure);
         Assert.Contains("catch (Exception cleanupError)", failure);
         Assert.Contains("lastError = failure;", failure);
-        Assert.Contains("StopReplayBuffer(false);", failure);
+        Assert.Contains("StopReplayBuffer(false, out cleanupFailure);", failure);
+        Assert.Contains("StopReplayBuffer(false, out replacementCleanupError);", method);
         Assert.DoesNotContain("Stop(false)", failure);
         Assert.Contains("throw new IOException(\"FFmpeg replay buffer did not start.\")", method);
     }
@@ -54,6 +55,14 @@ public sealed class RecorderStartupBoundaryTests {
         int toast = method.IndexOf("Completion capture armed.", StringComparison.Ordinal);
         Assert.True(attempt >= 0 && guard > attempt && toast > guard);
         Assert.Contains("if (scene != null)", method);
+    }
+
+    [Theory]
+    [InlineData("", "", "", "mkdir")]
+    [InlineData("flush", "", "", "mkdir | Replay cleanup: flush")]
+    [InlineData("flush", "wait", "audio", "mkdir | Replay cleanup: flush | Replay cleanup: wait | Replay cleanup: audio")]
+    public void StartupFailureRetainsCapturedAndThrownCleanupDiagnostics(string prior, string cleanup, string thrown, string expected) {
+        Assert.Equal(expected, AkronInternalRecorder.CombineReplayStartupErrors("mkdir", prior, cleanup, thrown));
     }
 
 }

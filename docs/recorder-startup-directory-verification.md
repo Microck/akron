@@ -10,3 +10,8 @@ Manual and replay path resolution, directory creation, output reservation and pr
 
 ## Verification
 Release and Debug each pass2,539 tests, including startup-boundary, guarded cleanup/disarm and completion-feedback guards. Corrected native negative/valid-path recovery and concurrent recording checks are pending. Filesystem/source checks do not replace native acceptance.
+
+## First candidate and review correction
+QA159 genuinely passed manual rejection, valid-folder manual recovery, invalid replay rejection while manual capture continued, failed completion arming without success feedback, and valid-folder replay recovery/export. The manual output contains2692 coherent frames including footage after replay refusal. Native Save/Quit/Exit0 completed.
+
+A second review found that replay stop can catch its own cleanup error rather than throw it, allowing later preparation failure to overwrite that diagnostic. Replay stop now exposes its captured error to startup; both replacement cleanup and failed-start cleanup errors are combined with the original startup exception. Other callers retain the same signature through a delegating overload. Tests cover empty, captured and multiple captured/thrown errors. Release/Debug each pass2,542 tests. Revised native regression acceptance is pending; no native cleanup-fault injection is claimed.
