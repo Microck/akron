@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Match Extended Variants dash-direction preset axes to their labels, including Horizontal, Vertical, No Up, and No Down.
+
 - Show Noclip speed feedback only when the effective value changes, preventing repeated clamp toasts while editing.
 
 - Preserve native ground and other handled jumps without spending the finite Air Jumps allowance.
