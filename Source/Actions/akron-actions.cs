@@ -889,10 +889,9 @@ public static partial class AkronActions {
 
         string directory = Path.Combine(Everest.PathGame, "Saves", "AkronProof");
         Directory.CreateDirectory(directory);
-        string path = Path.Combine(directory, "akron-journal-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".json");
         string previousPath = FindLatestJournalSnapshot(directory);
         string summary = BuildJournalSnapshotSummary(level);
-        File.WriteAllText(path, summary);
+        string path = WriteUniqueJournalSnapshot(directory, summary, DateTime.UtcNow);
 
         string compare = string.IsNullOrWhiteSpace(previousPath)
             ? "First snapshot"
@@ -901,6 +900,26 @@ public static partial class AkronActions {
         AkronModule.Session.LastJournalSnapshotPath = path;
         AkronModule.Session.LastJournalCompareSummary = compare;
         Engine.Scene?.Add(new AkronToast("Journal snapshot: " + compare));
+    }
+
+    internal static string WriteUniqueJournalSnapshot(string directory, string summary, DateTime timestampUtc) {
+        string stem = "akron-journal-" + timestampUtc.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+        for (int suffix = 0; ; suffix = checked(suffix + 1)) {
+            string name = stem + (suffix == 0 ? string.Empty : "-" + suffix.ToString(CultureInfo.InvariantCulture)) + ".json";
+            string path = Path.Combine(directory, name);
+            FileStream stream;
+            try {
+                // Reserve atomically: an existing snapshot must never be truncated.
+                stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            } catch (IOException) when (File.Exists(path)) {
+                continue;
+            }
+            using (stream)
+            using (var writer = new StreamWriter(stream)) {
+                writer.Write(summary);
+            }
+            return path;
+        }
     }
 
     private static string FindLatestJournalSnapshot(string directory) {
