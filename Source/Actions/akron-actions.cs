@@ -1130,28 +1130,26 @@ public static partial class AkronActions {
             return;
         }
 
+        if (level.SkippingCutscene) {
+            Engine.Scene?.Add(new AkronToast("Cutscene skip already in progress."));
+            return;
+        }
+
         if (!AkronModule.TryUse(AkronFeatureKind.CutsceneSkip)) {
             return;
         }
 
-        // Celeste clears SkippingCutscene when the cutscene ends, and only a skip callback
-        // ends one. With no callback stored there is nothing to end, so the flag is left
-        // alone: set, it would keep the level in a skip that nothing finishes.
+        // Retain the no-callback guard, but let the native coroutine own callback
+        // invocation, fades and final flag cleanup. EndCutscene alone intentionally
+        // leaves InCutscene set while SkippingCutscene is true.
         FieldInfo onCutsceneSkipField = typeof(Level).GetField("onCutsceneSkip", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         object onCutsceneSkipValue = onCutsceneSkipField?.GetValue(level);
-        if (onCutsceneSkipValue is Action<Level> onCutsceneSkipWithLevel) {
-            level.SkippingCutscene = true;
-            onCutsceneSkipWithLevel(level);
-            // Nulled after firing: vanilla leaves the callback behind, see AkronSaveLoad.
-            onCutsceneSkipField.SetValue(level, null);
-        } else if (onCutsceneSkipValue is Action onCutsceneSkip) {
-            level.SkippingCutscene = true;
-            onCutsceneSkip();
-            onCutsceneSkipField.SetValue(level, null);
-        } else {
+        if (onCutsceneSkipValue is not Action<Level> && onCutsceneSkipValue is not Action) {
             Engine.Scene?.Add(new AkronToast("This cutscene has no skip to run."));
             return;
         }
+
+        level.SkipCutscene();
         Engine.Scene?.Add(new AkronToast("Cutscene skip requested."));
     }
 
