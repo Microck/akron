@@ -105,6 +105,16 @@ public sealed class VanillaVariantRoutingTests {
     }
 
     [Fact]
+    public void CanonicalChangedCountUsesTheSameAvailabilityGuardAsOptionReads() {
+        string source = Read("Interop/akron-extended-variants.cs");
+        int start = source.IndexOf("private static int GetChangedOptionCount()", StringComparison.Ordinal);
+        string count = source.Substring(start, source.IndexOf("private static string FormatVariantLabel", start, StringComparison.Ordinal) - start);
+        Assert.Contains("ReadCurrentValue(option, out string unavailable, out _)", count);
+        Assert.True(count.IndexOf("if (!string.IsNullOrEmpty(unavailable)) continue", StringComparison.Ordinal) <
+                    count.IndexOf("field.GetValue(global::Celeste.SaveData.Instance.Assists)", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ProductionWritesPreflightBeforeMutationAndTrackPartialFailures() {
         string source = Read("Interop/akron-extended-variants.cs");
         int start = source.IndexOf("private static bool TryApplyVariantValue", StringComparison.Ordinal);

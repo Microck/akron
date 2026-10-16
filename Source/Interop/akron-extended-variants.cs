@@ -1208,6 +1208,10 @@ public static class AkronExtendedVariants {
         if (global::Celeste.SaveData.Instance != null && EnsureOptionMetadata()) {
             foreach (VariantMetadata option in optionMetadata) {
                 if (!AkronVanillaVariantRouting.HasVanillaBase(GetHandler(option.Variant)?.GetType())) continue;
+                // Match per-entry availability, but count the persistent player preference,
+                // not a temporary map-applied value.
+                ReadCurrentValue(option, out string unavailable, out _);
+                if (!string.IsNullOrEmpty(unavailable)) continue;
                 FieldInfo field = AkronVanillaVariantRouting.AssistField(option.Name);
                 if (field != null && !ValuesMatch(field.GetValue(global::Celeste.SaveData.Instance.Assists), option.DefaultValue)) count++;
             }

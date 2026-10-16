@@ -24,6 +24,14 @@ All recordings show dropped-frame warnings. Conclusions concern visible sustaine
 
 ## Automated checks
 
-2,436 native-runtime tests passed in both Release and Debug for the final runtime package, with zero failures/skips. Coverage includes all thirteen assist field/type mappings; actual base-chain classification; missing handler/base/UI/enum/mapping/signature/save prerequisites; transient save recovery; map-level/hook/session/user-override gates; unavailable-value policy; map provenance; and production preflight/configured-write ordering. Existing numeric-gesture coverage remains enabled. The existing CL0006 warning is unchanged.
+2,437 native-runtime tests passed in both Release and Debug for the review-corrected runtime package, with zero failures/skips. Coverage includes all thirteen assist field/type mappings; actual base-chain classification; missing handler/base/UI/enum/mapping/signature/save prerequisites; transient save recovery; map-level/hook/session/user-override gates; unavailable-value policy; map provenance; and production preflight/configured-write ordering. Existing numeric-gesture coverage remains enabled. The existing CL0006 warning is unchanged.
 
 Original screenshots, recording containers/sidecars, decoded visual audits, launch/exit receipts, profiles, package hashes and test logs are preserved in the private QA evidence set. Raw runtime assets are not committed with this fix.
+
+## Review follow-up
+
+The changed-count summary now uses the same per-entry availability validation as Current before counting canonical user assists. An unavailable setter/type/map-read contract therefore cannot contribute a misleading changed entry. The persistent player preference remains the counted value, rather than a temporary map override. The review-corrected package is `dc40e335559626386cfa1f78499a6f9e26e4a12381932b7ee73f029abb4f76b0`.
+
+Two other review suggestions were checked against provider/native metadata rather than applied blindly: vanilla `applyAssists` intentionally skips map values equal to the handler default, and `Celeste.Assists` is a non-nullable value type. Existing save-identity ownership logic replaces changed-field baselines before acquiring ownership on a new save.
+
+QA118 native review-follow-up confirms the summary sequence Off/0 → On/1 → On/0 for the single No Grabbing edit, plus On blocking in clip015834 and Off recovery in clip020016. The first On toast was missed during provider hook activation; its state attribution uses the controlled edit and summary count rather than screenshot02. Cleanup restores master Off/0.
