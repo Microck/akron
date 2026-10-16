@@ -76,6 +76,20 @@ public sealed class JournalSnapshotPublicationTests : IDisposable {
         Assert.Equal(latest, AkronActions.FindLatestJournalSnapshot(directory));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void DeletedLowerSuffixDoesNotMoveNewSnapshotBehindOlderOne(int deletedIndex) {
+        string[] paths = Enumerable.Range(0, 3).Select(i => AkronActions.WriteUniqueJournalSnapshot(directory, i.ToString(), timestamp)).ToArray();
+        foreach (string path in paths) File.SetLastWriteTimeUtc(path, timestamp);
+        File.Delete(paths[deletedIndex]);
+        string latest = AkronActions.WriteUniqueJournalSnapshot(directory, "new", timestamp);
+        File.SetLastWriteTimeUtc(latest, timestamp);
+        Assert.EndsWith("-3.json", latest);
+        Assert.Equal(latest, AkronActions.FindLatestJournalSnapshot(directory));
+        Assert.Equal("2", File.ReadAllText(paths[2]));
+    }
+
     [Fact]
     public void CoarseTimestampsOrderDifferentSecondsBeforeSuffixes() {
         string first = AkronActions.WriteUniqueJournalSnapshot(directory, "old", timestamp);

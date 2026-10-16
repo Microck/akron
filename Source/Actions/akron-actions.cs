@@ -903,8 +903,16 @@ public static partial class AkronActions {
     }
 
     internal static string WriteUniqueJournalSnapshot(string directory, string summary, DateTime timestampUtc) {
-        string stem = "akron-journal-" + timestampUtc.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-        for (int suffix = 0; ; suffix = checked(suffix + 1)) {
+        string timestamp = timestampUtc.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+        string stem = "akron-journal-" + timestamp;
+        int highestSuffix = Directory.EnumerateFiles(directory, stem + "*.json")
+            .Select(JournalSnapshotOrder)
+            .Where(order => order.Timestamp == timestamp)
+            .Select(order => order.Suffix)
+            .DefaultIfEmpty(-1)
+            .Max();
+        // Do not reuse holes: suffix order must remain chronological when mtimes tie.
+        for (int suffix = checked(highestSuffix + 1); ; suffix = checked(suffix + 1)) {
             string name = stem + (suffix == 0 ? string.Empty : "-" + suffix.ToString(CultureInfo.InvariantCulture)) + ".json";
             string path = Path.Combine(directory, name);
             FileStream stream;
