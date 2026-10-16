@@ -59,6 +59,7 @@ public sealed partial class AkronOverlay
         ExternalToolPlacementPlan externalPlacementPlan = BuildExternalToolPlacementPlan(visibleTabs, actionEntriesByTab, columnXPositions.Count, menuTop, displayHeight, searchActiveForImGuiDraw);
         List<float> columnBottoms = columnXPositions.Select(_ => menuTop).ToList();
         List<int> columnSectionCounts = columnXPositions.Select(_ => 0).ToList();
+        var windows = new List<(string Title, float X, float Y, float Height, bool Scroll, List<ActionEntry> Entries, int Tab)>();
         for (int tabIndex = 0; tabIndex < visibleTabs.Length; tabIndex++)
         {
             string tabName = visibleTabs[tabIndex];
@@ -73,10 +74,49 @@ public sealed partial class AkronOverlay
             float y = columnBottoms[columnIndex];
             float sectionScreenHeight = GetSectionScreenHeight(tabName, columnIndex, externalPlacementPlan, displayHeight);
             float height = CalculateActionSectionHeight(entries.Count, y, sectionScreenHeight);
-            DrawActionWindow(tabName, x, y, menuColumnWidth, entries, tabIndex);
+            bool needsScrolling = entries.Count > CalculateVisibleActionRows(y, sectionScreenHeight);
+            windows.Add((tabName, x, y, height, needsScrolling, entries, tabIndex));
             columnBottoms[columnIndex] = y + GetStackedActionSectionHeight(tabName, height, searchActiveForImGuiDraw) + ColumnStackGap;
             columnSectionCounts[columnIndex]++;
         }
+
+        // Plan using unscrolled coordinates. Translating a window must not change
+        // its row capacity or the placement of later sections.
+        float contentBottom = columnBottoms.Max();
+        float navigationHeight = 38f;
+        float maximumScroll = CalculateSectionScrollMaximum(contentBottom, displayHeight, navigationHeight);
+        if (sectionScrollDisplaySize != new NumericsVector2(displayWidth, displayHeight) ||
+            !string.Equals(sectionScrollQuery, searchQuery, StringComparison.Ordinal))
+        {
+            bool hadScrollContext = sectionScrollDisplaySize != NumericsVector2.Zero;
+            sectionScrollOffset = 0f;
+            sectionScrollDisplaySize = new NumericsVector2(displayWidth, displayHeight);
+            sectionScrollQuery = searchQuery;
+            if (hadScrollContext)
+                CloseOptionsPopup();
+        }
+        sectionScrollOffset = ClampSectionScroll(sectionScrollOffset, maximumScroll);
+        float contentViewportHeight = maximumScroll > 0f ? displayHeight - navigationHeight : displayHeight;
+        foreach (var window in windows)
+        {
+            float translatedY = window.Y - sectionScrollOffset;
+            float stackedHeight = GetStackedActionSectionHeight(window.Title, window.Height, searchActiveForImGuiDraw);
+            float minimumVisibleHeight = GetSectionMinimumVisibleHeight(
+                IsSectionCollapsedForLayout(window.Title, searchActiveForImGuiDraw), CurrentRowHeight());
+            if (translatedY + stackedHeight <= 0f || translatedY + minimumVisibleHeight > contentViewportHeight)
+                continue;
+            // Top-level windows have persistent z-order. Keep their actual bounds
+            // out of the navigation strip rather than relying on draw order.
+            float renderedHeight = Math.Min(window.Height, contentViewportHeight - translatedY);
+            DrawActionWindow(window.Title, window.X, translatedY, menuColumnWidth,
+                window.Entries, window.Tab, renderedHeight, window.Scroll || renderedHeight < window.Height);
+        }
+        // A resize, filter or collapse can remove the popup's submitted anchor.
+        // Reconcile ownership so a hidden popup cannot leave all rows blocked.
+        if (IsAnyOptionsPopupOpen() && pendingImGuiOptionsPopupEntry == null)
+            CloseOptionsPopup();
+        if (maximumScroll > 0f)
+            DrawSectionNavigation(displayWidth, displayHeight, navigationHeight, maximumScroll);
 
         DrawCommunityPackBrowserWindow();
         DrawCommunityPackUploadWindow();
@@ -143,12 +183,10 @@ public sealed partial class AkronOverlay
         DrawPendingImGuiItemTooltip();
     }
 
-    private void DrawActionWindow(string title, float x, float y, float width, List<ActionEntry> entries, int tabIndex)
+    private void DrawActionWindow(string title, float x, float y, float width, List<ActionEntry> entries, int tabIndex, float height, bool needsScrolling)
     {
         long start = Stopwatch.GetTimestamp();
-        float displayHeight = ImGui.GetIO().DisplaySize.Y / CurrentOverlayScale();
-        bool needsScrolling = entries.Count > CalculateVisibleActionRows(y, displayHeight);
-        if (!BeginFixedWindow(title, x, y, width, CalculateActionSectionHeight(entries.Count, y, displayHeight), needsScrolling))
+        if (!BeginFixedWindow(title, x, y, width, height, needsScrolling))
         {
             ImGui.End();
             AkronPerformanceTelemetry.RecordOverlayWindowCost(title, ElapsedMilliseconds(start, Stopwatch.GetTimestamp()));

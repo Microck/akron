@@ -606,6 +606,7 @@ public sealed partial class AkronOverlay : Entity {
     }
 
     internal void ResetTransientUiState(bool searchAutofocus) {
+        ResetSectionNavigation();
         CloseOptionsPopup();
         communityPackBrowserOpen = false;
         expandedCommunityPackPreview = null;
