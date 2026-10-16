@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Keep each recording encoder’s capture resolution and frame cadence fixed for its lifetime, independently of replay settings and later edits.
+
 - Match Extended Variants dash-direction preset axes to their labels, including Horizontal, Vertical, No Up, and No Down.
 
 - Show Noclip speed feedback only when the effective value changes, preventing repeated clamp toasts while editing.
