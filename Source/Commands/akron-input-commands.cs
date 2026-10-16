@@ -129,6 +129,7 @@ public static partial class AkronCommands {
                         Log("invalid control-display preset: " + value);
                         return;
                 }
+                AkronInputBoard.ApplyLabelPreset(AkronModule.Settings.InputBoardElements, AkronModule.Settings.InputBoardLabelPreset);
                 break;
             case "reset":
                 AkronModule.Settings.InputBoardElements = AkronInputBoard.BuildDefaultElements();
