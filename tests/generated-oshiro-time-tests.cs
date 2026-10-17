@@ -77,4 +77,35 @@ public sealed class GeneratedOshiroTimeTests {
         Assert.Equal(1f, restored);
         Assert.False(lease.Release(scene, .5f, out _));
     }
+    [Fact]
+    public void CompetingSameValueWriteInvalidatesAndRebasesNextGeneratedInterval() {
+        var lease = new AkronGeneratedTimeRateLease(); var actor = new object(); var scene = new object();
+        lease.Observe(actor, scene, true, 1f, .5f);
+        lease.Clear(); // Every observed competing store invalidates, regardless of its value.
+        Assert.False(lease.Remove(actor, scene, scene, .5f, out _));
+        lease.Observe(actor, scene, true, .5f, .4f);
+        Assert.True(lease.Remove(actor, scene, scene, .4f, out float restored));
+        Assert.Equal(.5f, restored);
+    }
+
+    [Fact]
+    public void CompetingObserverPreservesStoreAndRetargetsIncomingBranch() {
+        using var module = Mono.Cecil.ModuleDefinition.CreateModule("ClockFixture", Mono.Cecil.ModuleKind.Dll);
+        var type = new Mono.Cecil.TypeDefinition("Fixture", "Writer", Mono.Cecil.TypeAttributes.Class, module.TypeSystem.Object);
+        module.Types.Add(type);
+        var method = new Mono.Cecil.MethodDefinition("Write", Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Void);
+        type.Methods.Add(method);
+        var il = method.Body.GetILProcessor();
+        var store = Mono.Cecil.Cil.Instruction.Create(Mono.Cecil.Cil.OpCodes.Stsfld,
+            module.ImportReference(typeof(Monocle.Engine).GetField(nameof(Monocle.Engine.TimeRate))));
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_R4, .5f);
+        var branch = Mono.Cecil.Cil.Instruction.Create(Mono.Cecil.Cil.OpCodes.Br, store);
+        il.Append(branch); il.Append(store); il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
+        using var context = new MonoMod.Cil.ILContext(method);
+        context.Invoke(AkronGeneratedOshiroTime.ObserveCompetingWrites);
+        Assert.True(AkronGeneratedOshiroTime.IsTimeRateStore(store));
+        Assert.NotSame(store, branch.Operand);
+        Assert.NotSame(branch, store.Previous);
+        Assert.Equal(.5f, AkronGeneratedOshiroTime.ObserveCompetingWrite(.5f));
+    }
 }
