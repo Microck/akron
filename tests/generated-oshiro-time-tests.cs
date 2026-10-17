@@ -145,7 +145,7 @@ public sealed class GeneratedOshiroTimeTests {
         Assert.True(lease.Remove(actor, scene, scene, .5f, out float restored));
         Assert.Equal(.75f, restored);
     }
-    [Theory]
+    [NativeOshiroTimescaleTheory]
     [InlineData(.75f, true, true)]
     [InlineData(.75f, true, false)]
     [InlineData(.5f, true, true)]
@@ -194,5 +194,12 @@ public sealed class GeneratedOshiroTimeTests {
             Monocle.Engine.TimeRate = previousRate;
             AkronPolicy.UnloadMapRestrictions();
         }
+    }
+}
+
+public sealed class NativeOshiroTimescaleTheoryAttribute : TheoryAttribute {
+    public NativeOshiroTimescaleTheoryAttribute() {
+        if (System.Environment.GetEnvironmentVariable("AKRON_NATIVE_EVEREST_TESTS") != "1")
+            Skip = "Requires real Engine.Instance/Scene getters; stripped reference bodies are not executable.";
     }
 }

@@ -15,6 +15,7 @@ internal sealed class AkronGeneratedTimeRateLease {
     private object scene;
     private float before;
     private float last;
+    internal bool HasContributors => contributors.Count > 0;
 
     internal void Observe(object owner, object ownerScene, bool generated, float current, float next) {
         if (!generated || ownerScene == null) { Clear(); return; }
@@ -174,10 +175,10 @@ internal static class AkronGeneratedOshiroTime {
     // Akron's explicit timescale takes over the whole generated interval. Preserve the
     // underlying clock, not the transient Oshiro rate, for its eventual release.
     internal static float TakeTimescaleBaseline(float current) =>
-        Lease.Release(Engine.Instance == null ? null : Engine.Scene, current, out float prior) ? prior : current;
+        Lease.HasContributors && Lease.Release(Engine.Instance == null ? null : Engine.Scene, current, out float prior) ? prior : current;
 
     internal static bool ReleaseTimescaleUnderGenerated(float current, float oldBaseline, float newBaseline) =>
-        Lease.RebaseUnderlying(Engine.Instance == null ? null : Engine.Scene, current, oldBaseline, newBaseline);
+        Lease.HasContributors && Lease.RebaseUnderlying(Engine.Instance == null ? null : Engine.Scene, current, oldBaseline, newBaseline);
 
     internal static void InvalidateOwnership() => Lease.Clear();
 
