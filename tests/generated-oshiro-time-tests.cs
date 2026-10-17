@@ -181,7 +181,11 @@ public sealed class GeneratedOshiroTimeTests {
                     Monocle.Engine.TimeRate = restore;
             }
             if (removeGeneratedFirst) { RemoveGenerated(); AkronModule.ReleaseTimescale(); }
-            else { AkronModule.ReleaseTimescale(); RemoveGenerated(); }
+            else {
+                AkronModule.ReleaseTimescale();
+                if (timescaleFirst) Assert.Equal(.5f, Monocle.Engine.TimeRate); // Active generated owner survives, including equal rates.
+                RemoveGenerated();
+            }
             Assert.Equal(1f, Monocle.Engine.TimeRate);
             Assert.False(AkronModule.OwnsCurrentTimescale);
         } finally {

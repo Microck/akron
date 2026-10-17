@@ -173,19 +173,15 @@ public partial class AkronModule
             return;
         }
 #pragma warning disable CS0618
-        // Once another mod has written the clock, it owns that value. In particular a
-        // restricted map may provide its own trainer; never keep resetting its clock.
-        if (Engine.TimeRate == lastAkronTimescale)
+        // A generated interval may sit above our override, even at the same numeric
+        // value. Rebase it first and preserve its active slowdown until actual removal.
+        bool generatedOwnsClock = AkronGeneratedOshiroTime.ReleaseTimescaleUnderGenerated(
+            Engine.TimeRate, lastAkronTimescale, timescaleBeforeAkron);
+        // Otherwise restore only a value still owned by Akron.
+        if (!generatedOwnsClock && Engine.TimeRate == lastAkronTimescale)
         {
             AkronGeneratedOshiroTime.InvalidateOwnership();
             Engine.TimeRate = timescaleBeforeAkron;
-        }
-        else
-        {
-            // A generated interval may currently sit above our override. Remove only
-            // the departing override from its baseline; keep its active slowdown intact.
-            AkronGeneratedOshiroTime.ReleaseTimescaleUnderGenerated(
-                Engine.TimeRate, lastAkronTimescale, timescaleBeforeAkron);
         }
 #pragma warning restore CS0618
         ownsTimescale = false;
