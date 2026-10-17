@@ -57,11 +57,17 @@ internal static class AkronGeneratedOshiroTime {
 
     internal static void Load() {
         if (loaded) return;
-        ownershipProtected = ObserveOtherNativeWriters();
-        IL.Celeste.AngryOshiro.Update += ObserveTimeRateWrites;
-        On.Monocle.Entity.Removed += Removed;
-        On.Monocle.Entity.SceneEnd += SceneEnd;
+        // Mark the installation active before subscribing so any partial setup can roll back.
         loaded = true;
+        try {
+            ownershipProtected = ObserveOtherNativeWriters();
+            IL.Celeste.AngryOshiro.Update += ObserveTimeRateWrites;
+            On.Monocle.Entity.Removed += Removed;
+            On.Monocle.Entity.SceneEnd += SceneEnd;
+        } catch {
+            Unload();
+            throw;
+        }
     }
 
     internal static void Unload() {
