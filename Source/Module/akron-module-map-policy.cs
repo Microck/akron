@@ -180,6 +180,13 @@ public partial class AkronModule
             AkronGeneratedOshiroTime.InvalidateOwnership();
             Engine.TimeRate = timescaleBeforeAkron;
         }
+        else
+        {
+            // A generated interval may currently sit above our override. Remove only
+            // the departing override from its baseline; keep its active slowdown intact.
+            AkronGeneratedOshiroTime.ReleaseTimescaleUnderGenerated(
+                Engine.TimeRate, lastAkronTimescale, timescaleBeforeAkron);
+        }
 #pragma warning restore CS0618
         ownsTimescale = false;
     }

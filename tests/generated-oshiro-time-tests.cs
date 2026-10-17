@@ -1,6 +1,7 @@
 using Xunit;
 namespace Celeste.Mod.Akron.Tests;
 
+[Collection(AkronSharedStateCollection.Name)]
 public sealed class GeneratedOshiroTimeTests {
     [Theory]
     [InlineData(1f)]
@@ -122,5 +123,72 @@ public sealed class GeneratedOshiroTimeTests {
         lease.Clear();
         Assert.False(lease.Remove(actor, scene, scene, overrideRate, out _));
         Assert.Equal(1f, baseline);
+    }
+    [Theory]
+    [InlineData(.75f, .5f, .75f, 1f)]
+    [InlineData(.5f, .4f, .5f, 1f)]
+    [InlineData(.7f, .5f, .75f, .7f)]
+    public void ReleasingUnderlyingTimescaleDoesNotResurrectItsOverride(
+        float baseline, float generatedRate, float departingOverride, float expected) {
+        var lease = new AkronGeneratedTimeRateLease(); var actor = new object(); var scene = new object();
+        lease.Observe(actor, scene, true, baseline, generatedRate);
+        lease.RebaseUnderlying(scene, generatedRate, departingOverride, 1f);
+        Assert.True(lease.Remove(actor, scene, scene, generatedRate, out float restored));
+        Assert.Equal(expected, restored);
+    }
+
+    [Fact]
+    public void RebaseDoesNotTouchAnotherScenesLease() {
+        var lease = new AkronGeneratedTimeRateLease(); var actor = new object(); var scene = new object();
+        lease.Observe(actor, scene, true, .75f, .5f);
+        lease.RebaseUnderlying(new object(), .5f, .75f, 1f);
+        Assert.True(lease.Remove(actor, scene, scene, .5f, out float restored));
+        Assert.Equal(.75f, restored);
+    }
+    [Theory]
+    [InlineData(.75f, true, true)]
+    [InlineData(.75f, true, false)]
+    [InlineData(.5f, true, true)]
+    [InlineData(.5f, true, false)]
+    [InlineData(.75f, false, true)]
+    [InlineData(.75f, false, false)]
+    [InlineData(.5f, false, true)]
+    [InlineData(.5f, false, false)]
+    public void ActualTimescaleMethodsReleaseBothOwnersWithoutResurrectingEither(
+        float multiplier, bool timescaleFirst, bool removeGeneratedFirst) {
+        const System.Reflection.BindingFlags statics = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+        var instance = typeof(Monocle.Engine).GetField("<Instance>k__BackingField", statics);
+        var previousEngine = instance.GetValue(null);
+        var engine = (Monocle.Engine)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(Monocle.Engine));
+        System.GC.SuppressFinalize(engine); // No FNA/native constructor ran.
+        var scene = (Monocle.Scene)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(Monocle.Scene));
+        typeof(Monocle.Engine).GetField("scene", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(engine, scene);
+        var lease = (AkronGeneratedTimeRateLease)typeof(AkronGeneratedOshiroTime).GetField("Lease", statics).GetValue(null);
+        float previousRate = Monocle.Engine.TimeRate;
+        var session = new AkronModuleSession { TimescaleEnabled = true, TimescaleMultiplier = multiplier };
+        var actor = new object();
+        try {
+            AkronModule.ReleaseTimescale();
+            AkronPolicy.UnloadMapRestrictions();
+            lease.Clear(); instance.SetValue(null, engine);
+            Monocle.Engine.TimeRate = 1f;
+            if (timescaleFirst) AkronModule.ApplyTimescale(session);
+            lease.Observe(actor, scene, true, Monocle.Engine.TimeRate, .5f);
+            Monocle.Engine.TimeRate = .5f;
+            if (!timescaleFirst) AkronModule.ApplyTimescale(session);
+            void RemoveGenerated() {
+                if (lease.Remove(actor, scene, scene, Monocle.Engine.TimeRate, out float restore) && !AkronModule.OwnsCurrentTimescale)
+                    Monocle.Engine.TimeRate = restore;
+            }
+            if (removeGeneratedFirst) { RemoveGenerated(); AkronModule.ReleaseTimescale(); }
+            else { AkronModule.ReleaseTimescale(); RemoveGenerated(); }
+            Assert.Equal(1f, Monocle.Engine.TimeRate);
+            Assert.False(AkronModule.OwnsCurrentTimescale);
+        } finally {
+            AkronModule.ReleaseTimescale(); lease.Clear();
+            instance.SetValue(null, previousEngine);
+            Monocle.Engine.TimeRate = previousRate;
+            AkronPolicy.UnloadMapRestrictions();
+        }
     }
 }
