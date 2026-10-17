@@ -139,6 +139,7 @@ public partial class AkronModule
             return;
         }
 #pragma warning disable CS0618
+        AkronGeneratedOshiroTime.InvalidateOwnership();
         Engine.TimeRate = value;
 #pragma warning restore CS0618
         ownsTimescale = ownedByAkron;
@@ -154,9 +155,10 @@ public partial class AkronModule
             return;
         }
 #pragma warning disable CS0618
+        float underlyingRate = AkronGeneratedOshiroTime.TakeTimescaleBaseline(Engine.TimeRate);
         if (!ownsTimescale)
         {
-            timescaleBeforeAkron = Engine.TimeRate;
+            timescaleBeforeAkron = underlyingRate;
             ownsTimescale = true;
         }
         lastAkronTimescale = session.TimescaleMultiplier;
@@ -175,6 +177,7 @@ public partial class AkronModule
         // restricted map may provide its own trainer; never keep resetting its clock.
         if (Engine.TimeRate == lastAkronTimescale)
         {
+            AkronGeneratedOshiroTime.InvalidateOwnership();
             Engine.TimeRate = timescaleBeforeAkron;
         }
 #pragma warning restore CS0618

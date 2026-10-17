@@ -164,6 +164,13 @@ internal static class AkronGeneratedOshiroTime {
         if (count == 0) throw new InvalidOperationException("Native clock writer lost its store site.");
     }
 
+    // Akron's explicit timescale takes over the whole generated interval. Preserve the
+    // underlying clock, not the transient Oshiro rate, for its eventual release.
+    internal static float TakeTimescaleBaseline(float current) =>
+        Lease.Release(Engine.Instance == null ? null : Engine.Scene, current, out float prior) ? prior : current;
+
+    internal static void InvalidateOwnership() => Lease.Clear();
+
     internal static float ObserveCompetingWrite(float value) {
         Lease.Clear();
         return value;

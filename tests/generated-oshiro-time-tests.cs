@@ -108,4 +108,19 @@ public sealed class GeneratedOshiroTimeTests {
         Assert.NotSame(branch, store.Previous);
         Assert.Equal(.5f, AkronGeneratedOshiroTime.ObserveCompetingWrite(.5f));
     }
+    [Theory]
+    [InlineData(.5f)]
+    [InlineData(.75f)]
+    public void ExplicitTimescaleTakeoverKeepsUnderlyingBaselineAndConsumesGeneratedLease(float overrideRate) {
+        var lease = new AkronGeneratedTimeRateLease(); var actor = new object(); var scene = new object();
+        lease.Observe(actor, scene, true, 1f, .5f);
+        Assert.True(lease.Release(scene, .5f, out float baseline));
+        Assert.Equal(1f, baseline);
+        Assert.False(lease.Remove(actor, scene, scene, overrideRate, out _));
+        // A later generated write under the override is invalidated by the next explicit write.
+        lease.Observe(actor, scene, true, overrideRate, .5f);
+        lease.Clear();
+        Assert.False(lease.Remove(actor, scene, scene, overrideRate, out _));
+        Assert.Equal(1f, baseline);
+    }
 }
