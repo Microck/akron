@@ -155,6 +155,8 @@ public partial class AkronModule : EverestModule {
             Logger.Log(LogLevel.Info, nameof(AkronModule), "Akron is disabled in its mod options; nothing loaded this session.");
             return;
         }
+        AkronGeneratedOshiroTime.Load();
+
 
         ConfigureErrorReporting();
         renderedStartPosFrameGeneration = AkronActions.StartPosFrameGeneration;
@@ -327,6 +329,8 @@ public partial class AkronModule : EverestModule {
             On.Monocle.Commands.ProcessMethod -= SkipAkronCommandsWhileDisabled;
             return;
         }
+        AkronGeneratedOshiroTime.Unload();
+
 
         ReleaseCursorZoomOverride(Engine.Scene as Level);
         cursorZoomToggleActive = false;
