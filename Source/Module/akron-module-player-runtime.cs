@@ -116,6 +116,7 @@ public partial class AkronModule {
             respawnTimeElapsed[deadBody] = 0f;
         }
         if (deadBody != null || self.Dead) {
+            ResetAirJumpQuota(self);
             if (registerDeathInStats) {
                 Session.DeathsSinceLevelLoad++;
                 Session.DeathsSinceRoomTransition++;
@@ -285,6 +286,21 @@ public partial class AkronModule {
         }
     }
 
+    private struct AirJumpUpdateContext {
+        internal Player Player;
+        internal bool JumpConsumed;
+    }
+
+    [ThreadStatic]
+    private static AirJumpUpdateContext airJumpUpdateContext;
+
+    private static void VirtualButtonOnConsumeBufferForAirJumps(On.Monocle.VirtualButton.orig_ConsumeBuffer orig, VirtualButton self) {
+        orig(self);
+        if (airJumpUpdateContext.Player != null && ReferenceEquals(self, Input.Jump)) {
+            airJumpUpdateContext.JumpConsumed = true;
+        }
+    }
+
     private static void PlayerOnUpdate(On.Celeste.Player.orig_Update orig, Player self)
     {
         if (!Settings.Noclip || !TryUseRuntime(AkronFeatureKind.Noclip) ||
@@ -292,6 +308,11 @@ public partial class AkronModule {
         {
             RestoreNoclipDepth();
             bool wasGrounded = self.OnGround();
+            Scene sceneBefore = self.Scene;
+            global::Celeste.Session nativeSessionBefore = (sceneBefore as Level)?.Session;
+            bool nativeJumpConsumed = false;
+            AirJumpUpdateContext previousAirJumpContext = airJumpUpdateContext;
+            airJumpUpdateContext = new AirJumpUpdateContext { Player = self };
             int dashesBefore = self.Dashes;
             float staminaBefore = self.Stamina;
             GroundRefillUpdateContext previousContext = groundRefillUpdateContext;
@@ -299,8 +320,19 @@ public partial class AkronModule {
                 wasGrounded, dashesBefore);
             try {
                 orig(self);
+                nativeJumpConsumed = airJumpUpdateContext.JumpConsumed;
             } finally {
+                airJumpUpdateContext = previousAirJumpContext;
                 groundRefillUpdateContext = previousContext;
+            }
+            // Stay inside the native player/input scope. A consumed raw press may
+            // still report Pressed after vanilla has already performed its jump.
+            if (self.Scene is Level currentLevel && ReferenceEquals(currentLevel, sceneBefore) &&
+                ReferenceEquals(currentLevel.Session, nativeSessionBefore) &&
+                ReferenceEquals(currentLevel.Tracker.GetEntity<Player>(), self)) {
+                ApplyJumpHackAfterPlayerUpdate(self, wasGrounded, nativeJumpConsumed);
+            } else {
+                ResetAirJumpQuota(self);
             }
             ApplyAkronSpikeGroundRefill(self);
             ApplyGroundRefillRulesAfterPlayerUpdate(self, wasGrounded, dashesBefore, staminaBefore);
@@ -309,6 +341,7 @@ public partial class AkronModule {
             return;
         }
 
+        ResetAirJumpQuota(self);
         ApplyNoclip(self);
     }
 
@@ -447,24 +480,29 @@ public partial class AkronModule {
         }
     }
 
-    private static void ApplyJumpHackAfterPlayerUpdate(Level level) {
-        Player player = level.Tracker.GetEntity<Player>();
-        if (player == null || player.Dead || player.Scene == null) {
-            jumpHackAirJumpsUsed = 0;
+    private static void ResetAirJumpQuota(Player player) {
+        AkronAirJumpQuota quota = player?.Get<AkronAirJumpQuota>();
+        if (quota != null) quota.Used = 0;
+    }
+
+    private static void ApplyJumpHackAfterPlayerUpdate(Player player, bool wasGrounded, bool nativeJumpConsumed) {
+        if (player == null || player.Dead || player.Scene is not Level ||
+            !Settings.JumpHack || !AkronPolicy.CanUse(AkronFeatureKind.MovementStatMutation).Allowed) {
+            ResetAirJumpQuota(player);
             return;
         }
 
-        if (!Settings.JumpHack || !AkronPolicy.CanUse(AkronFeatureKind.MovementStatMutation).Allowed) {
-            jumpHackAirJumpsUsed = 0;
-            return;
+        AkronAirJumpQuota quota = player.Get<AkronAirJumpQuota>();
+        if (quota == null) {
+            quota = new AkronAirJumpQuota();
+            player.Add(quota);
         }
 
-        if (player.OnGround()) {
-            jumpHackAirJumpsUsed = 0;
-            return;
-        }
+        bool grounded = player.OnGround();
+        if (wasGrounded || grounded) quota.Used = 0;
+        if (grounded) return;
 
-        if (ShouldPreserveVanillaJump(player) ||
+        if (ShouldPreserveVanillaJumpForAirJump(GetPlayerJumpGraceTimer(player), nativeJumpConsumed) ||
             !player.InControl ||
             !player.CanUnDuck ||
             !Input.Jump.Pressed ||
@@ -479,7 +517,7 @@ public partial class AkronModule {
         }
 
         if (!Settings.JumpHackInfinite &&
-            jumpHackAirJumpsUsed >= AkronModuleSettings.ClampJumpHackExtraJumps(Settings.JumpHackExtraJumps)) {
+            quota.Used >= AkronModuleSettings.ClampJumpHackExtraJumps(Settings.JumpHackExtraJumps)) {
             return;
         }
 
@@ -487,16 +525,20 @@ public partial class AkronModule {
             return;
         }
 
-        if (ShouldUseSuperJumpForAirJump(state, dashDirection)) {
-            InvokePlayerSuperJump(player);
-        } else {
-            player.Jump();
+        // An enclosing, nested native update must not see Akron's own jump as
+        // native input consumption. Restore its context even if a hook throws.
+        AirJumpUpdateContext previousContext = airJumpUpdateContext;
+        airJumpUpdateContext = default;
+        try {
+            if (ShouldUseSuperJumpForAirJump(state, dashDirection)) {
+                InvokePlayerSuperJump(player);
+            } else {
+                player.Jump();
+            }
+            quota.Used++;
+        } finally {
+            airJumpUpdateContext = previousContext;
         }
-        jumpHackAirJumpsUsed++;
-    }
-
-    private static bool ShouldPreserveVanillaJump(Player player) {
-        return ShouldPreserveVanillaJumpForAirJump(GetPlayerJumpGraceTimer(player));
     }
 
     private static float GetPlayerJumpGraceTimer(Player player) {
@@ -508,7 +550,11 @@ public partial class AkronModule {
     }
 
     internal static bool ShouldPreserveVanillaJumpForAirJump(float jumpGraceTimer) {
-        return jumpGraceTimer > 0f;
+        return ShouldPreserveVanillaJumpForAirJump(jumpGraceTimer, false);
+    }
+
+    internal static bool ShouldPreserveVanillaJumpForAirJump(float jumpGraceTimer, bool nativeJumpConsumed) {
+        return jumpGraceTimer > 0f || nativeJumpConsumed;
     }
 
     internal static bool ShouldSkipAirJumpForDashDirection(int playerState, Vector2 dashDirection, bool allowVerticalDashJumps) {

@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Preserve native ground and other handled jumps without spending the finite Air Jumps allowance.
+
 - Report failed internal recordings honestly, retain the previous successful clip, and clean temporary audio instead of publishing failed encoder output as saved.
 
 - Resolve relative recorder output folders to absolute paths before starting FFmpeg, so recordings are written to the selected folder.
