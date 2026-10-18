@@ -155,7 +155,13 @@ public static class AkronEarAid {
     }
 
     public static void ApplyVolume(EventDescription description, EventInstance instance) {
-        if (description == null || instance == null) {
+        if (instance == null) {
+            return;
+        }
+        // Creation is a new native identity even if FMOD recycled an address.
+        // Retire the previous category before matching (including unmatched events).
+        RetireCreatedHandle(instance.getRaw());
+        if (description == null) {
             return;
         }
 
@@ -176,6 +182,16 @@ public static class AkronEarAid {
         // captures the current native value, not a stale creation-time default.
         var entry = (Instance: instance, Key: sound.Key, OriginalVolume: 0f, Applied: false, AppliedVolume: 0f);
         VolumeOverrides.Add(ReconcileVolumeOverride(entry, OverrideEnabled(sound.Key)));
+    }
+
+    internal static void RetireCreatedHandle(IntPtr handle) {
+        if (handle == IntPtr.Zero) return;
+        for (int index = VolumeOverrides.Count - 1; index >= 0; index--) {
+            if (VolumeOverrides[index].Instance.getRaw() == handle) {
+                // Never restore here: the old native event has already gone away.
+                VolumeOverrides.RemoveAt(index);
+            }
+        }
     }
 
     internal static void ReconcileVolumeOverrides(bool restore = false) {

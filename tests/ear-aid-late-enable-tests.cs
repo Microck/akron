@@ -42,4 +42,27 @@ public sealed class EarAidLateEnableTests {
         int write = System.Array.IndexOf(calls, "setVolume");
         Assert.True(capture >= 0 && capture < read && read < policy && policy < write);
     }
+    [NativeEverestFact]
+    public void ReusedNativeHandleRetiresAllOldCategoriesEvenWithoutADescription() {
+        var field = typeof(AkronEarAid).GetField("VolumeOverrides", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        var entries = (System.Collections.IList) field.GetValue(null);
+        var reused = new System.IntPtr(384);
+        var other = new System.IntPtr(385);
+        Assert.Empty(entries);
+        try {
+            entries.Add((new FMOD.Studio.EventInstance(reused), "move-block", 1f, false, 0f));
+            entries.Add((new FMOD.Studio.EventInstance(reused), "fireball", 0.5f, true, 0f));
+            entries.Add((new FMOD.Studio.EventInstance(other), "lava", 1f, false, 0f));
+            AkronEarAid.RetireCreatedHandle(System.IntPtr.Zero);
+            Assert.Equal(3, entries.Count);
+            AkronEarAid.ApplyVolume(null, new FMOD.Studio.EventInstance(reused));
+            Assert.Single(entries);
+            var remaining = ((FMOD.Studio.EventInstance Instance, string Key, float OriginalVolume, bool Applied, float AppliedVolume)) entries[0];
+            Assert.Equal(other, remaining.Instance.getRaw());
+            Assert.Equal("lava", remaining.Key);
+        } finally {
+            entries.Clear();
+        }
+    }
+
 }
