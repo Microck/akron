@@ -164,9 +164,9 @@ public static partial class AkronInternalRecorder {
             roomEntryUtc = now;
             respawnUtc = now;
             roomEntryName = level?.Session?.Level ?? string.Empty;
-            // A new level can begin while the prior level's post-roll is still due.
-            // Keep those frozen identities only while their encoder remains alive.
-            if (replayProcess == null) PendingClipSaves.Clear();
+            // Pending windows retain their source identity across scene changes.
+            // Explicit stop, replacement, policy restriction, or startup failure
+            // invalidates them; a new level can also precede an encoder's first render.
         }
     }
 
@@ -440,6 +440,7 @@ public static partial class AkronInternalRecorder {
             // Otherwise CaptureFrame retries the same invalid directory every render.
             manualReplayBufferEnabled = false;
             DisarmReplayBufferAutoStart(settings);
+            lock (Sync) { PendingClipSaves.Clear(); }
             string cleanupFailure = string.Empty;
             string cleanupException = string.Empty;
             try {
@@ -474,8 +475,9 @@ public static partial class AkronInternalRecorder {
             process = replayProcess;
             if (process != null && ffmpegProcess == null) lastCaptureWasReplay = true;
             input = replayInput;
-            // Explicit stop/replacement invalidates every request for this encoder.
-            PendingClipSaves.Clear();
+            // A detached encoder may already be exporting while this update queues
+            // a new event for its replacement. No-process startup must preserve it.
+            if (process != null) PendingClipSaves.Clear();
             replayProcess = null;
             replayInput = null;
             replayCadence = null;
