@@ -1,5 +1,7 @@
 # Changelog
 
+- Count Escape in the inputs-per-second menu/pause channel, without double-counting overlapping pause sources.
+
 - Display the assigned input, rather than the feature value, in row binding context menus.
 
 - Honor VP9 Lossless rate control for manual recordings, replay capture and replay exports.
