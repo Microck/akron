@@ -12,16 +12,7 @@ public static partial class AkronInternalRecorder {
     private const string ClipSidecarExtension = ".akrclip";
 
     public static IEnumerable<AkronRecordingClipInfo> ListClips(AkronModuleSettings settings) {
-        string folder = ResolveOutputFolder(settings);
-        if (!Directory.Exists(folder)) {
-            return Enumerable.Empty<AkronRecordingClipInfo>();
-        }
-
-        IEnumerable<string> clips = Directory.EnumerateFiles(folder)
-            .Where(path => IsRecordingFile(path))
-            .Where(path => !path.Contains(Path.DirectorySeparatorChar + ".replay-", StringComparison.Ordinal));
-
-        IEnumerable<AkronRecordingClipInfo> infos = ApplyClipFilter(clips.Select(ReadClipInfo), settings.RecordingClipBrowserFilter);
+        IEnumerable<AkronRecordingClipInfo> infos = ApplyClipFilter(EnumerateClipCatalog(settings), settings.RecordingClipBrowserFilter);
         return settings.RecordingClipBrowserSort switch {
             AkronRecordingClipSort.Chapter => infos.OrderBy(info => info.Chapter).ThenByDescending(info => info.CreatedUtc),
             AkronRecordingClipSort.Room => infos.OrderBy(info => info.Room).ThenByDescending(info => info.CreatedUtc),
@@ -30,6 +21,17 @@ public static partial class AkronInternalRecorder {
             AkronRecordingClipSort.Favorite => infos.OrderByDescending(info => info.Favorite).ThenByDescending(info => info.CreatedUtc),
             _ => infos.OrderByDescending(info => info.CreatedUtc)
         };
+    }
+
+    private static IEnumerable<AkronRecordingClipInfo> EnumerateClipCatalog(AkronModuleSettings settings) {
+        string folder = ResolveOutputFolder(settings);
+        if (!Directory.Exists(folder)) {
+            return Enumerable.Empty<AkronRecordingClipInfo>();
+        }
+        return Directory.EnumerateFiles(folder)
+            .Where(IsRecordingFile)
+            .Where(path => !path.Contains(Path.DirectorySeparatorChar + ".replay-", StringComparison.Ordinal))
+            .Select(ReadClipInfo);
     }
 
     private static IEnumerable<AkronRecordingClipInfo> ApplyClipFilter(IEnumerable<AkronRecordingClipInfo> clips, AkronRecordingClipFilter filter) {
@@ -74,7 +76,7 @@ public static partial class AkronInternalRecorder {
     }
 
     private static IEnumerable<AkronRecordingClipInfo> SelectCompletionClips(AkronModuleSettings settings, string chapter) {
-        return ListClips(settings)
+        return EnumerateClipCatalog(settings)
             .Where(clip => string.IsNullOrWhiteSpace(chapter) || string.Equals(clip.Chapter, chapter, StringComparison.OrdinalIgnoreCase))
             .Where(IsCompletionClip)
             .OrderBy(clip => clip.StartUtc == DateTime.MinValue ? clip.CreatedUtc : clip.StartUtc)
@@ -88,6 +90,16 @@ public static partial class AkronInternalRecorder {
                string.Equals(clip.Kind, "checkpoint-clear", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static AkronRecordingContainerFormat PublishedClipContainer(string path, AkronRecordingContainerFormat fallback) {
+        return Path.GetExtension(path)?.ToLowerInvariant() switch {
+            ".mkv" => AkronRecordingContainerFormat.Mkv,
+            ".mp4" => AkronRecordingContainerFormat.Mp4,
+            ".mov" => AkronRecordingContainerFormat.Mov,
+            ".webm" => AkronRecordingContainerFormat.WebM,
+            _ => fallback
+        };
+    }
+
     private static void WriteClipSidecar(string clipPath, string kind, AkronRecordingContainerFormat format, DateTime startUtc, DateTime endUtc, Scene scene = null) {
         if (string.IsNullOrWhiteSpace(clipPath)) {
             return;
@@ -97,7 +109,7 @@ public static partial class AkronInternalRecorder {
         string sidecar = clipPath + ClipSidecarExtension;
         List<string> lines = new List<string> {
             "kind=" + kind,
-            "format=" + AkronModuleSettings.FormatRecordingContainer(format),
+            "format=" + AkronModuleSettings.FormatRecordingContainer(PublishedClipContainer(clipPath, format)),
             "chapter=" + SanitizeToken(level?.Session?.Area.GetSID() ?? string.Empty),
             "room=" + SanitizeToken(level?.Session?.Level ?? string.Empty),
             "createdUtc=" + DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),

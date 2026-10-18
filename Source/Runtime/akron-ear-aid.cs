@@ -144,7 +144,13 @@ public static class AkronEarAid {
         return 1f;
     }
 
-    private static SoundDefinition FindBestMatch(string eventName) {
+    internal static SoundDefinition FindBestMatch(string eventName) {
+        // Vanilla player respawn is named "revive", not "respawn". Match this exact
+        // identity so an entity's own revive event does not become a player override.
+        if (string.Equals(eventName, "event:/char/madeline/revive", StringComparison.OrdinalIgnoreCase)) {
+            return Array.Find(Sounds, sound => sound.Key == "respawn");
+        }
+
         SoundDefinition best = null;
         int bestScore = 0;
         foreach (SoundDefinition sound in Sounds) {

@@ -889,10 +889,9 @@ public static partial class AkronActions {
 
         string directory = Path.Combine(Everest.PathGame, "Saves", "AkronProof");
         Directory.CreateDirectory(directory);
-        string path = Path.Combine(directory, "akron-journal-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".json");
         string previousPath = FindLatestJournalSnapshot(directory);
         string summary = BuildJournalSnapshotSummary(level);
-        File.WriteAllText(path, summary);
+        string path = WriteUniqueJournalSnapshot(directory, summary, DateTime.UtcNow);
 
         string compare = string.IsNullOrWhiteSpace(previousPath)
             ? "First snapshot"
@@ -903,10 +902,75 @@ public static partial class AkronActions {
         Engine.Scene?.Add(new AkronToast("Journal snapshot: " + compare));
     }
 
-    private static string FindLatestJournalSnapshot(string directory) {
+    private static readonly object JournalSnapshotPublicationGate = new();
+
+    internal static string WriteUniqueJournalSnapshot(string directory, string summary, DateTime timestampUtc) {
+        return WriteUniqueJournalSnapshot(directory, writer => writer.Write(summary), timestampUtc);
+    }
+
+    internal static string WriteUniqueJournalSnapshot(string directory, Action<TextWriter> write, DateTime timestampUtc) {
+        string temporary = Path.Combine(directory, ".akron-journal-" + Guid.NewGuid().ToString("N") + ".tmp");
+        bool ownsTemporary = false;
+        try {
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
+                ownsTemporary = true;
+                using (var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false), 1024, leaveOpen: true)) {
+                    write(writer);
+                }
+                stream.Flush(flushToDisk: true);
+            }
+
+            lock (JournalSnapshotPublicationGate) {
+                string timestamp = timestampUtc.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+                string stem = "akron-journal-" + timestamp;
+                int highestSuffix = Directory.EnumerateFiles(directory, stem + "*.json")
+                    .Select(JournalSnapshotOrder)
+                    .Where(order => order.Timestamp == timestamp)
+                    .Select(order => order.Suffix)
+                    .DefaultIfEmpty(-1)
+                    .Max();
+                // Do not reuse holes: suffix order must remain chronological when mtimes tie.
+                for (int suffix = checked(highestSuffix + 1); ; suffix = checked(suffix + 1)) {
+                    string name = stem + (suffix == 0 ? string.Empty : "-" + suffix.ToString(CultureInfo.InvariantCulture)) + ".json";
+                    string path = Path.Combine(directory, name);
+                    try {
+                        // The gate serializes cooperating in-process publishers. On Unix,
+                        // File.Move(false) alone can race between its existence check and rename.
+                        File.Move(temporary, path, overwrite: false);
+                        return path;
+                    } catch (IOException) when (File.Exists(path)) {
+                        continue;
+                    }
+                }
+            }
+        } finally {
+            if (ownsTemporary) {
+                // A failed write must not enter the snapshot catalog or hide its original error.
+                try { File.Delete(temporary); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
+        }
+    }
+
+    internal static string FindLatestJournalSnapshot(string directory) {
         return Directory.EnumerateFiles(directory, "akron-journal-*.json")
             .OrderByDescending(File.GetLastWriteTimeUtc)
+            .ThenByDescending(path => JournalSnapshotOrder(path).Timestamp, StringComparer.Ordinal)
+            .ThenByDescending(path => JournalSnapshotOrder(path).Suffix)
+            .ThenByDescending(Path.GetFileName, StringComparer.Ordinal)
             .FirstOrDefault();
+    }
+
+    private static (string Timestamp, int Suffix) JournalSnapshotOrder(string path) {
+        const string prefix = "akron-journal-";
+        string name = Path.GetFileNameWithoutExtension(path);
+        if (!name.StartsWith(prefix, StringComparison.Ordinal)) return (string.Empty, -1);
+        string tail = name.Substring(prefix.Length);
+        if (tail.Length < 15 || !DateTime.TryParseExact(tail.Substring(0, 15), "yyyyMMdd-HHmmss",
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out _)) return (string.Empty, -1);
+        if (tail.Length == 15) return (tail, 0);
+        return tail.Length > 16 && tail[15] == '-' && int.TryParse(tail.Substring(16),
+            NumberStyles.None, CultureInfo.InvariantCulture, out int suffix)
+            ? (tail.Substring(0, 15), suffix) : (string.Empty, -1);
     }
 
     private static string BuildJournalSnapshotSummary(Level level) {

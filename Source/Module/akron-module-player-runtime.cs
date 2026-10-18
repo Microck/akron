@@ -396,7 +396,8 @@ public partial class AkronModule {
         }
 
         bool hazardAccuracyAllowed = IsHazardAccuracyAllowed();
-        if (!IsNativeAssistInvincibilityAllowed()) {
+        bool nativeAssistInvincibilityAllowed = IsNativeAssistInvincibilityAllowed();
+        if (!nativeAssistInvincibilityAllowed) {
             RestoreNativeAssistInvincibility();
         }
 
@@ -424,15 +425,17 @@ public partial class AkronModule {
             }
         }
 
+        // Native assist ownership is independent of Hazard Accuracy's rescue path.
+        // Otherwise enabling Hazard Accuracy first prevents native mode from ever applying.
+        if (nativeAssistInvincibilityAllowed) {
+            EnsureNativeAssistInvincibility();
+        }
+
         if (hazardAccuracyAllowed) {
             AkronPolicy.RecordFeatureUse(AkronFeatureKind.HazardAccuracy);
             RescueInvinciblePlayerFromBottomlessFall(level, player, true);
-        } else if (IsNativeAssistInvincibilityAllowed()) {
-            EnsureNativeAssistInvincibility();
         } else if (IsAkronInvincibilityAllowed() && Settings.InvincibilityBottomlessFallRescue) {
             RescueInvinciblePlayerFromBottomlessFall(level, player, false);
-        } else {
-            RestoreNativeAssistInvincibility();
         }
 
         ApplyAutoDeafen(level, player);
