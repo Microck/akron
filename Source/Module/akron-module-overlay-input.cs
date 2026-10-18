@@ -415,13 +415,13 @@ public partial class AkronModule {
         if (pressed || session.StepFrameHoldFrames == 1) {
             // The initial single step is requested separately. Count this delay once,
             // starting with the next held update, then use the repeat interval.
-            session.StepFrameRepeatCountdown = Calc.Clamp(delay, 1, 120);
+            session.StepFrameRepeatCountdown = Math.Clamp(delay, 1, 120);
             return false;
         }
 
         session.StepFrameRepeatCountdown--;
         if (session.StepFrameRepeatCountdown <= 0) {
-            session.StepFrameRepeatCountdown = Calc.Clamp(interval, 1, 60);
+            session.StepFrameRepeatCountdown = Math.Clamp(interval, 1, 60);
             return true;
         }
         return false;
