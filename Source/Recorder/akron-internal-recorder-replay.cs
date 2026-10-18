@@ -164,9 +164,7 @@ public static partial class AkronInternalRecorder {
             roomEntryUtc = now;
             respawnUtc = now;
             roomEntryName = level?.Session?.Level ?? string.Empty;
-            // Pending windows retain their source identity across scene changes.
-            // Explicit stop, replacement, policy restriction, or startup failure
-            // invalidates them; a new level can also precede an encoder's first render.
+            PendingClipSaves.Clear();
         }
     }
 
@@ -211,8 +209,6 @@ public static partial class AkronInternalRecorder {
             return;
         }
 
-        // Both completion windows own the same event boundary and must become due
-        // together before their shared encoder is detached for export.
         DateTime completedUtc = ReplayNowUtc();
         if (AkronModule.Settings.RecordingTriggerCheckpointClear) {
             QueueClipSave(level, "checkpoint-clear", completedUtc.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), completedUtc, AkronModule.Settings.RecordingPostRollSeconds);
@@ -283,7 +279,7 @@ public static partial class AkronInternalRecorder {
             return;
         }
 
-        if (AkronModuleSettings.ClampRecordingReplayBufferSeconds(AkronModule.Settings.RecordingReplayBufferSeconds) <= 0) {
+        if (!ShouldMaintainReplayBuffer(AkronModule.Settings, level)) {
             return;
         }
 
@@ -295,21 +291,7 @@ public static partial class AkronInternalRecorder {
     }
 
     private static void SaveReplayWindow(Scene scene, DateTime startUtc, DateTime endUtc, string kind) {
-        var request = new PendingClipSave(kind, startUtc, endUtc, endUtc, CaptureRecordingIdentity(scene));
-        lock (Sync) {
-            // Even an immediate save rotates only after this update's events and
-            // render capture; it joins any existing encoder-owned post-roll batch.
-            PendingClipSaves.Add(request);
-        }
-    }
-
-    internal static bool AreAllReplayWindowsDue(IEnumerable<DateTime> deadlines, DateTime now) {
-        bool any = false;
-        foreach (DateTime deadline in deadlines) {
-            any = true;
-            if (deadline > now) return false;
-        }
-        return any;
+        SaveReplayWindows(scene, new[] { new PendingClipSave(kind, startUtc, endUtc, endUtc, CaptureRecordingIdentity(scene)) });
     }
 
     private static IEnumerable<string> SelectReplaySegments(string directory, DateTime startUtc, DateTime endUtc) {
@@ -342,9 +324,8 @@ public static partial class AkronInternalRecorder {
 
     internal static bool ShouldKeepPendingReplayBuffer(AkronModuleSettings settings,
         bool sceneIsLevel, bool activeBuffer, int pendingCount) {
-        // In Levels must not discard the event's history between CompleteArea and
-        // its scheduled post-roll. Continue the existing encoder, never start one
-        // outside a level just because a stale request exists. Explicit Off wins.
+        // Keep existing completion history until post-roll is due in Overworld.
+        // This does not start new capture outside a Level or change export scheduling.
         return !sceneIsLevel && activeBuffer && pendingCount > 0 &&
             AkronModuleSettings.ClampRecordingReplayBufferSeconds(settings.RecordingReplayBufferSeconds) > 0 &&
             settings.RecordingReplayAutoStart == AkronRecordingReplayAutoStart.InLevels;
@@ -378,7 +359,7 @@ public static partial class AkronInternalRecorder {
         }
 
         lock (Sync) {
-            if (replayProcess != null && (replaySpec.Equals(spec) || PendingClipSaves.Count > 0)) {
+            if (replayProcess != null && replaySpec.Equals(spec)) {
                 return;
             }
         }
@@ -472,9 +453,6 @@ public static partial class AkronInternalRecorder {
             process = replayProcess;
             if (process != null && ffmpegProcess == null) lastCaptureWasReplay = true;
             input = replayInput;
-            // A detached encoder may already be exporting while this update queues
-            // a new event for its replacement. No-process startup must preserve it.
-            if (process != null) PendingClipSaves.Clear();
             replayProcess = null;
             replayInput = null;
             replayCadence = null;

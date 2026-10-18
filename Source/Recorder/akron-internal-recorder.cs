@@ -370,21 +370,13 @@ public static partial class AkronInternalRecorder {
         if (processToStop != null) {
             Stop();
         }
-    }
 
-    public static void FinishFrame(Scene scene) {
-        if (scene == null || !AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed) return;
-        // Gameplay callbacks and capture of their rendered frame must finish before
-        // rotation. Otherwise an event later in the same update loses its history.
         if (System.Threading.Volatile.Read(ref replayExportBusy) != 0) return;
         DateTime now = ReplayNowUtc();
         List<PendingClipSave> due;
         lock (Sync) {
-            // Rotating an encoder discards its timeline from the live capture path.
-            // Every queued window sharing that history must finish post-roll first.
-            due = AreAllReplayWindowsDue(PendingClipSaves.Select(save => save.SaveAtUtc), now)
-                ? PendingClipSaves.ToList() : new List<PendingClipSave>();
-            if (due.Count > 0) PendingClipSaves.Clear();
+            due = PendingClipSaves.Where(save => save.SaveAtUtc <= now).ToList();
+            PendingClipSaves.RemoveAll(save => save.SaveAtUtc <= now);
         }
 
         if (due.Count > 0) SaveReplayWindows(scene, due);

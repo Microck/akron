@@ -923,8 +923,8 @@ public partial class AkronModule : EverestModule {
         // update including everything Akron itself adds to the frame.
         AkronPerformanceTelemetry.RecordUpdateFrame();
         AkronStartPosPersistence.Update();
-        // The endscreen auto-stop can become due after the level stops updating.
-        // Replay encoder rotation waits until FinishFrame after render capture.
+        // Engine-level rather than Level.Update: completion clips and the endscreen auto-stop
+        // come due after the level has stopped updating.
         AkronInternalRecorder.Update(Engine.Scene);
         RunDeferredScreenWipeAction();
         UpdateDeathWipeRenderSuppression();
@@ -1771,7 +1771,6 @@ public partial class AkronModule : EverestModule {
         } else {
             AkronInternalRecorder.CaptureFrame(scene);
         }
-        AkronInternalRecorder.FinishFrame(scene);
 
         bool hideAkronRenderSurfaces = ShouldHideAkronRenderSurfaces();
 
