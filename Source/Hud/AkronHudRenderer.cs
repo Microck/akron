@@ -470,7 +470,11 @@ public static partial class AkronHudRenderer
 
     public static string FormatHudTicks(long ticks)
     {
-        return System.TimeSpan.FromTicks(ticks).ToString(@"mm\:ss\.fff");
+        // These are elapsed durations: TimeSpan's mm component wraps every hour.
+        // Divide before taking the magnitude so even long.MinValue is safe.
+        long minutes = Math.Abs(ticks / System.TimeSpan.TicksPerMinute);
+        return minutes.ToString("00", System.Globalization.CultureInfo.InvariantCulture) +
+            System.TimeSpan.FromTicks(ticks).ToString(@"\:ss\.fff", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     public static string FormatHudNumber(int value)
