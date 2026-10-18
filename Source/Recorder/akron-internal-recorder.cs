@@ -22,6 +22,7 @@ public static partial class AkronInternalRecorder {
 
     private static Process ffmpegProcess;
     private static Stream ffmpegInput;
+    private static AkronEncoderDiagnostics ffmpegDiagnostics;
     private static Stopwatch captureClock;
     private static double nextFrameSeconds;
     private static string activePath = string.Empty;
@@ -95,6 +96,14 @@ public static partial class AkronInternalRecorder {
             Directory.CreateDirectory(outputDirectory);
         }
 
+        try {
+            outputPath = AkronEncoderCompletion.ReserveOutputPath(outputPath);
+        } catch (Exception ex) {
+            lastError = ex.Message;
+            Engine.Scene?.Add(new AkronToast(AkronEncoderCompletion.FailureToast(lastError)));
+            return;
+        }
+
         ProcessStartInfo startInfo = new ProcessStartInfo {
             FileName = ResolveFfmpegPath(),
             Arguments = BuildFfmpegArguments(settings, spec, outputPath),
@@ -114,11 +123,14 @@ public static partial class AkronInternalRecorder {
                 return;
             }
 
-            CaptureFfmpegStderr(process);
+            AkronEncoderDiagnostics diagnostics = new AkronEncoderDiagnostics();
+            process.ErrorDataReceived += (_, e) => diagnostics.Receive(e.Data);
+            process.BeginErrorReadLine();
 
             lock (Sync) {
                 ffmpegProcess = process;
                 ffmpegInput = process.StandardInput.BaseStream;
+                ffmpegDiagnostics = diagnostics;
                 EnsureCaptureClock();
                 activePath = outputPath;
                 activeSpec = spec;
@@ -163,8 +175,11 @@ public static partial class AkronInternalRecorder {
         Stop();
     }
 
-    public static void Stop() {
+    public static void Stop() => Stop(null);
+
+    private static void Stop(string captureError) {
         Process process;
+        AkronEncoderDiagnostics diagnostics;
         Stream input;
         string completedPath;
         DateTime startedUtc;
@@ -172,6 +187,8 @@ public static partial class AkronInternalRecorder {
         lock (Sync) {
             process = ffmpegProcess;
             input = ffmpegInput;
+            diagnostics = ffmpegDiagnostics;
+            ffmpegDiagnostics = null;
             completedPath = activePath;
             startedUtc = recordingStartUtc == DateTime.MinValue ? endedUtc : recordingStartUtc;
             ffmpegProcess = null;
@@ -187,42 +204,51 @@ public static partial class AkronInternalRecorder {
             return;
         }
 
+        string completionError = AkronEncoderCompletion.Finish(input, process.WaitForExit,
+            () => process.ExitCode, process.Kill, process.Dispose,
+            () => diagnostics?.ReadAfterExit() ?? string.Empty,
+            () => AkronEncoderCompletion.HasNonemptyOutput(completedPath), captureError);
+        AkronRecordedAudio recordedAudio;
         try {
-            input?.Flush();
-            input?.Dispose();
-            if (!process.WaitForExit(3000)) {
-                process.Kill();
-            }
+            recordedAudio = AkronInternalAudioRecorder.Stop();
         } catch (Exception ex) {
-            lastError = ex.Message;
+            lastError = string.IsNullOrWhiteSpace(completionError) ? ex.Message : completionError + " | " + ex.Message;
+            Engine.Scene?.Add(new AkronToast(AkronEncoderCompletion.FailureToast(lastError)));
+            return;
+        }
+
+        try {
+            if (!string.IsNullOrWhiteSpace(completionError)) {
+                lastError = completionError;
+                Engine.Scene?.Add(new AkronToast(AkronEncoderCompletion.FailureToast(completionError)));
+                return;
+            }
+            lastError = string.Empty;
+            string remuxError = string.Empty;
+            if (AkronModule.Settings.RecordingAutoRemux &&
+                string.Equals(Path.GetExtension(completedPath), ".mkv", StringComparison.OrdinalIgnoreCase) &&
+                TryRemuxToMp4(completedPath, out string remuxedPath, out remuxError)) {
+                completedPath = remuxedPath;
+            } else if (!string.IsNullOrWhiteSpace(remuxError)) {
+                lastError = remuxError;
+                Engine.Scene?.Add(new AkronToast("Auto-remux failed: " + remuxError));
+            }
+
+            string audioMuxError = string.Empty;
+            if (recordedAudio.HasSamples &&
+                TryMuxAudioIntoVideo(completedPath, recordedAudio, out string audioMuxedPath, out audioMuxError)) {
+                completedPath = audioMuxedPath;
+            } else if (!string.IsNullOrWhiteSpace(audioMuxError)) {
+                lastError = audioMuxError;
+                Engine.Scene?.Add(new AkronToast("Audio mux failed: " + audioMuxError));
+            }
+
+            WriteClipSidecar(completedPath, "manual-recording", AkronModule.Settings.RecordingContainerFormat, startedUtc, endedUtc, Engine.Scene);
+            lastClipPath = completedPath;
+            Engine.Scene?.Add(new AkronToast("Recording saved: " + Path.GetFileName(completedPath)));
         } finally {
-            process.Dispose();
+            DeleteRecordedAudioFiles(recordedAudio);
         }
-
-        AkronRecordedAudio recordedAudio = AkronInternalAudioRecorder.Stop();
-
-        string remuxError = string.Empty;
-        if (AkronModule.Settings.RecordingAutoRemux &&
-            string.Equals(Path.GetExtension(completedPath), ".mkv", StringComparison.OrdinalIgnoreCase) &&
-            TryRemuxToMp4(completedPath, out string remuxedPath, out remuxError)) {
-            completedPath = remuxedPath;
-        } else if (!string.IsNullOrWhiteSpace(remuxError)) {
-            lastError = remuxError;
-            Engine.Scene?.Add(new AkronToast("Auto-remux failed: " + remuxError));
-        }
-
-        string audioMuxError = string.Empty;
-        if (recordedAudio.HasSamples &&
-            TryMuxAudioIntoVideo(completedPath, recordedAudio, out string audioMuxedPath, out audioMuxError)) {
-            completedPath = audioMuxedPath;
-        } else if (!string.IsNullOrWhiteSpace(audioMuxError)) {
-            lastError = audioMuxError;
-            Engine.Scene?.Add(new AkronToast("Audio mux failed: " + audioMuxError));
-        }
-
-        WriteClipSidecar(completedPath, "manual-recording", AkronModule.Settings.RecordingContainerFormat, startedUtc, endedUtc, Engine.Scene);
-        lastClipPath = completedPath;
-        Engine.Scene?.Add(new AkronToast("Recording saved: " + Path.GetFileName(completedPath)));
     }
 
     public static void BuildCompletionVideo(Scene scene) {
@@ -418,16 +444,30 @@ public static partial class AkronInternalRecorder {
             }
 
             if (activeReplayProcess != null && activeReplayInput != null) {
-                activeReplayInput.Write(frame, 0, frame.Length);
-                PruneReplaySegments(settings);
+                try {
+                    activeReplayInput.Write(frame, 0, frame.Length);
+                    PruneReplaySegments(settings);
+                } catch (Exception replayError) {
+                    // A replay-only failure must not reject or stop a healthy manual encode.
+                    // The public stop also disarms auto-start, preventing a restart loop.
+                    string replayMessage = replayError.Message;
+                    try {
+                        StopReplayBuffer();
+                    } catch (Exception cleanupError) {
+                        replayMessage += " | " + cleanupError.Message;
+                    }
+                    lastError = replayMessage;
+                }
             }
 
             capturedFrames++;
         } catch (Exception ex) {
-            lastError = ex.Message;
+            string captureError = ex.Message;
             StopReplayBuffer();
             if (recordingProcess != null) {
-                Stop();
+                Stop(captureError);
+            } else {
+                lastError = captureError;
             }
         }
     }

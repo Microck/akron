@@ -154,6 +154,7 @@ public static partial class AkronInternalRecorder {
         error = string.Empty;
 
         try {
+            outputPath = AkronEncoderCompletion.ReserveOutputPath(outputPath);
             ProcessStartInfo startInfo = new ProcessStartInfo {
                 FileName = ResolveFfmpegPath(),
                 Arguments = JoinArguments(new[] {
@@ -182,7 +183,11 @@ public static partial class AkronInternalRecorder {
                 return false;
             }
 
-            return File.Exists(outputPath);
+            if (!AkronEncoderCompletion.HasNonemptyOutput(outputPath)) {
+                error = "FFmpeg produced no nonempty output file.";
+                return false;
+            }
+            return true;
         } catch (Exception ex) {
             error = ex.Message;
             return false;
@@ -268,6 +273,7 @@ public static partial class AkronInternalRecorder {
         }
 
         try {
+            outputPath = AkronEncoderCompletion.ReserveOutputPath(outputPath);
             ProcessStartInfo startInfo = new ProcessStartInfo {
                 FileName = ResolveFfmpegPath(),
                 Arguments = BuildAudioMuxArguments(videoPath, tracks, outputPath),
@@ -290,7 +296,11 @@ public static partial class AkronInternalRecorder {
                 return false;
             }
 
-            return File.Exists(outputPath);
+            if (!AkronEncoderCompletion.HasNonemptyOutput(outputPath)) {
+                error = "FFmpeg produced no nonempty output file.";
+                return false;
+            }
+            return true;
         } catch (Exception ex) {
             error = ex.Message;
             return false;
