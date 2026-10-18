@@ -72,6 +72,7 @@ public static partial class AkronInternalRecorder {
     }
 
     public static void StopReplayBuffer() {
+        lock (Sync) { PendingClipSaves.Clear(); }
         manualReplayBufferEnabled = false;
         DisarmReplayBufferAutoStart(AkronModule.Settings);
         bool wasBuffering = IsReplayBuffering;
@@ -80,6 +81,7 @@ public static partial class AkronInternalRecorder {
     }
 
     public static void DisarmReplayBufferAutoStart() {
+        lock (Sync) { PendingClipSaves.Clear(); }
         manualReplayBufferEnabled = false;
         DisarmReplayBufferAutoStart(AkronModule.Settings);
     }
@@ -162,7 +164,9 @@ public static partial class AkronInternalRecorder {
             roomEntryUtc = now;
             respawnUtc = now;
             roomEntryName = level?.Session?.Level ?? string.Empty;
-            PendingClipSaves.Clear();
+            // A new level can begin while the prior level's post-roll is still due.
+            // Keep those frozen identities only while their encoder remains alive.
+            if (replayProcess == null) PendingClipSaves.Clear();
         }
     }
 
@@ -207,8 +211,11 @@ public static partial class AkronInternalRecorder {
             return;
         }
 
+        // Both completion windows own the same event boundary and must become due
+        // together before their shared encoder is detached for export.
+        DateTime completedUtc = ReplayNowUtc();
         if (AkronModule.Settings.RecordingTriggerCheckpointClear) {
-            QueueClipSave(level, "checkpoint-clear", ReplayNowUtc().AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave(level, "checkpoint-clear", completedUtc.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), completedUtc, AkronModule.Settings.RecordingPostRollSeconds);
         }
 
         if (AkronModule.Settings.RecordingTriggerRoomEntryToClear) {
@@ -218,7 +225,7 @@ public static partial class AkronInternalRecorder {
             }
 
             if (start != DateTime.MinValue) {
-                QueueClipSave(level, "area-clear", start, ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
+                QueueClipSave(level, "area-clear", start, completedUtc, AkronModule.Settings.RecordingPostRollSeconds);
             }
         }
 
@@ -310,6 +317,23 @@ public static partial class AkronInternalRecorder {
 
     private static bool ShouldMaintainReplayBuffer(AkronModuleSettings settings, Scene scene) {
         return ShouldMaintainReplayBuffer(settings, scene is Level, manualReplayBufferEnabled);
+    }
+
+    private static bool ShouldKeepPendingReplayBuffer(AkronModuleSettings settings, Scene scene) {
+        lock (Sync) {
+            return ShouldKeepPendingReplayBuffer(settings, scene is Level,
+                replayProcess != null && replayInput != null, PendingClipSaves.Count);
+        }
+    }
+
+    internal static bool ShouldKeepPendingReplayBuffer(AkronModuleSettings settings,
+        bool sceneIsLevel, bool activeBuffer, int pendingCount) {
+        // In Levels must not discard the event's history between CompleteArea and
+        // its scheduled post-roll. Continue the existing encoder, never start one
+        // outside a level just because a stale request exists. Explicit Off wins.
+        return !sceneIsLevel && activeBuffer && pendingCount > 0 &&
+            AkronModuleSettings.ClampRecordingReplayBufferSeconds(settings.RecordingReplayBufferSeconds) > 0 &&
+            settings.RecordingReplayAutoStart == AkronRecordingReplayAutoStart.InLevels;
     }
 
     private static bool ShouldMaintainReplayBuffer(AkronModuleSettings settings, bool sceneIsLevel, bool manualReplayBuffer) {

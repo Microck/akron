@@ -405,7 +405,7 @@ public static partial class AkronInternalRecorder {
         RecorderSpec spec = RecorderSpec.FromSettings(settings);
         if (wantsReplayBuffer) {
             EnsureReplayBuffer(scene, settings, spec);
-        } else if (IsReplayBuffering) {
+        } else if (IsReplayBuffering && !ShouldKeepPendingReplayBuffer(settings, scene)) {
             StopReplayBuffer(false);
         }
 
