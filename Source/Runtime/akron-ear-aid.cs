@@ -5,7 +5,7 @@ using FMOD.Studio;
 namespace Celeste.Mod.Akron;
 
 public static class AkronEarAid {
-    private static readonly List<(EventInstance Instance, string Key, float OriginalVolume, bool Applied)> VolumeOverrides = new();
+    private static readonly List<(EventInstance Instance, string Key, float OriginalVolume, bool Applied, float AppliedVolume)> VolumeOverrides = new();
 
     private static bool audioUpdateHookInstalled;
 
@@ -175,11 +175,11 @@ public static class AkronEarAid {
             return;
         }
 
-        bool applied = AkronModule.TryUseRuntime(AkronFeatureKind.SoundVolumeOverride);
-        VolumeOverrides.Add((instance, sound.Key, originalVolume, applied));
-        if (applied) {
-            instance.setVolume(VolumeFor(sound.Key) / 100f);
-        }
+        bool allowed = AkronModule.TryUseRuntime(AkronFeatureKind.SoundVolumeOverride);
+        float targetVolume = VolumeFor(sound.Key) / 100f;
+        bool applied = allowed && instance.setVolume(targetVolume) == FMOD.RESULT.OK;
+        // Keep the last successful write, so a failed native call remains retryable.
+        VolumeOverrides.Add((instance, sound.Key, originalVolume, applied, applied ? targetVolume : originalVolume));
     }
 
     internal static void ReconcileVolumeOverrides(bool restore = false) {
@@ -192,11 +192,18 @@ public static class AkronEarAid {
             }
 
             bool apply = allowed && OverrideEnabled(entry.Key);
-            if (apply != entry.Applied) {
-                entry.Instance.setVolume(apply ? VolumeFor(entry.Key) / 100f : entry.OriginalVolume);
-                VolumeOverrides[index] = (entry.Instance, entry.Key, entry.OriginalVolume, apply);
+            float targetVolume = apply ? VolumeFor(entry.Key) / 100f : entry.OriginalVolume;
+            if (NeedsVolumeUpdate(entry.Applied, apply, entry.AppliedVolume, targetVolume) &&
+                entry.Instance.setVolume(targetVolume) == FMOD.RESULT.OK) {
+                VolumeOverrides[index] = (entry.Instance, entry.Key, entry.OriginalVolume, apply, targetVolume);
             }
         }
+    }
+
+    internal static bool NeedsVolumeUpdate(bool wasApplied, bool apply, float appliedVolume, float targetVolume) {
+        // Disabled overrides leave other writers alone. Enabled numeric edits must
+        // update live instances, without redundant per-frame native writes.
+        return wasApplied != apply || (apply && appliedVolume != targetVolume);
     }
 
     internal static IEnumerable<string> DescribeLiveOverridesForQa() {
