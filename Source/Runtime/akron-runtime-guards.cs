@@ -54,10 +54,8 @@ public partial class AkronModule {
             lagPauserRepeatCooldownPending = false;
             SuppressLagPauserForWindow(Settings.LagPauserRepeatCooldownMs);
         }
-        if (level != null && Settings.PauseTracker && AkronPolicy.CanUse(AkronFeatureKind.PauseTracker).Allowed && Session.PauseTrackerCurrentPauseStartedAt >= 0f) {
-            Session.PauseTrackerPausedSeconds += Math.Max(0f, level.RawTimeActive - Session.PauseTrackerCurrentPauseStartedAt);
-            Session.PauseTrackerCurrentPauseStartedAt = -1f;
-        }
+        FinishPauseTrackerInterval(Session, level?.RawTimeActive,
+            level != null && Settings.PauseTracker && AkronPolicy.CanUse(AkronFeatureKind.PauseTracker).Allowed);
 
         if (level == null ||
             !Settings.PauseCountdown ||
@@ -68,6 +66,19 @@ public partial class AkronModule {
 
         pauseCountdownTimer = AkronModuleSettings.ClampPauseCountdownSeconds(Settings.PauseCountdownSeconds);
         pauseCountdownEndTimestamp = Stopwatch.GetTimestamp() + pauseCountdownTimer * Stopwatch.Frequency;
+    }
+
+    internal static void FinishPauseTrackerInterval(AkronModuleSession session, float? now, bool canRecord) {
+        if (session == null) {
+            return;
+        }
+        float startedAt = session.PauseTrackerCurrentPauseStartedAt;
+        // Every real unpause ends this interval, even when collection was disabled
+        // during the pause. Never carry its start across intervening gameplay.
+        session.PauseTrackerCurrentPauseStartedAt = -1f;
+        if (canRecord && now.HasValue && startedAt >= 0f) {
+            session.PauseTrackerPausedSeconds += Math.Max(0f, now.Value - startedAt);
+        }
     }
 
     internal static void NotifyPauseForQa(Level level) {
