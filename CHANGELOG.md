@@ -1,5 +1,7 @@
 # Changelog
 
+- Keep literal custom HUD labels visible outside levels even when their text contains words such as Room or speed.
+
 - Keep the selected Control Display label style when changing layouts through the console command.
 
 - Preserve keyboard-only and unbound Control Display labels when applying game-action label presets.

@@ -310,13 +310,56 @@ public static partial class AkronCustomHudLabels {
             return false;
         }
 
-        foreach (Match match in TemplateIdentifierPattern.Matches(template)) {
-            if (LevelOnlyVariables.Contains(match.Value)) {
+        // Match the formatter's first-opening/next-closing brace boundaries.
+        // Words outside expressions are presentation text, not variable reads.
+        int cursor = 0;
+        while (cursor < template.Length) {
+            int start = template.IndexOf('{', cursor);
+            if (start < 0) break;
+            int end = template.IndexOf('}', start + 1);
+            if (end < 0) break;
+            string expression = template.Substring(start + 1, end - start - 1);
+            if (expression.Contains('{')) {
+                // Format rescans replacements. Nested braces can construct another
+                // expression from a literal conditional branch; retain a conservative
+                // guard for that syntax instead of interpreting it as plain text.
+                foreach (Match match in TemplateIdentifierPattern.Matches(template.Substring(start))) {
+                    if (LevelOnlyVariables.Contains(match.Value)) return true;
+                }
+            } else if (ExpressionUsesLevelOnlyVariable(expression)) {
                 return true;
+            }
+            cursor = end + 1;
+        }
+        return false;
+    }
+
+    private static bool ExpressionUsesLevelOnlyVariable(string expression) {
+        string trimmed = expression.Trim();
+        int open = trimmed.IndexOf('(');
+        if (open > 0 && trimmed.EndsWith(")", StringComparison.Ordinal)) {
+            string name = trimmed.Substring(0, open).Trim();
+            string[] args = trimmed.Substring(open + 1, trimmed.Length - open - 2).Split(',');
+            if (string.Equals(name, "upper", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, "toUpper", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, "lower", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, "toLower", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, "round", StringComparison.OrdinalIgnoreCase) ||
+                (string.Equals(name, "precision", StringComparison.OrdinalIgnoreCase) && args.Length >= 2)) {
+                return LevelOnlyVariables.Contains(args[0].Trim());
             }
         }
 
-        return false;
+        string[] parts = expression.Split(':');
+        if ((parts.Length >= 4 && string.Equals(parts[0], "if", StringComparison.OrdinalIgnoreCase)) ||
+            (parts.Length >= 2 && (string.Equals(parts[0], "upper", StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(parts[0], "lower", StringComparison.OrdinalIgnoreCase))) ||
+            (parts.Length >= 3 && string.Equals(parts[0], "round", StringComparison.OrdinalIgnoreCase))) {
+            return LevelOnlyVariables.Contains(parts[1].Trim());
+        }
+        // cfg expressions and unknown function/operator forms cannot turn literal
+        // words into keys; the evaluator falls back to the entire expression.
+        return LevelOnlyVariables.Contains(trimmed);
     }
 
     private static AkronHudAnchor ResolveResponsiveAnchor(AkronCustomHudLabel label, bool hasLevel) {
