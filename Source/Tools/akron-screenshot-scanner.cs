@@ -1738,12 +1738,14 @@ public static class AkronScreenshotScanner {
         });
     }
 
-    private static void BlendOverRowPixel(byte[] row, int target, Color source) {
+    internal static void BlendOverRowPixel(byte[] row, int target, Color source) {
         int sourceA = source.A;
         int destA = row[target + 3];
         int inverseA = 255 - sourceA;
-        int outA = sourceA + destA * inverseA / 255;
-        if (outA <= 0) {
+        // Retain full alpha precision while normalizing straight RGB. Quantizing
+        // alpha first can make a saturated channel exceed 255 and wrap to black.
+        int alphaNumerator = sourceA * 255 + destA * inverseA;
+        if (alphaNumerator == 0) {
             row[target] = 0;
             row[target + 1] = 0;
             row[target + 2] = 0;
@@ -1751,10 +1753,10 @@ public static class AkronScreenshotScanner {
             return;
         }
 
-        row[target] = (byte) ((source.R * sourceA + row[target] * destA * inverseA / 255) / outA);
-        row[target + 1] = (byte) ((source.G * sourceA + row[target + 1] * destA * inverseA / 255) / outA);
-        row[target + 2] = (byte) ((source.B * sourceA + row[target + 2] * destA * inverseA / 255) / outA);
-        row[target + 3] = (byte) outA;
+        row[target] = (byte) ((source.R * sourceA * 255 + row[target] * destA * inverseA) / alphaNumerator);
+        row[target + 1] = (byte) ((source.G * sourceA * 255 + row[target + 1] * destA * inverseA) / alphaNumerator);
+        row[target + 2] = (byte) ((source.B * sourceA * 255 + row[target + 2] * destA * inverseA) / alphaNumerator);
+        row[target + 3] = (byte) (alphaNumerator / 255);
     }
 
     private static void SaveMergedImage(string path, Color[] pixels, int width, int height) {
