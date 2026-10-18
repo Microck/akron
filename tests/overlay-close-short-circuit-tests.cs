@@ -7,7 +7,7 @@ namespace Celeste.Mod.Akron.Tests;
 
 public sealed class OverlayCloseShortCircuitTests {
     [Fact]
-    public void RecoversOnlyVisibleUnpolledFreshInputInSameActiveScene() {
+    public void RecoversOnlyOwnedUnpolledFreshInputInSameActiveScene() {
         Assert.True(AkronModule.ShouldRecoverOverlayClose(true, true, true, true, true, 10, 11, 3, 3));
         Assert.True(AkronModule.ShouldRecoverOverlayClose(true, true, true, true, true, ulong.MaxValue, 0, 3, 3));
         for (int missing = 0; missing < 5; missing++) {
@@ -17,6 +17,17 @@ public sealed class OverlayCloseShortCircuitTests {
         }
         Assert.False(AkronModule.ShouldRecoverOverlayClose(true, true, true, true, true, 10, 10, 3, 3));
         Assert.False(AkronModule.ShouldRecoverOverlayClose(true, true, true, true, true, 10, 11, 3, 4));
+    }
+
+    [Fact]
+    public void RecoveryIncludesExistingTransientOwnershipBeforeAndAfterUpdate() {
+        using ModuleDefinition module = ModuleDefinition.ReadModule(typeof(AkronModule).Assembly.Location);
+        MethodDefinition engine = module.GetType(typeof(AkronModule).FullName).Methods.Single(m => m.Name == "EngineOnUpdate");
+        var instructions = engine.Body.Instructions.ToList();
+        int gate = instructions.FindIndex(i => i.Operand is MethodReference m && m.Name == "ShouldRecoverOverlayClose");
+        int native = instructions.FindIndex(i => i.Operand is MethodReference m && m.Name == "Invoke" && m.DeclaringType.Name == "orig_Update");
+        Assert.Contains(instructions.Take(native), i => i.Operand is MethodReference m && m.Name == "get_IsTransientMouseUiActive");
+        Assert.Contains(instructions.Skip(native + 1).Take(gate - native - 1), i => i.Operand is MethodReference m && m.Name == "get_IsTransientMouseUiActive");
     }
 
     [Fact]

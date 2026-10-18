@@ -931,14 +931,14 @@ public partial class AkronModule : EverestModule {
         AkronCommunityPacks.CompleteImportIfReady(out _, out _);
         if (Engine.Scene is Level inputLevel) {
             AkronOverlay inputOverlay = Overlay;
-            bool visibleBefore = inputOverlay?.Visible == true;
+            bool ownedUiBefore = inputOverlay?.Visible == true || inputOverlay?.IsTransientMouseUiActive == true;
             ulong frameBefore = Engine.FrameCounter;
             ulong pollBefore = levelHotkeyPollGeneration;
             orig(self, gameTime);
             // SRT can return after MInput.Update and before Level.Update. Recover only
-            // an already-visible overlay's close path, on fresh input, without polling
+            // an existing overlay or transient mode's toggle path, on fresh input, without polling
             // twice or altering either mod's configured bindings.
-            if (ShouldRecoverOverlayClose(visibleBefore, Overlay?.Visible == true,
+            if (ShouldRecoverOverlayClose(ownedUiBefore, Overlay?.Visible == true || Overlay?.IsTransientMouseUiActive == true,
                     ReferenceEquals(Engine.Scene, inputLevel), ReferenceEquals(Overlay, inputOverlay),
                     self.IsActive, frameBefore, Engine.FrameCounter,
                     pollBefore, levelHotkeyPollGeneration)) {

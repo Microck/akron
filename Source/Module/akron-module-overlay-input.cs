@@ -18,10 +18,10 @@ public partial class AkronModule {
     private static bool previousMouseVisible;
     private static ulong levelHotkeyPollGeneration;
 
-    internal static bool ShouldRecoverOverlayClose(bool visibleBefore, bool visibleAfter,
+    internal static bool ShouldRecoverOverlayClose(bool ownedUiBefore, bool ownedUiAfter,
         bool sameScene, bool sameOverlay, bool active, ulong frameBefore, ulong frameAfter,
         ulong pollBefore, ulong pollAfter) {
-        return visibleBefore && visibleAfter && sameScene && sameOverlay && active &&
+        return ownedUiBefore && ownedUiAfter && sameScene && sameOverlay && active &&
             frameBefore != frameAfter && pollBefore == pollAfter;
     }
 
