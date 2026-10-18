@@ -122,6 +122,7 @@ public static partial class AkronInternalRecorder {
 
         if (scene != null) {
             EnsureReplayBuffer(scene, settings, RecorderSpec.FromSettings(settings));
+            if (!IsReplayBuffering) return;
         }
 
         Engine.Scene?.Add(new AkronToast("Completion capture armed."));
@@ -431,28 +432,28 @@ public static partial class AkronInternalRecorder {
             }
         }
 
-        StopReplayBuffer(false);
-        string folder = ResolveOutputFolder(settings);
-        PruneOldReplayDirectories(folder);
-        string directory = Path.Combine(folder, ".replay-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-
-        ProcessStartInfo startInfo = new ProcessStartInfo {
-            FileName = ResolveFfmpegPath(),
-            Arguments = BuildReplaySegmentArguments(settings, spec, Path.Combine(directory, "segment-%06d.mkv")),
-            WorkingDirectory = ResolveFfmpegWorkingDirectory(directory),
-            UseShellExecute = false,
-            RedirectStandardInput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-        ConfigureFfmpegStartInfo(startInfo);
-
+        string replacementCleanupError = string.Empty;
         try {
+            StopReplayBuffer(false, out replacementCleanupError);
+            string folder = ResolveOutputFolder(settings);
+            PruneOldReplayDirectories(folder);
+            string directory = Path.Combine(folder, ".replay-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+
+            ProcessStartInfo startInfo = new ProcessStartInfo {
+                FileName = ResolveFfmpegPath(),
+                Arguments = BuildReplaySegmentArguments(settings, spec, Path.Combine(directory, "segment-%06d.mkv")),
+                WorkingDirectory = ResolveFfmpegWorkingDirectory(directory),
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            ConfigureFfmpegStartInfo(startInfo);
+
             Process process = Process.Start(startInfo);
             if (process == null) {
-                lastError = "FFmpeg replay buffer did not start.";
-                return;
+                throw new IOException("FFmpeg replay buffer did not start.");
             }
 
             CaptureFfmpegStderr(process);
@@ -477,12 +478,38 @@ public static partial class AkronInternalRecorder {
                 scene.Add(new AkronToast("Replay audio unavailable: " + audioWarning));
             }
         } catch (Exception ex) {
-            lastError = ex.Message;
-            scene.Add(new AkronToast("Replay buffer failed: " + ex.Message));
+            // Both explicit and automatic starts must stay disarmed after a failure.
+            // Otherwise CaptureFrame retries the same invalid directory every render.
+            manualReplayBufferEnabled = false;
+            DisarmReplayBufferAutoStart(settings);
+            string cleanupFailure = string.Empty;
+            string cleanupException = string.Empty;
+            try {
+                StopReplayBuffer(false, out cleanupFailure);
+            } catch (Exception cleanupError) {
+                cleanupException = cleanupError.Message;
+            }
+            string failure = CombineReplayStartupErrors(ex.Message, replacementCleanupError,
+                cleanupFailure, cleanupException);
+            lastError = failure;
+            scene?.Add(new AkronToast(AkronEncoderCompletion.FailureToast("Replay buffer: " + failure)));
         }
     }
 
+    internal static string CombineReplayStartupErrors(string startupError, params string[] cleanupErrors) {
+        string result = startupError ?? string.Empty;
+        foreach (string error in cleanupErrors) {
+            if (!string.IsNullOrWhiteSpace(error)) result += " | Replay cleanup: " + error;
+        }
+        return result;
+    }
+
     private static AkronRecordedAudio StopReplayBuffer(bool keepAudio = false) {
+        return StopReplayBuffer(keepAudio, out _);
+    }
+
+    private static AkronRecordedAudio StopReplayBuffer(bool keepAudio, out string cleanupError) {
+        cleanupError = string.Empty;
         Process process;
         Stream input;
         lock (Sync) {
@@ -511,7 +538,8 @@ public static partial class AkronInternalRecorder {
                 process.Kill();
             }
         } catch (Exception ex) {
-            lastError = ex.Message;
+            cleanupError = ex.Message;
+            lastError = cleanupError;
         } finally {
             process.Dispose();
         }

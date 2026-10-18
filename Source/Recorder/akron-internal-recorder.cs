@@ -102,34 +102,28 @@ public static partial class AkronInternalRecorder {
             }
         }
 
-        AkronModuleSettings settings = AkronModule.Settings;
-        RecorderSpec spec = RecorderSpec.FromSettings(settings);
-        string outputPath = BuildOutputPath(level, settings.RecordingContainerFormat, "recording");
-        string outputDirectory = Path.GetDirectoryName(outputPath);
-        if (!string.IsNullOrWhiteSpace(outputDirectory)) {
-            Directory.CreateDirectory(outputDirectory);
-        }
-
         try {
+            AkronModuleSettings settings = AkronModule.Settings;
+            RecorderSpec spec = RecorderSpec.FromSettings(settings);
+            string outputPath = BuildOutputPath(level, settings.RecordingContainerFormat, "recording");
+            string outputDirectory = Path.GetDirectoryName(outputPath);
+            if (!string.IsNullOrWhiteSpace(outputDirectory)) {
+                Directory.CreateDirectory(outputDirectory);
+            }
+
             outputPath = AkronEncoderCompletion.ReserveOutputPath(outputPath);
-        } catch (Exception ex) {
-            lastError = ex.Message;
-            Engine.Scene?.Add(new AkronToast(AkronEncoderCompletion.FailureToast(lastError)));
-            return;
-        }
 
-        ProcessStartInfo startInfo = new ProcessStartInfo {
-            FileName = ResolveFfmpegPath(),
-            Arguments = BuildFfmpegArguments(settings, spec, outputPath),
-            WorkingDirectory = ResolveFfmpegWorkingDirectory(outputDirectory),
-            UseShellExecute = false,
-            RedirectStandardInput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-        ConfigureFfmpegStartInfo(startInfo);
+            ProcessStartInfo startInfo = new ProcessStartInfo {
+                FileName = ResolveFfmpegPath(),
+                Arguments = BuildFfmpegArguments(settings, spec, outputPath),
+                WorkingDirectory = ResolveFfmpegWorkingDirectory(outputDirectory),
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            ConfigureFfmpegStartInfo(startInfo);
 
-        try {
             Process process = Process.Start(startInfo);
             if (process == null) {
                 lastError = "FFmpeg did not start.";
@@ -169,7 +163,7 @@ public static partial class AkronInternalRecorder {
             WarnAboutUnsupportedCaptureSettings(settings);
         } catch (Exception ex) {
             lastError = ex.Message;
-            Engine.Scene?.Add(new AkronToast("Recorder failed: " + ex.Message));
+            Engine.Scene?.Add(new AkronToast(AkronEncoderCompletion.FailureToast(lastError)));
         }
     }
 
