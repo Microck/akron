@@ -190,7 +190,7 @@ public static partial class AkronInternalRecorder
                     ":end_frame=" + (window.InputFirstFrame + window.FrameCount).ToString(CultureInfo.InvariantCulture) + ",setpts=PTS-STARTPTS",
                 "-an", "-c:v", AkronModuleSettings.GetRecordingCodecArgument(snapshot.Spec.Codec) };
             AddEncoderPerformanceArguments(args, snapshot.Settings, snapshot.Spec);
-            AddRateControlArguments(args, snapshot.Settings);
+            AddRateControlArguments(args, snapshot.Settings, snapshot.Spec);
             args.AddRange(new[] { "-r", snapshot.Spec.Framerate.ToString(CultureInfo.InvariantCulture),
                 "-frames:v", window.FrameCount.ToString(CultureInfo.InvariantCulture), "-avoid_negative_ts", "disabled", "-progress", "pipe:1", "-nostats", "-y", output });
             long frames = RunReplayExportProcess(snapshot, JoinArguments(args), folder, window.Duration);
