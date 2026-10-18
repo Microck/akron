@@ -135,6 +135,21 @@ public static class AkronEarAid {
         }
     }
 
+    internal static IEnumerable<string> DescribeLiveOverridesForQa() {
+        foreach (var entry in VolumeOverrides.ToArray()) {
+            if (!entry.Instance.isValid()) {
+                continue;
+            }
+            string name = "unknown";
+            if (entry.Instance.getDescription(out EventDescription description) == FMOD.RESULT.OK) {
+                name = Audio.GetEventName(description) ?? name;
+            }
+            FMOD.RESULT result = entry.Instance.getVolume(out float volume, out float finalVolume);
+            entry.Instance.getPlaybackState(out PLAYBACK_STATE playback);
+            yield return FormattableString.Invariant($"key={entry.Key};event={name};applied={entry.Applied};volume={volume};final={finalVolume};result={result};playback={playback}");
+        }
+    }
+
     public static float VolumeForEventNameForTesting(string eventName) {
         SoundDefinition sound = FindBestMatch(eventName ?? string.Empty);
         if (sound != null) {

@@ -2062,6 +2062,13 @@ public static partial class AkronCommands {
         Log("sound-source-playing-without-instance: " + playingWithoutInstance.ToString(CultureInfo.InvariantCulture));
     }
 
+    [Command("akron_qa_ear_aid", "show actual live Ear Aid event identities and native volume values")]
+    public static void QaEarAid() {
+        foreach (string state in AkronEarAid.DescribeLiveOverridesForQa()) {
+            Log("qa-ear-aid: " + state);
+        }
+    }
+
     [Command("akron_qa_audio_state", "show deterministic audio QA state for speed, pitch, splitter, and per-SFX volume")]
     public static void QaAudioState(string eventName = "") {
         Log("qa-audio-transform: events=" + AkronAudioTransform.OwnedEventCount + ";dsps=" + AkronAudioTransform.OwnedDspCount + ";error=" + AkronAudioTransform.LastError);
@@ -2091,8 +2098,8 @@ public static partial class AkronCommands {
 
         LogQaSfxVolume("death", "event:/char/madeline/death");
         LogQaSfxVolume("spring", "event:/game/general/spring");
-        LogQaSfxVolume("fireball", "event:/game/04_cliffside/fireball");
-        LogQaSfxVolume("ridge-wind", "event:/env/amb/04_cliffside/ridge_wind");
+        LogQaSfxVolume("fireball", "event:/env/local/09_core/fireballs_idle");
+        LogQaSfxVolume("ridge-wind", "event:/env/amb/04_main");
         LogQaSfxVolume("dialogue", "event:/ui/game/textbox_madeline");
     }
 
