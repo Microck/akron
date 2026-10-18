@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Linq;
+using Mono.Cecil;
 using Microsoft.Xna.Framework;
 using Xunit;
 
@@ -9,6 +11,15 @@ namespace Celeste.Mod.Akron.Tests;
 
 [Collection(AkronSharedStateCollection.Name)]
 public sealed class MapAlphaBlendTests {
+    [Fact]
+    public void ColorIntegrationDelegatesToByteChannelArithmetic() {
+        using var asm = AssemblyDefinition.ReadAssembly(typeof(AkronScreenshotScanner).Assembly.Location);
+        var type = asm.MainModule.Types.Single(t => t.Name == nameof(AkronScreenshotScanner));
+        var wrapper = type.Methods.Single(m => m.Name == "BlendOverRowPixel" && m.Parameters.Count == 3);
+        Assert.Contains(wrapper.Body.Instructions, i => i.Operand is MethodReference m &&
+            m.Name == "BlendOverRowPixel" && m.Parameters.Count == 6);
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(40)]
@@ -16,10 +27,10 @@ public sealed class MapAlphaBlendTests {
     [InlineData(128)]
     [InlineData(254)]
     public void SameColorOverlapPreservesSaturatedChannels(int alpha) {
-        foreach (var color in new[] { new Color(255, 0, 0, alpha), new Color(0, 0, 255, alpha), new Color(255, 255, 255, alpha), new Color(254, 69, 0, alpha) }) {
-            byte[] row = { 77, color.R, color.G, color.B, color.A, 88 };
-            AkronScreenshotScanner.BlendOverRowPixel(row, 1, color);
-            Assert.Equal(color.R, row[1]); Assert.Equal(color.G, row[2]); Assert.Equal(color.B, row[3]);
+        foreach (byte[] color in new[] { new byte[] {255,0,0}, new byte[] {0,0,255}, new byte[] {255,255,255}, new byte[] {254,69,0} }) {
+            byte[] row = { 77, color[0], color[1], color[2], (byte)alpha, 88 };
+            AkronScreenshotScanner.BlendOverRowPixel(row, 1, color[0], color[1], color[2], (byte)alpha);
+            Assert.Equal(color[0], row[1]); Assert.Equal(color[1], row[2]); Assert.Equal(color[2], row[3]);
             Assert.Equal((byte)Math.Floor((alpha / 255d + alpha / 255d * (1 - alpha / 255d)) * 255), row[4]);
             Assert.Equal(77, row[0]); Assert.Equal(88, row[5]);
         }
@@ -29,12 +40,11 @@ public sealed class MapAlphaBlendTests {
     public void ContrastingAndBoundaryColorsMatchIndependentFloatingSourceOver() {
         foreach (int sa in new[] { 0, 1, 40, 64, 128, 254, 255 })
         foreach (int da in new[] { 0, 1, 40, 64, 128, 254, 255 }) {
-            Color source = new(255, 37, 0, sa);
             byte[] row = { 9, 88, 255, (byte)da };
             double s = sa / 255d, d = da / 255d, a = s + d * (1 - s);
             byte Channel(int src, int dst) => a == 0 ? (byte)0 : (byte)Math.Floor((src * s + dst * d * (1 - s)) / a + 1e-10);
             byte[] expected = { Channel(255, 9), Channel(37, 88), Channel(0, 255), (byte)Math.Floor(a * 255 + 1e-10) };
-            AkronScreenshotScanner.BlendOverRowPixel(row, 0, source);
+            AkronScreenshotScanner.BlendOverRowPixel(row, 0, 255, 37, 0, (byte)sa);
             Assert.Equal(expected, row);
         }
     }
