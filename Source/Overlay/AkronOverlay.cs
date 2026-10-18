@@ -554,7 +554,11 @@ public sealed partial class AkronOverlay : Entity {
         }
 
         SelectCustomHudLabel(selectedEntry.CustomHudLabelId);
+        searchInputActive = false;
+        searchInputUsesImGui = false;
+        ClearSearchInputFocusRequest();
         OpenOptionsPopup(selectedEntry.OptionsPopupKey);
+        pendingSectionOptionsReveal = selectedEntry.OptionsPopupKey;
         return true;
     }
 
@@ -606,6 +610,7 @@ public sealed partial class AkronOverlay : Entity {
     }
 
     internal void ResetTransientUiState(bool searchAutofocus) {
+        ResetSectionNavigation();
         CloseOptionsPopup();
         communityPackBrowserOpen = false;
         expandedCommunityPackPreview = null;
