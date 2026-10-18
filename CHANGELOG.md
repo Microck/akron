@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Consume StartPos placement right-click cancellation before restoring the overlay, preventing the underlying row binding menu from opening.
+
 - Fix repeated configured-value notifications while editing disabled external string variants.
 
 - Apply cursor-hold popup rebinding, Clear and Default immediately without replacing registered input bindings.
