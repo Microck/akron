@@ -149,12 +149,13 @@ public sealed class EncoderCompletionTests {
     [Fact]
     public void ReplayWriteAndPruningHaveIndependentFailureBoundary() {
         string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Recorder/akron-internal-recorder.cs"));
-        int start = source.IndexOf("if (activeReplayProcess != null && activeReplayInput != null) {");
+        int start = source.IndexOf("if (replayDue) {");
         Assert.True(start >= 0);
         int end = source.IndexOf("capturedFrames++;", start);
         Assert.True(end > start);
         string replay = source.Substring(start, end - start);
-        Assert.Contains("try {\n                    activeReplayInput.Write", replay);
+        Assert.Contains("try {\n                    byte[] replayFrame = BuildFrameBytes", replay);
+        Assert.Contains("activeReplayInput.Write(replayFrame, 0, replayFrame.Length);", replay);
         Assert.Contains("PruneReplaySegments(settings);", replay);
         Assert.Contains("catch (Exception replayError)", replay);
         Assert.Contains("StopReplayBuffer();", replay);
