@@ -14,6 +14,53 @@ namespace Celeste.Mod.Akron.Tests;
 
 [Collection(AkronSharedStateCollection.Name)]
 public sealed class SetupPackTests {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CommittedWholeImportDisarmsInventorySnapshotOnlyWhenRestoreIsOff(bool importedRestore) {
+        var snapshot = new AkronSetInventorySnapshot { JumpHackExtraJumps = 3 };
+        var session = new AkronModuleSession { SetInventoryRestoreSnapshot = snapshot };
+        var settings = new AkronModuleSettings { SetInventoryRestoreOnDeath = true, JumpHackExtraJumps = 1 };
+        var pack = new AkronSetupPack { Section = AkronSetupSection.Whole, ArchiveMapSid = "Tests/InventoryImport",
+            State = new AkronSetupState { SetInventoryRestoreOnDeath = importedRestore, JumpHackExtraJumps = 7 } };
+        AkronSetupPacks.Apply(settings, session, pack);
+        Assert.Equal(7, settings.JumpHackExtraJumps);
+        Assert.Equal(importedRestore, settings.SetInventoryRestoreOnDeath);
+        if (importedRestore) Assert.Same(snapshot, session.SetInventoryRestoreSnapshot);
+        else Assert.Null(session.SetInventoryRestoreSnapshot);
+    }
+
+    [Theory]
+    [InlineData(AkronSetupSection.Keybinds)]
+    [InlineData(AkronSetupSection.Audio)]
+    [InlineData(AkronSetupSection.Hud)]
+    [InlineData(AkronSetupSection.StartPos)]
+    public void ScopedImportPreservesArmedInventorySnapshot(AkronSetupSection section) {
+        var snapshot = new AkronSetInventorySnapshot { JumpHackExtraJumps = 3 };
+        var session = new AkronModuleSession { SetInventoryRestoreSnapshot = snapshot };
+        var settings = new AkronModuleSettings { SetInventoryRestoreOnDeath = true, JumpHackExtraJumps = 1 };
+        var pack = new AkronSetupPack { Section = AkronSetupSection.Whole, ArchiveMapSid = "Tests/InventoryImport",
+            State = new AkronSetupState { SetInventoryRestoreOnDeath = false, JumpHackExtraJumps = 7 } };
+        AkronSetupPacks.Apply(settings, session, pack, section);
+        Assert.Same(snapshot, session.SetInventoryRestoreSnapshot);
+        Assert.True(settings.SetInventoryRestoreOnDeath);
+        Assert.Equal(1, settings.JumpHackExtraJumps);
+    }
+
+    [Fact]
+    public void FailedWholeImportKeepsArmedInventorySnapshotAndOriginalSettings() {
+        var snapshot = new AkronSetInventorySnapshot { JumpHackExtraJumps = 3 };
+        var session = new AkronModuleSession { SetInventoryRestoreSnapshot = snapshot };
+        var settings = new AkronModuleSettings { SetInventoryRestoreOnDeath = true, JumpHackExtraJumps = 1 };
+        var pack = new AkronSetupPack { Section = AkronSetupSection.Whole, ArchiveMapSid = "Tests/InventoryImport",
+            State = new AkronSetupState { SetInventoryRestoreOnDeath = false, JumpHackExtraJumps = 7 } };
+        Assert.Throws<IOException>(() => AkronSetupPacks.Apply(settings, session, pack,
+            AkronSetupSection.Whole, persistStartPosMetadata: () => false));
+        Assert.Same(snapshot, session.SetInventoryRestoreSnapshot);
+        Assert.True(settings.SetInventoryRestoreOnDeath);
+        Assert.Equal(1, settings.JumpHackExtraJumps);
+    }
+
     [Fact]
     public void ImportingBindingsWithoutAUsableOverlayToggleRestoresTheDefault() {
         // A pack exported with Open Menu unbound must not strand the recipient outside the overlay.

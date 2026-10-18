@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Disarm an obsolete Set Inventory death-restoration snapshot after a successful Whole setup import with Restore on Death off. Failed and unrelated scoped imports preserve existing restoration.
+
 - Clarify that Set Inventory applies persistent Air Jumps settings: chapter restart does not reset them, while optional death restoration still restores the pre-click settings.
 
 - Release Cursor Zoom below100% cleanly when Extended Camera Dynamics applies the view, restoring its map camera or the ordinary viewport when toggled off. Keep camera ownership when switching to native zoom so an active ECD map cannot interpolate over the requested scale.
