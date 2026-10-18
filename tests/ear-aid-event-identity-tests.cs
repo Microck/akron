@@ -28,6 +28,9 @@ public sealed class EarAidEventIdentityTests {
     [InlineData("event:/mod/wind", null)]
     [InlineData("event:/ridge/unrelated", null)]
     [InlineData("event:/farewell/unrelated", null)]
+    [InlineData("event:/char/dialogue/madeline", "dialogue")]
+    [InlineData("event:/char/oshiro/boss_charge", "oshiro-boss")]
+    [InlineData("event:/music/lvl3/oshiro_theme", null)]
     [InlineData("", null)]
     public void MatchesSoundIdentityRatherThanChapterOrCompetingGenericSound(string path, string? expected) {
         Assert.Equal(expected, AkronEarAid.FindBestMatch(path)?.Key);

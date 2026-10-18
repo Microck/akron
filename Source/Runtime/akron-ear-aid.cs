@@ -210,6 +210,7 @@ public static class AkronEarAid {
 
         return score;
     }
+
     private static bool HasToken(string name, string token) {
         int start = 0;
         while (start < name.Length) {
@@ -226,5 +227,4 @@ public static class AkronEarAid {
         }
         return false;
     }
-
 }
