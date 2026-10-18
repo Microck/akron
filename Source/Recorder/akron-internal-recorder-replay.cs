@@ -72,6 +72,7 @@ public static partial class AkronInternalRecorder {
     }
 
     public static void StopReplayBuffer() {
+        lock (Sync) { PendingClipSaves.Clear(); }
         manualReplayBufferEnabled = false;
         DisarmReplayBufferAutoStart(AkronModule.Settings);
         bool wasBuffering = IsReplayBuffering;
@@ -80,6 +81,7 @@ public static partial class AkronInternalRecorder {
     }
 
     public static void DisarmReplayBufferAutoStart() {
+        lock (Sync) { PendingClipSaves.Clear(); }
         manualReplayBufferEnabled = false;
         DisarmReplayBufferAutoStart(AkronModule.Settings);
     }
@@ -190,7 +192,7 @@ public static partial class AkronInternalRecorder {
         }
 
         if (start != DateTime.MinValue && string.Equals(room, level.Session.Level, StringComparison.Ordinal)) {
-            QueueClipSave("room-clear", start, ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave(level, "room-clear", start, ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
         }
     }
 
@@ -207,8 +209,9 @@ public static partial class AkronInternalRecorder {
             return;
         }
 
+        DateTime completedUtc = ReplayNowUtc();
         if (AkronModule.Settings.RecordingTriggerCheckpointClear) {
-            QueueClipSave("checkpoint-clear", ReplayNowUtc().AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave(level, "checkpoint-clear", completedUtc.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), completedUtc, AkronModule.Settings.RecordingPostRollSeconds);
         }
 
         if (AkronModule.Settings.RecordingTriggerRoomEntryToClear) {
@@ -218,7 +221,7 @@ public static partial class AkronInternalRecorder {
             }
 
             if (start != DateTime.MinValue) {
-                QueueClipSave("area-clear", start, ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
+                QueueClipSave(level, "area-clear", start, completedUtc, AkronModule.Settings.RecordingPostRollSeconds);
             }
         }
 
@@ -237,7 +240,7 @@ public static partial class AkronInternalRecorder {
 
         DateTime now = ReplayNowUtc();
         if (AkronModule.Settings.RecordingTriggerLastDeath) {
-            QueueClipSave("last-death", now.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), now, AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave(level, "last-death", now.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), now, AkronModule.Settings.RecordingPostRollSeconds);
         }
 
         if (AkronModule.Settings.RecordingTriggerRespawnToDeath) {
@@ -247,12 +250,12 @@ public static partial class AkronInternalRecorder {
             }
 
             if (start != DateTime.MinValue) {
-                QueueClipSave("respawn-to-death", start, now, AkronModule.Settings.RecordingPostRollSeconds);
+                QueueClipSave(level, "respawn-to-death", start, now, AkronModule.Settings.RecordingPostRollSeconds);
             }
         }
 
         if (goldenDeath && AkronModule.Settings.RecordingTriggerGoldenDeath) {
-            QueueClipSave("golden-death", now.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), now, AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave(level, "golden-death", now.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), now, AkronModule.Settings.RecordingPostRollSeconds);
         }
     }
 
@@ -263,7 +266,7 @@ public static partial class AkronInternalRecorder {
 
         if (AkronModule.Settings.RecordingTriggerBerryCollect ||
             golden && AkronModule.Settings.RecordingTriggerGoldenDeath) {
-            QueueClipSave(golden ? "golden-berry" : "berry-collect", ReplayNowUtc().AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave(level, golden ? "golden-berry" : "berry-collect", ReplayNowUtc().AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
         }
     }
 
@@ -271,24 +274,24 @@ public static partial class AkronInternalRecorder {
         return SelectReplaySegments(directory, startUtc, endUtc);
     }
 
-    private static void QueueClipSave(string kind, DateTime startUtc, DateTime eventUtc, int postRollSeconds) {
+    private static void QueueClipSave(Level level, string kind, DateTime startUtc, DateTime eventUtc, int postRollSeconds) {
         if (!AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed) {
             return;
         }
 
-        if (AkronModuleSettings.ClampRecordingReplayBufferSeconds(AkronModule.Settings.RecordingReplayBufferSeconds) <= 0) {
+        if (!ShouldMaintainReplayBuffer(AkronModule.Settings, level)) {
             return;
         }
 
         int postRoll = AkronModuleSettings.ClampRecordingClipSeconds(postRollSeconds);
-        PendingClipSave save = new PendingClipSave(kind, startUtc, eventUtc.AddSeconds(postRoll), eventUtc.AddSeconds(postRoll));
+        PendingClipSave save = new PendingClipSave(kind, startUtc, eventUtc.AddSeconds(postRoll), eventUtc.AddSeconds(postRoll), CaptureRecordingIdentity(level));
         lock (Sync) {
             PendingClipSaves.Add(save);
         }
     }
 
     private static void SaveReplayWindow(Scene scene, DateTime startUtc, DateTime endUtc, string kind) {
-        SaveReplayWindows(scene, new[] { new PendingClipSave(kind, startUtc, endUtc, endUtc) });
+        SaveReplayWindows(scene, new[] { new PendingClipSave(kind, startUtc, endUtc, endUtc, CaptureRecordingIdentity(scene)) });
     }
 
     private static IEnumerable<string> SelectReplaySegments(string directory, DateTime startUtc, DateTime endUtc) {
@@ -310,6 +313,22 @@ public static partial class AkronInternalRecorder {
 
     private static bool ShouldMaintainReplayBuffer(AkronModuleSettings settings, Scene scene) {
         return ShouldMaintainReplayBuffer(settings, scene is Level, manualReplayBufferEnabled);
+    }
+
+    private static bool ShouldKeepPendingReplayBuffer(AkronModuleSettings settings, Scene scene) {
+        lock (Sync) {
+            return ShouldKeepPendingReplayBuffer(settings, scene is Level,
+                replayProcess != null && replayInput != null, PendingClipSaves.Count);
+        }
+    }
+
+    internal static bool ShouldKeepPendingReplayBuffer(AkronModuleSettings settings,
+        bool sceneIsLevel, bool activeBuffer, int pendingCount) {
+        // Keep existing completion history until post-roll is due in Overworld.
+        // This does not start new capture outside a Level or change export scheduling.
+        return !sceneIsLevel && activeBuffer && pendingCount > 0 &&
+            AkronModuleSettings.ClampRecordingReplayBufferSeconds(settings.RecordingReplayBufferSeconds) > 0 &&
+            settings.RecordingReplayAutoStart == AkronRecordingReplayAutoStart.InLevels;
     }
 
     private static bool ShouldMaintainReplayBuffer(AkronModuleSettings settings, bool sceneIsLevel, bool manualReplayBuffer) {
@@ -399,6 +418,7 @@ public static partial class AkronInternalRecorder {
             // Otherwise CaptureFrame retries the same invalid directory every render.
             manualReplayBufferEnabled = false;
             DisarmReplayBufferAutoStart(settings);
+            lock (Sync) { PendingClipSaves.Clear(); }
             string cleanupFailure = string.Empty;
             string cleanupException = string.Empty;
             try {
@@ -533,13 +553,15 @@ public static partial class AkronInternalRecorder {
     }
 
     private readonly struct PendingClipSave {
-        public PendingClipSave(string kind, DateTime startUtc, DateTime endUtc, DateTime saveAtUtc) {
+        public PendingClipSave(string kind, DateTime startUtc, DateTime endUtc, DateTime saveAtUtc, RecordingIdentity identity) {
+            Identity = identity;
             Kind = kind;
             StartUtc = startUtc;
             EndUtc = endUtc;
             SaveAtUtc = saveAtUtc;
         }
 
+        public RecordingIdentity Identity { get; }
         public string Kind { get; }
         public DateTime StartUtc { get; }
         public DateTime EndUtc { get; }

@@ -100,18 +100,21 @@ public static partial class AkronInternalRecorder {
         };
     }
 
-    private static void WriteClipSidecar(string clipPath, string kind, AkronRecordingContainerFormat format, DateTime startUtc, DateTime endUtc, Scene scene = null) {
+    private static void WriteClipSidecar(string clipPath, string kind, AkronRecordingContainerFormat format, DateTime startUtc, DateTime endUtc, Scene scene = null) =>
+        WriteClipSidecar(clipPath, kind, format, startUtc, endUtc, CaptureRecordingIdentity(scene));
+
+    internal static void WriteClipSidecar(string clipPath, string kind, AkronRecordingContainerFormat format, DateTime startUtc, DateTime endUtc, RecordingIdentity identity) {
         if (string.IsNullOrWhiteSpace(clipPath)) {
             return;
         }
 
-        Level level = scene as Level;
+        identity ??= new RecordingIdentity("recording", "recording", 0, 0);
         string sidecar = clipPath + ClipSidecarExtension;
         List<string> lines = new List<string> {
             "kind=" + kind,
             "format=" + AkronModuleSettings.FormatRecordingContainer(PublishedClipContainer(clipPath, format)),
-            "chapter=" + SanitizeToken(level?.Session?.Area.GetSID() ?? string.Empty),
-            "room=" + SanitizeToken(level?.Session?.Level ?? string.Empty),
+            "chapter=" + SanitizeToken(identity.Chapter),
+            "room=" + SanitizeToken(identity.Room),
             "createdUtc=" + DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
             "startUtc=" + startUtc.ToString("O", CultureInfo.InvariantCulture),
             "endUtc=" + endUtc.ToString("O", CultureInfo.InvariantCulture)

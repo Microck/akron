@@ -53,9 +53,9 @@ public static partial class AkronInternalRecorder
         {
             AkronModuleSettings settings = SnapshotReplayExportSettings(AkronModule.Settings);
             var outputRequests = requests.Select(request => new ReplayExportRequest(request,
-                BuildOutputPath(scene, settings.RecordingContainerFormat, request.Kind),
-                SanitizeToken((scene as Level)?.Session?.Area.GetSID() ?? string.Empty),
-                SanitizeToken((scene as Level)?.Session?.Level ?? string.Empty))).ToList();
+                BuildOutputPath(request.Identity, settings.RecordingContainerFormat, request.Kind),
+                SanitizeToken(request.Identity.Chapter),
+                SanitizeToken(request.Identity.Room))).ToList();
             long boundary = Stopwatch.GetTimestamp();
             Process process;
             Stream input;
