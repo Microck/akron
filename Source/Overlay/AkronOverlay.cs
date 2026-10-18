@@ -518,6 +518,8 @@ public sealed partial class AkronOverlay : Entity {
         }
 
         if (TryFindAction(label, level, out int tabIndex, out int entryIndex)) {
+            // The fallback index belongs to the unfiltered tab, not search results.
+            ClearSearchQuery();
             selectedTabIndex = tabIndex;
             selectedPanel = SelectionPanel.Actions;
             selectedActionIndex = entryIndex;
@@ -576,6 +578,7 @@ public sealed partial class AkronOverlay : Entity {
                 continue;
             }
 
+            ClearSearchQuery();
             selectedTabIndex = tab;
             selectedPanel = SelectionPanel.Actions;
             selectedActionIndex = entry;
