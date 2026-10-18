@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Route Extended Variant Mode vanilla assists, including No Grabbing and Air Dashes, through the provider’s vanilla setter so menu changes affect gameplay and report the canonical assist state.
+
 - Disarm an obsolete Set Inventory death-restoration snapshot after a successful Whole setup import with Restore on Death off. Failed and unrelated scoped imports preserve existing restoration.
 
 - Clarify that Set Inventory applies persistent Air Jumps settings: chapter restart does not reset them, while optional death restoration still restores the pre-click settings.
