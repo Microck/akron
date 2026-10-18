@@ -772,11 +772,51 @@ public static partial class AkronActions {
             return;
         }
 
-        string commandText = "playtas " + AkronModule.Settings.TasFilePath;
-        Engine.Commands.commandHistory.Insert(0, commandText);
-        Engine.Commands.ExecuteCommand("playtas", new[] { AkronModule.Settings.TasFilePath });
-        Engine.Commands.commandHistory.RemoveAt(0);
-        AkronInterop.TryShowStudioPopup("akron-playtas", "Akron", "Started TAS handoff for " + Path.GetFileName(AkronModule.Settings.TasFilePath));
+        if (!AkronInterop.CelesteTasInteropAvailable) {
+            Engine.Scene?.Add(new AkronToast("CelesteTAS handoff status is unavailable."));
+            return;
+        }
+
+        Type tasSettings = AkronReflection.GetType("CelesteTAS", "TAS.Module.CelesteTasSettings") ??
+                           AkronReflection.GetType("CelesteTAS-EverestInterop", "TAS.Module.CelesteTasSettings");
+        if (!AkronTasHandoff.TryReadEnabled(tasSettings, out bool enabled)) {
+            Engine.Scene?.Add(new AkronToast("CelesteTAS enabled status is unavailable."));
+            return;
+        }
+        if (!enabled) {
+            Engine.Scene?.Add(new AkronToast("Enable CelesteTAS in Mod Options before launching."));
+            return;
+        }
+
+        string path = AkronModule.Settings.TasFilePath;
+        try {
+            // playtas also reparses command history; an absolute path cannot be
+            // mistaken for its leading comma/space argument separator.
+            path = Path.GetFullPath(path);
+            string commandText = "playtas " + path;
+            bool started = AkronTasHandoff.Start(() => {
+                Engine.Commands.commandHistory.Insert(0, commandText);
+                try {
+                    Engine.Commands.ExecuteCommand("playtas", new[] { path });
+                } finally {
+                    Engine.Commands.commandHistory.RemoveAt(0);
+                }
+            }, AkronInterop.IsTasActive, () => AkronModule.SetOverlayVisible(Engine.Scene, false));
+            if (!started) {
+                Engine.Scene?.Add(new AkronToast("TAS did not start. Check the configured file."));
+                return;
+            }
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Warn, nameof(AkronActions), "TAS handoff failed: " + exception);
+            Engine.Scene?.Add(new AkronToast("TAS handoff failed. Check the log for details."));
+            return;
+        }
+        // Studio notification is optional and must not change the committed result.
+        try {
+            AkronInterop.TryShowStudioPopup("akron-playtas", "Akron", "Started TAS handoff for " + Path.GetFileName(path));
+        } catch (Exception exception) {
+            Logger.Log(LogLevel.Warn, nameof(AkronActions), "TAS started, but Studio notification failed: " + exception);
+        }
         Engine.Scene?.Add(new AkronToast("Started TAS handoff."));
     }
 
