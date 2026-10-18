@@ -138,6 +138,46 @@ public static class AkronInternalAudioRecorder {
         return Stop(AudioCapturePurpose.Manual);
     }
 
+    internal static AkronReplayAudioLease LeaseReplayBuffer(DateTime start, DateTime end) {
+        var lease = new AkronReplayAudioLease();
+        try {
+            lock (Sync) {
+                foreach (CapturedTrack track in ActiveTracks.Where(t => t.Purpose == AudioCapturePurpose.ReplayBuffer)) {
+                    lock (track.Sync) {
+                        if (!track.Active || track.RawStream == null) continue;
+                        track.RawStream.Flush();
+                        int channels = Math.Max(1, track.Channels);
+                        long bytes = track.RawStream.Length / (channels * 2) * (channels * 2);
+                        var input = new FileStream(track.RawPath, FileMode.Open, FileAccess.Read,
+                            FileShare.ReadWrite | FileShare.Delete);
+                        lease.Tracks.Add(new(input, track.DisplayName, Math.Max(1, track.SampleRate), channels, bytes, track.StartedUtc, track.RawStartFrame));
+                        foreach (var chunk in track.ReplayChunks) {
+                            double requestedFirst = (start - track.StartedUtc).TotalSeconds * track.SampleRate;
+                            double requestedLast = (end - track.StartedUtc).TotalSeconds * track.SampleRate;
+                            if (chunk.StartFrame + chunk.Bytes / (channels * 2) <= requestedFirst || chunk.StartFrame >= requestedLast) continue;
+                            var chunkInput = new FileStream(chunk.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                            lease.Tracks.Add(new(chunkInput, track.DisplayName, Math.Max(1, track.SampleRate), channels,
+                                chunk.Bytes, track.StartedUtc, chunk.StartFrame));
+                        }
+                    }
+                }
+            }
+            return lease;
+        } catch { lease.Dispose(); throw; }
+    }
+
+    internal static void PruneReplayAudio(DateTime keepAfter) {
+        lock (Sync) foreach (var track in ActiveTracks.Where(t => t.Purpose == AudioCapturePurpose.ReplayBuffer)) {
+            lock (track.Sync) {
+                int frameBytes = Math.Max(1, track.Channels) * 2;
+                foreach (var chunk in track.ReplayChunks.ToArray()) {
+                    if (track.StartedUtc.AddSeconds((chunk.StartFrame + chunk.Bytes / frameBytes) / (double)track.SampleRate) >= keepAfter) continue;
+                    try { File.Delete(chunk.Path); track.ReplayChunks.Remove(chunk); } catch (IOException) { }
+                }
+            }
+        }
+    }
+
     public static AkronRecordedAudio StopReplayBuffer() {
         return Stop(AudioCapturePurpose.ReplayBuffer);
     }
@@ -153,6 +193,10 @@ public static class AkronInternalAudioRecorder {
         List<AkronRecordedAudioTrack> audioTracks = new List<AkronRecordedAudioTrack>();
         DateTime stoppedUtc = DateTime.UtcNow;
         foreach (CapturedTrack track in completedTracks) {
+            foreach (var chunk in track.ReplayChunks) {
+                audioTracks.Add(new AkronRecordedAudioTrack(chunk.Path, track.DisplayName, track.SampleRate,
+                    Math.Max(1, track.Channels), chunk.Bytes, track.StartedUtc, stoppedUtc));
+            }
             long bytes = 0;
             try {
                 if (!string.IsNullOrWhiteSpace(track.RawPath) && File.Exists(track.RawPath)) {
@@ -211,7 +255,7 @@ public static class AkronInternalAudioRecorder {
             DisplayName = request.DisplayName,
             Purpose = purpose,
             RawPath = rawPath,
-            RawStream = new FileStream(rawPath, FileMode.Create, FileAccess.Write, FileShare.Read),
+            RawStream = new FileStream(rawPath, FileMode.Create, FileAccess.Write, FileShare.Read | FileShare.Delete),
             SampleRate = detectedSampleRate > 0 ? detectedSampleRate : 48000,
             Channels = rawSpeakers > 0 ? rawSpeakers : 2,
             Gain = AkronModuleSettings.ClampRecordingAudioLevel(request.Level) / 100f,
@@ -273,6 +317,13 @@ public static class AkronInternalAudioRecorder {
         byte[] pcm = new byte[sampleCount * 2];
         float currentGain;
         lock (track.Sync) {
+            if (!track.Active) return RESULT.OK;
+            if (track.Purpose == AudioCapturePurpose.ReplayBuffer && track.RawStream != null &&
+                track.HasWrittenSamples && track.Channels != channelCount) {
+                track.Active = false;
+                lastError = "Replay audio channel layout changed during capture.";
+                return RESULT.OK;
+            }
             track.Channels = channelCount;
             currentGain = track.Gain;
         }
@@ -286,8 +337,26 @@ public static class AkronInternalAudioRecorder {
         }
 
         lock (track.Sync) {
-            if (track.Active && track.RawStream != null) {
-                track.RawStream.Write(pcm, 0, pcm.Length);
+            try {
+                if (track.Active && track.RawStream != null) {
+                    // Replay PCM uses bounded chunks so non-rotating video export does not
+                    // turn the rolling buffer into an ever-growing single audio file.
+                    if (track.Purpose == AudioCapturePurpose.ReplayBuffer &&
+                        track.RawStream.Length >= (long)track.SampleRate * channelCount * 2 * 10) {
+                        long bytes = track.RawStream.Length;
+                        track.RawStream.Dispose();
+                        track.ReplayChunks.Add(new(track.RawPath, track.RawStartFrame, bytes));
+                        track.RawStartFrame += bytes / (channelCount * 2);
+                        track.RawPath = Path.Combine(Path.GetTempPath(), "akron-audio-replay-" + Guid.NewGuid().ToString("N") + ".s16le");
+                        track.RawStream = new FileStream(track.RawPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read | FileShare.Delete);
+                    }
+                    track.RawStream.Write(pcm, 0, pcm.Length);
+                    track.HasWrittenSamples = true;
+                }
+            } catch (Exception ex) {
+                // Never let managed file/rotation errors cross FMOD's callback boundary.
+                track.Active = false;
+                lastError = "Replay/audio capture write failed: " + ex.Message;
             }
         }
 
@@ -357,6 +426,10 @@ public static class AkronInternalAudioRecorder {
     }
 
     private sealed class CapturedTrack : IDisposable {
+        internal sealed record ReplayChunk(string Path, long StartFrame, long Bytes);
+        internal readonly List<ReplayChunk> ReplayChunks = new();
+        internal long RawStartFrame;
+        internal bool HasWrittenSamples;
         public readonly object Sync = new object();
         public string Id;
         public string DisplayName;
@@ -377,14 +450,14 @@ public static class AkronInternalAudioRecorder {
         public void Dispose() {
             lock (Sync) {
                 Active = false;
-                try {
-                    RawStream?.Flush();
-                    RawStream?.Dispose();
-                } catch (Exception ex) {
-                    lastError = ex.Message;
-                }
-
+                FileStream stream = RawStream;
                 RawStream = null;
+                try { stream?.Flush(); }
+                catch (Exception ex) { lastError = ex.Message; }
+                finally {
+                    try { stream?.Dispose(); }
+                    catch (Exception ex) { lastError = ex.Message; }
+                }
             }
 
             try {

@@ -149,11 +149,16 @@ public sealed class ReplayWindowTimingTests
     }
 
     [Fact]
-    public void ExportOwnsBoundedFinalizationAndPrivateStaging()
+    public void ExportUsesFinalizedHistoryAndPrivateStaging()
     {
         string root = Path.Combine(AppContext.BaseDirectory, "../../../../Source/Recorder");
         string export = File.ReadAllText(Path.Combine(root, "akron-internal-recorder-replay-export.cs"));
-        Assert.True(export.IndexOf("new Timer(", StringComparison.Ordinal) < export.IndexOf("snapshot.Timeline.CompleteThrough", StringComparison.Ordinal));
+        Assert.Contains("ReadFinalizedSegments", export);
+        Assert.Contains("LeaseReplayBuffer", export);
+        Assert.DoesNotContain("snapshot.Timeline.CompleteThrough", export);
+        Assert.DoesNotContain("replayProcess = null", export);
+        Assert.DoesNotContain("AkronInternalAudioRecorder.StopReplayBuffer()", export);
+        Assert.Contains("PinnedReplaySegments", export);
         Assert.Contains("MainThreadHelper.Schedule", export);
         Assert.Contains("Path.Combine(snapshot.Directory,", export);
         Assert.Contains("File.Move(output, publishedPath, true)", export);

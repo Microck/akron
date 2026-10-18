@@ -47,6 +47,12 @@ public static partial class AkronInternalRecorder {
         AddEncoderPerformanceArguments(args, settings, spec);
         AddRateControlArguments(args, settings, spec);
         AddKeyframeAndFilterArguments(args, settings, spec);
+        // Automatic GOPs can span minutes at low FPS. Replay needs a bounded
+        // closure point even when manual recording leaves keyframes automatic.
+        if (AkronModuleSettings.ClampRecordingKeyframeIntervalSeconds(settings.RecordingKeyframeIntervalSeconds) == 0) {
+            args.Add("-g");
+            args.Add((ReplaySegmentSeconds * spec.Framerate).ToString(CultureInfo.InvariantCulture));
+        }
         // Preserve the capture frame grid even when an encoder uses B-frames.
         // Muxer timestamp shifting otherwise offsets CSV starts from frame indices.
         args.Add("-avoid_negative_ts");

@@ -20,11 +20,31 @@ internal sealed record AkronReplayWindow(IReadOnlyList<AkronReplaySegment> Segme
 
 internal static class AkronReplayWindows
 {
+    internal static List<AkronReplaySegment> ReadFinalizedSegments(string directory)
+    {
+        string path = Path.Combine(directory, "segments.csv");
+        if (!File.Exists(path)) return new();
+        // FFmpeg rewrites the bounded live manifest. Only complete rows are admissible.
+        using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(input);
+        string text = reader.ReadToEnd();
+        int lastNewline = text.LastIndexOf('\n');
+        if (lastNewline < 0) return new();
+        return ParseSegments(directory, text.Substring(0, lastNewline).Split('\n'));
+    }
+
     internal static List<AkronReplaySegment> ReadSegments(string directory)
     {
+        return ParseSegments(directory, File.ReadLines(Path.Combine(directory, "segments.csv")));
+    }
+
+    private static List<AkronReplaySegment> ParseSegments(string directory, IEnumerable<string> lines)
+    {
         var result = new List<AkronReplaySegment>();
-        foreach (string line in File.ReadLines(Path.Combine(directory, "segments.csv")))
+        foreach (string raw in lines)
         {
+            string line = raw.TrimEnd('\r');
+            if (line.Length == 0) continue;
             string[] fields = SplitCsv(line);
             if (fields.Length != 3 || !double.TryParse(fields[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double start) ||
                 !double.TryParse(fields[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double end) ||
@@ -41,6 +61,12 @@ internal static class AkronReplayWindows
         return result.OrderBy(segment => segment.Start).ToList();
     }
 
+    internal static long RequestedFrame(DateTime endpoint, DateTime origin, int fps) =>
+        checked((long)Math.Ceiling((endpoint - origin).TotalSeconds * fps - 0.000001));
+
+    internal static DateTime RequestedEndOnFrameGrid(DateTime endpoint, DateTime origin, int fps) =>
+        origin.AddSeconds(RequestedFrame(endpoint, origin, fps) / (double)fps);
+
     internal static AkronReplayWindow Plan(IReadOnlyList<AkronReplaySegment> segments,
         DateTime originUtc, int fps, long capturedFrames, DateTime requestedStart, DateTime requestedEnd)
     {
@@ -49,8 +75,8 @@ internal static class AkronReplayWindows
         segments = segments.Select(segment => new AkronReplaySegment(segment.Path,
             SnapMediaFrame(segment.Start, fps) / (double)fps, SnapMediaFrame(segment.End, fps) / (double)fps)).ToList();
         // Half-open frame grid: each endpoint rounds upward by less than one frame.
-        long requestedFirst = (long)Math.Ceiling((requestedStart - originUtc).TotalSeconds * fps - 0.000001);
-        long requestedLast = (long)Math.Ceiling((requestedEnd - originUtc).TotalSeconds * fps - 0.000001);
+        long requestedFirst = RequestedFrame(requestedStart, originUtc, fps);
+        long requestedLast = RequestedFrame(requestedEnd, originUtc, fps);
         long first = Math.Max(0, requestedFirst);
         long end = Math.Min(capturedFrames, requestedLast);
         first = Math.Max(first, SnapMediaFrame(segments[0].Start, fps));

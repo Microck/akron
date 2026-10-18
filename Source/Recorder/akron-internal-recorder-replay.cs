@@ -81,6 +81,7 @@ public static partial class AkronInternalRecorder {
     }
 
     public static void DisarmReplayBufferAutoStart() {
+        CancelReplayExport();
         lock (Sync) { PendingClipSaves.Clear(); }
         manualReplayBufferEnabled = false;
         DisarmReplayBufferAutoStart(AkronModule.Settings);
@@ -164,7 +165,8 @@ public static partial class AkronInternalRecorder {
             roomEntryUtc = now;
             respawnUtc = now;
             roomEntryName = level?.Session?.Level ?? string.Empty;
-            PendingClipSaves.Clear();
+            // Requests retain their source identity across scene changes; only
+            // retirement of the capture generation cancels them.
         }
     }
 
@@ -286,12 +288,35 @@ public static partial class AkronInternalRecorder {
         int postRoll = AkronModuleSettings.ClampRecordingClipSeconds(postRollSeconds);
         PendingClipSave save = new PendingClipSave(kind, startUtc, eventUtc.AddSeconds(postRoll), eventUtc.AddSeconds(postRoll), CaptureRecordingIdentity(level));
         lock (Sync) {
+            if (replayProcess == null || replayTimeline?.Started != true) {
+                level?.Add(new AkronToast("Replay event was not accepted: no active timed history yet."));
+                return;
+            }
+            if (PendingClipSaves.Count >= 256) {
+                level?.Add(new AkronToast("Replay event queue is full; this event was not accepted."));
+                return;
+            }
             PendingClipSaves.Add(save);
         }
     }
 
     private static void SaveReplayWindow(Scene scene, DateTime startUtc, DateTime endUtc, string kind) {
-        SaveReplayWindows(scene, new[] { new PendingClipSave(kind, startUtc, endUtc, endUtc, CaptureRecordingIdentity(scene)) });
+        if (System.Threading.Volatile.Read(ref replayExportBusy) != 0) {
+            scene?.Add(new AkronToast("Replay clip export is already running."));
+            return;
+        }
+        lock (Sync) {
+            if (replayProcess == null || replayTimeline?.Started != true) {
+                scene?.Add(new AkronToast("Replay buffer has no active timed history yet."));
+                return;
+            }
+            if (PendingClipSaves.Count >= 256) {
+                scene?.Add(new AkronToast("Replay event queue is full; this save was not accepted."));
+                return;
+            }
+            PendingClipSaves.Add(new PendingClipSave(kind, startUtc, endUtc, endUtc, CaptureRecordingIdentity(scene)));
+        }
+        scene?.Add(new AkronToast("Replay save queued until its final segment closes."));
     }
 
     private static IEnumerable<string> SelectReplaySegments(string directory, DateTime startUtc, DateTime endUtc) {
@@ -318,7 +343,8 @@ public static partial class AkronInternalRecorder {
     private static bool ShouldKeepPendingReplayBuffer(AkronModuleSettings settings, Scene scene) {
         lock (Sync) {
             return ShouldKeepPendingReplayBuffer(settings, scene is Level,
-                replayProcess != null && replayInput != null, PendingClipSaves.Count);
+                replayProcess != null && replayInput != null, PendingClipSaves.Count +
+                (System.Threading.Volatile.Read(ref replayExportBusy) != 0 ? 1 : 0));
         }
     }
 
@@ -397,6 +423,10 @@ public static partial class AkronInternalRecorder {
                 replayDiagnostics = diagnostics;
                 replayInput = process.StandardInput.BaseStream;
                 replayDirectory = directory;
+                KnownReplaySegments.Clear();
+                finalizedSegmentCache = new();
+                lastFinalizedSegmentRead = 0;
+                replayFinalizationWaitStarted = 0;
                 replaySpec = spec;
                 if (ffmpegProcess == null) lastCaptureWasReplay = true;
                 EnsureCaptureClock();
@@ -447,6 +477,8 @@ public static partial class AkronInternalRecorder {
 
     private static AkronRecordedAudio StopReplayBuffer(bool keepAudio, out string cleanupError) {
         cleanupError = string.Empty;
+        CancelReplayExport();
+        lock (Sync) PendingClipSaves.Clear();
         Process process;
         Stream input;
         lock (Sync) {
@@ -468,18 +500,22 @@ public static partial class AkronInternalRecorder {
             return idleAudio;
         }
 
+        var cleanupErrors = new List<string>();
+        try { input?.Flush(); } catch (Exception ex) { cleanupErrors.Add(ex.Message); }
+        try { input?.Dispose(); } catch (Exception ex) { cleanupErrors.Add(ex.Message); }
         try {
-            input?.Flush();
-            input?.Dispose();
             if (!process.WaitForExit(3000)) {
                 process.Kill();
+                process.WaitForExit(1000);
             }
         } catch (Exception ex) {
-            cleanupError = ex.Message;
-            lastError = cleanupError;
+            cleanupErrors.Add(ex.Message);
+            try { if (!process.HasExited) process.Kill(); } catch (Exception kill) { cleanupErrors.Add(kill.Message); }
         } finally {
-            process.Dispose();
+            try { process.Dispose(); } catch (Exception ex) { cleanupErrors.Add(ex.Message); }
         }
+        cleanupError = string.Join(" | ", cleanupErrors);
+        if (cleanupError.Length > 0) lastError = cleanupError;
 
         AkronRecordedAudio audio = AkronInternalAudioRecorder.StopReplayBuffer();
         if (!keepAudio) {
@@ -497,6 +533,7 @@ public static partial class AkronInternalRecorder {
         }
 
         lastReplayPruneUtc = DateTime.UtcNow;
+        try { lock (Sync) ReadKnownReplaySegments(); } catch (IOException) { } catch (InvalidDataException) { }
         int bufferSeconds = AkronModuleSettings.ClampRecordingReplayBufferSeconds(settings.RecordingReplayBufferSeconds);
         DateTime keepAfter = DateTime.UtcNow.AddSeconds(-bufferSeconds - ReplaySegmentSeconds * 2);
         lock (Sync) {
@@ -507,9 +544,10 @@ public static partial class AkronInternalRecorder {
             }
         }
 
+        AkronInternalAudioRecorder.PruneReplayAudio(keepAfter);
         foreach (FileInfo file in SelectReplaySegmentsToPrune(
             Directory.EnumerateFiles(replayDirectory, "segment-*.mkv").Select(path => new FileInfo(path)), keepAfter)) {
-            TryDeleteFile(file.FullName);
+            lock (Sync) if (!PinnedReplaySegments.Contains(file.FullName)) TryDeleteFile(file.FullName);
         }
     }
 
