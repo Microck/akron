@@ -423,6 +423,7 @@ public partial class AkronModule : EverestModule {
         lookoutRoutineHook = null;
         respawnTimeElapsed.Clear();
         noDeathEffectBodies.Clear();
+        ClearCustomDeathParticleBursts();
         afterEngineUpdateActions.Clear();
         RestoreCursorVisibility();
         RestoreNativeAssistInvincibility();
@@ -488,6 +489,7 @@ public partial class AkronModule : EverestModule {
         proofRecorderGuardWarningShown = false;
         AkronEntityInspector.ClearLastDeathHitbox();
         noDeathEffectBodies.Clear();
+        ClearCustomDeathParticleBursts();
         ResetNoclipAccuracy();
         AkronActions.RestoreAutoDeafen();
         AkronInputHistory.ResetInputsPerSecond();
@@ -505,6 +507,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void LevelOnEnd(On.Celeste.Level.orig_End orig, Level self) {
+        ClearCustomDeathParticleBursts();
         AkronGameplayBufferState.ResetLevelPresentation();
         AkronActions.ClearStartPosInputWait();
         // Both of these reach outside the level: Discord stays deafened through the
@@ -519,6 +522,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void LevelOnExit(Level level, LevelExit levelExit, LevelExit.Mode mode, Session session, HiresSnow hiresSnow) {
+        ClearCustomDeathParticleBursts();
         AkronInternalRecorder.NotifyLevelExit(mode);
     }
 

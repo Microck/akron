@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using Celeste;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -7,6 +10,10 @@ namespace Celeste.Mod.Akron;
 
 public partial class AkronModule {
     private const float VanillaDeathParticleDurationSeconds = 0.834f;
+    private static ConditionalWeakTable<DeathEffect, CustomDeathParticleBurst> customDeathBursts = new();
+    private static readonly List<CustomDeathParticleBurst> activeCustomDeathBursts = new();
+    private static int customDeathBurstCaptureDepth;
+    private static int vanillaDeathParticleDrawDepth;
     private static bool customDeathParticleRenderWarningLogged;
     private static int customDeathParticleRenderHookCalls;
     private static int customDeathParticleDrawHookCalls;
@@ -18,6 +25,20 @@ public partial class AkronModule {
 
     private static void DeathEffectOnRender(On.Celeste.DeathEffect.orig_Render orig, DeathEffect self) {
         customDeathParticleRenderHookCalls++;
+        if (self != null && customDeathBursts.TryGetValue(self, out var burst)) {
+            // Keep the native component and callbacks alive. Disabling the custom
+            // feature restores its vanilla rendering. A failed custom renderer
+            // falls back inside the independent owner, including after respawn.
+            if (!ShouldUseCustomDeathParticles()) {
+                vanillaDeathParticleDrawDepth++;
+                try {
+                    orig(self);
+                } finally {
+                    vanillaDeathParticleDrawDepth--;
+                }
+            }
+            return;
+        }
         if (ShouldUseCustomDeathParticles() &&
             self?.Entity != null &&
             TryRenderCustomDeathParticles(self.Entity.Position + self.Position, self.Color, self.Percent)) {
@@ -29,7 +50,7 @@ public partial class AkronModule {
 
     private static void DeathEffectOnDraw(On.Celeste.DeathEffect.orig_Draw orig, Vector2 position, Color color, float ease) {
         customDeathParticleDrawHookCalls++;
-        if (!ShouldUseCustomDeathParticles() || !TryRenderCustomDeathParticles(position, color, ease)) {
+        if (vanillaDeathParticleDrawDepth > 0 || !ShouldUseCustomDeathParticles() || !TryRenderCustomDeathParticles(position, color, ease)) {
             orig(position, color, ease);
         }
     }
@@ -57,13 +78,29 @@ public partial class AkronModule {
 
     private static void RenderCustomDeathParticles(Vector2 position, Color vanillaColor, float ease) {
         float visualEase = ResolveDeathParticleVisualEase(ease);
+        RenderDeathParticleAppearance(position, CaptureDeathParticleAppearance(vanillaColor), visualEase, ease);
+    }
+
+    private readonly record struct DeathParticleAppearance(Color Primary, Color Flash, Color Outline,
+        AkronDeathParticleShape Shape, string Mask);
+
+    private static DeathParticleAppearance CaptureDeathParticleAppearance(Color vanillaColor) {
         Color primary = AkronModuleSettings.NormalizeDeathParticleColorMode(Settings.DeathParticleColorMode) == AkronDeathParticleColorMode.Custom
-            ? ColorFromRgb(Settings.DeathParticleColor)
-            : vanillaColor;
-        Color flash = ColorFromRgb(Settings.DeathParticleFlashColor);
-        Color outline = ColorFromRgb(Settings.DeathParticleOutlineColor);
-        Color fill = Math.Floor(visualEase * 10f) % 2.0 == 0.0 ? primary : flash;
+            ? ColorFromRgb(Settings.DeathParticleColor) : vanillaColor;
         AkronDeathParticleShape shape = AkronModuleSettings.NormalizeDeathParticleShape(Settings.DeathParticleShape);
+        return new DeathParticleAppearance(primary, ColorFromRgb(Settings.DeathParticleFlashColor),
+            ColorFromRgb(Settings.DeathParticleOutlineColor), shape, ResolveDeathParticleMask(shape));
+    }
+
+    private static void RenderDeathParticleAppearance(Vector2 position, DeathParticleAppearance appearance, float visualEase, float ease) {
+        if (visualEase >= 1f) {
+            return;
+        }
+        Color primary = appearance.Primary;
+        Color flash = appearance.Flash;
+        Color outline = appearance.Outline;
+        Color fill = Math.Floor(visualEase * 10f) % 2.0 == 0.0 ? primary : flash;
+        AkronDeathParticleShape shape = appearance.Shape;
         customDeathParticleLastEase = ease;
         customDeathParticleLastVisualEase = visualEase;
         customDeathParticleLastShape = shape;
@@ -79,8 +116,224 @@ public partial class AkronModule {
             if (shape == AkronDeathParticleShape.Vanilla) {
                 DrawVanillaDeathParticle(center, fill, outline, scale);
             } else {
-                DrawMaskedDeathParticle(center, ResolveDeathParticleMask(shape), fill, outline, Math.Max(0.75f, scale));
+                DrawMaskedDeathParticle(center, appearance.Mask, fill, outline, Math.Max(0.75f, scale));
             }
+        }
+    }
+
+    private static void EnsureCustomDeathParticleBurst(PlayerDeadBody body) {
+        if (!ShouldUseCustomDeathParticles() || body?.Scene is not Level level ||
+            PlayerDeadBodyDeathEffectField?.GetValue(body) is not DeathEffect effect ||
+            customDeathBursts.TryGetValue(effect, out _)) {
+            return;
+        }
+
+        var burst = new CustomDeathParticleBurst(level, body.Position + effect.Position,
+            CaptureDeathParticleAppearance(effect.Color), Settings.DeathParticleDurationSeconds,
+            Math.Max(0f, effect.Percent * effect.Duration), body.Depth);
+        customDeathBursts.Add(effect, burst);
+        activeCustomDeathBursts.Add(burst);
+        level.Add(burst);
+    }
+
+    internal static void ClearCustomDeathParticleBursts() {
+        if (customDeathBurstCaptureDepth > 0) {
+            return;
+        }
+        foreach (var burst in activeCustomDeathBursts.ToArray()) {
+            burst.Cancel();
+        }
+        // External savestate systems can restore cloned entities not present in
+        // the live registry. Clear those through the current scene as well.
+        if (Engine.Scene is Level level) {
+            foreach (var burst in level.Entities.OfType<CustomDeathParticleBurst>().ToArray()) {
+                burst.Cancel();
+            }
+        }
+        activeCustomDeathBursts.Clear();
+        customDeathBursts = new ConditionalWeakTable<DeathEffect, CustomDeathParticleBurst>();
+    }
+
+    // Ephemeral rollback metadata uses the same two clone maps as the native
+    // graph. Position/order matching is unsafe when multiple corpses overlap.
+    internal sealed class DeathBurstRollbackState {
+        private readonly List<(DeathEffect Effect, CustomDeathParticleBurst Burst)> bindings = new();
+
+        internal DeathBurstRollbackState(Level level) {
+            foreach (var body in AkronEntityListInternals.GetAll(level.Entities)
+                         .Concat(level.Entities).Distinct().OfType<PlayerDeadBody>()) {
+                if (PlayerDeadBodyDeathEffectField?.GetValue(body) is DeathEffect effect &&
+                    customDeathBursts.TryGetValue(effect, out var burst) &&
+                    AkronDeepClone.GetKnownClone(effect) is DeathEffect savedEffect) {
+                    // Expired owners are intentional suppression markers too.
+                    bindings.Add((savedEffect, burst));
+                }
+            }
+        }
+
+        internal void Restore(Level level) {
+            foreach (var binding in bindings) {
+                if (AkronDeepClone.GetKnownClone(binding.Effect) is DeathEffect effect &&
+                    effect.Entity is PlayerDeadBody body && body.Scene == level) {
+                    customDeathBursts.Remove(effect);
+                    customDeathBursts.Add(effect, binding.Burst);
+                }
+            }
+        }
+    }
+
+    internal static DeathBurstCaptureScope PreserveCustomDeathBurstsForCapture(Level level) {
+        return new DeathBurstCaptureScope(level);
+    }
+
+    internal sealed class DeathBurstCaptureScope : IDisposable {
+        private readonly Level level;
+        private readonly string room;
+        private readonly CustomDeathParticleBurst[] bursts;
+        private bool disposed;
+        private bool mutationStarted;
+        private bool restored;
+
+        internal void MarkMutationStarted() => mutationStarted = true;
+        internal void MarkRestored() => restored = true;
+
+        internal DeathBurstCaptureScope(Level level) {
+            this.level = level;
+            room = level.Session.Level;
+            bursts = activeCustomDeathBursts.Where(burst => burst.Scene == level).ToArray();
+            customDeathBurstCaptureDepth++;
+        }
+
+        public void Dispose() {
+            if (disposed) {
+                return;
+            }
+            disposed = true;
+            customDeathBurstCaptureDepth--;
+            foreach (var burst in bursts) {
+                // Capture preparation or a failed cold restore can reload and
+                // roll back this room. Successful rollback preserves cosmetics;
+                // a committed target restore or failed rollback cancels them.
+                if ((!mutationStarted || restored) && Engine.Scene == level && level.Session.Level == room) {
+                    burst.RebindAfterCapture(level);
+                } else {
+                    burst.Cancel();
+                }
+            }
+        }
+    }
+
+    internal static float ResolveDeathParticleLifetimeProgress(float age, float duration) {
+        return Math.Max(0f, Math.Min(1f, age / AkronModuleSettings.ClampDeathParticleDurationSeconds(duration)));
+    }
+
+    private sealed class CustomDeathParticleBurst : Entity {
+        private readonly Level owner;
+        private Session session;
+        private readonly string room;
+        private readonly DeathParticleAppearance appearance;
+        private readonly float duration;
+        private float age;
+        private bool cancelled;
+        internal bool RenderFailed { get; private set; }
+
+        internal CustomDeathParticleBurst(Level level, Vector2 position, DeathParticleAppearance appearance,
+            float duration, float initialAge, int depth) : base(position) {
+            owner = level;
+            session = level.Session;
+            room = session.Level;
+            this.appearance = appearance;
+            this.duration = AkronModuleSettings.ClampDeathParticleDurationSeconds(duration);
+            age = initialAge;
+            Depth = depth;
+            // Global survives the same Level's death reload; it is not a HUD overlay
+            // and remains behind the native wipe. Transition updates allow cleanup.
+            Tag = Tags.Global | Tags.TransitionUpdate | Tags.PauseUpdate;
+            AkronSaveLoadService.IgnoreSaveState(this);
+        }
+
+        private bool IsValid => !cancelled && Scene == owner && owner.Session == session &&
+            session.Level == room && !owner.Transitioning && ShouldUseCustomDeathParticles();
+
+        internal void RebindAfterCapture(Level level) {
+            if (!cancelled && Scene == owner && owner == level && level.Session.Level == room) {
+                session = level.Session;
+            }
+        }
+
+        internal void Cancel() {
+            cancelled = true;
+            Visible = false;
+            RemoveSelf();
+            activeCustomDeathBursts.Remove(this);
+        }
+
+        public override void Update() {
+            base.Update();
+            if (!IsValid) {
+                Cancel();
+                return;
+            }
+            // RetryPlayerCorpse updates PauseUpdate entities, while genuine
+            // pause/freeze must retain the same gameplay-time age.
+            if (owner.FrozenOrPaused) {
+                return;
+            }
+            age += Math.Max(0f, Engine.DeltaTime);
+            if (ResolveDeathParticleLifetimeProgress(age, duration) >= 1f) {
+                Cancel();
+            }
+        }
+
+        public override void Render() {
+            if (!IsValid) {
+                return;
+            }
+            if (RenderFailed) {
+                RenderVanillaFallback();
+                return;
+            }
+            try {
+                RenderDeathParticleAppearance(Position, appearance,
+                    ResolveDeathParticleLifetimeProgress(age, duration), age / VanillaDeathParticleDurationSeconds);
+            } catch (Exception exception) {
+                if (!customDeathParticleRenderWarningLogged) {
+                    customDeathParticleRenderWarningLogged = true;
+                    Logger.Log(LogLevel.Warn, nameof(AkronModule), "Custom death burst rendering failed: " + exception);
+                }
+                RenderFailed = true;
+                RenderVanillaFallback();
+            }
+        }
+
+        private void RenderVanillaFallback() {
+            // The native dead body may already be gone. Keep a drawable fallback
+            // here rather than relying on its component to render again.
+            try {
+                vanillaDeathParticleDrawDepth++;
+                try {
+                    DeathEffect.Draw(Position, appearance.Primary,
+                        ResolveDeathParticleLifetimeProgress(age, duration));
+                } finally {
+                    vanillaDeathParticleDrawDepth--;
+                }
+            } catch (Exception exception) {
+                Logger.Log(LogLevel.Warn, nameof(AkronModule), "Vanilla death burst fallback failed: " + exception);
+                Cancel();
+            }
+        }
+
+        public override void Added(Scene scene) {
+            base.Added(scene);
+            // Save-state exclusion can temporarily remove and re-add this entity.
+            if (!cancelled && !activeCustomDeathBursts.Contains(this)) {
+                activeCustomDeathBursts.Add(this);
+            }
+        }
+
+        public override void Removed(Scene scene) {
+            activeCustomDeathBursts.Remove(this);
+            base.Removed(scene);
         }
     }
 

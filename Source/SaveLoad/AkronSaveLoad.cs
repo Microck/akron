@@ -686,7 +686,8 @@ public static partial class AkronSaveLoadService {
         bool saveTimeAndDeaths,
         bool capturePersistentResources = true,
         bool prepareForRestore = true,
-        bool preserveInspectorState = false
+        bool preserveInspectorState = false,
+        bool preserveDeathBurstBindings = false
     ) {
         LastPersistentSnapshotError = string.Empty;
         if (level == null) {
@@ -750,6 +751,9 @@ public static partial class AkronSaveLoadService {
             }
             if (preserveInspectorState) {
                 saveSlot.InspectorPinRollback = new AkronEntityInspector.InspectorPinRollbackState();
+            }
+            if (preserveDeathBurstBindings) {
+                saveSlot.DeathBurstRollback = new AkronModule.DeathBurstRollbackState(level);
             }
             if (prepareForRestore) {
                 PrepareSlotPreClone(saveSlot);
@@ -1079,6 +1083,7 @@ public static partial class AkronSaveLoadService {
             return null;
         }
 
+        using var deathBurstCapture = AkronModule.PreserveCustomDeathBurstsForCapture(level);
         string currentSlotName = CurrentSlotName;
         string room = level.Session.Level;
         AkronSaveLoadSlot rollback = CaptureRuntimeState(
@@ -1087,7 +1092,8 @@ public static partial class AkronSaveLoadService {
             saveTimeAndDeaths: true,
             capturePersistentResources: false,
             prepareForRestore: false,
-            preserveInspectorState: true);
+            preserveInspectorState: true,
+            preserveDeathBurstBindings: true);
         if (rollback == null) {
             LastPersistentSnapshotError = "could not preserve the live room before preparing StartPos";
             CurrentSlotName = currentSlotName;
@@ -1098,6 +1104,7 @@ public static partial class AkronSaveLoadService {
         List<Entity> ghosts = AkronSnapshotExclusion.DetachFromLevel(level);
         AkronIgnoreSaveStateComponent.RemoveAll(level);
         try {
+            deathBurstCapture.MarkMutationStarted();
             if (TryLoadFreshRoom(level, room, out string error)) {
                 baseline = CaptureFreshRuntimeState(
                     level, "Akron fresh-room baseline " + room,
@@ -1123,6 +1130,7 @@ public static partial class AkronSaveLoadService {
                     baseline = null;
                     throw new InvalidOperationException("Could not restore the live room after preparing StartPos: " + result);
                 }
+                deathBurstCapture.MarkRestored();
             } catch {
                 baseline?.Dispose();
                 throw;
@@ -1355,6 +1363,7 @@ public static partial class AkronSaveLoadService {
         if (suppressLagPauserForStartPos) {
             AkronModule.SuppressLagPauserForNativeStartPosRestore();
         }
+        AkronModule.ClearCustomDeathParticleBursts();
         AkronModule.SuppressAkronRenderSurfacesAfterStateTransition();
         AkronIgnoreSaveStateComponent.RemoveAll(level);
         // The snapshot this restore writes back was captured without the room's
@@ -1375,6 +1384,10 @@ public static partial class AkronSaveLoadService {
                     restoreAkronModuleState: rollback,
                     restoreGlobalSaveData: rollback)) {
                 return AkronSaveLoadResult.SessionMismatch;
+            }
+
+            if (rollback) {
+                saveSlot.DeathBurstRollback?.Restore(level);
             }
 
             foreach (AkronRegisteredSaveLoadAction action in RegisteredActions) {
@@ -1579,7 +1592,8 @@ public static partial class AkronSaveLoadService {
                 rollbackSlotName,
                 saveTimeAndDeaths: true,
                 capturePersistentResources: false,
-                preserveInspectorState: true);
+                preserveInspectorState: true,
+                preserveDeathBurstBindings: true);
         } catch (Exception exception) {
             CurrentSlotName = slotName;
             AkronTelemetry.Capture(exception, AkronFailurePhase.StartPosCapture);
@@ -1592,9 +1606,14 @@ public static partial class AkronSaveLoadService {
             return AkronSaveLoadResult.Failed;
         }
 
+        // Keep ignored cosmetics until the transaction outcome is known. A failed
+        // cold reconstruction can roll back to the same live room and must not
+        // erase a burst that the rollback snapshot deliberately excludes.
+        using var deathBurstRollback = AkronModule.PreserveCustomDeathBurstsForCapture(level);
         AkronSaveLoadResult restoreResult;
         AkronSaveLoadSlotLease freshBaseline = null;
         try {
+            deathBurstRollback.MarkMutationStarted();
             AkronIgnoreSaveStateComponent.RemoveAll(level);
             try {
                 restoreResult = RestorePersistentRuntimeStateCore(level, document, out freshBaseline);
@@ -1633,6 +1652,9 @@ public static partial class AkronSaveLoadService {
                 allowDeadPlayer: true,
                 freshBaselineStateSlotName: null,
                 rollback: true);
+            if (rollbackResult == AkronSaveLoadResult.Success) {
+                deathBurstRollback.MarkRestored();
+            }
             // A successful rollback is indistinguishable from "the button did nothing"
             // unless the message says so. Name the outcome, not just the failure.
             LastPersistentSnapshotError = rollbackResult == AkronSaveLoadResult.Success
