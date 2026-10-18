@@ -94,16 +94,18 @@ public static partial class AkronInternalRecorder
                 catch (IOException) { return DeferReplayFinalization(scene); }
                 catch (InvalidDataException) { return DeferReplayFinalization(scene); }
                 if (segments.Count == 0) return DeferReplayFinalization(scene);
-                DateTime finalizedEnd = replayTimeline.OriginUtc.AddSeconds(segments[^1].End);
-                ready = requests.Where(r => IsReplayWindowFinalized(r.EndUtc, finalizedEnd)).Take(8).ToList();
+                DateTime AlignedEnd(PendingClipSave r) => AkronReplayWindows.RequestedEndOnFrameGrid(r.EndUtc, replayTimeline.OriginUtc, replaySpec.Framerate);
+                DateTime finalizedEnd = replayTimeline.OriginUtc.AddSeconds(
+                    AkronReplayWindows.SnapMediaFrame(segments[^1].End, replaySpec.Framerate) / (double)replaySpec.Framerate);
+                ready = requests.Where(r => IsReplayWindowFinalized(AlignedEnd(r), finalizedEnd)).Take(8).ToList();
                 if (ready.Count == 0) return DeferReplayFinalization(scene);
                 DateTime first = ready.Min(r => r.StartUtc);
-                DateTime last = ready.Max(r => r.EndUtc);
+                DateTime last = ready.Max(AlignedEnd);
                 var selected = segments.Where(s => replayTimeline.OriginUtc.AddSeconds(s.End) > first &&
                     replayTimeline.OriginUtc.AddSeconds(s.Start) < last).ToList();
                 string ffmpeg = replayProcess.StartInfo.FileName;
                 var audio = AkronInternalAudioRecorder.LeaseReplayBuffer(first, last);
-                ready = ready.Where(r => audio.HasCapturedThrough(r.EndUtc)).ToList();
+                ready = ready.Where(r => audio.HasCapturedThrough(AlignedEnd(r))).ToList();
                 if (ready.Count == 0) {
                     audio.Dispose();
                     return DeferReplayFinalization(scene);

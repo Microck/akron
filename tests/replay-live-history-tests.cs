@@ -8,6 +8,29 @@ namespace Celeste.Mod.Akron.Tests;
 public sealed class ReplayLiveHistoryTests
 {
     [Fact]
+    public void AudioReadinessUsesTheSameCeilingAsTheExportWindow()
+    {
+        var origin = DateTime.UnixEpoch;
+        var rawEnd = origin.AddSeconds(1.01);
+        var aligned = AkronReplayWindows.RequestedEndOnFrameGrid(rawEnd, origin, 30);
+        var window = AkronReplayWindows.Plan(new[] { new AkronReplaySegment("a", 0, 2) }, origin, 30, 60, origin, rawEnd);
+        Assert.Equal(window.EndUtc, aligned);
+        Assert.True(aligned > rawEnd);
+        string path = Path.GetTempFileName();
+        using var lease = new AkronReplayAudioLease();
+        try
+        {
+            // 1.02 seconds of stereo PCM covers the raw request but not frame 31.
+            File.WriteAllBytes(path, new byte[408]);
+            lease.Tracks.Add(new(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete),
+                "mix", 100, 2, 408, origin, 0));
+            Assert.True(lease.HasCapturedThrough(rawEnd));
+            Assert.False(lease.HasCapturedThrough(aligned));
+        }
+        finally { lease.Dispose(); File.Delete(path); }
+    }
+
+    [Fact]
     public void StalledFinalizationHasBoundedFailureDeadline()
     {
         Assert.False(AkronInternalRecorder.ReplayFinalizationExpired(0, 100000, 1000));

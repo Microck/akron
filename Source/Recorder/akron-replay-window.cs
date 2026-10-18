@@ -61,6 +61,12 @@ internal static class AkronReplayWindows
         return result.OrderBy(segment => segment.Start).ToList();
     }
 
+    internal static long RequestedFrame(DateTime endpoint, DateTime origin, int fps) =>
+        checked((long)Math.Ceiling((endpoint - origin).TotalSeconds * fps - 0.000001));
+
+    internal static DateTime RequestedEndOnFrameGrid(DateTime endpoint, DateTime origin, int fps) =>
+        origin.AddSeconds(RequestedFrame(endpoint, origin, fps) / (double)fps);
+
     internal static AkronReplayWindow Plan(IReadOnlyList<AkronReplaySegment> segments,
         DateTime originUtc, int fps, long capturedFrames, DateTime requestedStart, DateTime requestedEnd)
     {
@@ -69,8 +75,8 @@ internal static class AkronReplayWindows
         segments = segments.Select(segment => new AkronReplaySegment(segment.Path,
             SnapMediaFrame(segment.Start, fps) / (double)fps, SnapMediaFrame(segment.End, fps) / (double)fps)).ToList();
         // Half-open frame grid: each endpoint rounds upward by less than one frame.
-        long requestedFirst = (long)Math.Ceiling((requestedStart - originUtc).TotalSeconds * fps - 0.000001);
-        long requestedLast = (long)Math.Ceiling((requestedEnd - originUtc).TotalSeconds * fps - 0.000001);
+        long requestedFirst = RequestedFrame(requestedStart, originUtc, fps);
+        long requestedLast = RequestedFrame(requestedEnd, originUtc, fps);
         long first = Math.Max(0, requestedFirst);
         long end = Math.Min(capturedFrames, requestedLast);
         first = Math.Max(first, SnapMediaFrame(segments[0].Start, fps));
