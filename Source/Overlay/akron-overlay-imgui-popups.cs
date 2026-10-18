@@ -211,7 +211,7 @@ public sealed partial class AkronOverlay {
         imguiPopupBlockedRowsLastFrame = true;
         ImGui.TextUnformatted(entry.Label);
         ImGui.Separator();
-        ImGui.TextUnformatted("Binding: " + SafeDescribeEntryValue(entry));
+        ImGui.TextUnformatted("Binding: " + DescribeEffectiveMenuBinding(entry.ActionKey, entry.Label));
         ImGui.TextUnformatted("Built-in: " + DescribeBindingForEntry(entry));
         if (ImGui.MenuItem("Bind input")) {
             StartBindingCaptureForEntry(entry);
