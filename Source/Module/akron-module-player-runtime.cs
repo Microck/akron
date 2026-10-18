@@ -1000,8 +1000,9 @@ public partial class AkronModule {
 
     private static FMOD.RESULT EventDescriptionOnCreateInstance(On.FMOD.Studio.EventDescription.orig_createInstance orig, EventDescription self, out EventInstance instance) {
         FMOD.RESULT result = orig(self, out instance);
+        string beforeOverride = AkronEarAid.CaptureBeforeOverrideForQa(instance);
         AkronEarAid.ApplyVolume(self, instance);
-        AkronEarAid.ObserveCreatedEventForQa(instance);
+        AkronEarAid.ObserveCreatedEventForQa(instance, beforeOverride);
         return result;
     }
 }

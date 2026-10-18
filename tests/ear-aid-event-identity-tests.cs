@@ -1,3 +1,5 @@
+using System.Linq;
+using Mono.Cecil;
 using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
@@ -40,14 +42,17 @@ public sealed class EarAidEventIdentityTests {
     public void OptionalObservationIsBoundedAndDoesNotRequireNativePlayback() {
         AkronEarAid.SetQaObservation(true);
         try {
-            AkronEarAid.ObserveCreatedEventForQa(null);
+            AkronEarAid.ObserveCreatedEventForQa(null, "test-before");
             Assert.Equal(0, AkronEarAid.QaObservedEventCount);
             for (int index = 0; index < 200; index++) {
-                AkronEarAid.ObserveCreatedEventForQa(new FMOD.Studio.EventInstance(System.IntPtr.Zero));
+                AkronEarAid.ObserveCreatedEventForQa(new FMOD.Studio.EventInstance(System.IntPtr.Zero), "test-before");
             }
             Assert.Equal(128, AkronEarAid.QaObservedEventCount);
+            string[] lines = AkronEarAid.DescribeLiveOverridesForQa().ToArray();
+            Assert.Contains("before-override={test-before}", lines);
+            Assert.Contains("after-override={released-or-invalid}", lines);
             AkronEarAid.SetQaObservation(false);
-            AkronEarAid.ObserveCreatedEventForQa(new FMOD.Studio.EventInstance(System.IntPtr.Zero));
+            AkronEarAid.ObserveCreatedEventForQa(new FMOD.Studio.EventInstance(System.IntPtr.Zero), "test-before");
             Assert.Equal(128, AkronEarAid.QaObservedEventCount);
             AkronEarAid.SetQaObservation(true);
             Assert.Equal(0, AkronEarAid.QaObservedEventCount);
@@ -55,6 +60,20 @@ public sealed class EarAidEventIdentityTests {
             AkronEarAid.SetQaObservation(true);
             AkronEarAid.SetQaObservation(false);
         }
+    }
+
+    [Fact]
+    public void NativeStartingVolumeIsCapturedBeforeApplyingOverride() {
+        using var assembly = AssemblyDefinition.ReadAssembly(typeof(AkronEarAid).Assembly.Location);
+        var module = assembly.MainModule.Types.Single(type => type.Name == nameof(AkronModule));
+        var method = module.Methods.Single(method => method.Name == "EventDescriptionOnCreateInstance");
+        string[] calls = method.Body.Instructions
+            .Where(instruction => instruction.Operand is MethodReference)
+            .Select(instruction => ((MethodReference)instruction.Operand).Name).ToArray();
+        int before = System.Array.IndexOf(calls, "CaptureBeforeOverrideForQa");
+        int apply = System.Array.IndexOf(calls, "ApplyVolume");
+        int after = System.Array.IndexOf(calls, "ObserveCreatedEventForQa");
+        Assert.True(before >= 0 && before < apply && apply < after);
     }
 
 }

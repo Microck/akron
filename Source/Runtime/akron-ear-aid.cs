@@ -9,7 +9,7 @@ public static class AkronEarAid {
 
     private static volatile bool observeForQa;
     private static readonly object QaObservationLock = new();
-    private static readonly Queue<(EventInstance Instance, string InitialState)> QaObservedEvents = new();
+    private static readonly Queue<(EventInstance Instance, string BeforeOverride, string AfterOverride)> QaObservedEvents = new();
 
     internal static int QaObservedEventCount {
         get { lock (QaObservationLock) { return QaObservedEvents.Count; } }
@@ -24,8 +24,12 @@ public static class AkronEarAid {
         }
     }
 
-    internal static void ObserveCreatedEventForQa(EventInstance instance) {
-        if (!observeForQa || instance == null) {
+    internal static string CaptureBeforeOverrideForQa(EventInstance instance) {
+        return observeForQa && instance != null ? DescribeQaEvent(instance) : null;
+    }
+
+    internal static void ObserveCreatedEventForQa(EventInstance instance, string beforeOverride) {
+        if (!observeForQa || instance == null || beforeOverride == null) {
             return;
         }
         string initialState = DescribeQaEvent(instance);
@@ -37,7 +41,7 @@ public static class AkronEarAid {
             while (QaObservedEvents.Count >= 128) {
                 QaObservedEvents.Dequeue();
             }
-            QaObservedEvents.Enqueue((instance, initialState));
+            QaObservedEvents.Enqueue((instance, beforeOverride, initialState));
         }
     }
 
@@ -170,13 +174,15 @@ public static class AkronEarAid {
     }
 
     internal static IEnumerable<string> DescribeLiveOverridesForQa() {
-        (EventInstance Instance, string InitialState)[] observed;
+        (EventInstance Instance, string BeforeOverride, string AfterOverride)[] observed;
         lock (QaObservationLock) {
             observed = QaObservedEvents.ToArray();
         }
         if (observed.Length > 0) {
             foreach (var entry in observed) {
-                yield return "initial={" + entry.InitialState + "};current={" + DescribeQaEvent(entry.Instance) + "}";
+                yield return "before-override={" + entry.BeforeOverride + "}";
+                yield return "after-override={" + entry.AfterOverride + "}";
+                yield return "current={" + DescribeQaEvent(entry.Instance) + "}";
             }
         } else {
             foreach (var entry in VolumeOverrides.ToArray()) {
