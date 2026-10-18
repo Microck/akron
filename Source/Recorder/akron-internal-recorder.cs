@@ -375,8 +375,11 @@ public static partial class AkronInternalRecorder {
         DateTime now = ReplayNowUtc();
         List<PendingClipSave> due;
         lock (Sync) {
-            due = PendingClipSaves.Where(save => save.SaveAtUtc <= now).ToList();
-            PendingClipSaves.RemoveAll(save => save.SaveAtUtc <= now);
+            // Rotating an encoder discards its timeline from the live capture path.
+            // Every queued window sharing that history must finish post-roll first.
+            due = AreAllReplayWindowsDue(PendingClipSaves.Select(save => save.SaveAtUtc), now)
+                ? PendingClipSaves.ToList() : new List<PendingClipSave>();
+            if (due.Count > 0) PendingClipSaves.Clear();
         }
 
         if (due.Count > 0) SaveReplayWindows(scene, due);

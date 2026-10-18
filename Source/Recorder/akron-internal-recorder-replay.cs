@@ -295,7 +295,24 @@ public static partial class AkronInternalRecorder {
     }
 
     private static void SaveReplayWindow(Scene scene, DateTime startUtc, DateTime endUtc, string kind) {
-        SaveReplayWindows(scene, new[] { new PendingClipSave(kind, startUtc, endUtc, endUtc, CaptureRecordingIdentity(scene)) });
+        var request = new PendingClipSave(kind, startUtc, endUtc, endUtc, CaptureRecordingIdentity(scene));
+        lock (Sync) {
+            // An immediate save must not rotate away another event's pending history.
+            if (PendingClipSaves.Count > 0) {
+                PendingClipSaves.Add(request);
+                return;
+            }
+        }
+        SaveReplayWindows(scene, new[] { request });
+    }
+
+    internal static bool AreAllReplayWindowsDue(IEnumerable<DateTime> deadlines, DateTime now) {
+        bool any = false;
+        foreach (DateTime deadline in deadlines) {
+            any = true;
+            if (deadline > now) return false;
+        }
+        return any;
     }
 
     private static IEnumerable<string> SelectReplaySegments(string directory, DateTime startUtc, DateTime endUtc) {
@@ -364,7 +381,7 @@ public static partial class AkronInternalRecorder {
         }
 
         lock (Sync) {
-            if (replayProcess != null && replaySpec.Equals(spec)) {
+            if (replayProcess != null && (replaySpec.Equals(spec) || PendingClipSaves.Count > 0)) {
                 return;
             }
         }
@@ -457,6 +474,8 @@ public static partial class AkronInternalRecorder {
             process = replayProcess;
             if (process != null && ffmpegProcess == null) lastCaptureWasReplay = true;
             input = replayInput;
+            // Explicit stop/replacement invalidates every request for this encoder.
+            PendingClipSaves.Clear();
             replayProcess = null;
             replayInput = null;
             replayCadence = null;

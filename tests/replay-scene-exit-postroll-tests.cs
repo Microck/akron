@@ -6,6 +6,15 @@ namespace Celeste.Mod.Akron.Tests;
 
 public sealed class ReplaySceneExitPostrollTests {
     [Fact]
+    public void EncoderBatchWaitsForEveryAssociatedPostRoll() {
+        var now = new System.DateTime(2026, 10, 18, 14, 0, 0, System.DateTimeKind.Utc);
+        Assert.False(AkronInternalRecorder.AreAllReplayWindowsDue(System.Array.Empty<System.DateTime>(), now));
+        Assert.False(AkronInternalRecorder.AreAllReplayWindowsDue(new[] { now.AddSeconds(-1), now.AddSeconds(2) }, now));
+        Assert.False(AkronInternalRecorder.AreAllReplayWindowsDue(new[] { now.AddSeconds(2), now }, now));
+        Assert.True(AkronInternalRecorder.AreAllReplayWindowsDue(new[] { now.AddSeconds(-1), now }, now));
+        Assert.True(AkronInternalRecorder.AreAllReplayWindowsDue(new[] { now, now.AddSeconds(2) }, now.AddSeconds(2)));
+    }
+    [Fact]
     public void InLevelsPreservesOnlyExistingPendingHistoryOutsideLevel() {
         var settings = new AkronModuleSettings {
             RecordingReplayBufferSeconds = 30,
