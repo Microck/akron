@@ -2062,8 +2062,18 @@ public static partial class AkronCommands {
         Log("sound-source-playing-without-instance: " + playingWithoutInstance.ToString(CultureInfo.InvariantCulture));
     }
 
-    [Command("akron_qa_ear_aid", "show actual live Ear Aid event identities and native volume values")]
-    public static void QaEarAid() {
+    [Command("akron_qa_ear_aid", "observe actual native sound events: start|stop|status; bounded to the latest 128 events")]
+    public static void QaEarAid(string action = "status") {
+        if (string.Equals(action, "start", StringComparison.OrdinalIgnoreCase)) {
+            AkronEarAid.SetQaObservation(true);
+            Log("qa-ear-aid: observing future event creation (maximum 128)");
+        } else if (string.Equals(action, "stop", StringComparison.OrdinalIgnoreCase)) {
+            AkronEarAid.SetQaObservation(false);
+            Log("qa-ear-aid: observation stopped");
+        } else if (!string.Equals(action, "status", StringComparison.OrdinalIgnoreCase)) {
+            Log("qa-ear-aid: use start|stop|status");
+            return;
+        }
         foreach (string state in AkronEarAid.DescribeLiveOverridesForQa()) {
             Log("qa-ear-aid: " + state);
         }

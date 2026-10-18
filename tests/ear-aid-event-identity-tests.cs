@@ -36,4 +36,25 @@ public sealed class EarAidEventIdentityTests {
         Assert.Equal(expected, AkronEarAid.FindBestMatch(path)?.Key);
         Assert.Equal(expected, AkronEarAid.FindBestMatch(path.ToUpperInvariant())?.Key);
     }
+    [NativeEverestFact]
+    public void OptionalObservationIsBoundedAndDoesNotRequireNativePlayback() {
+        AkronEarAid.SetQaObservation(true);
+        try {
+            AkronEarAid.ObserveCreatedEventForQa(null);
+            Assert.Equal(0, AkronEarAid.QaObservedEventCount);
+            for (int index = 0; index < 200; index++) {
+                AkronEarAid.ObserveCreatedEventForQa(new FMOD.Studio.EventInstance(System.IntPtr.Zero));
+            }
+            Assert.Equal(128, AkronEarAid.QaObservedEventCount);
+            AkronEarAid.SetQaObservation(false);
+            AkronEarAid.ObserveCreatedEventForQa(new FMOD.Studio.EventInstance(System.IntPtr.Zero));
+            Assert.Equal(128, AkronEarAid.QaObservedEventCount);
+            AkronEarAid.SetQaObservation(true);
+            Assert.Equal(0, AkronEarAid.QaObservedEventCount);
+        } finally {
+            AkronEarAid.SetQaObservation(true);
+            AkronEarAid.SetQaObservation(false);
+        }
+    }
+
 }

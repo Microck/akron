@@ -7,6 +7,40 @@ namespace Celeste.Mod.Akron;
 public static class AkronEarAid {
     private static readonly List<(EventInstance Instance, string Key, float OriginalVolume, bool Applied)> VolumeOverrides = new();
 
+    private static volatile bool observeForQa;
+    private static readonly object QaObservationLock = new();
+    private static readonly Queue<(EventInstance Instance, string InitialState)> QaObservedEvents = new();
+
+    internal static int QaObservedEventCount {
+        get { lock (QaObservationLock) { return QaObservedEvents.Count; } }
+    }
+
+    internal static void SetQaObservation(bool enabled) {
+        lock (QaObservationLock) {
+            observeForQa = enabled;
+            if (enabled) {
+                QaObservedEvents.Clear();
+            }
+        }
+    }
+
+    internal static void ObserveCreatedEventForQa(EventInstance instance) {
+        if (!observeForQa || instance == null) {
+            return;
+        }
+        string initialState = DescribeQaEvent(instance);
+        lock (QaObservationLock) {
+            if (!observeForQa) {
+                return;
+            }
+            // Bounded managed references; no native ownership or playback mutation.
+            while (QaObservedEvents.Count >= 128) {
+                QaObservedEvents.Dequeue();
+            }
+            QaObservedEvents.Enqueue((instance, initialState));
+        }
+    }
+
     public sealed class SoundDefinition {
         public SoundDefinition(string key, string label, params string[] eventFragments) {
             Key = key;
@@ -136,17 +170,41 @@ public static class AkronEarAid {
     }
 
     internal static IEnumerable<string> DescribeLiveOverridesForQa() {
-        foreach (var entry in VolumeOverrides.ToArray()) {
-            if (!entry.Instance.isValid()) {
-                continue;
+        (EventInstance Instance, string InitialState)[] observed;
+        lock (QaObservationLock) {
+            observed = QaObservedEvents.ToArray();
+        }
+        if (observed.Length > 0) {
+            foreach (var entry in observed) {
+                yield return "initial={" + entry.InitialState + "};current={" + DescribeQaEvent(entry.Instance) + "}";
+            }
+        } else {
+            foreach (var entry in VolumeOverrides.ToArray()) {
+                yield return DescribeQaEvent(entry.Instance);
+            }
+        }
+    }
+
+    private static string DescribeQaEvent(EventInstance instance) {
+        try {
+            if (instance == null || !instance.isValid()) {
+                return "released-or-invalid";
             }
             string name = "unknown";
-            if (entry.Instance.getDescription(out EventDescription description) == FMOD.RESULT.OK) {
-                name = Audio.GetEventName(description) ?? name;
+            string nameError = "";
+            if (instance.getDescription(out EventDescription description) == FMOD.RESULT.OK) {
+                try {
+                    name = Audio.GetEventName(description) ?? name;
+                } catch (Exception error) {
+                    nameError = error.GetType().Name;
+                }
             }
-            FMOD.RESULT result = entry.Instance.getVolume(out float volume, out float finalVolume);
-            entry.Instance.getPlaybackState(out PLAYBACK_STATE playback);
-            yield return FormattableString.Invariant($"key={entry.Key};event={name};applied={entry.Applied};volume={volume};final={finalVolume};result={result};playback={playback}");
+            SoundDefinition definition = FindBestMatch(name);
+            FMOD.RESULT result = instance.getVolume(out float volume, out float finalVolume);
+            instance.getPlaybackState(out PLAYBACK_STATE playback);
+            return FormattableString.Invariant($"key={definition?.Key ?? "unmatched"};event={name};name-error={nameError};volume={volume};final={finalVolume};result={result};playback={playback}");
+        } catch (Exception error) {
+            return "error=" + error.GetType().Name;
         }
     }
 
