@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Fix repeated configured-value notifications while editing disabled external string variants.
+
 - Apply cursor-hold popup rebinding, Clear and Default immediately without replacing registered input bindings.
 
 - Make Cursor Zoom follow the pointer on maps using active Extended Camera Dynamics hooks, without accumulating camera offsets between frames.

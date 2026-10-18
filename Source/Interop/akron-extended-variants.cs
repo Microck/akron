@@ -572,6 +572,16 @@ public static class AkronExtendedVariants {
         return true;
     }
 
+    // InputText must receive its exact stored text, including empty/whitespace edits.
+    // The generic typed getter parses/trims values and cannot be the string editor's model.
+    internal static string GetStringEditorValue(AkronExtendedVariantOption option, IReadOnlyDictionary<string, string> configuredValues) {
+        if (option == null) return string.Empty;
+        if (configuredValues != null && option.Name != null && configuredValues.TryGetValue(option.Name, out string configured)) {
+            return configured ?? string.Empty;
+        }
+        return option.CurrentValue as string ?? string.Empty;
+    }
+
     public static object GetConfiguredOrCurrentValue(AkronExtendedVariantOption option) {
         if (option == null) {
             return null;
