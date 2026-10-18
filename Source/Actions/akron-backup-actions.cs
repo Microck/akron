@@ -1373,8 +1373,13 @@ public static class AkronBackupActions {
     }
 
     private static DateTime GetLastBackupUtc() {
-        long ticks = AkronModule.Settings.BackupsLastBackupUtcTicks;
-        if (ticks <= 0) {
+        return ParseBackupUtcTicks(AkronModule.Settings.BackupsLastBackupUtcTicks);
+    }
+
+    internal static DateTime ParseBackupUtcTicks(long ticks) {
+        // Persisted settings can contain a valid Int64 outside DateTime's range.
+        // Treat corrupt timestamps like a missing backup, without rewriting settings.
+        if (ticks <= 0 || ticks > DateTime.MaxValue.Ticks) {
             return DateTime.MinValue;
         }
 
