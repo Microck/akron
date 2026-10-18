@@ -4,6 +4,8 @@ using ImGuiNET;
 namespace Celeste.Mod.Akron;
 
 public sealed partial class AkronOverlay {
+    private readonly AkronNumericEditIntent extendedVariantNumericEdit = new();
+
     private void DrawExtendedVariantsRandomizerPopupControls(string popupId) {
         if (!AkronExtendedVariants.Available) {
             ImGui.TextWrapped("External variant controls are not loaded.");
@@ -99,7 +101,10 @@ public sealed partial class AkronOverlay {
                 -100000,
                 100000,
                 popupId,
-                "Integer external variant value. The variant provider validates the gameplay meaning.");
+                "Integer external variant value. The variant provider validates the gameplay meaning.",
+                onTextActivated: () => extendedVariantNumericEdit.Begin(popupId + ":" + option.Name + ":int", !option.IsDefault),
+                textSetter: value => SetExtendedVariantConfiguredValue(option, value, extendedVariantNumericEdit.Get(popupId + ":" + option.Name + ":int")),
+                onTextDeactivated: () => extendedVariantNumericEdit.End(popupId + ":" + option.Name + ":int"));
             DrawExtendedVariantResetButton(option, popupId);
             return;
         }
@@ -115,7 +120,10 @@ public sealed partial class AkronOverlay {
                 100000f,
                 "%.2f",
                 popupId,
-                "Decimal external variant value. Use documented ranges for sane results.");
+                "Decimal external variant value. Use documented ranges for sane results.",
+                onTextActivated: () => extendedVariantNumericEdit.Begin(popupId + ":" + option.Name + ":float", !option.IsDefault),
+                textSetter: value => SetExtendedVariantConfiguredValue(option, value, extendedVariantNumericEdit.Get(popupId + ":" + option.Name + ":float")),
+                onTextDeactivated: () => extendedVariantNumericEdit.End(popupId + ":" + option.Name + ":float"));
             DrawExtendedVariantResetButton(option, popupId);
             return;
         }
