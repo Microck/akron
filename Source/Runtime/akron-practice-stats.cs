@@ -221,7 +221,7 @@ public static class AkronPracticeStats {
     }
 
     private static string FormatTicks(long ticks) {
-        return TimeSpan.FromTicks(Math.Max(0, ticks)).ToString(@"mm\:ss\.fff", CultureInfo.InvariantCulture);
+        return AkronHudRenderer.FormatHudTicks(Math.Max(0, ticks));
     }
 
     private static string EscapeTsv(string value) {
