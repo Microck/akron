@@ -155,7 +155,13 @@ public static class AkronEarAid {
     }
 
     public static void ApplyVolume(EventDescription description, EventInstance instance) {
-        if (description.Equals(default(EventDescription)) || instance.Equals(default(EventInstance))) {
+        if (instance == null) {
+            return;
+        }
+        // Creation is a new native identity even if FMOD recycled an address.
+        // Retire the previous category before matching (including unmatched events).
+        RetireCreatedHandle(instance.getRaw());
+        if (description == null) {
             return;
         }
 
@@ -167,19 +173,25 @@ public static class AkronEarAid {
         }
 
         SoundDefinition sound = FindBestMatch(eventName);
-        if (sound == null || !OverrideEnabled(sound.Key)) {
+        if (sound == null) {
             return;
         }
 
-        if (instance.getVolume(out float originalVolume, out _) != FMOD.RESULT.OK) {
-            return;
-        }
+        // Keep categorized events discoverable even when their override starts OFF.
+        // OriginalVolume is meaningful only while Applied is true; acquisition
+        // captures the current native value, not a stale creation-time default.
+        var entry = (Instance: instance, Key: sound.Key, OriginalVolume: 0f, Applied: false, AppliedVolume: 0f);
+        VolumeOverrides.Add(ReconcileVolumeOverride(entry, OverrideEnabled(sound.Key)));
+    }
 
-        bool allowed = AkronModule.TryUseRuntime(AkronFeatureKind.SoundVolumeOverride);
-        float targetVolume = VolumeFor(sound.Key) / 100f;
-        bool applied = allowed && instance.setVolume(targetVolume) == FMOD.RESULT.OK;
-        // Keep the last successful write, so a failed native call remains retryable.
-        VolumeOverrides.Add((instance, sound.Key, originalVolume, applied, applied ? targetVolume : originalVolume));
+    internal static void RetireCreatedHandle(IntPtr handle) {
+        if (handle == IntPtr.Zero) return;
+        for (int index = VolumeOverrides.Count - 1; index >= 0; index--) {
+            if (VolumeOverrides[index].Instance.getRaw() == handle) {
+                // Never restore here: the old native event has already gone away.
+                VolumeOverrides.RemoveAt(index);
+            }
+        }
     }
 
     internal static void ReconcileVolumeOverrides(bool restore = false) {
@@ -192,12 +204,32 @@ public static class AkronEarAid {
             }
 
             bool apply = allowed && OverrideEnabled(entry.Key);
-            float targetVolume = apply ? VolumeFor(entry.Key) / 100f : entry.OriginalVolume;
-            if (NeedsVolumeUpdate(entry.Applied, apply, entry.AppliedVolume, targetVolume) &&
-                entry.Instance.setVolume(targetVolume) == FMOD.RESULT.OK) {
-                VolumeOverrides[index] = (entry.Instance, entry.Key, entry.OriginalVolume, apply, targetVolume);
+            VolumeOverrides[index] = ReconcileVolumeOverride(entry, apply);
+        }
+    }
+
+    private static (EventInstance Instance, string Key, float OriginalVolume, bool Applied, float AppliedVolume) ReconcileVolumeOverride(
+        (EventInstance Instance, string Key, float OriginalVolume, bool Applied, float AppliedVolume) entry, bool apply) {
+        float originalVolume = entry.OriginalVolume;
+        if (ShouldCaptureOriginalVolume(entry.Applied, apply)) {
+            // Inactive events are only observed. Acquire their current volume when
+            // first enabled (or re-enabled), respecting intervening native writers.
+            if (entry.Instance.getVolume(out originalVolume, out _) != FMOD.RESULT.OK ||
+                !AkronModule.TryUseRuntime(AkronFeatureKind.SoundVolumeOverride)) {
+                return entry;
             }
         }
+
+        float targetVolume = apply ? VolumeFor(entry.Key) / 100f : originalVolume;
+        if (NeedsVolumeUpdate(entry.Applied, apply, entry.AppliedVolume, targetVolume) &&
+            entry.Instance.setVolume(targetVolume) == FMOD.RESULT.OK) {
+            return (entry.Instance, entry.Key, originalVolume, apply, targetVolume);
+        }
+        return entry;
+    }
+
+    internal static bool ShouldCaptureOriginalVolume(bool wasApplied, bool apply) {
+        return apply && !wasApplied;
     }
 
     internal static bool NeedsVolumeUpdate(bool wasApplied, bool apply, float appliedVolume, float targetVolume) {
