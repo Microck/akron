@@ -23,7 +23,7 @@ public static class AkronEarAid {
         new SoundDefinition("bird-squawk", "Bird Squawk", "bird", "squawk"),
         new SoundDefinition("broken-window", "Broken Window", "broken_window", "window"),
         new SoundDefinition("conveyor", "Conveyor", "conveyor"),
-        new SoundDefinition("core-block", "Core Block", "core", "coreblock"),
+        new SoundDefinition("core-block", "Core Block", "coreblock", "bounceblock", "iceblock"),
         new SoundDefinition("death", "Death", "death"),
         new SoundDefinition("respawn", "Respawn", "respawn"),
         new SoundDefinition("golden-death", "Golden Death", "golden", "goldberry"),
@@ -37,7 +37,7 @@ public static class AkronEarAid {
         new SoundDefinition("lava-barrier", "Lava Barrier", "lava"),
         new SoundDefinition("lightning-ambience", "Lightning Ambience", "lightning", "ambience"),
         new SoundDefinition("lightning-strike", "Lightning Strike", "lightning_strike", "strike"),
-        new SoundDefinition("move-block", "Move Block", "moveblock", "move_block"),
+        new SoundDefinition("move-block", "Move Block", "moveblock", "move_block", "arrowblock"),
         new SoundDefinition("oshiro-boss", "Oshiro Boss", "oshiro"),
         new SoundDefinition("pico8-flag", "Pico-8 Flag", "pico8", "flag"),
         new SoundDefinition("seeker", "Seeker", "seeker"),
@@ -145,16 +145,45 @@ public static class AkronEarAid {
     }
 
     internal static SoundDefinition FindBestMatch(string eventName) {
-        // Vanilla player respawn is named "revive", not "respawn". Match this exact
-        // identity so an entity's own revive event does not become a player override.
-        if (string.Equals(eventName, "event:/char/madeline/revive", StringComparison.OrdinalIgnoreCase)) {
-            return Array.Find(Sounds, sound => sound.Key == "respawn");
+        if (string.IsNullOrEmpty(eventName)) {
+            return null;
+        }
+
+        // Ear Aid controls effects and ambience, never the soundtrack. Chapter and
+        // directory names are not sound identities ("bridge" even contains "ridge").
+        if (eventName.StartsWith("event:/music/", StringComparison.OrdinalIgnoreCase) ||
+            eventName.StartsWith("event:/new_content/music/", StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        string exactKey = eventName.ToLowerInvariant() switch {
+            "event:/char/madeline/revive" => "respawn",
+            "event:/new_content/char/madeline/death_golden" => "golden-death",
+            "event:/env/amb/04_main" => "ridge-wind",
+            "event:/new_content/env/10_voidspiral" => "farewell-wind",
+            _ => null
+        };
+        if (exactKey != null) {
+            return Array.Find(Sounds, sound => sound.Key == exactKey);
+        }
+
+        if (eventName.StartsWith("event:/char/dialogue/", StringComparison.OrdinalIgnoreCase)) {
+            return Array.Find(Sounds, sound => sound.Key == "dialogue");
+        }
+        if (eventName.StartsWith("event:/char/oshiro/boss_", StringComparison.OrdinalIgnoreCase)) {
+            return Array.Find(Sounds, sound => sound.Key == "oshiro-boss");
+        }
+
+        string name = eventName.Substring(eventName.LastIndexOf('/') + 1);
+        // An entity death is still that entity's sound, not the player's death.
+        if (name.StartsWith("seeker_", StringComparison.OrdinalIgnoreCase)) {
+            return Array.Find(Sounds, sound => sound.Key == "seeker");
         }
 
         SoundDefinition best = null;
         int bestScore = 0;
         foreach (SoundDefinition sound in Sounds) {
-            int score = MatchScore(eventName, sound);
+            int score = MatchScore(name, sound);
             if (score > bestScore) {
                 best = sound;
                 bestScore = score;
@@ -165,6 +194,13 @@ public static class AkronEarAid {
     }
 
     private static int MatchScore(string eventName, SoundDefinition sound) {
+        // Wind overrides need both the region and wind in a mod event's own name.
+        // A chapter folder or an unrelated event containing "wind" is not enough.
+        if (sound.Key == "farewell-wind" || sound.Key == "ridge-wind") {
+            string region = sound.Key == "ridge-wind" ? "ridge" : "farewell";
+            return HasToken(eventName, region) && HasToken(eventName, "wind") ? 2 : 0;
+        }
+
         int score = 0;
         foreach (string fragment in sound.EventFragments) {
             if (!string.IsNullOrWhiteSpace(fragment) && eventName.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0) {
@@ -174,4 +210,21 @@ public static class AkronEarAid {
 
         return score;
     }
+    private static bool HasToken(string name, string token) {
+        int start = 0;
+        while (start < name.Length) {
+            int index = name.IndexOf(token, start, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) {
+                return false;
+            }
+            int end = index + token.Length;
+            if ((index == 0 || !char.IsLetterOrDigit(name[index - 1])) &&
+                (end == name.Length || !char.IsLetterOrDigit(name[end]))) {
+                return true;
+            }
+            start = index + 1;
+        }
+        return false;
+    }
+
 }
