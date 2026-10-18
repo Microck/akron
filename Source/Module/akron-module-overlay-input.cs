@@ -16,8 +16,17 @@ public partial class AkronModule {
     private static KeyboardState previousGlobalFrameBypassKeyboard;
     private static bool cursorVisibilityCaptured;
     private static bool previousMouseVisible;
+    private static ulong levelHotkeyPollGeneration;
+
+    internal static bool ShouldRecoverOverlayClose(bool visibleBefore, bool visibleAfter,
+        bool sameScene, bool sameOverlay, bool active, ulong frameBefore, ulong frameAfter,
+        ulong pollBefore, ulong pollAfter) {
+        return visibleBefore && visibleAfter && sameScene && sameOverlay && active &&
+            frameBefore != frameAfter && pollBefore == pollAfter;
+    }
 
     private static void HandleHotkeys(Level level) {
+        unchecked { levelHotkeyPollGeneration++; }
         // One keyboard snapshot for every binding below, taken before any early return so a key
         // held through the overlay or a pause is already "held" when bindings run again. Everest's
         // ButtonBinding.Pressed fires on any one of a binding's keys, so a chord such as Ctrl+R
