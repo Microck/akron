@@ -251,8 +251,13 @@ public static class AkronInputBoard {
                 continue;
             }
 
-            AkronInputBoardBinding binding = element.Bindings?.FirstOrDefault() ?? default;
-            element.Label = LabelFor(binding, preset, element.Label);
+            // A keyboard-only or unbound key has no game action to name. In
+            // particular, an empty action list must not become enum default Left.
+            if (element.Bindings == null || element.Bindings.Count == 0) {
+                continue;
+            }
+
+            element.Label = LabelFor(element.Bindings[0], preset, element.Label);
         }
     }
 
