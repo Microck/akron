@@ -117,7 +117,7 @@ internal static class AkronEventInstanceUtils {
             clone.setVolume(volume);
         }
         if (eventInstance.getPitch(out float pitch, out _) == RESULT.OK) {
-            clone.setPitch(pitch);
+            clone.setPitch(AkronAudioTransform.OriginalPitchForCapture(eventInstance, pitch));
         }
         if (eventInstance.get3DAttributes(out FMOD.Studio._3D_ATTRIBUTES attributes) == RESULT.OK) {
             clone.set3DAttributes(attributes);
@@ -198,7 +198,7 @@ internal static class AkronEventInstanceUtils {
             state.Volume = volume;
         }
         if (eventInstance.getPitch(out float pitch, out _) == RESULT.OK) {
-            state.Pitch = pitch;
+            state.Pitch = AkronAudioTransform.OriginalPitchForCapture(eventInstance, pitch);
         }
         if (eventInstance.getListenerMask(out uint listenerMask) == RESULT.OK) {
             state.HasListenerMask = true;

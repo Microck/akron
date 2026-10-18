@@ -11,7 +11,6 @@ namespace Celeste.Mod.Akron;
 
 public static class AkronRuntimeOptions {
     private const float FreeCameraMouseDeadzone = 0.08f;
-    private static bool audioPitchApplied;
     private static Level screenshakeLevel;
     private static bool previousScreenshakeDisabled;
     private static Player freeCameraLockedPlayer;
@@ -38,7 +37,6 @@ public static class AkronRuntimeOptions {
     }
 
     public static void Apply(Level level, Player player) {
-        ApplyAudioSpeedAndPitch();
         AkronEarAid.ReconcileVolumeOverrides();
         ApplyHudVisibility(level);
         ApplyPauseMenuVisibility(level);
@@ -107,6 +105,7 @@ public static class AkronRuntimeOptions {
         if (!AkronModule.Settings.AudioSpeed) {
             return "Off";
         }
+        if (AkronAudioTransform.LastError.Length > 0) return "Unavailable";
 
         return AkronModule.Settings.AudioSpeedPolicy == AkronAudioSpeedPolicy.Independent
             ? AkronModule.Settings.AudioSpeedMultiplier.ToString("0.0x")
@@ -117,6 +116,7 @@ public static class AkronRuntimeOptions {
         if (!AkronModule.Settings.PitchShift) {
             return "Off";
         }
+        if (AkronAudioTransform.LastError.Length > 0) return "Unavailable";
 
         return AkronModule.Settings.PitchShiftPolicy == AkronPitchPolicy.Independent
             ? AkronModule.Settings.PitchShiftMultiplier.ToString("0.0x")
@@ -207,7 +207,7 @@ public static class AkronRuntimeOptions {
         level.RawTimeActive = Math.Max(0f, level.RawTimeActive - Engine.RawDeltaTime);
     }
 
-    private static void ApplyAudioSpeedAndPitch() {
+    internal static void ApplyAudioSpeedAndPitch() {
         bool audioSpeedAllowed = AkronModule.Settings.AudioSpeed && AkronPolicy.CanUse(AkronFeatureKind.AudioSpeed).Allowed;
         bool pitchShiftAllowed = AkronModule.Settings.PitchShift && AkronPolicy.CanUse(AkronFeatureKind.PitchShift).Allowed;
         if (!audioSpeedAllowed && !pitchShiftAllowed) {
@@ -224,38 +224,13 @@ public static class AkronRuntimeOptions {
             };
         }
 
-        float pitch = 1f;
-        if (pitchShiftAllowed && AkronModule.TryUseRuntime(AkronFeatureKind.PitchShift)) {
-            pitch = AkronModule.Settings.PitchShiftPolicy switch {
-                AkronPitchPolicy.FollowSpeed => speed,
-                AkronPitchPolicy.Independent => AkronModuleSettings.ClampAudioMultiplier(AkronModule.Settings.PitchShiftMultiplier),
-                _ => 1f
-            };
-        }
-
-        SetAudioPitch(Calc.Clamp(speed * pitch, 0.1f, 4f));
-        audioPitchApplied = true;
+        bool pitchEnabled = pitchShiftAllowed && AkronModule.TryUseRuntime(AkronFeatureKind.PitchShift);
+        AkronAudioTransform.Apply(AkronAudioTransform.Resolve(speed, pitchEnabled,
+            AkronModule.Settings.PitchShiftPolicy, AkronModule.Settings.PitchShiftMultiplier));
     }
 
     private static void RestoreAudioPitch() {
-        if (audioPitchApplied) {
-            SetAudioPitch(1f);
-            audioPitchApplied = false;
-        }
-    }
-
-    private static void SetAudioPitch(float pitch) {
-        TrySetPitch(Audio.CurrentMusicEventInstance, pitch);
-        TrySetPitch(Audio.CurrentAmbienceEventInstance, pitch);
-        TrySetPitch(Audio.currentAltMusicEvent, pitch);
-    }
-
-    private static void TrySetPitch(EventInstance instance, float pitch) {
-        if (instance == null) {
-            return;
-        }
-
-        instance.setPitch(pitch);
+        AkronAudioTransform.Reset();
     }
 
     private static void ApplyHudVisibility(Level level)
