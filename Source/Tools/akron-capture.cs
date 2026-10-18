@@ -248,6 +248,7 @@ public static class AkronCapture {
             global::Celeste.Settings.Instance.SpeedrunClock = SpeedrunType.Off;
             speedrunToolRoomTimerState = AkronSpeedrunToolBroker.SuppressRoomTimerHudForCapture();
             try {
+                using IDisposable cursorRenderScope = AkronModule.BeginExtendedCursorRender(level);
                 level.BeforeRender();
                 level.Render();
                 level.AfterRender();
