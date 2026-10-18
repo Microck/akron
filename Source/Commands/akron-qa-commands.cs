@@ -2064,6 +2064,17 @@ public static partial class AkronCommands {
 
     [Command("akron_qa_audio_state", "show deterministic audio QA state for speed, pitch, splitter, and per-SFX volume")]
     public static void QaAudioState(string eventName = "") {
+        Log("qa-audio-transform: events=" + AkronAudioTransform.OwnedEventCount + ";dsps=" + AkronAudioTransform.OwnedDspCount + ";error=" + AkronAudioTransform.LastError);
+        if (Audio.System != null && Audio.System.getLowLevelSystem(out FMOD.System core) == FMOD.RESULT.OK) {
+            FMOD.RESULT outputResult = core.getOutput(out FMOD.OUTPUTTYPE output);
+            Log("qa-audio-output: " + outputResult + ";type=" + output);
+            FMOD.RESULT channelsResult = core.getChannelsPlaying(out int channels, out int realChannels);
+            Log("qa-audio-channels: " + channelsResult + ";total=" + channels + ";real=" + realChannels);
+            if (core.getMasterChannelGroup(out FMOD.ChannelGroup master) == FMOD.RESULT.OK) {
+                FMOD.RESULT clockResult = master.getDSPClock(out ulong dspClock, out _);
+                Log("qa-audio-clock: " + clockResult + ";clock=" + dspClock);
+            }
+        }
         Log("qa-audio-splitter: " + AkronModule.Settings.AudioSplitter.ToString().ToLowerInvariant());
         Log("qa-audio-splitter-status: " + AkronAudioSplitter.Status());
         Log("qa-audio-runtime-music-volume: " + (Audio.MusicVolume * 10f).ToString("0.###", CultureInfo.InvariantCulture));
@@ -2102,7 +2113,10 @@ public static partial class AkronCommands {
 
         try {
             FMOD.RESULT result = instance.getPitch(out float pitch, out float finalPitch);
-            return result + ";pitch=" + pitch.ToString("0.###", CultureInfo.InvariantCulture) +
+            instance.getPlaybackState(out FMOD.Studio.PLAYBACK_STATE playback);
+            instance.getTimelinePosition(out int position);
+            instance.getPaused(out bool paused);
+            return "playback=" + playback + ";position=" + position + ";paused=" + paused + ";" + result + ";pitch=" + pitch.ToString("0.###", CultureInfo.InvariantCulture) +
                    ";final=" + finalPitch.ToString("0.###", CultureInfo.InvariantCulture);
         } catch (Exception ex) {
             return "error:" + ex.GetType().Name + ":" + ex.Message;
