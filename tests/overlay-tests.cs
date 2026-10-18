@@ -1926,7 +1926,7 @@ public sealed class OverlayTests {
         Assert.DoesNotContain("AkronModule.Settings.CursorZoomHold", entityInspectorPopup);
         Assert.DoesNotContain("AkronModule.Settings.ClickTeleportCursor", entityInspectorPopup);
         Assert.Contains("\"Entity Inspector / Cursor hold\"", entityInspectorPopup);
-        Assert.Contains("StartButtonBindingCapture(actionKey, displayName, setter, clearMenuBinding: false)", popupSource);
+        Assert.Contains("StartButtonBindingCapture(actionKey, displayName, ApplyBinding, clearMenuBinding: false)", popupSource);
         Assert.DoesNotContain("entityInspectorPickModeArmed", moduleInputSource);
         Assert.DoesNotContain("ArmEntityInspectorPickMode", moduleInputSource);
         Assert.DoesNotContain("ClearEntityInspectorPickMode", moduleInputSource);
@@ -1982,7 +1982,7 @@ public sealed class OverlayTests {
 
         Assert.Contains("DrawClickTeleportPopupControls", visualPopupSource);
         Assert.Contains("AkronModule.Settings.ClickTeleportCursor", visualPopupSource);
-        Assert.Contains("StartButtonBindingCapture(actionKey, displayName, setter, clearMenuBinding: false)", runtimePopupSource);
+        Assert.Contains("StartButtonBindingCapture(actionKey, displayName, ApplyBinding, clearMenuBinding: false)", runtimePopupSource);
         Assert.Contains("Bind##\" + idPrefix + \"-cursor-bind-\"", runtimePopupSource);
         Assert.Contains("Clear##\" + idPrefix + \"-cursor-clear-\"", runtimePopupSource);
         Assert.Contains("Default##\" + idPrefix + \"-cursor-default-\"", runtimePopupSource);
