@@ -297,13 +297,10 @@ public static partial class AkronInternalRecorder {
     private static void SaveReplayWindow(Scene scene, DateTime startUtc, DateTime endUtc, string kind) {
         var request = new PendingClipSave(kind, startUtc, endUtc, endUtc, CaptureRecordingIdentity(scene));
         lock (Sync) {
-            // An immediate save must not rotate away another event's pending history.
-            if (PendingClipSaves.Count > 0) {
-                PendingClipSaves.Add(request);
-                return;
-            }
+            // Even an immediate save rotates only after this update's events and
+            // render capture; it joins any existing encoder-owned post-roll batch.
+            PendingClipSaves.Add(request);
         }
-        SaveReplayWindows(scene, new[] { request });
     }
 
     internal static bool AreAllReplayWindowsDue(IEnumerable<DateTime> deadlines, DateTime now) {

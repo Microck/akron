@@ -370,7 +370,12 @@ public static partial class AkronInternalRecorder {
         if (processToStop != null) {
             Stop();
         }
+    }
 
+    public static void FinishFrame(Scene scene) {
+        if (scene == null || !AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed) return;
+        // Gameplay callbacks and capture of their rendered frame must finish before
+        // rotation. Otherwise an event later in the same update loses its history.
         if (System.Threading.Volatile.Read(ref replayExportBusy) != 0) return;
         DateTime now = ReplayNowUtc();
         List<PendingClipSave> due;

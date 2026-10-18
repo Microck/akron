@@ -7,6 +7,24 @@ namespace Celeste.Mod.Akron.Tests;
 [Collection(AkronSharedStateCollection.Name)]
 public sealed class ReplaySceneExitPostrollTests {
     [Fact]
+    public void EncoderRotationRunsOnlyAfterNativeRenderCapture() {
+        using ModuleDefinition module = ModuleDefinition.ReadModule(typeof(AkronInternalRecorder).Assembly.Location);
+        var recorder = module.GetType(typeof(AkronInternalRecorder).FullName);
+        foreach (string name in new[] { "Update", "SaveReplayWindow" }) {
+            var method = recorder.Methods.Single(m => m.Name == name);
+            Assert.DoesNotContain(method.Body.Instructions, i => i.Operand is MethodReference called && called.Name == "SaveReplayWindows");
+        }
+        var render = module.GetType(typeof(AkronModule).FullName).Methods.Single(m => m.Name == "EngineOnRenderCore");
+        var instructions = render.Body.Instructions.ToList();
+        int finish = instructions.FindIndex(i => i.Operand is MethodReference called && called.Name == "FinishFrame");
+        var captures = instructions.Select((i, index) => (i, index)).Where(p => p.i.Operand is MethodReference called && called.Name == "CaptureFrame").ToList();
+        Assert.Equal(2, captures.Count);
+        Assert.All(captures, p => Assert.True(p.index < finish));
+        Assert.Contains(recorder.Methods.Single(m => m.Name == "FinishFrame").Body.Instructions,
+            i => i.Operand is MethodReference called && called.Name == "SaveReplayWindows");
+    }
+
+    [Fact]
     public void NoProcessStartupAndLevelBeginPreserveQueuedReplacementEvent() {
         var type = typeof(AkronInternalRecorder);
         const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
