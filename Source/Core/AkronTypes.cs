@@ -600,10 +600,8 @@ public sealed class AkronHudLabelStyleSettings {
 
 public enum AkronFeatureKind {
     RoomLabelOverlay,
-    StaminaWidget,
-    SpeedWidget,
-    DashWidget,
-    InputViewer,
+    // Retired legacy text widgets occupied IDs 1-3. Preserve surviving proof IDs.
+    InputViewer = 4,
     InputHistory,
     ResourceBars,
     RoomTimer,

@@ -61,9 +61,6 @@ public sealed class AkronSetupState {
     public bool RoomLabels { get; set; }
     public bool LabelSystemVisible { get; set; }
     public int RoomLabelColor { get; set; } = 0xFFFFFF;
-    public bool StaminaWidget { get; set; }
-    public bool SpeedWidget { get; set; }
-    public bool DashWidget { get; set; }
     public bool InputViewer { get; set; }
     public int InputHistoryTextColor { get; set; } = 0xFFFFFF;
     public int InputHistoryEventColor { get; set; } = 0xFFFFFF;

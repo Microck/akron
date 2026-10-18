@@ -1,5 +1,7 @@
 # Changelog
 
+- Remove retired Stamina/Speed/Dash text widgets while preserving the modern bars/numbers and importing older setup packs safely.
+
 - Keep literal custom HUD labels visible outside levels even when their text contains words such as Room or speed.
 
 - Keep the selected Control Display label style when changing layouts through the console command.
