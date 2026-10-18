@@ -383,27 +383,35 @@ public partial class AkronModule {
     }
 
     private static void UpdateStepHoldRepeat(KeyboardState keyboard, KeyboardState previousKeyboard) {
-        if (!CanStepGameplay(Session, Settings) || !Settings.StepHoldRepeat || !TryGetButtonBindingKeys(Settings.StepFrame, out IReadOnlyCollection<Keys> stepKeys) || !IsKeyboardBindingHeld(stepKeys)) {
-            Session.StepFrameHoldFrames = 0;
-            Session.StepFrameRepeatCountdown = 0;
-            return;
-        }
-
-        Session.StepFrameHoldFrames++;
-        if (IsBindingPressed(Settings.StepFrame, keyboard, previousKeyboard)) {
-            Session.StepFrameRepeatCountdown = Calc.Clamp(Settings.StepHoldDelayFrames, 1, 120);
-            return;
-        }
-
-        if (Session.StepFrameHoldFrames <= Calc.Clamp(Settings.StepHoldDelayFrames, 1, 120)) {
-            return;
-        }
-
-        Session.StepFrameRepeatCountdown--;
-        if (Session.StepFrameRepeatCountdown <= 0) {
+        bool held = CanStepGameplay(Session, Settings) && Settings.StepHoldRepeat &&
+            TryGetButtonBindingKeys(Settings.StepFrame, out IReadOnlyCollection<Keys> stepKeys) && IsKeyboardBindingHeld(stepKeys);
+        if (AdvanceStepHoldRepeat(Session, held, held && IsBindingPressed(Settings.StepFrame, keyboard, previousKeyboard),
+                Settings.StepHoldDelayFrames, Settings.StepHoldIntervalFrames)) {
             Session.StepFrameRequested = true;
-            Session.StepFrameRepeatCountdown = Calc.Clamp(Settings.StepHoldIntervalFrames, 1, 60);
         }
+    }
+
+    internal static bool AdvanceStepHoldRepeat(AkronModuleSession session, bool held, bool pressed, int delay, int interval) {
+        if (!held) {
+            session.StepFrameHoldFrames = 0;
+            session.StepFrameRepeatCountdown = 0;
+            return false;
+        }
+
+        session.StepFrameHoldFrames++;
+        if (pressed || session.StepFrameHoldFrames == 1) {
+            // The initial single step is requested separately. Count this delay once,
+            // starting with the next held update, then use the repeat interval.
+            session.StepFrameRepeatCountdown = Calc.Clamp(delay, 1, 120);
+            return false;
+        }
+
+        session.StepFrameRepeatCountdown--;
+        if (session.StepFrameRepeatCountdown <= 0) {
+            session.StepFrameRepeatCountdown = Calc.Clamp(interval, 1, 60);
+            return true;
+        }
+        return false;
     }
 
     public static bool SetOverlayVisible(Scene scene, bool visible) {
