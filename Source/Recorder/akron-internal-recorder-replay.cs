@@ -190,7 +190,7 @@ public static partial class AkronInternalRecorder {
         }
 
         if (start != DateTime.MinValue && string.Equals(room, level.Session.Level, StringComparison.Ordinal)) {
-            QueueClipSave("room-clear", start, ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave(level, "room-clear", start, ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
         }
     }
 
@@ -208,7 +208,7 @@ public static partial class AkronInternalRecorder {
         }
 
         if (AkronModule.Settings.RecordingTriggerCheckpointClear) {
-            QueueClipSave("checkpoint-clear", ReplayNowUtc().AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave(level, "checkpoint-clear", ReplayNowUtc().AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
         }
 
         if (AkronModule.Settings.RecordingTriggerRoomEntryToClear) {
@@ -218,7 +218,7 @@ public static partial class AkronInternalRecorder {
             }
 
             if (start != DateTime.MinValue) {
-                QueueClipSave("area-clear", start, ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
+                QueueClipSave(level, "area-clear", start, ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
             }
         }
 
@@ -237,7 +237,7 @@ public static partial class AkronInternalRecorder {
 
         DateTime now = ReplayNowUtc();
         if (AkronModule.Settings.RecordingTriggerLastDeath) {
-            QueueClipSave("last-death", now.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), now, AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave(level, "last-death", now.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), now, AkronModule.Settings.RecordingPostRollSeconds);
         }
 
         if (AkronModule.Settings.RecordingTriggerRespawnToDeath) {
@@ -247,12 +247,12 @@ public static partial class AkronInternalRecorder {
             }
 
             if (start != DateTime.MinValue) {
-                QueueClipSave("respawn-to-death", start, now, AkronModule.Settings.RecordingPostRollSeconds);
+                QueueClipSave(level, "respawn-to-death", start, now, AkronModule.Settings.RecordingPostRollSeconds);
             }
         }
 
         if (goldenDeath && AkronModule.Settings.RecordingTriggerGoldenDeath) {
-            QueueClipSave("golden-death", now.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), now, AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave(level, "golden-death", now.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), now, AkronModule.Settings.RecordingPostRollSeconds);
         }
     }
 
@@ -263,7 +263,7 @@ public static partial class AkronInternalRecorder {
 
         if (AkronModule.Settings.RecordingTriggerBerryCollect ||
             golden && AkronModule.Settings.RecordingTriggerGoldenDeath) {
-            QueueClipSave(golden ? "golden-berry" : "berry-collect", ReplayNowUtc().AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave(level, golden ? "golden-berry" : "berry-collect", ReplayNowUtc().AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
         }
     }
 
@@ -271,7 +271,7 @@ public static partial class AkronInternalRecorder {
         return SelectReplaySegments(directory, startUtc, endUtc);
     }
 
-    private static void QueueClipSave(string kind, DateTime startUtc, DateTime eventUtc, int postRollSeconds) {
+    private static void QueueClipSave(Level level, string kind, DateTime startUtc, DateTime eventUtc, int postRollSeconds) {
         if (!AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed) {
             return;
         }
@@ -281,14 +281,14 @@ public static partial class AkronInternalRecorder {
         }
 
         int postRoll = AkronModuleSettings.ClampRecordingClipSeconds(postRollSeconds);
-        PendingClipSave save = new PendingClipSave(kind, startUtc, eventUtc.AddSeconds(postRoll), eventUtc.AddSeconds(postRoll));
+        PendingClipSave save = new PendingClipSave(kind, startUtc, eventUtc.AddSeconds(postRoll), eventUtc.AddSeconds(postRoll), CaptureRecordingIdentity(level));
         lock (Sync) {
             PendingClipSaves.Add(save);
         }
     }
 
     private static void SaveReplayWindow(Scene scene, DateTime startUtc, DateTime endUtc, string kind) {
-        SaveReplayWindows(scene, new[] { new PendingClipSave(kind, startUtc, endUtc, endUtc) });
+        SaveReplayWindows(scene, new[] { new PendingClipSave(kind, startUtc, endUtc, endUtc, CaptureRecordingIdentity(scene)) });
     }
 
     private static IEnumerable<string> SelectReplaySegments(string directory, DateTime startUtc, DateTime endUtc) {
@@ -533,13 +533,15 @@ public static partial class AkronInternalRecorder {
     }
 
     private readonly struct PendingClipSave {
-        public PendingClipSave(string kind, DateTime startUtc, DateTime endUtc, DateTime saveAtUtc) {
+        public PendingClipSave(string kind, DateTime startUtc, DateTime endUtc, DateTime saveAtUtc, RecordingIdentity identity) {
+            Identity = identity;
             Kind = kind;
             StartUtc = startUtc;
             EndUtc = endUtc;
             SaveAtUtc = saveAtUtc;
         }
 
+        public RecordingIdentity Identity { get; }
         public string Kind { get; }
         public DateTime StartUtc { get; }
         public DateTime EndUtc { get; }

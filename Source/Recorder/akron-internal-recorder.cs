@@ -26,6 +26,7 @@ public static partial class AkronInternalRecorder {
     private static Stopwatch captureClock;
     private static AkronCaptureCadence manualCadence;
     private static string activePath = string.Empty;
+    private static RecordingIdentity activeIdentity;
     private static RecorderSpec manualSpec;
     private static int sourceWidth;
     private static int sourceHeight;
@@ -105,7 +106,8 @@ public static partial class AkronInternalRecorder {
         try {
             AkronModuleSettings settings = AkronModule.Settings;
             RecorderSpec spec = RecorderSpec.FromSettings(settings);
-            string outputPath = BuildOutputPath(level, settings.RecordingContainerFormat, "recording");
+            RecordingIdentity identity = CaptureRecordingIdentity(level);
+            string outputPath = BuildOutputPath(identity, settings.RecordingContainerFormat, "recording");
             string outputDirectory = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrWhiteSpace(outputDirectory)) {
                 Directory.CreateDirectory(outputDirectory);
@@ -151,6 +153,7 @@ public static partial class AkronInternalRecorder {
                 lastError = string.Empty;
                 warningShown = false;
                 recordingStartUtc = DateTime.UtcNow;
+                activeIdentity = identity;
                 autoStopAtSeconds = -1d;
             }
 
@@ -192,6 +195,7 @@ public static partial class AkronInternalRecorder {
         AkronEncoderDiagnostics diagnostics;
         Stream input;
         string completedPath;
+        RecordingIdentity completedIdentity;
         DateTime startedUtc;
         DateTime endedUtc = DateTime.UtcNow;
         lock (Sync) {
@@ -201,6 +205,8 @@ public static partial class AkronInternalRecorder {
             diagnostics = ffmpegDiagnostics;
             ffmpegDiagnostics = null;
             completedPath = activePath;
+            completedIdentity = activeIdentity;
+            activeIdentity = null;
             startedUtc = recordingStartUtc == DateTime.MinValue ? endedUtc : recordingStartUtc;
             ffmpegProcess = null;
             ffmpegInput = null;
@@ -255,7 +261,7 @@ public static partial class AkronInternalRecorder {
                 Engine.Scene?.Add(new AkronToast("Audio mux failed: " + audioMuxError));
             }
 
-            WriteClipSidecar(completedPath, "manual-recording", AkronModule.Settings.RecordingContainerFormat, startedUtc, endedUtc, Engine.Scene);
+            WriteClipSidecar(completedPath, "manual-recording", AkronModule.Settings.RecordingContainerFormat, startedUtc, endedUtc, completedIdentity);
             lastClipPath = completedPath;
             Engine.Scene?.Add(new AkronToast("Recording saved: " + Path.GetFileName(completedPath)));
         } finally {
@@ -617,9 +623,12 @@ public static partial class AkronInternalRecorder {
         return Environment.CurrentDirectory;
     }
 
-    private static string BuildOutputPath(Scene scene, AkronRecordingContainerFormat format, string kind) {
+    private static string BuildOutputPath(Scene scene, AkronRecordingContainerFormat format, string kind) =>
+        BuildOutputPath(CaptureRecordingIdentity(scene), format, kind);
+
+    private static string BuildOutputPath(RecordingIdentity identity, AkronRecordingContainerFormat format, string kind) {
         string folder = ResolveOutputFolder(AkronModule.Settings);
-        string filename = ExpandFilenameTemplate(scene);
+        string filename = ExpandFilenameTemplate(identity);
         if (!string.IsNullOrWhiteSpace(kind)) {
             filename += "-" + SanitizeToken(kind);
         }
@@ -642,23 +651,28 @@ public static partial class AkronInternalRecorder {
         return Path.GetFullPath(folder, currentDirectory);
     }
 
-    private static string ExpandFilenameTemplate(Scene scene) {
-        Level level = scene as Level;
-        Session session = level?.Session;
-        string sceneName = SanitizeToken(scene?.GetType().Name ?? "scene");
-        string chapter = SanitizeToken(session?.Area.GetSID() ?? sceneName);
-        string room = SanitizeToken(session?.Level ?? sceneName);
-        string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-        string death = (AkronModule.Session?.DeathsSinceLevelLoad ?? 0).ToString(CultureInfo.InvariantCulture);
-        string attempt = (SaveData.Instance?.TotalDeaths ?? 0).ToString(CultureInfo.InvariantCulture);
-        string template = AkronModuleSettings.NormalizeRecordingFilenameTemplate(AkronModule.Settings.RecordingFilenameTemplate);
+    // Copy scalar identity on the main thread before a delayed export or scene transition.
+    // Never retain a mutable Session/Level as the source of publication metadata.
+    internal sealed record RecordingIdentity(string Chapter, string Room, int Deaths, int Attempts);
 
-        return SanitizeToken(template
-            .Replace("{chapter}", chapter)
-            .Replace("{room}", room)
-            .Replace("{timestamp}", timestamp)
-            .Replace("{death}", death)
-            .Replace("{attempt}", attempt));
+    private static RecordingIdentity CaptureRecordingIdentity(Scene scene) {
+        Session session = (scene as Level)?.Session;
+        string fallback = scene?.GetType().Name ?? "scene";
+        return new RecordingIdentity(session?.Area.GetSID() ?? fallback, session?.Level ?? fallback,
+            AkronModule.Session?.DeathsSinceLevelLoad ?? 0, SaveData.Instance?.TotalDeaths ?? 0);
+    }
+
+    private static string ExpandFilenameTemplate(RecordingIdentity identity) =>
+        ExpandFilenameIdentity(AkronModule.Settings.RecordingFilenameTemplate, identity, DateTime.UtcNow);
+
+    internal static string ExpandFilenameIdentity(string template, RecordingIdentity identity, DateTime timestampUtc) {
+        identity ??= new RecordingIdentity("recording", "recording", 0, 0);
+        return SanitizeToken(AkronModuleSettings.NormalizeRecordingFilenameTemplate(template)
+            .Replace("{chapter}", SanitizeToken(identity.Chapter))
+            .Replace("{room}", SanitizeToken(identity.Room))
+            .Replace("{timestamp}", timestampUtc.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture))
+            .Replace("{death}", identity.Deaths.ToString(CultureInfo.InvariantCulture))
+            .Replace("{attempt}", identity.Attempts.ToString(CultureInfo.InvariantCulture)));
     }
 
     private static string SanitizeToken(string value) {
