@@ -294,7 +294,7 @@ public sealed partial class AkronOverlay {
         ["Infinite Dash"] = "Replenish dash count after dash consumption during gameplay updates.",
         ["Dash Count"] = "Override the active dash count used for room entry, transitions, and dash refills.",
         ["Air Jumps"] = "Open controls for infinite or limited airborne extra jumps.",
-        ["Set Inventory"] = "Apply the configured dash and extra-jump inventory to Madeline. Optional death restore returns to the pre-click values.",
+        ["Set Inventory"] = "Apply the configured dash inventory and Air Jumps settings to Madeline. Air Jumps settings persist across chapter restarts. Optional death restore returns to the pre-click values.",
         ["Dream State"] = "Toggle whether Madeline can dash through dream blocks.",
         ["Ground Refills"] = "Change whether standing on the ground restores dash and stamina resources.",
         ["Refill Clarity"] = "Highlight already-visible one-use refills with a configurable outline.",
