@@ -61,7 +61,7 @@ public static class AkronEarAid {
         new SoundDefinition("bird-squawk", "Bird Squawk", "bird", "squawk"),
         new SoundDefinition("broken-window", "Broken Window", "broken_window", "window"),
         new SoundDefinition("conveyor", "Conveyor", "conveyor"),
-        new SoundDefinition("core-block", "Core Block", "coreblock", "bounceblock", "iceblock"),
+        new SoundDefinition("core-block", "Core Block", "coreblock", "core_block", "core-block", "bounceblock", "iceblock"),
         new SoundDefinition("death", "Death", "death"),
         new SoundDefinition("respawn", "Respawn", "respawn"),
         new SoundDefinition("golden-death", "Golden Death", "golden", "goldberry"),
