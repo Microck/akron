@@ -63,6 +63,20 @@ public sealed class OverlayCloseShortCircuitTests {
         int mode = instructions.FindIndex(i => i.OpCode == OpCodes.Ldarg_1);
         int actions = instructions.FindIndex(i => i.Operand is MethodReference m && m.Name == "CanExecuteLevelActionBindings");
         Assert.True(mode >= 0 && actions > mode);
-        Assert.Contains(instructions.Skip(mode).Take(4), i => i.OpCode == OpCodes.Ret);
+        int branch = instructions.FindIndex(mode + 1, i => i.OpCode.FlowControl == FlowControl.Cond_Branch);
+        Assert.True(branch > mode && branch < actions);
+        Assert.True(instructions[branch].OpCode == OpCodes.Brfalse || instructions[branch].OpCode == OpCodes.Brfalse_S);
+        // Debug builds route early returns through a shared epilogue; follow the
+        // true-mode path rather than assuming Release's direct four-instruction ret.
+        Instruction cursor = instructions[branch + 1];
+        for (int steps = 0; steps < instructions.Count; steps++) {
+            Assert.NotEqual(instructions[actions], cursor);
+            Assert.False(cursor.Operand is MethodReference);
+            if (cursor.OpCode == OpCodes.Ret) return;
+            cursor = cursor.OpCode.FlowControl == FlowControl.Branch
+                ? Assert.IsType<Instruction>(cursor.Operand) : cursor.Next;
+            Assert.NotNull(cursor);
+        }
+        Assert.Fail("Overlay-only path did not reach its return.");
     }
 }
