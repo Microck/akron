@@ -325,6 +325,8 @@ public partial class AkronModule : EverestModule {
             return;
         }
 
+        ReleaseCursorZoomOverride(Engine.Scene as Level);
+        cursorZoomToggleActive = false;
         AkronTelemetry.Stop();
         AkronDiagnosticsMenu.CloseActive();
         if (Engine.Instance != null) {
@@ -509,6 +511,8 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void LevelOnEnd(On.Celeste.Level.orig_End orig, Level self) {
+        ReleaseCursorZoomOverride(self);
+        cursorZoomToggleActive = false;
         ClearCustomDeathParticleBursts();
         AkronGameplayBufferState.ResetLevelPresentation();
         AkronActions.ClearStartPosInputWait();
@@ -894,6 +898,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void EngineOnUpdate(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime) {
+        ReleaseCursorZoomOnSceneChange();
         if (Engine.Scene is Level policyLevel) {
             EnterMapPolicy(policyLevel.Session);
         } else if (Engine.Scene is not LevelLoader && Engine.Scene is not LevelEnter && AkronPolicy.HasMapRestrictions) {
