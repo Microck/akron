@@ -25,7 +25,7 @@ public partial class AkronModule {
             frameBefore != frameAfter && pollBefore == pollAfter;
     }
 
-    private static void HandleHotkeys(Level level) {
+    private static void HandleHotkeys(Level level, bool overlayOnly = false) {
         unchecked { levelHotkeyPollGeneration++; }
         // One keyboard snapshot for every binding below, taken before any early return so a key
         // held through the overlay or a pause is already "held" when bindings run again. Everest's
@@ -63,6 +63,10 @@ public partial class AkronModule {
 
             return;
         }
+
+        // Recovery after a skipped Level.Update may cancel a transient selector,
+        // but must never run gameplay or opening bindings outside their boundary.
+        if (overlayOnly) return;
 
         if (IsOverlayTogglePressed()) {
             EnsureOverlay(level);

@@ -49,8 +49,20 @@ public sealed class OverlayCloseShortCircuitTests {
         int gate = instructions.FindIndex(i => i.Operand is MethodReference m && m.Name == "ShouldRecoverOverlayClose");
         int handler = instructions.FindIndex(i => i.Operand is MethodReference m && m.Name == "HandleHotkeys");
         Assert.True(gate > 0 && handler > gate);
+        Assert.Equal(OpCodes.Ldc_I4_1, instructions[handler - 1].OpCode);
         Assert.Contains(instructions.Take(gate), i => i.Operand is MethodReference m && m.Name == "Invoke" && m.DeclaringType.Name == "orig_Update");
         Assert.Contains(instructions.Skip(gate + 1).Take(handler - gate - 1), i => i.OpCode.FlowControl == FlowControl.Cond_Branch);
         Assert.DoesNotContain(engine.Body.ExceptionHandlers, h => h.HandlerType == ExceptionHandlerType.Finally);
+    }
+
+    [Fact]
+    public void OverlayOnlyGuardReturnsBeforeAnyGameplayBinding() {
+        using ModuleDefinition module = ModuleDefinition.ReadModule(typeof(AkronModule).Assembly.Location);
+        MethodDefinition handler = module.GetType(typeof(AkronModule).FullName).Methods.Single(m => m.Name == "HandleHotkeys");
+        var instructions = handler.Body.Instructions.ToList();
+        int mode = instructions.FindIndex(i => i.OpCode == OpCodes.Ldarg_1);
+        int actions = instructions.FindIndex(i => i.Operand is MethodReference m && m.Name == "CanExecuteLevelActionBindings");
+        Assert.True(mode >= 0 && actions > mode);
+        Assert.Contains(instructions.Skip(mode).Take(4), i => i.OpCode == OpCodes.Ret);
     }
 }

@@ -942,7 +942,7 @@ public partial class AkronModule : EverestModule {
                     ReferenceEquals(Engine.Scene, inputLevel), ReferenceEquals(Overlay, inputOverlay),
                     self.IsActive, frameBefore, Engine.FrameCounter,
                     pollBefore, levelHotkeyPollGeneration)) {
-                HandleHotkeys(inputLevel);
+                HandleHotkeys(inputLevel, overlayOnly: true);
             }
             return;
         }
