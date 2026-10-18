@@ -1054,25 +1054,36 @@ public sealed partial class AkronOverlay {
         }
     }
 
+    // InputFloat can keep reporting an out-of-range edit while its raw text is active.
+    // Feedback belongs to a changed stored value, not each repeated clamped proposal.
+    internal static bool TrySetNoclipSpeedValue(AkronModuleSettings settings, int proposed, bool grab) {
+        int next = grab ? AkronModuleSettings.ClampNoclipFloatSpeed(proposed) : AkronModuleSettings.ClampNoclipSpeed(proposed);
+        int current = grab ? settings.NoclipFloatSpeed : settings.NoclipSpeed;
+        if (current == next) return false;
+        if (grab) settings.NoclipFloatSpeed = next;
+        else settings.NoclipSpeed = next;
+        return true;
+    }
+
     private static void AdjustNoclipSpeed(int delta) {
-        AkronModule.Settings.NoclipSpeed = AkronModuleSettings.ClampNoclipSpeed(AkronModule.Settings.NoclipSpeed + delta);
+        if (!TrySetNoclipSpeedValue(AkronModule.Settings, AkronModule.Settings.NoclipSpeed + delta, false)) return;
         Engine.Scene?.Add(new AkronToast("Noclip speed: " + FormatNoclipMultiplier(AkronModule.Settings.NoclipSpeed)));
     }
 
     private static void AdjustNoclipFloatSpeed(int delta) {
-        AkronModule.Settings.NoclipFloatSpeed = AkronModuleSettings.ClampNoclipFloatSpeed(AkronModule.Settings.NoclipFloatSpeed + delta);
+        if (!TrySetNoclipSpeedValue(AkronModule.Settings, AkronModule.Settings.NoclipFloatSpeed + delta, true)) return;
         Engine.Scene?.Add(new AkronToast("Noclip grab speed: " + FormatNoclipFloatMultiplier(AkronModule.Settings.NoclipFloatSpeed)));
     }
 
     private static void SetNoclipSpeedMultiplier(float multiplier) {
         int speed = (int) Math.Round(multiplier * 240f);
-        AkronModule.Settings.NoclipSpeed = AkronModuleSettings.ClampNoclipSpeed(speed);
+        if (!TrySetNoclipSpeedValue(AkronModule.Settings, speed, false)) return;
         Engine.Scene?.Add(new AkronToast("Noclip speed: " + FormatNoclipMultiplier(AkronModule.Settings.NoclipSpeed)));
     }
 
     private static void SetNoclipGrabSpeedMultiplier(float multiplier) {
         int speed = (int) Math.Round(multiplier * 90f);
-        AkronModule.Settings.NoclipFloatSpeed = AkronModuleSettings.ClampNoclipFloatSpeed(speed);
+        if (!TrySetNoclipSpeedValue(AkronModule.Settings, speed, true)) return;
         Engine.Scene?.Add(new AkronToast("Noclip grab speed: " + FormatNoclipFloatMultiplier(AkronModule.Settings.NoclipFloatSpeed)));
     }
 
