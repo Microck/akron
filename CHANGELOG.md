@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Make Custom Trail opacity control transparency rather than fade lifetime. Zero opacity emits no custom snapshots; other opacity values keep the same 0.45-second native fade duration.
+
 - Treat Cancel from Zenity as normal setup-picker cancellation when GTK emits its harmless transient-parent diagnostic, while retaining failures for other diagnostic output.
 
 - Keep existing input bindings connected when importing a setup, so controls such as Cursor Zoom work immediately without restarting Celeste. Apply the same identity-preserving update when rolling back a failed setup import.
