@@ -69,10 +69,18 @@ public sealed class OverlayCloseShortCircuitTests {
         // Debug builds route early returns through a shared epilogue; follow the
         // true-mode path rather than assuming Release's direct four-instruction ret.
         Instruction cursor = instructions[branch + 1];
+        bool resetRepeat = false;
         for (int steps = 0; steps < instructions.Count; steps++) {
             Assert.NotEqual(instructions[actions], cursor);
-            Assert.False(cursor.Operand is MethodReference);
-            if (cursor.OpCode == OpCodes.Ret) return;
+            if (cursor.Operand is MethodReference call) {
+                Assert.Equal(typeof(AkronModule).FullName, call.DeclaringType.FullName);
+                Assert.Contains(call.Name, new[] { "get_Session", "ResetStepHoldRepeat" });
+                if (call.Name == "ResetStepHoldRepeat") resetRepeat = true;
+            }
+            if (cursor.OpCode == OpCodes.Ret) {
+                Assert.True(resetRepeat);
+                return;
+            }
             cursor = cursor.OpCode.FlowControl == FlowControl.Branch
                 ? Assert.IsType<Instruction>(cursor.Operand) : cursor.Next;
             Assert.NotNull(cursor);

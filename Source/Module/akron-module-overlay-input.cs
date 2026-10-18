@@ -37,6 +37,7 @@ public partial class AkronModule {
 
         if (AkronDiagnosticsMenu.IsOpen) {
             RefreshOverlayToggleKeyboardState();
+            ResetStepHoldRepeat(Session);
             return;
         }
 
@@ -48,6 +49,7 @@ public partial class AkronModule {
             Overlay.Active = false;
             UpdateOverlayCursorState();
             LogOverlayVisibilityChange(wasVisible, Overlay.Visible, "transient-toggle");
+            ResetStepHoldRepeat(Session);
             return;
         }
 
@@ -61,12 +63,16 @@ public partial class AkronModule {
                 LogOverlayVisibilityChange(wasVisible, Overlay.Visible, "hotkey");
             }
 
+            ResetStepHoldRepeat(Session);
             return;
         }
 
         // Recovery after a skipped Level.Update may cancel a transient selector,
         // but must never run gameplay or opening bindings outside their boundary.
-        if (overlayOnly) return;
+        if (overlayOnly) {
+            ResetStepHoldRepeat(Session);
+            return;
+        }
 
         if (IsOverlayTogglePressed()) {
             EnsureOverlay(level);
@@ -81,10 +87,12 @@ public partial class AkronModule {
             Overlay.Active = false;
             UpdateOverlayCursorState();
             LogOverlayVisibilityChange(wasVisible, Overlay.Visible, "hotkey");
+            ResetStepHoldRepeat(Session);
             return;
         }
 
         if (!CanExecuteLevelActionBindings(level)) {
+            ResetStepHoldRepeat(Session);
             return;
         }
 
@@ -391,10 +399,15 @@ public partial class AkronModule {
         }
     }
 
+    internal static void ResetStepHoldRepeat(AkronModuleSession session) {
+        if (session == null) return;
+        session.StepFrameHoldFrames = 0;
+        session.StepFrameRepeatCountdown = 0;
+    }
+
     internal static bool AdvanceStepHoldRepeat(AkronModuleSession session, bool held, bool pressed, int delay, int interval) {
         if (!held) {
-            session.StepFrameHoldFrames = 0;
-            session.StepFrameRepeatCountdown = 0;
+            ResetStepHoldRepeat(session);
             return false;
         }
 

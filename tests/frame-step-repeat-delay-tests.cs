@@ -1,5 +1,7 @@
 using System.Linq;
+using System.Collections.Generic;
 using Mono.Cecil;
+using Mono.Cecil.Cil;
 using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
@@ -53,5 +55,35 @@ public sealed class FrameStepRepeatDelayTests {
         var poll = type.Methods.Single(m => m.Name == "UpdateStepHoldRepeat");
         foreach (string name in new[] { "CanStepGameplay", "IsKeyboardBindingHeld", "IsBindingPressed", "AdvanceStepHoldRepeat" })
             Assert.Contains(poll.Body.Instructions, i => i.Operand is MethodReference m && m.Name == name);
+    }
+
+    [Fact]
+    public void EveryOuterHotkeyExitBeforeRepeatPollingResetsTheCounter() {
+        using var asm = AssemblyDefinition.ReadAssembly(typeof(AkronModule).Assembly.Location);
+        var type = asm.MainModule.Types.Single(t => t.Name == nameof(AkronModule));
+        var method = type.Methods.Single(m => m.Name == "HandleHotkeys");
+        var pending = new Stack<(Instruction Instruction, bool Reset)>();
+        var visited = new HashSet<(Instruction, bool)>();
+        pending.Push((method.Body.Instructions[0], false));
+        int exits = 0;
+        while (pending.Count > 0) {
+            var (instruction, reset) = pending.Pop();
+            if (!visited.Add((instruction, reset))) continue;
+            if (instruction.Operand is MethodReference call) {
+                if (call.Name == "UpdateStepHoldRepeat") continue;
+                if (call.Name == "ResetStepHoldRepeat") reset = true;
+            }
+            if (instruction.OpCode.FlowControl == FlowControl.Return) {
+                Assert.True(reset, "Hotkey guard returned without resetting held-repeat state.");
+                exits++;
+                continue;
+            }
+            if (instruction.Operand is Instruction target &&
+                instruction.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch)
+                pending.Push((target, reset));
+            if (instruction.OpCode.FlowControl != FlowControl.Branch && instruction.Next != null)
+                pending.Push((instruction.Next, reset));
+        }
+        Assert.True(exits > 0);
     }
 }
