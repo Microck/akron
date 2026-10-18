@@ -82,7 +82,7 @@ public partial class AkronModule : EverestModule {
     private static bool cursorZoomLastBindDown;
     private static bool pauseTimerFreezeStoppedTimer;
     private static bool captureSuppressionHooksInstalled;
-    private static int fastLookoutPatchedConstantCount;
+    private static int fastLookoutPatchedMovementReadCount;
     private static bool startPosPlacementLastLeftDown;
     private static int jumpHackAirJumpsUsed;
     private static readonly Dictionary<PlayerDeadBody, float> respawnTimeElapsed = new Dictionary<PlayerDeadBody, float>();

@@ -24,6 +24,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Fixed
 
+- Apply Fast Lookout hold changes during an active lookout interaction instead of caching the entry-time hold state.
+
 - Refresh existing dream-block appearance immediately when Dream State is toggled, without requiring Retry to synchronize native block state.
 
 - Resume gameplay after Reload Room is invoked from the native pause menu, and close Akron pause accounting so the removed menu cannot leave the room stuck.
