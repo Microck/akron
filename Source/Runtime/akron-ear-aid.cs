@@ -7,6 +7,32 @@ namespace Celeste.Mod.Akron;
 public static class AkronEarAid {
     private static readonly List<(EventInstance Instance, string Key, float OriginalVolume, bool Applied)> VolumeOverrides = new();
 
+    private static bool audioUpdateHookInstalled;
+
+    internal static void Load() {
+        if (audioUpdateHookInstalled) {
+            return;
+        }
+        On.Celeste.Audio.Update += AudioOnUpdate;
+        audioUpdateHookInstalled = true;
+    }
+
+    internal static void Unload() {
+        if (audioUpdateHookInstalled) {
+            On.Celeste.Audio.Update -= AudioOnUpdate;
+            audioUpdateHookInstalled = false;
+        }
+        ReconcileVolumeOverrides(restore: true);
+        SetQaObservation(false);
+    }
+
+    private static void AudioOnUpdate(On.Celeste.Audio.orig_Update orig) {
+        orig();
+        // Audio continues while the overlay holds Engine/Level gameplay updates.
+        // Ear Aid controls must reconcile at that same audio boundary.
+        ReconcileVolumeOverrides(restore: !AkronModule.EnabledThisSession || AkronModule.TryGetSettings() == null);
+    }
+
     private static volatile bool observeForQa;
     private static readonly object QaObservationLock = new();
     private static readonly Queue<(EventInstance Instance, string BeforeOverride, string AfterOverride)> QaObservedEvents = new();
