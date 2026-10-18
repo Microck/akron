@@ -376,10 +376,13 @@ public static partial class AkronInternalRecorder {
         List<PendingClipSave> due;
         lock (Sync) {
             due = PendingClipSaves.Where(save => save.SaveAtUtc <= now).ToList();
-            PendingClipSaves.RemoveAll(save => save.SaveAtUtc <= now);
+
         }
 
-        if (due.Count > 0) SaveReplayWindows(scene, due);
+        if (due.Count > 0) {
+            var accepted = SaveReplayWindows(scene, due);
+            lock (Sync) foreach (var request in accepted) PendingClipSaves.Remove(request);
+        }
     }
 
     public static void CaptureFrame(Level level) {

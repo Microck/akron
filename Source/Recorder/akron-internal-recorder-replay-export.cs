@@ -18,11 +18,16 @@ public static partial class AkronInternalRecorder
     private static string replayExportDirectory;
     private static Process replayExportProcess;
     private static AkronEncoderDiagnostics replayDiagnostics;
+    private static long replayFinalizationWaitStarted;
+    private static long lastFinalizedSegmentRead;
+    private static List<AkronReplaySegment> finalizedSegmentCache = new();
 
     private sealed record ReplayExportRequest(PendingClipSave Window, string Path, string Chapter, string Room);
-    private sealed record ReplayExportSnapshot(Process Process, Stream Input, AkronEncoderDiagnostics Diagnostics,
-        AkronReplayTimeline Timeline, RecorderSpec Spec, AkronRecordedAudio Audio, string Directory,
-        string Ffmpeg, long BoundaryTick, AkronModuleSettings Settings, int Generation);
+    private static readonly Dictionary<string, AkronReplaySegment> KnownReplaySegments = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> PinnedReplaySegments = new(StringComparer.OrdinalIgnoreCase);
+    private sealed record ReplayExportSnapshot(RecorderSpec Spec, AkronReplayAudioLease Audio,
+        string Directory, string Ffmpeg, DateTime OriginUtc, long Frames,
+        IReadOnlyList<AkronReplaySegment> Segments, AkronModuleSettings Settings, int Generation);
 
     public static void CancelReplayExport()
     {
@@ -40,68 +45,102 @@ public static partial class AkronInternalRecorder
             return replayTimeline?.Started == true ? replayTimeline.ProjectUtc(Stopwatch.GetTimestamp()) : DateTime.UtcNow;
     }
 
-    private static void SaveReplayWindows(Scene scene, IReadOnlyList<PendingClipSave> requests)
+    internal static bool IsReplayWindowFinalized(DateTime requestedEnd, DateTime finalizedEnd) => requestedEnd <= finalizedEnd;
+
+    private static List<AkronReplaySegment> ReadKnownReplaySegments()
     {
-        if (!AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed || requests.Count == 0) return;
-        if (Interlocked.CompareExchange(ref replayExportBusy, 1, 0) != 0)
-        {
-            scene?.Add(new AkronToast("Replay clip export is already running."));
-            return;
-        }
+        long now = Stopwatch.GetTimestamp();
+        if (lastFinalizedSegmentRead != 0 && (now - lastFinalizedSegmentRead) / (double)Stopwatch.Frequency < 0.25)
+            return finalizedSegmentCache;
+        lastFinalizedSegmentRead = now;
+        foreach (var segment in AkronReplayWindows.ReadFinalizedSegments(replayDirectory))
+            KnownReplaySegments[segment.Path] = segment;
+        foreach (var path in KnownReplaySegments.Keys.Where(p => !File.Exists(p)).ToArray())
+            KnownReplaySegments.Remove(path);
+        finalizedSegmentCache = KnownReplaySegments.Values.OrderBy(s => s.Start).ToList();
+        return finalizedSegmentCache;
+    }
+
+    internal static bool ReplayFinalizationExpired(long started, long now, long frequency) =>
+        started > 0 && frequency > 0 && (now - started) / (double)frequency >= 60;
+
+    private static IReadOnlyList<PendingClipSave> DeferReplayFinalization(Scene scene)
+    {
+        long now = Stopwatch.GetTimestamp();
+        if (replayFinalizationWaitStarted == 0) replayFinalizationWaitStarted = now;
+        if (ReplayFinalizationExpired(replayFinalizationWaitStarted, now, Stopwatch.Frequency))
+            throw new IOException("Replay segments did not finalize within 60 seconds after a requested window became due.");
+        return Array.Empty<PendingClipSave>();
+    }
+
+    private static IReadOnlyList<PendingClipSave> SaveReplayWindows(Scene scene, IReadOnlyList<PendingClipSave> requests)
+    {
+        if (!AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed || requests.Count == 0)
+            return Array.Empty<PendingClipSave>();
+        if (Interlocked.CompareExchange(ref replayExportBusy, 1, 0) != 0) return Array.Empty<PendingClipSave>();
         ReplayExportSnapshot snapshot = null;
+        bool dispatched = false;
+        List<PendingClipSave> ready = new();
         try
         {
-            AkronModuleSettings settings = SnapshotReplayExportSettings(AkronModule.Settings);
-            var outputRequests = requests.Select(request => new ReplayExportRequest(request,
-                BuildOutputPath(request.Identity, settings.RecordingContainerFormat, request.Kind),
-                SanitizeToken(request.Identity.Chapter),
-                SanitizeToken(request.Identity.Room))).ToList();
-            long boundary = Stopwatch.GetTimestamp();
-            Process process;
-            Stream input;
-            AkronReplayTimeline timeline;
-            RecorderSpec spec;
-            string directory;
-            AkronEncoderDiagnostics diagnostics;
+            var settings = SnapshotReplayExportSettings(AkronModule.Settings);
             lock (Sync)
             {
                 if (replayProcess == null || replayInput == null || replayTimeline?.Started != true)
-                    throw new InvalidOperationException("Replay buffer has no active timed history yet.");
-                process = replayProcess;
-                input = replayInput;
-                timeline = replayTimeline;
-                spec = replaySpec;
-                directory = replayDirectory;
-                diagnostics = replayDiagnostics;
-                replayProcess = null;
-                replayInput = null;
-                replayCadence = null;
-                if (ffmpegProcess == null) lastCaptureWasReplay = true;
-                ResetCaptureClockIfIdle();
-                replayExportDirectory = directory;
-                replayExportProcess = process;
+                    return Array.Empty<PendingClipSave>();
+                if (replayProcess.HasExited) throw new IOException("Replay encoder exited before pending windows finalized.");
+                List<AkronReplaySegment> segments;
+                try { segments = ReadKnownReplaySegments(); }
+                catch (IOException) { return DeferReplayFinalization(scene); }
+                catch (InvalidDataException) { return DeferReplayFinalization(scene); }
+                if (segments.Count == 0) return DeferReplayFinalization(scene);
+                DateTime finalizedEnd = replayTimeline.OriginUtc.AddSeconds(segments[^1].End);
+                ready = requests.Where(r => IsReplayWindowFinalized(r.EndUtc, finalizedEnd)).Take(8).ToList();
+                if (ready.Count == 0) return DeferReplayFinalization(scene);
+                replayFinalizationWaitStarted = 0;
+                DateTime first = ready.Min(r => r.StartUtc);
+                DateTime last = ready.Max(r => r.EndUtc);
+                var selected = segments.Where(s => replayTimeline.OriginUtc.AddSeconds(s.End) > first &&
+                    replayTimeline.OriginUtc.AddSeconds(s.Start) < last).ToList();
+                snapshot = new ReplayExportSnapshot(replaySpec, AkronInternalAudioRecorder.LeaseReplayBuffer(first, last),
+                    replayDirectory, replayProcess.StartInfo.FileName, replayTimeline.OriginUtc,
+                    replayTimeline.FramesWritten, selected, settings, Volatile.Read(ref replayExportGeneration));
+                foreach (var segment in selected) PinnedReplaySegments.Add(segment.Path);
+                replayExportDirectory = replayDirectory;
             }
-            // Audio belongs to this generation and is detached before encoder drain.
-            snapshot = new ReplayExportSnapshot(process, input, diagnostics, timeline, spec,
-                new AkronRecordedAudio(new List<AkronRecordedAudioTrack>()), directory,
-                process.StartInfo.FileName, boundary, settings, Volatile.Read(ref replayExportGeneration));
-            snapshot = snapshot with { Audio = AkronInternalAudioRecorder.StopReplayBuffer() };
+            var outputRequests = ready.Select(request => new ReplayExportRequest(request,
+                BuildOutputPath(request.Identity, settings.RecordingContainerFormat, request.Kind),
+                SanitizeToken(request.Identity.Chapter), SanitizeToken(request.Identity.Room))).ToList();
             ReplayExportSnapshot owned = snapshot;
             _ = Task.Run(() => ExportReplayBatch(owned, outputRequests));
+            dispatched = true;
             scene?.Add(new AkronToast("Saving replay clip..."));
+            return ready;
         }
         catch (Exception ex)
         {
-            if (snapshot != null) {
-                try { snapshot.Input.Dispose(); } catch { }
-                try { if (!snapshot.Process.HasExited) snapshot.Process.Kill(); } catch { }
-                snapshot.Process.Dispose();
-                DeleteRecordedAudioFiles(snapshot.Audio);
+            string error = ex.Message;
+            if (ready.Count == 0) {
+                // This capture generation cannot fulfill accepted windows. Stop and
+                // explicitly disarm it rather than pin history and retry forever.
+                try { StopReplayBuffer(); } catch (Exception cleanup) { error += " | " + cleanup.Message; }
             }
-            lock (Sync) { replayExportDirectory = null; replayExportProcess = null; }
-            Volatile.Write(ref replayExportBusy, 0);
-            lastError = ex.Message;
-            scene?.Add(new AkronToast(AkronEncoderCompletion.FailureToast(ex.Message)));
+            lastError = error;
+            scene?.Add(new AkronToast(AkronEncoderCompletion.FailureToast(error)));
+            return ready;
+        }
+        finally
+        {
+            if (!dispatched)
+            {
+                snapshot?.Audio.Dispose();
+                lock (Sync)
+                {
+                    if (snapshot != null) foreach (var segment in snapshot.Segments) PinnedReplaySegments.Remove(segment.Path);
+                    replayExportDirectory = null;
+                }
+                Volatile.Write(ref replayExportBusy, 0);
+            }
         }
     }
 
@@ -116,55 +155,33 @@ public static partial class AkronInternalRecorder
 
     private static void ExportReplayBatch(ReplayExportSnapshot snapshot, IReadOnlyList<ReplayExportRequest> requests)
     {
-        bool disposed = false;
         try
         {
-            CheckReplayExportGeneration(snapshot);
-            int finalizationDeadlineExpired = 0;
-            using var finalizationDeadline = new Timer(_ => {
-                Interlocked.Exchange(ref finalizationDeadlineExpired, 1);
-                try { if (!snapshot.Process.HasExited) snapshot.Process.Kill(); } catch { }
-            }, null, 10000, Timeout.Infinite);
-            string fillError = null;
-            try { snapshot.Timeline.CompleteThrough(snapshot.Input, snapshot.BoundaryTick); }
-            catch (Exception ex) { fillError = ex.Message; }
-            string finishError = AkronEncoderCompletion.Finish(snapshot.Input, snapshot.Process.WaitForExit,
-                () => snapshot.Process.ExitCode, snapshot.Process.Kill, snapshot.Process.Dispose,
-                () => snapshot.Diagnostics?.ReadAfterExit() ?? string.Empty,
-                () => File.Exists(Path.Combine(snapshot.Directory, "segments.csv")), fillError);
-            finalizationDeadline.Change(Timeout.Infinite, Timeout.Infinite);
-            if (Volatile.Read(ref finalizationDeadlineExpired) != 0)
-                finishError = "Replay finalization exceeded its deadline. " + finishError;
-            disposed = true;
-            lock (Sync) if (ReferenceEquals(replayExportProcess, snapshot.Process)) replayExportProcess = null;
-            if (!string.IsNullOrWhiteSpace(finishError)) throw new IOException(finishError);
-            var segments = AkronReplayWindows.ReadSegments(snapshot.Directory);
             foreach (ReplayExportRequest request in requests)
             {
                 CheckReplayExportGeneration(snapshot);
-                try { ExportReplayClip(snapshot, request, segments); }
+                try { ExportReplayClip(snapshot, request, snapshot.Segments); }
                 catch (Exception ex) { PublishReplayExport(snapshot, null, ex.Message); }
             }
         }
         catch (Exception ex) { PublishReplayExport(snapshot, null, ex.Message); }
         finally
         {
-            if (!disposed)
+            snapshot.Audio.Dispose();
+            lock (Sync)
             {
-                try { snapshot.Input?.Dispose(); } catch { }
-                try { if (!snapshot.Process.HasExited) snapshot.Process.Kill(); } catch { }
-                snapshot.Process.Dispose();
+                foreach (var segment in snapshot.Segments) PinnedReplaySegments.Remove(segment.Path);
+                replayExportDirectory = null;
+                replayExportProcess = null;
             }
-            DeleteRecordedAudioFiles(snapshot.Audio);
-            lock (Sync) { replayExportDirectory = null; replayExportProcess = null; }
             Volatile.Write(ref replayExportBusy, 0);
         }
     }
 
     private static void ExportReplayClip(ReplayExportSnapshot snapshot, ReplayExportRequest request, IReadOnlyList<AkronReplaySegment> segments)
     {
-        AkronReplayWindow window = AkronReplayWindows.Plan(segments, snapshot.Timeline.OriginUtc,
-            snapshot.Spec.Framerate, snapshot.Timeline.FramesWritten, request.Window.StartUtc, request.Window.EndUtc);
+        AkronReplayWindow window = AkronReplayWindows.Plan(segments, snapshot.OriginUtc,
+            snapshot.Spec.Framerate, snapshot.Frames, request.Window.StartUtc, request.Window.EndUtc);
         string folder = Path.GetDirectoryName(request.Path) ?? snapshot.Directory;
         Directory.CreateDirectory(folder);
         var ownedMedia = new List<string>();
@@ -204,7 +221,7 @@ public static partial class AkronInternalRecorder
                 if (!AkronEncoderCompletion.HasNonemptyOutput(remux)) throw new IOException("Replay remux produced no media.");
                 output = remux;
             }
-            sliced = AkronReplayAudioSlice.Slice(snapshot.Audio, window.StartUtc, window.EndUtc);
+            sliced = snapshot.Audio.CopyWindow(window.StartUtc, window.EndUtc);
             if (sliced.HasSamples)
             {
                 string mux = AkronEncoderCompletion.ReserveOutputPath(Path.Combine(snapshot.Directory,

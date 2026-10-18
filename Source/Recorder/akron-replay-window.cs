@@ -20,11 +20,31 @@ internal sealed record AkronReplayWindow(IReadOnlyList<AkronReplaySegment> Segme
 
 internal static class AkronReplayWindows
 {
+    internal static List<AkronReplaySegment> ReadFinalizedSegments(string directory)
+    {
+        string path = Path.Combine(directory, "segments.csv");
+        if (!File.Exists(path)) return new();
+        // FFmpeg rewrites the bounded live manifest. Only complete rows are admissible.
+        using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(input);
+        string text = reader.ReadToEnd();
+        int lastNewline = text.LastIndexOf('\n');
+        if (lastNewline < 0) return new();
+        return ParseSegments(directory, text.Substring(0, lastNewline).Split('\n'));
+    }
+
     internal static List<AkronReplaySegment> ReadSegments(string directory)
     {
+        return ParseSegments(directory, File.ReadLines(Path.Combine(directory, "segments.csv")));
+    }
+
+    private static List<AkronReplaySegment> ParseSegments(string directory, IEnumerable<string> lines)
+    {
         var result = new List<AkronReplaySegment>();
-        foreach (string line in File.ReadLines(Path.Combine(directory, "segments.csv")))
+        foreach (string raw in lines)
         {
+            string line = raw.TrimEnd('\r');
+            if (line.Length == 0) continue;
             string[] fields = SplitCsv(line);
             if (fields.Length != 3 || !double.TryParse(fields[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double start) ||
                 !double.TryParse(fields[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double end) ||
