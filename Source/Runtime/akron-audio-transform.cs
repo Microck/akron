@@ -13,6 +13,7 @@ namespace Celeste.Mod.Akron;
 internal static class AkronAudioTransform {
     internal readonly record struct Plan(float Speed, float TargetPitch) {
         internal float[] Stages => BuildStages(TargetPitch / Speed);
+        internal float CompensationGain => MathF.Min(1f, MathF.Sqrt(TargetPitch / Speed));
     }
 
     private sealed class Owner {
@@ -82,10 +83,22 @@ internal static class AkronAudioTransform {
         Reset();
         // A native detach failure must retain its handles. Keep only cleanup
         // callbacks alive until retirement succeeds or the audio system dies.
-        if (Owners.Count == 0) DetachHooks();
+        PruneReleasedEvents();
+        if (CanDetachHooks(Owners.Count, ReleasedEvents.Count)) DetachHooks();
+    }
+
+    internal static bool CanDetachHooks(int owners, int released) => owners == 0 && released == 0;
+
+    private static void PruneReleasedEvents() {
+        EventInstance[] current = { Audio.CurrentMusicEventInstance, Audio.CurrentAmbienceEventInstance, Audio.currentAltMusicEvent };
+        var live = new HashSet<IntPtr>(current.Where(instance => instance != null && instance.isValid()).Select(instance => instance.getRaw()));
+        ReleasedEvents.RemoveWhere(handle => !live.Contains(handle));
     }
 
     private static void DetachHooks() {
+        // A released looping/fading current event may remain valid. Keep creation
+        // tracking alive until it retires, so both re-entry and address reuse are safe.
+        if (!CanDetachHooks(Owners.Count, ReleasedEvents.Count)) return;
         On.Celeste.Audio.Update -= AudioOnUpdate;
         On.Celeste.Audio.Unload -= AudioOnUnload;
         On.Celeste.Audio.CreateInstance -= AudioOnCreateInstance;
@@ -96,9 +109,10 @@ internal static class AkronAudioTransform {
 
     private static void AudioOnUpdate(On.Celeste.Audio.orig_Update orig) {
         orig();
+        PruneReleasedEvents();
         if (!initialized) {
             Reset();
-            if (Owners.Count == 0) DetachHooks();
+            if (CanDetachHooks(Owners.Count, ReleasedEvents.Count)) DetachHooks();
             return;
         }
         // This is the sole reconciliation boundary, including menu music. Engine
@@ -116,8 +130,8 @@ internal static class AkronAudioTransform {
             FMOD.Studio.System system = Owners[key].System;
             if (system == null || !system.isValid()) Owners.Remove(key);
         }
-        if (Owners.Count == 0) ReleasedEvents.Clear();
-        if (!initialized && Owners.Count == 0) DetachHooks();
+        PruneReleasedEvents();
+        if (!initialized && CanDetachHooks(Owners.Count, ReleasedEvents.Count)) DetachHooks();
     }
 
     private static EventInstance AudioOnCreateInstance(On.Celeste.Audio.orig_CreateInstance orig, string path, Microsoft.Xna.Framework.Vector2? position) {
@@ -233,6 +247,9 @@ internal static class AkronAudioTransform {
                 if (dcFilter != null && dcFilter.getRaw() != IntPtr.Zero) owner.Dsps.Add(dcFilter);
                 Require(filterCreated, "create pitch DC filter");
                 Require(dcFilter.setParameterFloat((int)DSP_HIGHPASS.CUTOFF, 10f), "set pitch DC cutoff");
+                // Downward spectral compression accumulates energy in fewer
+                // bins. Normalize its gain before returning to the event mix.
+                Require(dcFilter.setWetDryMix(1f, plan.CompensationGain, 0f), "normalize pitch compensation gain");
                 Require(core.lockDSP(), "lock audio graph");
                 try {
                     foreach (DSP dsp in owner.Dsps) {

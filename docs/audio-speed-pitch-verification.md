@@ -81,9 +81,30 @@ high-pass after the complete cascade. A final filter avoids transposing the cuto
 of intermediate filters into the audible band. FFTSIZE is a **float** parameter in
 this FMOD version; the integer setter returned ERR_UNSUPPORTED in pilot QA251.
 The candidate owns at most six pitch stages plus one filter per event (21 DSPs for
-three events). No gain reduction or post-filtering of captured audio is used to
-hide the failure. Fresh native capture, moderate-policy rechecks and restoration
-are required before merge; QA252 is the current upward-extreme attempt.
+three events). QA252's fresh 107-second recording is DC-clean and unclipped, with identifiable
+music supporting approximately 10× duration and 4× pitch. This does not promise
+artifact-free fidelity at extreme shifts.
+
+QA253 exposed a separate AC-overload problem at the downward extreme after DC was
+removed. The native final-filter output now applies `min(1, sqrt(P/S))` gain. This
+is a downward energy-compensation heuristic, not a universal limiter or equal-
+loudness guarantee. Pre-wet remains 1 and dry output remains 0. No offline gain
+reduction or post-filtering of captured evidence is used.
+
+QA256's finalized pre-codec 48 kHz stereo snapshot is 34.496 seconds, with mean
+approximately 0.0000042 full scale, RMS 0.04910, peak 0.47003 and zero clamped samples.
+This verifies the measured clipping/DC repair. Exact low-pitch identification,
+moderate-policy rechecks and live restoration remain pending at this revision.
+
+## Release lifecycle review
+
+Release tombstones include owned, yielded and current-slot handles. They are pruned
+against current valid slots on every audio update, including when both controls are
+off. Module unload retains cleanup and creation tracking while any owner or live
+current tombstone remains, then detaches only when both collections are empty.
+This prevents both reacquiring a still-valid released event and retaining stale
+addresses while creation tracking is offline. Pure guard tests and compiled-hook
+checks cover these invariants.
 
 ## Regression discovered live
 
@@ -94,4 +115,4 @@ keys; a native-wrapper regression covers duplicate wrappers of a high address.
 
 Ordinary tests exhaust all 1,600 UI multiplier pairs and check factor bounds,
 neutral policies and invalid settings. Native-reference Release/Debug each pass
-2,866 tests with zero skips at the current code revision.
+2,885 tests with zero skips in Release; the updated Debug run is pending.

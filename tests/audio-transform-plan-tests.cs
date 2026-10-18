@@ -42,8 +42,10 @@ public sealed class AudioTransformPlanTests {
         var type = assembly.MainModule.Types.Single(t => t.Name == nameof(AkronAudioTransform));
         var method = type.Methods.Single(m => m.Name == "DetachHooks");
         var instructions = method.Body.Instructions;
+        Assert.Contains(instructions, i => i.Operand is MethodReference guard && guard.Name == "CanDetachHooks");
         int field = instructions.ToList().FindIndex(i => i.OpCode == OpCodes.Ldsfld &&
-            i.Operand is FieldReference f && f.Name == "ReleasedEvents");
+            i.Operand is FieldReference f && f.Name == "ReleasedEvents" &&
+            i.Next?.Operand is MethodReference next && next.Name == "Clear");
         Assert.True(field >= 0);
         Assert.True(instructions[field + 1].Operand is MethodReference clear && clear.Name == "Clear");
         Assert.Contains(instructions.Take(field), i => i.Operand is MethodReference call && call.Name == "remove_CreateInstance");
@@ -58,6 +60,26 @@ public sealed class AudioTransformPlanTests {
             Assert.Contains(method.Body.Instructions, i => i.Operand is MethodReference call && call.Name == member);
         Assert.Contains(method.Body.Instructions, i => i.Operand is FieldReference field && field.Name == "YieldedOwners");
         Assert.Contains(method.Body.Instructions, i => i.Operand is FieldReference field && field.Name == "currentAltMusicEvent");
+    }
+
+    [Theory]
+    [InlineData(4f, .1f, .15811388f)]
+    [InlineData(2f, 1f, .70710678f)]
+    [InlineData(.5f, 1f, 1f)]
+    [InlineData(.1f, 4f, 1f)]
+    [InlineData(1f, 1f, 1f)]
+    public void DownwardCompensationNormalizesEnergyWithoutBoosting(float speed, float pitch, float expected) {
+        var plan = new AkronAudioTransform.Plan(speed, pitch);
+        Assert.InRange(Math.Abs(plan.CompensationGain - expected), 0, .000001f);
+    }
+
+    [Theory]
+    [InlineData(0, 0, true)]
+    [InlineData(0, 1, false)]
+    [InlineData(1, 0, false)]
+    [InlineData(1, 1, false)]
+    public void CreationTrackingStaysUntilOwnersAndLiveTombstonesRetire(int owners, int released, bool expected) {
+        Assert.Equal(expected, AkronAudioTransform.CanDetachHooks(owners, released));
     }
 
     [NativeEverestFact]
