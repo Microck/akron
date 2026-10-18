@@ -19,7 +19,7 @@ public static partial class AkronInternalRecorder {
     }
 
     public static AkronRecordedAudio SliceRecordedAudioForTesting(AkronRecordedAudio audio, DateTime startUtc, DateTime endUtc) {
-        return SliceRecordedAudio(audio, startUtc, endUtc);
+        return AkronReplayAudioSlice.Slice(audio, startUtc, endUtc);
     }
 
     public static string BuildCompletionConcatArgumentsForTesting(string concatList, string outputPath) {
@@ -203,73 +203,6 @@ public static partial class AkronInternalRecorder {
         } catch (Exception ex) {
             error = ex.Message;
             return false;
-        }
-    }
-
-    private static AkronRecordedAudio SliceRecordedAudio(AkronRecordedAudio audio, DateTime startUtc, DateTime endUtc) {
-        if (!audio.HasSamples || endUtc <= startUtc) {
-            return new AkronRecordedAudio(new List<AkronRecordedAudioTrack>());
-        }
-
-        List<AkronRecordedAudioTrack> slicedTracks = new List<AkronRecordedAudioTrack>();
-        foreach (AkronRecordedAudioTrack track in audio.Tracks.Where(track => track.HasSamples)) {
-            if (track.StartedUtc == DateTime.MinValue || !File.Exists(track.Path)) {
-                continue;
-            }
-
-            int frameBytes = Math.Max(1, track.Channels) * 2;
-            long bytesPerSecond = Math.Max(1, track.SampleRate) * frameBytes;
-            FileInfo sourceInfo = new FileInfo(track.Path);
-            long sourceLength = sourceInfo.Length;
-            if (sourceLength <= 0) {
-                continue;
-            }
-
-            double startSeconds = Math.Max(0d, (startUtc - track.StartedUtc).TotalSeconds);
-            double requestedSeconds = Math.Max(0d, (endUtc - startUtc).TotalSeconds);
-            long startByte = AlignToFrame((long) Math.Floor(startSeconds * bytesPerSecond), frameBytes);
-            long requestedBytes = AlignToFrame((long) Math.Ceiling(requestedSeconds * bytesPerSecond), frameBytes);
-            if (startByte >= sourceLength || requestedBytes <= 0) {
-                continue;
-            }
-
-            long bytesToCopy = Math.Min(requestedBytes, sourceLength - startByte);
-            bytesToCopy = AlignToFrame(bytesToCopy, frameBytes);
-            if (bytesToCopy <= 0) {
-                continue;
-            }
-
-            string slicedPath = Path.Combine(Path.GetTempPath(), "akron-audio-slice-" + Guid.NewGuid().ToString("N") + ".s16le");
-            try {
-                CopyFileRange(track.Path, slicedPath, startByte, bytesToCopy);
-                slicedTracks.Add(new AkronRecordedAudioTrack(slicedPath, track.DisplayName, track.SampleRate, track.Channels, bytesToCopy, startUtc, endUtc));
-            } catch (Exception ex) {
-                lastError = ex.Message;
-                TryDeleteFile(slicedPath);
-            }
-        }
-
-        return new AkronRecordedAudio(slicedTracks);
-    }
-
-    private static long AlignToFrame(long value, int frameBytes) {
-        return frameBytes <= 1 ? value : value - value % frameBytes;
-    }
-
-    private static void CopyFileRange(string sourcePath, string destinationPath, long startByte, long bytesToCopy) {
-        byte[] buffer = new byte[81920];
-        using FileStream source = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        using FileStream destination = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.Read);
-        source.Seek(startByte, SeekOrigin.Begin);
-        long remaining = bytesToCopy;
-        while (remaining > 0) {
-            int read = source.Read(buffer, 0, (int) Math.Min(buffer.Length, remaining));
-            if (read <= 0) {
-                break;
-            }
-
-            destination.Write(buffer, 0, read);
-            remaining -= read;
         }
     }
 
