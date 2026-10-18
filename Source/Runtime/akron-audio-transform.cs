@@ -24,7 +24,8 @@ internal static class AkronAudioTransform {
         internal float AppliedPitch;
         internal Plan Plan;
         internal readonly List<DSP> Dsps = new();
-        internal readonly HashSet<DSP> Attached = new();
+        internal readonly HashSet<IntPtr> Attached = new();
+        internal void TrackAttached(DSP dsp) => Attached.Add(dsp.getRaw());
         internal bool Retiring;
         internal bool PitchRestored;
         internal bool PauseOwned;
@@ -221,7 +222,7 @@ internal static class AkronAudioTransform {
                 try {
                     foreach (DSP dsp in owner.Dsps) {
                         Require(group.addDSP(CHANNELCONTROL_DSP_INDEX.HEAD, dsp), "attach pitch compensation");
-                        owner.Attached.Add(dsp);
+                        owner.TrackAttached(dsp);
                     }
                 } finally {
                     Require(core.unlockDSP(), "unlock audio graph");
@@ -287,13 +288,13 @@ internal static class AkronAudioTransform {
                         // If a detach fails, silence this effect rather than leave
                         // compensation active after restoring playback speed.
                         dsp.setBypass(true);
-                        if (owner.Attached.Contains(dsp)) {
+                        if (owner.Attached.Contains(dsp.getRaw())) {
                             RESULT membership = owner.Group.getDSPIndex(dsp, out _);
                             if (membership == RESULT.OK) {
                                 RESULT detached = owner.Group.removeDSP(dsp);
                                 if (detached != RESULT.OK && detached != RESULT.ERR_INVALID_HANDLE) continue;
                             } else if (membership != RESULT.ERR_INVALID_HANDLE && membership != RESULT.ERR_DSP_NOTFOUND) continue;
-                            owner.Attached.Remove(dsp);
+                            owner.Attached.Remove(dsp.getRaw());
                         }
                         RESULT released = dsp.release();
                         if (released == RESULT.OK || released == RESULT.ERR_INVALID_HANDLE) owner.Dsps.Remove(dsp);
