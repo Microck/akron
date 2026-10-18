@@ -320,6 +320,7 @@ public partial class AkronModule : EverestModule {
     }
 
     public override void Unload() {
+        AkronInternalRecorder.CancelReplayExport();
         ResetAirJumpQuota((Engine.Scene as Level)?.Tracker.GetEntity<Player>());
         airJumpUpdateContext = default;
         if (!EnabledThisSession) {
@@ -457,6 +458,7 @@ public partial class AkronModule : EverestModule {
     }
 
     private static void EngineOnExiting(object sender, EventArgs eventArgs) {
+        AkronInternalRecorder.CancelReplayExport();
         AkronTelemetry.Stop();
         AkronStartPosPersistence.Shutdown();
         AkronActions.ClearPendingStartPosState();

@@ -365,16 +365,15 @@ public static partial class AkronInternalRecorder {
             Stop();
         }
 
-        DateTime now = DateTime.UtcNow;
+        if (System.Threading.Volatile.Read(ref replayExportBusy) != 0) return;
+        DateTime now = ReplayNowUtc();
         List<PendingClipSave> due;
         lock (Sync) {
             due = PendingClipSaves.Where(save => save.SaveAtUtc <= now).ToList();
             PendingClipSaves.RemoveAll(save => save.SaveAtUtc <= now);
         }
 
-        foreach (PendingClipSave save in due) {
-            SaveReplayWindow(scene, save.StartUtc, save.EndUtc, save.Kind);
-        }
+        if (due.Count > 0) SaveReplayWindows(scene, due);
     }
 
     public static void CaptureFrame(Level level) {
@@ -410,6 +409,7 @@ public static partial class AkronInternalRecorder {
         Stream activeReplayInput;
         RecorderSpec recordingSpec;
         RecorderSpec replayFrameSpec;
+        AkronReplayTimeline activeReplayTimeline;
         bool manualDue;
         bool replayDue;
         long missedManualFrames = 0;
@@ -421,6 +421,7 @@ public static partial class AkronInternalRecorder {
             activeReplayProcess = replayProcess;
             activeReplayInput = replayInput;
             replayFrameSpec = replaySpec;
+            activeReplayTimeline = replayTimeline;
             if (captureClock == null) return;
             double now = captureClock.Elapsed.TotalSeconds;
             manualDue = recordingProcess != null && recordingInput != null && manualCadence != null &&
@@ -456,6 +457,8 @@ public static partial class AkronInternalRecorder {
 
             Color[] source = EnsureCaptureSourceBuffer(sourceWidth * sourceHeight);
             graphicsDevice.GetBackBufferData(viewport.Bounds, source, 0, source.Length);
+            long replaySampleTick = Stopwatch.GetTimestamp();
+            DateTime replaySampleUtc = DateTime.UtcNow;
             // Each encoder keeps the byte geometry and cadence used in its launch arguments.
             // BuildFrameBytes reuses a buffer: finish each write before rebuilding for another sink.
             if (manualDue) {
@@ -466,8 +469,7 @@ public static partial class AkronInternalRecorder {
             if (replayDue) {
                 try {
                     byte[] replayFrame = BuildFrameBytes(source, sourceWidth, sourceHeight, replayFrameSpec.Width, replayFrameSpec.Height);
-                    activeReplayInput.Write(replayFrame, 0, replayFrame.Length);
-                    replayCapturedFrames++;
+                    replayCapturedFrames += activeReplayTimeline.WriteSample(activeReplayInput, replayFrame, replaySampleTick, replaySampleUtc);
                     PruneReplaySegments(settings);
                 } catch (Exception replayError) {
                     // A replay-only failure must not reject or stop a healthy manual encode.

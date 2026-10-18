@@ -18,6 +18,7 @@ public static partial class AkronInternalRecorder {
     private static Stream replayInput;
     private static RecorderSpec replaySpec;
     private static AkronCaptureCadence replayCadence;
+    private static AkronReplayTimeline replayTimeline;
     private static long replayCapturedFrames;
     private static long replayDroppedFrames;
     private static bool replayWarningShown;
@@ -103,7 +104,8 @@ public static partial class AkronInternalRecorder {
             return;
         }
 
-        SaveReplayWindow(scene, DateTime.UtcNow.AddSeconds(-seconds), DateTime.UtcNow, "replay-buffer");
+        DateTime end = ReplayNowUtc();
+        SaveReplayWindow(scene, end.AddSeconds(-seconds), end, "replay-buffer");
     }
 
     public static void ArmCompletionCapture(Scene scene) {
@@ -150,11 +152,12 @@ public static partial class AkronInternalRecorder {
             return;
         }
 
-        SaveReplayWindow(scene, DateTime.UtcNow.AddSeconds(-seconds), DateTime.UtcNow, "completion-flag");
+        DateTime end = ReplayNowUtc();
+        SaveReplayWindow(scene, end.AddSeconds(-seconds), end, "completion-flag");
     }
 
     public static void NotifyLevelBegin(Level level) {
-        DateTime now = DateTime.UtcNow;
+        DateTime now = ReplayNowUtc();
         lock (Sync) {
             roomEntryUtc = now;
             respawnUtc = now;
@@ -164,7 +167,7 @@ public static partial class AkronInternalRecorder {
     }
 
     public static void NotifyPlayerRespawn(Level level) {
-        DateTime now = DateTime.UtcNow;
+        DateTime now = ReplayNowUtc();
         lock (Sync) {
             respawnUtc = now;
             if (level?.Session != null) {
@@ -187,12 +190,12 @@ public static partial class AkronInternalRecorder {
         }
 
         if (start != DateTime.MinValue && string.Equals(room, level.Session.Level, StringComparison.Ordinal)) {
-            QueueClipSave("room-clear", start, DateTime.UtcNow, AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave("room-clear", start, ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
         }
     }
 
     public static void NotifyRoomEntered(Level level) {
-        DateTime now = DateTime.UtcNow;
+        DateTime now = ReplayNowUtc();
         lock (Sync) {
             roomEntryUtc = now;
             roomEntryName = level?.Session?.Level ?? string.Empty;
@@ -205,7 +208,7 @@ public static partial class AkronInternalRecorder {
         }
 
         if (AkronModule.Settings.RecordingTriggerCheckpointClear) {
-            QueueClipSave("checkpoint-clear", DateTime.UtcNow.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), DateTime.UtcNow, AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave("checkpoint-clear", ReplayNowUtc().AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
         }
 
         if (AkronModule.Settings.RecordingTriggerRoomEntryToClear) {
@@ -215,7 +218,7 @@ public static partial class AkronInternalRecorder {
             }
 
             if (start != DateTime.MinValue) {
-                QueueClipSave("area-clear", start, DateTime.UtcNow, AkronModule.Settings.RecordingPostRollSeconds);
+                QueueClipSave("area-clear", start, ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
             }
         }
 
@@ -232,7 +235,7 @@ public static partial class AkronInternalRecorder {
             return;
         }
 
-        DateTime now = DateTime.UtcNow;
+        DateTime now = ReplayNowUtc();
         if (AkronModule.Settings.RecordingTriggerLastDeath) {
             QueueClipSave("last-death", now.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), now, AkronModule.Settings.RecordingPostRollSeconds);
         }
@@ -260,7 +263,7 @@ public static partial class AkronInternalRecorder {
 
         if (AkronModule.Settings.RecordingTriggerBerryCollect ||
             golden && AkronModule.Settings.RecordingTriggerGoldenDeath) {
-            QueueClipSave(golden ? "golden-berry" : "berry-collect", DateTime.UtcNow.AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), DateTime.UtcNow, AkronModule.Settings.RecordingPostRollSeconds);
+            QueueClipSave(golden ? "golden-berry" : "berry-collect", ReplayNowUtc().AddSeconds(-AkronModule.Settings.RecordingPreRollSeconds), ReplayNowUtc(), AkronModule.Settings.RecordingPostRollSeconds);
         }
     }
 
@@ -285,97 +288,7 @@ public static partial class AkronInternalRecorder {
     }
 
     private static void SaveReplayWindow(Scene scene, DateTime startUtc, DateTime endUtc, string kind) {
-        if (!AkronPolicy.CanUse(AkronFeatureKind.InternalRecorder).Allowed) {
-            return;
-        }
-
-        string directory = replayDirectory;
-        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory)) {
-            Engine.Scene?.Add(new AkronToast("Replay buffer has no captured segments yet."));
-            return;
-        }
-
-        AkronRecordedAudio replayAudio = StopReplayBuffer(true);
-        List<string> segments = SelectReplaySegments(directory, startUtc, endUtc).ToList();
-        if (segments.Count == 0) {
-            DeleteRecordedAudioFiles(replayAudio);
-            Engine.Scene?.Add(new AkronToast("Replay buffer has no segments for " + kind + "."));
-            return;
-        }
-
-        AkronModuleSettings settings = AkronModule.Settings;
-        string outputPath = BuildOutputPath(scene, settings.RecordingContainerFormat, kind);
-        string outputDirectory = Path.GetDirectoryName(outputPath);
-        if (!string.IsNullOrWhiteSpace(outputDirectory)) {
-            Directory.CreateDirectory(outputDirectory);
-        }
-
-        string concatList = Path.Combine(directory, "concat-" + Guid.NewGuid().ToString("N") + ".txt");
-        try {
-            File.WriteAllLines(concatList, segments.Select(path => "file '" + path.Replace("'", "'\\''") + "'"));
-            ProcessStartInfo startInfo = new ProcessStartInfo {
-                FileName = ResolveFfmpegPath(),
-                Arguments = JoinArguments(new[] {
-                    "-hide_banner",
-                    "-loglevel", "warning",
-                    "-f", "concat",
-                    "-safe", "0",
-                    "-i", concatList,
-                    "-c", "copy",
-                    "-y", outputPath
-                }),
-                WorkingDirectory = ResolveFfmpegWorkingDirectory(outputDirectory),
-                UseShellExecute = false,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-            ConfigureFfmpegStartInfo(startInfo);
-
-            using Process process = Process.Start(startInfo);
-            if (process == null) {
-                lastError = "FFmpeg did not start.";
-                Engine.Scene?.Add(new AkronToast(lastError));
-                return;
-            }
-
-            string stderr = process.StandardError.ReadToEnd();
-            if (!process.WaitForExit(10000) || process.ExitCode != 0) {
-                lastError = string.IsNullOrWhiteSpace(stderr) ? "FFmpeg clip save failed." : stderr.Trim();
-                Engine.Scene?.Add(new AkronToast("Clip save failed: " + lastError));
-                return;
-            }
-
-            string finalPath = outputPath;
-            string remuxError = string.Empty;
-            if (settings.RecordingAutoRemux &&
-                string.Equals(Path.GetExtension(outputPath), ".mkv", StringComparison.OrdinalIgnoreCase) &&
-                TryRemuxToMp4(outputPath, out string remuxedPath, out remuxError)) {
-                finalPath = remuxedPath;
-            } else if (!string.IsNullOrWhiteSpace(remuxError)) {
-                lastError = remuxError;
-                Engine.Scene?.Add(new AkronToast("Auto-remux failed: " + remuxError));
-            }
-
-            string audioMuxError = string.Empty;
-            AkronRecordedAudio clippedAudio = SliceRecordedAudio(replayAudio, startUtc, endUtc);
-            if (clippedAudio.HasSamples &&
-                TryMuxAudioIntoVideo(finalPath, clippedAudio, out string audioMuxedPath, out audioMuxError)) {
-                finalPath = audioMuxedPath;
-            } else if (!string.IsNullOrWhiteSpace(audioMuxError)) {
-                lastError = audioMuxError;
-                Engine.Scene?.Add(new AkronToast("Clip audio mux failed: " + audioMuxError));
-            }
-
-            WriteClipSidecar(finalPath, kind, settings.RecordingContainerFormat, startUtc, endUtc, scene);
-            lastClipPath = finalPath;
-            Engine.Scene?.Add(new AkronToast("Clip saved: " + Path.GetFileName(finalPath)));
-        } catch (Exception ex) {
-            lastError = ex.Message;
-            Engine.Scene?.Add(new AkronToast("Clip save failed: " + ex.Message));
-        } finally {
-            DeleteRecordedAudioFiles(replayAudio);
-            TryDeleteFile(concatList);
-        }
+        SaveReplayWindows(scene, new[] { new PendingClipSave(kind, startUtc, endUtc, endUtc) });
     }
 
     private static IEnumerable<string> SelectReplaySegments(string directory, DateTime startUtc, DateTime endUtc) {
@@ -456,10 +369,13 @@ public static partial class AkronInternalRecorder {
                 throw new IOException("FFmpeg replay buffer did not start.");
             }
 
-            CaptureFfmpegStderr(process);
+            var diagnostics = new AkronEncoderDiagnostics();
+            process.ErrorDataReceived += (_, e) => diagnostics.Receive(e.Data);
+            process.BeginErrorReadLine();
 
             lock (Sync) {
                 replayProcess = process;
+                replayDiagnostics = diagnostics;
                 replayInput = process.StandardInput.BaseStream;
                 replayDirectory = directory;
                 replaySpec = spec;
@@ -467,6 +383,7 @@ public static partial class AkronInternalRecorder {
                 EnsureCaptureClock();
                 replayCadence = new AkronCaptureCadence(spec.Framerate, captureClock.Elapsed.TotalSeconds);
                 replayCapturedFrames = 0;
+                replayTimeline = new AkronReplayTimeline(spec.Framerate, Stopwatch.Frequency);
                 replayDroppedFrames = 0;
                 replayWarningShown = false;
                 lastError = string.Empty;
@@ -583,7 +500,8 @@ public static partial class AkronInternalRecorder {
         }
 
         foreach (string directory in Directory.EnumerateDirectories(folder, ".replay-*")) {
-            if (string.Equals(directory, replayDirectory, StringComparison.OrdinalIgnoreCase)) {
+            if (string.Equals(directory, replayDirectory, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(directory, replayExportDirectory, StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
 

@@ -47,6 +47,10 @@ public static partial class AkronInternalRecorder {
         AddEncoderPerformanceArguments(args, settings, spec);
         AddRateControlArguments(args, settings);
         AddKeyframeAndFilterArguments(args, settings, spec);
+        // Preserve the capture frame grid even when an encoder uses B-frames.
+        // Muxer timestamp shifting otherwise offsets CSV starts from frame indices.
+        args.Add("-avoid_negative_ts");
+        args.Add("disabled");
         args.Add("-f");
         args.Add("segment");
         args.Add("-segment_time");
@@ -55,6 +59,12 @@ public static partial class AkronInternalRecorder {
         args.Add("1");
         args.Add("-segment_format");
         args.Add("matroska");
+        args.Add("-segment_list");
+        args.Add(Path.Combine(Path.GetDirectoryName(segmentPattern) ?? string.Empty, "segments.csv"));
+        args.Add("-segment_list_type");
+        args.Add("csv");
+        args.Add("-segment_list_size");
+        args.Add("1024");
         args.Add("-y");
         args.Add(segmentPattern);
         return JoinArguments(args);
@@ -329,7 +339,7 @@ public static partial class AkronInternalRecorder {
         }
     }
 
-    private static string BuildAudioMuxArguments(string videoPath, List<AkronRecordedAudioTrack> tracks, string outputPath) {
+    private static string BuildAudioMuxArguments(string videoPath, List<AkronRecordedAudioTrack> tracks, string outputPath, double? duration = null) {
         string extension = Path.GetExtension(outputPath);
         string audioCodec = string.Equals(extension, ".webm", StringComparison.OrdinalIgnoreCase) ? "libopus" : "aac";
         List<string> args = new List<string> {
@@ -371,7 +381,14 @@ public static partial class AkronInternalRecorder {
             args.Add("192k");
         }
 
-        args.Add("-shortest");
+        if (duration.HasValue) {
+            args.Add("-avoid_negative_ts");
+            args.Add("disabled");
+            args.Add("-t");
+            args.Add(duration.Value.ToString("0.#########", CultureInfo.InvariantCulture));
+        } else {
+            args.Add("-shortest");
+        }
         args.Add("-y");
         args.Add(outputPath);
         return JoinArguments(args);
