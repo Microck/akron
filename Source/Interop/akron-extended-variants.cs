@@ -830,7 +830,8 @@ public static class AkronExtendedVariants {
 
         void Allow(int x, int y) {
             if (x != 1 || y != 1) {
-                matrix[x][y] = true;
+                // Extended Variants indexes directions by row (Y), then column (X).
+                matrix[y][x] = true;
             }
         }
 
