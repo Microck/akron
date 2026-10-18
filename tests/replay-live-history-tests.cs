@@ -59,7 +59,10 @@ public sealed class ReplayLiveHistoryTests
             writer.Write(Enumerable.Range(8, 8).Select(x => (byte)x).ToArray()); writer.Flush();
             lease.Tracks.Add(new(new FileStream(first, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete), "mix", 2, 2, 8, origin, 0));
             lease.Tracks.Add(new(new FileStream(second, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete), "mix", 2, 2, 8, origin, 2));
+            Assert.True(lease.HasCapturedThrough(origin.AddSeconds(2)));
+            Assert.False(lease.HasCapturedThrough(origin.AddSeconds(2.5)));
             writer.Write(new byte[] { 99, 99, 99, 99 }); writer.Flush();
+            Assert.False(lease.HasCapturedThrough(origin.AddSeconds(2.5)));
             // Source path deletion while leased is compatible with Windows handle sharing.
             File.Delete(first);
             result = lease.CopyWindow(origin.AddSeconds(-0.5), origin.AddSeconds(2.5));

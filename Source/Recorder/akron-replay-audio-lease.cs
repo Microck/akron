@@ -11,6 +11,15 @@ internal sealed class AkronReplayAudioLease : IDisposable
     internal sealed record Track(FileStream Input, string Name, int Rate, int Channels, long Bytes, DateTime Origin, long StartFrame);
     internal readonly List<Track> Tracks = new();
 
+    internal bool HasCapturedThrough(DateTime end)
+    {
+        // Video encoding can get ahead of the FMOD callback clock under load.
+        // Do not turn merely-late post-roll samples into permanent silence.
+        return Tracks.GroupBy(t => (t.Name, t.Rate, t.Channels, t.Origin)).All(group =>
+            group.Key.Origin.AddSeconds(group.Max(t => t.StartFrame + t.Bytes / (t.Channels * 2)) /
+                (double)group.Key.Rate) >= end);
+    }
+
     internal AkronRecordedAudio CopyWindow(DateTime start, DateTime end)
     {
         var outputs = new List<AkronRecordedAudioTrack>();

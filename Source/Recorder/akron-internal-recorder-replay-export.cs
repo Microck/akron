@@ -97,13 +97,20 @@ public static partial class AkronInternalRecorder
                 DateTime finalizedEnd = replayTimeline.OriginUtc.AddSeconds(segments[^1].End);
                 ready = requests.Where(r => IsReplayWindowFinalized(r.EndUtc, finalizedEnd)).Take(8).ToList();
                 if (ready.Count == 0) return DeferReplayFinalization(scene);
-                replayFinalizationWaitStarted = 0;
                 DateTime first = ready.Min(r => r.StartUtc);
                 DateTime last = ready.Max(r => r.EndUtc);
                 var selected = segments.Where(s => replayTimeline.OriginUtc.AddSeconds(s.End) > first &&
                     replayTimeline.OriginUtc.AddSeconds(s.Start) < last).ToList();
-                snapshot = new ReplayExportSnapshot(replaySpec, AkronInternalAudioRecorder.LeaseReplayBuffer(first, last),
-                    replayDirectory, replayProcess.StartInfo.FileName, replayTimeline.OriginUtc,
+                string ffmpeg = replayProcess.StartInfo.FileName;
+                var audio = AkronInternalAudioRecorder.LeaseReplayBuffer(first, last);
+                ready = ready.Where(r => audio.HasCapturedThrough(r.EndUtc)).ToList();
+                if (ready.Count == 0) {
+                    audio.Dispose();
+                    return DeferReplayFinalization(scene);
+                }
+                replayFinalizationWaitStarted = 0;
+                snapshot = new ReplayExportSnapshot(replaySpec, audio,
+                    replayDirectory, ffmpeg, replayTimeline.OriginUtc,
                     replayTimeline.FramesWritten, selected, settings, Volatile.Read(ref replayExportGeneration));
                 foreach (var segment in selected) PinnedReplaySegments.Add(segment.Path);
                 replayExportDirectory = replayDirectory;
