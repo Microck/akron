@@ -157,6 +157,7 @@ public partial class AkronModule : EverestModule {
         }
         AkronGeneratedOshiroTime.Load();
         AkronAudioTransform.Initialize();
+        AkronEarAid.Load();
 
 
         ConfigureErrorReporting();
@@ -342,6 +343,7 @@ public partial class AkronModule : EverestModule {
         }
         AkronGameplayBufferState.ResetLevelPresentation();
         AkronAudioSplitter.Unload();
+        AkronEarAid.Unload();
         AkronAudioTransform.Unload();
         AkronStartPosPersistence.Shutdown();
         AkronActions.ClearPendingStartPosState();

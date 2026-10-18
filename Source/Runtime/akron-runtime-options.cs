@@ -37,7 +37,6 @@ public static class AkronRuntimeOptions {
     }
 
     public static void Apply(Level level, Player player) {
-        AkronEarAid.ReconcileVolumeOverrides();
         ApplyHudVisibility(level);
         ApplyPauseMenuVisibility(level);
         ApplyScreenshake(level);
