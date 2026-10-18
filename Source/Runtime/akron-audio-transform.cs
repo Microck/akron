@@ -91,6 +91,7 @@ internal static class AkronAudioTransform {
         On.Celeste.Audio.CreateInstance -= AudioOnCreateInstance;
         On.FMOD.Studio.EventInstance.release -= EventOnRelease;
         hooksInstalled = false;
+        ReleasedEvents.Clear(); // Creation tracking is offline; old addresses cannot remain tombstoned.
     }
 
     private static void AudioOnUpdate(On.Celeste.Audio.orig_Update orig) {
@@ -126,7 +127,12 @@ internal static class AkronAudioTransform {
     }
 
     private static RESULT EventOnRelease(On.FMOD.Studio.EventInstance.orig_release orig, EventInstance self) {
-        bool tracked = self != null && Owners.ContainsKey(self.getRaw());
+        IntPtr handle = self?.getRaw() ?? IntPtr.Zero;
+        bool current = handle != IntPtr.Zero &&
+            (Audio.CurrentMusicEventInstance?.getRaw() == handle ||
+             Audio.CurrentAmbienceEventInstance?.getRaw() == handle ||
+             Audio.currentAltMusicEvent?.getRaw() == handle);
+        bool tracked = ShouldRememberRelease(Owners.ContainsKey(handle), YieldedOwners.ContainsKey(handle), current);
         if (self != null) {
             Remove(self.getRaw());
             YieldedOwners.Remove(self.getRaw());
@@ -135,6 +141,8 @@ internal static class AkronAudioTransform {
         if (tracked && result == RESULT.OK) ReleasedEvents.Add(self.getRaw());
         return result;
     }
+
+    internal static bool ShouldRememberRelease(bool owned, bool yielded, bool current) => owned || yielded || current;
 
     internal static float OriginalPitchForCapture(EventInstance instance, float observed) {
         return instance != null && Owners.TryGetValue(instance.getRaw(), out Owner owner) &&
@@ -217,7 +225,14 @@ internal static class AkronAudioTransform {
                     if (dsp != null && dsp.getRaw() != IntPtr.Zero) owner.Dsps.Add(dsp);
                     Require(created, "create pitch compensation");
                     Require(dsp.setParameterFloat((int)DSP_PITCHSHIFT.PITCH, factor), "set pitch compensation");
+                    Require(dsp.setParameterFloat((int)DSP_PITCHSHIFT.FFTSIZE, 4096f), "set pitch analysis window");
                 }
+                // FMOD pitch shifters can accumulate DC. A final high-pass
+                // removes it without transposing intermediate filter cutoffs.
+                RESULT filterCreated = core.createDSPByType(DSP_TYPE.HIGHPASS, out DSP dcFilter);
+                if (dcFilter != null && dcFilter.getRaw() != IntPtr.Zero) owner.Dsps.Add(dcFilter);
+                Require(filterCreated, "create pitch DC filter");
+                Require(dcFilter.setParameterFloat((int)DSP_HIGHPASS.CUTOFF, 10f), "set pitch DC cutoff");
                 Require(core.lockDSP(), "lock audio graph");
                 try {
                     foreach (DSP dsp in owner.Dsps) {

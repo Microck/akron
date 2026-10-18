@@ -2,6 +2,8 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Collections.Generic;
+using Mono.Cecil;
+using Mono.Cecil.Cil;
 using Xunit;
 
 namespace Celeste.Mod.Akron.Tests;
@@ -19,6 +21,43 @@ public sealed class AudioTransformPlanTests {
                 Assert.InRange(Math.Abs(plan.Speed * compensation - plan.TargetPitch), 0, .00001);
             }
         }
+    }
+
+    [Theory]
+    [InlineData(false, false, false, false)]
+    [InlineData(false, false, true, true)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, true, true, true)]
+    [InlineData(true, false, false, true)]
+    [InlineData(true, false, true, true)]
+    [InlineData(true, true, false, true)]
+    [InlineData(true, true, true, true)]
+    public void ReleasedCurrentAndYieldedEventsRemainExcluded(bool owned, bool yielded, bool current, bool expected) {
+        Assert.Equal(expected, AkronAudioTransform.ShouldRememberRelease(owned, yielded, current));
+    }
+
+    [Fact]
+    public void DetachingCreationTrackingClearsReleasedHandleHistory() {
+        using var assembly = AssemblyDefinition.ReadAssembly(typeof(AkronAudioTransform).Assembly.Location);
+        var type = assembly.MainModule.Types.Single(t => t.Name == nameof(AkronAudioTransform));
+        var method = type.Methods.Single(m => m.Name == "DetachHooks");
+        var instructions = method.Body.Instructions;
+        int field = instructions.ToList().FindIndex(i => i.OpCode == OpCodes.Ldsfld &&
+            i.Operand is FieldReference f && f.Name == "ReleasedEvents");
+        Assert.True(field >= 0);
+        Assert.True(instructions[field + 1].Operand is MethodReference clear && clear.Name == "Clear");
+        Assert.Contains(instructions.Take(field), i => i.Operand is MethodReference call && call.Name == "remove_CreateInstance");
+    }
+
+    [Fact]
+    public void ReleaseHookUsesCurrentAndYieldedStateBeforeCallingNativeRelease() {
+        using var assembly = AssemblyDefinition.ReadAssembly(typeof(AkronAudioTransform).Assembly.Location);
+        var type = assembly.MainModule.Types.Single(t => t.Name == nameof(AkronAudioTransform));
+        var method = type.Methods.Single(m => m.Name == "EventOnRelease");
+        foreach (string member in new[] { "ShouldRememberRelease", "get_CurrentMusicEventInstance", "get_CurrentAmbienceEventInstance" })
+            Assert.Contains(method.Body.Instructions, i => i.Operand is MethodReference call && call.Name == member);
+        Assert.Contains(method.Body.Instructions, i => i.Operand is FieldReference field && field.Name == "YieldedOwners");
+        Assert.Contains(method.Body.Instructions, i => i.Operand is FieldReference field && field.Name == "currentAltMusicEvent");
     }
 
     [NativeEverestFact]
