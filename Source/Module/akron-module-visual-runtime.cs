@@ -14,6 +14,7 @@ public partial class AkronModule {
     private static Camera cursorZoomRenderCamera;
     private static Level transitionSpeedLevel;
     private static float previousTransitionDuration;
+    private static float lastTransitionDurationWritten;
 
     // Cursor Tools and Menu Mouse share the Left Alt default. While Menu Mouse drives a
     // menu it owns the cursor, so the hold must not also pan, zoom or freeze the level
@@ -543,18 +544,31 @@ public partial class AkronModule {
             return;
         }
 
+        SetTransitionSpeedOverride(level, TransitionDurationForSpeedMultiplier(multiplier));
+    }
+
+    internal static void SetTransitionSpeedOverride(Level level, float duration) {
         if (transitionSpeedLevel != level) {
             RestoreTransitionSpeed();
             transitionSpeedLevel = level;
             previousTransitionDuration = level.NextTransitionDuration;
+        } else if (level.NextTransitionDuration != lastTransitionDurationWritten) {
+            // A transition or another feature has replaced our pending value.
+            // Preserve that newer baseline if we apply the override again.
+            previousTransitionDuration = level.NextTransitionDuration;
         }
 
-        level.NextTransitionDuration = TransitionDurationForSpeedMultiplier(multiplier);
+        level.NextTransitionDuration = duration;
+        lastTransitionDurationWritten = duration;
     }
 
     internal static void RestoreTransitionSpeed() {
         if (transitionSpeedLevel != null) {
-            transitionSpeedLevel.NextTransitionDuration = previousTransitionDuration;
+            // Exact equality identifies our own write; an epsilon could erase a
+            // distinct duration supplied by a later owner.
+            if (transitionSpeedLevel.NextTransitionDuration == lastTransitionDurationWritten) {
+                transitionSpeedLevel.NextTransitionDuration = previousTransitionDuration;
+            }
             transitionSpeedLevel = null;
         }
     }
