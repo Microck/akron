@@ -1,27 +1,5 @@
 # Changelog
 
-- Remove retired Stamina/Speed/Dash text widgets while preserving the modern bars/numbers and importing older setup packs safely.
-
-- Keep literal custom HUD labels visible outside levels even when their text contains words such as Room or speed.
-
-- Keep the selected Control Display label style when changing layouts through the console command.
-
-- Preserve keyboard-only and unbound Control Display labels when applying game-action label presets.
-
-- Count Escape in the inputs-per-second menu/pause channel, without double-counting overlapping pause sources.
-
-- Display the assigned input, rather than the feature value, in row binding context menus.
-
-- Honor VP9 Lossless rate control for manual recordings, replay capture and replay exports.
-
-- Trim replay clips to their requested timed window instead of saving whole extra segments; preserve replay timing through missed samples and export clips in the background.
-
-- Keep offscreen overlay sections reachable with section navigation at smaller window sizes and larger UI scales.
-
-- Handle invalid recorder output directories without escaping into the overlay; failed replay starts disarm cleanly.
-
-- Fix arrow-key free-camera movement while Place StartPos freezes gameplay.
-
 All notable user-facing changes to Akron should be recorded here.
 
 This project uses version tags that match the mod version in `everest.yaml`, while release headings can use readable public names such as `Akron Beta 42`. Keep release notes focused on player-visible behavior, public docs, packaging, `.akr` file contracts, and migration notes when they matter.
@@ -36,115 +14,128 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ### Changed
 
-- Hide the retained native HUD image, including the chapter timer, when Hide Vanilla HUD is enabled.
-- Let native respawn finish after Retry while Noclip remains enabled.
-
+- **Capture older StartPos slots again, then re-export their packs.** Snapshots move to `akron-reconstruction-v12` so saved Akron timescale ownership is distinct from the map's own clock; loading a slot cannot restore a map-forbidden Akron timescale. The `akron-setup-v10` container, positions, spawn settings, and keybinds are unchanged.
 - Trim Akron's entry in Celeste's mod options to an **Enabled** switch and the menu bind. Streamer Mode, Safe Mode, and Send diagnostics stay in the overlay, and action binds are set by right-clicking overlay rows.
 - Turning **Enabled** off removes Akron's overlay, HUD, hotkeys, interop, error reports, and debug console commands on the next launch. Only its mod options entry stays, so it can be turned back on there.
 - Add a **Hold** bind row to the Fast Lookout popup, set with its **Bind** button. The hold starts unbound, and Everest's keyboard and controller config used to be the only place to set it. Keyboard keys in this hold now act as one chord, like Akron's other binds: a hold saved as two separate keys needs both held, so bind it again if you meant either key. Controller and mouse buttons still work on their own.
-- Move StartPos snapshots to `akron-reconstruction-v12` to distinguish Akron's saved timescale from the map's own clock. Loading a StartPos cannot restore an Akron timescale that the map forbids. Capture older slots again, then re-export their StartPos packs; positions, spawn settings, and keybinds are unchanged.
+
+### Removed
+
+- Remove the retired Stamina Widget, Speed Widget, and Dash Widget text rows. Keep Stamina Bar, Speed Number, Dash Bar, and Dash Number, and migrate the retired fields in compatible existing v10 HUD/Whole setup packs without enabling replacement features.
 
 ### Fixed
 
-- Keep each recording encoder’s capture resolution and frame cadence fixed for its lifetime, independently of replay settings and later edits.
+#### Overlay and controls
 
-- Match Extended Variants dash-direction preset axes to their labels, including Horizontal, Vertical, No Up, and No Down.
-
-- Show Noclip speed feedback only when the effective value changes, preventing repeated clamp toasts while editing.
-
-- Preserve native ground and other handled jumps without spending the finite Air Jumps allowance.
-
-- Report failed internal recordings honestly, retain the previous successful clip, and clean temporary audio instead of publishing failed encoder output as saved.
-
-- Resolve relative recorder output folders to absolute paths before starting FFmpeg, so recordings are written to the selected folder.
-
-- Consume StartPos placement right-click cancellation before restoring the overlay, preventing the underlying row binding menu from opening.
-
+- Display the assigned input, rather than the feature value, in row binding context menus.
+- Keep offscreen overlay sections reachable with section navigation at smaller window sizes and larger UI scales, preserving local scroll positions and Search focus.
 - Fix repeated configured-value notifications while editing disabled external string variants.
-
 - Apply cursor-hold popup rebinding, Clear and Default immediately without replacing registered input bindings.
-
-- Make Cursor Zoom follow the pointer on maps using active Extended Camera Dynamics hooks, without accumulating camera offsets between frames.
-
 - Close Akron’s menu after a confirmed CelesteTAS handoff so its input blocking or pause setting cannot suppress playback. Keep the menu open and report rejected files or disabled/unavailable CelesteTAS.
-
-- Route Extended Variant Mode vanilla assists, including No Grabbing and Air Dashes, through the provider’s vanilla setter so menu changes affect gameplay and report the canonical assist state.
-
-- Disarm an obsolete Set Inventory death-restoration snapshot after a successful Whole setup import with Restore on Death off. Failed and unrelated scoped imports preserve existing restoration.
-
-- Clarify that Set Inventory applies persistent Air Jumps settings: chapter restart does not reset them, while optional death restoration still restores the pre-click settings.
-
-- Release Cursor Zoom below100% cleanly when Extended Camera Dynamics applies the view, restoring its map camera or the ordinary viewport when toggled off. Keep camera ownership when switching to native zoom so an active ECD map cannot interpolate over the requested scale.
-
-- Keep an enabled Extended Variant active while typing a numeric value through its default. Editing a variant that starts off still only configures it.
-
-- Order native room-unload entities with players first during Reload Room so camera-trigger leave callbacks retain a valid scene, without removing players when another hook cancels reload. Completed rooms ignore the action.
-
-- Apply Fast Lookout hold changes during an active lookout interaction instead of caching the entry-time hold state.
-
-- Refresh existing dream-block appearance immediately when Dream State is toggled, without requiring Retry to synchronize native block state.
-
-- Resume gameplay after Reload Room is invoked from the native pause menu, and close Akron pause accounting so the removed menu cannot leave the room stuck.
-
-- Fix Custom Death Particles duration: short bursts expire cleanly, and long bursts can finish after ordinary respawn without delaying gameplay. Preserve live tails when a failed StartPos load rolls back successfully.
-
-- Make Custom Trail opacity control transparency rather than fade lifetime. Zero opacity emits no custom snapshots; other opacity values keep the same 0.45-second native fade duration.
-
-- Treat Cancel from Zenity as normal setup-picker cancellation when GTK emits its harmless transient-parent diagnostic, while retaining failures for other diagnostic output.
-
-- Keep existing input bindings connected when importing a setup, so controls such as Cursor Zoom work immediately without restarting Celeste. Apply the same identity-preserving update when rolling back a failed setup import.
-
-- Fade golden berry sprites using premultiplied color modulation, preserve their native/custom tint, and restore it after rendering instead of leaving a bright sprite at zero opacity.
-
-- Preserve JPEG capture geometry at screen widths that are not divisible by four, including merged room exports, using a tightly packed managed encoder.
-
-- Exclude native pause and native frozen updates from Auto Kill’s attempt timer, and prevent timer or area kills while native gameplay is suspended.
-
-- Keep native and custom hair colors aligned with the remaining dash count when **Ground Refills** blocks a ground dash refill.
-
+- Keep enabled Extended Variants responsive throughout numeric edits, even when an intermediate value equals the default; report Off when the value is the default. Edits begun while a variant is off only configure its value.
 - Keep the replacement overlay key after clearing **Menu Bind (Keyboard)**; the native editor, live hotkey and saved setting now use the same binding.
-
-- Preserve Dash Stats across native Retry when **Do not reset on death** is enabled, without changing Celeste’s native dash statistics or file totals.
-
-- Keep edited StartPos spawn settings across repeated loads and restarts without recapturing the room; editing one field preserves the slot’s other settings.
-
-- Make Safe Mode freeze file-wide death and jump totals, and recapture each guard independently when it is enabled again.
-
-- Keep Set Inventory capacity changes and death restoration from fabricating or overwriting native dash usage statistics.
-
 - Keep Extended Variant Mode option popups and row toggles separate from same-named Akron controls, including Dash Count.
-
 - Reserve expanded space for Search results from collapsed sections so following panels do not cover matching rows. Clearing Search keeps the saved collapse preferences.
-
 - Honor Shift for US number-row punctuation in ordinary overlay text fields, matching the existing shifted-letter and punctuation handling.
-
 - Stop cached directional input from moving Madeline behind the overlay when Block Gameplay Input is on, while leaving the level simulation running.
-
-- Anchor the StartPos HUD and cheat indicator within the active gameplay viewport, keeping centered and right/bottom-aligned labels visible at non-1080p sizes and in letterboxed windows.
-
-- Hide both fill and outline for depleted dash pips when Empty pips is disabled.
-
-- Back up and restore Celeste's active save folder instead of assuming saves are inside the installation. Leave old installation-root archives untouched.
-
-- Preserve saved collapsed panels when clearing overlay Search.
-
-- Align Show Triggers with native collider regions in letterboxed windows by applying the viewport origin once.
-- Keep native Save and Quit and Continue linked to the live session after a warm StartPos load, so later session time and progress are not saved through an obsolete session reference.
-- Convert Dash Number and Speed Number projections to viewport-local coordinates so letterboxing does not apply its origin twice; mirrored/inverted number anchors use the active viewport extents.
-- Keep fixed stamina and dash HUD anchors relative to the active viewport when the window size changes.
 - Read Control Display layout undo (Ctrl+Z) through the editor's input stream, while leaving text-field undo to its active editor.
-- Prevent **Skip Postcards** from throwing a missing-tracker-key error during chapter entry by finding postcards in the entering scene's entity list.
 - Release diagnostics text ownership immediately on close, including a close during rendering, so a fresh overlay-toggle press is not swallowed by stale editor focus.
 - Keep overlay-toggle key state current while Level diagnostics owns input, avoiding a stale toggle when the dialog closes.
 - Keep the overlay open when its keyboard toggle is typed into a focused text editor; release and press the key again after leaving the editor to toggle normally.
-- Keep underlying Light and Bloom renderer baselines in newly captured native StartPos snapshots so temporary overrides do not become restoration defaults.
-- Restore Light Level and Bloom Level independently when switched off, without requiring Screen Tint or another visual effect to be disabled.
-- Materialize deep StartPos diagnostic paths iteratively so restore does not exhaust a small worker stack in Debug builds.
 - Keep editor-navigation keys inside focused Akron text and numeric editors instead of also opening Speedrun Tool's slot UI; release text ownership when editing ends without changing SRT bindings.
-- Defer confirmed Speedrun Tool restores until the engine update finishes, avoiding changes to the pause-menu entity list while it is being iterated.
-- Rebase Room Stat Tracker's Alive timer when native respawn rewinds the session clock, so it does not remain at zero until the previous clock value is reached.
 - Ignore Click Teleport clicks while the game is paused, including the click that unpauses it, so a click on the pause menu never moves Madeline or toggles Cursor Zoom. Cursor Tools, Cursor Zoom, Entity Inspector and Free Camera mouse control also stand down while Menu Mouse is driving a menu.
 - Right-clicking SRT Slot Previous/Next, Timescale Decrease/Increase, Frame Stepper Step Once, Open Debug Map, the FPS Bypass row, and FPS Bypass Smooth Camera now edits and clears the real hotkey, including one saved from Everest's old keyboard and controller screens. The Grab Mode popup gets a **Cycle** button for the grab-mode cycling hotkey.
+- Preserve the open overlay’s selection, Search, and options across commands; clear a conflicting Search when a command selects a specific hidden row.
+- Keep the shared Akron/Speedrun Tool toggle able to close the overlay or cancel an active selector when Speedrun Tool skips the normal level update, without firing gameplay hotkeys.
+
+#### Gameplay and camera
+
+- Let native respawn finish after Retry while Noclip remains enabled.
+- Match Extended Variants dash-direction preset axes to their labels, including Horizontal, Vertical, No Up, and No Down.
+- Show Noclip speed feedback only when the effective value changes, preventing repeated clamp toasts while editing.
+- Preserve native ground and other handled jumps without spending the finite Air Jumps allowance, and restore the remaining allowance from airborne Speedrun Tool savestates.
+- Make Cursor Zoom follow the pointer on maps using active Extended Camera Dynamics hooks, without accumulating camera offsets between frames. Keep Click Teleport targeting and world-aligned HUDs consistent with the rendered view.
+- Route Extended Variant Mode vanilla assists, including No Grabbing and Air Dashes, through the provider’s vanilla setter so menu changes affect gameplay and report the canonical assist state. Exclude unavailable assist controls from the changed-options count.
+- Clarify that Set Inventory applies persistent Air Jumps settings: chapter restart does not reset them, while optional death restoration still restores the pre-click settings.
+- Release Cursor Zoom below 100% cleanly when Extended Camera Dynamics applies the view, restoring its map camera or the ordinary viewport when toggled off. Keep camera ownership when switching to native zoom so an active ECD map cannot interpolate over the requested scale.
+- Order native room-unload entities with players first during Reload Room so camera-trigger leave callbacks retain a valid scene, without removing players when another hook cancels reload. Completed rooms ignore the action.
+- Apply Fast Lookout hold changes during an active lookout interaction instead of caching the entry-time hold state.
+- Refresh existing dream-block appearance immediately when Dream State is toggled, without requiring Retry to synchronize native block state.
+- Resume gameplay after Reload Room is invoked from the native pause menu, end native pause audio effects, close Akron pause accounting, and notify Everest’s unpause listeners.
+- Exclude native pause and frozen updates from Auto Kill’s attempt timer, and skip automatic kills while native gameplay is suspended or the active room, session, or player changes during an update.
+- Prevent **Skip Postcards** from throwing a missing-tracker-key error during chapter entry by finding postcards in the entering scene's entity list.
+- Apply native invincibility independently of Hazard Accuracy.
+- Use Celeste’s native cutscene-skip sequence so callbacks, fades, and cutscene-state cleanup finish correctly; ignore duplicate skip requests.
+- Limit Extended Variants Badeline Boss Node Count to its supported 1–5 range before storing or applying it.
+- Restore the underlying game speed when Extended Variants-generated Oshiros are removed, while preserving active Akron timescale overrides and later native clock changes.
+- Apply Frame Stepper’s hold delay once before using its repeat interval, and reset held-repeat timing when menus or hotkey guards interrupt stepping.
+- Preserve newer room-transition durations set by the game or other features when Transition Speed is disabled or released, instead of restoring a stale duration.
+
+#### StartPos, setups, and saves
+
+- Fix arrow-key free-camera movement while Place StartPos freezes gameplay.
+- Consume StartPos placement right-click cancellation before restoring the overlay, preventing the underlying row binding menu from opening.
+- Disarm an obsolete Set Inventory death-restoration snapshot after a successful Whole setup import with Restore on Death off. Failed and unrelated scoped imports preserve existing restoration.
+- Treat Cancel from Zenity as normal setup-picker cancellation when GTK emits its harmless transient-parent diagnostic, while retaining failures for other diagnostic output.
+- Keep existing input bindings connected when importing a setup, so controls such as Cursor Zoom work immediately without restarting Celeste. Apply the same identity-preserving update when rolling back a failed setup import.
+- Keep edited StartPos spawn settings across repeated loads and restarts without recapturing the room; editing one field preserves the slot’s other settings.
+- Back up and restore Celeste's active save folder instead of assuming saves are inside the installation. Leave old installation-root archives untouched.
+- Keep native Save and Quit and Continue linked to the live session after a warm StartPos load, so later session time and progress are not saved through an obsolete session reference.
+- Keep underlying Light and Bloom renderer baselines in newly captured native StartPos snapshots so temporary overrides do not become restoration defaults.
+- Materialize deep StartPos diagnostic paths iteratively so restore does not exhaust a small worker stack in Debug builds.
+- Defer confirmed Speedrun Tool restores until the engine update finishes, avoiding changes to the pause-menu entity list while it is being iterated.
+- Preserve journal snapshots and theme exports created within the same second, publish only complete writes, and choose the latest one consistently.
+- Treat invalid saved backup timestamps as missing instead of throwing while reading backup status or scheduling.
+
+#### HUD, statistics, and visuals
+
+- Hide the retained native HUD image, including the chapter timer, when Hide Vanilla HUD is enabled.
+- Keep literal custom HUD labels visible outside levels even when their text contains words such as Room or speed.
+- Keep the selected Control Display label style when changing layouts through the console command.
+- Preserve keyboard-only and unbound Control Display labels when applying game-action label presets.
+- Count Escape in the inputs-per-second menu/pause channel, without double-counting overlapping pause sources.
+- Fix Custom Death Particles duration: short bursts expire cleanly, and long bursts can finish after ordinary respawn without delaying gameplay. Preserve live tails during StartPos capture and successful rollback after a failed load; clear them on committed explicit restores.
+- Make Custom Trail opacity control transparency rather than fade lifetime. Zero opacity emits no custom snapshots; other opacity values keep the same 0.45-second native fade duration.
+- Fade golden berry sprites using premultiplied color modulation, preserve their native/custom tint, and restore it after rendering instead of leaving a bright sprite at zero opacity.
+- Keep native and custom hair colors aligned with the remaining dash count when **Ground Refills** blocks a ground dash refill.
+- Preserve Dash Stats across native Retry when **Do not reset on death** is enabled, without changing Celeste’s native dash statistics or file totals.
+- Make Safe Mode freeze file-wide death and jump totals, and recapture each guard independently when it is enabled again.
+- Keep Set Inventory capacity changes and death restoration from fabricating or overwriting native dash usage statistics.
+- Anchor the StartPos HUD and cheat indicator within the active gameplay viewport, keeping centered and right/bottom-aligned labels visible at non-1080p sizes and in letterboxed windows.
+- Hide both fill and outline for depleted dash pips when Empty pips is disabled.
+- Align Show Triggers with native collider regions in letterboxed windows by applying the viewport origin once.
+- Convert Dash Number and Speed Number projections to viewport-local coordinates so letterboxing does not apply its origin twice; mirrored/inverted number anchors use the active viewport extents.
+- Keep fixed stamina and dash HUD anchors relative to the active viewport when the window size changes.
+- Restore Light Level and Bloom Level independently when switched off, without requiring Screen Tint or another visual effect to be disabled.
+- Rebase Room Stat Tracker's Alive timer when native respawn rewinds the session clock, so it does not remain at zero until the previous clock value is reached.
+- Stack custom HUD labels relocated by obstruction handling without overlapping each other or existing labels at their destination.
+- End Pause Tracker intervals on every unpause so disabling it during a pause cannot count later gameplay as paused time.
+- Keep total elapsed minutes in HUD time labels and Room Stat Tracker TSV exports instead of wrapping after one hour.
+
+#### Recordings and captures
+
+- Honor VP9 Lossless rate control for manual recordings, replay capture and replay exports.
+- Trim replay clips to the requested window on the capture frame grid, preserve their timeline when capture samples are missed, report shortened history, and export clips in the background.
+- Handle invalid recorder output directories without escaping into the overlay; failed replay starts disarm cleanly.
+- Keep each recording encoder’s capture resolution and frame cadence fixed for its lifetime, independently of replay settings and later edits.
+- Report failed internal recordings honestly, retain the previous successful clip, and clean temporary audio instead of publishing failed encoder output as saved. Reserve unique output names to protect existing clips and their metadata, including after remuxing or audio muxing, and keep replay failures from stopping healthy manual recordings.
+- Resolve relative recorder output folders to absolute paths before starting FFmpeg, so recordings are written to the selected folder.
+- Preserve JPEG capture geometry at screen widths that are not divisible by four, including merged room exports, using a tightly packed managed encoder.
+- Build completion videos from the full clip catalog, independently of clip-browser filters and sorting, and record each clip’s final published container correctly, including after remuxing.
+- Protect the active replay segment from age-based pruning.
+- Keep recording filenames and metadata tied to their original chapter, room, death count and attempt when export finishes after a transition.
+- Keep accepted completion replay post-roll alive after leaving a level when replay auto-start is set to In Levels.
+- Preserve saturated colors where translucent room images overlap in merged map captures.
+- Keep replay capture and history running while overlapping event clips export. Wait for finalized video and captured audio through each clip’s frame-aligned endpoint, preserve accepted event identity across scene changes, and protect media used by an export from pruning.
+- Retain replay frame and dropped-frame counts after the replay buffer stops.
+
+#### Audio
+
+- Route Celeste’s player revive sound through Ear Aid’s Respawn volume.
+- Make Audio Speed and Pitch Shift independent for active music and ambience, including menu music: Preserve keeps the original pitch, Follow Speed tracks playback speed, and Independent uses the selected pitch multiplier.
+- Retain original music and ambience pitch for restoration and StartPos capture, and report unavailable audio transforms instead of silently presenting them as active.
+- Correct Ear Aid sound matching for Ridge and Farewell wind, Core and Move Blocks, golden deaths, seekers, dialogue and Oshiro, without letting chapter names redirect unrelated sounds or music into those controls.
+- Apply Ear Aid toggles and volume edits to already-playing sounds even while the overlay pauses gameplay, capture the current volume when enabling an override, and keep recycled audio handles from inheriting an old sound category.
 
 ## Akron Beta 84
 
