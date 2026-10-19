@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron Beta 85
+
 ### Added
 
 - Add **Menu Mouse** to the Interface tab. Hold `Left Alt` (or the bind in its popup) in a Celeste menu to point and click: hover selects, left click confirms or steps the value under the cursor, right click goes back, and the wheel scrolls. Works in the pause menu, options and mod options, the main menu, file select, chapter select, the chapter panel, and the journal. On by default.
