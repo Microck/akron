@@ -137,7 +137,46 @@ jobs:
           chmod +x "$sentry_cli"
           "$sentry_cli" debug-files upload --include-sources bin/Akron.dll bin/Akron.pdb
           "$sentry_cli" releases new "akron@${RELEASE_TAG#v}"
-          "$sentry_cli" releases set-commits "akron@${RELEASE_TAG#v}" --commit "Microck/akron@$(git rev-parse HEAD)"
+          # Send one exact tag commit through the release API: CLI --commit
+          # requires a preconfigured integration, while --local lowercases names.
+          python3 - <<'PY_SENTRY'
+          import json
+          import os
+          import subprocess
+          import time
+          import urllib.parse
+          import urllib.request
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          opener = urllib.request.build_opener(NoRedirect)
+          org = urllib.parse.quote(os.environ["SENTRY_ORG"], safe="")
+          version = "akron@" + os.environ["RELEASE_TAG"].removeprefix("v")
+          release = urllib.parse.quote(version, safe="")
+          endpoint = f"https://sentry.io/api/0/organizations/{org}/releases/{release}/"
+          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          repository = "Microck/akron"
+          headers = {
+              "Authorization": "Bearer " + os.environ["SENTRY_AUTH_TOKEN"],
+              "Content-Type": "application/json",
+          }
+          payload = json.dumps({"commits": [{"id": commit, "repository": repository}]}).encode()
+          request = urllib.request.Request(endpoint, data=payload, headers=headers, method="PUT")
+          with opener.open(request, timeout=30) as response:
+              response.read()
+          for attempt in range(15):
+              request = urllib.request.Request(endpoint + "commits/", headers=headers)
+              with opener.open(request, timeout=30) as response:
+                  commits = json.load(response)
+              if len(commits) == 1 and commits[0].get("id") == commit and commits[0].get("repository", {}).get("name") == repository:
+                  print(f"Verified Sentry release commit: {repository}@{commit}")
+                  break
+              if attempt == 14:
+                  raise SystemExit("Sentry release commit identity did not match the immutable tag")
+              time.sleep(2)
+          PY_SENTRY
           "$sentry_cli" releases finalize "akron@${RELEASE_TAG#v}"
 
       - name: Verify package contents
