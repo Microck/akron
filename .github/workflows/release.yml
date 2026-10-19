@@ -43,6 +43,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: refs/tags/${{ env.RELEASE_TAG }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Resolve immutable release identity
@@ -137,7 +138,10 @@ jobs:
           chmod +x "$sentry_cli"
           "$sentry_cli" debug-files upload --include-sources bin/Akron.dll bin/Akron.pdb
           "$sentry_cli" releases new "akron@${RELEASE_TAG#v}"
-          "$sentry_cli" releases set-commits "akron@${RELEASE_TAG#v}" --commit "Microck/akron@$(git rev-parse HEAD)"
+          # Associate the checked-out immutable tag without requiring a separately
+          # configured Sentry repository integration. Keep the first-release
+          # fallback bounded to this release commit when no predecessor is known.
+          "$sentry_cli" releases set-commits "akron@${RELEASE_TAG#v}" --local --initial-depth 1 --ignore-missing
           "$sentry_cli" releases finalize "akron@${RELEASE_TAG#v}"
 
       - name: Verify package contents
