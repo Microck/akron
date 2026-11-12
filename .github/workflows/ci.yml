@@ -6,6 +6,11 @@ on:
     branches:
       - main
       - master
+  # Weekly run on main surfaces drift in pinned toolchains, runner images, and
+  # NuGet restores as a red build instead of a player bug report.
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read

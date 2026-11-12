@@ -174,8 +174,7 @@ What the workflow does:
 - writes a dependency manifest and CycloneDX SBOM for the release package
 - extracts release notes from `CHANGELOG.md`
 - checks publishing configuration
-- publishes the release update and zip to GameBanana
-- creates or updates the GitHub Release
+- creates or updates the GitHub Release and publishes the release update and zip to GameBanana, as two parallel jobs so a GameBanana failure cannot block the GitHub Release
 - syncs README GameBanana links on `main`
 - syncs `Microck/akron-website` fallback GameBanana file ids
 
@@ -225,7 +224,7 @@ Rendered public pages should be checked with a browser-capable CLI or agent work
 
 Use the same tag for recovery unless rollback/unpublish has been explicitly chosen.
 
-### Release workflow failed before GameBanana publishing
+### Release workflow failed in the build job
 
 No public release should exist yet. Fix the configuration, changelog, package, or build failure, then rerun the existing tag:
 
@@ -237,13 +236,13 @@ gh workflow run release.yml -R Microck/Akron -f tag_name=vX.Y.Z -f prerelease=fa
 
 Inspect the failed workflow logs and the uploaded `gamebanana-debug-vX.Y.Z` artifact. Common causes are expired storage state, missing edit permission, captcha/permit pages, or an untrusted runner IP.
 
-If the stored session is invalid, refresh the storage state using the storage-state procedure below, update the secret, and rerun the release workflow for the same tag.
+The GitHub Release is already published in this case, because it does not wait for GameBanana. If the stored session is invalid, refresh the storage state using the storage-state procedure below and update the secret. Then open the failed `Release` run and choose **Re-run failed jobs**. That reruns only GameBanana publishing and link sync against the build artifact retained for 7 days, without rebuilding or touching the GitHub Release. After 7 days, rerun the whole workflow for the same tag instead.
 
 If the runner IP is the issue and `TAILSCALE_EXIT_NODE` is configured, verify that the workflow reports the configured exit node as active and confirms HTTPS egress before treating the cookie as bad.
 
-### GitHub Release failed after GameBanana succeeded
+### GitHub Release failed
 
-Rerun the release workflow for the same tag. The workflow updates existing GameBanana/GitHub state where possible and uploads release assets with `--clobber`.
+Use **Re-run failed jobs** on the `Release` run, or rerun the workflow for the same tag. The workflow updates existing GameBanana/GitHub state where possible and uploads release assets with `--clobber`.
 
 ```bash
 gh workflow run release.yml -R Microck/Akron -f tag_name=vX.Y.Z -f prerelease=false
