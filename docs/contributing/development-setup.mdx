@@ -62,6 +62,14 @@ Set the optional `AKRON_CELESTE_REFS_TOKEN` secret in the same environment only 
 
 CI fails when either the URL secret or SHA-256 variable is missing. Release packaging uses the same verified archive and fails fast when its configuration is incomplete.
 
+The archive is pinned to one Everest build (currently stable 1.6249.0), so CI cannot see later Everest changes on its own. The weekly `Everest drift` workflow builds Akron against the archive, downloads the latest stable Everest, and checks every Everest (`Celeste.Mod`) type and member Akron references against that build's `Celeste.Mod.mm.dll` with `scripts/everest-api-check`. A red run means Everest removed or renamed an API Akron uses: update Akron, then refresh the archive from a game install. The check matches methods by name and parameter count and does not cover Everest's changes to vanilla Celeste types or IL hook targets.
+
+Run it locally after building Akron:
+
+```bash
+dotnet run --project scripts/everest-api-check -- Source/bin/Release/net8.0/Akron.dll path/to/Celeste.Mod.mm.dll
+```
+
 ## Safety
 
 - Do not commit personal Celeste paths, local captures, `.env` files, or tokens.

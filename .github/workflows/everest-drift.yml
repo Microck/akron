@@ -1,0 +1,79 @@
+# Weekly check that Akron still compiles against the current stable Everest API.
+#
+# CI builds against a pinned, Everest-patched Celeste reference archive, which can
+# only be regenerated from a game install. This job builds Akron the same way, then
+# checks every Everest (Celeste.Mod) type and member Akron references against
+# Celeste.Mod.mm.dll from the latest stable Everest build. A removed or renamed
+# Everest API turns this run red before players hit it.
+name: Everest drift
+
+on:
+  schedule:
+    - cron: "37 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  everest-api:
+    name: Everest API compatibility
+    runs-on: ubuntu-24.04
+    environment: release-build
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 8.0.418
+
+      - name: Restore verified Celeste references
+        env:
+          AKRON_CELESTE_REFS_URL: ${{ secrets.AKRON_CELESTE_REFS_URL }}
+          AKRON_CELESTE_REFS_TOKEN: ${{ secrets.AKRON_CELESTE_REFS_TOKEN }}
+          AKRON_CELESTE_REFS_SHA256: ${{ vars.AKRON_CELESTE_REFS_SHA256 }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/restore-celeste-references.sh
+
+      - name: Build Akron
+        run: |
+          dotnet restore Source/Akron.csproj --locked-mode --nologo
+          dotnet build Source/Akron.csproj --configuration Release --no-restore --nologo
+
+      - name: Download latest stable Everest
+        id: everest
+        run: |
+          set -euo pipefail
+          build="$(curl -fsSL 'https://maddie480.ovh/celeste/everest-versions?supportsNativeBuilds=true' \
+            | jq -c '[.[] | select(.branch == "stable")] | max_by(.version)')"
+          version="$(jq -r .version <<<"$build")"
+          curl -fsSL -o everest-main.zip "$(jq -r .mainDownload <<<"$build")"
+          unzip -q -j everest-main.zip main/Celeste.Mod.mm.dll -d everest-latest
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Check Everest API references
+        env:
+          EVEREST_VERSION: ${{ steps.everest.outputs.version }}
+        run: |
+          set -euo pipefail
+          dotnet restore scripts/everest-api-check --locked-mode --nologo
+          set +e
+          dotnet run --project scripts/everest-api-check --configuration Release --no-restore -- \
+            Source/bin/Release/net8.0/Akron.dll everest-latest/Celeste.Mod.mm.dll | tee check.txt
+          status="${PIPESTATUS[0]}"
+          set -e
+          {
+            echo "### Everest 1.${EVEREST_VERSION}.0 (latest stable)"
+            echo '```'
+            cat check.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Akron references Everest APIs missing from Everest 1.${EVEREST_VERSION}.0. Update Akron and refresh the Celeste reference archive."
+          fi
+          exit "$status"
