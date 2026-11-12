@@ -13,23 +13,23 @@ When Speedrun Tool is loaded, Akron also exposes **Ignore SRT** inside the Lag P
 |---|---|---|---|---|
 | Motion Smoothing | FPS Bypass | Numeric input | Raise the draw cadence or enable Motion Smoothing's smoothing pipeline while keeping physics at 60 TPS when TPS Bypass is off. | Normal clear |
 | Motion Smoothing | TPS Bypass | Numeric input | Change the simulation tick cadence. | Cheat |
-| Speedrun Tool | SRT Status | Action | Show whether Akron can read Speedrun Tool status, slot state, and room time right now. | Normal clear |
+| Speedrun Tool | SRT Status | Action | Show whether Akron can read Speedrun Tool status, slot state, and room time right now. | None |
 | Speedrun Tool | SRT Slot | Action | Show the active Speedrun Tool savestate slot used by the capture, restore, and clear actions. Selecting the row advances from 1 through 9, then wraps to 1; the popup has a slot stepper. | None |
 | Speedrun Tool | SRT Capture State | Action | Capture the active Speedrun Tool state slot. | Cheat |
 | Speedrun Tool | SRT Restore State | Action | Restore the active Speedrun Tool state slot. | Cheat |
 | Speedrun Tool | SRT Clear State | Action | Clear the active Speedrun Tool state slot. | Cheat |
-| Speedrun Tool | SRT Room Time | Action | Show Speedrun Tool's current room timer value when its room-timer export is available. | Normal clear |
+| Speedrun Tool | SRT Room Time | Action | Show Speedrun Tool's current room timer value when its room-timer export is available. | None |
 | Speedrun Tool | Export Room Times | Action | Export room-time data when the optional room timer source is available. | Normal clear |
-| CelesteTAS | TAS Status | Action | Show whether CelesteTAS reports an active or currently running TAS. | Normal clear |
-| CelesteTAS | Configured TAS File | Action | Show the configured TAS file basename used by Akron's CelesteTAS handoff. | Normal clear |
+| CelesteTAS | TAS Status | Action | Show whether CelesteTAS reports an active or currently running TAS. | None |
+| CelesteTAS | Configured TAS File | Action | Show the configured TAS file basename used by Akron's CelesteTAS handoff. | None |
 | CelesteTAS | Play Configured TAS | Action | Start CelesteTAS playback for Akron's configured TAS file path. | Cheat |
-| Extended Variant Mode | Reset Extended | Action | Reset all non-vanilla external variant settings to their defaults. | Normal clear |
-| Extended Variant Mode | Reset Vanilla | Action | Reset external vanilla variant wrappers to their defaults. | Normal clear |
+| Extended Variant Mode | Reset Extended | Action | Reset all non-vanilla external variant settings to their defaults. | Goldberry/Hardlist clear |
+| Extended Variant Mode | Reset Vanilla | Action | Reset external vanilla variant wrappers to their defaults. | Goldberry/Hardlist clear |
 | Extended Variant Mode | Extended Variants Master | Toggle | Toggle Extended Variant Mode's master switch when the mod is loaded. | Goldberry/Hardlist clear |
 | Extended Variant Mode | Extended Variants Randomizer | Toggle | Open Extended Variant Mode randomizer controls when the mod is loaded. | Cheat |
-| Extended Camera Dynamics | ECD Status | Action | Show whether Extended Camera Dynamics is loaded and whether its camera hooks are active. | Normal clear |
+| Extended Camera Dynamics | ECD Status | Action | Show whether Extended Camera Dynamics is loaded and whether its camera hooks are active. | None |
 | Extended Camera Dynamics | ECD Zoom Out | Toggle | Allow Akron Cursor Zoom to zoom below 100% through Extended Camera Dynamics when its hooks are active. ECD zoom-out stays centered on the player; native zoom-in still uses Akron's cursor-focused zoom path. | Cheat |
-| Extended Camera Dynamics | ECD Restore Zooming | Action | Return Extended Camera Dynamics to automatic zooming after a forced camera focus. | Normal clear |
+| Extended Camera Dynamics | ECD Restore Zooming | Action | Return Extended Camera Dynamics to automatic zooming after a forced camera focus. | None |
 
 Dynamic Extended Variant Mode options use their provider identity. A same-named Akron control, such as Player → Dash Count, remains separate. For non-boolean variants, use the triangle to configure a value while Off, then the row to toggle that configured value on or restore the provider default. Reset clears the configured value and restores the default.
 
@@ -51,6 +51,6 @@ Rows with a triangle expose the controls listed below.
 | FPS Bypass | Nasty mode | Apply the experimental smoothing preset that Motion Smoothing recommends avoiding in real gameplay. | Cheat |
 | Extended Variants Randomizer | Change variants randomly | Enable the external variant randomizer loop. | Cheat |
 | Extended Variants Randomizer | Reroll mode | Replace the randomized variant set instead of changing one option at a time. | Cheat |
-| Extended Variants Randomizer | Display enabled variants | Show the active variant list on-screen. | Cheat |
+| Extended Variants Randomizer | Display enabled variants | Show the active variant list on-screen. | Goldberry/Hardlist clear |
 | Extended Variants Randomizer | Interval | Set seconds between randomizer changes; zero uses screen-change behavior. | Cheat |
 | Extended Variants Randomizer | Max | Set the maximum number of simultaneously randomized variants. | Cheat |
