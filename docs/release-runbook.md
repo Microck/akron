@@ -23,10 +23,9 @@ Required public surfaces:
 
 Tags and artifact names stay canonical because external links use them. Public titles and changelog headings can use readable names such as `Akron Beta 42`. Do not mint a replacement tag for a sync or publishing failure unless rollback or unpublish has been explicitly chosen. Normal recovery repairs the same tag.
 
-Normal releases are published as the latest GitHub Release, including versions
-whose tag contains `-beta`. Mark a release as a GitHub prerelease only when
-explicitly requested, using the manual workflow's `prerelease` input. The tag's
-spelling alone does not select that flag.
+Every beta tag (`vX.Y.Z-beta` or `vX.Y.Z-beta.N`) is published as a GitHub
+prerelease titled `Akron Beta N`. Only plain `vX.Y.Z` tags become the latest
+GitHub Release, titled `Akron X.Y.Z`. The workflow derives both from the tag.
 
 ## Deterministic path
 
@@ -163,7 +162,7 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-3. The tag triggers `.github/workflows/release.yml`. You can also rerun the `Release` workflow manually with `tag_name` set to the existing tag and `prerelease` set as needed.
+3. The tag triggers `.github/workflows/release.yml`. You can also rerun the `Release` workflow manually with `tag_name` set to the existing tag.
 
 What the workflow does:
 
@@ -229,7 +228,7 @@ Use the same tag for recovery unless rollback/unpublish has been explicitly chos
 No public release should exist yet. Fix the configuration, changelog, package, or build failure, then rerun the existing tag:
 
 ```bash
-gh workflow run release.yml -R Microck/Akron -f tag_name=vX.Y.Z -f prerelease=false
+gh workflow run release.yml -R Microck/Akron -f tag_name=vX.Y.Z
 ```
 
 ### GameBanana failed
@@ -245,7 +244,7 @@ If the runner IP is the issue and `TAILSCALE_EXIT_NODE` is configured, verify th
 Use **Re-run failed jobs** on the `Release` run, or rerun the workflow for the same tag. The workflow updates existing GameBanana/GitHub state where possible and uploads release assets with `--clobber`.
 
 ```bash
-gh workflow run release.yml -R Microck/Akron -f tag_name=vX.Y.Z -f prerelease=false
+gh workflow run release.yml -R Microck/Akron -f tag_name=vX.Y.Z
 gh release view vX.Y.Z -R Microck/Akron
 ```
 

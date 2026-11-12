@@ -10,11 +10,6 @@ on:
         description: Git tag to publish, for example v0.1.0.
         required: true
         type: string
-      prerelease:
-        description: Mark the GitHub Release as a prerelease.
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -25,7 +20,9 @@ concurrency:
 
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
-  IS_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+  # Every beta tag (vX.Y.Z-beta or vX.Y.Z-beta.N) is a GitHub prerelease; only
+  # plain vX.Y.Z releases become "Latest".
+  IS_PRERELEASE: ${{ contains(github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name, '-beta') }}
 
 jobs:
   build:
@@ -80,13 +77,15 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Must match scripts/release/cut-release.sh, which writes this name as
+          # the CHANGELOG heading that the notes step below extracts.
           release_version="${RELEASE_TAG#v}"
-          if [[ "$release_version" == "0.1.2-beta" ]]; then
+          if [[ "$release_version" =~ -beta$ ]]; then
             release_display_name="Akron Beta"
-          elif [[ "$release_version" =~ ^0\.1\.2-beta\.([0-9]+)$ ]]; then
+          elif [[ "$release_version" =~ -beta\.([0-9]+)$ ]]; then
             release_display_name="Akron Beta ${BASH_REMATCH[1]}"
           else
-            release_display_name="Akron v${release_version}"
+            release_display_name="Akron ${release_version}"
           fi
 
           echo "RELEASE_DISPLAY_NAME=${release_display_name}" >> "$GITHUB_ENV"
