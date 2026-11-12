@@ -52,7 +52,7 @@ jobs:
           fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.tag.outputs.tag != ''
 
       - name: Run the completion checks
