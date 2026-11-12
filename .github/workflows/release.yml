@@ -376,11 +376,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
+  # GitHub Release and GameBanana publish in parallel from the same build so a
+  # GameBanana session or captcha failure cannot block the GitHub Release. If
+  # GameBanana fails, refresh its secret and use "Re-run failed jobs"; that
+  # reruns only publish_gamebanana and sync_links against the retained build.
   github_release:
     name: Publish GitHub Release and provenance
-    needs:
-      - build
-      - publish_gamebanana
+    needs: build
     runs-on: ubuntu-24.04
     environment: release
     permissions:

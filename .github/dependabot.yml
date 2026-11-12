@@ -1,0 +1,19 @@
+# Weekly grouped PRs for SHA-pinned GitHub Actions. The root npm packages are
+# intentionally excluded: they only drive the GameBanana publisher
+# (cloakbrowser, playwright), which CI does not exercise, so an unattended bump
+# could pass CI and still break the next release. NuGet is excluded because
+# MonoMod must match what Everest ships and ImGui.NET pairs with native
+# binaries, so those bumps need a manual in-game check.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: ci
