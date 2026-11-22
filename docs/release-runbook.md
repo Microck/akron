@@ -9,14 +9,14 @@ Use this when cutting or repairing an Akron release.
 
 Ship one version consistently across the GitHub tag, GitHub Release, GameBanana mod page, README install links, and `akron.micr.dev`.
 
-The GitHub tag is the source of truth. A release is complete only after every required public surface has been confirmed updated. If one surface is stale after publishing starts, treat the release as partially published and repair it from the same tag.
+The source tags are `vX.Y.Z` on main and `offline/vX.Y.Z` on offline. A release is complete only after every required public surface has been confirmed updated. If one surface is stale after publishing starts, treat the release as partially published and repair it from the same tag.
 
 ## Release contract
 
 Required public surfaces:
 
-- GitHub tag: `vX.Y.Z`
-- GitHub Release: readable title, notes, `Akron-vX.Y.Z.zip`, its `.zip.sha256` checksum, the `.dependencies.json` dependency manifest, and the `.cdx.json` CycloneDX SBOM
+- GitHub tags: `vX.Y.Z` and `offline/vX.Y.Z`
+- GitHub Release: readable title, notes, `Akron-vX.Y.Z.zip` and `Akron-Offline-vX.Y.Z.zip`, each with a `.zip.sha256` checksum, a `.dependencies.json` manifest and a `.cdx.json` CycloneDX SBOM
 - GameBanana: release update and matching uploaded file metadata for the same tag; private submissions may reject anonymous downloads
 - README: Olympus one-click handoff and raw-download links point at Akron's stable install endpoints
 - `akron.micr.dev`: docs are current, and both install endpoints resolve to the published GitHub Release archive
@@ -33,7 +33,7 @@ The prepare, publish, and completion phases below are scripted. The prose
 sections stay authoritative for what each step means and for repairing a
 partial publish; the scripts are how a normal release runs them.
 
-1. Write the release notes into the changelog's `## Unreleased` section as work
+1. Write each edition’s release notes into its `## Unreleased` section as work
    merges. This is the one judgment step no script owns.
 2. Cut the release:
 
@@ -41,12 +41,7 @@ partial publish; the scripts are how a normal release runs them.
 scripts/release/cut-release.sh X.Y.Z
 ```
 
-The script refuses a dirty tree, a stale `main`, an existing tag, an unbumped
-version, or an empty `Unreleased` section, then moves the notes under the
-release heading, bumps `everest.yaml`, runs `make preflight-release`, checks
-the package contents contract, commits, pushes `main`, and pushes the tag.
-`main` and `v*` tags are admin-bypass only by ruleset, so the cut runs locally
-as the release owner; everything after the tag is Actions.
+For 1.0.0 use `scripts/release/cut-release.sh 1.0.0`. The command prepares and tests both editions in temporary worktrees, then pushes both branches and both source tags in one transaction. GitHub builds the standard edition from `v1.0.0` and the offline edition from `offline/v1.0.0`. Each ZIP has its own checksum, dependency list, SBOM, and attestations. GameBanana receives the standard edition.
 
 3. The tag triggers the `Release` workflow as before. When it completes, the
    `Verify Release` workflow runs `scripts/release/verify-release.sh` against
@@ -154,23 +149,15 @@ components identified in the notices retain their original licenses.
 
 ## Publish
 
-1. Push `main`.
-2. Create and push the tag:
-
-```bash
-git tag vX.Y.Z
-git push origin vX.Y.Z
-```
-
-3. The tag triggers `.github/workflows/release.yml`. You can also rerun the `Release` workflow manually with `tag_name` set to the existing tag.
+Run the release cutter from a clean, synced main checkout. It publishes the two prepared branch heads and their tags atomically. The standard tag triggers `.github/workflows/release.yml`. You can also rerun the `Release` workflow manually with `tag_name` set to the existing tag.
 
 What the workflow does:
 
-- checks out the tag
+- checks out each edition at its source tag
 - restores Celeste reference DLLs
 - restores, builds, and tests Akron
 - verifies `Akron.zip`, copies it to `Akron-<tag>.zip`, and writes a SHA-256 file
-- writes a dependency manifest and CycloneDX SBOM for the release package
+- verifies the offline package and writes a checksum, dependency manifest and CycloneDX SBOM for each edition
 - extracts release notes from `CHANGELOG.md`
 - checks publishing configuration
 - creates or updates the GitHub Release and publishes the release update and zip to GameBanana, as two parallel jobs so a GameBanana failure cannot block the GitHub Release
@@ -185,9 +172,10 @@ A release is complete only after all checks pass.
 
 ```bash
 gh release view vX.Y.Z -R Microck/Akron
-gh release download vX.Y.Z -R Microck/Akron --pattern 'Akron-vX.Y.Z*' --dir /tmp/akron-release-check
-(cd /tmp/akron-release-check && sha256sum -c Akron-vX.Y.Z.zip.sha256)
+gh release download vX.Y.Z -R Microck/Akron --pattern 'Akron*vX.Y.Z*' --dir /tmp/akron-release-check
+(cd /tmp/akron-release-check && sha256sum -c *.zip.sha256)
 unzip -t /tmp/akron-release-check/Akron-vX.Y.Z.zip
+unzip -t /tmp/akron-release-check/Akron-Offline-vX.Y.Z.zip
 ```
 
 2. Workflow health:

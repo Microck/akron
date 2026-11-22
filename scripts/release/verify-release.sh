@@ -38,24 +38,26 @@ trap 'rm -rf "$workdir"' EXIT
 
 if gh release view "$tag" -R "$REPO" --json assets \
         -q '[.assets[].name] | join("\n")' > "$workdir/assets.txt"; then
-    for suffix in ".zip" ".zip.sha256" ".dependencies.json" ".cdx.json"; do
-        if grep -qxF "Akron-${tag}${suffix}" "$workdir/assets.txt"; then
-            pass "GitHub Release carries Akron-${tag}${suffix}"
+    gh release download "$tag" -R "$REPO" --pattern "Akron-${tag}.zip*" --pattern "Akron-Offline-${tag}.zip*" --dir "$workdir" || fail "could not download release archives"
+    for base in "Akron-${tag}" "Akron-Offline-${tag}"; do
+        for suffix in ".zip" ".zip.sha256" ".dependencies.json" ".cdx.json"; do
+            if grep -qxF "${base}${suffix}" "$workdir/assets.txt"; then
+                pass "GitHub Release carries ${base}${suffix}"
+            else
+                fail "GitHub Release is missing ${base}${suffix}"
+            fi
+        done
+        if (cd "$workdir" && sha256sum -c "${base}.zip.sha256" >/dev/null); then
+            pass "release zip matches its published checksum"
         else
-            fail "GitHub Release is missing Akron-${tag}${suffix}"
+            fail "release zip does not match its published checksum"
+        fi
+        if unzip -tqq "$workdir/${base}.zip" >/dev/null; then
+            pass "release zip reads back cleanly"
+        else
+            fail "release zip is corrupt"
         fi
     done
-    gh release download "$tag" -R "$REPO" --pattern "Akron-${tag}.zip*" --dir "$workdir"
-    if (cd "$workdir" && sha256sum -c "Akron-${tag}.zip.sha256" >/dev/null); then
-        pass "release zip matches its published checksum"
-    else
-        fail "release zip does not match its published checksum"
-    fi
-    if unzip -tqq "$workdir/Akron-${tag}.zip" >/dev/null; then
-        pass "release zip reads back cleanly"
-    else
-        fail "release zip is corrupt"
-    fi
 else
     fail "GitHub Release ${tag} does not exist"
 fi

@@ -253,9 +253,65 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build_offline:
+    name: Build offline edition from the paired tag
+    runs-on: ubuntu-24.04
+    environment: release-build
+    outputs:
+      release_commit: ${{ steps.identity.outputs.commit }}
+    steps:
+      - name: Validate paired release tag
+        run: '[[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta(\.[0-9]+)?)?$ ]]'
+
+      - name: Checkout offline release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          ref: refs/tags/offline/${{ env.RELEASE_TAG }}
+          persist-credentials: false
+
+      - name: Check offline version
+        id: identity
+        run: |
+          version="$(awk -F': ' '/^[[:space:]]*Version:/ {print $2; exit}' everest.yaml)"
+          test "$RELEASE_TAG" = "v$version"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 8.0.418
+
+      - name: Restore verified Celeste references
+        env:
+          AKRON_CELESTE_REFS_URL: ${{ secrets.AKRON_CELESTE_REFS_URL }}
+          AKRON_CELESTE_REFS_TOKEN: ${{ secrets.AKRON_CELESTE_REFS_TOKEN }}
+          AKRON_CELESTE_REFS_SHA256: ${{ vars.AKRON_CELESTE_REFS_SHA256 }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/restore-celeste-references.sh
+
+      - name: Restore locked dependencies
+        run: dotnet restore Akron.sln --locked-mode --nologo -p:ContinuousIntegrationBuild=true
+
+      - name: Build, test and package offline edition
+        run: |
+          dotnet build Akron.sln -c Release --no-restore -p:ContinuousIntegrationBuild=true
+          dotnet test tests/akron-tests.csproj -c Release --no-build
+          bash scripts/release/verify-package.sh
+          base="Akron-Offline-${RELEASE_TAG}"
+          sha256sum "$base.zip" > "$base.zip.sha256"
+          dotnet list Source/Akron.csproj package --include-transitive --format json > "$base.dependencies.json"
+          python3 .github/scripts/generate-sbom.py --archive "$base.zip" --version "${RELEASE_TAG#v}" --lock Source/packages.lock.json --output "$base.cdx.json"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Akron-Offline-${{ env.RELEASE_TAG }}
+          path: Akron-Offline-${{ env.RELEASE_TAG }}.*
+          if-no-files-found: error
+          retention-days: 7
+
   publish_gamebanana:
     name: Publish immutable artifact to GameBanana
-    needs: build
+    needs: [build, build_offline]
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -381,7 +437,7 @@ jobs:
   # reruns only publish_gamebanana and sync_links against the retained build.
   github_release:
     name: Publish GitHub Release and provenance
-    needs: build
+    needs: [build, build_offline]
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -418,6 +474,43 @@ jobs:
           subject-path: release-artifacts/Akron-${{ env.RELEASE_TAG }}.zip
           sbom-path: release-artifacts/Akron-${{ env.RELEASE_TAG }}.cdx.json
 
+      - name: Verify offline release tag is unchanged
+        env:
+          RELEASE_TAG: offline/${{ env.RELEASE_TAG }}
+          EXPECTED_RELEASE_COMMIT: ${{ needs.build_offline.outputs.release_commit }}
+        run: bash .github/scripts/verify-release-tag.sh
+
+      - name: Download offline assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: Akron-Offline-${{ env.RELEASE_TAG }}
+          path: release-artifacts
+
+      - name: Record offline source for the build attestation
+        env:
+          OFFLINE_COMMIT: ${{ needs.build_offline.outputs.release_commit }}
+        run: |
+          jq -n --arg repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --arg ref "refs/tags/offline/$RELEASE_TAG" --arg commit "$OFFLINE_COMMIT" \
+            --arg workflow "${GITHUB_WORKFLOW_REF#*@}" --arg invocation "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT" \
+            '{buildDefinition: {buildType: "https://actions.github.io/buildtypes/workflow/v1",
+              externalParameters: {workflow: {path: ".github/workflows/release.yml", repository: $repo, ref: $workflow}},
+              resolvedDependencies: [{uri: ("git+" + $repo + "@" + $ref), digest: {gitCommit: $commit}}]},
+              runDetails: {builder: {id: "https://github.com/actions/runner/github-hosted"}, metadata: {invocationId: $invocation}}}' > offline-provenance.json
+
+      - name: Attest offline artifact provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-artifacts/Akron-Offline-${{ env.RELEASE_TAG }}.zip
+          predicate-type: https://slsa.dev/provenance/v1
+          predicate-path: offline-provenance.json
+
+      - name: Attest offline SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: release-artifacts/Akron-Offline-${{ env.RELEASE_TAG }}.zip
+          sbom-path: release-artifacts/Akron-Offline-${{ env.RELEASE_TAG }}.cdx.json
+
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -432,12 +525,12 @@ jobs:
             release_flags+=(--latest)
           fi
 
-          assets=(
-            "Akron-${RELEASE_TAG}.zip"
-            "Akron-${RELEASE_TAG}.zip.sha256"
-            "Akron-${RELEASE_TAG}.dependencies.json"
-            "Akron-${RELEASE_TAG}.cdx.json"
-          )
+          assets=()
+          for base in "Akron-${RELEASE_TAG}" "Akron-Offline-${RELEASE_TAG}"; do
+            for suffix in .zip .zip.sha256 .dependencies.json .cdx.json; do
+              assets+=("${base}${suffix}")
+            done
+          done
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.id')"
             gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}" --method PATCH --input release-notes.json
