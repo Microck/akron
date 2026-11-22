@@ -48,7 +48,6 @@ public static class AkronAutomationService {
         "akron_broker_warnings",
         "akron_bypass",
         "akron_camera_offset",
-        "akron_community_packs",
         "akron_control_display",
         "akron_core_mode",
         "akron_cursor_zoom",

@@ -253,15 +253,12 @@ public sealed partial class AkronOverlay {
                     NumericRow("Opacity", () => AkronModule.Settings.OverlayOpacity, value => AkronModule.Settings.OverlayOpacity = AkronModuleSettings.ClampOverlayOpacity((int) Math.Round(value)), 55, 100, "%.0f", "%", true, "transparent lists"),
                     Action("Export Setup", () => true, () => AkronSetupPacks.FormatSection(AkronModule.Settings.SetupPackSection), () => AkronSetupPacks.ExportCurrent(AkronModule.Settings.SetupPackExportName, AkronModule.Settings.SetupPackSection), "setup", ".akr", "export"),
                     Action("Import Setup", () => true, () => AkronSetupPacks.FormatSection(AkronModule.Settings.SetupPackSection), () => AkronSetupPacks.ImportFromFileBrowser(AkronModule.Settings.SetupPackSection), "setup", ".akr", "import"),
-                    Action("Community Packs", () => true, DescribeCommunityPackBrowser, OpenCommunityPackBrowser, "discord", "community", "map", ".akr", "gamebanana"),
-                    UploadPackRow(level),
                     Toggle("Pause While Open", () => AkronModule.Settings.PauseGameplayInMenu, value => AkronModule.Settings.PauseGameplayInMenu = value),
                     Toggle("Block Gameplay Input", () => AkronModule.Settings.ConsumeGameplayInputInMenu, value => AkronModule.Settings.ConsumeGameplayInputInMenu = value, "input", "madeline", "overlay", "consume"),
                     Toggle("Menu Mouse", () => AkronModule.Settings.MenuMouse, value => AkronModule.Settings.MenuMouse = value, "mouse", "cursor", "click", "menu", "pause menu", "chapter select", "file select", "alt"),
                     Toggle("Streamer Mode", () => AkronModule.Settings.StreamerMode, value => AkronModule.Settings.StreamerMode = value),
                     LoggingToggle(),
-                    ErrorReportingToggle(),
-                    Action("Send diagnostics", () => Engine.Scene != null, AkronDiagnosticsMenu.DescribeAction, () => AkronDiagnosticsMenu.Open(), "logs", "support", "report", "upload", "performance"),
+                    Action("Save diagnostics", () => Engine.Scene != null, AkronDiagnosticsMenu.DescribeAction, () => AkronDiagnosticsMenu.Open(), "logs", "support", "report", "export", "performance"),
                     Toggle("Search Autofocus", () => AkronModule.Settings.SearchAutofocus, value => AkronModule.Settings.SearchAutofocus = value),
                     SearchInput()
                 };
@@ -441,22 +438,6 @@ public sealed partial class AkronOverlay {
         }, BuildSearchTerms(label, tags), isToggle, OverlayEntryControl.Action, featureKind, active: active);
     }
 
-    private static OverlayEntry UploadPackRow(Level level) {
-        return new OverlayEntry(
-            "Upload Pack",
-            () => level != null,
-            AkronCommunityPackUploads.DescribeOverlayAction,
-            () => {
-                if (level != null) {
-                    OpenUploadPackWindow();
-                }
-            },
-            BuildSearchTerms("Upload Pack", new[] { "community", "upload", ".akr", "discord", "anonymous" }),
-            false,
-            OverlayEntryControl.Action,
-            forceOptionsPopup: true);
-    }
-
     private static OverlayEntry StartPosRow(Level level) {
         return new OverlayEntry(
             "StartPos",
@@ -555,16 +536,6 @@ public sealed partial class AkronOverlay {
 
     private static OverlayEntry Toggle(string label, AkronFeatureKind? featureKind, Func<bool> getter, Action<bool> setter, params string[] tags) {
         return new OverlayEntry(label, () => true, () => getter() ? "On" : "Off", () => setter(!getter()), BuildSearchTerms(label, tags), true, OverlayEntryControl.Toggle, featureKind, active: getter);
-    }
-
-    private static OverlayEntry ErrorReportingToggle() {
-        return new OverlayEntry(
-            "Automatic Error Reports",
-            () => AkronTelemetry.IsConfigured,
-            () => AkronTelemetry.IsConfigured ? (AkronModule.Settings.ErrorReportingEnabled ? "On" : "Off") : "Not configured",
-            () => AkronModule.SetErrorReportingEnabled(!AkronModule.Settings.ErrorReportingEnabled),
-            BuildSearchTerms("Automatic Error Reports", new[] { "sentry", "errors", "support", "privacy", "consent" }),
-            true, OverlayEntryControl.Toggle, null, active: () => AkronTelemetry.IsConfigured && AkronModule.Settings.ErrorReportingEnabled);
     }
 
     private static OverlayEntry LoggingToggle() {

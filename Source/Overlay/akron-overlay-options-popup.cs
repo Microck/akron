@@ -177,7 +177,6 @@ public sealed partial class AkronOverlay {
                string.Equals(label, "Keybinds", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Export Setup", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Import Setup", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(label, "Upload Pack", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "Confirm Actions", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "StartPos Actions", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(label, "SRT Slot", StringComparison.OrdinalIgnoreCase) ||
@@ -277,7 +276,6 @@ public sealed partial class AkronOverlay {
                !IsRecorderTextOptionsLabel(label) &&
                !IsRecorderSettingsGroupLabel(label) &&
                !string.Equals(label, "Codec", StringComparison.OrdinalIgnoreCase) &&
-               !string.Equals(label, "Upload Pack", StringComparison.OrdinalIgnoreCase) &&
                !string.Equals(label, "Golden Start", StringComparison.OrdinalIgnoreCase);
     }
 

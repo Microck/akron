@@ -57,16 +57,6 @@ If a screenshot, room capture, map capture, or recorder output is missing or inc
 - If recording reports that FFmpeg did not start, install FFmpeg or set `AKRON_FFMPEG` to the executable path.
 - Check if a timer-freeze or capture suboption has altered the expected behavior.
 
-## Community Packs shows no entries
-
-Confirm the following:
-
-- You are currently inside the map for which you expect packs.
-- The catalog URL is reachable and online.
-- The category filter is not overly restrictive.
-- The search text is not filtering out the desired pack.
-- The catalog entry's map SID matches the current map's SID.
-
 ## Room transitions or Speedrun Tool unfreezes hitch
 
 Akron prepares a room's StartPos restart baseline when **Set** first needs it,
@@ -83,38 +73,6 @@ If a hitch remains, distinguish the initial save, the Load keypress, the first
 resumed frame, and an actual room transition in your diagnostic description.
 Those are separate operations and may have different causes.
 
-## Send diagnostics to a maintainer
+## Save diagnostics
 
-Open **Interface → Send diagnostics** in Akron's overlay. The Akron form has fields for a title, what
-happened, steps to reproduce it, expected behavior, and extra context. The
-combined report accepts up to 4,000 characters. Choose **Send now** to upload.
-If every field is blank, Akron asks you to confirm first. Opening the form does
-not upload anything.
-
-The report includes game, Everest and Akron versions, loaded mod names and
-versions, the current map and room, CPU, GPU, RAM, operating system and runtime.
-It also includes available tails of the game log, current and previous Akron
-logs, and the latest Akron performance recording. Each log is limited to 1 MiB;
-the complete upload is limited to 4 MiB.
-
-Akron redacts common credentials, local paths, usernames and computer names from
-automatic details and logs. Other mods may write personal text that these filters
-do not recognize. Your description is sent as written; do not include passwords
-or other private information. Saves and environment variables are not collected.
-
-The default destination is
-`https://akron.micr.dev/uploads/diagnostics`. Reports stay in private Cloudflare
-storage, not the public pack catalog. The service queues each accepted report for
-Akron's private Discord channel **#diagnostic-alert**, where people with access
-can read the description and download the complete JSON report. After receipt
-is confirmed, copy the report ID for follow-up. The ID is not a public download
-link.
-
-Keep the menu open while sending. Closing it cancels the request, but cannot
-recall a report the server already received. The game does not retry uploads
-automatically. The service retries Discord delivery if it cannot confirm that
-an accepted report was posted; you do not need to send it again.
-
-If upload receipt is unconfirmed, a maintainer can check the report ID before you
-send another report. The game needs network access; an offline launcher sandbox
-can block uploads even when your browser connects normally.
+Open **Interface → Save diagnostics**, describe the problem, and choose **Save now**. Akron shows the path to the JSON file in the AkronDiagnostics folder inside the Celeste install. Review the file before attaching it to a GitHub issue.

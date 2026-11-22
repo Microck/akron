@@ -47,7 +47,6 @@ public sealed class DocsClassificationTests
     {
         ["Trigger controls"] = "Triggers",
         ["Placement editor"] = "Place StartPos",
-        ["Community packs browser"] = "Community Packs",
     };
 
     // sound.mdx documents the shared popup of every per-sound override row with one placeholder

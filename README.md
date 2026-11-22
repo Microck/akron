@@ -2,27 +2,15 @@
   <img src="docs/images/logo.png" alt="Akron" width="240">
 </p>
 
-<p align="center">
-  <a href="https://gamebanana.com/mods/681169"><img src="https://img.shields.io/github/v/release/Microck/akron?display_name=tag&include_prereleases&style=flat-square&label=release&color=000000" alt="release badge"></a>
-  <a href="https://gamebanana.com/mods/681169"><img src="https://img.shields.io/badge/dynamic/json?style=flat-square&label=downloads&color=000000&query=%24%5B0%5D&url=https%3A%2F%2Fapi.gamebanana.com%2FCore%2FItem%2FData%3Fitemtype%3DMod%26itemid%3D681169%26fields%3Ddownloads" alt="gamebanana downloads badge"></a>
-  <a href="https://github.com/Microck/akron/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Microck/akron/ci.yml?branch=main&style=flat-square&label=ci&color=000000" alt="ci badge"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-CC%20BY--NC--ND%204.0-000000?style=flat-square" alt="license badge"></a>
-</p>
-
 ## what is Akron?
 
 Akron is a player-facing utility suite for Celeste that runs inside Everest. it centers on an in-game overlay for practice, routing, hud visibility, capture, setup sharing, and visible attempt status.
 
 the overlay keeps common player tools close to the game instead of scattered across separate menus. players can check the current setup, adjust practice or hud surfaces, capture play, and move back into the level without changing context.
 
-[documentation](https://akron.micr.dev/docs) | [gamebanana](https://gamebanana.com/mods/681169)
-
 ## quickstart
 
-[<img src="docs/images/olympus-one-click-install.png" alt="Olympus 1-click install" height="50">](https://akron.micr.dev/olympus)
-[<img src="docs/images/raw-download.png" alt="raw download" height="50">](https://akron.micr.dev/raw)
-
-1. install Akron with Olympus, or download it from [gamebanana](https://gamebanana.com/mods/681169) and place the downloaded mod archive in your Everest `Mods` folder. do not unzip manual installs unless a release explicitly says to.
+1. download the versioned Akron ZIP from [GitHub Releases](https://github.com/Microck/akron/releases) and place it unopened in your Everest `Mods` folder.
 2. launch Celeste through Everest.
 3. press `Tab` to open Akron.
 
@@ -42,13 +30,13 @@ policy badges show each row's classification. the attempt-status chip shows the 
 
 ### .akr setup packs
 
-`.akr` setup packs save, import, and share scoped Akron setups. they are used for personal setups and community packs for map-specific configurations.
+`.akr` setup packs save, import, and share scoped Akron setups. use Export Setup to save a file and Import Setup to load one shared by another player. Both work offline.
 
 ### capture tools
 
 screenshots and internal recording support sharing or reviewing play.
 
-see the [feature guide](https://akron.micr.dev/docs/feature-guide) for the current option reference.
+see the [feature guide](docs/feature-guide/) for the current option reference.
 
 ## external integrations
 
@@ -60,7 +48,7 @@ some overlay rows appear only when supported external mods are installed. Akron 
 - **[Extended Variant Mode](https://gamebanana.com/mods/53650):** available variant options exposed by the mod.
 - **[Extended Camera Dynamics](https://gamebanana.com/mods/548940):** camera hook status and Cursor Zoom zoom-out support when ECD camera hooks are active.
 
-see the [compatibility](https://akron.micr.dev/docs/troubleshooting/compatibility) and [external integrations](https://akron.micr.dev/docs/feature-guide/external-tools) docs for details.
+see the [compatibility](docs/troubleshooting/compatibility.mdx) and [external integrations](docs/feature-guide/external-tools.mdx) docs for details.
 
 ## contributing
 
@@ -72,11 +60,11 @@ dotnet build Source/Akron.csproj
 dotnet test tests/akron-tests.csproj --nologo
 ```
 
-read the [contributor docs](https://akron.micr.dev/docs/contributing/development-setup) before changing feature policy, setup packs, or public behavior.
+read the [contributor docs](docs/contributing/development-setup.mdx) before changing feature policy, setup packs, or public behavior.
 
 ## support
 
-if Akron helps with your Celeste practice, routing, captures, or setup sharing, optional support is available on [ko-fi](https://ko-fi.com/microck). donations help cover ongoing development costs like domain, infrastructure, storage, and hosting, so they help keep the mod maintained. no features are or will be locked behind donations or a paywall.
+if Akron helps with your Celeste practice, routing, captures, or setup sharing, optional support is available on [ko-fi](https://ko-fi.com/microck). donations help cover ongoing development costs, so they help keep the mod maintained. no features are or will be locked behind donations or a paywall.
 
 <p align="left">
   <a href="https://ko-fi.com/microck">

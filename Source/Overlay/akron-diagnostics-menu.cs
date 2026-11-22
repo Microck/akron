@@ -10,6 +10,7 @@ namespace Celeste.Mod.Akron;
 
 // The form uses Akron's ImGui frame, including when opened from Everest's mod options.
 internal static class AkronDiagnosticsMenu {
+    private const string EmptyReportPopup = "Save without a description?##akron_empty_diagnostics";
     private static Scene ownerScene;
     private static TextMenu parent;
     private static bool parentWasVisible;
@@ -18,8 +19,6 @@ internal static class AkronDiagnosticsMenu {
     private static bool overworldPageWasActive;
     private static bool overworldPageWasFocused;
     private static bool overlayWasVisible;
-    private static string endpoint;
-    private static string endpointError;
     private static string title = string.Empty;
     private static string problem = string.Empty;
     private static string steps = string.Empty;
@@ -32,11 +31,11 @@ internal static class AkronDiagnosticsMenu {
     private static bool emptyConfirmationShown;
     private static bool controllerInputReady;
     private static bool controllerSelectionActive;
-    private static bool controllerSendSelected;
+    private static bool controllerSaveSelected;
     private static int controllerStatusSelection;
 
     internal static bool IsOpen => ownerScene != null;
-    internal static bool AcceptsTextInput => IsOpen && !showStatus && !emptyConfirmationActive && endpointError == null;
+    internal static bool AcceptsTextInput => IsOpen && !showStatus && !emptyConfirmationActive;
 
     internal static void Open() {
         Scene scene = Engine.Scene;
@@ -69,9 +68,8 @@ internal static class AkronDiagnosticsMenu {
         emptyConfirmationShown = false;
         controllerInputReady = false;
         controllerSelectionActive = false;
-        controllerSendSelected = false;
+        controllerSaveSelected = false;
         controllerStatusSelection = 0;
-        ResolveEndpoint();
         Input.MenuConfirm.ConsumeBuffer();
         Input.MenuCancel.ConsumeBuffer();
     }
@@ -85,7 +83,7 @@ internal static class AkronDiagnosticsMenu {
         if (IsOpen && !ReferenceEquals(ownerScene, scene)) Close();
     }
 
-    internal static string DescribeAction() => AkronDiagnostics.Status.Busy ? "Sending..." : AkronDiagnostics.Status.Phase == "idle" ? "Write report" : "View result";
+    internal static string DescribeAction() => AkronDiagnostics.Status.Busy ? "Saving..." : AkronDiagnostics.Status.Phase == "idle" ? "Write report" : "View result";
 
     internal static string DescribeState() {
         AkronDiagnosticStatus state = AkronDiagnostics.Status;
@@ -104,13 +102,12 @@ internal static class AkronDiagnosticsMenu {
                 showStatus = false;
                 emptyConfirmationActive = false;
                 emptyConfirmationPending = false;
-                ResolveEndpoint();
                 return true;
-            case "send": return Send();
+            case "save": return Save();
             case "confirm":
                 if (showStatus || !emptyConfirmationActive || !emptyConfirmationShown) return false;
                 emptyConfirmationActive = false;
-                SendConfirmed(string.Empty);
+                SaveConfirmed(string.Empty);
                 return true;
             case "cancel": Close(); return true;
             case "copy": return CopyReportId();
@@ -119,7 +116,7 @@ internal static class AkronDiagnosticsMenu {
     }
 
     internal static void Draw() {
-        const string popupId = "Send diagnostics##akron_diagnostics";
+        const string popupId = "Save diagnostics##akron_diagnostics";
         if (!IsOpen) {
             // ImGui keeps modal state after its owner closes outside a frame.
             if (ImGui.BeginPopupModal(popupId, ImGuiWindowFlags.NoSavedSettings)) {
@@ -151,15 +148,9 @@ internal static class AkronDiagnosticsMenu {
     }
 
     private static void DrawForm(float scale) {
-        if (endpointError != null) {
-            ImGui.TextWrapped(endpointError);
-            if (ImGui.Button("Close") || (controllerInputReady &&
-                (CancelPressed() || ControllerPressed(Buttons.A)))) Close();
-            return;
-        }
-        // Keep the editor scrollable without pushing Send off a short screen.
+        // Keep the editor scrollable without pushing Save off a short screen.
         ImGui.BeginChild("##diagnostics_form_content", new NumericsVector2(0f, -42f * scale));
-        ImGui.TextWrapped("Send to " + endpoint + ": recent logs, versions, mods, map/room, CPU/GPU/RAM, OS and runtime. Your text is sent as written; leave out private information.");
+        ImGui.TextWrapped("Save recent logs, versions, mods, map/room and system details to the AkronDiagnostics folder inside the Celeste install. Review the file before sharing it.");
         ImGui.Spacing();
         ImGui.TextUnformatted("Title");
         ImGui.SetNextItemWidth(-1f);
@@ -176,61 +167,60 @@ internal static class AkronDiagnosticsMenu {
         ImGui.InputText("##diagnostics_extra", ref extra, 501);
         string description = BuildDescription();
         if (description.Length > AkronDiagnostics.MaxDescriptionLength) {
-            ImGui.TextWrapped("Report is over 4,000 characters. Shorten it before sending.");
+            ImGui.TextWrapped("Report is over 4,000 characters. Shorten it before saving.");
         }
         ImGui.EndChild();
         ImGui.Spacing();
-        if (ImGui.Button(controllerSelectionActive && !controllerSendSelected ? "> Cancel" : "Cancel")) { Close(); return; }
+        if (ImGui.Button(controllerSelectionActive && !controllerSaveSelected ? "> Cancel" : "Cancel")) { Close(); return; }
         ImGui.SameLine();
         ImGui.BeginDisabled(description.Length > AkronDiagnostics.MaxDescriptionLength);
-        if (ImGui.Button(controllerSelectionActive && controllerSendSelected ? "> Send now" : "Send now")) Send();
+        if (ImGui.Button(controllerSelectionActive && controllerSaveSelected ? "> Save now" : "Save now")) Save();
         ImGui.EndDisabled();
         if (!controllerInputReady || emptyConfirmationActive) return;
         if (CancelPressed()) { Close(); return; }
         UpdateControllerSelection();
         if (ControllerPressed(Buttons.A)) {
-            if (controllerSendSelected) Send();
+            if (controllerSaveSelected) Save();
             else Close();
         }
     }
 
     private static void DrawEmptyConfirmation(float scale) {
-        const string popupId = "Send without a description?##akron_empty_diagnostics";
         if (emptyConfirmationPending) {
-            ImGui.OpenPopup(popupId);
+            ImGui.OpenPopup(EmptyReportPopup);
             emptyConfirmationPending = false;
         }
         ImGui.SetNextWindowSize(new NumericsVector2(430f * scale, 150f * scale), ImGuiCond.Appearing);
-        if (!ImGui.BeginPopupModal(popupId, ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoSavedSettings)) return;
+        if (!ImGui.BeginPopupModal(EmptyReportPopup, ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoSavedSettings)) return;
         if (!emptyConfirmationActive) {
             ImGui.CloseCurrentPopup();
             ImGui.EndPopup();
             return;
         }
         emptyConfirmationShown = true;
-        ImGui.TextWrapped("You're sending diagnostics without describing the issue. Are you sure?");
+        ImGui.TextWrapped("You're saving diagnostics without describing the issue. Are you sure?");
         ImGui.Spacing();
-        if (ImGui.Button(controllerSelectionActive && !controllerSendSelected ? "> Go back" : "Go back")) {
+        if (ImGui.Button(controllerSelectionActive && !controllerSaveSelected ? "> Go back" : "Go back")) {
             emptyConfirmationActive = false;
             ImGui.CloseCurrentPopup();
         }
         ImGui.SameLine();
-        if (ImGui.Button(controllerSelectionActive && controllerSendSelected ? "> Send without description" : "Send without description")) {
+        if (ImGui.Button(controllerSelectionActive && controllerSaveSelected ? "> Save without description" : "Save without description")) {
             emptyConfirmationActive = false;
             ImGui.CloseCurrentPopup();
-            SendConfirmed(string.Empty);
+            SaveConfirmed(string.Empty);
         }
         if (controllerInputReady) {
             UpdateControllerSelection();
             if (CancelPressed() ||
-                (ControllerPressed(Buttons.A) && !controllerSendSelected)) {
+                (ControllerPressed(Buttons.A) && !controllerSaveSelected)) {
                 emptyConfirmationActive = false;
                 ImGui.CloseCurrentPopup();
             }
-            else if (ControllerPressed(Buttons.A) && controllerSendSelected) {
+            else if (ControllerPressed(Buttons.A) && controllerSaveSelected) {
                 emptyConfirmationActive = false;
                 ImGui.CloseCurrentPopup();
-                SendConfirmed(string.Empty);
+                SaveConfirmed(string.Empty);
             }
         }
         ImGui.EndPopup();
@@ -238,7 +228,7 @@ internal static class AkronDiagnosticsMenu {
 
     private static void DrawStatus() {
         // An automation command can confirm the visible child popup between frames.
-        if (ImGui.BeginPopupModal("Send without a description?##akron_empty_diagnostics", ImGuiWindowFlags.NoSavedSettings)) {
+        if (ImGui.BeginPopupModal(EmptyReportPopup, ImGuiWindowFlags.NoSavedSettings)) {
             ImGui.CloseCurrentPopup();
             ImGui.EndPopup();
         }
@@ -249,12 +239,12 @@ internal static class AkronDiagnosticsMenu {
             if (ImGui.Button(controllerSelectionActive && controllerStatusSelection == 1 ? "> Copy report ID" : "Copy report ID")) CopyReportId();
         }
         ImGui.Spacing();
-        string closeLabel = status.Busy ? "Cancel upload and close" : "Close";
+        string closeLabel = status.Busy ? "Cancel export and close" : "Close";
         if (ImGui.Button(controllerSelectionActive && controllerStatusSelection == 0 ? "> " + closeLabel : closeLabel)) { Close(); return; }
         if (!status.Busy) {
             ImGui.SameLine();
-            int sendSelection = string.IsNullOrEmpty(status.ReportId) ? 1 : 2;
-            if (ImGui.Button(controllerSelectionActive && controllerStatusSelection == sendSelection ? "> Send another report" : "Send another report")) StartNewReport();
+            int saveSelection = string.IsNullOrEmpty(status.ReportId) ? 1 : 2;
+            if (ImGui.Button(controllerSelectionActive && controllerStatusSelection == saveSelection ? "> Save another report" : "Save another report")) StartNewReport();
         }
         if (!controllerInputReady) return;
         if (CancelPressed()) { Close(); return; }
@@ -278,14 +268,13 @@ internal static class AkronDiagnosticsMenu {
     private static void StartNewReport() {
         title = problem = steps = expected = extra = string.Empty;
         controllerSelectionActive = false;
-        controllerSendSelected = false;
+        controllerSaveSelected = false;
         controllerStatusSelection = 0;
-        ResolveEndpoint();
         showStatus = false;
     }
 
-    private static bool Send() {
-        if (!IsOpen || showStatus || endpointError != null) return false;
+    private static bool Save() {
+        if (!IsOpen || showStatus) return false;
         string description = BuildDescription();
         if (description.Length > AkronDiagnostics.MaxDescriptionLength) return false;
         if (description.Length == 0) {
@@ -294,20 +283,20 @@ internal static class AkronDiagnosticsMenu {
             emptyConfirmationActive = true;
             emptyConfirmationShown = false;
             controllerInputReady = false;
-            controllerSendSelected = false;
+            controllerSaveSelected = false;
             return true;
         }
-        SendConfirmed(description);
+        SaveConfirmed(description);
         return true;
     }
 
-    private static void SendConfirmed(string description) {
+    private static void SaveConfirmed(string description) {
         AkronImGuiRenderer.EndTextInputSession();
         showStatus = true;
         controllerSelectionActive = false;
-        controllerSendSelected = false;
+        controllerSaveSelected = false;
         controllerStatusSelection = 0;
-        AkronDiagnostics.StartConsentedUpload(endpoint, description);
+        AkronDiagnostics.StartExport(description);
         Input.MenuConfirm.ConsumeBuffer();
     }
 
@@ -316,10 +305,10 @@ internal static class AkronDiagnosticsMenu {
     private static void UpdateControllerSelection() {
         if (ControllerPressed(Buttons.DPadLeft) || ControllerPressed(Buttons.LeftThumbstickLeft)) {
             controllerSelectionActive = true;
-            controllerSendSelected = false;
+            controllerSaveSelected = false;
         } else if (ControllerPressed(Buttons.DPadRight) || ControllerPressed(Buttons.LeftThumbstickRight)) {
             controllerSelectionActive = true;
-            controllerSendSelected = true;
+            controllerSaveSelected = true;
         }
     }
 
@@ -344,16 +333,6 @@ internal static class AkronDiagnosticsMenu {
         if (string.IsNullOrWhiteSpace(value)) return;
         if (report.Length > 0) report.Append("\n\n");
         report.Append("## ").Append(label).Append("\n").Append(value.Trim());
-    }
-
-    private static void ResolveEndpoint() {
-        try {
-            endpoint = AkronDiagnostics.ResolveEndpoint(AkronModule.TryGetSettings()?.CommunityPackUploadEndpoint);
-            endpointError = null;
-        } catch (Exception) {
-            endpoint = null;
-            endpointError = "Diagnostics cannot be sent. Set the community upload endpoint to an HTTPS URL without credentials, query or fragment, then reopen this form.";
-        }
     }
 
     private static bool CopyReportId() {

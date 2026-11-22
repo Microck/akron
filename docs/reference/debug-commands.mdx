@@ -35,9 +35,8 @@ Akron exposes developer-facing console commands through Everest's debug console 
 | `akron_inspector <toggle\|on\|off\|status>` | Control the entity inspector. |
 | `akron_timescale [value\|reset]` | Show or set absolute timescale using invariant-culture parsing (range 0.1-2.0). |
 | `akron_log_level <normal\|diagnostic\|verbose\|trace\|status>` | Show or set the Akron log level. Changes use the same setting as the Interface Logging popup and are saved immediately. |
-| `akron_diagnostics [open\|consent\|send\|confirm\|cancel\|status\|copy]` | Open the diagnostic form, send a report, or inspect its status. See the state requirements below. |
+| `akron_diagnostics [open\|consent\|save\|confirm\|cancel\|status\|copy]` | Open the diagnostic form, save a report, or inspect its status. See the state requirements below. |
 | `akron_proof` | Export a proof sidecar JSON file. |
-| `akron_community_packs <status\|url <catalog-url>\|refresh\|category <name>\|search <query>\|list\|import <index>>` | Configure and exercise the community `.akr` catalog. |
 
 ## Command-only or automation-first
 
@@ -175,35 +174,21 @@ finished loading.
 ## Diagnostic reports
 
 `akron_diagnostics` defaults to `status`. It uses the same form and confirmation prompt
-as **Send diagnostics**:
+as **Save diagnostics**:
 
 | Action | Behavior and requirements |
 |---|---|
-| `open` | Open the diagnostics form. Later visits may show upload status. |
-| `consent` | Return an open form to its fields. Unavailable during an upload. |
-| `send` | Send while the form is open in the current scene. A blank form opens a confirmation prompt. |
-| `confirm` | Send a blank report only after its confirmation prompt has appeared. |
-| `cancel` | Close the open menu and request cancellation of any active upload. A report already received by the server is not retracted. |
-| `status` | Print menu state, description length, upload phase, report ID and status message. Works with the menu closed. |
+| `open` | Open the diagnostics form. Later visits may show export status. |
+| `consent` | Return an open form to its fields. Unavailable during an export. |
+| `save` | Save while the form is open in the current scene. A blank form opens a confirmation prompt. |
+| `confirm` | Save a blank report only after its confirmation prompt has appeared. |
+| `cancel` | Close the open menu and request cancellation of any active export. |
+| `status` | Print menu state, description length, export phase, report ID and status message. Works with the menu closed. |
 | `copy` | Copy the report ID. Requires an open menu and an existing report ID. |
 
-Edit the optional issue fields in the form before sending. See
-[Send diagnostics to a maintainer](/troubleshooting/common-issues#send-diagnostics-to-a-maintainer)
+Edit the optional issue fields in the form before saving. See
+[Save diagnostics to a maintainer](/troubleshooting/common-issues#save-diagnostics)
 for included data and privacy limits.
-
-## Community pack commands
-
-```text
-akron_community_packs status
-akron_community_packs url <catalog-url>
-akron_community_packs refresh
-akron_community_packs category StartPos
-akron_community_packs search beginner lobby
-akron_community_packs list
-akron_community_packs import 0
-```
-
-`list` prints the currently filtered zero-based entries. `import` downloads the selected `.akr` and imports it through the same scoped path as the in-game button.
 
 ## File-backed automation queue
 
@@ -274,7 +259,6 @@ Commands support repeatable live verification scenarios:
 - Show the overlay before screenshots.
 - Drive settings without relying on fragile input.
 - Exercise StartPos, freeze, hitbox, inspector, and proof surfaces.
-- Refresh and import community packs.
 - Capture proof sidecars for comparison.
 
 Command-only controls should not appear in player tutorials unless a normal UI path exists first.

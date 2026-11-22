@@ -9,7 +9,7 @@ knowledge_base:
       - files: "docs/contributing/implementation-boundaries.mdx"
         applyTo: "Source/**/*.cs,tests/**/*.cs"
       - files: "docs/release-runbook.md,docs/reference/release-configuration.mdx"
-        applyTo: ".github/workflows/release.yml,.github/workflows/sync-gamebanana-readme-links.yml,.github/scripts/**,scripts/publish-gamebanana-release.mjs,Makefile,Source/Akron.csproj"
+        applyTo: ".github/workflows/release.yml,.github/scripts/**,scripts/release/**,Makefile,Source/Akron.csproj"
 reviews:
   path_filters:
     - "!**/*.dll"

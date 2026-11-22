@@ -13,7 +13,6 @@ Use the smallest set of checks that proves the change. Unit tests do not replace
 | Settings defaults or clamps | `dotnet test tests/akron-tests.csproj --nologo --filter ModuleSettingsTests` |
 | `.akr` archive shape | `dotnet test tests/akron-tests.csproj --nologo --filter ArchiveTests` |
 | `.akr` import/export | `ArchiveTests` plus the owner-specific round-trip tests for the archive kind. |
-| Community packs | Community pack tests plus live catalog verification when applicable. |
 
 Build source changes with:
 

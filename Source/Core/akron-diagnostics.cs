@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -42,21 +40,20 @@ internal sealed class AkronDiagnosticLog {
 }
 
 internal sealed record AkronDiagnosticStatus(string Phase, string Message, string ReportId = "") {
-    public bool Busy => Phase is "collecting" or "uploading" or "canceling";
+    public bool Busy => Phase is "collecting" or "canceling";
 }
 
 internal static class AkronDiagnostics {
-    internal const int MaxRequestBytes = 4 * 1024 * 1024;
+    internal const int MaxReportBytes = 4 * 1024 * 1024;
     internal const int MaxLogBytes = 1024 * 1024;
     internal const int MaxDescriptionLength = 4000;
-    private const int MaxResponseBytes = 4096;
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
-    private static readonly object UploadLock = new object();
+    private static readonly object ReportLock = new object();
     private static CancellationTokenSource activeCancellation;
-    private static AkronDiagnosticStatus status = new AkronDiagnosticStatus("idle", "No diagnostics have been sent.");
-    // These patterns run only on the upload worker. A timeout aborts the report rather than sending unredacted text.
+    private static AkronDiagnosticStatus status = new AkronDiagnosticStatus("idle", "No diagnostics have been saved.");
+    // These patterns run only on the export worker. A timeout aborts the report rather than saving unredacted text.
     private static readonly Regex AuthenticationScheme = Pattern(@"\b(?:Bearer|Basic)[ \t]+[A-Za-z0-9._~+/-]+=*");
     private static readonly Regex SensitiveLine = Pattern(@"^.*(?:password|passwd|pwd\s*[:=]|secret|token|authorization|authentication|cookie|api[ _-]?key|access[ _-]?key|private[ _-]?key|credential|connection[ _-]?string|username|user[ _-]?name|hostname|machine[ _-]?name|profile[ _-]?name|save[ _-]?name|environment\s*[:=]).*$", RegexOptions.Multiline);
     private static readonly Regex SensitiveContinuation = Pattern(@"^.*(?:password|passwd|pwd|secret|token|authorization|cookie|api[ _-]?key|access[ _-]?key|credential)[^\r\n]*[:=][ \t]*\r?\n[^\r\n]*", RegexOptions.Multiline);
@@ -70,19 +67,9 @@ internal static class AkronDiagnostics {
 
     internal static AkronDiagnosticStatus Status => Volatile.Read(ref status);
 
-    internal static string ResolveEndpoint(string uploadBase) {
-        string endpoint = AkronCommunityPackUploads.ResolveEndpoint(uploadBase) + "/diagnostics";
-        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out Uri uri) || uri.Scheme != Uri.UriSchemeHttps ||
-            !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) ||
-            string.IsNullOrEmpty(uri.IdnHost) || endpoint.Length > 180) {
-            throw new InvalidDataException("Set the community upload endpoint to an HTTPS URL without credentials, query, or fragment.");
-        }
-        return uri.AbsoluteUri;
-    }
-
     // Called only by the consent menu on the game thread. No live game objects leave this method.
-    internal static bool StartConsentedUpload(string endpoint, string description) {
-        lock (UploadLock) {
+    internal static bool StartExport(string description) {
+        lock (ReportLock) {
             if (activeCancellation != null) return false;
             string id = Guid.NewGuid().ToString("N");
             try {
@@ -90,25 +77,25 @@ internal static class AkronDiagnostics {
                 CancellationTokenSource cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(2));
                 activeCancellation = cancellation;
                 SetStatus("collecting", "Reading and redacting bounded log tails...", id);
-                _ = Task.Run(() => CollectAndUploadAsync(snapshot, endpoint, cancellation));
+                _ = Task.Run(() => CollectAndSave(snapshot, cancellation));
                 return true;
             } catch (Exception) {
-                SetStatus("failed", "Diagnostics could not capture game details. Reopen this menu and try again, or share the report ID with a maintainer.", id);
+                SetStatus("failed", "Diagnostics could not capture game details. Reopen this menu and try again.", id);
                 return false;
             }
         }
     }
 
     internal static void Cancel() {
-        lock (UploadLock) {
+        lock (ReportLock) {
             if (activeCancellation == null || !Status.Busy) return;
-            SetStatus("canceling", "Canceling the request. The server may already have received it.", Status.ReportId);
+            SetStatus("canceling", "Canceling report export.", Status.ReportId);
             activeCancellation.Cancel();
         }
     }
 
     private static void SetStatus(string phase, string message, string id) {
-        lock (UploadLock) {
+        lock (ReportLock) {
             Volatile.Write(ref status, new AkronDiagnosticStatus(phase, message, id));
         }
     }
@@ -154,7 +141,7 @@ internal static class AkronDiagnostics {
         return new Snapshot(report, Everest.PathGame, AkronLog.GetLogDirectory(), AkronPerformanceTelemetry.RecordingPath);
     }
 
-    private static async Task CollectAndUploadAsync(Snapshot snapshot, string endpoint, CancellationTokenSource cancellation) {
+    private static void CollectAndSave(Snapshot snapshot, CancellationTokenSource cancellation) {
         string id = snapshot.Report.ReportId;
         try {
             CancellationToken token = cancellation.Token;
@@ -180,26 +167,28 @@ internal static class AkronDiagnostics {
             }
             byte[] body = SerializeBounded(snapshot.Report);
             token.ThrowIfCancellationRequested();
-            SetStatus("uploading", "Uploading diagnostics. Keep this menu open; Cancel stops the request.", id);
-            using HttpClient http = AkronCommunityPacks.CreateSafeHttpClient(TimeSpan.FromMinutes(2));
-            await SendAsync(http, endpoint, body, id, token).ConfigureAwait(false);
-            SetStatus("received", "Report uploaded and queued for Akron's private Discord support channel. Keep the report ID if you need to follow up.", id);
+            string filename = "diagnostics-" + id + ".json";
+            // Reports can be shared separately and should not enter save backups.
+            string directory = Path.Combine(snapshot.GamePath, "AkronDiagnostics");
+            Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, filename);
+            // Publish the report only after the complete file is on disk.
+            string staging = path + ".tmp";
+            try {
+                File.WriteAllBytes(staging, body);
+                token.ThrowIfCancellationRequested();
+                File.Move(staging, path);
+            } catch {
+                File.Delete(staging);
+                throw;
+            }
+            SetStatus("saved", "Saved diagnostics to AkronDiagnostics/" + filename + " in the Celeste folder.", id);
         } catch (OperationCanceledException) {
-            SetStatus("canceled", "Upload canceled or timed out. Receipt is unconfirmed; a maintainer can check the report ID. Reopen consent to send a new report.", id);
-        } catch (HttpRequestException exception) {
-            string reason = exception.StatusCode switch {
-                HttpStatusCode.TooManyRequests => "The upload limit was reached. Wait a minute before sending a new report.",
-                HttpStatusCode.Conflict => "This report ID already exists. Ask a maintainer to check it, or send a new report.",
-                HttpStatusCode.RequestEntityTooLarge => "The service rejected the report size. Share the report ID and update Akron before sending again.",
-                HttpStatusCode.NotFound => "The diagnostics service is unavailable at this endpoint. Check the community upload endpoint or contact a maintainer.",
-                _ => "Check your connection and community upload endpoint, then open consent to send a new report. A maintainer can check the report ID."
-            };
-            SetStatus("failed", "Diagnostics receipt is unconfirmed. " + reason, id);
+            SetStatus("canceled", "Report canceled.", id);
         } catch (Exception) {
-            // Exception messages can contain paths, credentials, or server text. Never echo them to the report or UI.
-            SetStatus("failed", "Diagnostics could not be safely prepared or its receipt verified. Update Akron or share the report ID with a maintainer. No automatic retry was made.", id);
+            SetStatus("failed", "Could not save diagnostics. Check disk space and write access to the Celeste folder.", id);
         } finally {
-            lock (UploadLock) {
+            lock (ReportLock) {
                 if (ReferenceEquals(activeCancellation, cancellation)) activeCancellation = null;
                 cancellation.Dispose();
             }
@@ -297,10 +286,10 @@ internal static class AkronDiagnostics {
             log.Text = text;
         }
         byte[] body = JsonSerializer.SerializeToUtf8Bytes(report, JsonOptions);
-        while (body.Length > MaxRequestBytes) {
+        while (body.Length > MaxReportBytes) {
             AkronDiagnosticLog largest = report.Logs.OrderByDescending(log => log.Text.Length).FirstOrDefault();
             if (largest == null || largest.Text.Length == 0) throw new InvalidDataException("Diagnostic metadata exceeds the report limit.");
-            // Bound the encoded request too: quotes, controls and Unicode can expand in JSON.
+            // Bound the encoded report too: quotes, controls and Unicode can expand in JSON.
             largest.Text = Utf8Tail(largest.Text, Encoding.UTF8.GetByteCount(largest.Text) / 2);
             largest.Truncated = true;
             body = JsonSerializer.SerializeToUtf8Bytes(report, JsonOptions);
@@ -320,29 +309,6 @@ internal static class AkronDiagnostics {
             start -= width;
         }
         return text.Substring(start);
-    }
-
-    internal static async Task SendAsync(HttpClient http, string endpoint, byte[] body, string reportId, CancellationToken token) {
-        if (body.Length > MaxRequestBytes) throw new InvalidDataException("Diagnostic report is too large.");
-        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out Uri uri) || uri.Scheme != Uri.UriSchemeHttps ||
-            !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment)) {
-            throw new InvalidDataException("Diagnostics require HTTPS.");
-        }
-        using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, uri) { Content = new ByteArrayContent(body) };
-        request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
-        using HttpResponseMessage response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        if (response.Content.Headers.ContentLength > MaxResponseBytes) throw new InvalidDataException("Diagnostic response is too large.");
-        using Stream stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        byte[] bytes = new byte[MaxResponseBytes + 1];
-        int count = await stream.ReadAtLeastAsync(bytes, bytes.Length, throwOnEndOfStream: false, cancellationToken: token).ConfigureAwait(false);
-        if (count > MaxResponseBytes) throw new InvalidDataException("Diagnostic response is too large.");
-        if (response.StatusCode != HttpStatusCode.Created) throw new HttpRequestException("Diagnostic upload failed.", null, response.StatusCode);
-        using JsonDocument document = JsonDocument.Parse(bytes.AsMemory(0, count));
-        JsonElement root = document.RootElement;
-        if (!root.TryGetProperty("reportId", out JsonElement receivedId) || receivedId.GetString() != reportId ||
-            !root.TryGetProperty("status", out JsonElement receivedStatus) || receivedStatus.GetString() != "received") {
-            throw new InvalidDataException("Diagnostic receipt does not match this report.");
-        }
     }
 
     private static Regex Pattern(string expression, RegexOptions options = RegexOptions.None) =>

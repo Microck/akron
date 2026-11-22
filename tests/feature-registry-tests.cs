@@ -797,8 +797,6 @@ public sealed class FeatureRegistryTests
     [InlineData("Interface", "Theme", null)]
     [InlineData("Interface", "Export Setup", null)]
     [InlineData("Interface", "Import Setup", null)]
-    [InlineData("Interface", "Community Packs", null)]
-    [InlineData("Interface", "Upload Pack", null)]
     [InlineData("Interface", "Streamer Mode", null)]
     [InlineData("Interface", "Block Gameplay Input", null)]
     [InlineData("Interface", "Menu Mouse", null)]

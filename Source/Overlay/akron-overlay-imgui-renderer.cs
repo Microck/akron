@@ -145,8 +145,6 @@ public sealed partial class AkronOverlay
         if (maximumScroll > 0f)
             DrawSectionNavigation(displayWidth, displayHeight, navigationHeight, maximumScroll);
 
-        DrawCommunityPackBrowserWindow();
-        DrawCommunityPackUploadWindow();
         DrawPendingImGuiOptionsPopup();
         DrawPendingImGuiActionTooltip();
         DrawPendingImGuiItemTooltip();
@@ -568,8 +566,6 @@ public sealed partial class AkronOverlay
     private bool IsBackgroundActionRowInputBlocked()
     {
         return IsAnyOptionsPopupOpen() ||
-               communityPackBrowserOpen ||
-               uploadPackWindowOpen ||
                AkronDiagnosticsMenu.IsOpen ||
                suppressImGuiRowPressesThisFrame ||
                IsBackgroundActionRowsSuppressedAfterPopupClose();

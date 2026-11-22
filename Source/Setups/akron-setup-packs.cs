@@ -138,8 +138,6 @@ public static partial class AkronSetupPacks {
 
     private const int MaxSetupPayloadBytes = 2 * 1024 * 1024;
     internal const int MaxSnapshotAttachmentBytes = 128 * 1024 * 1024;
-    // Leave room for setup.json, manifest.json, and ZIP metadata so the complete
-    // archive stays within the community pack reader's 512 MiB file limit.
     internal const long MaxSnapshotAttachmentsBytes = 509L * 1024L * 1024L;
     private const long MaxDecompressedSnapshotBytes = AkronStartPosReconstruction.MaxDecompressedSnapshotBytes;
 
@@ -1419,10 +1417,6 @@ public static partial class AkronSetupPacks {
             .ToHashSet(StringComparer.Ordinal);
     }
 
-    internal static bool IsCommunitySection(AkronSetupSection section) {
-        return section is AkronSetupSection.StartPos or AkronSetupSection.AutoKill or AkronSetupSection.AutoDeafen;
-    }
-
     private static void ValidatePortablePack(AkronSetupPack pack, AkronSetupSection section, string expectedMapSid) {
         RequireCurrentPackFormat(pack);
         if (pack.State == null) {
@@ -1791,7 +1785,7 @@ public static partial class AkronSetupPacks {
         }
         if (AkronActions.HasPendingStartPosForArea(mapSid)) {
             throw new InvalidDataException(
-                "A StartPos restart copy is still saving. Wait for it to finish before exporting or uploading this pack.");
+                "A StartPos restart copy is still saving. Wait for it to finish before exporting this pack.");
         }
         foreach (KeyValuePair<int, AkronStartPos> pair in session?.StartPositions ?? new Dictionary<int, AkronStartPos>()) {
             if (pair.Value == null ||

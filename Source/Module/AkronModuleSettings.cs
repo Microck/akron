@@ -145,26 +145,12 @@ public partial class AkronModuleSettings : EverestModuleSettings {
     public int OverlayScale { get; set; } = 100;
     public int OverlayBlur { get; set; }
     public bool Logging { get; set; } = true;
-    // Machine-local preference: intentionally absent from AkronSetupState and .akr setup packs.
-    public bool ErrorReportingEnabled { get; set; } = true;
     public AkronLoggingLevel LoggingLevel { get; set; } = AkronLoggingLevel.Diagnostic;
     public bool LoggingMirrorWarningsToEverest { get; set; } = true;
     public int LoggingMaxFileSizeMb { get; set; } = 5;
     public int LoggingRetainedFiles { get; set; } = 5;
     public AkronSetupSection SetupPackSection { get; set; } = AkronSetupSection.Whole;
     public string SetupPackExportName { get; set; } = string.Empty;
-    public string CommunityPackIndexUrl { get; set; } = AkronCommunityPacks.DefaultIndexUrl;
-    public AkronSetupSection CommunityPackSection { get; set; } = AkronSetupSection.Whole;
-    public string CommunityPackSearchQuery { get; set; } = string.Empty;
-    public string CommunityPackUploadEndpoint { get; set; } = AkronCommunityPackUploads.DefaultUploadEndpoint;
-    public AkronSetupSection CommunityPackUploadSection { get; set; } = AkronSetupSection.StartPos;
-    public string CommunityPackUploadInstallId { get; set; } = string.Empty;
-    public bool CommunityPackUploadUseDiscordAttribution { get; set; }
-    public string CommunityPackUploadDiscordUserId { get; set; } = string.Empty;
-    public string CommunityPackUploadTitleOverride { get; set; } = string.Empty;
-    public string CommunityPackUploadDescriptionOverride { get; set; } = string.Empty;
-    public string CommunityPackUploadOverrideMapSid { get; set; } = string.Empty;
-    public AkronSetupSection CommunityPackUploadOverrideSection { get; set; } = AkronSetupSection.StartPos;
     public string CustomOverlayThemeName { get; set; } = "Custom";
     public int CustomOverlayWindowColor { get; set; } = 0x292929;
     public int CustomOverlayHeaderColor { get; set; } = 0xC42A30;

@@ -12,7 +12,7 @@ body:
     id: akron-version
     attributes:
       label: Akron version
-      description: Use the version shown by Everest, GameBanana, or the release zip.
+      description: Use the version shown by Everest or the GitHub release ZIP.
     validations:
       required: true
   - type: input

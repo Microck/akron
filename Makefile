@@ -17,12 +17,7 @@ format-check:
 
 package:
 	dotnet build Source/Akron.csproj --configuration Release --nologo
-	test -f Akron.zip
-	unzip -t Akron.zip
-	unzip -Z1 Akron.zip | grep -Fx LICENSE >/dev/null
-	unzip -Z1 Akron.zip | grep -Fx ThirdPartyNotices.txt >/dev/null
-	unzip -p Akron.zip LICENSE | cmp LICENSE -
-	unzip -p Akron.zip ThirdPartyNotices.txt | cmp licenses/third-party-notices.txt -
+	bash scripts/release/verify-package.sh
 
 preflight-release: restore format-check build test package
 

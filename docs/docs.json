@@ -95,7 +95,6 @@
           "player-guide/hud-and-input-tools",
           "player-guide/visual-and-accessibility",
           "player-guide/capture-and-recording",
-          "player-guide/community-packs",
           "player-guide/interop"
         ]
       },
@@ -131,9 +130,7 @@
         "group": "Reference",
         "pages": [
           "reference/akr-archives",
-          "reference/community-pack-catalog",
           "reference/debug-commands",
-          "reference/error-reporting",
           "reference/file-locations",
           "reference/release-configuration"
         ]

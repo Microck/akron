@@ -2,9 +2,8 @@
 # Deterministic release cut. Runs the runbook's prepare and publish phases as
 # one command: validate the tree, move the changelog's Unreleased section under
 # the release heading, bump everest.yaml, run the preflight and the package
-# contents contract, commit, push main, and push the tag that triggers
-# .github/workflows/release.yml. Completion checks then run automatically in
-# .github/workflows/verify-release.yml.
+# contents contract, commit, push the release branch, and push the tag that triggers
+# .github/workflows/release.yml. The same workflow verifies the published assets.
 #
 # Main and v* tags are admin-bypass only by ruleset, so this runs locally as
 # the release owner rather than inside Actions.
@@ -31,11 +30,11 @@ repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
 # --- validate the tree ------------------------------------------------------
-[ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || fail "not on main"
+branch="$(git symbolic-ref --quiet --short HEAD)" || fail "check out the release branch first"
 [ -z "$(git status --porcelain)" ] || fail "working tree is not clean"
-git fetch origin main --quiet
-[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] ||
-    fail "main is not in sync with origin/main"
+git fetch --quiet origin "refs/heads/${branch}"
+[ "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD)" ] ||
+    fail "${branch} is not in sync with origin/${branch}"
 git rev-parse -q --verify "refs/tags/${tag}" >/dev/null &&
     fail "tag ${tag} already exists"
 grep -qF "Version: ${version}" everest.yaml &&
@@ -114,14 +113,11 @@ echo "cut-release: package contents contract holds"
 commit_name="${release_name#Akron }"
 git add CHANGELOG.md everest.yaml
 git commit -m "chore(release): prepare ${commit_name,,}"
-git push origin main
 git tag "$tag"
-git push origin "$tag"
+git push --atomic origin "HEAD:refs/heads/${branch}" "refs/tags/${tag}"
 
 cat <<DONE
 cut-release: ${tag} pushed.
-The Release workflow publishes it, then Verify Release runs the completion
-checks. Watch both:
-  gh run watch -R Microck/akron \$(gh run list -R Microck/akron --workflow Release --limit 1 --json databaseId -q '.[0].databaseId')
-  gh run list -R Microck/akron --workflow 'Verify Release' --limit 1
+The standalone release workflow publishes and verifies the GitHub assets.
+  gh run list -R Microck/akron --workflow release.yml --limit 1
 DONE

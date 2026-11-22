@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+- Download Akron from GitHub Releases and use it offline. Share setups as local .akr files and save diagnostics to the AkronDiagnostics folder inside the Celeste install. The online pack catalog, submissions and automatic error reports have been removed.
+
 ## Akron Beta 85
 
 ### Added

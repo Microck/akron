@@ -26,39 +26,11 @@ In the `Microck/akron` repository settings:
    available, and prevent self-review in that configuration. A solo maintainer
    may self-authorize only after completing this checklist. Allow the default
    branch for manual dispatches and protected `v*` tags.
-8. Move the GameBanana credentials or storage-state secrets, Tailscale OAuth
-   secrets, and `AKRON_WEBSITE_TOKEN` into `release`.
-9. Add a repository ruleset for `refs/tags/v*` that restricts tag creation,
+8. Add a repository ruleset for `refs/tags/v*` that restricts tag creation,
    update, and deletion to maintainers. Do not allow tag force updates.
-10. Protect the default branch in both `Microck/akron` and
-    `Microck/akron-discord` with required CI checks and maintainer-only bypass.
+9. Protect the default branch in `Microck/akron` with required CI checks and maintainer-only bypass.
     Block force pushes and branch deletion.
 
 The release workflow fails closed if a tag moves between build and publishing.
 The release environment and tag ruleset restrict publishing authority, while
 `release-build` remains available to required CI checks.
-
-## Configure the Akron Discord container identity
-
-From the deployment account that owns `akron-discord/data`, print its numeric
-identity:
-
-```sh
-id -u
-id -g
-```
-
-Copy those exact numbers into the deployment `.env`:
-
-```text
-AKRON_DOCKER_UID=<output of id -u>
-AKRON_DOCKER_GID=<output of id -g>
-```
-
-Then confirm the secret and database permissions before starting the service:
-
-```sh
-chmod 600 .env
-find data -maxdepth 1 -type f -name 'akron-discord.sqlite*' -exec chmod 600 {} +
-chmod 700 data
-```

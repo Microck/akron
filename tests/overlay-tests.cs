@@ -654,107 +654,6 @@ public sealed class OverlayTests {
                 allowPauseBuffering));
     }
 
-    [Fact]
-    public void UploadPackWindowOffersAllSupportedUploadSections() {
-        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-upload-window.cs"));
-        int methodStart = source.IndexOf("private void DrawCommunityPackUploadForm", StringComparison.Ordinal);
-        int nextMethod = source.IndexOf("private static void DrawCommunityPackUploadSectionChoice", methodStart, StringComparison.Ordinal);
-
-        Assert.True(methodStart >= 0);
-        Assert.True(nextMethod > methodStart);
-        string method = source[methodStart..nextMethod];
-
-        Assert.Contains("DrawCommunityPackUploadSectionChoice(\"StartPos\", AkronSetupSection.StartPos", method);
-        Assert.Contains("DrawCommunityPackUploadSectionChoice(\"Auto Kill\", AkronSetupSection.AutoKill", method);
-        Assert.Contains("DrawCommunityPackUploadSectionChoice(\"Auto Deafen\", AkronSetupSection.AutoDeafen", method);
-    }
-
-    [Fact]
-    public void UploadPackWindowLetsDiscordUsersEnterIdInline() {
-        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-upload-window.cs"));
-        int methodStart = source.IndexOf("private void DrawCommunityPackUploadForm", StringComparison.Ordinal);
-        int nextMethod = source.IndexOf("private static void DrawCommunityPackUploadSectionChoice", methodStart, StringComparison.Ordinal);
-
-        Assert.True(methodStart >= 0);
-        Assert.True(nextMethod > methodStart);
-        string method = source[methodStart..nextMethod];
-
-        Assert.Contains("DrawCommunityPackUploadAttributionChoice(\"Discord\", true", method);
-        Assert.Contains("\"Discord ID\"", method);
-        Assert.Contains("CommunityPackUploadDiscordUserId = discordUserId.Trim();", method);
-        Assert.DoesNotContain("Set a saved Discord user ID from the Upload Pack row submenu", method);
-    }
-
-    [Fact]
-    public void UploadPackWindowUsesCompactAlignedSingleColumnForm() {
-        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Community/akron-community-pack-upload-window.cs"));
-
-        Assert.Contains("Math.Min(640f", source);
-        Assert.Contains("float targetHeight = hasStatus ? 296f : 260f;", source);
-        Assert.Contains("Math.Min(targetHeight", source);
-        Assert.Contains("DrawPopupRowLabel(\"Map\"", source);
-        Assert.Contains("DrawPopupRowLabel(\"Category\"", source);
-        Assert.Contains("DrawPopupRowLabel(\"Attribution\"", source);
-        Assert.Contains("DrawPopupRowLabel(\"Status\"", source);
-        Assert.Contains("ImGui.ProgressBar(", source);
-        Assert.Contains("AkronCommunityPackUploads.DescribeUploadStatus()", source);
-        Assert.DoesNotContain("uploadPackWindowOpen = false;", source);
-        Assert.DoesNotContain("DrawPopupRowLabel(\"Review\"", source);
-        Assert.DoesNotContain("DrawPopupRowLabel(\"Confirm\"", source);
-        Assert.DoesNotContain("I created this pack and it can be shared publicly", source);
-        Assert.DoesNotContain("Use Generated Text", source);
-        Assert.DoesNotContain("Preview:", source);
-        Assert.DoesNotContain("private void DrawCommunityPackUploadSummary", source);
-        Assert.DoesNotContain("ImGui.Columns(2, \"##upload-pack-columns-\"", source);
-        Assert.DoesNotContain("DrawCommunityPackUploadPreview", source);
-    }
-
-    [Fact]
-    public void OverlayResetClosesUploadPackWindow() {
-        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/AkronOverlay.cs"));
-        int methodStart = source.IndexOf("internal void ResetTransientUiState(bool searchAutofocus)", StringComparison.Ordinal);
-        int nextMethod = source.IndexOf("public void OpenTab", methodStart, StringComparison.Ordinal);
-
-        Assert.True(methodStart >= 0);
-        Assert.True(nextMethod > methodStart);
-        string method = source[methodStart..nextMethod];
-
-        Assert.Contains("uploadPackWindowOpen = false;", method);
-    }
-
-    [Fact]
-    public void UploadPackRowSubmenuOnlyEditsUploadDefaults() {
-        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-popup-controls.cs"));
-        int methodStart = source.IndexOf("private void DrawUploadPackPopupControls", StringComparison.Ordinal);
-        int nextMethod = source.IndexOf("private void DrawLoggingPopupControls", methodStart, StringComparison.Ordinal);
-
-        Assert.True(methodStart >= 0);
-        Assert.True(nextMethod > methodStart);
-        string method = source[methodStart..nextMethod];
-
-        Assert.Contains("\"Discord ID\"", method);
-        Assert.Contains("\"Click Upload Pack to open the submission form.\"", method);
-        Assert.DoesNotContain("\"Title\"", method);
-        Assert.DoesNotContain("\"Desc\"", method);
-        Assert.DoesNotContain("\"Submit Upload\"", method);
-        Assert.DoesNotContain("DrawCommunityPackUploadSectionChoice", method);
-        Assert.DoesNotContain("DrawUploadSectionChoice", method);
-        Assert.DoesNotContain("DrawUploadAttributionChoice", method);
-    }
-
-    [Fact]
-    public void UploadPackRowOpensStandaloneUploadWindow() {
-        string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../Source/Overlay/akron-overlay-entries.cs"));
-        int methodStart = source.IndexOf("private static OverlayEntry UploadPackRow", StringComparison.Ordinal);
-        int nextMethod = source.IndexOf("private static OverlayEntry StartPosRow", methodStart, StringComparison.Ordinal);
-
-        Assert.True(methodStart >= 0);
-        Assert.True(nextMethod > methodStart);
-        string method = source[methodStart..nextMethod];
-
-        Assert.Contains("OpenUploadPackWindow();", method);
-        Assert.DoesNotContain("OpenUploadPrompt", method);
-    }
 
     [Fact]
     public void FreezeGameplayAndFrameStepperUseSeparateFeatureKinds() {
@@ -815,24 +714,6 @@ public sealed class OverlayTests {
         Assert.Contains("Global", GetCollapsedWindowTitles(overlay));
     }
 
-    [Fact]
-    public void TransientResetClosesCommunityPackBrowser() {
-        AkronOverlay overlay = CreateOverlayForStateTest();
-        FieldInfo browserOpen = typeof(AkronOverlay).GetField("communityPackBrowserOpen", BindingFlags.Static | BindingFlags.NonPublic)!;
-        FieldInfo expandedPreview = typeof(AkronOverlay).GetField("expandedCommunityPackPreview", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        browserOpen.SetValue(null, true);
-        expandedPreview.SetValue(overlay, new AkronCommunityPackEntry());
-
-        try {
-            overlay.ResetTransientUiState(searchAutofocus: false);
-
-            Assert.False((bool) browserOpen.GetValue(null)!);
-            Assert.Null(expandedPreview.GetValue(overlay));
-        } finally {
-            browserOpen.SetValue(null, false);
-            expandedPreview.SetValue(overlay, null);
-        }
-    }
 
     [Fact]
     public void OverlayCollapseStateUsesSettingsPersistence() {
@@ -846,14 +727,12 @@ public sealed class OverlayTests {
     }
 
     [Theory]
-    [InlineData(true, false, false, false, false, AkronOverlay.OverlayCancelAction.CloseCommunityPackPreview)]
-    [InlineData(false, true, false, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
-    [InlineData(false, false, true, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
-    [InlineData(false, false, false, true, false, AkronOverlay.OverlayCancelAction.CloseOptionsPopup)]
-    [InlineData(false, false, false, false, true, AkronOverlay.OverlayCancelAction.CloseCommunityPackBrowser)]
-    [InlineData(false, false, false, false, false, AkronOverlay.OverlayCancelAction.KeepOverlayOpen)]
-    public void CancelInputDoesNotCloseBaseOverlay(bool previewOpen, bool searchInputActive, bool hasSearchQuery, bool optionsPopupOpen, bool communityPackBrowserOpen, AkronOverlay.OverlayCancelAction expected) {
-        Assert.Equal(expected, AkronOverlay.ResolveCancelAction(previewOpen, searchInputActive, hasSearchQuery, optionsPopupOpen, communityPackBrowserOpen));
+    [InlineData(true, false, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
+    [InlineData(false, true, false, AkronOverlay.OverlayCancelAction.ClearSearch)]
+    [InlineData(false, false, true, AkronOverlay.OverlayCancelAction.CloseOptionsPopup)]
+    [InlineData(false, false, false, AkronOverlay.OverlayCancelAction.KeepOverlayOpen)]
+    public void CancelInputDoesNotCloseBaseOverlay(bool searchInputActive, bool hasSearchQuery, bool optionsPopupOpen, AkronOverlay.OverlayCancelAction expected) {
+        Assert.Equal(expected, AkronOverlay.ResolveCancelAction(searchInputActive, hasSearchQuery, optionsPopupOpen));
     }
 
     [Fact]

@@ -41,8 +41,6 @@ public sealed partial class AkronOverlay {
             } else if (string.Equals(entry.Label, "Export Setup", StringComparison.OrdinalIgnoreCase) ||
                        string.Equals(entry.Label, "Import Setup", StringComparison.OrdinalIgnoreCase)) {
                 DrawSetupPopupControls(popupId);
-            } else if (string.Equals(entry.Label, "Upload Pack", StringComparison.OrdinalIgnoreCase)) {
-                DrawUploadPackPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Confirm Actions", StringComparison.OrdinalIgnoreCase)) {
                 DrawConfirmActionsPopupControls(popupId);
             } else if (string.Equals(entry.Label, "Noclip", StringComparison.OrdinalIgnoreCase)) {
@@ -259,17 +257,6 @@ public sealed partial class AkronOverlay {
         ImGui.TextWrapped("Whole applies the full setup. Scoped imports only replace the selected system.");
     }
 
-    private void DrawUploadPackPopupControls(string popupId) {
-        ImGui.TextUnformatted("Upload defaults");
-        string discordUserId = AkronModule.Settings.CommunityPackUploadDiscordUserId ?? string.Empty;
-        if (DrawPopupInputText("Discord ID", ref discordUserId, 32, popupId, 220f)) {
-            AkronModule.Settings.CommunityPackUploadDiscordUserId = discordUserId.Trim();
-        }
-        DrawPopupTooltip("Saved Discord user id used when the Upload Pack form uses Discord attribution.");
-        ImGui.TextWrapped("Click Upload Pack to open the submission form.");
-        ImGui.TextUnformatted("Install ID: private");
-    }
-
     private void DrawLoggingPopupControls(string popupId) {
         ImGui.TextUnformatted("Level: " + AkronLog.FormatLevel(AkronModule.Settings.LoggingLevel));
         DrawLoggingLevelChoice("Normal", AkronLoggingLevel.Normal, popupId);
@@ -314,44 +301,6 @@ public sealed partial class AkronOverlay {
         if (ImGui.RadioButton(label + "##setup-section-" + popupId, selected)) {
             AkronModule.Settings.SetupPackSection = section;
         }
-    }
-
-    private static string FormatUploadPackAttribution() {
-        return AkronModule.Settings.CommunityPackUploadUseDiscordAttribution ? "Discord" : "Anonymous";
-    }
-
-    private static void OpenCommunityPackBrowser() {
-        communityPackBrowserOpen = true;
-    }
-
-    private static void OpenUploadPackWindow() {
-        uploadPackWindowOpen = true;
-    }
-
-    private static string TruncateImGuiText(string text, int maxPixels) {
-        text = string.IsNullOrWhiteSpace(text) ? "No description provided." : text.Trim();
-        if (maxPixels <= 0 || ImGui.CalcTextSize(text).X <= maxPixels) {
-            return text;
-        }
-
-        while (text.Length > 3 && ImGui.CalcTextSize(text + "...").X > maxPixels) {
-            text = text.Substring(0, text.Length - 1);
-        }
-
-        return text + "...";
-    }
-
-    private static string CurrentCommunityMapSid() {
-        return Engine.Scene is Level level ? level.Session?.Area.GetSID() ?? string.Empty : string.Empty;
-    }
-
-    private static string DescribeCommunityPackBrowser() {
-        if (Engine.Scene is not Level level) {
-            return "No map";
-        }
-
-        string mapSid = level.Session?.Area.GetSID() ?? string.Empty;
-        return string.IsNullOrWhiteSpace(mapSid) ? "No map" : "Map catalog";
     }
 
     private static IReadOnlyList<SelectorDropdownChoice> BuildRoomStatTimerFreezeChoices() {

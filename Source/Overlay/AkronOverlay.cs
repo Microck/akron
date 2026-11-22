@@ -102,8 +102,6 @@ public sealed partial class AkronOverlay : Entity {
         KeepOverlayOpen,
         ClearSearch,
         CloseOptionsPopup,
-        CloseCommunityPackPreview,
-        CloseCommunityPackBrowser
     }
 
     private static Color AkronWindowBackground => AkronOverlayThemes.WindowColor();
@@ -171,11 +169,6 @@ public sealed partial class AkronOverlay : Entity {
     private bool openedImGuiOptionsPopupThisFrame;
     private bool suppressBackgroundActionRowsUntilMouseMoves;
     private Vector2 backgroundActionRowsSuppressionMouse;
-    private static bool communityPackBrowserOpen;
-    private static bool uploadPackWindowOpen;
-    private int selectedCommunityPackIndex;
-    private int selectedCommunityPackImageIndex;
-    private AkronCommunityPackEntry expandedCommunityPackPreview;
     private Rectangle openOptionsPopupRect;
     private Rectangle openOptionsMinusRect;
     private Rectangle openOptionsPlusRect;
@@ -332,10 +325,8 @@ public sealed partial class AkronOverlay : Entity {
         UpdateFallbackScrollWheel();
 
         if (IsCancelPressed(searchInputActive || AkronImGuiRenderer.WantCaptureKeyboard)) {
-            OverlayCancelAction cancelAction = ResolveCancelAction(expandedCommunityPackPreview != null, searchInputActive, !string.IsNullOrEmpty(searchQuery), IsAnyOptionsPopupOpen(), communityPackBrowserOpen || uploadPackWindowOpen);
-            if (cancelAction == OverlayCancelAction.CloseCommunityPackPreview) {
-                expandedCommunityPackPreview = null;
-            } else if (cancelAction == OverlayCancelAction.ClearSearch) {
+            OverlayCancelAction cancelAction = ResolveCancelAction(searchInputActive, !string.IsNullOrEmpty(searchQuery), IsAnyOptionsPopupOpen());
+            if (cancelAction == OverlayCancelAction.ClearSearch) {
                 searchQuery = string.Empty;
                 searchInputActive = false;
                 searchInputUsesImGui = false;
@@ -344,10 +335,6 @@ public sealed partial class AkronOverlay : Entity {
                 actionScrollIndex = 0;
             } else if (cancelAction == OverlayCancelAction.CloseOptionsPopup) {
                 CloseOptionsPopup();
-            } else if (cancelAction == OverlayCancelAction.CloseCommunityPackBrowser) {
-                communityPackBrowserOpen = false;
-                uploadPackWindowOpen = false;
-                expandedCommunityPackPreview = null;
             }
             return;
         }
@@ -364,9 +351,6 @@ public sealed partial class AkronOverlay : Entity {
         imguiFrameLifecycle.NeedsFrame(AkronImGuiRenderer.IsInitialized);
 
     public bool RenderImGui() {
-        if (!Visible) {
-            uploadPackWindowOpen = false;
-        }
 
         // Placement owns raw right-click cancellation, including its empty cleanup frames.
         // Never queue a down sampled between Update and Render for the restored overlay.
@@ -542,14 +526,6 @@ public sealed partial class AkronOverlay : Entity {
 
         selectedActionIndex = Calc.Clamp(selectedActionIndex, 0, currentEntries.Count - 1);
         ActionEntry selectedEntry = currentEntries[selectedActionIndex];
-        if (string.Equals(selectedEntry.Label, "Community Packs", StringComparison.OrdinalIgnoreCase)) {
-            OpenCommunityPackBrowser();
-            return true;
-        }
-        if (string.Equals(selectedEntry.Label, "Upload Pack", StringComparison.OrdinalIgnoreCase)) {
-            OpenUploadPackWindow();
-            return true;
-        }
 
         if (!selectedEntry.HasOptionsPopup) {
             return false;
@@ -615,8 +591,6 @@ public sealed partial class AkronOverlay : Entity {
     internal void ResetTransientUiState(bool searchAutofocus) {
         ResetSectionNavigation();
         CloseOptionsPopup();
-        communityPackBrowserOpen = false;
-        expandedCommunityPackPreview = null;
         CancelBindingCapture();
         imguiPopupBlockedRowsLastFrame = false;
         suppressImGuiRowPressesThisFrame = false;
@@ -625,7 +599,6 @@ public sealed partial class AkronOverlay : Entity {
         autoKillAreaHasFirstCorner = false;
         autoDeafenAreaSelectionActive = false;
         autoDeafenAreaHasFirstCorner = false;
-        uploadPackWindowOpen = false;
         valueEditFreezeFrames = 0;
         keyboardInputSessionPending = true;
         imguiFrameLifecycle.RequestCleanup();
@@ -935,21 +908,13 @@ public sealed partial class AkronOverlay : Entity {
                IsGamePadPressed(Buttons.Back);
     }
 
-    internal static OverlayCancelAction ResolveCancelAction(bool communityPackPreviewOpen, bool searchInputActive, bool hasSearchQuery, bool optionsPopupOpen, bool communityPackBrowserOpen) {
-        if (communityPackPreviewOpen) {
-            return OverlayCancelAction.CloseCommunityPackPreview;
-        }
-
+    internal static OverlayCancelAction ResolveCancelAction(bool searchInputActive, bool hasSearchQuery, bool optionsPopupOpen) {
         if (searchInputActive || hasSearchQuery) {
             return OverlayCancelAction.ClearSearch;
         }
 
         if (optionsPopupOpen) {
             return OverlayCancelAction.CloseOptionsPopup;
-        }
-
-        if (communityPackBrowserOpen) {
-            return OverlayCancelAction.CloseCommunityPackBrowser;
         }
 
         return OverlayCancelAction.KeepOverlayOpen;
