@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-unzip -tqq Akron.zip
-unzip -Z1 Akron.zip | grep -Fx bin/Akron.dll >/dev/null
-unzip -Z1 Akron.zip | grep -Fx everest.yaml >/dev/null
-unzip -Z1 Akron.zip | grep -Fx bin/Akron.pdb >/dev/null
-if unzip -Z1 Akron.zip | grep -E '\.pdb$' | grep -Fvx bin/Akron.pdb; then
+version="$(awk -F': ' '/^[[:space:]]*Version:/ {print $2; exit}' everest.yaml)"
+archive="Akron-Offline-v${version}.zip"
+unzip -tqq "$archive"
+listing="$(unzip -Z1 "$archive")"
+grep -Fx bin/Akron.dll <<<"$listing" >/dev/null
+grep -Fx everest.yaml <<<"$listing" >/dev/null
+grep -Fx bin/Akron.pdb <<<"$listing" >/dev/null
+if grep -E '\.pdb$' <<<"$listing" | grep -Fvx bin/Akron.pdb; then
   echo "::error::Only Akron's portable PDB belongs in the player package."
   exit 1
 fi
-unzip -Z1 Akron.zip | grep -Fx LICENSE >/dev/null
-unzip -Z1 Akron.zip | grep -Fx ThirdPartyNotices.txt >/dev/null
-if unzip -Z1 Akron.zip | grep -Ei '(^|/)(sentry-cli[^/]*|sentry\.dll|libsentry[^/]*)(/|$)'; then
+grep -Fx LICENSE <<<"$listing" >/dev/null
+grep -Fx ThirdPartyNotices.txt <<<"$listing" >/dev/null
+if grep -Ei '(^|/)(sentry-cli[^/]*|sentry\.dll|libsentry[^/]*)(/|$)' <<<"$listing"; then
   echo "::error::Player package must not contain Sentry components."
   exit 1
 fi
-cmp LICENSE <(unzip -p Akron.zip LICENSE)
-cmp licenses/third-party-notices.txt <(unzip -p Akron.zip ThirdPartyNotices.txt)
+cmp LICENSE <(unzip -p "$archive" LICENSE)
+cmp licenses/third-party-notices.txt <(unzip -p "$archive" ThirdPartyNotices.txt)

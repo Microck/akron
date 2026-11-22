@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - main
+      - offline
       - master
   # Weekly run on main surfaces drift in pinned toolchains, runner images, and
   # NuGet restores as a red build instead of a player bug report.
@@ -70,6 +70,6 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Akron
-          path: Akron.zip
+          path: Akron-Offline-v*.zip
           if-no-files-found: error
           retention-days: 3

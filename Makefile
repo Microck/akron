@@ -23,4 +23,4 @@ preflight-release: restore format-check build test package
 
 clean:
 	dotnet clean Akron.sln --nologo
-	rm -rf bin Source/bin Source/obj tests/bin tests/obj Akron.zip
+	rm -rf bin Source/bin Source/obj tests/bin tests/obj Akron-Offline-v*.zip

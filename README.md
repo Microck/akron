@@ -8,6 +8,8 @@ Akron is a player-facing utility suite for Celeste that runs inside Everest. it 
 
 the overlay keeps common player tools close to the game instead of scattered across separate menus. players can check the current setup, adjust practice or hud surfaces, capture play, and move back into the level without changing context.
 
+this is the offline edition of Akron. it keeps local `.akr` setup import and export, but omits the online catalog, submissions, and automatic reports. download `Akron-Offline-v1.0.0.zip` from [GitHub Releases](https://github.com/Microck/akron/releases), and keep only one Akron ZIP in your Everest `Mods` folder because both editions share the same mod ID.
+
 ## quickstart
 
 1. download the versioned Akron ZIP from [GitHub Releases](https://github.com/Microck/akron/releases) and place it unopened in your Everest `Mods` folder.

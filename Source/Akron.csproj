@@ -68,7 +68,7 @@
                 <PackagePath>ThirdPartyNotices.txt</PackagePath>
             </FilesToPackage>
         </ItemGroup>
-        <PackageMod Files="@(FilesToPackage)" OutputPath="..\Akron.zip" />
+        <PackageMod Files="@(FilesToPackage)" />
     </Target>
 
     <PropertyGroup>
@@ -78,7 +78,6 @@
     <UsingTask TaskName="PackageMod" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
         <ParameterGroup>
             <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
-            <OutputPath ParameterType="System.String" Required="true" />
         </ParameterGroup>
         <Task>
             <Using Namespace="System" />
@@ -89,10 +88,16 @@
                 var projectDir = Path.Combine(@"$(ProjectDir)", "..");
                 projectDir = Uri.UnescapeDataString(projectDir);
 
-                if (File.Exists(OutputPath))
-                    File.Delete(OutputPath);
+                var manifest = File.ReadAllText(Path.Combine(projectDir, "everest.yaml"));
+                var version = System.Text.RegularExpressions.Regex.Match(manifest, @"(?m)^  Version: ([0-9][0-9A-Za-z.-]*)\s*$");
+                if (!version.Success)
+                    throw new InvalidDataException("Missing or invalid Akron version in everest.yaml.");
+                var outputPath = Path.Combine(projectDir, "Akron-Offline-v" + version.Groups[1].Value + ".zip");
 
-                using (ZipArchive zip = ZipFile.Open(OutputPath, ZipArchiveMode.Create))
+                if (File.Exists(outputPath))
+                    File.Delete(outputPath);
+
+                using (ZipArchive zip = ZipFile.Open(outputPath, ZipArchiveMode.Create))
                 {
                     foreach (var file in Files)
                     {
