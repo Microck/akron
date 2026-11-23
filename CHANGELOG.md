@@ -6,6 +6,8 @@ This project uses version tags that match the mod version in `everest.yaml`, whi
 
 ## Unreleased
 
+## Akron 1.0.0
+
 - GitHub releases now include an offline edition with local setup sharing and diagnostics. Install one edition at a time.
 
 ## Akron Beta 85
