@@ -50,13 +50,18 @@ jobs:
               exit 1
             fi
           fi
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta(\.[0-9]+)?)?$ ]] || exit 1
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v7
         if: steps.tag.outputs.tag != ''
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          persist-credentials: false
 
       - name: Run the completion checks
         if: steps.tag.outputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/release/verify-release.sh "${{ steps.tag.outputs.tag }}"
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: bash scripts/release/verify-release.sh "$RELEASE_TAG"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! [[ "${RELEASE_TAG:-}" =~ ^v[0-9A-Za-z][0-9A-Za-z._-]*$ ]]; then
+if ! [[ "${RELEASE_TAG:-}" =~ ^(offline/)?v[0-9A-Za-z][0-9A-Za-z._-]*$ ]]; then
   echo "::error::RELEASE_TAG has an unsupported format." >&2
   exit 1
 fi

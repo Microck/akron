@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
-# Deterministic release cut. Runs the runbook's prepare and publish phases as
-# one command: validate the tree, move the changelog's Unreleased section under
-# the release heading, bump everest.yaml, run the preflight and the package
-# contents contract, commit, push main, and push the tag that triggers
-# .github/workflows/release.yml. Completion checks then run automatically in
-# .github/workflows/verify-release.yml.
-#
-# Main and v* tags are admin-bypass only by ruleset, so this runs locally as
-# the release owner rather than inside Actions.
+# Build both editions in disposable worktrees and publish their branches and
+# source tags together. Run as the release owner with main ruleset bypass.
 #
 # Usage: scripts/release/cut-release.sh X.Y.Z[-beta.N]
 set -euo pipefail
@@ -30,21 +23,38 @@ fi
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-# --- validate the tree ------------------------------------------------------
-[ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || fail "not on main"
+[ "$(git symbolic-ref --short HEAD)" = main ] || fail "run this from main"
 [ -z "$(git status --porcelain)" ] || fail "working tree is not clean"
-git fetch origin main --quiet
-[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] ||
-    fail "main is not in sync with origin/main"
-git rev-parse -q --verify "refs/tags/${tag}" >/dev/null &&
-    fail "tag ${tag} already exists"
-grep -qF "Version: ${version}" everest.yaml &&
-    fail "everest.yaml already says ${version}; pick the next version"
+git fetch origin refs/heads/main:refs/remotes/origin/main refs/heads/offline:refs/remotes/origin/offline
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || fail "main is not in sync with origin"
+existing_tags="$(git ls-remote --tags origin "refs/tags/$tag" "refs/tags/offline/$tag")"
+[ -z "$existing_tags" ] || fail "a release tag already exists"
 
-# --- move Unreleased under the release heading ------------------------------
-# The section must exist and carry at least one note: an empty release would
-# publish a changelog section that tells players nothing.
-python3 - "$version" "$release_name" <<'PY'
+# Stage both commits away from the maintainer's checkout. Publish all four refs
+# in one transaction only after both preflights pass.
+stage="$(mktemp -d)"
+cleanup() {
+    for edition in main offline; do
+        if [ -e "$stage/$edition/.git" ]; then git worktree remove --force "$stage/$edition"; fi
+    done
+    rmdir "$stage"
+}
+trap cleanup EXIT
+
+prepare() (
+    edition="$1"
+    archive="$2"
+    git worktree add --quiet --detach "$stage/$edition" "origin/$edition"
+    cd "$stage/$edition"
+    if [ -f "$repo_root/../../Celeste.dll" ]; then
+        export CelestePrefix="$(cd "$repo_root/../.." && pwd)"
+    elif [ -d "$repo_root/lib-stripped" ]; then
+        ln -s "$repo_root/lib-stripped" lib-stripped
+    fi
+    # --- move Unreleased under the release heading ------------------------------
+    # The section must exist and carry at least one note: an empty release would
+    # publish a changelog section that tells players nothing.
+    python3 - "$version" "$release_name" <<'PY'
 import re, sys
 
 version, release_name = sys.argv[1], sys.argv[2]
@@ -58,7 +68,7 @@ notes = match.group(1).strip("\n")
 if not any(line.strip().startswith("-") for line in notes.splitlines()):
     sys.exit("cut-release: the Unreleased section carries no notes; "
              "write the release notes before cutting")
-if release_name in changelog:
+if f"## {release_name}" in changelog.splitlines():
     sys.exit(f"cut-release: CHANGELOG.md already has a {release_name} section")
 
 replacement = f"## Unreleased\n\n## {release_name}\n\n{notes}\n"
@@ -68,9 +78,9 @@ with open("CHANGELOG.md", "w", encoding="utf-8") as handle:
 print(f"cut-release: moved Unreleased notes under '{release_name}'")
 PY
 
-# --- bump the mod version ---------------------------------------------------
-# Only the first Version key is Akron's own; the dependency pins stay.
-python3 - "$version" <<'PY'
+    # --- bump the mod version ---------------------------------------------------
+    # Only the first Version key is Akron's own; the dependency pins stay.
+    python3 - "$version" <<'PY'
 import sys
 
 version = sys.argv[1]
@@ -87,41 +97,36 @@ with open("everest.yaml", "w", encoding="utf-8") as handle:
 print(f"cut-release: everest.yaml -> {version}")
 PY
 
-# --- preflight and package contents contract --------------------------------
-make preflight-release
+    # --- preflight and package contents contract --------------------------------
+    make preflight-release
 
-required_contents=(
-    "everest.yaml"
-    "bin/Akron.dll"
-    "bin/ImGui.NET.dll"
-    "bin/runtimes/linux-x64/native/libcimgui.so"
-    "bin/runtimes/osx/native/libcimgui.dylib"
-    "Dialog/English.txt"
-    "LICENSE"
-    "ThirdPartyNotices.txt"
+    required_contents=(
+        "everest.yaml"
+        "bin/Akron.dll"
+        "bin/ImGui.NET.dll"
+        "bin/runtimes/linux-x64/native/libcimgui.so"
+        "bin/runtimes/osx/native/libcimgui.dylib"
+        "Dialog/English.txt"
+        "LICENSE"
+        "ThirdPartyNotices.txt"
+    )
+    listing="$(unzip -l "$archive")"
+    for entry in "${required_contents[@]}"; do
+        grep -qF " ${entry}" <<<"$listing" || fail "$archive is missing ${entry}"
+    done
+    grep -qE " bin/runtimes/win[^ ]*/cimgui\.dll" <<<"$listing" ||
+        fail "$archive is missing a Windows cimgui.dll runtime"
+    echo "cut-release: package contents contract holds"
+
+    git add CHANGELOG.md everest.yaml
+    git commit -m "chore(release): prepare ${release_name#Akron } ($edition)"
 )
-listing="$(unzip -l Akron.zip)"
-for entry in "${required_contents[@]}"; do
-    grep -qF " ${entry}" <<<"$listing" || fail "Akron.zip is missing ${entry}"
-done
-grep -qE " bin/runtimes/win[^ ]*/cimgui\.dll" <<<"$listing" ||
-    fail "Akron.zip is missing a Windows cimgui.dll runtime"
-echo "cut-release: package contents contract holds"
 
-# --- commit, push, tag ------------------------------------------------------
-# History says "chore(release): prepare beta 71", so the readable name drops
-# its Akron prefix here.
-commit_name="${release_name#Akron }"
-git add CHANGELOG.md everest.yaml
-git commit -m "chore(release): prepare ${commit_name,,}"
-git push origin main
-git tag "$tag"
-git push origin "$tag"
-
-cat <<DONE
-cut-release: ${tag} pushed.
-The Release workflow publishes it, then Verify Release runs the completion
-checks. Watch both:
-  gh run watch -R Microck/akron \$(gh run list -R Microck/akron --workflow Release --limit 1 --json databaseId -q '.[0].databaseId')
-  gh run list -R Microck/akron --workflow 'Verify Release' --limit 1
-DONE
+prepare main Akron.zip
+prepare offline "Akron-Offline-${tag}.zip"
+main_commit="$(git -C "$stage/main" rev-parse HEAD)"
+offline_commit="$(git -C "$stage/offline" rev-parse HEAD)"
+git push --atomic origin "$main_commit:refs/heads/main" "$offline_commit:refs/heads/offline" \
+    "$main_commit:refs/tags/$tag" "$offline_commit:refs/tags/offline/$tag"
+git merge --ff-only "$main_commit"
+echo "Published paired source tags $tag and offline/$tag. The Release workflow will publish both builds."
