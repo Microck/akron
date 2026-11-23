@@ -46,7 +46,11 @@ prepare() (
     archive="$2"
     git worktree add --quiet --detach "$stage/$edition" "origin/$edition"
     cd "$stage/$edition"
-    if [ -d "$repo_root/lib-stripped" ]; then ln -s "$repo_root/lib-stripped" lib-stripped; fi
+    if [ -f "$repo_root/../../Celeste.dll" ]; then
+        export CelestePrefix="$(cd "$repo_root/../.." && pwd)"
+    elif [ -d "$repo_root/lib-stripped" ]; then
+        ln -s "$repo_root/lib-stripped" lib-stripped
+    fi
     # --- move Unreleased under the release heading ------------------------------
     # The section must exist and carry at least one note: an empty release would
     # publish a changelog section that tells players nothing.

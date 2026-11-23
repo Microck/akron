@@ -149,7 +149,7 @@ components identified in the notices retain their original licenses.
 
 ## Publish
 
-Run the release cutter from a clean, synced main checkout. It publishes the two prepared branch heads and their tags atomically. The standard tag triggers `.github/workflows/release.yml`. You can also rerun the `Release` workflow manually with `tag_name` set to the existing tag.
+Run the release cutter from a clean, synced main checkout. It publishes the two prepared branch heads and their tags atomically. The standard tag triggers `.github/workflows/release.yml`. For a standard-only release older than 1.0.0, dispatch the workflow from the original tag so GitHub uses that version of the pipeline: `gh workflow run release.yml --ref "$tag" -f tag_name="$tag"`. You can also rerun the `Release` workflow manually with `tag_name` set to the existing tag.
 
 What the workflow does:
 

@@ -42,7 +42,7 @@ Every Akron release is expected to leave these public surfaces consistent:
 
 | Surface | Expected state |
 | --- | --- |
-| GitHub Release | The tag has a release with `Akron-<tag>.zip`, its `.zip.sha256` checksum, the `.dependencies.json` dependency manifest, the `.cdx.json` CycloneDX SBOM, and notes extracted from `CHANGELOG.md`. |
+| GitHub Release | The tag has a release with `Akron-<tag>.zip` and `Akron-Offline-<tag>.zip`, each with its own `.zip.sha256` checksum, `.dependencies.json` dependency manifest and `.cdx.json` CycloneDX SBOM. The release notes include both editions. |
 | GameBanana | The mod page has a release update and downloadable file for the same tag. |
 | `akron.micr.dev` | Documentation and fallback GameBanana file ids match the released version. |
 | README | The Olympus and raw-download buttons point at `akron.micr.dev/olympus` and `akron.micr.dev/raw`. |

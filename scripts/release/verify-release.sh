@@ -11,7 +11,7 @@ REPO="Microck/akron"
 GAMEBANANA_MOD_ID="681169"
 
 tag="${1:-}"
-[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]] ||
+[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta(\.[0-9]+)?)?$ ]] ||
     { echo "verify-release: usage: verify-release.sh vX.Y.Z" >&2; exit 1; }
 version="${tag#v}"
 

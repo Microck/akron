@@ -228,17 +228,6 @@ jobs:
             exit 1
           fi
 
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          notes = Path("release-notes.md").read_text(encoding="utf-8")
-          Path("release-notes.json").write_text(
-              json.dumps({"body": notes}),
-              encoding="utf-8",
-          )
-          PY
-
       - name: Upload release inputs
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -249,7 +238,6 @@ jobs:
             Akron-${{ env.RELEASE_TAG }}.dependencies.json
             Akron-${{ env.RELEASE_TAG }}.cdx.json
             release-notes.md
-            release-notes.json
           if-no-files-found: error
           retention-days: 7
 
@@ -267,7 +255,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           ref: refs/tags/offline/${{ env.RELEASE_TAG }}
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Verify offline tag belongs to the protected branch
+        run: git merge-base --is-ancestor HEAD refs/remotes/origin/offline
 
       - name: Check offline version
         id: identity
@@ -297,6 +289,7 @@ jobs:
           dotnet build Akron.sln -c Release --no-restore -p:ContinuousIntegrationBuild=true
           dotnet test tests/akron-tests.csproj -c Release --no-build
           bash scripts/release/verify-package.sh
+          cp CHANGELOG.md offline-changelog.md
           base="Akron-Offline-${RELEASE_TAG}"
           sha256sum "$base.zip" > "$base.zip.sha256"
           dotnet list Source/Akron.csproj package --include-transitive --format json > "$base.dependencies.json"
@@ -305,7 +298,9 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Akron-Offline-${{ env.RELEASE_TAG }}
-          path: Akron-Offline-${{ env.RELEASE_TAG }}.*
+          path: |
+            Akron-Offline-${{ env.RELEASE_TAG }}.*
+            offline-changelog.md
           if-no-files-found: error
           retention-days: 7
 
@@ -519,6 +514,15 @@ jobs:
         run: |
           set -euo pipefail
           cd release-artifacts
+          awk -v heading="## $RELEASE_DISPLAY_NAME" '
+            $0 == heading { found=1; next }
+            found && /^## / { exit }
+            found { print }
+          ' offline-changelog.md > offline-notes.md
+          grep -q '[^[:space:]]' offline-notes.md
+          printf '\n## Offline edition\n' >> release-notes.md
+          cat offline-notes.md >> release-notes.md
+          jq -Rs '{body: .}' release-notes.md > release-notes.json
           title="$RELEASE_DISPLAY_NAME"
           release_flags=(--prerelease="$IS_PRERELEASE")
           if [ "$IS_PRERELEASE" != "true" ]; then
