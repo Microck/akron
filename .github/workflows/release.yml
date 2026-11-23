@@ -458,10 +458,31 @@ jobs:
           name: Akron-${{ env.RELEASE_TAG }}
           path: release-artifacts
 
+      - name: Record source commits for both build attestations
+        env:
+          STANDARD_COMMIT: ${{ needs.build.outputs.release_commit }}
+          OFFLINE_COMMIT: ${{ needs.build_offline.outputs.release_commit }}
+        run: |
+          provenance() {
+            jq -n --arg ref "refs/tags/$1" --arg commit "$2" '
+              (env.GITHUB_SERVER_URL + "/" + env.GITHUB_REPOSITORY) as $repo |
+              {buildDefinition: {buildType: "https://actions.github.io/buildtypes/workflow/v1",
+                externalParameters: {workflow: {path: ".github/workflows/release.yml", repository: $repo, ref: env.GITHUB_REF}},
+                internalParameters: {github: {event_name: env.GITHUB_EVENT_NAME, repository_id: env.GITHUB_REPOSITORY_ID,
+                  repository_owner_id: env.GITHUB_REPOSITORY_OWNER_ID, runner_environment: env.RUNNER_ENVIRONMENT}},
+                resolvedDependencies: [{uri: ("git+" + $repo + "@" + $ref), digest: {gitCommit: $commit}}]},
+                runDetails: {builder: {id: (env.GITHUB_SERVER_URL + "/" + env.GITHUB_WORKFLOW_REF)},
+                  metadata: {invocationId: ($repo + "/actions/runs/" + env.GITHUB_RUN_ID + "/attempts/" + env.GITHUB_RUN_ATTEMPT)}}}'
+          }
+          provenance "$RELEASE_TAG" "$STANDARD_COMMIT" > standard-provenance.json
+          provenance "offline/$RELEASE_TAG" "$OFFLINE_COMMIT" > offline-provenance.json
+
       - name: Attest release artifact provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: release-artifacts/Akron-${{ env.RELEASE_TAG }}.zip
+          predicate-type: https://slsa.dev/provenance/v1
+          predicate-path: standard-provenance.json
 
       - name: Attest release SBOM
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
@@ -480,18 +501,6 @@ jobs:
         with:
           name: Akron-Offline-${{ env.RELEASE_TAG }}
           path: release-artifacts
-
-      - name: Record offline source for the build attestation
-        env:
-          OFFLINE_COMMIT: ${{ needs.build_offline.outputs.release_commit }}
-        run: |
-          jq -n --arg repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
-            --arg ref "refs/tags/offline/$RELEASE_TAG" --arg commit "$OFFLINE_COMMIT" \
-            --arg workflow "${GITHUB_WORKFLOW_REF#*@}" --arg invocation "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT" \
-            '{buildDefinition: {buildType: "https://actions.github.io/buildtypes/workflow/v1",
-              externalParameters: {workflow: {path: ".github/workflows/release.yml", repository: $repo, ref: $workflow}},
-              resolvedDependencies: [{uri: ("git+" + $repo + "@" + $ref), digest: {gitCommit: $commit}}]},
-              runDetails: {builder: {id: "https://github.com/actions/runner/github-hosted"}, metadata: {invocationId: $invocation}}}' > offline-provenance.json
 
       - name: Attest offline artifact provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
