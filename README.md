@@ -2,6 +2,8 @@
   <img src="docs/images/logo.png" alt="Akron" width="240">
 </p>
 
+![Akron overlay](docs/images/akron-overlay-layout.png)
+
 ## what is Akron?
 
 Akron is a player-facing utility suite for Celeste that runs inside Everest. it centers on an in-game overlay for practice, routing, hud visibility, capture, setup sharing, and visible attempt status.
