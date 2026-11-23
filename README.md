@@ -2,6 +2,16 @@
   <img src="docs/images/logo.png" alt="Akron" width="240">
 </p>
 
+## why i'm ending development
+
+i'm disappointed by the new rule against substantial AI use in the Celeste section of GameBanana. i spent months building Akron to give something back to the modded Celeste community. if i uploaded it there now, it would be removed under this rule. i think the rule is extreme, and it feels like those months of work went to waste before i even got a chance to launch it there.
+
+i think the explanation below is completely uninformed and ignorant about how AI is used in software development today. it reads like it was written by people who haven't worked in the industry recently.
+
+i'm ending development on Akron. i'll reconsider if the rule changes. the source code and both [1.0.0 downloads](https://github.com/Microck/akron/releases/tag/v1.0.0) will stay up on GitHub.
+
+![GameBanana's Celeste rule on substantial generative AI use and the moderators' explanation](docs/images/gamebanana-ai-rule.png)
+
 ![Akron overlay](docs/images/akron-overlay-layout.png)
 
 ## what is Akron?
